@@ -6,7 +6,7 @@ The target product combines premium Netflix-style viewing, a frictionless YouTub
 
 ## Current status
 
-Greenfield planning and implementation preparation.
+Task 00 implementation contract complete. The repository remains a greenfield documentation baseline; application scaffolding starts in Task 01.
 
 ## Product decisions
 
@@ -26,6 +26,9 @@ Greenfield planning and implementation preparation.
 - [AYIN Master Product & Platform Plan](docs/AYIN_MASTER_PLAN.md)
 - [AI Implementation Rules](docs/AYIN_AI_AGENT_RULES.md)
 - [Sequential AI Execution Roadmap](docs/AYIN_EXECUTION_ROADMAP.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development Contract](docs/DEVELOPMENT.md)
+- [Architecture Decision Records](docs/DECISIONS.md)
 
 ## Execution
 
