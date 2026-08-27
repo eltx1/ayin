@@ -1,646 +1,958 @@
-# AYIN Master Product & Platform Plan
+# AYIN Master Product & Platform Plan — V2
 
 Status: Product blueprint / greenfield architecture
 Owner: Horus Media
 Product: AYIN
 Primary domain: ayin.stream
-Business model: Free ad-supported streaming (AVOD) + creator video platform + FAST/live expansion
+Core model: Global free ad-supported streaming + creator video platform + automatic Creator TV + future FAST/live expansion
+Primary delivery model: Web/PWA first, then thin hybrid/platform shells
+Application server: AWS EC2 managed through CloudPanel
+Video storage: Cloudflare R2 only
+Initial video format: playback-ready MP4
+
+---
 
 ## 1. Product Thesis
 
-AYIN should not be built as a Netflix clone or a YouTube clone. The target is a unified entertainment network that combines:
+AYIN is not a country-specific service and must never be designed, worded, ranked, or branded as a platform for one country. It is a global entertainment network from day one.
 
-- Netflix-style premium discovery, personalization, profiles, continue-watching, series/movies UX and TV-first navigation.
-- YouTube-style creator channels, uploads, subscriptions, comments, playlists, Shorts/vertical video, community, live, studio analytics and creator monetization.
-- Tubi/Pluto-style free ad-supported VOD and FAST/live television.
-- CTV-first advertising architecture designed from day one for Google IMA / Google Ad Manager and later Google demand.
-- AYIN-native differentiation: Creator TV channels, unified discovery across movies/series/creators/shorts/live, transparent monetization, social TV, watch parties and AI-assisted discovery.
+AYIN combines four product ideas in one coherent platform:
 
-The launch objective is not feature parity with Netflix or YouTube on day one. The architecture must make full parity possible without rebuilding the platform.
+- Netflix-class discovery and viewing UX: cinematic home, profiles, continue watching, movies, series, recommendations, My AYIN and TV-first navigation.
+- YouTube-class creator ecosystem: every user is automatically a creator, every user receives a channel, uploads, followers/subscribers, comments, playlists, analytics and future Shorts/live/community tools.
+- Tubi/Pluto-style AVOD and television: free viewing supported by advertising, plus automatic Creator TV and future true FAST/live channels.
+- Horus Media advertising infrastructure: in-player video advertising plus page/app display placements, direct campaigns and Google Ad Manager readiness from the first architecture.
 
-## 2. Product Surfaces
+The key AYIN differentiator is simplicity. The platform can become technically sophisticated internally, but the creator experience must remain extremely simple externally.
 
-### Consumer
+A creator should be able to:
 
-- ayin.stream — Web/PWA streaming experience.
-- Android mobile app.
-- iOS app.
-- Android TV / Google TV.
-- Amazon Fire TV.
-- Samsung Tizen.
-- LG webOS.
-- Roku.
-- Apple tvOS.
-- Cast support.
+1. Register in seconds.
+2. Instantly receive an AYIN profile, public channel, default playlist and TV channel.
+3. Upload a compatible MP4 with almost no form-filling.
+4. Publish quickly.
+5. Automatically see the video on the channel, default playlist and Creator TV.
+
+Advanced controls exist, but they are hidden behind optional Advanced settings and never block the basic flow.
+
+---
+
+## 2. Non-Negotiable Product Principles
+
+### 2.1 Global by design
+
+Do not hard-code Egypt, the Middle East, the US or any single country into the product experience.
+
+Allowed contextual rows include:
+
+- Trending Worldwide
+- Popular Now
+- Popular Near You
+- Popular in Your Region
+- Trending in [detected/selected region]
+- New on AYIN
+- Because You Watched
+- Recommended for You
+
+Country/region is a personalization signal, not the identity of the platform.
+
+### 2.2 Every registered account is automatically a creator
+
+Registration must atomically create:
+
+- Account
+- Default viewer profile
+- Public creator channel
+- Unique channel handle
+- Default system playlist: Uploads
+- Automatic TV entity: `{Channel Name} TV`
+- Default channel settings
+- Default monetization eligibility record
+- Default analytics record/configuration
+
+There is no separate “Become a creator” wizard.
+
+### 2.3 Creator simplicity over creator bureaucracy
+
+The default upload screen should ask for the minimum necessary information.
+
+Required by default:
+
+- Video file
+- Title, automatically prefilled from filename and editable
+- One simple rights confirmation checkbox before publish
+
+Automatically handled where possible:
+
+- Technical MP4 validation
+- File size/duration/resolution extraction in browser
+- Thumbnail capture suggestion from a video frame in browser
+- Channel association
+- Uploads playlist association
+- Creator TV association
+- Default category when no category is selected
+- Default visibility
+- Default ad eligibility
+- Default comments setting
+
+Optional Advanced drawer:
+
+- Description
+- Custom thumbnail
+- Tags
+- Category
+- Language
+- Captions
+- Chapters
+- Scheduled publication
+- Comments toggle
+- Age/maturity setting
+- Geographic restrictions
+- Advanced rights details
+- Ad-break preferences
+
+The platform may store detailed internal records without forcing creators to fill them manually.
+
+### 2.4 Admin control is a first-class product
+
+AYIN must not hard-code business decisions that an authorized administrator may reasonably need to change.
+
+The owner/superadmin should be able to control essentially every operational dimension through a clean admin control plane, with safe defaults, permissions and audit logs.
+
+### 2.5 Web/PWA is the source of truth
+
+The primary AYIN product is the web application/PWA. Mobile and TV packages should reuse the web product wherever technically appropriate.
+
+A normal website UI/content/configuration change should propagate to hosted/hybrid web surfaces without requiring a new store release. Platform-shell changes, permissions, native SDK changes or store metadata may still require a new package release.
+
+### 2.6 No AYIN video storage on AWS
+
+AWS EC2 may run application services, API, database and supporting compute. AYIN video objects are stored on Cloudflare R2 only.
+
+---
+
+## 3. Core Product Surfaces
+
+### Public / Viewer
+
+- `ayin.stream` — main responsive Web/PWA experience
+- Mobile PWA
+- TV-oriented web UI using the same product system
+- Future packaged/hybrid apps
 
 ### Creator
 
-- studio.ayin.stream — Creator Studio.
-- Creator channels and team roles.
-- Direct video upload to Cloudflare R2.
-- Content management, analytics, comments, revenue and rights tools.
+Creator controls should be accessible without making users feel they are entering a different complicated product.
 
-### Operations
+Recommended UX:
 
-- admin.ayin.stream — Internal admin/control plane.
-- ads.ayin.stream — Ad decisioning / direct campaign layer in early phases.
-- api.ayin.stream — Application API.
-- media.ayin.stream — Cloudflare R2 media delivery domain.
+- Quick Create / Upload button globally
+- `studio.ayin.stream` for deeper analytics and library management
+- Creator Studio remains optional for simple uploads
 
-## 3. Account Model
+### Admin
 
-Separate the concepts of Account, Viewer Profile and Creator Channel.
+- `admin.ayin.stream`
+- Full control plane for users, channels, videos, TVs, advertising, revenue, homepage, navigation, moderation, settings, analytics and infrastructure-facing configuration
 
-### Account
+### Service domains
 
-One login identity. Stores security, billing/payout identity, consent and ownership.
+- `api.ayin.stream` — application API
+- `media.ayin.stream` — R2 media delivery custom domain
+- `ads.ayin.stream` — AYIN advertising/direct VAST services when required
 
-### Viewer Profile
+---
 
-An account can contain multiple viewer profiles, each with independent:
+## 4. Registration and Instant Provisioning
 
-- Watch history.
-- Continue Watching.
-- My List.
-- Likes/dislikes/preferences.
-- Language and subtitle preferences.
-- Recommendations.
-- Notification preferences.
-- Maturity restrictions.
-- Kids mode / PIN lock.
+The registration experience must feel closer to signing into a consumer product than applying to a creator network.
 
-### Creator Channel
+### Registration options
 
-An account can own or manage one or more creator channels. A creator channel has its own:
+Initial target:
 
-- Handle and display name.
-- Avatar/banner.
-- About page.
-- Subscribers/followers.
-- Videos/Shorts/live/posts/playlists.
-- Team roles.
-- Analytics.
-- Monetization settings.
-- Rights and payout records.
+- Email + password
+- Google sign-in where configured
 
-This separation lets AYIN offer Netflix-style household profiles and YouTube-style public creator identities at the same time.
+Future:
 
-## 4. Viewer Experience — Netflix-Class UX
+- Apple sign-in
+- Other providers based on demand
 
-### Home
+### Registration transaction
 
-TV-first 10-foot interface with:
+On successful account creation the backend immediately provisions:
 
-- Cinematic hero/banner.
-- Optional muted preview.
-- Continue Watching.
-- Top 10 / Trending.
-- New on AYIN.
-- Because You Watched.
-- Popular in Your Country.
-- Movies.
-- Series.
-- Documentaries.
-- Live Now.
-- FAST Channels.
-- Creators You Follow.
-- Recommended Creators.
-- Shorts / Clips.
-- Recently Added.
-- Editor Picks.
-- Personalized genre rows.
+1. Account
+2. Default viewer profile
+3. Channel using the selected/display name
+4. Unique handle, generated automatically and editable later
+5. Uploads system playlist
+6. Creator TV channel named from the creator channel
+7. Default avatar placeholder
+8. Default channel banner/theme
+9. Creator settings
+10. Notification preferences
+11. Monetization status record
 
-Rows, row order, title order and artwork should become personalized over time.
+The user is then redirected into AYIN, not into a setup wizard.
 
-### Main Navigation
+A subtle success message can state:
+
+> Your AYIN channel and TV are ready.
+
+No additional setup is required.
+
+---
+
+## 5. Automatic Creator TV — Core AYIN Differentiator
+
+Every channel automatically owns a TV channel from the moment the account is created.
+
+Example:
+
+Channel: `Nova Films`
+TV: `Nova Films TV`
+
+### Default behavior
+
+- TV object exists immediately even when the creator has zero videos.
+- With zero videos it displays a branded off-air/empty state rather than failing.
+- Every newly published public long-form video is automatically added to the channel’s Uploads playlist.
+- By default, that video also enters the automatic TV rotation.
+- The automatic TV continuously loops eligible content.
+- The schedule is generated automatically so creators do not need to program television manually.
+
+### Creator controls — optional
+
+Creators may later:
+
+- Remove a video from TV without deleting it
+- Reorder priority
+- Create custom TV blocks
+- Schedule a premiere window
+- Create additional playlists
+- Choose which playlist feeds TV
+- Add a channel trailer/ident
+
+### Admin controls
+
+Admin can:
+
+- Enable/disable a TV
+- Override schedule
+- Force/remove content
+- Set default rotation algorithm
+- Insert house/direct/programmatic ad breaks
+- Set TV-level monetization
+- Feature a TV channel
+- Restrict content
+- View TV analytics
+
+### Future true FAST
+
+The V1 Creator TV can be an application-level scheduled linear experience using existing MP4 assets. Later it can evolve to true linear HLS/FAST/SSAI infrastructure without changing the creator-facing concept.
+
+---
+
+## 6. Viewer Experience — Netflix-Class, Globally Neutral
+
+### Primary navigation
 
 - Home
 - Movies
 - Series
-- Live
+- TV
 - Creators
 - Shorts / Clips
 - Kids
 - My AYIN
 - Search
 
+Items not ready for launch can be hidden by admin feature flags rather than removed from architecture.
+
+### Home
+
+Cinematic, responsive and TV-friendly.
+
+Possible rows:
+
+- Continue Watching
+- Trending Worldwide
+- Popular Now
+- New on AYIN
+- Because You Watched
+- Popular Near You
+- Movies
+- Series
+- Documentaries
+- Creator TV
+- Live Now
+- Creators You Follow
+- Recommended Creators
+- Shorts / Clips
+- Recently Added
+- Editor Picks
+- Personalized genre/topic rows
+
+All rows must be controlled by Admin Home Builder:
+
+- enable/disable
+- reorder
+- rename
+- set source/query
+- set maximum items
+- device targeting
+- logged-in/logged-out targeting
+- country/region targeting only when intentionally configured
+- manual items mixed with algorithmic items
+
 ### My AYIN
 
-- Continue Watching.
-- My List.
-- Watch Later.
-- Liked videos/titles.
-- Playlists.
-- Subscriptions.
-- Watch history.
-- Downloads later where rights allow.
-- Reminders / upcoming premieres.
+- Continue Watching
+- My List
+- Watch Later
+- Liked content
+- Playlists
+- Subscriptions
+- Watch history
+- Notifications/reminders
 
-### Title / Video Detail
+### Content detail
 
-- Hero artwork / trailer.
-- Play / Resume.
-- Runtime.
-- Age rating.
-- Genres/tags.
-- Creator/studio/channel.
-- Description.
-- Cast/crew where relevant.
-- Season/episode selector.
-- Related content.
-- More like this.
-- Add to My List.
-- Like/share.
-- Chapters where applicable.
-- Audio/subtitle languages.
-- Comments for creator-enabled content.
+Support a unified detail model for:
 
-### Playback
+- Creator video
+- Movie
+- Series
+- Season
+- Episode
+- Short
+- TV channel
+- Future live event
 
-V1:
+Details can include:
 
-- Progressive MP4 playback.
-- Seek/scrub.
-- Resume position.
-- Fullscreen.
-- Picture-in-picture where supported.
-- Playback speed.
-- Captions/subtitles (WebVTT/SRT ingestion).
-- Audio selection architecture for later multi-track support.
-- Pre-roll/mid-roll/post-roll ad breaks.
-- Autoplay next episode/video.
-- Up Next overlay.
-- Keyboard, touch and TV remote controls.
-- Quality label reflecting source quality.
+- artwork
+- title
+- creator/studio
+- play/resume
+- description
+- runtime
+- year/date
+- genre/category
+- tags
+- age/maturity rating
+- episodes/seasons
+- related content
+- more like this
+- save/like/share
+- comments when enabled
+- captions/chapters where available
 
-Later:
+---
 
-- Adaptive HLS/DASH renditions.
-- Offline downloads.
-- Multiple audio tracks.
-- HDR / 4K where economically justified.
+## 7. Video Upload and Media Architecture
 
-## 5. YouTube-Class Social & Creator Features
+### Storage rule
 
-### Viewer Social
+All AYIN video media is stored on Cloudflare R2.
 
-- Subscribe/follow channel.
-- Notification bell levels.
-- Like/dislike feedback signals.
-- Comments.
-- Threaded replies.
-- Comment likes.
-- Creator heart.
-- Pin comment.
-- Mentions.
-- Share.
-- Clip creation.
-- Save to playlist.
-- Watch Later.
-- Public/private/unlisted playlists.
-- Collaborative playlists later.
-- Report video/comment/channel.
+AWS EC2 does not proxy or permanently store creator video uploads.
 
-### Creator Channel
+### V1 accepted media
 
-Tabs:
+AYIN initially accepts playback-ready MP4.
+
+Preferred compatibility profile:
+
+- Container: MP4
+- Video: H.264/AVC
+- Audio: AAC
+- Resolution: initially up to 1080p
+- Browser-seekable/progressive playback compatible
+
+Do not burden users with codec terminology unless their file fails validation.
+
+Friendly rejection example:
+
+> This file cannot play reliably on AYIN yet. Please upload an MP4 using H.264 video and AAC audio.
+
+### Direct-to-R2 upload
+
+Flow:
+
+1. Creator selects file.
+2. Browser performs lightweight metadata/compatibility checks.
+3. AYIN creates video draft automatically.
+4. API authorizes a direct R2 upload.
+5. Browser uploads directly to R2 using multipart upload when appropriate.
+6. Upload can report progress and recover/retry parts.
+7. Browser/API confirms completion.
+8. Minimal publish view appears with title prefilled.
+9. User confirms rights and presses Publish.
+10. Video becomes eligible for channel, Uploads playlist and Creator TV automatically.
+
+### Thumbnail simplification
+
+Where browser capability permits, AYIN should capture several local frames from the selected MP4 before/after upload and offer them as one-click thumbnail choices. This avoids requiring creators to design a thumbnail before publishing.
+
+Creators can upload a custom image later.
+
+### R2 layout
+
+Example:
+
+```text
+videos/{channelId}/{videoId}/source.mp4
+thumbnails/{channelId}/{videoId}/cover.webp
+captions/{channelId}/{videoId}/{language}.vtt
+channel-assets/{channelId}/...
+```
+
+Future transcoded output can use separate rendition prefixes without moving the original object.
+
+### Delivery
+
+- R2 custom domain: `media.ayin.stream`
+- Cloudflare caching/CDN where appropriate
+- HTTP range requests for seekable MP4 playback
+- private/non-guessable object identifiers
+- future signed access controls if required
+
+---
+
+## 8. AYIN Player
+
+The player is a core product, not an embedded afterthought.
+
+V1 capabilities:
+
+- MP4 playback
+- seek/scrub
+- resume position
+- fullscreen
+- picture-in-picture where supported
+- mute/volume
+- playback speed
+- captions
+- chapters when available
+- autoplay next
+- next/previous episode where applicable
+- keyboard control
+- touch control
+- TV remote/focus control
+- 10-second forward/back
+- in-player advertising
+- ad state integrated cleanly with controls
+
+Future:
+
+- HLS/DASH adaptive bitrate
+- multiple audio tracks
+- offline downloads where rights allow
+- 4K/HDR where economically justified
+- SSAI/DAI
+
+---
+
+## 9. Social and YouTube-Class Creator Features
+
+### Viewer actions
+
+- Subscribe/follow channel
+- Notification preference
+- Like
+- Dislike as recommendation feedback
+- Comments
+- Replies
+- Comment likes
+- Creator heart
+- Pin comment
+- Share
+- Save
+- Watch Later
+- Playlists
+- Report content/comment/channel
+
+### Creator channel tabs
 
 - Home
 - Videos
+- TV
 - Shorts
-- Live
 - Playlists
 - Posts
 - About
 
-### Community
+### Community — later phase
 
-- Text posts.
-- Image posts.
-- Polls.
-- Quizzes later.
-- Video shares.
-- Scheduled posts.
-- Subscriber-only posts later.
+- Text posts
+- Image posts
+- Polls
+- Video shares
+- Scheduled posts
 
-### Shorts / AYIN Clips
+### Shorts / Clips — later phase
 
-Use the same R2 upload pipeline with a separate content format:
+Use the same R2 foundation and a vertical feed experience.
 
-- Vertical swipe feed.
-- Like/comment/share/follow.
-- Creator attribution.
-- Watch history.
-- Recommendations.
-- Music/licensing system only when rights infrastructure exists.
-- Short-form ad strategy separated from long-form CTV inventory.
+### Live — later phase
 
-### Live
+Prepare the data model for live, but do not make zero-budget launch depend on live ingest infrastructure.
 
-Not required for zero-budget MVP, but architecture must support:
+---
 
-- Scheduled live streams.
-- RTMP/SRT ingest later.
-- Live chat.
-- Moderators.
-- Slow mode.
-- Subscriber/member-only chat.
-- DVR/replay.
-- Concurrent viewer analytics.
-- Live ad breaks.
-- Stream health dashboard.
-- Premieres.
+## 10. Creator Studio — Powerful Internally, Simple Externally
 
-### Membership / Fan Funding — Later
+The basic creator workflow must not require Studio.
 
-- Channel membership tiers.
-- Members-only videos/Shorts/live/posts.
-- Badges/emojis.
-- Tips / Super-style contributions, subject to payment/regulatory readiness.
+Quick Upload remains available everywhere.
 
-## 6. Creator Studio
-
-Creator Studio should become a first-class product, not an admin form.
+Studio provides deeper optional capabilities:
 
 ### Dashboard
 
-- Realtime views.
-- Watch time.
-- Subscribers gained/lost.
-- Top content.
-- Latest upload performance.
-- Estimated monetized playbacks.
-- Revenue when monetization is live.
-- Alerts and policy notices.
+- realtime views
+- watch time
+- subscribers gained/lost
+- top content
+- latest upload performance
+- estimated monetized playbacks
+- revenue when enabled
 
-### Content Manager
+### Content library
 
-Support:
+- Videos
+- Shorts
+- Series/episodes
+- Playlists
+- TV schedule
+- Posts
+- Future live
 
-- Video.
-- Short.
-- Series.
-- Season.
-- Episode.
-- Trailer.
-- Live event.
-- Playlist.
-- Community post.
+### Advanced edit controls
 
-Per-content controls:
-
-- Title.
-- Description.
-- Thumbnail.
-- Category/genres.
-- Tags.
-- Language.
-- Captions.
-- Chapters.
-- Visibility: draft/public/unlisted/private/scheduled.
-- Premiere.
-- Audience/maturity rating.
-- Geographic availability.
-- Rights territories.
-- Rights expiry.
-- Monetization on/off.
-- Ad-break timestamps.
-- Comments on/off.
-- Embedding/sharing setting.
+All advanced controls are optional and can be edited after publishing.
 
 ### Analytics
 
-Viewer metrics:
-
-- Impressions.
-- CTR.
-- Video starts.
-- Views.
-- Unique viewers.
-- Watch time.
-- Average view duration.
-- Completion rate.
-- Audience retention curve.
-- New vs returning viewers.
-- Subscriber conversion.
-- Traffic sources.
-- Search terms.
-- Geography.
-- Device/platform.
-- TV vs mobile vs web consumption.
-
-Ad metrics:
-
-- Ad requests.
-- Filled impressions.
-- Fill rate.
-- Ad completion rate.
-- eCPM.
-- Revenue.
-- Revenue per watch hour.
-- Frequency.
-- IVT/fraud adjustments later.
-
-Live metrics later:
-
-- Concurrent viewers.
-- Peak concurrent viewers.
-- Chat messages.
-- Average watch time.
-- Stream health.
-
-### Comment & Community Moderation
-
-- Reply.
-- Heart.
-- Pin.
-- Hide user.
-- Block words.
-- Hold potentially inappropriate comments.
-- Report queue.
-
-### Copyright / Rights Dashboard
-
-- Rights declaration for every upload.
-- License type.
-- Territory.
-- Expiry.
-- Source/proof attachment reference.
-- Copyright notices.
-- Takedown status.
-- Disputes/appeals.
-- Duplicate/hash matching later.
-
-## 7. Video Storage & Upload Architecture
-
-### Hard Rule
-
-No AYIN video file is stored on AWS.
-
-AWS/EC2 may host application compute, API and database, but media storage remains on Cloudflare R2.
-
-### V1 Media Format
-
-AYIN accepts playback-ready MP4 only.
-
-Recommended initial acceptance profile:
-
-- Container: MP4.
-- Video: H.264/AVC.
-- Audio: AAC-LC.
-- Resolution: up to 1080p initially.
-- Reasonable source bitrate cap to protect viewers from unnecessarily heavy files.
-- Fast-start MP4 strongly required so metadata is available near the beginning of the file.
-
-The uploader must validate the selected file before starting the upload. Validation can occur in the creator browser without converting the video.
-
-### Direct Creator Upload
-
-1. Creator creates a draft content record.
-2. AYIN API verifies creator permissions and quota.
-3. AYIN issues short-lived R2 upload authorization.
-4. Browser uploads directly to R2; bytes never pass through EC2.
-5. Large video uses multipart upload for resumability and parallel parts.
-6. Upload completion is confirmed to AYIN API.
-7. Technical validation and moderation state are recorded.
-8. Creator completes metadata and submits for publishing.
-9. New/untrusted creators can require review before public publication.
-
-### R2 Object Layout
-
-Example:
-
-videos/{channelId}/{videoId}/source.mp4
-thumbnails/{channelId}/{videoId}/cover.webp
-captions/{channelId}/{videoId}/{language}.vtt
-rights/{channelId}/{videoId}/metadata.json
-
-Future adaptive output:
-
-renditions/{channelId}/{videoId}/hls/...
-renditions/{channelId}/{videoId}/dash/...
-
-The original MP4 remains the source of truth so transcoding can be added later without migration.
-
-### Delivery
-
-- media.ayin.stream attached to R2.
-- Cloudflare cache/CDN in front of public media where appropriate.
-- HTTP byte-range support for seeking and progressive MP4 playback.
-- Random/non-guessable object keys.
-- Hotlink/token access controls later where required.
-- r2.dev must not be used for production.
-
-## 8. Advertising Architecture
-
-Advertising must be designed into the player before Google monetization is enabled.
-
-### Phase A — House Ads
-
-- Integrate Google IMA SDK where supported.
-- AYIN VAST endpoint.
-- House campaigns for Horus Media / AYIN.
-- Pre-roll, mid-roll and post-roll.
-- Ad quartile tracking.
-- Frequency caps.
-- Basic targeting: country, platform, content category.
-
-### Phase B — Direct Advertising
-
-Internal campaign model:
-
-- Advertiser.
-- Campaign.
-- Order.
-- Creative.
-- Targeting.
-- Budget.
-- CPM.
-- Impression goal.
-- Start/end time.
-- Frequency cap.
-- Pacing.
-- Reporting.
-
-This gives AYIN real ad-serving capability before programmatic demand.
-
-### Phase C — Google Ad Manager
-
-Preserve the same player architecture and replace/augment the ad source with Google Ad Manager VAST tags.
-
-Prepare from day one for:
-
-- IMA SDK.
-- VAST 4.
-- VMAP/ad rules.
-- CTV content metadata.
-- Content channel/network identifiers.
-- Video duration.
-- Continuous-play signal.
-- Device/app identifiers where required and consented.
-- Session/frequency-capping identifiers.
-- app-ads.txt.
-- ads.txt for web inventory.
-- Open Measurement / OMID on supported app environments.
-
-### Phase D — Google Demand / AdX Expansion
-
-When AYIN has approved apps, compliant inventory, meaningful traffic and the appropriate Google relationship/account access:
-
-- Google demand.
-- Authorized Buyers.
-- Programmatic deals.
-- Open Bidding where eligible.
-- Programmatic Guaranteed / Preferred Deals where available.
-
-### Revenue Attribution
-
-Every ad impression must map to:
-
-- Viewer session.
-- Content ID.
-- Creator/channel ID.
-- App/platform.
-- Country.
-- Ad break.
-- Campaign/demand source.
-
-This makes creator revenue sharing possible later without rebuilding reporting.
-
-## 9. Creator Monetization & Economics
-
-Do not hard-code a single revenue split.
-
-Create a configurable contract model per creator/channel:
-
-- Net-revenue share percentage.
-- Minimum payout threshold.
-- Eligible countries/content.
-- Ad formats.
-- Payment schedule.
-- Rights term.
-- Adjustments for invalid traffic/refunds.
-
-Creator dashboard should show:
-
-- Estimated revenue.
-- Finalized revenue.
-- Adjustments.
-- Revenue by video.
-- Revenue by country/platform.
-- RPM/revenue per 1,000 views where meaningful.
-- eCPM/fill where disclosure policy allows.
-- Payout history.
-
-Future monetization options:
-
-- Advertising.
-- Sponsorships.
-- Memberships.
-- Tips.
-- Paid premieres/events.
-- Premium/ad-free plans.
-- Creator storefronts/merch integrations.
-
-## 10. FAST / Linear TV Layer
-
-AYIN should eventually offer both VOD and FAST.
-
-### V1 FAST-Lite
-
-A scheduled channel can be generated from existing VOD assets:
-
-- 24-hour schedule.
-- EPG.
-- Now/Next.
-- Auto-play scheduled programs.
-- Ad breaks between/inside programs.
-- Geo availability.
-
-### Future True FAST
-
-- Linear HLS output.
-- SSAI/DAI.
-- Live inputs.
-- SCTE-35/ad markers where relevant.
-- Real-time EPG.
-- Channel distribution APIs/feeds.
-
-### Differentiator: Creator TV
-
-Verified creators can convert a playlist/library into a 24/7 AYIN FAST channel. This turns creator VOD into television inventory without requiring creators to run live infrastructure.
-
-## 11. Recommendation & Discovery System
-
-### Phase 1 — Rules
-
-- Trending.
-- Popular by country.
-- Recently added.
-- Category affinity.
-- Followed creators.
-- Continue Watching.
-- Similar tags/genres.
-- Completion-based recommendations.
-
-### Phase 2 — Personalized Ranking
+- impressions
+- video starts
+- views
+- unique viewers
+- watch time
+- average view duration
+- completion rate
+- retention curve
+- traffic sources
+- search terms
+- geography
+- device/platform
+- subscribers gained/lost
+- ad requests/impressions
+- fill rate
+- ad completion
+- eCPM/RPM where applicable
+- estimated/final revenue
+
+---
+
+## 11. Admin Control Plane — Full Platform Control
+
+The admin is not an afterthought. Build it as an operational control system.
+
+### Superadmin principles
+
+- Every configurable business behavior should be represented in Admin where safe.
+- Avoid hard-coded limits, percentages, row order, ad slots and creator defaults.
+- Every important destructive/configuration action is audit logged.
+- Secret credentials are never exposed in plaintext after saving.
+- High-risk actions receive confirmation.
+
+### Admin sections
+
+#### Dashboard
+
+- global users
+- active users
+- creators/channels
+- videos
+- watch time
+- TV channels
+- ad requests/impressions
+- revenue
+- upload health
+- errors
+- R2 storage usage indicators
+- latest moderation/report activity
+
+#### Users & Accounts
+
+- search/view/edit account
+- suspend/unsuspend
+- email/identity status
+- reset creator/channel defaults
+- profile controls
+- role controls
+- view activity/audit context where appropriate
+
+#### Channels & Creators
+
+- edit any channel
+- verify/unverify
+- feature/unfeature
+- monetization status
+- revenue share
+- quotas
+- permissions
+- TV status
+- playlists
+- channel appearance
+
+#### Videos & Content
+
+- search/filter every asset
+- edit metadata
+- publish/unpublish
+- feature
+- remove
+- age restrict
+- disable comments
+- monetization controls
+- TV inclusion
+- playlist management
+- R2 object reference and media diagnostics
+
+#### TV Control Center
+
+- all creator TVs
+- on/off
+- now/next
+- automatic schedule rules
+- manual overrides
+- ad-break rules
+- featured TV rows
+- TV analytics
+
+#### Homepage & Navigation Builder
+
+Admin can visually/configurably manage:
+
+- hero content
+- homepage rows
+- row names
+- row order
+- data source
+- manual item overrides
+- navigation items
+- footer links
+- announcements
+- promotional banners
+- per-device visibility
+- feature flags
+
+#### Categories / Taxonomy
+
+- categories
+- genres
+- tags policy
+- content types
+- sort order
+- visibility
+
+#### Advertising
+
+See dedicated advertising section below.
+
+#### Revenue & Monetization
+
+- global default creator split
+- creator-specific split
+- channel-specific contract
+- payout threshold
+- adjustments
+- estimated vs finalized revenue
+- payout ledger
+- manual corrections with audit reason
+
+#### Moderation & Rights
+
+- reports queue
+- copyright requests
+- strikes/warnings
+- block words
+- comment moderation
+- creator trust level
+- emergency unpublish
+- appeals
+
+#### Platform Settings
+
+- registration settings
+- creator auto-provisioning defaults
+- default playlist name
+- TV auto-create behavior
+- upload limits
+- video validation rules
+- default comments
+- default visibility
+- recommendation weights
+- notification defaults
+- maintenance mode
+- feature flags
+
+#### Infrastructure-facing settings
+
+Provide safe status/configuration surfaces for:
+
+- Cloudflare R2 bucket connectivity
+- media domain health
+- upload signing health
+- application queues if added
+- email provider
+- cache/session status
+- cron/job status
+- API health
+
+Do not turn the admin into raw server root access; CloudPanel remains the server operations layer.
+
+---
+
+## 12. Advertising Architecture — In Player and Outside Player
+
+Advertising is designed into AYIN from the beginning.
+
+There are two distinct inventory families.
+
+### A. In-player video inventory — highest priority
+
+Initial architecture:
+
+- Google IMA HTML5 SDK where supported
+- VAST-compatible ad source
+- pre-roll
+- mid-roll
+- post-roll
+- frequency caps
+- ad quartile tracking
+- content/channel/session attribution
+
+Demand stages:
+
+1. AYIN/Horus Media house ads
+2. Direct advertiser campaigns
+3. Google Ad Manager video tags
+4. Google/programmatic demand as account eligibility and approvals allow
+5. Future VMAP/ad rules, DAI/SSAI and CTV-specific expansion
+
+### B. Outside-player display/native inventory
+
+Web/PWA pages should include a controlled ad-slot framework separate from video ads.
+
+Examples:
+
+- homepage top/hero-ad slot where UX allows
+- between content rows
+- below player
+- content detail page
+- search results
+- channel pages
+- creator TV directory
+- desktop side placements where appropriate
+
+Use responsive placements and never compromise the TV-style premium feel.
+
+Google Ad Manager web display inventory can later be served through Google Publisher Tag (GPT) where appropriate.
+
+### Admin Ad Control Center
+
+Admin can create and manage placement definitions without code changes:
+
+- placement key
+- name
+- page/route
+- location
+- device targets
+- minimum/maximum sizes
+- ad type
+- enabled/disabled
+- logged-in/logged-out rules
+- content/category rules
+- frequency
+- fallback behavior
+- priority/demand source
+
+### Demand priority
+
+Configurable routing may use:
+
+- House
+- Direct
+- Google Ad Manager
+- future approved SSP/programmatic sources
+
+Do not bake demand tags directly into UI components. Components request a logical placement key from a centralized ads service/configuration layer.
+
+### Ad safety and UX
+
+- Ads must not cover player controls unexpectedly.
+- Do not create accidental-click layouts.
+- Mid-roll density is configurable globally and per channel/video.
+- Admin can disable ads per content item/channel/page.
+- Kids/restricted experiences receive separate ad rules.
+- Consent/privacy signals must be respected.
+
+### Google readiness
+
+Prepare for:
+
+- Google IMA
+- Google Ad Manager
+- VAST/VMAP
+- ads.txt
+- app-ads.txt for packaged app inventory where applicable
+- consent/privacy framework
+- content/channel metadata
+- continuous-play/session signals where required
+- OM/OMID on applicable native/CTV environments later
+
+---
+
+## 13. Direct Advertising System
+
+Before or alongside Google demand, AYIN can sell direct campaigns.
+
+Model:
+
+- Advertiser
+- Campaign
+- Creative
+- Placement/ad format
+- CPM or fixed campaign
+- impression goal
+- budget
+- start/end
+- countries/regions
+- device
+- content category
+- channel/content targeting
+- frequency cap
+- pacing
+- reporting
+
+Direct video creatives can feed the VAST service; display creatives can feed page placement slots.
+
+Admin must be able to pause a campaign instantly.
+
+---
+
+## 14. Revenue Attribution and Creator Monetization
+
+Do not hard-code a single creator split.
+
+Every monetizable impression/event should be attributable to:
+
+- content
+- channel
+- creator account
+- viewer session/profile pseudonymous ID as appropriate
+- platform/device
+- geography
+- placement/ad break
+- campaign/demand source
+- gross/net revenue fields when available
+
+Configurable creator contract:
+
+- revenue share percentage
+- eligible ad formats
+- eligible content
+- start/end date
+- minimum payout
+- adjustment policy
+
+Creator-facing display remains simple:
+
+- Estimated revenue
+- Finalized revenue
+- Revenue by video
+- Revenue by period
+- Payout history
+
+Admin sees deeper economics and adjustment tools.
+
+---
+
+## 15. Recommendation and Discovery
+
+### V1 rules
+
+- trending worldwide
+- popular now
+- recently added
+- popular near user/region
+- followed creators
+- category affinity
+- completion-based signals
+- similar tags/categories
+- continue watching
+
+### Later personalized ranking
 
 Signals:
 
-- Starts.
-- Completion.
-- Watch time.
-- Rewatches.
-- Likes/dislikes.
-- Saves.
-- Search clicks.
-- Skips/early exits.
-- Creator follows.
-- Recency.
-- Device and session context.
+- starts
+- watch time
+- completion
+- rewatch
+- likes/dislikes
+- saves
+- creator subscriptions
+- search clicks
+- early exits
+- recency
+- device/session context
 
-Personalize:
+### AYIN Lens — later
 
-- Which rows appear.
-- Row order.
-- Item order.
-- Artwork variants later.
+Natural-language semantic discovery across videos, movies, series, creators and TV.
 
-### Phase 3 — AYIN Lens / Semantic Discovery
+No country is assumed in examples or defaults.
 
-Natural-language discovery across catalog and creators, e.g.:
+---
 
-- “Show me 20-minute history documentaries with Arabic subtitles.”
-- “Funny technology videos I have not watched yet.”
-- “Live sports channels available now.”
+## 16. Search
 
-Keep recommendation controls transparent enough for users to reset history/preferences and understand why content is shown.
+Search across:
 
-## 12. Search
+- title
+- creator/channel
+- movie/series
+- description
+- tags
+- category/genre
+- TV channel
 
 V1:
 
-- Title.
-- Creator/channel.
-- Series.
-- Description.
-- Tags.
-- Genre/category.
-- Autocomplete.
-- Typo tolerance where possible.
+- autocomplete
+- useful empty-state suggestions
+- typo tolerance where feasible
 
 Later:
 
-- Semantic search.
-- Voice search.
-- Search by person/cast.
-- Search filters by duration, year, language, availability and content type.
+- semantic search
+- voice search
+- advanced filters
 
-## 13. Analytics Architecture
+---
 
-Track events from day one, even before advanced analytics UI exists.
+## 17. Analytics Architecture
 
-Core events:
+Track events from day one even when UI reporting is basic.
+
+Core event examples:
 
 - app_open
 - home_impression
@@ -648,532 +960,400 @@ Core events:
 - content_impression
 - content_click
 - video_start
-- video_25
-- video_50
-- video_75
+- video_progress
 - video_complete
 - pause
 - seek
 - buffer_start
 - buffer_end
-- autoplay_next
 - search
 - search_result_click
 - subscribe
-- unsubscribe
 - like
 - dislike
 - comment
 - share
 - playlist_add
+- tv_start
 - ad_request
 - ad_start
-- ad_25
-- ad_50
-- ad_75
+- ad_quartile
 - ad_complete
 - ad_click
+- upload_start
+- upload_complete
+- publish
 
-Key platform KPIs:
+Primary KPIs:
 
-- DAU/MAU.
-- Watch hours.
-- Average session duration.
-- Average watch time/user.
-- D1/D7/D30 retention.
-- Content start rate.
-- Completion rate.
-- Rebuffer ratio.
-- Time-to-first-frame.
-- Search success rate.
-- Active creators.
-- Upload success rate.
-- Ad fill rate.
-- Ad completion rate.
-- Revenue per watch hour.
-- eCPM.
-- Invalid traffic rate.
-- Crash-free sessions.
+- DAU/MAU
+- watch hours
+- average watch time
+- completion rate
+- return/retention
+- time to first frame
+- rebuffer ratio
+- upload completion rate
+- creator activation rate
+- ad fill rate
+- ad completion rate
+- revenue per watch hour
 
-## 14. Moderation, Trust & Safety
+---
 
-A creator platform cannot launch safely without control systems.
+## 18. Web/PWA-First Application Strategy
 
-### Creator Trust Levels
+### Primary codebase
 
-- New/unverified: pre-publication review.
-- Established: faster review/post-publication moderation.
-- Verified partner: additional permissions and monetization tools.
+AYIN should be a responsive Web/PWA application designed from the start for:
 
-### Content Controls
+- desktop
+- mobile
+- tablet
+- 10-foot TV screens
+- keyboard
+- touch
+- remote directional navigation
 
-- Report content.
-- Report copyright.
-- Age restriction.
-- Geo restriction.
-- Manual takedown.
-- Automated expiry.
-- Strikes/warnings.
-- Appeal workflow.
-- Duplicate file hashes.
-- Re-upload blocking later.
-- Ad suitability classification.
+Recommended initial stack:
 
-### Comments
+- TypeScript
+- React
+- Next.js
+- PWA manifest/service worker
+- modular shared UI/design system
 
-- Spam protection.
-- Rate limits.
-- Blocked-word lists.
-- Creator moderation.
-- Platform moderation.
-- User blocking/hiding.
+### Hybrid/platform strategy
 
-### Security
+The goal is maximum reuse, not pretending every store uses identical runtime technology.
 
-- Short-lived upload authorization.
-- No exposed R2 write credentials.
-- Random object keys.
-- CORS restricted to AYIN origins.
-- Rate limiting.
-- Cloudflare Turnstile where useful.
-- CSRF/XSS protection.
-- Sanitized user metadata.
-- Audit log for admin actions.
-- Role-based access control.
-- 2FA for creators/admins later.
+- Android mobile: web-first package/thin shell using a suitable hybrid approach such as Capacitor where appropriate.
+- Android TV / Google TV / Fire TV: thin Android shell with web experience plus remote/deep-link/player/native bridges as needed.
+- Samsung Tizen: packaged web application using HTML/CSS/JS and platform adapter.
+- LG webOS: packaged web application using HTML/CSS/JS and platform adapter.
+- iOS: hybrid shell where store/runtime requirements permit.
+- Roku: requires a platform-specific adapter/application and should be treated as a later exception rather than forcing the core product to become native.
+- tvOS: may require a native/platform-specific shell; keep it later if it harms web-first speed.
 
-## 15. Rights, Legal & Policy Foundation
+### Web-change propagation
 
-Required before serious creator onboarding:
+The business/UI source of truth remains web/config-driven. Hosted web surfaces and shells that load the hosted application can receive ordinary product updates immediately. Store-specific/native shell changes still follow store release processes.
 
-- Terms of Service.
-- Privacy Policy.
-- Cookie/consent policy.
-- Creator Terms.
-- Creator Content License / distribution and monetization grant.
-- Copyright/DMCA or applicable takedown procedure.
-- Community Guidelines.
-- Advertising Policy.
-- Monetization Policy.
-- Repeat-infringer policy.
-- Payout/KYC terms later.
+### TV focus system
 
-For every monetized upload, AYIN must be able to prove that it owns or has the necessary distribution/monetization rights.
+Build a reusable remote/focus-navigation layer inside the web codebase from early development rather than attempting to bolt it on later.
 
-Do not monetize YouTube-hosted videos through AYIN/IMA. AYIN must monetize its own hosted/authorized video inventory.
+---
 
-## 16. Kids / Family
+## 19. Infrastructure — AWS + CloudPanel + Cloudflare
 
-Do not mix the Kids experience into the ordinary creator platform without controls.
+### AWS EC2 / CloudPanel
 
-Recommended model:
+AWS EC2 is the application server environment already available.
 
-- Parent-owned account.
-- Kids viewer profile.
-- Maturity filtering.
-- PIN-protected adult profiles.
-- Restricted search/discovery.
-- No ordinary public comments in Kids mode.
-- Separate advertising/privacy treatment where law/policy requires.
-- Creator accounts restricted by age/KYC policy.
+CloudPanel manages domains, certificates, reverse proxy/site configuration and server operations.
 
-## 17. Technical Platform Architecture
+Suggested service mapping initially:
 
-Recommended greenfield stack prioritizing speed, maintainability and low cost.
+- `ayin.stream` → web/PWA
+- `api.ayin.stream` → API
+- `studio.ayin.stream` → Creator Studio, or route within the main app initially
+- `admin.ayin.stream` → Admin
 
-### Web / Studio / Admin
+To reduce operational complexity, Studio and public web can share the same Next.js application initially if clean route/module separation is maintained.
 
-- TypeScript.
-- React.
-- Next.js or equivalent modern SSR framework.
-- Shared design system.
-- PWA support.
+### Database
 
-### API
+PostgreSQL is preferred.
 
-- TypeScript.
-- NestJS/Fastify or equivalent structured Node backend.
-- REST initially; internal event model designed for later services.
+Initial deployment can run on the existing EC2 environment if capacity permits.
 
-### Data
+Database is application data, not video media.
 
-- PostgreSQL as source of truth.
-- PostgreSQL full-text/trigram search initially.
-- Redis/Valkey only when caching/queues need it.
-- Dedicated analytics store later when event volume outgrows PostgreSQL.
+Backups should be automated and stored outside the live database filesystem; R2 can be used for encrypted backup objects if desired.
 
-### Media
+### Cloudflare
 
-- Cloudflare R2 only for video/media storage.
-- Cloudflare custom domain/CDN.
-- Direct multipart creator uploads.
+- DNS/proxy/WAF where appropriate
+- R2 video/media storage
+- `media.ayin.stream` custom domain
+- direct creator uploads using short-lived authorization
 
-### Ads
+### Deployment
 
-- Google IMA SDK from first ad-enabled player.
-- AYIN VAST endpoint for house/direct ads.
-- Google Ad Manager integration later.
+Use repeatable automated deployment from GitHub when stable. Avoid manual server edits that cannot be reproduced.
 
-### TV
+---
 
-Order of implementation:
+## 20. Initial Data Model
 
-1. Web/PWA.
-2. Android TV / Google TV.
-3. Amazon Fire TV.
-4. Android/iOS mobile.
-5. Samsung/LG.
-6. Roku.
-7. tvOS/other platforms based on audience.
-
-Native TV playback should be evaluated per platform rather than forcing one cross-platform framework where it harms remote-navigation, playback or ad support.
-
-## 18. Suggested Repository Structure
-
-```text
-ayin/
-  apps/
-    web/
-    api/
-    studio/
-    admin/
-    tv-android/
-  packages/
-    ui/
-    config/
-    auth/
-    db/
-    video/
-    ads/
-    analytics/
-    types/
-  docs/
-    AYIN_MASTER_PLAN.md
-    ARCHITECTURE.md
-    DATA_MODEL.md
-    API.md
-    ADS.md
-    CONTENT_POLICY.md
-    LAUNCH_CHECKLIST.md
-  infra/
-    cloudflare/
-    deployment/
-```
-
-Do not create microservices prematurely. Start as a modular monolith with clear boundaries so services can be extracted when traffic justifies it.
-
-## 19. Core Data Model
-
-Main entities:
+Core entities should include:
 
 - accounts
 - viewer_profiles
 - channels
 - channel_members
+- channel_settings
 - videos
+- media_assets
 - series
 - seasons
 - episodes
-- media_assets
-- thumbnails
 - captions
 - chapters
-- categories
-- tags
 - playlists
 - playlist_items
+- creator_tv_channels
+- tv_schedule_items
 - watch_history
 - watch_progress
+- subscriptions
 - reactions
 - comments
-- subscriptions
 - notifications
 - community_posts
-- polls
-- live_streams
-- fast_channels
-- fast_schedule_items
 - content_rights
-- moderation_cases
 - reports
-- ad_breaks
+- moderation_cases
+- ad_placements
 - advertisers
 - campaigns
 - creatives
-- ad_impressions
+- ad_events
 - creator_contracts
 - earnings_ledger
 - payouts
-- audit_logs
+- platform_settings
+- feature_flags
+- admin_audit_logs
 
-## 20. AYIN Differentiators
+The exact schema should be normalized where useful without making basic reads unnecessarily complex.
 
-Features designed to make AYIN more than a clone:
+---
 
-### Unified Entertainment Graph
+## 21. Admin-Configurable Defaults
 
-One recommendation/search system across studio movies, creator videos, Shorts, live and FAST.
+The following must not require a code deployment:
 
-### Creator TV
+- registration open/closed
+- auto creator channel creation
+- default channel name template
+- default playlist name
+- default TV name template
+- auto-add uploads to TV
+- upload size limit
+- allowed file type/profile
+- default visibility
+- default comments state
+- default ad state
+- creator default revenue share
+- homepage rows/order
+- navigation
+- hero/featured content
+- categories
+- platform announcement
+- ad placements
+- ad tags/demand configuration
+- mid-roll policy
+- feature flags
+- moderation mode
+- maintenance mode
 
-Turn a creator playlist/catalog into a scheduled FAST channel automatically.
+---
 
-### TV + Phone Companion Mode
+## 22. Moderation and Rights Without Creator Friction
 
-Pair a phone with the TV via QR code for searching, comments, queue management, reactions and sharing without typing on a TV remote.
+Do not force a legal dashboard during every upload.
 
-### Watch Parties
+At publish time require a clear simple confirmation that the uploader has the necessary rights to upload/distribute/monetize the content.
 
-Synchronized playback rooms with optional chat/reactions and host controls.
+The backend records the declaration timestamp/version.
 
-### Transparent Creator Economics
+Advanced creators/partners can optionally manage detailed rights metadata later.
 
-Clear content-level ad/revenue reporting and a proper ledger rather than opaque payout totals.
+Moderation tools:
 
-### AYIN Lens
+- report content
+- report comment
+- copyright request
+- admin unpublish
+- creator warning/strike
+- comment controls
+- blocked terms
+- account/channel suspension
+- appeal status
 
-Natural-language catalog discovery and later semantic recommendation.
+New creator review policy is configurable by admin. It must not be hard-coded to make every new creator wait by default.
 
-### Cross-Format Creator Identity
+---
 
-The same creator can publish premium long-form, episodes, Shorts, posts, live and a FAST channel from one studio.
+## 23. Security and Reliability Principles
 
-## 21. MVP Launch Scope
+- Secure password hashing and session/token management
+- CSRF/XSS/SQL injection protections appropriate to architecture
+- Rate limiting on auth, comments, uploads and sensitive APIs
+- Short-lived upload authorizations
+- Server-side authorization for every admin/creator mutation
+- No client-trusted ownership checks
+- Encrypted secrets
+- Audit logs for admin actions
+- Soft-delete/recoverable workflow for important content where feasible
+- Database backups
+- R2 object lifecycle/cleanup for abandoned drafts
+- health checks
+- structured logs
+- error monitoring
 
-AYIN MVP is ready for a private/public beta when all of the following work reliably:
+Keep security strong internally without adding unnecessary visible friction to normal users.
+
+---
+
+## 24. Development Architecture
+
+Prefer a modular monolith initially.
+
+Do not start with microservices.
+
+Suggested repository structure:
+
+```text
+ayin/
+├── apps/
+│   ├── web/
+│   └── api/
+├── packages/
+│   ├── ui/
+│   ├── config/
+│   ├── db/
+│   ├── auth/
+│   ├── media/
+│   ├── ads/
+│   ├── analytics/
+│   └── types/
+├── docs/
+└── infra/
+```
+
+Admin and Studio can begin as route groups inside the web app to reduce deployment complexity, while preserving module boundaries so they can split later.
+
+---
+
+## 25. V1 Launch Scope
+
+V1 should feel complete but avoid infrastructure-heavy features that are not needed to prove AYIN.
+
+### Must ship
+
+#### Account/creator
+
+- smooth registration/login
+- automatic profile + channel + Uploads playlist + Creator TV
+- editable channel
+- quick upload
+- direct R2 multipart upload
+- MP4 compatibility validation
+- publish
+
+#### Viewer
+
+- cinematic responsive home
+- video detail
+- AYIN Player
+- search
+- continue watching
+- history
+- My List
+- watch later
+- channel pages
+- creator TV pages
+- subscriptions
+- likes
+- comments
+- playlists
+
+#### Admin
+
+- full user/channel/video CRUD and status control
+- homepage builder
+- navigation/settings
+- categories
+- TV control center
+- ad placement center
+- direct campaign basics
+- revenue-share configuration
+- moderation queue
+- feature flags
+- audit logs
+
+#### Advertising
+
+- IMA-ready player
+- VAST house ads
+- pre/mid/post architecture
+- external ad-slot framework
+- Google Publisher Tag-ready web placements
+- ads.txt/app-ads.txt preparation
+- ad event analytics
+
+#### Infrastructure
+
+- PWA
+- AWS EC2 + CloudPanel deployment
+- PostgreSQL
+- Cloudflare R2 only for video media
+- Cloudflare custom media domain
+
+### Later, without architectural rewrite
+
+- Shorts
+- Community posts
+- Live ingest/chat
+- true FAST/HLS
+- SSAI/DAI
+- Android/iOS/TV packages
+- advanced recommendations
+- semantic/AI search
+- memberships/tips
+- premium/ad-free tier
+- advanced copyright fingerprinting
+
+---
+
+## 26. Product Success Definition
+
+AYIN succeeds if both sides feel simple:
 
 ### Viewer
 
-- Registration/login.
-- Viewer profiles.
-- Netflix-style Home.
-- Search.
-- Movie/video detail.
-- MP4 playback with seeking.
-- Continue Watching.
-- Watch history.
-- My List/Watch Later.
-- Playlists.
-- Likes.
-- Comments.
-- Subscriptions.
-- Notifications basics.
+Open → discover → press play.
 
 ### Creator
 
-- Channel creation.
-- Direct R2 upload.
-- Large-file multipart/resume.
-- MP4 validation.
-- Thumbnail.
-- Metadata.
-- Captions.
-- Chapters.
-- Visibility/scheduling.
-- Video management.
-- Basic analytics.
-- Comment moderation.
-- Rights declaration.
+Register → instantly own a channel and TV → upload → publish.
 
-### Ads
+### Admin
 
-- IMA integrated.
-- House VAST ad.
-- Pre-roll.
-- Configurable mid-roll.
-- Basic ad event analytics.
+Open Admin → find any platform element → change it without code whenever that setting is reasonably operational.
 
-### Platform
+### Business
 
-- Admin moderation.
-- User/content reports.
-- Rights/takedown workflow.
-- Cloudflare media custom domain.
-- Database backup plan.
-- Audit logs.
-- Core legal pages.
-- ads.txt/app-ads.txt planning.
-- Monitoring/error reporting.
+Every meaningful playback path is measurable and advertising-ready from day one, while the system remains prepared for Google Ad Manager and future CTV/programmatic demand.
 
-## 22. Development Roadmap
+---
 
-### Phase 0 — Foundation
+## 27. Final V2 Architecture Decision Summary
 
-- Product requirements.
-- Brand/design system.
-- Repo structure.
-- Database schema.
-- Auth/account/profile model.
-- Cloudflare R2 setup.
-- API conventions.
-- Security baseline.
-
-### Phase 1 — Netflix Core
-
-- Home/discovery.
-- Title pages.
-- MP4 player.
-- Profiles.
-- Continue Watching.
-- My List.
-- Search.
-- Series/seasons/episodes.
-
-### Phase 2 — Creator Core
-
-- Channels.
-- R2 direct upload.
-- Studio content manager.
-- Publishing workflow.
-- Captions/chapters.
-- Creator analytics basics.
-
-### Phase 3 — YouTube Social Layer
-
-- Subscriptions.
-- Comments/replies.
-- Likes.
-- Playlists/Watch Later.
-- Notifications.
-- Community posts.
-- Clips.
-
-### Phase 4 — Advertising Core
-
-- IMA.
-- VAST house ads.
-- Ad breaks.
-- Direct campaigns.
-- Ad reporting.
-- Revenue attribution architecture.
-
-### Phase 5 — TV Launch
-
-- Android TV / Google TV.
-- Fire TV.
-- Remote-first navigation.
-- Deep links.
-- Continue Watching sync.
-- App-store publishing readiness.
-
-### Phase 6 — Shorts & Creator Growth
-
-- Vertical feed.
-- Short uploads.
-- Short analytics.
-- Cross-format discovery.
-
-### Phase 7 — FAST / Live
-
-- FAST-Lite scheduling.
-- EPG.
-- Creator TV.
-- Live ingestion infrastructure.
-- Live chat/moderation.
-
-### Phase 8 — Google Monetization Readiness
-
-- Google Ad Manager integration.
-- app-ads.txt.
-- CTV metadata/signals.
-- OMID/open measurement where applicable.
-- Consent/IFA implementation.
-- App readiness reviews.
-- Programmatic demand expansion when eligible.
-
-### Phase 9 — Advanced Platform
-
-- Adaptive HLS/DASH transcoding.
-- Offline downloads.
-- Watch parties.
-- Memberships.
-- AI/semantic discovery.
-- Advanced recommendation ranking.
-- Advertiser self-service.
-- Multi-language metadata and AI-assisted captions.
-
-## 23. Cost Strategy
-
-### Zero/near-zero launch
-
-- Existing compute can run application/API/database.
-- Video storage: R2 Standard.
-- First 10 GB R2 storage within included monthly tier.
-- No video transcoding.
-- No AWS video storage.
-- House ads first.
-- Manual moderation first.
-- PostgreSQL analytics/rollups first.
-
-### Scale only when usage demands it
-
-Spend first on the bottlenecks users can actually feel:
-
-1. Storage beyond free tier.
-2. Database reliability/backups.
-3. Transcoding/adaptive bitrate.
-4. TV app quality.
-5. Moderation tooling.
-6. Analytics infrastructure.
-7. Live/FAST infrastructure.
-
-## 24. Seed Content Strategy
-
-Before asking creators to trust AYIN, the product must look alive.
-
-Seed content sources must be legally safe and documented:
-
-- AYIN-owned originals.
-- Public-domain works with verified status.
-- Commercially reusable Creative Commons content where terms are satisfied.
-- Directly licensed content.
-- Early creator pilot agreements.
-
-Every seed asset gets a rights record, source, license, territories and expiry if applicable.
-
-Do not build the catalog from copied YouTube videos.
-
-## 25. Launch Gates
-
-Do not launch public creator onboarding until:
-
-- Large MP4 uploads survive interrupted connections.
-- Seeking works consistently via HTTP ranges.
-- Unauthorized users cannot write to R2.
-- A creator cannot publish without a rights declaration.
-- Admin can instantly unpublish content.
-- Reports and takedowns are actionable.
-- Comments have spam/rate-limit controls.
-- Playback events and ad events are measured.
-- Continue Watching sync works across devices.
-- House ads can play without breaking content playback.
-- Privacy/Terms/Creator Terms/Community Guidelines are live.
-
-## 26. North-Star Metrics
-
-Primary:
-
-- Total watch hours.
-- Returning viewers.
-- Monthly active viewers.
-- Active creators.
-- Published content hours.
-- Revenue per watch hour once monetized.
-
-Guardrails:
-
-- Rebuffer ratio.
-- Time-to-first-frame.
-- Ad load / ad abandonment.
-- Copyright/takedown rate.
-- Invalid traffic rate.
-- Creator upload failure rate.
-- Moderation response time.
-
-## 27. Strategic Rule
-
-AYIN should be built as a modular entertainment platform, not as a collection of pages.
-
-Every important capability — viewer identity, creator identity, content, media asset, rights, recommendation, social graph, analytics, ads, moderation and revenue — must have a clean data model and API boundary from the beginning.
-
-That is what allows AYIN to begin cheaply with direct MP4 on R2 and later evolve into a serious CTV/OTT/creator network without rewriting the business.
+- AYIN is global, not country-specific.
+- Every registered user is automatically a viewer and creator.
+- Channel, Uploads playlist and Creator TV are created automatically at registration.
+- Creator UX is intentionally minimal; advanced options are optional.
+- Creator TV automatically uses published channel videos unless configured otherwise.
+- Admin has comprehensive control across the entire product through a dedicated control plane.
+- Advertising exists both inside the player and outside the player.
+- Google IMA/Ad Manager readiness is designed from the start.
+- Web/PWA is the product source of truth.
+- Hybrid/TV apps reuse the web product as far as each platform reasonably permits.
+- AWS EC2 + CloudPanel run application services.
+- Cloudflare R2 is the only AYIN video storage layer.
+- V1 uses direct playback-ready MP4 to eliminate transcoding cost and complexity.
+- The architecture remains ready for future HLS, live, FAST, DAI/SSAI and large-scale monetization.
