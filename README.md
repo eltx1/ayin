@@ -6,7 +6,7 @@ The target product combines premium Netflix-style viewing, a frictionless YouTub
 
 ## Current status
 
-Task 00 implementation contract complete. The repository remains a greenfield documentation baseline; application scaffolding starts in Task 01.
+Task 01 foundation complete. AYIN now has a buildable pnpm monorepo with a Next.js Web/PWA application, a NestJS/Fastify API, and shared TypeScript packages. Product features begin in later roadmap tasks.
 
 ## Product decisions
 
@@ -33,3 +33,26 @@ Task 00 implementation contract complete. The repository remains a greenfield do
 ## Execution
 
 Implementation should follow the numbered roadmap tasks one at a time. Each task has a copy-ready AI prompt, acceptance criteria and a defined stop point to minimize agent drift and incomplete multi-feature runs.
+
+## Workspace commands
+
+Prerequisites: Node.js 24 (see `.nvmrc`) and Corepack. From the repository root:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+Quality and production checks:
+
+```bash
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:integration
+pnpm build
+```
+
+Run one application with `pnpm dev:web` or `pnpm dev:api`. The web app defaults to `http://localhost:3000`; the API defaults to `http://localhost:3001`, with health available at `GET /health`.
