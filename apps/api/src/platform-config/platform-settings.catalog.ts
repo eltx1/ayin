@@ -97,8 +97,56 @@ export const platformSettingCatalog = {
     section: "creatorDefaults",
     label: "Auto-add published uploads to Creator TV",
     description:
-      "Default behavior for new channels. Creator-specific overrides can be added later.",
+      "Published public MP4 videos enter automatic Creator TV rotation unless channel or video-level controls exclude them.",
     control: "toggle",
+    highImpact: false,
+    superadminOnly: false,
+  },
+  creatorTvFallbackProgramDurationMs: {
+    namespace: "TV",
+    key: "creatorTvFallbackProgramDurationMs",
+    valueType: "INTEGER",
+    defaultValue: 15 * 60 * 1000,
+    schema: z
+      .number()
+      .int()
+      .min(30 * 1000)
+      .max(6 * 60 * 60 * 1000),
+    section: "creatorDefaults",
+    label: "Creator TV fallback program duration",
+    description:
+      "Duration used only when a published MP4 has no reliable duration metadata. Real video duration wins whenever available.",
+    control: "number",
+    unit: "ms",
+    highImpact: false,
+    superadminOnly: false,
+  },
+  creatorTvGuideWindowMinutes: {
+    namespace: "TV",
+    key: "creatorTvGuideWindowMinutes",
+    valueType: "INTEGER",
+    defaultValue: 240,
+    schema: z.number().int().min(30).max(1440),
+    section: "creatorDefaults",
+    label: "Creator TV rolling guide window",
+    description: "How many future minutes the V1 application-level Creator TV guide calculates.",
+    control: "number",
+    unit: "minutes",
+    highImpact: false,
+    superadminOnly: false,
+  },
+  creatorTvRotationMode: {
+    namespace: "TV",
+    key: "creatorTvRotationMode",
+    valueType: "STRING",
+    defaultValue: "PRIORITY_ORDER_OLDEST",
+    schema: z.enum(["PRIORITY_ORDER_OLDEST", "PRIORITY_ORDER_NEWEST"]),
+    section: "creatorDefaults",
+    label: "Creator TV default rotation mode",
+    description:
+      "Deterministic fallback order after creator priority and explicit order controls are applied.",
+    control: "select",
+    options: ["PRIORITY_ORDER_OLDEST", "PRIORITY_ORDER_NEWEST"],
     highImpact: false,
     superadminOnly: false,
   },
