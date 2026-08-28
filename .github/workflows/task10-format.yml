@@ -53,8 +53,6 @@ jobs:
             'apps/web/src/components/creator-tv/creator-tv.module.css' \
             'apps/web/src/lib/creator-tv.ts' \
             'docs/TASK10_CREATOR_TV.md' \
-            'packages/db/prisma/creator-tv.prisma' \
-            'packages/db/prisma/schema.prisma' \
             'packages/db/src/creator-tv.test.mjs'
       - name: Commit formatted Task 10
         run: |
