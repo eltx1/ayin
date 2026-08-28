@@ -35,6 +35,14 @@ interface SettingsResponse {
   sections: SettingsSection[];
 }
 
+function buildDrafts(body: SettingsResponse): Record<string, SettingValue> {
+  return Object.fromEntries(
+    body.sections.flatMap((section) =>
+      section.settings.map((setting) => [setting.key, setting.value]),
+    ),
+  );
+}
+
 export function AdminSettingsPanel() {
   const [data, setData] = useState<SettingsResponse | null>(null);
   const [drafts, setDrafts] = useState<Record<string, SettingValue>>({});
@@ -61,13 +69,7 @@ export function AdminSettingsPanel() {
       const body = (await response.json()) as SettingsResponse;
       setData(body);
       setDenied(false);
-      setDrafts(
-        Object.fromEntries(
-          body.sections.flatMap((section) =>
-            section.settings.map((setting) => [setting.key, setting.value]),
-          ),
-        ),
-      );
+      setDrafts(buildDrafts(body));
     } catch {
       setError("AYIN Admin could not reach the API.");
     } finally {
@@ -76,7 +78,46 @@ export function AdminSettingsPanel() {
   }
 
   useEffect(() => {
-    void load();
+    let cancelled = false;
+
+    void fetch(`${apiBaseUrl}/admin/settings`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (cancelled) {
+          return;
+        }
+        if (response.status === 401 || response.status === 403) {
+          setDenied(true);
+          return;
+        }
+        if (!response.ok) {
+          setError(await readApiError(response));
+          return;
+        }
+        const body = (await response.json()) as SettingsResponse;
+        if (cancelled) {
+          return;
+        }
+        setData(body);
+        setDenied(false);
+        setDrafts(buildDrafts(body));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("AYIN Admin could not reach the API.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function save(setting: AdminSetting) {
