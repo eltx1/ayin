@@ -16,6 +16,7 @@ describe("channel navigation", () => {
   it("accepts only a visible channel tab", () => {
     expect(resolveChannelTab("shorts", { shorts: false, posts: false })).toBe("home");
     expect(resolveChannelTab("shorts", { shorts: true, posts: false })).toBe("shorts");
+    expect(resolveChannelTab(["tv"], { shorts: false, posts: false })).toBe("tv");
     expect(resolveChannelTab("about", { shorts: false, posts: false })).toBe("about");
   });
 });
