@@ -1,8 +1,8 @@
 import "reflect-metadata";
 
 import { createPrismaClient } from "@ayin/db";
-import { Test, type TestingModule } from "@nestjs/testing";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
+import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
@@ -63,39 +63,50 @@ databaseDescribe("authentication and instant creator provisioning", () => {
       where: { email: "nova@example.com" },
       select: { id: true, passwordHash: true },
     });
-    expect(account?.passwordHash).toMatch(/^scrypt\$/);
-    expect(account?.passwordHash).not.toContain("strong-pass-123");
+    if (!account) {
+      throw new Error("Registration did not create the Account.");
+    }
+    expect(account.passwordHash).toMatch(/^scrypt\$/);
+    expect(account.passwordHash).not.toContain("strong-pass-123");
 
     const membership = await prisma.channelMember.findFirst({
-      where: { accountId: account?.id, role: "OWNER" },
-      include: {
-        channel: {
-          include: {
-            creatorContracts: true,
-            creatorTvChannels: true,
-            playlists: true,
-            settings: true,
-          },
-        },
-      },
+      where: { accountId: account.id, role: "OWNER" },
+      select: { channelId: true },
     });
-    const profiles = await prisma.viewerProfile.findMany({ where: { accountId: account?.id } });
+    if (!membership) {
+      throw new Error("Registration did not create the owner membership.");
+    }
+
+    const profiles = await prisma.viewerProfile.findMany({ where: { accountId: account.id } });
+    const channel = await prisma.channel.findUnique({
+      where: { id: membership.channelId },
+      select: { primaryTvChannelId: true },
+    });
+    const playlists = await prisma.playlist.findMany({ where: { channelId: membership.channelId } });
+    const creatorTvChannels = await prisma.creatorTvChannel.findMany({
+      where: { channelId: membership.channelId },
+    });
+    const creatorContracts = await prisma.creatorContract.findMany({
+      where: { channelId: membership.channelId },
+    });
 
     expect(profiles).toHaveLength(1);
     expect(profiles[0]?.isDefault).toBe(true);
-    expect(membership?.channel.settings).not.toBeNull();
-    expect(membership?.channel.playlists).toEqual(
+    expect(await prisma.channelSettings.count({ where: { channelId: membership.channelId } })).toBe(
+      1,
+    );
+    expect(playlists).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "Uploads", systemKey: "UPLOADS", isProtected: true }),
       ]),
     );
-    expect(membership?.channel.creatorTvChannels).toEqual(
+    expect(creatorTvChannels).toEqual(
       expect.arrayContaining([expect.objectContaining({ name: "Nova Films TV" })]),
     );
-    expect(membership?.channel.creatorContracts).toEqual(
+    expect(creatorContracts).toEqual(
       expect.arrayContaining([expect.objectContaining({ status: "PENDING" })]),
     );
-    expect(membership?.channel.primaryTvChannelId).toBe(body.user.creatorTv.id);
+    expect(channel?.primaryTvChannelId).toBe(body.user.creatorTv.id);
   });
 
   it("keeps provisioning idempotent when the same default identity is repaired", async () => {
