@@ -15,7 +15,12 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
-import { PlaylistError, PlaylistService, type PlaylistUpdateInput } from "./playlist.service.js";
+import {
+  PlaylistError,
+  PlaylistService,
+  type PlaylistCreateInput,
+  type PlaylistUpdateInput,
+} from "./playlist.service.js";
 
 const uuidSchema = z.string().uuid();
 const visibilitySchema = z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]);
@@ -73,7 +78,7 @@ export class CreatorPlaylistCollectionController {
       );
     }
     return runPlaylistOperation(() =>
-      this.playlists.createPlaylist(ownerActor(request), channelId, parsed.data),
+      this.playlists.createPlaylist(ownerActor(request), channelId, mapCreate(parsed.data)),
     );
   }
 }
@@ -169,6 +174,13 @@ export class CreatorPlaylistController {
 
 function ownerActor(request: AuthenticatedRequest) {
   return { kind: "owner" as const, accountId: request.ayinAuth.accountId };
+}
+
+function mapCreate(input: z.infer<typeof createPlaylistSchema>): PlaylistCreateInput {
+  const output: PlaylistCreateInput = { name: input.name };
+  if (input.description !== undefined) output.description = input.description;
+  if (input.visibility !== undefined) output.visibility = input.visibility;
+  return output;
 }
 
 function mapUpdate(input: z.infer<typeof updatePlaylistSchema>): PlaylistUpdateInput {
