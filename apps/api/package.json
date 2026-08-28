@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "start": "node dist/main.js",
     "test": "vitest run src",
-    "test:integration": "vitest run --testTimeout=30000 test",
+    "test:integration": "vitest run --testTimeout=30000 --fileParallelism=false test",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
