@@ -1,0 +1,20 @@
+model ChannelAppearance {
+  id            String   @id @default(uuid()) @db.Uuid
+  channelId     String   @unique @db.Uuid
+  avatarAssetId String?  @db.Uuid
+  bannerAssetId String?  @db.Uuid
+  accentColor   String?  @db.VarChar(7)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([avatarAssetId])
+  @@index([bannerAssetId])
+}
+
+model ChannelHandleRedirect {
+  oldHandle String   @id @db.VarChar(80)
+  channelId String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([channelId, createdAt])
+}

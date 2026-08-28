@@ -4,7 +4,7 @@ import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
-import { apiBaseUrl } from "@/lib/api";
+import { apiBaseUrl, type AyinIdentity } from "@/lib/api";
 import {
   parseNavigationFlags,
   type NavigationFlagState,
@@ -33,7 +33,7 @@ function NavigationLinks({ flags, surface }: { flags: NavigationFlagState; surfa
 
 export function ViewerShell({ children }: ViewerShellProperties) {
   const [flags, setFlags] = useState<NavigationFlagState>({});
-  const [signedIn, setSignedIn] = useState(false);
+  const [identity, setIdentity] = useState<AyinIdentity | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,7 +53,10 @@ export function ViewerShell({ children }: ViewerShellProperties) {
         credentials: "include",
         signal: controller.signal,
       })
-        .then((response) => setSignedIn(response.ok))
+        .then(async (response) => {
+          if (!response.ok) return;
+          setIdentity((await response.json()) as AyinIdentity);
+        })
         .catch(() => undefined),
     ]);
 
@@ -80,14 +83,26 @@ export function ViewerShell({ children }: ViewerShellProperties) {
           <NavigationLinks flags={flags} surface="desktop" />
         </nav>
 
-        <Link
-          className={styles.joinAction}
-          data-tv-focus-id={signedIn ? "create-upload" : "join-ayin"}
-          data-tv-focusable="true"
-          href={signedIn ? "/upload" : "/register"}
-        >
-          {signedIn ? "Create / Upload" : "Join AYIN"}
-        </Link>
+        <div className={styles.accountActions}>
+          {identity ? (
+            <Link
+              className={styles.channelAction}
+              data-tv-focus-id="my-channel"
+              data-tv-focusable="true"
+              href={`/c/${identity.channel.handle}`}
+            >
+              My channel
+            </Link>
+          ) : null}
+          <Link
+            className={styles.joinAction}
+            data-tv-focus-id={identity ? "create-upload" : "join-ayin"}
+            data-tv-focusable="true"
+            href={identity ? "/upload" : "/register"}
+          >
+            {identity ? "Create / Upload" : "Join AYIN"}
+          </Link>
+        </div>
       </header>
 
       <div className={styles.content}>{children}</div>
