@@ -36,7 +36,7 @@ export const navigationItems = [
 ] as const;
 
 export type NavigationItem = (typeof navigationItems)[number];
-export type NavigationFeatureFlag = Exclude<NavigationItem["featureFlag"], undefined>;
+export type NavigationFeatureFlag = Extract<NavigationItem, { featureFlag: string }>["featureFlag"];
 export type NavigationFlagState = Partial<Record<NavigationFeatureFlag, boolean>>;
 
 export function visibleNavigationItems(flags: NavigationFlagState): readonly NavigationItem[] {

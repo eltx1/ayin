@@ -1,0 +1,36 @@
+name: Task 05 formatter
+
+on:
+  push:
+    branches:
+      - task-05-web-pwa-design-system
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format repository
+        run: pnpm format
+      - name: Commit formatter output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          if ! git diff --cached --quiet; then
+            git commit -m "Format Task 05 implementation"
+            git push
+          fi
