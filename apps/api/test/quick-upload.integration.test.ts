@@ -14,6 +14,11 @@ import {
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseDescribe = testDatabaseUrl ? describe : describe.skip;
 
+interface DraftPayload {
+  video: { id: string };
+  uploadSession: { partCount: number; sessionToken: string };
+}
+
 function cookiePair(setCookie: string | string[] | undefined): string {
   const value = Array.isArray(setCookie) ? setCookie[0] : setCookie;
   if (!value) throw new Error("Expected a session cookie.");
@@ -82,7 +87,11 @@ databaseDescribe("creator quick upload and publish", () => {
     return { cookie: cookiePair(response.headers["set-cookie"]), user: response.json().user };
   }
 
-  async function createDraft(cookie: string, channelId: string, title = "Quick Upload") {
+  async function createDraft(
+    cookie: string,
+    channelId: string,
+    title = "Quick Upload",
+  ): Promise<DraftPayload> {
     const response = await app.inject({
       method: "POST",
       url: "/creator/videos/drafts",
@@ -96,11 +105,11 @@ databaseDescribe("creator quick upload and publish", () => {
       },
     });
     expect(response.statusCode).toBe(201);
-    return response.json();
+    return response.json() as DraftPayload;
   }
 
-  async function completeUpload(cookie: string, draft: any) {
-    const parts = Array.from({ length: draft.uploadSession.partCount as number }, (_, index) => ({
+  async function completeUpload(cookie: string, draft: DraftPayload) {
+    const parts = Array.from({ length: draft.uploadSession.partCount }, (_, index) => ({
       partNumber: index + 1,
       etag: `etag-${index + 1}`,
     }));
