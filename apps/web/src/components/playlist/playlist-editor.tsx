@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   addCreatorPlaylistItem,
@@ -25,28 +25,41 @@ export function PlaylistEditor({ playlistId }: { playlistId: string }) {
   const [message, setMessage] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
 
-  const load = useCallback(async () => {
-    const next = await getCreatorPlaylist(playlistId);
+  useEffect(() => {
+    let active = true;
+    void getCreatorPlaylist(playlistId)
+      .then((next) => {
+        if (!active) return;
+        applyPlaylist(next);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setMessage(error instanceof Error ? error.message : "This playlist could not be loaded.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [playlistId]);
+
+  const itemIds = useMemo(() => data?.items.map((item) => item.id) ?? [], [data]);
+
+  function applyPlaylist(next: EditablePlaylistResponse) {
     setData(next);
     setName(next.playlist.name);
     setDescription(next.playlist.description ?? "");
     setVisibility(next.playlist.visibility);
-  }, [playlistId]);
+  }
 
-  useEffect(() => {
-    void load().catch((error: unknown) => {
-      setMessage(error instanceof Error ? error.message : "This playlist could not be loaded.");
-    });
-  }, [load]);
-
-  const itemIds = useMemo(() => data?.items.map((item) => item.id) ?? [], [data]);
+  async function reload() {
+    applyPlaylist(await getCreatorPlaylist(playlistId));
+  }
 
   async function run(operation: () => Promise<void>, success: string) {
     setBusy(true);
     setMessage(null);
     try {
       await operation();
-      await load();
+      await reload();
       setMessage(success);
     } catch (error) {
       setMessage(
