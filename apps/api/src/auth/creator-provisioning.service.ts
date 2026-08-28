@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { Prisma } from "@ayin/db";
+import type { Prisma } from "@ayin/db";
 import { Injectable } from "@nestjs/common";
 
 export class ProvisioningConflictError extends Error {}
