@@ -136,24 +136,29 @@ export class MediaUploadService {
     const sessionToken = this.tokens.sign(payload);
 
     if (mode === "single") {
-      const authorization = await this.storage.authorizeSinglePut({
-        key: objectKey,
-        contentType: input.mimeType,
-        expiresInSeconds: this.config.uploadUrlTtlSeconds,
-      });
-      return {
-        assetId,
-        objectKey,
-        mode,
-        sizeBytes: input.sizeBytes,
-        sessionToken,
-        expiresAt: new Date(expiresAtMs).toISOString(),
-        upload: {
-          url: authorization.url,
-          method: "PUT" as const,
-          headers: { "content-type": input.mimeType },
-        },
-      };
+      try {
+        const authorization = await this.storage.authorizeSinglePut({
+          key: objectKey,
+          contentType: input.mimeType,
+          expiresInSeconds: this.config.uploadUrlTtlSeconds,
+        });
+        return {
+          assetId,
+          objectKey,
+          mode,
+          sizeBytes: input.sizeBytes,
+          sessionToken,
+          expiresAt: new Date(expiresAtMs).toISOString(),
+          upload: {
+            url: authorization.url,
+            method: "PUT" as const,
+            headers: { "content-type": input.mimeType },
+          },
+        };
+      } catch (error) {
+        await this.rejectAsset(assetId);
+        throw error;
+      }
     }
 
     return {
@@ -215,25 +220,23 @@ export class MediaUploadService {
       }
       const expectedPartCount = Math.ceil(session.sizeBytes / session.partSizeBytes);
       this.validateCompletedParts(parts, expectedPartCount);
-      await this.storage.completeMultipartUpload({
-        key: session.objectKey,
-        uploadId: session.uploadId,
-        parts,
-      });
-    } else {
-      const object = await this.storage.headObject(session.objectKey);
-      if (object.sizeBytes !== session.sizeBytes) {
-        throw new MediaUploadError(
-          "UPLOAD_SIZE_MISMATCH",
-          "The uploaded video size does not match the selected file. Please retry the upload.",
-        );
+      try {
+        await this.storage.completeMultipartUpload({
+          key: session.objectKey,
+          uploadId: session.uploadId,
+          parts,
+        });
+      } catch (error) {
+        const recovered = await this.objectMatchesSession(session);
+        if (!recovered) {
+          throw error;
+        }
       }
-      if (object.contentType && !object.contentType.toLowerCase().startsWith("video/mp4")) {
-        throw new MediaUploadError(
-          "UPLOAD_TYPE_MISMATCH",
-          "The uploaded object is not an MP4 video. Please choose the file again.",
-        );
-      }
+    } else if (!(await this.objectMatchesSession(session))) {
+      throw new MediaUploadError(
+        "UPLOAD_SIZE_OR_TYPE_MISMATCH",
+        "The uploaded video does not match the selected MP4. Please retry the upload.",
+      );
     }
 
     await this.database.client.mediaAsset.update({
@@ -253,14 +256,13 @@ export class MediaUploadService {
     } else {
       await this.storage.deleteObject(session.objectKey).catch(() => undefined);
     }
-    await this.database.client.mediaAsset.update({
-      where: { id: session.assetId },
-      data: { status: "REJECTED", removedAt: new Date() },
-    });
+    await this.rejectAsset(session.assetId);
     return { status: "ABORTED" };
   }
 
-  async cleanupAbandonedUploads(olderThan: Date): Promise<{ abortedMultipart: number }> {
+  async cleanupAbandonedUploads(
+    olderThan: Date,
+  ): Promise<{ abortedMultipart: number; rejectedAssets: number }> {
     this.ensureStorageAvailable();
     const uploads = await this.storage.listMultipartUploads("channels/");
     let abortedMultipart = 0;
@@ -276,13 +278,35 @@ export class MediaUploadService {
         continue;
       }
       await this.storage.abortMultipartUpload({ key: upload.key, uploadId: upload.uploadId });
-      await this.database.client.mediaAsset.update({
-        where: { id: asset.id },
-        data: { status: "REJECTED", removedAt: new Date() },
-      });
       abortedMultipart += 1;
     }
-    return { abortedMultipart };
+
+    const staleAssets = await this.database.client.mediaAsset.findMany({
+      where: {
+        kind: "SOURCE_VIDEO",
+        status: "PENDING",
+        removedAt: null,
+        createdAt: { lt: olderThan },
+      },
+      select: { id: true, r2ObjectKey: true },
+    });
+    for (const asset of staleAssets) {
+      await this.storage.deleteObject(asset.r2ObjectKey).catch(() => undefined);
+      await this.rejectAsset(asset.id);
+    }
+    return { abortedMultipart, rejectedAssets: staleAssets.length };
+  }
+
+  private async objectMatchesSession(session: UploadSessionPayload): Promise<boolean> {
+    try {
+      const object = await this.storage.headObject(session.objectKey);
+      return (
+        object.sizeBytes === session.sizeBytes &&
+        (!object.contentType || object.contentType.toLowerCase().startsWith("video/mp4"))
+      );
+    } catch {
+      return false;
+    }
   }
 
   private async assertSession(
@@ -367,6 +391,13 @@ export class MediaUploadService {
   private remainingAuthorizationSeconds(session: UploadSessionPayload): number {
     const remaining = Math.floor((session.expiresAtMs - Date.now()) / 1000);
     return Math.max(60, Math.min(this.config.uploadUrlTtlSeconds, remaining));
+  }
+
+  private async rejectAsset(assetId: string): Promise<void> {
+    await this.database.client.mediaAsset.updateMany({
+      where: { id: assetId, status: "PENDING" },
+      data: { status: "REJECTED", removedAt: new Date() },
+    });
   }
 
   private ensureStorageAvailable(): void {

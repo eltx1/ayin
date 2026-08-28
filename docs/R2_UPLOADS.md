@@ -53,13 +53,13 @@ channels/<channel-uuid>/media/<media-asset-uuid>/source.mp4
 
 Original filenames are never used in R2 keys.
 
-Large files use multipart upload. The client requests a short-lived URL for each part, retries failed parts up to three times and asks R2 for already uploaded parts when resuming within the session lifetime. Small files use one short-lived presigned PUT.
+Large files use multipart upload. The client requests a short-lived URL for each part, retries failed parts up to three times and asks R2 for already uploaded parts when resuming within the session lifetime. Resume and completion tokens are sent in authenticated JSON request bodies rather than URL paths so they do not leak into routine access logs. Small files use one short-lived presigned PUT.
 
-`MediaAsset.status` remains `PENDING` until R2 completion is verified, then becomes `UPLOADED`. Task 07 owns draft creation, rights confirmation and publishing.
+`MediaAsset.status` remains `PENDING` until R2 completion is verified, then becomes `UPLOADED`. If the multipart completion call succeeds at R2 but its response is interrupted, AYIN can recover by checking the final object before moving the database state forward. Task 07 owns draft creation, rights confirmation and publishing.
 
 ## Abandoned upload cleanup
 
-`MediaUploadService.cleanupAbandonedUploads(olderThan)` is the cleanup job entry point. A deployment scheduler can invoke a thin internal job wrapper hourly with a conservative cutoff such as 24 hours. It lists incomplete R2 multipart uploads under the AYIN channel prefix, matches them to `PENDING` MediaAsset rows by object key, aborts the multipart upload and marks the stale asset rejected/removed.
+`MediaUploadService.cleanupAbandonedUploads(olderThan)` is the cleanup job entry point. A deployment scheduler can invoke a thin internal job wrapper hourly with a conservative cutoff such as 24 hours. It aborts stale incomplete multipart uploads under the AYIN channel prefix, then finds stale `PENDING` source assets, removes any partial/single object that exists and marks the metadata rejected/removed.
 
 Cloudflare R2 also automatically aborts incomplete multipart uploads after its bucket lifecycle interval (7 days by default), but AYIN should run its own cleanup earlier to keep application metadata tidy.
 

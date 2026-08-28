@@ -1,14 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpException,
-  Inject,
-  Param,
-  Post,
-  Req,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, HttpException, Inject, Post, Req, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -70,6 +60,19 @@ export class MediaUploadController {
     );
   }
 
+  @Post("sessions/resume")
+  async resumeParts(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    const parsed = sessionSchema.safeParse(body);
+    if (!parsed.success) {
+      throw this.httpError(
+        new MediaUploadError("INVALID_RESUME", "This upload session could not be resumed."),
+      );
+    }
+    return this.run(() =>
+      this.uploads.resumeParts(request.ayinAuth.accountId, parsed.data.sessionToken),
+    );
+  }
+
   @Post("sessions/complete")
   async complete(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     const parsed = completeSchema.safeParse(body);
@@ -90,14 +93,6 @@ export class MediaUploadController {
       throw this.httpError(new MediaUploadError("INVALID_ABORT", "This upload could not be stopped."));
     }
     return this.run(() => this.uploads.abort(request.ayinAuth.accountId, parsed.data.sessionToken));
-  }
-
-  @Get("sessions/:sessionToken/parts")
-  async resumeParts(
-    @Req() request: AuthenticatedRequest,
-    @Param("sessionToken") sessionToken: string,
-  ) {
-    return this.run(() => this.uploads.resumeParts(request.ayinAuth.accountId, sessionToken));
   }
 
   private async run<T>(operation: () => Promise<T>): Promise<T> {

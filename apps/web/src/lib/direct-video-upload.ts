@@ -40,9 +40,9 @@ export async function uploadVideoDirectly(input: {
     return completed;
   }
 
-  const resumed = await apiGet<{ parts: Array<{ partNumber: number; etag: string; sizeBytes: number }> }>(
-    `/media/uploads/sessions/${encodeURIComponent(session.sessionToken)}/parts`,
-  );
+  const resumed = await apiJson<{
+    parts: Array<{ partNumber: number; etag: string; sizeBytes: number }>;
+  }>("/media/uploads/sessions/resume", { sessionToken: session.sessionToken });
   const completedParts = new Map(
     resumed.parts.map((part) => [part.partNumber, { partNumber: part.partNumber, etag: part.etag }]),
   );
@@ -89,14 +89,6 @@ async function createSession(channelId: string, file: File): Promise<UploadSessi
     sizeBytes: file.size,
     mimeType: "video/mp4",
   });
-}
-
-async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, { credentials: "include" });
-  if (!response.ok) {
-    throw new Error(await readApiError(response));
-  }
-  return (await response.json()) as T;
 }
 
 async function apiJson<T>(path: string, payload: unknown): Promise<T> {
