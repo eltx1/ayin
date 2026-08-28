@@ -82,7 +82,9 @@ databaseDescribe("authentication and instant creator provisioning", () => {
       where: { id: membership.channelId },
       select: { primaryTvChannelId: true },
     });
-    const playlists = await prisma.playlist.findMany({ where: { channelId: membership.channelId } });
+    const playlists = await prisma.playlist.findMany({
+      where: { channelId: membership.channelId },
+    });
     const creatorTvChannels = await prisma.creatorTvChannel.findMany({
       where: { channelId: membership.channelId },
     });
