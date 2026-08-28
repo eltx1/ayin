@@ -1,0 +1,49 @@
+name: Task 06 formatter
+
+on:
+  push:
+    branches:
+      - task-06-r2-direct-upload
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-06-r2-direct-upload
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format Task 06 files
+        run: >-
+          pnpm exec prettier --write
+          apps/api/src/media
+          apps/api/test/media-upload.integration.test.ts
+          apps/api/src/app.module.ts
+          apps/api/src/platform-config/platform-settings.catalog.ts
+          apps/web/src/components/upload
+          apps/web/src/app/(viewer)/upload/page.tsx
+          apps/web/src/lib/direct-video-upload.ts
+          apps/web/src/lib/video-inspection.ts
+          apps/web/src/lib/video-inspection.test.ts
+          docs/R2_UPLOADS.md
+      - name: Commit formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/media apps/api/test/media-upload.integration.test.ts apps/api/src/app.module.ts apps/api/src/platform-config/platform-settings.catalog.ts apps/web/src/components/upload 'apps/web/src/app/(viewer)/upload/page.tsx' apps/web/src/lib/direct-video-upload.ts apps/web/src/lib/video-inspection.ts apps/web/src/lib/video-inspection.test.ts docs/R2_UPLOADS.md
+          if ! git diff --cached --quiet; then
+            git commit -m "Format Task 06 implementation"
+            git push origin HEAD:task-06-r2-direct-upload
+          fi
