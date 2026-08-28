@@ -15,6 +15,13 @@ interface MediaCardProperties {
   variant?: MediaCardVariant;
 }
 
+function mediaFocusId(variant: MediaCardVariant, href: string, title: string) {
+  return `media-${variant}-${href}-${title}`
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/^-+|-+$/g, "");
+}
+
 export function MediaCard({
   badge,
   href,
@@ -28,7 +35,7 @@ export function MediaCard({
     <Link
       aria-label={title}
       className={`${styles.card} ${styles[variant]}`}
-      data-tv-focus-id={`media-${variant}-${title.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`}
+      data-tv-focus-id={mediaFocusId(variant, href, title)}
       data-tv-focusable="true"
       href={href}
     >

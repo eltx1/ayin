@@ -47,10 +47,20 @@ export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
   if (!identity) {
     return (
       <div className={styles.actions}>
-        <Link className={styles.secondaryAction} href="/login">
+        <Link
+          className={styles.secondaryAction}
+          data-tv-focus-id="session-sign-in"
+          data-tv-focusable="true"
+          href="/login"
+        >
           Sign in
         </Link>
-        <Link className={styles.primaryAction} href="/register">
+        <Link
+          className={styles.primaryAction}
+          data-tv-focus-id="session-create-ayin"
+          data-tv-focusable="true"
+          href="/register"
+        >
           Create AYIN
         </Link>
       </div>
@@ -70,7 +80,13 @@ export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
         <span aria-hidden="true">•</span>
         <span>{identity.creatorTv.name}</span>
       </div>
-      <button className={styles.textButton} onClick={logout} type="button">
+      <button
+        className={styles.textButton}
+        data-tv-focus-id="session-log-out"
+        data-tv-focusable="true"
+        onClick={logout}
+        type="button"
+      >
         Log out
       </button>
     </div>
