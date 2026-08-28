@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="AYIN placeholder mark">
+  <rect width="192" height="192" rx="48" fill="#070A12"/>
+  <circle cx="96" cy="96" r="59" fill="none" stroke="#E8C46A" stroke-width="8"/>
+  <ellipse cx="96" cy="96" rx="39" ry="25" fill="none" stroke="#63D1CC" stroke-width="7"/>
+  <circle cx="96" cy="96" r="10" fill="#E8C46A"/>
+  <circle cx="96" cy="96" r="4" fill="#F7F8FC"/>
+</svg>

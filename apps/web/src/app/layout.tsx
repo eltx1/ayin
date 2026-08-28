@@ -1,11 +1,23 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+
+import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
+  applicationName: "AYIN",
   description: "AYIN is a global web-first streaming and creator platform.",
-  title: "AYIN",
+  manifest: "/manifest.webmanifest",
+  title: {
+    default: "AYIN",
+    template: "%s · AYIN",
+  },
+};
+
+export const viewport: Viewport = {
+  colorScheme: "dark",
+  themeColor: "#05070d",
 };
 
 interface RootLayoutProperties {
@@ -15,7 +27,10 @@ interface RootLayoutProperties {
 export default function RootLayout({ children }: RootLayoutProperties) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ServiceWorkerRegistration />
+        {children}
+      </body>
     </html>
   );
 }

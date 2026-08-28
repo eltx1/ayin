@@ -1,0 +1,167 @@
+.card {
+  color: var(--foreground);
+  display: block;
+  min-width: 0;
+  text-decoration: none;
+  transform-origin: center;
+  transition:
+    transform 140ms ease,
+    filter 140ms ease;
+}
+
+.art {
+  background:
+    radial-gradient(circle at 68% 26%, rgb(232 196 106 / 40%), transparent 16%),
+    linear-gradient(145deg, #20283a, #0c111c 62%);
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 1rem;
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 22%);
+  overflow: hidden;
+  position: relative;
+}
+
+.poster .art {
+  aspect-ratio: 2 / 3;
+}
+
+.landscape {
+  width: min(72vw, 22rem);
+}
+
+.landscape .art {
+  aspect-ratio: 16 / 9;
+}
+
+.art[data-tone="2"] {
+  background:
+    radial-gradient(circle at 72% 30%, rgb(92 220 205 / 34%), transparent 18%),
+    linear-gradient(145deg, #15383b, #0a1218 68%);
+}
+
+.art[data-tone="3"] {
+  background:
+    radial-gradient(circle at 30% 24%, rgb(161 116 225 / 38%), transparent 20%),
+    linear-gradient(145deg, #302348, #0f101b 65%);
+}
+
+.art[data-tone="4"] {
+  background:
+    radial-gradient(circle at 64% 70%, rgb(232 196 106 / 32%), transparent 23%),
+    linear-gradient(145deg, #3c2c21, #111015 68%);
+}
+
+.art[data-tone="5"] {
+  background:
+    radial-gradient(circle at 36% 32%, rgb(82 144 222 / 34%), transparent 19%),
+    linear-gradient(145deg, #172d4c, #0c1019 68%);
+}
+
+.signal {
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 50%;
+  height: 46%;
+  left: 27%;
+  position: absolute;
+  top: 27%;
+  width: 46%;
+}
+
+.signal::before,
+.signal::after {
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 50%;
+  content: "";
+  inset: 16%;
+  position: absolute;
+}
+
+.signal::after {
+  background: rgb(232 196 106 / 78%);
+  border: 0;
+  box-shadow: 0 0 1.5rem rgb(99 209 204 / 45%);
+  inset: 43%;
+}
+
+.badge {
+  backdrop-filter: blur(8px);
+  background: rgb(5 7 13 / 62%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  left: 0.7rem;
+  padding: 0.4rem 0.55rem;
+  position: absolute;
+  top: 0.7rem;
+}
+
+.copy {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.15rem 0;
+}
+
+.copy strong {
+  font-size: 0.98rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kicker,
+.meta {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.kicker {
+  color: #8fe0da;
+  font-weight: 760;
+}
+
+.card:hover {
+  filter: brightness(1.08);
+  transform: translateY(-2px);
+}
+
+.skeleton {
+  pointer-events: none;
+}
+
+.skeleton .art,
+.skeletonLine,
+.skeletonLineShort {
+  animation: ayin-skeleton 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, #111725, #1b2434, #111725);
+  background-size: 200% 100%;
+}
+
+.skeletonLine,
+.skeletonLineShort {
+  border-radius: 999px;
+  display: block;
+  height: 0.7rem;
+}
+
+.skeletonLineShort {
+  height: 0.55rem;
+  width: 62%;
+}
+
+@keyframes ayin-skeleton {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton .art,
+  .skeletonLine,
+  .skeletonLineShort {
+    animation: none;
+  }
+}
