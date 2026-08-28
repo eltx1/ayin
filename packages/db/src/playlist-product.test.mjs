@@ -27,5 +27,6 @@ describe("Task 09 playlist schema", () => {
     expect(watchLater).toContain("profileId String");
     expect(watchLater).toContain("videoId   String");
     expect(watchLater).toContain("@@unique([profileId, videoId])");
+    expect(migration).toContain('"WatchLaterItem_profileId_videoId_key"');
   });
 });
