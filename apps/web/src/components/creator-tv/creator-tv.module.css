@@ -1,0 +1,393 @@
+.page {
+  min-height: 100vh;
+  padding: clamp(20px, 4vw, 56px);
+  background:
+    radial-gradient(circle at 12% 12%, color-mix(in srgb, var(--tv-accent) 24%, transparent), transparent 34%),
+    #07090d;
+  color: #f7f8fb;
+}
+
+.hero {
+  max-width: 1320px;
+  margin: 0 auto 24px;
+  padding: clamp(22px, 4vw, 46px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 28px;
+  background: rgba(14, 17, 23, 0.88);
+  overflow: hidden;
+  position: relative;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--tv-banner) center / cover no-repeat;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.heroInner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.avatar {
+  width: 76px;
+  height: 76px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 22px;
+  background: var(--tv-avatar) center / cover no-repeat, color-mix(in srgb, var(--tv-accent) 35%, #171a22);
+  font-weight: 800;
+  font-size: 28px;
+}
+
+.eyebrow,
+.liveBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  color: color-mix(in srgb, var(--tv-accent) 78%, white);
+}
+
+.hero h1,
+.nowCopy h2,
+.nextCard h2,
+.guide h2,
+.manager h1 {
+  margin: 0;
+}
+
+.hero h1 {
+  margin-top: 5px;
+  font-size: clamp(28px, 5vw, 52px);
+}
+
+.channelLink {
+  color: rgba(255, 255, 255, 0.68);
+  text-decoration: none;
+}
+
+.channelLink:hover {
+  color: white;
+}
+
+.layout {
+  max-width: 1320px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.8fr);
+  gap: 22px;
+}
+
+.playerCard,
+.nextCard,
+.guide,
+.offAir,
+.managerCard,
+.videoRow {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(14, 17, 23, 0.9);
+  border-radius: 24px;
+}
+
+.playerCard {
+  overflow: hidden;
+}
+
+.video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.nowCopy {
+  padding: 20px 22px 24px;
+}
+
+.liveBadge {
+  color: #ff6b72;
+  margin-bottom: 8px;
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 18px currentColor;
+}
+
+.meta,
+.muted,
+.limitation,
+.videoMeta {
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.meta,
+.muted,
+.videoMeta {
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+
+.limitation {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.side {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+
+.nextCard,
+.guide,
+.offAir,
+.managerCard {
+  padding: 22px;
+}
+
+.nextCard h3 {
+  margin: 14px 0 5px;
+  font-size: 21px;
+}
+
+.guideList {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.guideItem {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.guideItem:first-child {
+  border-top: 0;
+}
+
+.guideTime {
+  color: color-mix(in srgb, var(--tv-accent) 80%, white);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.guideTitle {
+  font-weight: 700;
+}
+
+.offAir {
+  max-width: 900px;
+  margin: 42px auto 0;
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background:
+    linear-gradient(rgba(8, 10, 14, 0.8), rgba(8, 10, 14, 0.96)),
+    var(--tv-banner) center / cover no-repeat;
+}
+
+.offAirMark {
+  width: 82px;
+  height: 82px;
+  margin: 0 auto 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 26px;
+  background: color-mix(in srgb, var(--tv-accent) 28%, #171a22);
+  font-size: 32px;
+  font-weight: 900;
+}
+
+.offAir h2 {
+  margin: 0 0 9px;
+  font-size: clamp(26px, 4vw, 42px);
+}
+
+.offAir p {
+  max-width: 600px;
+  margin: 0 auto;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.65;
+}
+
+.refreshButton,
+.saveButton,
+.backLink {
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.refreshButton,
+.saveButton {
+  cursor: pointer;
+}
+
+.refreshButton {
+  margin-top: 22px;
+  padding: 11px 18px;
+  background: var(--tv-accent);
+  color: #071012;
+}
+
+.manager {
+  max-width: 1050px;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 58px) clamp(16px, 4vw, 40px);
+}
+
+.managerHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.managerHeader p {
+  margin: 7px 0 0;
+}
+
+.backLink {
+  padding: 10px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: inherit;
+}
+
+.automationGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.automationItem {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.automationItem strong {
+  display: block;
+  font-size: 13px;
+}
+
+.automationItem span {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.videoList {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.videoRow {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.videoRow label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.videoRow input[type="number"] {
+  width: 110px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #0b0d12;
+  color: white;
+}
+
+.includeControl {
+  display: flex !important;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 8px !important;
+  padding-bottom: 10px;
+}
+
+.saveButton {
+  padding: 10px 15px;
+  background: #f3f5f7;
+  color: #090b0f;
+}
+
+.saveButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.notice {
+  margin: 14px 0 0;
+  color: #9edfd8;
+  font-size: 13px;
+}
+
+.error {
+  color: #ff9b9f;
+}
+
+@media (max-width: 850px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .automationGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .videoRow {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .videoRow > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .heroInner,
+  .managerHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .videoRow {
+    grid-template-columns: 1fr;
+  }
+}
