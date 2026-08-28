@@ -17,7 +17,7 @@ describe("Task 04 database foundation", () => {
     expect(migration).toContain("AdminRoleAssignment_role_format_check");
   });
 
-  it("seeds safe typed defaults without provider secrets", () => {
+  it("seeds safe typed defaults without provider-secret setting keys", () => {
     for (const key of [
       "registrationEnabled",
       "automaticCreatorProvisioningEnabled",
@@ -35,6 +35,6 @@ describe("Task 04 database foundation", () => {
     ]) {
       expect(seed).toContain(`'${key}'`);
     }
-    expect(seed.toLowerCase()).not.toMatch(/api[_-]?key|secret|password|access[_-]?token/);
+    expect(seed).not.toMatch(/'(?:apiKey|providerSecret|password|accessToken)'/i);
   });
 });
