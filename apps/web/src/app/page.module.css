@@ -1,0 +1,48 @@
+.main {
+  align-items: center;
+  background:
+    radial-gradient(circle at 50% 10%, rgb(31 54 105 / 45%), transparent 45%), var(--background);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.panel {
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 1.5rem;
+  max-width: 42rem;
+  padding: clamp(2rem, 6vw, 4rem);
+  text-align: center;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  margin: 0 0 1rem;
+  text-transform: uppercase;
+}
+
+.title {
+  font-size: clamp(3.5rem, 12vw, 7rem);
+  letter-spacing: -0.06em;
+  line-height: 0.9;
+  margin: 0;
+}
+
+.description {
+  color: var(--muted);
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  line-height: 1.6;
+  margin: 1.5rem auto 2rem;
+  max-width: 32rem;
+}
+
+.status {
+  background: transparent;
+  border-color: rgb(215 174 86 / 55%);
+  color: var(--foreground);
+}

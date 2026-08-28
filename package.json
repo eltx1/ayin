@@ -1,0 +1,32 @@
+{
+  "name": "ayin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "AYIN global web-first streaming and creator platform",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=22.13.0 <27",
+    "pnpm": ">=11.24.0 <12"
+  },
+  "scripts": {
+    "build": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run build && corepack pnpm --filter @ayin/web run build",
+    "dev": "corepack pnpm packages:build && corepack pnpm --parallel --filter @ayin/api --filter @ayin/web run dev",
+    "dev:api": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run dev",
+    "dev:web": "corepack pnpm packages:build && corepack pnpm --filter @ayin/web run dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "corepack pnpm --recursive --if-present run lint",
+    "packages:build": "corepack pnpm --filter './packages/*' --workspace-concurrency=1 run build",
+    "test": "corepack pnpm --recursive --if-present run test",
+    "test:integration": "corepack pnpm --filter @ayin/api run test:integration",
+    "typecheck": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run typecheck && corepack pnpm --filter @ayin/web run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.2",
+    "eslint": "9.39.2",
+    "globals": "17.11.0",
+    "prettier": "3.9.6",
+    "typescript-eslint": "8.68.0"
+  }
+}
