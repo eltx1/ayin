@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   Post,
   Req,
   Res,
@@ -41,9 +42,9 @@ function parseBody<T>(schema: ZodType<T>, body: unknown): T {
 @Controller("auth")
 export class AuthController {
   constructor(
-    private readonly authService: AuthService,
-    private readonly authConfig: AuthConfig,
-    private readonly rateLimiter: AuthRateLimiter,
+    @Inject(AuthService) private readonly authService: AuthService,
+    @Inject(AuthConfig) private readonly authConfig: AuthConfig,
+    @Inject(AuthRateLimiter) private readonly rateLimiter: AuthRateLimiter,
   ) {}
 
   @Post("register")
