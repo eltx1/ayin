@@ -135,16 +135,19 @@ export async function uploadChannelAsset(
   kind: "avatar" | "banner",
   file: File,
 ): Promise<ChannelAppearance> {
-  const authorization = await fetch(`${apiBaseUrl}/creator/channels/${channelId}/assets/authorize`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      kind,
-      mimeType: file.type,
-      sizeBytes: file.size,
-    }),
-  });
+  const authorization = await fetch(
+    `${apiBaseUrl}/creator/channels/${channelId}/assets/authorize`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        kind,
+        mimeType: file.type,
+        sizeBytes: file.size,
+      }),
+    },
+  );
   if (!authorization.ok) throw new Error(await readApiError(authorization));
   const authorized = (await authorization.json()) as {
     assetId: string;

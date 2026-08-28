@@ -7,9 +7,12 @@
 
 .banner {
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--channel-accent) 24%, #111525), transparent 62%),
-    radial-gradient(circle at 78% 32%, rgb(143 121 217 / 34%), transparent 36%),
-    #111521;
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--channel-accent) 24%, #111525),
+      transparent 62%
+    ),
+    radial-gradient(circle at 78% 32%, rgb(143 121 217 / 34%), transparent 36%), #111521;
   background-position: center;
   background-size: cover;
   border-bottom: 1px solid rgb(255 255 255 / 8%);
@@ -38,7 +41,11 @@
   align-items: center;
   aspect-ratio: 1;
   background:
-    radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--channel-accent) 72%, white), transparent 22%),
+    radial-gradient(
+      circle at 35% 28%,
+      color-mix(in srgb, var(--channel-accent) 72%, white),
+      transparent 22%
+    ),
     linear-gradient(145deg, color-mix(in srgb, var(--channel-accent) 42%, #151a2b), #111521);
   background-position: center;
   background-size: cover;
@@ -217,7 +224,11 @@
 .thumbnail {
   aspect-ratio: 16 / 9;
   background:
-    radial-gradient(circle at 72% 24%, color-mix(in srgb, var(--channel-accent) 30%, transparent), transparent 28%),
+    radial-gradient(
+      circle at 72% 24%,
+      color-mix(in srgb, var(--channel-accent) 30%, transparent),
+      transparent 28%
+    ),
     linear-gradient(145deg, #1b2030, #0f121d);
   background-position: center;
   background-size: cover;

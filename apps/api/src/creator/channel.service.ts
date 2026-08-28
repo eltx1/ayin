@@ -23,8 +23,7 @@ const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
 const MAX_BANNER_BYTES = 10 * 1024 * 1024;
 
 export type ChannelEditActor =
-  | { kind: "owner"; accountId: string }
-  | { kind: "admin"; accountId: string };
+  { kind: "owner"; accountId: string } | { kind: "admin"; accountId: string };
 
 export interface ChannelEditInput {
   name?: string | undefined;
@@ -49,10 +48,7 @@ function normalizeHandle(value: string): string {
 }
 
 function validHandle(value: string): boolean {
-  return (
-    value.length <= 80 &&
-    /^[\p{L}\p{N}](?:[\p{L}\p{N}._-]{0,78}[\p{L}\p{N}])?$/u.test(value)
-  );
+  return value.length <= 80 && /^[\p{L}\p{N}](?:[\p{L}\p{N}._-]{0,78}[\p{L}\p{N}])?$/u.test(value);
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -200,7 +196,10 @@ export class ChannelService {
 
     const name = input.name !== undefined ? input.name.trim().replace(/\s+/g, " ") : undefined;
     if (name !== undefined && (!name || name.length > 120)) {
-      throw new ChannelError("INVALID_CHANNEL_NAME", "Keep the channel name between 1 and 120 characters.");
+      throw new ChannelError(
+        "INVALID_CHANNEL_NAME",
+        "Keep the channel name between 1 and 120 characters.",
+      );
     }
 
     const handle = input.handle !== undefined ? normalizeHandle(input.handle) : undefined;
@@ -281,7 +280,11 @@ export class ChannelService {
     } catch (error) {
       if (error instanceof ChannelError) throw error;
       if (isUniqueConstraintError(error)) {
-        throw new ChannelError("CHANNEL_HANDLE_UNAVAILABLE", "That channel handle is already in use.", 409);
+        throw new ChannelError(
+          "CHANNEL_HANDLE_UNAVAILABLE",
+          "That channel handle is already in use.",
+          409,
+        );
       }
       throw error;
     }
@@ -317,7 +320,9 @@ export class ChannelService {
     if (input.sizeBytes > maxBytes) {
       throw new ChannelError(
         "CHANNEL_IMAGE_TOO_LARGE",
-        input.kind === "avatar" ? "Keep channel avatars under 5 MB." : "Keep channel banners under 10 MB.",
+        input.kind === "avatar"
+          ? "Keep channel avatars under 5 MB."
+          : "Keep channel banners under 10 MB.",
         413,
       );
     }
@@ -415,9 +420,7 @@ export class ChannelService {
           })
         : null;
     const selectedField =
-      asset.kind === "CHANNEL_AVATAR"
-        ? { avatarAssetId: asset.id }
-        : { bannerAssetId: asset.id };
+      asset.kind === "CHANNEL_AVATAR" ? { avatarAssetId: asset.id } : { bannerAssetId: asset.id };
 
     await this.database.client.$transaction([
       this.database.client.mediaAsset.update({
@@ -578,7 +581,11 @@ export class ChannelService {
       select: { id: true },
     });
     if (current && current.id !== channelId) {
-      throw new ChannelError("CHANNEL_HANDLE_UNAVAILABLE", "That channel handle is already in use.", 409);
+      throw new ChannelError(
+        "CHANNEL_HANDLE_UNAVAILABLE",
+        "That channel handle is already in use.",
+        409,
+      );
     }
 
     const redirect = await tx.channelHandleRedirect.findUnique({

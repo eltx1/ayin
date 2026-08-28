@@ -101,7 +101,9 @@ export function ChannelEditor() {
       setChannel({ ...channel, appearance });
       setMessage(kind === "avatar" ? "Channel avatar updated." : "Channel banner updated.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The channel image could not be updated.");
+      setMessage(
+        error instanceof Error ? error.message : "The channel image could not be updated.",
+      );
     } finally {
       setBusy(false);
     }
@@ -153,11 +155,7 @@ export function ChannelEditor() {
         <div className={styles.formGrid}>
           <label>
             <span>Channel name</span>
-            <input
-              maxLength={120}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
+            <input maxLength={120} value={name} onChange={(event) => setName(event.target.value)} />
           </label>
 
           <label>
@@ -229,7 +227,9 @@ export function ChannelEditor() {
         <div className={styles.sectionHeading}>
           <div>
             <h2 id="publishing-defaults">Publishing defaults</h2>
-            <p>AYIN keeps these defaults simple and applies them automatically during Quick Upload.</p>
+            <p>
+              AYIN keeps these defaults simple and applies them automatically during Quick Upload.
+            </p>
           </div>
         </div>
         <dl className={styles.defaults}>
@@ -239,11 +239,19 @@ export function ChannelEditor() {
           </div>
           <div>
             <dt>Comments</dt>
-            <dd>{channel.settings?.defaultCommentsEnabled === false ? "Off by default" : "On by default"}</dd>
+            <dd>
+              {channel.settings?.defaultCommentsEnabled === false
+                ? "Off by default"
+                : "On by default"}
+            </dd>
           </div>
           <div>
             <dt>Creator TV</dt>
-            <dd>{channel.settings?.autoAddPublishedToTv === false ? "Manual inclusion" : "Auto-add eligible uploads"}</dd>
+            <dd>
+              {channel.settings?.autoAddPublishedToTv === false
+                ? "Manual inclusion"
+                : "Auto-add eligible uploads"}
+            </dd>
           </div>
         </dl>
       </section>

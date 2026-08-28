@@ -41,10 +41,7 @@ export default async function PublicChannelPage({
   const initial = data.channel.name.trim().charAt(0).toUpperCase() || "A";
 
   return (
-    <main
-      className={styles.page}
-      style={{ "--channel-accent": accent } as CSSProperties}
-    >
+    <main className={styles.page} style={{ "--channel-accent": accent } as CSSProperties}>
       <div
         className={styles.banner}
         style={bannerUrl ? { backgroundImage: `url("${bannerUrl}")` } : undefined}
@@ -86,7 +83,11 @@ export default async function PublicChannelPage({
         {tabs.map((tab) => (
           <Link
             className={`${styles.tab} ${activeTab === tab.id ? styles.activeTab : ""}`}
-            href={tab.id === "home" ? `/c/${data.channel.handle}` : `/c/${data.channel.handle}?tab=${tab.id}`}
+            href={
+              tab.id === "home"
+                ? `/c/${data.channel.handle}`
+                : `/c/${data.channel.handle}?tab=${tab.id}`
+            }
             key={tab.id}
           >
             {tab.label}
@@ -144,13 +145,7 @@ function CreatorTvSection({ data }: { data: PublicChannelResponse }) {
   );
 }
 
-function VideoSection({
-  data,
-  limit,
-}: {
-  data: PublicChannelResponse;
-  limit?: number;
-}) {
+function VideoSection({ data, limit }: { data: PublicChannelResponse; limit?: number }) {
   const videos = limit ? data.videos.slice(0, limit) : data.videos;
   return (
     <section className={styles.section} aria-labelledby="channel-videos-title">
@@ -185,13 +180,7 @@ function VideoSection({
   );
 }
 
-function PlaylistSection({
-  data,
-  limit,
-}: {
-  data: PublicChannelResponse;
-  limit?: number;
-}) {
+function PlaylistSection({ data, limit }: { data: PublicChannelResponse; limit?: number }) {
   const playlists = limit ? data.playlists.slice(0, limit) : data.playlists;
   return (
     <section className={styles.section} aria-labelledby="channel-playlists-title">

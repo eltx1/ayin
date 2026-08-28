@@ -59,10 +59,7 @@ export class CreatorChannelController {
   constructor(@Inject(ChannelService) private readonly channels: ChannelService) {}
 
   @Get(":channelId")
-  async getChannel(
-    @Req() request: AuthenticatedRequest,
-    @Param("channelId") channelIdRaw: string,
-  ) {
+  async getChannel(@Req() request: AuthenticatedRequest, @Param("channelId") channelIdRaw: string) {
     const channelId = parseId(channelIdSchema, channelIdRaw, "This channel link is invalid.");
     return this.run(() =>
       this.channels.getEditableChannel(
@@ -179,10 +176,7 @@ function channelHttpError(error: unknown): Error {
     );
   }
   if (error instanceof MediaStorageUnavailableError) {
-    return new HttpException(
-      { error: { code: "R2_NOT_CONFIGURED", message: error.message } },
-      503,
-    );
+    return new HttpException({ error: { code: "R2_NOT_CONFIGURED", message: error.message } }, 503);
   }
   return error instanceof Error ? error : new Error("Unexpected channel error.");
 }
