@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { AuthConfig } from "./auth.config.js";
 import { AuthController } from "./auth.controller.js";
 import { AuthGuard } from "./auth.guard.js";
@@ -11,6 +12,7 @@ import { EMAIL_ADAPTER, UnconfiguredEmailAdapter } from "./email.adapter.js";
 import { PasswordService } from "./password.service.js";
 
 @Module({
+  imports: [PlatformConfigModule],
   controllers: [AuthController],
   providers: [
     AuthConfig,
