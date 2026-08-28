@@ -33,21 +33,29 @@ function NavigationLinks({ flags, surface }: { flags: NavigationFlagState; surfa
 
 export function ViewerShell({ children }: ViewerShellProperties) {
   const [flags, setFlags] = useState<NavigationFlagState>({});
+  const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    void fetch(`${apiBaseUrl}/platform/navigation`, {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          return;
-        }
-        setFlags(parseNavigationFlags((await response.json()) as unknown));
+    void Promise.all([
+      fetch(`${apiBaseUrl}/platform/navigation`, {
+        cache: "no-store",
+        signal: controller.signal,
       })
-      .catch(() => undefined);
+        .then(async (response) => {
+          if (!response.ok) return;
+          setFlags(parseNavigationFlags((await response.json()) as unknown));
+        })
+        .catch(() => undefined),
+      fetch(`${apiBaseUrl}/auth/me`, {
+        cache: "no-store",
+        credentials: "include",
+        signal: controller.signal,
+      })
+        .then((response) => setSignedIn(response.ok))
+        .catch(() => undefined),
+    ]);
 
     return () => controller.abort();
   }, []);
@@ -74,11 +82,11 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
         <Link
           className={styles.joinAction}
-          data-tv-focus-id="join-ayin"
+          data-tv-focus-id={signedIn ? "create-upload" : "join-ayin"}
           data-tv-focusable="true"
-          href="/register"
+          href={signedIn ? "/upload" : "/register"}
         >
-          Join AYIN
+          {signedIn ? "Create / Upload" : "Join AYIN"}
         </Link>
       </header>
 
