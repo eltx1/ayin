@@ -1,0 +1,342 @@
+.page {
+  --channel-accent: #63d1cc;
+  margin: 0 auto;
+  max-width: 112rem;
+  padding-bottom: 6rem;
+}
+
+.banner {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--channel-accent) 24%, #111525), transparent 62%),
+    radial-gradient(circle at 78% 32%, rgb(143 121 217 / 34%), transparent 36%),
+    #111521;
+  background-position: center;
+  background-size: cover;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  min-height: clamp(11rem, 27vw, 24rem);
+  position: relative;
+}
+
+.banner::after {
+  background: linear-gradient(180deg, transparent 36%, rgb(5 7 13 / 82%) 100%);
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.identity {
+  align-items: end;
+  display: grid;
+  gap: 1.4rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin: clamp(-4.2rem, -5vw, -3rem) clamp(1rem, 4vw, 4.5rem) 0;
+  position: relative;
+  z-index: 2;
+}
+
+.avatar {
+  align-items: center;
+  aspect-ratio: 1;
+  background:
+    radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--channel-accent) 72%, white), transparent 22%),
+    linear-gradient(145deg, color-mix(in srgb, var(--channel-accent) 42%, #151a2b), #111521);
+  background-position: center;
+  background-size: cover;
+  border: 4px solid #070a12;
+  border-radius: 28%;
+  box-shadow: 0 1.2rem 3rem rgb(0 0 0 / 36%);
+  display: flex;
+  font-size: clamp(1.5rem, 4vw, 3rem);
+  font-weight: 900;
+  justify-content: center;
+  width: clamp(6.5rem, 11vw, 10rem);
+}
+
+.identityCopy {
+  min-width: 0;
+  padding-bottom: 0.65rem;
+}
+
+.identityCopy h1 {
+  font-size: clamp(2rem, 4.3vw, 4.2rem);
+  letter-spacing: -0.05em;
+  margin: 0;
+}
+
+.handle {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 750;
+  margin: 0.35rem 0 0;
+}
+
+.summary {
+  color: #c4cada;
+  line-height: 1.65;
+  margin: 0.8rem 0 0;
+  max-width: 56rem;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  gap: 0.6rem;
+  padding-bottom: 0.85rem;
+}
+
+.subscribe,
+.editAction {
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 850;
+  min-height: 2.75rem;
+  padding: 0.72rem 1.05rem;
+}
+
+.subscribe {
+  background: var(--foreground);
+  border: 0;
+  color: #090b11;
+}
+
+.subscribe:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.editAction {
+  align-items: center;
+  background: rgb(255 255 255 / 8%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  color: var(--foreground);
+  display: inline-flex;
+  text-decoration: none;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 1.8rem clamp(1rem, 4vw, 4.5rem) 0;
+  overflow-x: auto;
+  padding-bottom: 0.65rem;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 0.92rem;
+  font-weight: 800;
+  padding: 0.8rem 0.95rem;
+  text-decoration: none;
+}
+
+.activeTab {
+  border-bottom-color: var(--channel-accent);
+  color: var(--foreground);
+}
+
+.content {
+  display: grid;
+  gap: 2.4rem;
+  margin: 1rem clamp(1rem, 4vw, 4.5rem) 0;
+}
+
+.section {
+  min-width: 0;
+}
+
+.sectionHeading {
+  align-items: end;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.sectionHeading h2 {
+  font-size: clamp(1.35rem, 2.3vw, 2rem);
+  margin: 0;
+}
+
+.sectionHeading p,
+.empty,
+.about p {
+  color: var(--muted);
+}
+
+.tvCard {
+  background:
+    linear-gradient(130deg, color-mix(in srgb, var(--channel-accent) 21%, #101521), #121522 62%),
+    #121522;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 1.3rem;
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  overflow: hidden;
+  padding: clamp(1.2rem, 3vw, 2.4rem);
+}
+
+.tvCard h3 {
+  font-size: clamp(1.4rem, 3vw, 2.35rem);
+  margin: 0.3rem 0;
+}
+
+.tvEyebrow,
+.status {
+  color: var(--channel-accent);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.status {
+  align-self: center;
+  background: rgb(0 0 0 / 18%);
+  border: 1px solid color-mix(in srgb, var(--channel-accent) 32%, transparent);
+  border-radius: 999px;
+  padding: 0.6rem 0.8rem;
+}
+
+.videoGrid {
+  display: grid;
+  gap: clamp(0.9rem, 1.6vw, 1.4rem);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+}
+
+.videoCard {
+  min-width: 0;
+}
+
+.thumbnail {
+  aspect-ratio: 16 / 9;
+  background:
+    radial-gradient(circle at 72% 24%, color-mix(in srgb, var(--channel-accent) 30%, transparent), transparent 28%),
+    linear-gradient(145deg, #1b2030, #0f121d);
+  background-position: center;
+  background-size: cover;
+  border: 1px solid rgb(255 255 255 / 7%);
+  border-radius: 0.9rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.duration {
+  background: rgb(4 6 10 / 86%);
+  border-radius: 0.35rem;
+  bottom: 0.45rem;
+  color: white;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.25rem 0.4rem;
+  position: absolute;
+  right: 0.45rem;
+}
+
+.videoCard h3 {
+  font-size: 1rem;
+  line-height: 1.35;
+  margin: 0.7rem 0 0;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 0.3rem;
+}
+
+.playlistGrid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+
+.playlistCard,
+.about {
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 1rem;
+  padding: 1.2rem;
+}
+
+.playlistCard h3,
+.about h2 {
+  margin: 0;
+}
+
+.playlistCard p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin: 0.45rem 0 0;
+}
+
+.about {
+  max-width: 58rem;
+}
+
+.about p {
+  line-height: 1.75;
+  white-space: pre-wrap;
+}
+
+.about dl {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: max-content 1fr;
+  margin: 1.5rem 0 0;
+}
+
+.about dt {
+  color: var(--muted);
+}
+
+.about dd {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .identity {
+    align-items: start;
+    grid-template-columns: auto 1fr;
+    margin-top: -3.2rem;
+  }
+
+  .avatar {
+    width: 6.4rem;
+  }
+
+  .actions {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+
+  .identityCopy h1 {
+    font-size: clamp(1.8rem, 8vw, 2.7rem);
+  }
+
+  .tvCard {
+    grid-template-columns: 1fr;
+  }
+
+  .status {
+    justify-self: start;
+  }
+}
+
+@media (min-width: 1500px) and (min-height: 800px) {
+  .tab,
+  .subscribe,
+  .editAction {
+    font-size: 1.05rem;
+  }
+
+  .videoGrid {
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  }
+}
