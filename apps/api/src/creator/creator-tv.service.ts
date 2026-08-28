@@ -163,7 +163,7 @@ export class CreatorTvService {
       video: program.item.payload,
       startsAtMs: program.startsAtMs,
       endsAtMs: program.endsAtMs,
-      playbackOffsetMs: program.playbackOffsetMs,
+      playbackOffsetMs: 0,
     }));
     const overrides = await this.loadAdminOverrides(
       tv.id,
@@ -247,13 +247,16 @@ export class CreatorTvService {
         fallbackDurationMs: policy.fallbackDurationMs,
         guideWindowMinutes: policy.guideWindowMs / 60_000,
       },
-      videos: ordered.map((entry) => ({
-        ...entry.payload,
-        included: entry.payloadPreference.included,
-        priority: entry.priority,
-        sortOrder: entry.sortOrder,
-        effectiveDurationMs: entry.durationMs ?? policy.fallbackDurationMs,
-      })),
+      videos: ordered.map((entry) => {
+        const { payloadPreference, ...video } = entry.payload;
+        return {
+          ...video,
+          included: payloadPreference.included,
+          priority: entry.priority,
+          sortOrder: entry.sortOrder,
+          effectiveDurationMs: entry.durationMs ?? policy.fallbackDurationMs,
+        };
+      }),
     };
   }
 
