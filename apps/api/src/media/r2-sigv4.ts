@@ -11,8 +11,9 @@ function hmac(key: Buffer | string, value: string): Buffer {
 }
 
 function encodeRfc3986(value: string): string {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
-    `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
   );
 }
 
@@ -97,12 +98,7 @@ export class R2SigV4 {
       signedHeaders,
       "UNSIGNED-PAYLOAD",
     ].join("\n");
-    const stringToSign = [
-      "AWS4-HMAC-SHA256",
-      amzDate,
-      scope,
-      sha256(canonicalRequest),
-    ].join("\n");
+    const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
     const signature = this.signature(dateStamp, stringToSign);
     const url = new URL(canonicalPath(this.bucket, input.key), this.endpoint);
     url.search = `${query}&X-Amz-Signature=${signature}`;
@@ -140,12 +136,7 @@ export class R2SigV4 {
       signedHeaderNames,
       payloadHash,
     ].join("\n");
-    const stringToSign = [
-      "AWS4-HMAC-SHA256",
-      amzDate,
-      scope,
-      sha256(canonicalRequest),
-    ].join("\n");
+    const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
     const signature = this.signature(dateStamp, stringToSign);
     const authorization =
       `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${scope}, ` +

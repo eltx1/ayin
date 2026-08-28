@@ -90,8 +90,7 @@ export class MediaUploadService {
 
     const assetId = randomUUID();
     const objectKey = `channels/${input.channelId}/media/${assetId}/source.mp4`;
-    const mode =
-      input.sizeBytes >= this.config.multipartThresholdBytes ? "multipart" : "single";
+    const mode = input.sizeBytes >= this.config.multipartThresholdBytes ? "multipart" : "single";
     const expiresAtMs = Date.now() + this.config.uploadUrlTtlSeconds * 1000;
     let uploadId: string | null = null;
 
@@ -115,7 +114,9 @@ export class MediaUploadService {
       });
     } catch (error) {
       if (uploadId) {
-        await this.storage.abortMultipartUpload({ key: objectKey, uploadId }).catch(() => undefined);
+        await this.storage
+          .abortMultipartUpload({ key: objectKey, uploadId })
+          .catch(() => undefined);
       }
       throw error;
     }
@@ -325,7 +326,11 @@ export class MediaUploadService {
       );
     }
     if (session.accountId !== accountId) {
-      throw new MediaUploadError("UPLOAD_NOT_OWNED", "This upload belongs to another account.", 403);
+      throw new MediaUploadError(
+        "UPLOAD_NOT_OWNED",
+        "This upload belongs to another account.",
+        403,
+      );
     }
     await this.assertChannelOwner(accountId, session.channelId);
     const asset = await this.database.client.mediaAsset.findUnique({

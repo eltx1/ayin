@@ -11,7 +11,12 @@ const environmentSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().trim().min(1).optional(),
   R2_REGION: z.string().trim().min(1).default("auto"),
   R2_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
-  R2_PART_SIZE_BYTES: z.coerce.number().int().min(5 * MIB).max(5 * GIB).default(16 * MIB),
+  R2_PART_SIZE_BYTES: z.coerce
+    .number()
+    .int()
+    .min(5 * MIB)
+    .max(5 * GIB)
+    .default(16 * MIB),
   R2_MULTIPART_THRESHOLD_BYTES: z.coerce
     .number()
     .int()

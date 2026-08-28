@@ -25,13 +25,14 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
     };
   }
 
-  const capability = document.createElement("video").canPlayType(
-    'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
-  );
+  const capability = document
+    .createElement("video")
+    .canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
   if (capability === "probably") {
     return {
       status: "compatible",
-      message: "MP4 looks ready for AYIN playback. Exact stream codecs may still require validation.",
+      message:
+        "MP4 looks ready for AYIN playback. Exact stream codecs may still require validation.",
       durationSeconds: metadata.durationSeconds,
     };
   }

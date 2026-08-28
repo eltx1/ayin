@@ -44,7 +44,10 @@ export async function uploadVideoDirectly(input: {
     parts: Array<{ partNumber: number; etag: string; sizeBytes: number }>;
   }>("/media/uploads/sessions/resume", { sessionToken: session.sessionToken });
   const completedParts = new Map(
-    resumed.parts.map((part) => [part.partNumber, { partNumber: part.partNumber, etag: part.etag }]),
+    resumed.parts.map((part) => [
+      part.partNumber,
+      { partNumber: part.partNumber, etag: part.etag },
+    ]),
   );
   let completedBytes = resumed.parts.reduce((total, part) => total + part.sizeBytes, 0);
 

@@ -56,8 +56,8 @@ export function DirectVideoUploader() {
       <p className={styles.eyebrow}>Direct to R2</p>
       <h1 id="direct-upload-title">Choose a playback-ready MP4</h1>
       <p className={styles.copy}>
-        AYIN sends the video straight from your browser to Cloudflare R2. The API never receives
-        the video bytes.
+        AYIN sends the video straight from your browser to Cloudflare R2. The API never receives the
+        video bytes.
       </p>
       <label className={styles.picker}>
         <span>{file ? file.name : "Choose MP4"}</span>

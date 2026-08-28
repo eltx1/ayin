@@ -52,7 +52,8 @@ databaseDescribe("direct creator media upload", () => {
   beforeAll(async () => {
     process.env.APP_ENV = "test";
     process.env.AUTH_TOKEN_SECRET = "task-06-test-auth-secret-with-more-than-32-characters";
-    process.env.UPLOAD_SESSION_SECRET = "task-06-upload-session-secret-with-more-than-32-characters";
+    process.env.UPLOAD_SESSION_SECRET =
+      "task-06-upload-session-secret-with-more-than-32-characters";
     process.env.DATABASE_URL = testDatabaseUrl;
     process.env.WEB_ORIGIN = "http://localhost:3000";
 
@@ -87,9 +88,17 @@ databaseDescribe("direct creator media upload", () => {
   it("requires authentication and channel ownership", async () => {
     const owner = await register("Owner", "owner-upload@example.com");
     const other = await register("Other", "other-upload@example.com");
-    const payload = { channelId: other.user.channel.id, sizeBytes: 70 * 1024 * 1024, mimeType: "video/mp4" };
+    const payload = {
+      channelId: other.user.channel.id,
+      sizeBytes: 70 * 1024 * 1024,
+      mimeType: "video/mp4",
+    };
 
-    const unauthenticated = await app.inject({ method: "POST", url: "/media/uploads/sessions", payload });
+    const unauthenticated = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions",
+      payload,
+    });
     expect(unauthenticated.statusCode).toBe(401);
 
     const wrongOwner = await app.inject({
@@ -108,11 +117,17 @@ databaseDescribe("direct creator media upload", () => {
       method: "POST",
       url: "/media/uploads/sessions",
       headers: { cookie: owner.cookie },
-      payload: { channelId: owner.user.channel.id, sizeBytes: 70 * 1024 * 1024, mimeType: "video/mp4" },
+      payload: {
+        channelId: owner.user.channel.id,
+        sizeBytes: 70 * 1024 * 1024,
+        mimeType: "video/mp4",
+      },
     });
     expect(response.statusCode).toBe(201);
     const body = response.json();
-    expect(body.objectKey).toBe(`channels/${owner.user.channel.id}/media/${body.assetId}/source.mp4`);
+    expect(body.objectKey).toBe(
+      `channels/${owner.user.channel.id}/media/${body.assetId}/source.mp4`,
+    );
     expect(body.objectKey).not.toContain("../");
     expect(body.mode).toBe("multipart");
   });
@@ -132,7 +147,11 @@ databaseDescribe("direct creator media upload", () => {
       method: "POST",
       url: "/media/uploads/sessions",
       headers: { cookie: owner.cookie },
-      payload: { channelId: owner.user.channel.id, sizeBytes: 6 * 1024 * 1024 * 1024, mimeType: "video/mp4" },
+      payload: {
+        channelId: owner.user.channel.id,
+        sizeBytes: 6 * 1024 * 1024 * 1024,
+        mimeType: "video/mp4",
+      },
     });
     expect(tooLarge.statusCode).toBe(413);
     expect(tooLarge.json().error.code).toBe("VIDEO_TOO_LARGE");
@@ -144,7 +163,11 @@ databaseDescribe("direct creator media upload", () => {
       method: "POST",
       url: "/media/uploads/sessions",
       headers: { cookie: owner.cookie },
-      payload: { channelId: owner.user.channel.id, sizeBytes: 70 * 1024 * 1024, mimeType: "video/mp4" },
+      payload: {
+        channelId: owner.user.channel.id,
+        sizeBytes: 70 * 1024 * 1024,
+        mimeType: "video/mp4",
+      },
     });
     const session = created.json();
     const before = await prisma.mediaAsset.findUnique({ where: { id: session.assetId } });

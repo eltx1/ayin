@@ -23,9 +23,7 @@ export type UploadSessionPayload = z.infer<typeof payloadSchema>;
 
 @Injectable()
 export class UploadSessionTokenService {
-  constructor(
-    @Inject(MEDIA_STORAGE_CONFIG) private readonly config: MediaStorageConfig,
-  ) {}
+  constructor(@Inject(MEDIA_STORAGE_CONFIG) private readonly config: MediaStorageConfig) {}
 
   sign(payload: UploadSessionPayload): string {
     const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -43,7 +41,9 @@ export class UploadSessionTokenService {
     if (left.length !== right.length || !timingSafeEqual(left, right)) {
       throw new Error("Upload session is invalid.");
     }
-    const parsed = payloadSchema.parse(JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")));
+    const parsed = payloadSchema.parse(
+      JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")),
+    );
     if (parsed.expiresAtMs <= Date.now()) {
       throw new Error("Upload session expired.");
     }

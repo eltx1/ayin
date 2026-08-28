@@ -82,7 +82,11 @@ export class MediaUploadController {
       );
     }
     return this.run(() =>
-      this.uploads.complete(request.ayinAuth.accountId, parsed.data.sessionToken, parsed.data.parts),
+      this.uploads.complete(
+        request.ayinAuth.accountId,
+        parsed.data.sessionToken,
+        parsed.data.parts,
+      ),
     );
   }
 
@@ -90,7 +94,9 @@ export class MediaUploadController {
   async abort(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     const parsed = sessionSchema.safeParse(body);
     if (!parsed.success) {
-      throw this.httpError(new MediaUploadError("INVALID_ABORT", "This upload could not be stopped."));
+      throw this.httpError(
+        new MediaUploadError("INVALID_ABORT", "This upload could not be stopped."),
+      );
     }
     return this.run(() => this.uploads.abort(request.ayinAuth.accountId, parsed.data.sessionToken));
   }
@@ -105,7 +111,10 @@ export class MediaUploadController {
 
   private httpError(error: unknown): Error {
     if (error instanceof MediaUploadError) {
-      return new HttpException({ error: { code: error.code, message: error.message } }, error.statusCode);
+      return new HttpException(
+        { error: { code: error.code, message: error.message } },
+        error.statusCode,
+      );
     }
     if (error instanceof MediaStorageUnavailableError) {
       return new HttpException(
