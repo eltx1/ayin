@@ -1,0 +1,46 @@
+name: Task 09 lock fix
+
+on:
+  push:
+    branches:
+      - task-09-playlists
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-09-playlists
+      - name: Patch playlist lock implementation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path("apps/api/src/creator/playlist.service.ts")
+          text = service.read_text()
+          old = '''  private async lockPlaylist(tx: Prisma.TransactionClient, playlistId: string): Promise<void> {\n    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${playlistId}))`;\n  }'''
+          new = '''  private async lockPlaylist(tx: Prisma.TransactionClient, playlistId: string): Promise<void> {\n    const rows = await tx.$queryRaw<Array<{ id: string }>>`\n      SELECT "id"::text AS "id"\n      FROM "Playlist"\n      WHERE "id" = ${playlistId}::uuid\n      FOR UPDATE\n    `;\n    if (rows.length !== 1) {\n      throw new PlaylistError("PLAYLIST_NOT_FOUND", "This playlist could not be found.", 404);\n    }\n  }'''
+          if old not in text:
+              raise SystemExit("Expected lockPlaylist implementation not found")
+          service.write_text(text.replace(old, new, 1))
+
+          docs = Path("docs/TASK09_PLAYLISTS.md")
+          text = docs.read_text()
+          old = "Item mutations take a PostgreSQL transaction-scoped advisory lock per playlist, so append/reorder/remove operations serialize for that playlist."
+          new = "Item mutations take a PostgreSQL row-level `FOR UPDATE` lock on the playlist inside the transaction, so append/reorder/remove operations serialize for that playlist."
+          if old not in text:
+              raise SystemExit("Expected ordering documentation not found")
+          docs.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/creator/playlist.service.ts docs/TASK09_PLAYLISTS.md
+          git commit -m "Fix Task 09 playlist transaction locking"
+          git push origin HEAD:task-09-playlists
