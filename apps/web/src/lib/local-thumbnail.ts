@@ -16,10 +16,9 @@ export async function captureLocalThumbnailChoices(file: File): Promise<LocalThu
   video.preload = "auto";
   video.muted = true;
   video.playsInline = true;
-  video.src = videoUrl;
 
   try {
-    await waitForMetadata(video);
+    await waitForMetadata(video, videoUrl);
     if (
       !Number.isFinite(video.duration) ||
       video.duration <= 0 ||
@@ -60,10 +59,11 @@ export function releaseLocalThumbnailChoices(choices: LocalThumbnailChoice[]): v
   }
 }
 
-function waitForMetadata(video: HTMLVideoElement): Promise<void> {
+function waitForMetadata(video: HTMLVideoElement, url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     video.onloadedmetadata = () => resolve();
     video.onerror = () => reject(new Error("Video metadata unavailable."));
+    video.src = url;
   });
 }
 
