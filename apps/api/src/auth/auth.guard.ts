@@ -1,9 +1,9 @@
-import { type CanActivate, type ExecutionContext, Injectable } from "@nestjs/common";
+import { type CanActivate, type ExecutionContext, Inject, Injectable } from "@nestjs/common";
 import type { FastifyRequest } from "fastify";
 
 import { AuthService } from "./auth.service.js";
-import { readSessionToken } from "./session-transport.js";
 import { unauthorized } from "./auth.errors.js";
+import { readSessionToken } from "./session-transport.js";
 
 export interface AuthenticatedRequest extends FastifyRequest {
   ayinAuth: {
@@ -14,7 +14,7 @@ export interface AuthenticatedRequest extends FastifyRequest {
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly authService: AuthService) {}
+  constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<FastifyRequest>();
