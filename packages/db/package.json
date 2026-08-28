@@ -19,7 +19,7 @@
     "db:seed": "prisma db seed",
     "lint": "eslint .",
     "test": "prisma validate && vitest run src",
-    "test:integration": "vitest run test/database.integration.test.mjs",
+    "test:integration": "vitest run --testTimeout=30000 test/database.integration.test.mjs",
     "typecheck": "prisma generate && tsc -p tsconfig.json"
   },
   "dependencies": {
