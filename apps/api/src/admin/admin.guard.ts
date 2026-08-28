@@ -1,4 +1,10 @@
-import { type CanActivate, type ExecutionContext, Inject, Injectable, SetMetadata } from "@nestjs/common";
+import {
+  type CanActivate,
+  type ExecutionContext,
+  Inject,
+  Injectable,
+  SetMetadata,
+} from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -9,7 +15,8 @@ import type { AdminRole } from "./admin.roles.js";
 
 const ADMIN_ROLES_METADATA = "ayin.admin.requiredRoles";
 
-export const RequireAdminRoles = (...roles: AdminRole[]) => SetMetadata(ADMIN_ROLES_METADATA, roles);
+export const RequireAdminRoles = (...roles: AdminRole[]) =>
+  SetMetadata(ADMIN_ROLES_METADATA, roles);
 
 export interface AdminAuthenticatedRequest extends AuthenticatedRequest {
   ayinAdmin: { roles: AdminRole[] };

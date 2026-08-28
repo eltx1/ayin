@@ -139,7 +139,8 @@ export class PlatformSettingsService {
       uploadsPlaylistName: uploadsPlaylistName as string,
       creatorTvNameTemplate: creatorTvNameTemplate as string,
       autoAddPublishedUploadsToCreatorTv: autoAddPublishedUploadsToCreatorTv as boolean,
-      defaultVideoVisibility: defaultVideoVisibility as PlatformProvisioningDefaults["defaultVideoVisibility"],
+      defaultVideoVisibility:
+        defaultVideoVisibility as PlatformProvisioningDefaults["defaultVideoVisibility"],
       defaultCommentsEnabled: defaultCommentsEnabled as boolean,
       defaultCreatorRevenueShareBps: defaultCreatorRevenueShareBps as number,
     };

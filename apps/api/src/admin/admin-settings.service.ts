@@ -36,7 +36,9 @@ export class AdminSettingsService {
       actorRoles,
       sections: platformSettingSections.map((section) => ({
         ...section,
-        settings: resolved.filter((setting) => platformSettingCatalog[setting.key].section === section.id),
+        settings: resolved.filter(
+          (setting) => platformSettingCatalog[setting.key].section === section.id,
+        ),
       })),
     };
   }

@@ -82,7 +82,8 @@ export const platformSettingCatalog = {
     schema: z.boolean(),
     section: "creatorDefaults",
     label: "Auto-add published uploads to Creator TV",
-    description: "Default behavior for new channels. Creator-specific overrides can be added later.",
+    description:
+      "Default behavior for new channels. Creator-specific overrides can be added later.",
     control: "toggle",
     highImpact: false,
     superadminOnly: false,
@@ -133,7 +134,11 @@ export const platformSettingCatalog = {
     key: "uploadMaxSizeBytes",
     valueType: "INTEGER",
     defaultValue: 5 * 1024 * 1024 * 1024,
-    schema: z.number().int().min(100 * 1024 * 1024).max(50 * 1024 * 1024 * 1024),
+    schema: z
+      .number()
+      .int()
+      .min(100 * 1024 * 1024)
+      .max(50 * 1024 * 1024 * 1024),
     section: "uploads",
     label: "Upload max size",
     description: "Maximum source-video upload size in bytes.",
@@ -163,7 +168,8 @@ export const platformSettingCatalog = {
     schema: z.boolean(),
     section: "monetization",
     label: "Default monetization / ad eligibility",
-    description: "Default eligibility for newly created content. Safe bootstrap default is disabled.",
+    description:
+      "Default eligibility for newly created content. Safe bootstrap default is disabled.",
     control: "toggle",
     highImpact: true,
     superadminOnly: false,

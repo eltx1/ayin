@@ -65,7 +65,9 @@ export function AdminSettingsPanel() {
       setDenied(false);
       setDrafts(
         Object.fromEntries(
-          body.sections.flatMap((section) => section.settings.map((setting) => [setting.key, setting.value])),
+          body.sections.flatMap((section) =>
+            section.settings.map((setting) => [setting.key, setting.value]),
+          ),
         ),
       );
     } catch {
@@ -94,16 +96,19 @@ export function AdminSettingsPanel() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/admin/settings/${encodeURIComponent(setting.key)}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          value,
-          confirmHighImpact: setting.highImpact || undefined,
-          reason: setting.highImpact ? "Changed from AYIN Admin platform settings" : undefined,
-        }),
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/admin/settings/${encodeURIComponent(setting.key)}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            value,
+            confirmHighImpact: setting.highImpact || undefined,
+            reason: setting.highImpact ? "Changed from AYIN Admin platform settings" : undefined,
+          }),
+        },
+      );
       if (!response.ok) {
         setError(await readApiError(response));
         return;
@@ -127,7 +132,9 @@ export function AdminSettingsPanel() {
         <section className={styles.denied}>
           <p className={styles.eyebrow}>AYIN Admin</p>
           <h1>Administrator access required</h1>
-          <p>This route does not expose platform settings without server-authorized admin access.</p>
+          <p>
+            This route does not expose platform settings without server-authorized admin access.
+          </p>
           <Link href="/">Return to AYIN</Link>
         </section>
       </main>
@@ -141,7 +148,8 @@ export function AdminSettingsPanel() {
           <p className={styles.eyebrow}>AYIN Admin</p>
           <h1>Platform settings</h1>
           <p className={styles.intro}>
-            Operational defaults are validated by the API. Provider credentials and secrets are never ordinary settings.
+            Operational defaults are validated by the API. Provider credentials and secrets are
+            never ordinary settings.
           </p>
         </div>
         <div className={styles.role}>{data?.actorRoles.join(" · ")}</div>
@@ -166,12 +174,17 @@ export function AdminSettingsPanel() {
                     <div className={styles.copy}>
                       <div className={styles.labelRow}>
                         <h3>{setting.label}</h3>
-                        {setting.highImpact ? <span className={styles.warning}>High impact</span> : null}
-                        {setting.superadminOnly ? <span className={styles.locked}>Superadmin</span> : null}
+                        {setting.highImpact ? (
+                          <span className={styles.warning}>High impact</span>
+                        ) : null}
+                        {setting.superadminOnly ? (
+                          <span className={styles.locked}>Superadmin</span>
+                        ) : null}
                       </div>
                       <p>{setting.description}</p>
                       <small>
-                        {setting.namespace}.{setting.key} · {setting.source === "stored" ? "Saved value" : "Safe default"}
+                        {setting.namespace}.{setting.key} ·{" "}
+                        {setting.source === "stored" ? "Saved value" : "Safe default"}
                       </small>
                     </div>
 
@@ -181,7 +194,10 @@ export function AdminSettingsPanel() {
                           <input
                             checked={Boolean(draft)}
                             onChange={(event) =>
-                              setDrafts((current) => ({ ...current, [setting.key]: event.target.checked }))
+                              setDrafts((current) => ({
+                                ...current,
+                                [setting.key]: event.target.checked,
+                              }))
                             }
                             type="checkbox"
                           />
@@ -191,7 +207,10 @@ export function AdminSettingsPanel() {
                         <select
                           value={String(draft)}
                           onChange={(event) =>
-                            setDrafts((current) => ({ ...current, [setting.key]: event.target.value }))
+                            setDrafts((current) => ({
+                              ...current,
+                              [setting.key]: event.target.value,
+                            }))
                           }
                         >
                           {setting.options?.map((option) => (
@@ -205,7 +224,10 @@ export function AdminSettingsPanel() {
                           rows={3}
                           value={String(draft)}
                           onChange={(event) =>
-                            setDrafts((current) => ({ ...current, [setting.key]: event.target.value }))
+                            setDrafts((current) => ({
+                              ...current,
+                              [setting.key]: event.target.value,
+                            }))
                           }
                         />
                       ) : (

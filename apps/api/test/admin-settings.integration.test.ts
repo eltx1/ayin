@@ -157,8 +157,9 @@ databaseDescribe("Task 04 platform settings and admin authorization", () => {
     expect(response.statusCode).toBe(200);
     const settings = response
       .json()
-      .sections.flatMap((section: { settings: Array<{ key: string; source: string; value: unknown }> }) =>
-        section.settings,
+      .sections.flatMap(
+        (section: { settings: Array<{ key: string; source: string; value: unknown }> }) =>
+          section.settings,
       );
     expect(settings).toEqual(
       expect.arrayContaining([

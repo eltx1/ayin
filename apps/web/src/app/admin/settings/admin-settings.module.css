@@ -2,8 +2,7 @@
   min-height: 100vh;
   padding: 48px clamp(20px, 5vw, 72px) 80px;
   background:
-    radial-gradient(circle at top left, rgba(47, 93, 255, 0.18), transparent 34%),
-    #080a0f;
+    radial-gradient(circle at top left, rgba(47, 93, 255, 0.18), transparent 34%), #080a0f;
   color: #f7f8fb;
 }
 

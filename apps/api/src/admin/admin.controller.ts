@@ -57,7 +57,12 @@ export class AdminController {
         parsed.error.issues[0]?.message ?? "The setting update is invalid.",
       );
     }
-    return this.settings.update(request.ayinAuth.accountId, request.ayinAdmin.roles, key, parsed.data);
+    return this.settings.update(
+      request.ayinAuth.accountId,
+      request.ayinAdmin.roles,
+      key,
+      parsed.data,
+    );
   }
 
   @Get("feature-flags")
@@ -87,7 +92,10 @@ export class AdminController {
         return flag;
       });
     } catch (error) {
-      if (error instanceof z.ZodError || (error instanceof Error && error.message.includes("Feature flag key"))) {
+      if (
+        error instanceof z.ZodError ||
+        (error instanceof Error && error.message.includes("Feature flag key"))
+      ) {
         throw adminBadRequest("INVALID_FEATURE_FLAG", "The feature flag update is invalid.");
       }
       throw error;

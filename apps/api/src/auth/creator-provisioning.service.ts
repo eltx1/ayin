@@ -138,7 +138,10 @@ export class CreatorProvisioningService {
     const tvSlug = existingTv
       ? undefined
       : await this.generateTvSlug(tx, handle, input.accountId, ids.tv);
-    const creatorTvName = defaults.creatorTvNameTemplate.replaceAll("{channelName}", input.displayName);
+    const creatorTvName = defaults.creatorTvNameTemplate.replaceAll(
+      "{channelName}",
+      input.displayName,
+    );
 
     const creatorTv = await tx.creatorTvChannel.upsert({
       where: { id: ids.tv },
