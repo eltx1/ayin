@@ -49,11 +49,12 @@ interface SessionResult {
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly database: DatabaseService,
-    private readonly passwordService: PasswordService,
-    private readonly tokenService: AuthTokenService,
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(PasswordService) private readonly passwordService: PasswordService,
+    @Inject(AuthTokenService) private readonly tokenService: AuthTokenService,
+    @Inject(CreatorProvisioningService)
     private readonly provisioning: CreatorProvisioningService,
-    private readonly config: AuthConfig,
+    @Inject(AuthConfig) private readonly config: AuthConfig,
     @Inject(EMAIL_ADAPTER) private readonly emailAdapter: EmailAdapter,
   ) {}
 
