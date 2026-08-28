@@ -1,14 +1,18 @@
-name: Database quality gates
+name: Task quality gates
 
 on:
   push:
     paths:
+      - "apps/api/**"
+      - "apps/web/**"
       - "packages/db/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/database.yml"
   pull_request:
     paths:
+      - "apps/api/**"
+      - "apps/web/**"
       - "packages/db/**"
       - "package.json"
       - "pnpm-lock.yaml"
@@ -36,6 +40,10 @@ jobs:
           --health-retries 5
 
     env:
+      APP_ENV: test
+      AUTH_TOKEN_SECRET: task-03-ci-auth-secret-with-more-than-32-characters
+      CORS_ORIGIN: http://localhost:3000
+      WEB_ORIGIN: http://localhost:3000
       DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
       TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
 
@@ -68,7 +76,7 @@ jobs:
       - name: Run unit and schema tests
         run: pnpm test
 
-      - name: Apply clean migrations and database integration tests
+      - name: Apply clean migrations and integration tests
         run: pnpm test:integration
 
       - name: Build production packages and applications

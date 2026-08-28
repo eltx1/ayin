@@ -1,0 +1,135 @@
+.shell {
+  align-items: center;
+  background:
+    radial-gradient(circle at 15% 15%, rgb(42 68 130 / 38%), transparent 34%),
+    radial-gradient(circle at 85% 78%, rgb(215 174 86 / 12%), transparent 30%), var(--background);
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 5rem 1.25rem 2rem;
+  position: relative;
+}
+
+.brand {
+  color: var(--foreground);
+  font-size: 1.3rem;
+  font-weight: 800;
+  left: clamp(1.25rem, 4vw, 3rem);
+  letter-spacing: 0.2em;
+  position: absolute;
+  text-decoration: none;
+  top: 1.75rem;
+}
+
+.card {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 1.5rem;
+  box-shadow: 0 2rem 6rem rgb(0 0 0 / 35%);
+  max-width: 29rem;
+  padding: clamp(1.75rem, 5vw, 3rem);
+  width: 100%;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  margin: 0 0 0.8rem;
+  text-transform: uppercase;
+}
+
+.card h1 {
+  font-size: clamp(2rem, 7vw, 3rem);
+  letter-spacing: -0.045em;
+  line-height: 1;
+  margin: 0;
+}
+
+.intro {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 1rem 0 1.7rem;
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+}
+
+.form label {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.form label span {
+  color: #dfe3ef;
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.form input {
+  background: rgb(4 7 14 / 70%);
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 0.8rem;
+  color: var(--foreground);
+  font: inherit;
+  min-height: 3.2rem;
+  outline: none;
+  padding: 0 0.95rem;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+  width: 100%;
+}
+
+.form input:focus {
+  border-color: rgb(215 174 86 / 75%);
+  box-shadow: 0 0 0 3px rgb(215 174 86 / 10%);
+}
+
+.form input::placeholder {
+  color: #737b91;
+}
+
+.primary {
+  background: var(--accent);
+  border: 0;
+  border-radius: 0.8rem;
+  color: #101118;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  margin-top: 0.25rem;
+  min-height: 3.25rem;
+  padding: 0 1rem;
+}
+
+.primary:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.error {
+  background: rgb(157 45 57 / 17%);
+  border: 1px solid rgb(244 110 123 / 28%);
+  border-radius: 0.75rem;
+  color: #ffc4ca;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+}
+
+.switcher {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 1.4rem 0 0;
+  text-align: center;
+}
+
+.switcher a {
+  color: var(--foreground);
+  font-weight: 700;
+}
