@@ -3,11 +3,23 @@ import { createHash } from "node:crypto";
 import type { Prisma } from "@ayin/db";
 import { Injectable } from "@nestjs/common";
 
+import type { PlatformProvisioningDefaults } from "../platform-config/platform-settings.service.js";
+
 export class ProvisioningConflictError extends Error {}
+
+const fallbackProvisioningDefaults: PlatformProvisioningDefaults = {
+  uploadsPlaylistName: "Uploads",
+  creatorTvNameTemplate: "{channelName} TV",
+  autoAddPublishedUploadsToCreatorTv: true,
+  defaultVideoVisibility: "PUBLIC",
+  defaultCommentsEnabled: true,
+  defaultCreatorRevenueShareBps: 0,
+};
 
 export interface CreatorProvisioningInput {
   accountId: string;
   displayName: string;
+  defaults?: PlatformProvisioningDefaults;
 }
 
 function stableUuid(accountId: string, namespace: string): string {
@@ -39,6 +51,7 @@ function accountSuffix(accountId: string): string {
 @Injectable()
 export class CreatorProvisioningService {
   async provision(tx: Prisma.TransactionClient, input: CreatorProvisioningInput) {
+    const defaults = input.defaults ?? fallbackProvisioningDefaults;
     const ids = {
       profile: stableUuid(input.accountId, "default-viewer-profile"),
       channel: stableUuid(input.accountId, "default-channel"),
@@ -97,6 +110,10 @@ export class CreatorProvisioningService {
       create: {
         id: ids.settings,
         channelId: channel.id,
+        defaultVideoVisibility: defaults.defaultVideoVisibility,
+        defaultCommentsEnabled: defaults.defaultCommentsEnabled,
+        autoAddPublishedToUploads: true,
+        autoAddPublishedToTv: defaults.autoAddPublishedUploadsToCreatorTv,
       },
     });
 
@@ -107,7 +124,7 @@ export class CreatorProvisioningService {
         id: ids.playlist,
         channelId: channel.id,
         slug: "uploads",
-        name: "Uploads",
+        name: defaults.uploadsPlaylistName,
         systemKey: "UPLOADS",
         isProtected: true,
         isPublic: true,
@@ -121,6 +138,7 @@ export class CreatorProvisioningService {
     const tvSlug = existingTv
       ? undefined
       : await this.generateTvSlug(tx, handle, input.accountId, ids.tv);
+    const creatorTvName = defaults.creatorTvNameTemplate.replaceAll("{channelName}", input.displayName);
 
     const creatorTv = await tx.creatorTvChannel.upsert({
       where: { id: ids.tv },
@@ -130,7 +148,7 @@ export class CreatorProvisioningService {
         channelId: channel.id,
         sourcePlaylistId: uploadsPlaylist.id,
         slug: tvSlug ?? `${handle}-tv`,
-        name: `${input.displayName} TV`,
+        name: creatorTvName,
         status: "ACTIVE",
       },
     });
@@ -149,6 +167,7 @@ export class CreatorProvisioningService {
         id: ids.contract,
         channelId: channel.id,
         status: "PENDING",
+        revenueShareBps: defaults.defaultCreatorRevenueShareBps,
       },
     });
 

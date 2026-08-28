@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { AuthConfig } from "./auth.config.js";
 import { AuthHttpError, conflict, isUniqueConstraintError, unauthorized } from "./auth.errors.js";
 import { AuthTokenService } from "./auth-token.service.js";
@@ -56,9 +57,27 @@ export class AuthService {
     private readonly provisioning: CreatorProvisioningService,
     @Inject(AuthConfig) private readonly config: AuthConfig,
     @Inject(EMAIL_ADAPTER) private readonly emailAdapter: EmailAdapter,
+    @Inject(PlatformSettingsService) private readonly platformSettings: PlatformSettingsService,
   ) {}
 
   async register(input: RegisterInput): Promise<SessionResult> {
+    const registrationPolicy = await this.platformSettings.getRegistrationPolicy();
+    if (!registrationPolicy.registrationEnabled) {
+      throw new AuthHttpError(
+        503,
+        "REGISTRATION_DISABLED",
+        "New AYIN registration is temporarily unavailable.",
+      );
+    }
+    if (!registrationPolicy.automaticCreatorProvisioningEnabled) {
+      throw new AuthHttpError(
+        503,
+        "CREATOR_PROVISIONING_DISABLED",
+        "New AYIN registration is temporarily unavailable while creator provisioning is paused.",
+      );
+    }
+
+    const provisioningDefaults = await this.platformSettings.getProvisioningDefaults();
     const email = normalizeEmail(input.email);
     const displayName = input.name.trim();
     const passwordHash = await this.passwordService.hash(input.password);
@@ -82,6 +101,7 @@ export class AuthService {
         const provisioned = await this.provisioning.provision(tx, {
           accountId: account.id,
           displayName,
+          defaults: provisioningDefaults,
         });
 
         return { account, provisioned };
