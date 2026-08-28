@@ -206,7 +206,9 @@ databaseDescribe("creator quick upload and publish", () => {
     expect(items).toHaveLength(1);
     const tv = await prisma.creatorTvChannel.findUnique({ where: { id: owner.user.creatorTv.id } });
     expect(tv?.sourcePlaylistId).toBe(uploads!.id);
-    const rights = await prisma.contentRightsDeclaration.findMany({ where: { videoId: draft.video.id } });
+    const rights = await prisma.contentRightsDeclaration.findMany({
+      where: { videoId: draft.video.id },
+    });
     expect(rights).toHaveLength(1);
   });
 });

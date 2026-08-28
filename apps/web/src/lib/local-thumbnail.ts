@@ -20,12 +20,20 @@ export async function captureLocalThumbnailChoices(file: File): Promise<LocalThu
 
   try {
     await waitForMetadata(video);
-    if (!Number.isFinite(video.duration) || video.duration <= 0 || !video.videoWidth || !video.videoHeight) {
+    if (
+      !Number.isFinite(video.duration) ||
+      video.duration <= 0 ||
+      !video.videoWidth ||
+      !video.videoHeight
+    ) {
       return [];
     }
     const choices: LocalThumbnailChoice[] = [];
     for (const [index, fraction] of frameFractions.entries()) {
-      const target = Math.min(Math.max(0, video.duration * fraction), Math.max(0, video.duration - 0.05));
+      const target = Math.min(
+        Math.max(0, video.duration * fraction),
+        Math.max(0, video.duration - 0.05),
+      );
       await seekVideo(video, target);
       const blob = await frameBlob(video);
       if (!blob) continue;

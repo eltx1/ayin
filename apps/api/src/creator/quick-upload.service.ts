@@ -313,7 +313,8 @@ export class QuickUploadService {
           });
           creatorTvAssociated = true;
         } else {
-          creatorTvAssociated = video.channel.primaryTvChannel.sourcePlaylistId === uploadsPlaylist.id;
+          creatorTvAssociated =
+            video.channel.primaryTvChannel.sourcePlaylistId === uploadsPlaylist.id;
         }
       }
 
@@ -363,7 +364,10 @@ export class QuickUploadService {
       );
     }
     if (!Number.isSafeInteger(input.sizeBytes) || input.sizeBytes <= 0) {
-      throw new QuickUploadError("INVALID_THUMBNAIL_SIZE", "This thumbnail size could not be read.");
+      throw new QuickUploadError(
+        "INVALID_THUMBNAIL_SIZE",
+        "This thumbnail size could not be read.",
+      );
     }
     if (input.sizeBytes > MAX_THUMBNAIL_BYTES) {
       throw new QuickUploadError("THUMBNAIL_TOO_LARGE", "Keep thumbnails under 5 MB.", 413);
@@ -421,7 +425,11 @@ export class QuickUploadService {
       select: { id: true, r2ObjectKey: true, sizeBytes: true, mimeType: true },
     });
     if (!asset) {
-      throw new QuickUploadError("THUMBNAIL_NOT_FOUND", "This thumbnail upload is no longer active.", 404);
+      throw new QuickUploadError(
+        "THUMBNAIL_NOT_FOUND",
+        "This thumbnail upload is no longer active.",
+        404,
+      );
     }
     const object = await this.storage.headObject(asset.r2ObjectKey).catch(() => null);
     if (

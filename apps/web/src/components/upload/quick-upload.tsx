@@ -190,9 +190,7 @@ export function QuickUpload() {
       description: description.trim() || null,
       visibility,
       commentsEnabled,
-      scheduledPublishAt: scheduledPublishAt
-        ? new Date(scheduledPublishAt).toISOString()
-        : null,
+      scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt).toISOString() : null,
     };
   }
 
@@ -295,7 +293,11 @@ export function QuickUpload() {
                   <div className={styles.thumbnailGrid}>
                     {thumbnailChoices.map((choice) => (
                       <button
-                        className={selectedThumbnailId === choice.id ? styles.thumbnailSelected : styles.thumbnail}
+                        className={
+                          selectedThumbnailId === choice.id
+                            ? styles.thumbnailSelected
+                            : styles.thumbnail
+                        }
                         key={choice.id}
                         type="button"
                         onClick={() => void chooseCapturedThumbnail(choice)}
@@ -312,19 +314,23 @@ export function QuickUpload() {
                   </p>
                 )}
                 <label className={styles.customThumbnail}>
-                  <span>{selectedThumbnailId === "custom" ? "Custom thumbnail saved" : "Choose JPG/PNG"}</span>
+                  <span>
+                    {selectedThumbnailId === "custom" ? "Custom thumbnail saved" : "Choose JPG/PNG"}
+                  </span>
                   <input
                     type="file"
                     accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-                    onChange={(event) => void chooseCustomThumbnail(event.target.files?.[0] ?? null)}
+                    onChange={(event) =>
+                      void chooseCustomThumbnail(event.target.files?.[0] ?? null)
+                    }
                   />
                 </label>
               </div>
 
               <p className={`${styles.hint} ${styles.fullWidth}`}>
                 Tags/category, language, captions, chapters, maturity, geo restrictions and ad-break
-                preferences stay out of the simple flow until their dedicated schema capabilities are
-                available. They never block publishing.
+                preferences stay out of the simple flow until their dedicated schema capabilities
+                are available. They never block publishing.
               </p>
             </div>
           </details>

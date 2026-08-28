@@ -63,10 +63,7 @@ export class QuickUploadController {
   }
 
   @Post(":videoId/upload-complete")
-  async confirmUpload(
-    @Req() request: AuthenticatedRequest,
-    @Param("videoId") videoIdRaw: string,
-  ) {
+  async confirmUpload(@Req() request: AuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
     const videoId = this.videoId(videoIdRaw);
     return this.run(() => this.quickUpload.confirmUpload(request.ayinAuth.accountId, videoId));
   }
@@ -80,7 +77,9 @@ export class QuickUploadController {
     const videoId = this.videoId(videoIdRaw);
     const parsed = detailsSchema.safeParse(body);
     if (!parsed.success) {
-      throw this.httpError(new QuickUploadError("INVALID_VIDEO_DETAILS", "Check the video details and try again."));
+      throw this.httpError(
+        new QuickUploadError("INVALID_VIDEO_DETAILS", "Check the video details and try again."),
+      );
     }
     return this.run(() =>
       this.quickUpload.updateDetails(
@@ -100,7 +99,9 @@ export class QuickUploadController {
     const videoId = this.videoId(videoIdRaw);
     const parsed = publishSchema.safeParse(body);
     if (!parsed.success) {
-      throw this.httpError(new QuickUploadError("INVALID_PUBLISH_REQUEST", "Check the publish details and try again."));
+      throw this.httpError(
+        new QuickUploadError("INVALID_PUBLISH_REQUEST", "Check the publish details and try again."),
+      );
     }
     const { rightsConfirmed, ...details } = parsed.data;
     return this.run(() =>
@@ -141,15 +142,14 @@ export class QuickUploadController {
     const parsed = thumbnailCompleteSchema.safeParse(body);
     if (!parsed.success) {
       throw this.httpError(
-        new QuickUploadError("INVALID_THUMBNAIL_COMPLETION", "This thumbnail could not be completed."),
+        new QuickUploadError(
+          "INVALID_THUMBNAIL_COMPLETION",
+          "This thumbnail could not be completed.",
+        ),
       );
     }
     return this.run(() =>
-      this.quickUpload.completeThumbnail(
-        request.ayinAuth.accountId,
-        videoId,
-        parsed.data.assetId,
-      ),
+      this.quickUpload.completeThumbnail(request.ayinAuth.accountId, videoId, parsed.data.assetId),
     );
   }
 
