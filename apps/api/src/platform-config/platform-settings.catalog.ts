@@ -54,6 +54,20 @@ export const platformSettingCatalog = {
     highImpact: false,
     superadminOnly: false,
   },
+  allowCreatorUploadsPlaylistRename: {
+    namespace: "CREATOR",
+    key: "allowCreatorUploadsPlaylistRename",
+    valueType: "BOOLEAN",
+    defaultValue: true,
+    schema: z.boolean(),
+    section: "creatorDefaults",
+    label: "Creators can rename Uploads",
+    description:
+      "Allow channel owners to rename the protected Uploads playlist while AYIN keeps its system identity and automatic membership behavior.",
+    control: "toggle",
+    highImpact: false,
+    superadminOnly: false,
+  },
   creatorTvNameTemplate: {
     namespace: "TV",
     key: "creatorTvNameTemplate",

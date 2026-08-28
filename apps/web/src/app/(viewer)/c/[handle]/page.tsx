@@ -190,13 +190,17 @@ function PlaylistSection({ data, limit }: { data: PublicChannelResponse; limit?:
       {playlists.length > 0 ? (
         <div className={styles.playlistGrid}>
           {playlists.map((playlist) => (
-            <article className={styles.playlistCard} key={playlist.id}>
+            <Link
+              className={styles.playlistCard}
+              href={`/c/${data.channel.handle}/playlists/${playlist.slug}`}
+              key={playlist.id}
+            >
               <h3>{playlist.name}</h3>
               <p>{playlist.description || "A public collection from this channel."}</p>
               <p className={styles.meta}>
                 {playlist.itemCount} {playlist.itemCount === 1 ? "video" : "videos"}
               </p>
-            </article>
+            </Link>
           ))}
         </div>
       ) : (
