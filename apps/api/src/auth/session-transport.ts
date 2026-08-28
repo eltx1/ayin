@@ -1,6 +1,6 @@
 import type { FastifyRequest } from "fastify";
 
-import { AuthConfig } from "./auth.config.js";
+import type { AuthConfig } from "./auth.config.js";
 
 export const sessionCookieName = "ayin_session";
 
