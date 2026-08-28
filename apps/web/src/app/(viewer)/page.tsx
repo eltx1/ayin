@@ -51,7 +51,12 @@ export default async function Home({ searchParams }: HomeProperties) {
           <SessionPanel showWelcome={params.welcome === "1"} />
         </section>
 
-        <ContentRow anchorId="trending" eyebrow="Discovery" rowId="trending" title="Trending Worldwide">
+        <ContentRow
+          anchorId="trending"
+          eyebrow="Discovery"
+          rowId="trending"
+          title="Trending Worldwide"
+        >
           {cards("landscape", "trending")}
         </ContentRow>
 

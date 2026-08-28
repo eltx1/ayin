@@ -23,7 +23,8 @@ const sectionCopy = {
   },
   shorts: {
     title: "Shorts / Clips",
-    description: "Fast, lightweight discovery will arrive here without complicating long-form viewing.",
+    description:
+      "Fast, lightweight discovery will arrive here without complicating long-form viewing.",
   },
   kids: {
     title: "Kids",

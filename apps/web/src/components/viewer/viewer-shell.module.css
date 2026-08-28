@@ -2,8 +2,7 @@
   --shell-gutter: clamp(1rem, 3.5vw, 4rem);
   background:
     radial-gradient(circle at 82% 4%, rgb(98 83 186 / 16%), transparent 30rem),
-    radial-gradient(circle at 12% 36%, rgb(38 126 139 / 10%), transparent 26rem),
-    var(--background);
+    radial-gradient(circle at 12% 36%, rgb(38 126 139 / 10%), transparent 26rem), var(--background);
   min-height: 100dvh;
 }
 

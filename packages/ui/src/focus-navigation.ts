@@ -54,7 +54,12 @@ function rankCandidate(
   }
 
   const aligned = horizontal
-    ? intervalOverlaps(current.rect.top, current.rect.bottom, candidate.rect.top, candidate.rect.bottom)
+    ? intervalOverlaps(
+        current.rect.top,
+        current.rect.bottom,
+        candidate.rect.top,
+        candidate.rect.bottom,
+      )
     : intervalOverlaps(
         current.rect.left,
         current.rect.right,

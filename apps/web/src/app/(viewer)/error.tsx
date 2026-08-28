@@ -6,7 +6,12 @@ export default function ViewerError({ reset }: { reset: () => void }) {
   return (
     <ErrorState
       action={
-        <button data-tv-focus-id="error-retry" data-tv-focusable="true" onClick={reset} type="button">
+        <button
+          data-tv-focus-id="error-retry"
+          data-tv-focusable="true"
+          onClick={reset}
+          type="button"
+        >
           Try again
         </button>
       }
