@@ -79,6 +79,8 @@ Public web page:
 
 - `/c/:handle/tv`
 
+The Creator TV card on the public channel surface links directly to this page.
+
 It uses the existing playback-ready R2 MP4 object, native browser video controls, muted autoplay, a best-effort seek to the wall-clock offset, and schedule refresh on program completion so playback continues through scheduled content.
 
 ### V1 synchronization limitation
