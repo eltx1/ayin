@@ -15,11 +15,7 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
-import {
-  PlaylistError,
-  PlaylistService,
-  type PlaylistUpdateInput,
-} from "./playlist.service.js";
+import { PlaylistError, PlaylistService, type PlaylistUpdateInput } from "./playlist.service.js";
 
 const uuidSchema = z.string().uuid();
 const visibilitySchema = z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]);
@@ -116,7 +112,9 @@ export class CreatorPlaylistController {
   @Delete(":playlistId")
   async remove(@Req() request: AuthenticatedRequest, @Param("playlistId") playlistIdRaw: string) {
     const playlistId = parseUuid(playlistIdRaw, "This playlist link is invalid.");
-    return runPlaylistOperation(() => this.playlists.deletePlaylist(ownerActor(request), playlistId));
+    return runPlaylistOperation(() =>
+      this.playlists.deletePlaylist(ownerActor(request), playlistId),
+    );
   }
 
   @Post(":playlistId/items")

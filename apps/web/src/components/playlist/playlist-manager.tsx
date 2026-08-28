@@ -74,7 +74,10 @@ export function PlaylistManager() {
           </p>
         </div>
         {identity ? (
-          <Link className={styles.secondaryAction} href={`/c/${identity.channel.handle}?tab=playlists`}>
+          <Link
+            className={styles.secondaryAction}
+            href={`/c/${identity.channel.handle}?tab=playlists`}
+          >
             View channel playlists
           </Link>
         ) : null}
@@ -106,7 +109,11 @@ export function PlaylistManager() {
               <option value="PRIVATE">Private</option>
             </select>
           </label>
-          <button disabled={!identity || !name.trim() || busy} type="button" onClick={createPlaylist}>
+          <button
+            disabled={!identity || !name.trim() || busy}
+            type="button"
+            onClick={createPlaylist}
+          >
             Create playlist
           </button>
         </div>
@@ -135,7 +142,9 @@ export function PlaylistManager() {
                 <div className={styles.cardActions}>
                   <Link href={`/channel/playlists/${playlist.id}`}>Manage</Link>
                   {identity && playlist.visibility !== "PRIVATE" ? (
-                    <Link href={`/c/${identity.channel.handle}/playlists/${playlist.slug}`}>Preview</Link>
+                    <Link href={`/c/${identity.channel.handle}/playlists/${playlist.slug}`}>
+                      Preview
+                    </Link>
                   ) : null}
                 </div>
               </article>

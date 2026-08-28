@@ -61,7 +61,9 @@ export default async function PublicPlaylistPage({
                     style={thumbnail ? { backgroundImage: `url("${thumbnail}")` } : undefined}
                   >
                     {item.video.durationMs ? (
-                      <span className={styles.duration}>{formatDuration(item.video.durationMs)}</span>
+                      <span className={styles.duration}>
+                        {formatDuration(item.video.durationMs)}
+                      </span>
                     ) : null}
                   </div>
                   <h3>{item.video.title}</h3>

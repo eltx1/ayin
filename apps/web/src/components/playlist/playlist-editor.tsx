@@ -49,7 +49,9 @@ export function PlaylistEditor({ playlistId }: { playlistId: string }) {
       await load();
       setMessage(success);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The playlist change could not be saved.");
+      setMessage(
+        error instanceof Error ? error.message : "The playlist change could not be saved.",
+      );
     } finally {
       setBusy(false);
     }
@@ -57,9 +59,10 @@ export function PlaylistEditor({ playlistId }: { playlistId: string }) {
 
   async function save() {
     if (!data) return;
-    const update: { name?: string; description?: string | null; visibility?: PlaylistVisibility } = {
-      description: description.trim() || null,
-    };
+    const update: { name?: string; description?: string | null; visibility?: PlaylistVisibility } =
+      {
+        description: description.trim() || null,
+      };
     if (data.playlist.capabilities.canRename) update.name = name.trim();
     if (data.playlist.capabilities.canChangeVisibility) update.visibility = visibility;
     await run(() => updateCreatorPlaylist(playlistId, update), "Playlist saved.");
@@ -84,10 +87,7 @@ export function PlaylistEditor({ playlistId }: { playlistId: string }) {
     if (index < 0 || target < 0 || target >= itemIds.length) return;
     const reordered = [...itemIds];
     [reordered[index], reordered[target]] = [reordered[target]!, reordered[index]!];
-    await run(
-      () => reorderCreatorPlaylistItems(playlistId, reordered),
-      "Playlist order updated.",
-    );
+    await run(() => reorderCreatorPlaylistItems(playlistId, reordered), "Playlist order updated.");
   }
 
   if (deleted) {
@@ -179,7 +179,12 @@ export function PlaylistEditor({ playlistId }: { playlistId: string }) {
             Save changes
           </button>
           {data.playlist.capabilities.canDelete ? (
-            <button className={styles.dangerButton} disabled={busy} type="button" onClick={removePlaylist}>
+            <button
+              className={styles.dangerButton}
+              disabled={busy}
+              type="button"
+              onClick={removePlaylist}
+            >
               Delete playlist
             </button>
           ) : null}
@@ -205,7 +210,11 @@ export function PlaylistEditor({ playlistId }: { playlistId: string }) {
                 </div>
                 {data.playlist.capabilities.canEditItems ? (
                   <div className={styles.itemActions}>
-                    <button disabled={busy || index === 0} type="button" onClick={() => void move(item.id, -1)}>
+                    <button
+                      disabled={busy || index === 0}
+                      type="button"
+                      onClick={() => void move(item.id, -1)}
+                    >
                       Up
                     </button>
                     <button
@@ -237,7 +246,8 @@ export function PlaylistEditor({ playlistId }: { playlistId: string }) {
         )}
         {!data.playlist.capabilities.canEditItems ? (
           <p className={styles.systemNote}>
-            Uploads is filled automatically at publish time. Manual remove/reorder controls are intentionally disabled.
+            Uploads is filled automatically at publish time. Manual remove/reorder controls are
+            intentionally disabled.
           </p>
         ) : null}
       </section>

@@ -100,9 +100,9 @@ databaseDescribe("Task 09 playlist product", () => {
       headers: { cookie: owner.cookie },
     });
     expect(listed.statusCode).toBe(200);
-    const uploads = listed.json().playlists.find(
-      (playlist: { systemKey: string | null }) => playlist.systemKey === "UPLOADS",
-    );
+    const uploads = listed
+      .json()
+      .playlists.find((playlist: { systemKey: string | null }) => playlist.systemKey === "UPLOADS");
     expect(uploads).toBeTruthy();
     expect(uploads.capabilities.canDelete).toBe(false);
     expect(uploads.capabilities.canEditItems).toBe(false);
@@ -148,11 +148,9 @@ databaseDescribe("Task 09 playlist product", () => {
       data: { accountId: admin.user.account.id, role: "ADMIN" },
     });
     const service = moduleReference.get(PlaylistService);
-    await service.updatePlaylist(
-      { kind: "admin", accountId: admin.user.account.id },
-      uploads.id,
-      { name: "Admin Library" },
-    );
+    await service.updatePlaylist({ kind: "admin", accountId: admin.user.account.id }, uploads.id, {
+      name: "Admin Library",
+    });
     const renamed = await prisma.playlist.findUnique({ where: { id: uploads.id } });
     expect(renamed?.name).toBe("Admin Library");
     expect(await prisma.adminAuditLog.count({ where: { entityId: uploads.id } })).toBe(1);
@@ -325,7 +323,11 @@ databaseDescribe("Task 09 playlist product", () => {
       url: `/public/channels/${owner.user.channel.handle}/playlists/${publicPlaylist.slug}`,
     });
     expect(publicPage.statusCode).toBe(200);
-    expect(publicPage.json().items.some((item: { video: { title: string } }) => item.video.title === "Private Video")).toBe(false);
+    expect(
+      publicPage
+        .json()
+        .items.some((item: { video: { title: string } }) => item.video.title === "Private Video"),
+    ).toBe(false);
 
     const unlistedPage = await app.inject({
       method: "GET",

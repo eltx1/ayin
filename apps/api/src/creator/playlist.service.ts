@@ -8,8 +8,7 @@ import { PlatformSettingsService } from "../platform-config/platform-settings.se
 
 export type PlaylistVisibilityValue = "PUBLIC" | "UNLISTED" | "PRIVATE";
 export type PlaylistEditActor =
-  | { kind: "owner"; accountId: string }
-  | { kind: "admin"; accountId: string };
+  { kind: "owner"; accountId: string } | { kind: "admin"; accountId: string };
 
 export interface PlaylistCreateInput {
   name: string;
@@ -349,7 +348,11 @@ export class PlaylistService {
         select: { id: true, videoId: true },
       });
       if (!item) {
-        throw new PlaylistError("PLAYLIST_ITEM_NOT_FOUND", "This playlist item was not found.", 404);
+        throw new PlaylistError(
+          "PLAYLIST_ITEM_NOT_FOUND",
+          "This playlist item was not found.",
+          404,
+        );
       }
       await tx.playlistItem.delete({ where: { id: item.id } });
       await this.compactPositions(tx, playlistId);
@@ -603,7 +606,9 @@ export class PlaylistService {
         isProtected: true,
         visibility: true,
         deletedAt: true,
-        creatorTvFeeds: includeTvFeeds ? { select: { id: true } } : { select: { id: true }, take: 0 },
+        creatorTvFeeds: includeTvFeeds
+          ? { select: { id: true } }
+          : { select: { id: true }, take: 0 },
       },
     });
     if (!playlist || playlist.deletedAt) {

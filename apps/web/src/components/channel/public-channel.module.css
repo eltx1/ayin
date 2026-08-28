@@ -355,7 +355,9 @@
 .playlistCard {
   color: inherit;
   text-decoration: none;
-  transition: border-color 140ms ease, transform 140ms ease;
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease;
 }
 
 .playlistCard:hover {
