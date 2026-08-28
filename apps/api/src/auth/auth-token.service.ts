@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthConfig } from "./auth.config.js";
@@ -19,7 +19,7 @@ export type AuthTokenPayload = z.infer<typeof tokenPayloadSchema>;
 
 @Injectable()
 export class AuthTokenService {
-  constructor(private readonly config: AuthConfig) {}
+  constructor(@Inject(AuthConfig) private readonly config: AuthConfig) {}
 
   issueSession(accountId: string, authVersion: number): string {
     return this.issue("session", accountId, authVersion, this.config.sessionTtlSeconds);
