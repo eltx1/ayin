@@ -14,7 +14,11 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { MediaStorageUnavailableError } from "../media/media-storage.adapter.js";
 import { MediaUploadError } from "../media/media-upload.service.js";
-import { QuickUploadError, QuickUploadService } from "./quick-upload.service.js";
+import {
+  type DraftDetailsInput,
+  QuickUploadError,
+  QuickUploadService,
+} from "./quick-upload.service.js";
 
 const videoIdSchema = z.string().uuid();
 const detailsSchema = z.object({
@@ -153,14 +157,18 @@ export class QuickUploadController {
     );
   }
 
-  private parseDetails(input: z.infer<typeof detailsSchema>) {
-    const { scheduledPublishAt, ...details } = input;
-    return {
-      ...details,
-      ...(scheduledPublishAt !== undefined
-        ? { scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt) : null }
-        : {}),
-    };
+  private parseDetails(input: z.infer<typeof detailsSchema>): DraftDetailsInput {
+    const details: DraftDetailsInput = {};
+    if (input.title !== undefined) details.title = input.title;
+    if (input.description !== undefined) details.description = input.description;
+    if (input.visibility !== undefined) details.visibility = input.visibility;
+    if (input.commentsEnabled !== undefined) details.commentsEnabled = input.commentsEnabled;
+    if (input.scheduledPublishAt !== undefined) {
+      details.scheduledPublishAt = input.scheduledPublishAt
+        ? new Date(input.scheduledPublishAt)
+        : null;
+    }
+    return details;
   }
 
   private videoId(raw: string): string {
