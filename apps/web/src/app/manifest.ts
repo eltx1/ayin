@@ -23,7 +23,7 @@ export default function manifest(): MetadataRoute.Manifest {
         src: "/icons/ayin-512.svg",
         sizes: "512x512",
         type: "image/svg+xml",
-        purpose: "any maskable",
+        purpose: "maskable",
       },
     ],
   };

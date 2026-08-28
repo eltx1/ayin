@@ -21,7 +21,7 @@ const previews = [
 function cards(variant: "poster" | "landscape", prefix: string) {
   return previews.map((preview, index) => (
     <MediaCard
-      badge={index === 0 ? "AYIN" : undefined}
+      {...(index === 0 ? { badge: "AYIN" } : {})}
       href={`/search?preview=${prefix}-${index + 1}`}
       key={`${prefix}-${preview.title}`}
       kicker={variant === "landscape" ? "Featured preview" : "Popular now"}

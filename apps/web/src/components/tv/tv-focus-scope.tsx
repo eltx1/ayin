@@ -5,7 +5,7 @@ import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, us
 
 interface TvFocusScopeProperties {
   children: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }
 
 function isTextEditingTarget(target: EventTarget | null): boolean {
