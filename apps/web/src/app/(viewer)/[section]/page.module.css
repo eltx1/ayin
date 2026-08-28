@@ -1,0 +1,24 @@
+.page {
+  min-height: calc(100dvh - 5rem);
+  padding: clamp(4rem, 9vw, 8rem) var(--shell-gutter);
+}
+
+.heading {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1.4rem;
+}
+
+.heading p {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.2em;
+  margin: 0 0 0.55rem;
+}
+
+.heading h1 {
+  font-size: clamp(2.8rem, 8vw, 6.8rem);
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+  margin: 0;
+}

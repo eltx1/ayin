@@ -17,11 +17,24 @@ export class FeatureFlagService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async isEnabled(key: string): Promise<boolean> {
-    const flag = await this.database.client.featureFlag.findUnique({
-      where: { key },
-      select: { enabled: true, rolloutPercentage: true },
+    const resolved = await this.resolveEnabled([key]);
+    return resolved[key] ?? false;
+  }
+
+  async resolveEnabled(keys: readonly string[]): Promise<Record<string, boolean>> {
+    if (keys.length === 0) {
+      return {};
+    }
+
+    const flags = await this.database.client.featureFlag.findMany({
+      where: { key: { in: [...keys] } },
+      select: { enabled: true, key: true, rolloutPercentage: true },
     });
-    return Boolean(flag?.enabled && flag.rolloutPercentage > 0);
+    const stored = new Map(
+      flags.map((flag) => [flag.key, flag.enabled && flag.rolloutPercentage > 0] as const),
+    );
+
+    return Object.fromEntries(keys.map((key) => [key, stored.get(key) ?? false]));
   }
 
   async list() {

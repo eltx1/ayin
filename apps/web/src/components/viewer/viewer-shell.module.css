@@ -1,0 +1,198 @@
+.shell {
+  --shell-gutter: clamp(1rem, 3.5vw, 4rem);
+  background:
+    radial-gradient(circle at 82% 4%, rgb(98 83 186 / 16%), transparent 30rem),
+    radial-gradient(circle at 12% 36%, rgb(38 126 139 / 10%), transparent 26rem),
+    var(--background);
+  min-height: 100dvh;
+}
+
+.topbar {
+  align-items: center;
+  backdrop-filter: blur(18px);
+  background: linear-gradient(180deg, rgb(5 7 13 / 96%), rgb(5 7 13 / 76%));
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: auto 1fr auto;
+  min-height: 4.75rem;
+  padding: 0 var(--shell-gutter);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.brand {
+  align-items: center;
+  color: var(--foreground);
+  display: inline-flex;
+  gap: 0.7rem;
+  text-decoration: none;
+}
+
+.brandMark {
+  align-items: center;
+  aspect-ratio: 1;
+  background: conic-gradient(from 210deg, #e7bd63, #63d1cc, #8f79d9, #e7bd63);
+  border-radius: 50%;
+  display: inline-flex;
+  justify-content: center;
+  padding: 2px;
+  width: 2rem;
+}
+
+.brandMark::before {
+  background: #070a12;
+  border-radius: inherit;
+  content: "";
+  inset: 2px;
+  position: absolute;
+}
+
+.brandMark {
+  position: relative;
+}
+
+.brandMark span {
+  background: #e9c66f;
+  border-radius: 50%;
+  box-shadow: 0 0 1rem rgb(99 209 204 / 55%);
+  height: 0.42rem;
+  position: relative;
+  width: 0.42rem;
+  z-index: 1;
+}
+
+.brandWord {
+  font-size: 1.02rem;
+  font-weight: 900;
+  letter-spacing: 0.24em;
+}
+
+.desktopNavigation {
+  align-items: center;
+  display: flex;
+  gap: clamp(0.25rem, 1vw, 1rem);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.desktopNavigation::-webkit-scrollbar,
+.mobileNavigation::-webkit-scrollbar {
+  display: none;
+}
+
+.navLink {
+  border-radius: 999px;
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  font-weight: 720;
+  padding: 0.65rem 0.8rem;
+  text-decoration: none;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.navLink:hover {
+  background: rgb(255 255 255 / 7%);
+  color: var(--foreground);
+}
+
+.joinAction {
+  background: linear-gradient(135deg, #e9c66f, #cda34b);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  color: #11131a;
+  font-size: 0.88rem;
+  font-weight: 850;
+  padding: 0.72rem 1rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.content {
+  min-height: calc(100dvh - 4.75rem);
+}
+
+.mobileNavigation {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    grid-template-columns: 1fr auto;
+    min-height: 4.2rem;
+  }
+
+  .desktopNavigation {
+    display: none;
+  }
+
+  .brandWord {
+    font-size: 0.92rem;
+  }
+
+  .joinAction {
+    padding: 0.6rem 0.82rem;
+  }
+
+  .content {
+    min-height: calc(100dvh - 8.4rem);
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+
+  .mobileNavigation {
+    align-items: center;
+    backdrop-filter: blur(18px);
+    background: rgb(7 10 18 / 94%);
+    border-top: 1px solid rgb(255 255 255 / 9%);
+    bottom: 0;
+    display: flex;
+    gap: 0.35rem;
+    left: 0;
+    overflow-x: auto;
+    padding: 0.7rem max(0.8rem, env(safe-area-inset-left))
+      calc(0.7rem + env(safe-area-inset-bottom)) max(0.8rem, env(safe-area-inset-right));
+    position: fixed;
+    right: 0;
+    scrollbar-width: none;
+    z-index: 60;
+  }
+
+  .mobileNavigation .navLink {
+    background: rgb(255 255 255 / 4%);
+    font-size: 0.82rem;
+    padding: 0.72rem 0.9rem;
+  }
+}
+
+@media (min-width: 1500px) and (min-height: 800px) {
+  .shell {
+    --shell-gutter: clamp(3rem, 4.2vw, 5.5rem);
+  }
+
+  .topbar {
+    min-height: 6rem;
+  }
+
+  .brandMark {
+    width: 2.65rem;
+  }
+
+  .brandWord {
+    font-size: 1.25rem;
+  }
+
+  .navLink,
+  .joinAction {
+    font-size: 1.05rem;
+    padding: 0.85rem 1.08rem;
+  }
+
+  .content {
+    min-height: calc(100dvh - 6rem);
+  }
+}

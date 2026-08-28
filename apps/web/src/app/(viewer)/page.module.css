@@ -1,0 +1,12 @@
+.homeBody {
+  display: grid;
+  gap: clamp(2.4rem, 5vw, 4.5rem);
+  padding-bottom: clamp(4rem, 8vw, 7rem);
+}
+
+.accountStrip {
+  background: linear-gradient(90deg, rgb(255 255 255 / 4%), rgb(255 255 255 / 1%));
+  border-block: 1px solid rgb(255 255 255 / 7%);
+  margin-top: -1.2rem;
+  padding: 1.2rem var(--shell-gutter);
+}
