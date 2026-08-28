@@ -7,6 +7,12 @@ import { PlatformConfigModule } from "../platform-config/platform-config.module.
 import { CreatorChannelController, PublicChannelController } from "./channel.controller.js";
 import { ChannelService } from "./channel.service.js";
 import {
+  CREATOR_TV_AD_BREAK_HOOK,
+  NoopCreatorTvAdBreakHook,
+} from "./creator-tv-ad-break.hook.js";
+import { CreatorTvController, PublicCreatorTvController } from "./creator-tv.controller.js";
+import { CreatorTvService } from "./creator-tv.service.js";
+import {
   CreatorPlaylistCollectionController,
   CreatorPlaylistController,
   PublicPlaylistController,
@@ -24,8 +30,16 @@ import { QuickUploadService } from "./quick-upload.service.js";
     PublicPlaylistController,
     CreatorPlaylistCollectionController,
     CreatorPlaylistController,
+    PublicCreatorTvController,
+    CreatorTvController,
   ],
-  providers: [QuickUploadService, ChannelService, PlaylistService],
-  exports: [ChannelService, PlaylistService],
+  providers: [
+    QuickUploadService,
+    ChannelService,
+    PlaylistService,
+    CreatorTvService,
+    { provide: CREATOR_TV_AD_BREAK_HOOK, useClass: NoopCreatorTvAdBreakHook },
+  ],
+  exports: [ChannelService, PlaylistService, CreatorTvService],
 })
 export class CreatorModule {}
