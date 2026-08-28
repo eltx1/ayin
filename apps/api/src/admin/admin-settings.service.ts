@@ -18,8 +18,8 @@ import type { AdminRole } from "./admin.roles.js";
 
 export interface AdminSettingUpdateInput {
   value: unknown;
-  confirmHighImpact?: boolean;
-  reason?: string;
+  confirmHighImpact?: boolean | undefined;
+  reason?: string | undefined;
 }
 
 @Injectable()
@@ -80,12 +80,13 @@ export class AdminSettingsService {
 
       const row = await this.settings.setInTransaction(tx, key, validatedValue);
       if (changed) {
+        const reason = input.reason?.trim();
         await this.audit.recordInTransaction(tx, {
           actorAccountId,
           action: "platform_setting.updated",
           entityType: "PlatformSetting",
           entityId: `${definition.namespace}.${definition.key}`,
-          reason: input.reason?.trim() || undefined,
+          ...(reason ? { reason } : {}),
           metadata: {
             key,
             namespace: definition.namespace,
