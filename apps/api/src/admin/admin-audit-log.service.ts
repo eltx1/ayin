@@ -5,9 +5,9 @@ export interface AdminAuditInput {
   actorAccountId: string;
   action: string;
   entityType: string;
-  entityId?: string;
-  reason?: string;
-  metadata?: Prisma.InputJsonObject;
+  entityId?: string | undefined;
+  reason?: string | undefined;
+  metadata?: Prisma.InputJsonObject | undefined;
 }
 
 @Injectable()
@@ -18,9 +18,9 @@ export class AdminAuditLogService {
         actorAccountId: input.actorAccountId,
         action: input.action,
         entityType: input.entityType,
-        entityId: input.entityId,
-        reason: input.reason,
-        metadata: input.metadata,
+        ...(input.entityId !== undefined ? { entityId: input.entityId } : {}),
+        ...(input.reason !== undefined ? { reason: input.reason } : {}),
+        ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
       },
     });
   }
