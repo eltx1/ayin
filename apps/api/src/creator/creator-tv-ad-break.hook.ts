@@ -29,7 +29,8 @@ export const CREATOR_TV_AD_BREAK_HOOK = Symbol("CREATOR_TV_AD_BREAK_HOOK");
 
 @Injectable()
 export class NoopCreatorTvAdBreakHook implements CreatorTvAdBreakHook {
-  async getBreaks(_context: CreatorTvAdBreakContext): Promise<CreatorTvAdBreakMarker[]> {
+  async getBreaks(context: CreatorTvAdBreakContext): Promise<CreatorTvAdBreakMarker[]> {
+    void context;
     return [];
   }
 }
