@@ -45,8 +45,6 @@ export function AdminSettingsPanel() {
   const [denied, setDenied] = useState(false);
 
   async function load() {
-    setLoading(true);
-    setError(null);
     try {
       const response = await fetch(`${apiBaseUrl}/admin/settings`, {
         credentials: "include",
