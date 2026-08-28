@@ -26,18 +26,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Format Task 06 files
-        run: >-
-          pnpm exec prettier --write
-          apps/api/src/media
-          apps/api/test/media-upload.integration.test.ts
-          apps/api/src/app.module.ts
-          apps/api/src/platform-config/platform-settings.catalog.ts
-          apps/web/src/components/upload
-          apps/web/src/app/(viewer)/upload/page.tsx
-          apps/web/src/lib/direct-video-upload.ts
-          apps/web/src/lib/video-inspection.ts
-          apps/web/src/lib/video-inspection.test.ts
-          docs/R2_UPLOADS.md
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/media \
+            apps/api/test/media-upload.integration.test.ts \
+            apps/api/src/app.module.ts \
+            apps/api/src/platform-config/platform-settings.catalog.ts \
+            apps/web/src/components/upload \
+            'apps/web/src/app/(viewer)/upload/page.tsx' \
+            apps/web/src/lib/direct-video-upload.ts \
+            apps/web/src/lib/video-inspection.ts \
+            apps/web/src/lib/video-inspection.test.ts \
+            docs/R2_UPLOADS.md
       - name: Commit formatting
         run: |
           git config user.name "github-actions[bot]"
