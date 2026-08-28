@@ -145,8 +145,8 @@ export function CreatorTvManager() {
           </div>
         </div>
         <p className={styles.muted}>
-          Higher priority plays first. Order is an optional tie-breaker; leave it blank to use
-          AYIN's deterministic fallback order.
+          Higher priority plays first. Order is an optional tie-breaker; leave it blank to use the
+          deterministic AYIN fallback order.
         </p>
       </section>
 
