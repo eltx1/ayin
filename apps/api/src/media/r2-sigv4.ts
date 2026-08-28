@@ -153,11 +153,11 @@ export class R2SigV4 {
     if (input.contentType) {
       headers["content-type"] = input.contentType;
     }
-    const response = await fetch(url, {
-      method: input.method,
-      headers,
-      body: input.method === "POST" ? body : undefined,
-    });
+    const request: RequestInit = { method: input.method, headers };
+    if (input.method === "POST") {
+      request.body = body;
+    }
+    const response = await fetch(url, request);
     if (!response.ok) {
       const detail = input.method === "HEAD" ? "" : await response.text();
       throw new Error(`R2 ${input.method} request failed (${response.status}). ${detail}`.trim());
