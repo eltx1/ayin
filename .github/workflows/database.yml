@@ -41,7 +41,7 @@ jobs:
 
     env:
       APP_ENV: test
-      AUTH_TOKEN_SECRET: task-03-ci-auth-secret-with-more-than-32-characters
+      AUTH_TOKEN_SECRET: task-04-ci-auth-secret-with-more-than-32-characters
       CORS_ORIGIN: http://localhost:3000
       WEB_ORIGIN: http://localhost:3000
       DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
