@@ -45,7 +45,7 @@ export class CreatorTvError extends Error {
   }
 }
 
-interface TvVideoPayload {
+export interface TvVideoPayload {
   id: string;
   slug: string;
   title: string;
