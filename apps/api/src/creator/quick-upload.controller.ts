@@ -154,14 +154,11 @@ export class QuickUploadController {
   }
 
   private parseDetails(input: z.infer<typeof detailsSchema>) {
+    const { scheduledPublishAt, ...details } = input;
     return {
-      ...input,
-      ...(input.scheduledPublishAt !== undefined
-        ? {
-            scheduledPublishAt: input.scheduledPublishAt
-              ? new Date(input.scheduledPublishAt)
-              : null,
-          }
+      ...details,
+      ...(scheduledPublishAt !== undefined
+        ? { scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt) : null }
         : {}),
     };
   }
