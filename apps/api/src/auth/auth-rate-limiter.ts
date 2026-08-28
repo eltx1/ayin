@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
 import { AuthConfig } from "./auth.config.js";
 import { tooManyRequests } from "./auth.errors.js";
@@ -12,7 +12,7 @@ interface Counter {
 export class AuthRateLimiter {
   private readonly counters = new Map<string, Counter>();
 
-  constructor(private readonly config: AuthConfig) {}
+  constructor(@Inject(AuthConfig) private readonly config: AuthConfig) {}
 
   consume(scope: string, key: string): void {
     const now = Date.now();
