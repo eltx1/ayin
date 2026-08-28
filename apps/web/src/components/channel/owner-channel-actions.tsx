@@ -30,6 +30,9 @@ export function OwnerChannelActions({ handle }: { handle: string }) {
 
   return (
     <>
+      <Link className={styles.editAction} href="/channel/tv">
+        Manage TV
+      </Link>
       <Link className={styles.editAction} href="/channel/playlists">
         Manage playlists
       </Link>
