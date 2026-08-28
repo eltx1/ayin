@@ -147,6 +147,25 @@ export const platformSettingCatalog = {
     highImpact: false,
     superadminOnly: false,
   },
+  uploadChannelQuotaBytes: {
+    namespace: "UPLOAD",
+    key: "uploadChannelQuotaBytes",
+    valueType: "INTEGER",
+    defaultValue: 100 * 1024 * 1024 * 1024,
+    schema: z
+      .number()
+      .int()
+      .min(1024 * 1024 * 1024)
+      .max(10 * 1024 * 1024 * 1024 * 1024),
+    section: "uploads",
+    label: "Channel upload storage allowance",
+    description:
+      "Maximum active source-video bytes reserved by a channel across pending and uploaded assets.",
+    control: "number",
+    unit: "bytes",
+    highImpact: false,
+    superadminOnly: false,
+  },
   initialMediaCompatibilityProfileText: {
     namespace: "UPLOAD",
     key: "initialMediaCompatibilityProfileText",
