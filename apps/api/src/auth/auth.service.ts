@@ -2,12 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { AuthConfig } from "./auth.config.js";
-import {
-  AuthHttpError,
-  conflict,
-  isUniqueConstraintError,
-  unauthorized,
-} from "./auth.errors.js";
+import { AuthHttpError, conflict, isUniqueConstraintError, unauthorized } from "./auth.errors.js";
 import { AuthTokenService } from "./auth-token.service.js";
 import {
   CreatorProvisioningService,
@@ -121,7 +116,10 @@ export class AuthService {
         throw conflict("EMAIL_OR_IDENTITY_CONFLICT", "An account with this email already exists.");
       }
       if (error instanceof ProvisioningConflictError) {
-        throw conflict("IDENTITY_PROVISIONING_CONFLICT", "AYIN could not allocate the creator identity safely.");
+        throw conflict(
+          "IDENTITY_PROVISIONING_CONFLICT",
+          "AYIN could not allocate the creator identity safely.",
+        );
       }
       throw error;
     }
@@ -205,9 +203,16 @@ export class AuthService {
     resetUrl.searchParams.set("token", token);
 
     try {
-      await this.emailAdapter.sendPasswordReset({ email: account.email, resetUrl: resetUrl.toString() });
+      await this.emailAdapter.sendPasswordReset({
+        email: account.email,
+        resetUrl: resetUrl.toString(),
+      });
     } catch {
-      throw new AuthHttpError(503, "EMAIL_DELIVERY_FAILED", "Password reset email could not be delivered.");
+      throw new AuthHttpError(
+        503,
+        "EMAIL_DELIVERY_FAILED",
+        "Password reset email could not be delivered.",
+      );
     }
   }
 
@@ -269,7 +274,11 @@ export class AuthService {
     const profile = account?.viewerProfiles[0];
     const channel = account?.channelMemberships[0]?.channel;
     if (!account || !profile || !channel || !channel.primaryTvChannel) {
-      throw new AuthHttpError(500, "IDENTITY_NOT_PROVISIONED", "The AYIN creator identity is incomplete.");
+      throw new AuthHttpError(
+        500,
+        "IDENTITY_NOT_PROVISIONED",
+        "The AYIN creator identity is incomplete.",
+      );
     }
 
     return {

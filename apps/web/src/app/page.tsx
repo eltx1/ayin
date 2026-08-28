@@ -17,7 +17,8 @@ export default async function Home({ searchParams }: HomeProps) {
         <h1 className={styles.title}>{site.name}</h1>
         <p className={styles.description}>{site.description}</p>
         <p className={styles.creatorPromise}>
-          Watch freely. Create instantly. Every AYIN account comes with a public channel and Creator TV.
+          Watch freely. Create instantly. Every AYIN account comes with a public channel and Creator
+          TV.
         </p>
         <SessionPanel showWelcome={params.welcome === "1"} />
       </section>

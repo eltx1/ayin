@@ -34,12 +34,15 @@ export function AuthForm({ mode }: { mode: Mode }) {
           };
 
     try {
-      const response = await fetch(`${apiBaseUrl}/auth/${mode === "register" ? "register" : "login"}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/auth/${mode === "register" ? "register" : "login"}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
 
       if (!response.ok) {
         setError(await readApiError(response));
@@ -88,7 +91,14 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
           <label>
             <span>Email</span>
-            <input autoComplete="email" inputMode="email" name="email" placeholder="you@example.com" required type="email" />
+            <input
+              autoComplete="email"
+              inputMode="email"
+              name="email"
+              placeholder="you@example.com"
+              required
+              type="email"
+            />
           </label>
 
           <label>

@@ -23,7 +23,9 @@ export class AuthConfig {
     const environment = authEnvironmentSchema.parse(process.env);
 
     if (environment.APP_ENV === "production" && !environment.AUTH_TOKEN_SECRET) {
-      throw new Error("AUTH_TOKEN_SECRET is required in production and must be at least 32 characters.");
+      throw new Error(
+        "AUTH_TOKEN_SECRET is required in production and must be at least 32 characters.",
+      );
     }
 
     this.appEnvironment = environment.APP_ENV;

@@ -63,7 +63,10 @@ export class AuthTokenService {
     return `v1.${encodedPayload}.${signature}`;
   }
 
-  private verify(token: string, expectedPurpose: AuthTokenPayload["purpose"]): AuthTokenPayload | null {
+  private verify(
+    token: string,
+    expectedPurpose: AuthTokenPayload["purpose"],
+  ): AuthTokenPayload | null {
     const parts = token.split(".");
     if (parts.length !== 3 || parts[0] !== "v1") {
       return null;

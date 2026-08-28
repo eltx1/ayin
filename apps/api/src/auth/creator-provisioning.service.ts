@@ -168,7 +168,10 @@ export class CreatorProvisioningService {
     channelId: string,
   ): Promise<string> {
     const base = handleBase(displayName);
-    const baseOwner = await tx.channel.findUnique({ where: { handle: base }, select: { id: true } });
+    const baseOwner = await tx.channel.findUnique({
+      where: { handle: base },
+      select: { id: true },
+    });
     if (!baseOwner || baseOwner.id === channelId) {
       return base;
     }

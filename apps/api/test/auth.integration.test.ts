@@ -102,7 +102,11 @@ databaseDescribe("authentication and instant creator provisioning", () => {
     const response = await app.inject({
       method: "POST",
       url: "/auth/register",
-      payload: { name: "Repairable Creator", email: "repair@example.com", password: "strong-pass-123" },
+      payload: {
+        name: "Repairable Creator",
+        email: "repair@example.com",
+        password: "strong-pass-123",
+      },
     });
     expect(response.statusCode).toBe(201);
     const accountId = response.json().user.account.id as string;
@@ -124,7 +128,9 @@ databaseDescribe("authentication and instant creator provisioning", () => {
 
   it("rejects duplicate email registration after normalization", async () => {
     const payload = { name: "One", email: "Owner@Example.com", password: "strong-pass-123" };
-    expect((await app.inject({ method: "POST", url: "/auth/register", payload })).statusCode).toBe(201);
+    expect((await app.inject({ method: "POST", url: "/auth/register", payload })).statusCode).toBe(
+      201,
+    );
 
     const duplicate = await app.inject({
       method: "POST",
@@ -141,11 +147,17 @@ databaseDescribe("authentication and instant creator provisioning", () => {
     const response = await app.inject({
       method: "POST",
       url: "/auth/register",
-      payload: { name: "Collision Name", email: "collision@example.com", password: "strong-pass-123" },
+      payload: {
+        name: "Collision Name",
+        email: "collision@example.com",
+        password: "strong-pass-123",
+      },
     });
     expect(response.statusCode).toBe(201);
     const user = response.json().user;
-    expect(user.channel.handle).toBe(`collision-name-${String(user.account.id).replaceAll("-", "")}`);
+    expect(user.channel.handle).toBe(
+      `collision-name-${String(user.account.id).replaceAll("-", "")}`,
+    );
   });
 
   it("rolls back the Account and all provisioning when a late provisioning write fails", async () => {
@@ -169,12 +181,20 @@ databaseDescribe("authentication and instant creator provisioning", () => {
       const response = await app.inject({
         method: "POST",
         url: "/auth/register",
-        payload: { name: "Rollback User", email: "rollback@example.com", password: "strong-pass-123" },
+        payload: {
+          name: "Rollback User",
+          email: "rollback@example.com",
+          password: "strong-pass-123",
+        },
       });
       expect(response.statusCode).toBe(500);
-      expect(await prisma.account.findUnique({ where: { email: "rollback@example.com" } })).toBeNull();
+      expect(
+        await prisma.account.findUnique({ where: { email: "rollback@example.com" } }),
+      ).toBeNull();
     } finally {
-      await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS task03_fail_contract_trigger ON "CreatorContract"');
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS task03_fail_contract_trigger ON "CreatorContract"',
+      );
       await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS task03_fail_contract()");
     }
   });
@@ -187,13 +207,29 @@ databaseDescribe("authentication and instant creator provisioning", () => {
     });
     const registrationCookie = cookiePair(registration.headers["set-cookie"]);
 
-    const current = await app.inject({ method: "GET", url: "/auth/me", headers: { cookie: registrationCookie } });
+    const current = await app.inject({
+      method: "GET",
+      url: "/auth/me",
+      headers: { cookie: registrationCookie },
+    });
     expect(current.statusCode).toBe(200);
     expect(current.json().account.email).toBe("session@example.com");
 
-    const logout = await app.inject({ method: "POST", url: "/auth/logout", headers: { cookie: registrationCookie } });
+    const logout = await app.inject({
+      method: "POST",
+      url: "/auth/logout",
+      headers: { cookie: registrationCookie },
+    });
     expect(logout.statusCode).toBe(204);
-    expect((await app.inject({ method: "GET", url: "/auth/me", headers: { cookie: registrationCookie } })).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/auth/me",
+          headers: { cookie: registrationCookie },
+        })
+      ).statusCode,
+    ).toBe(401);
 
     const login = await app.inject({
       method: "POST",

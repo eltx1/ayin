@@ -2,8 +2,7 @@
   align-items: center;
   background:
     radial-gradient(circle at 50% 10%, rgb(31 54 105 / 45%), transparent 45%),
-    radial-gradient(circle at 80% 75%, rgb(215 174 86 / 10%), transparent 30%),
-    var(--background);
+    radial-gradient(circle at 80% 75%, rgb(215 174 86 / 10%), transparent 30%), var(--background);
   display: flex;
   justify-content: center;
   min-height: 100vh;
