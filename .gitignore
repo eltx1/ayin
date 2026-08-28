@@ -5,6 +5,7 @@ node_modules/
 .next/
 dist/
 coverage/
+packages/db/generated/
 *.tsbuildinfo
 
 # Environment and secrets

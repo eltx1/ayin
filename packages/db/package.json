@@ -12,10 +12,15 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
     "lint": "eslint .",
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json"
+    "test": "prisma validate && vitest run src",
+    "test:integration": "vitest run --testTimeout=30000 test/database.integration.test.mjs",
+    "typecheck": "prisma generate && tsc -p tsconfig.json"
   },
   "dependencies": {
     "@prisma/client": "7.10.0"

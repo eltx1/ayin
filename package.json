@@ -11,6 +11,10 @@
   },
   "scripts": {
     "build": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run build && corepack pnpm --filter @ayin/web run build",
+    "db:generate": "corepack pnpm --filter @ayin/db run db:generate",
+    "db:migrate": "corepack pnpm --filter @ayin/db run db:migrate",
+    "db:migrate:deploy": "corepack pnpm --filter @ayin/db run db:migrate:deploy",
+    "db:seed": "corepack pnpm --filter @ayin/db run db:seed",
     "dev": "corepack pnpm packages:build && corepack pnpm --parallel --filter @ayin/api --filter @ayin/web run dev",
     "dev:api": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run dev",
     "dev:web": "corepack pnpm packages:build && corepack pnpm --filter @ayin/web run dev",
@@ -19,7 +23,7 @@
     "lint": "corepack pnpm --recursive --if-present run lint",
     "packages:build": "corepack pnpm --filter './packages/*' --workspace-concurrency=1 run build",
     "test": "corepack pnpm --recursive --if-present run test",
-    "test:integration": "corepack pnpm --filter @ayin/api run test:integration",
+    "test:integration": "corepack pnpm --filter @ayin/api run test:integration && corepack pnpm --filter @ayin/db run test:integration",
     "typecheck": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run typecheck && corepack pnpm --filter @ayin/web run typecheck"
   },
   "devDependencies": {
