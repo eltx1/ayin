@@ -20,8 +20,7 @@ const MP4_MIME_TYPE = "video/mp4";
 const MAX_GUIDE_PROGRAMS = 96;
 
 export type CreatorTvEditActor =
-  | { kind: "owner"; accountId: string }
-  | { kind: "admin"; accountId: string };
+  { kind: "owner"; accountId: string } | { kind: "admin"; accountId: string };
 
 export interface CreatorTvVideoPreferenceInput {
   included: boolean;
@@ -165,11 +164,7 @@ export class CreatorTvService {
       endsAtMs: program.endsAtMs,
       playbackOffsetMs: 0,
     }));
-    const overrides = await this.loadAdminOverrides(
-      tv.id,
-      now,
-      new Date(automatic.windowEndsAtMs),
-    );
+    const overrides = await this.loadAdminOverrides(tv.id, now, new Date(automatic.windowEndsAtMs));
     const programs = overlayAdminOverrides(automaticPrograms, overrides, now.getTime());
     const currentIndex = programs.findIndex(
       (program) => program.startsAtMs <= now.getTime() && now.getTime() < program.endsAtMs,
@@ -411,7 +406,11 @@ export class CreatorTvService {
       select: { id: true, tvChannelId: true, tvChannel: { select: { channelId: true } } },
     });
     if (!current) {
-      throw new CreatorTvError("TV_OVERRIDE_NOT_FOUND", "This TV override could not be found.", 404);
+      throw new CreatorTvError(
+        "TV_OVERRIDE_NOT_FOUND",
+        "This TV override could not be found.",
+        404,
+      );
     }
 
     return this.database.client.$transaction(async (tx) => {
@@ -420,10 +419,16 @@ export class CreatorTvService {
         data: { status: "CANCELLED" },
         select: { id: true, status: true },
       });
-      await this.auditIfAdmin(tx, actor, "creator_tv.schedule_override_cancel", current.tvChannelId, {
-        channelId: current.tvChannel.channelId,
-        scheduleItemId,
-      });
+      await this.auditIfAdmin(
+        tx,
+        actor,
+        "creator_tv.schedule_override_cancel",
+        current.tvChannelId,
+        {
+          channelId: current.tvChannel.channelId,
+          scheduleItemId,
+        },
+      );
       return { item };
     });
   }
@@ -458,7 +463,11 @@ export class CreatorTvService {
     tvChannelId: string,
     channelId: string,
     includeExcluded = false,
-  ): Promise<Array<CreatorTvLibraryItem<TvVideoPayload & { payloadPreference: CreatorTvVideoPreferenceInput }>>> {
+  ): Promise<
+    Array<
+      CreatorTvLibraryItem<TvVideoPayload & { payloadPreference: CreatorTvVideoPreferenceInput }>
+    >
+  > {
     const videos = await this.database.client.video.findMany({
       where: {
         channelId,
@@ -571,7 +580,11 @@ export class CreatorTvService {
     });
   }
 
-  private async loadAdminOverrides(tvChannelId: string, from: Date, until: Date): Promise<TvProgram[]> {
+  private async loadAdminOverrides(
+    tvChannelId: string,
+    from: Date,
+    until: Date,
+  ): Promise<TvProgram[]> {
     const items = await this.database.client.tvScheduleItem.findMany({
       where: {
         tvChannelId,
@@ -647,11 +660,7 @@ export class CreatorTvService {
     tv: { id: string; slug: string; name: string; status: "ACTIVE" | "OFF_AIR" | "DISABLED" },
     now: Date,
     input: {
-      reason:
-        | "TV_DISABLED"
-        | "TV_OFF_AIR"
-        | "AUTOMATIC_SCHEDULING_DISABLED"
-        | "NO_ELIGIBLE_VIDEOS";
+      reason: "TV_DISABLED" | "TV_OFF_AIR" | "AUTOMATIC_SCHEDULING_DISABLED" | "NO_ELIGIBLE_VIDEOS";
       policy: Awaited<ReturnType<CreatorTvService["getSchedulePolicy"]>>;
     },
   ) {
@@ -712,7 +721,10 @@ export class CreatorTvService {
     return tv;
   }
 
-  private async assertCanManageChannel(actor: CreatorTvEditActor, channelId: string): Promise<void> {
+  private async assertCanManageChannel(
+    actor: CreatorTvEditActor,
+    channelId: string,
+  ): Promise<void> {
     if (actor.kind === "owner") {
       const membership = await this.database.client.channelMember.findFirst({
         where: { accountId: actor.accountId, channelId, role: "OWNER" },
@@ -767,7 +779,11 @@ export class CreatorTvService {
 }
 
 function validatePreference(input: CreatorTvVideoPreferenceInput): void {
-  if (!Number.isSafeInteger(input.priority) || input.priority < -100000 || input.priority > 100000) {
+  if (
+    !Number.isSafeInteger(input.priority) ||
+    input.priority < -100000 ||
+    input.priority > 100000
+  ) {
     throw new CreatorTvError(
       "INVALID_TV_PRIORITY",
       "Creator TV priority must be a whole number between -100000 and 100000.",

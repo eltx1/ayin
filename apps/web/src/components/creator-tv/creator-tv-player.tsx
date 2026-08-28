@@ -77,7 +77,11 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
             <span className={styles.eyebrow}>AYIN Creator TV</span>
             <h2>{offAirTitle(data.tv.offAirReason)}</h2>
             <p>{offAirMessage(data.tv.offAirReason, data.channel.name)}</p>
-            <button className={styles.refreshButton} type="button" onClick={() => void refreshSchedule()}>
+            <button
+              className={styles.refreshButton}
+              type="button"
+              onClick={() => void refreshSchedule()}
+            >
               {refreshing ? "Checking…" : "Check again"}
             </button>
             {refreshError ? <p className={styles.error}>{refreshError}</p> : null}
@@ -119,7 +123,8 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
             </span>
             <h2 id="now-playing-heading">{current.video.title}</h2>
             <p className={styles.meta}>
-              {formatTime(current.startsAt)} – {formatTime(current.endsAt)} · {formatDuration(current.video.durationMs)}
+              {formatTime(current.startsAt)} – {formatTime(current.endsAt)} ·{" "}
+              {formatDuration(current.video.durationMs)}
             </p>
             {current.video.description ? <p>{current.video.description}</p> : null}
             <p className={styles.limitation}>{data.playback.limitation}</p>
@@ -156,7 +161,10 @@ function TvHero({ data, initial }: { data: PublicCreatorTvResponse; initial: str
         <div>
           <span className={styles.eyebrow}>Automatic Creator TV</span>
           <h1>{data.tv.name}</h1>
-          <Link className={styles.channelLink} href={`/c/${encodeURIComponent(data.canonicalHandle)}`}>
+          <Link
+            className={styles.channelLink}
+            href={`/c/${encodeURIComponent(data.canonicalHandle)}`}
+          >
             {data.channel.name} · @{data.canonicalHandle}
           </Link>
         </div>
@@ -180,7 +188,9 @@ function Guide({ programs, currentKey }: { programs: CreatorTvProgram[]; current
             <span>
               <span className={styles.guideTitle}>{program.video.title}</span>
               <span className={styles.videoMeta}>
-                {program.source === "ADMIN" ? "Scheduled by AYIN" : formatDuration(program.video.durationMs)}
+                {program.source === "ADMIN"
+                  ? "Scheduled by AYIN"
+                  : formatDuration(program.video.durationMs)}
               </span>
             </span>
           </li>

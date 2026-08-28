@@ -177,7 +177,9 @@ databaseDescribe("Task 10 Creator TV V1", () => {
       url: `/public/channels/${owner.user.channel.handle}/tv`,
     });
     const scheduledIds = new Set(
-      secondResponse.json().schedule.guide.map((program: { video: { id: string } }) => program.video.id),
+      secondResponse
+        .json()
+        .schedule.guide.map((program: { video: { id: string } }) => program.video.id),
     );
     expect(scheduledIds).toEqual(new Set([first.id, second.id]));
   });

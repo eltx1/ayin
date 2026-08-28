@@ -136,7 +136,9 @@ function CreatorTvSection({ data }: { data: PublicChannelResponse }) {
               videos.
             </p>
           </div>
-          <span className={styles.status}>{formatTvStatus(data.creatorTv.status)}</span>
+          <Link className={styles.status} href={`/c/${data.channel.handle}/tv`}>
+            Watch · {formatTvStatus(data.creatorTv.status)}
+          </Link>
         </div>
       ) : (
         <p className={styles.empty}>This channel&apos;s Creator TV is not available.</p>

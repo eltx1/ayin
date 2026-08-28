@@ -54,11 +54,7 @@ export function orderCreatorTvLibrary<T>(
     const leftOrdered = left.sortOrder !== null;
     const rightOrdered = right.sortOrder !== null;
     if (leftOrdered !== rightOrdered) return leftOrdered ? -1 : 1;
-    if (
-      left.sortOrder !== null &&
-      right.sortOrder !== null &&
-      left.sortOrder !== right.sortOrder
-    ) {
+    if (left.sortOrder !== null && right.sortOrder !== null && left.sortOrder !== right.sortOrder) {
       return left.sortOrder - right.sortOrder;
     }
 

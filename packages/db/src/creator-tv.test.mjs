@@ -3,10 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
-const preferences = readFileSync(
-  new URL("../prisma/creator-tv.prisma", import.meta.url),
-  "utf8",
-);
+const preferences = readFileSync(new URL("../prisma/creator-tv.prisma", import.meta.url), "utf8");
 const migration = readFileSync(
   new URL("../prisma/migrations/20260829100000_creator_tv_v1/migration.sql", import.meta.url),
   "utf8",

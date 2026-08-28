@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  buildCreatorTvSchedule,
-  type CreatorTvLibraryItem,
-} from "./creator-tv.scheduler.js";
+import { buildCreatorTvSchedule, type CreatorTvLibraryItem } from "./creator-tv.scheduler.js";
 
 const MINUTE = 60_000;
 const epochMs = Date.UTC(2026, 7, 29, 0, 0, 0);
@@ -68,16 +65,17 @@ describe("Creator TV automatic scheduler V1", () => {
       "later",
       "first",
     ]);
-    expect(result.guide.slice(0, 3).map((program) => program.endsAtMs - program.startsAtMs)).toEqual([
-      3 * MINUTE,
-      4 * MINUTE,
-      2 * MINUTE,
-    ]);
+    expect(
+      result.guide.slice(0, 3).map((program) => program.endsAtMs - program.startsAtMs),
+    ).toEqual([3 * MINUTE, 4 * MINUTE, 2 * MINUTE]);
   });
 
   it("supports an excluded video by scheduling only the eligible library supplied to it", () => {
     const all = [item("included", 2 * MINUTE), item("excluded", 2 * MINUTE)];
-    const result = schedule(all.filter((entry) => entry.id !== "excluded"), 5 * MINUTE);
+    const result = schedule(
+      all.filter((entry) => entry.id !== "excluded"),
+      5 * MINUTE,
+    );
     expect(new Set(result.guide.map((program) => program.item.id))).toEqual(new Set(["included"]));
   });
 

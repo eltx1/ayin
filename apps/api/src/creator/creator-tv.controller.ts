@@ -44,9 +44,7 @@ export class CreatorTvController {
     @Param("channelId") channelIdRaw: string,
   ) {
     const channelId = parseUuid(channelIdRaw, "This channel link is invalid.");
-    return runTvOperation(() =>
-      this.creatorTv.getManagement(ownerActor(request), channelId),
-    );
+    return runTvOperation(() => this.creatorTv.getManagement(ownerActor(request), channelId));
   }
 
   @Put("tv/:tvChannelId/videos/:videoId")

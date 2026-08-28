@@ -4,11 +4,7 @@ import { CreatorTvPlayer } from "@/components/creator-tv/creator-tv-player";
 import { apiBaseUrl } from "@/lib/api";
 import type { PublicCreatorTvResponse } from "@/lib/creator-tv";
 
-export default async function CreatorTvPage({
-  params,
-}: {
-  params: Promise<{ handle: string }>;
-}) {
+export default async function CreatorTvPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
   const response = await fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/tv`, {
     cache: "no-store",

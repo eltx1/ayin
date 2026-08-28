@@ -39,11 +39,7 @@ export interface PublicCreatorTvResponse {
     status: "ACTIVE" | "OFF_AIR" | "DISABLED";
     state: "ON_AIR" | "OFF_AIR";
     offAirReason:
-      | "TV_DISABLED"
-      | "TV_OFF_AIR"
-      | "AUTOMATIC_SCHEDULING_DISABLED"
-      | "NO_ELIGIBLE_VIDEOS"
-      | null;
+      "TV_DISABLED" | "TV_OFF_AIR" | "AUTOMATIC_SCHEDULING_DISABLED" | "NO_ELIGIBLE_VIDEOS" | null;
   };
   schedule: {
     generatedAt: string;
@@ -117,15 +113,12 @@ export async function updateCreatorTvVideoPreference(
   videoId: string,
   input: { included: boolean; priority: number; sortOrder: number | null },
 ) {
-  const response = await fetch(
-    `${apiBaseUrl}/creator/tv/${tvChannelId}/videos/${videoId}`,
-    {
-      method: "PUT",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
+  const response = await fetch(`${apiBaseUrl}/creator/tv/${tvChannelId}/videos/${videoId}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as {
     preference: {

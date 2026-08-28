@@ -2,7 +2,11 @@
   min-height: 100vh;
   padding: clamp(20px, 4vw, 56px);
   background:
-    radial-gradient(circle at 12% 12%, color-mix(in srgb, var(--tv-accent) 24%, transparent), transparent 34%),
+    radial-gradient(
+      circle at 12% 12%,
+      color-mix(in srgb, var(--tv-accent) 24%, transparent),
+      transparent 34%
+    ),
     #07090d;
   color: #f7f8fb;
 }
@@ -41,7 +45,9 @@
   display: grid;
   place-items: center;
   border-radius: 22px;
-  background: var(--tv-avatar) center / cover no-repeat, color-mix(in srgb, var(--tv-accent) 35%, #171a22);
+  background:
+    var(--tv-avatar) center / cover no-repeat,
+    color-mix(in srgb, var(--tv-accent) 35%, #171a22);
   font-weight: 800;
   font-size: 28px;
 }

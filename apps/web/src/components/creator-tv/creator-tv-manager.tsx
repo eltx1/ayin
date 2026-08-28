@@ -115,7 +115,8 @@ export function CreatorTvManager() {
           <span className={styles.eyebrow}>Automatic Creator TV</span>
           <h1>{data.tv.name}</h1>
           <p className={styles.muted}>
-            New eligible public MP4 uploads enter rotation automatically. These controls are optional.
+            New eligible public MP4 uploads enter rotation automatically. These controls are
+            optional.
           </p>
         </div>
         <Link className={styles.backLink} href={`/c/${encodeURIComponent(data.channel.handle)}/tv`}>
@@ -128,11 +129,15 @@ export function CreatorTvManager() {
         <div className={styles.automationGrid}>
           <div className={styles.automationItem}>
             <strong>Platform</strong>
-            <span>{data.automation.platformEnabled ? "Automatic TV enabled" : "Paused by AYIN"}</span>
+            <span>
+              {data.automation.platformEnabled ? "Automatic TV enabled" : "Paused by AYIN"}
+            </span>
           </div>
           <div className={styles.automationItem}>
             <strong>Channel</strong>
-            <span>{data.automation.channelScheduleEnabled ? "Schedule active" : "Schedule paused"}</span>
+            <span>
+              {data.automation.channelScheduleEnabled ? "Schedule active" : "Schedule paused"}
+            </span>
           </div>
           <div className={styles.automationItem}>
             <strong>Guide</strong>
@@ -140,7 +145,8 @@ export function CreatorTvManager() {
           </div>
         </div>
         <p className={styles.muted}>
-          Higher priority plays first. Order is an optional tie-breaker; leave it blank to use AYIN's deterministic fallback order.
+          Higher priority plays first. Order is an optional tie-breaker; leave it blank to use
+          AYIN's deterministic fallback order.
         </p>
       </section>
 
@@ -155,7 +161,8 @@ export function CreatorTvManager() {
         {data.videos.length === 0 ? (
           <div className={styles.managerCard}>
             <p className={styles.muted}>
-              Publish a public MP4 and it will appear here automatically. No manual TV scheduling is required.
+              Publish a public MP4 and it will appear here automatically. No manual TV scheduling is
+              required.
             </p>
           </div>
         ) : (
@@ -171,7 +178,8 @@ export function CreatorTvManager() {
                   <div>
                     <strong>{video.title}</strong>
                     <p className={styles.videoMeta}>
-                      {formatDuration(video.effectiveDurationMs)} · {video.durationMs ? "measured duration" : "guide fallback duration"}
+                      {formatDuration(video.effectiveDurationMs)} ·{" "}
+                      {video.durationMs ? "measured duration" : "guide fallback duration"}
                     </p>
                   </div>
                   <label className={styles.includeControl}>
