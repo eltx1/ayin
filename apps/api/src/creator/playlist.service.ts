@@ -675,7 +675,15 @@ export class PlaylistService {
   }
 
   private async lockPlaylist(tx: Prisma.TransactionClient, playlistId: string): Promise<void> {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${playlistId}))`;
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"::text AS "id"
+      FROM "Playlist"
+      WHERE "id" = ${playlistId}::uuid
+      FOR UPDATE
+    `;
+    if (rows.length !== 1) {
+      throw new PlaylistError("PLAYLIST_NOT_FOUND", "This playlist could not be found.", 404);
+    }
   }
 
   private async compactPositions(tx: Prisma.TransactionClient, playlistId: string): Promise<void> {

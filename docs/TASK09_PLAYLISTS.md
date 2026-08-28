@@ -56,4 +56,4 @@ All creator HTTP routes resolve ownership server-side. The exported `PlaylistSer
 
 ## Ordering and duplicate safety
 
-Playlist item order uses an integer `position` protected by `(playlistId, position)` uniqueness. Item mutations take a PostgreSQL transaction-scoped advisory lock per playlist, so append/reorder/remove operations serialize for that playlist. Reorder temporarily shifts positions before assigning the requested gapless `0..n-1` order.
+Playlist item order uses an integer `position` protected by `(playlistId, position)` uniqueness. Item mutations take a PostgreSQL row-level `FOR UPDATE` lock on the playlist inside the transaction, so append/reorder/remove operations serialize for that playlist. Reorder temporarily shifts positions before assigning the requested gapless `0..n-1` order.
