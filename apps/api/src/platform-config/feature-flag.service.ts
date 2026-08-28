@@ -33,10 +33,15 @@ export class FeatureFlagService {
       throw new Error("Feature flag key is invalid.");
     }
     const value = featureFlagUpdateSchema.parse(input);
+    const data = {
+      enabled: value.enabled,
+      rolloutPercentage: value.rolloutPercentage,
+      ...(value.description !== undefined ? { description: value.description } : {}),
+    };
     return tx.featureFlag.upsert({
       where: { key },
-      update: value,
-      create: { key, ...value },
+      update: data,
+      create: { key, ...data },
     });
   }
 }
