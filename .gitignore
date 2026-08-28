@@ -6,6 +6,7 @@ node_modules/
 dist/
 coverage/
 packages/db/generated/
+packages/db/src/generated/
 *.tsbuildinfo
 
 # Environment and secrets
