@@ -1,0 +1,35 @@
+name: Format Task 03 sources
+
+on:
+  push:
+    branches:
+      - task-03-auth-instant-provisioning
+    paths:
+      - ".github/workflows/task03-format.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-03-auth-instant-provisioning
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --write apps/api/src/auth apps/api/test/auth.integration.test.ts apps/web/src/app apps/web/src/lib/api.ts
+      - name: Commit formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/auth apps/api/test/auth.integration.test.ts apps/web/src/app apps/web/src/lib/api.ts
+          git commit -m "Format Task 03 sources"
+          git push origin HEAD:task-03-auth-instant-provisioning
