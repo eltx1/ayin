@@ -10,32 +10,43 @@ export interface VideoAdOverrideValue {
   midRollEverySec: number | null;
 }
 
+export interface ResolvedVideoAdPolicy {
+  enabled: boolean;
+  provider: "GOOGLE_IMA";
+  vastTagUrl: string | null;
+  preRollEnabled: boolean;
+  midRollEnabled: boolean;
+  postRollEnabled: boolean;
+  midRollEverySec: number;
+}
+
 export function resolveVideoAdPolicy(
   settings: VideoAdSettings,
   channelOverride: VideoAdOverrideValue | null,
   videoOverride: VideoAdOverrideValue | null,
-) {
-  return [channelOverride, videoOverride].filter(Boolean).reduce(
-    (value, override) => {
-      const next = override as VideoAdOverrideValue;
-      return {
-        enabled: next.enabled ?? value.enabled,
-        provider: next.provider === "GOOGLE_IMA" ? "GOOGLE_IMA" : value.provider,
-        vastTagUrl: next.vastTagUrl ?? value.vastTagUrl,
-        preRollEnabled: next.preRollEnabled ?? value.preRollEnabled,
-        midRollEnabled: next.midRollEnabled ?? value.midRollEnabled,
-        postRollEnabled: next.postRollEnabled ?? value.postRollEnabled,
-        midRollEverySec: next.midRollEverySec ?? value.midRollEverySec,
-      } as const;
-    },
-    {
-      enabled: true,
-      provider: settings.provider,
-      vastTagUrl: null as string | null,
-      preRollEnabled: settings.preRollEnabled,
-      midRollEnabled: settings.midRollEnabled,
-      postRollEnabled: settings.postRollEnabled,
-      midRollEverySec: settings.midRollEverySec,
-    },
-  );
+): ResolvedVideoAdPolicy {
+  let resolved: ResolvedVideoAdPolicy = {
+    enabled: true,
+    provider: settings.provider,
+    vastTagUrl: null,
+    preRollEnabled: settings.preRollEnabled,
+    midRollEnabled: settings.midRollEnabled,
+    postRollEnabled: settings.postRollEnabled,
+    midRollEverySec: settings.midRollEverySec,
+  };
+
+  for (const override of [channelOverride, videoOverride]) {
+    if (!override) continue;
+    resolved = {
+      enabled: override.enabled ?? resolved.enabled,
+      provider: override.provider === "GOOGLE_IMA" ? "GOOGLE_IMA" : resolved.provider,
+      vastTagUrl: override.vastTagUrl ?? resolved.vastTagUrl,
+      preRollEnabled: override.preRollEnabled ?? resolved.preRollEnabled,
+      midRollEnabled: override.midRollEnabled ?? resolved.midRollEnabled,
+      postRollEnabled: override.postRollEnabled ?? resolved.postRollEnabled,
+      midRollEverySec: override.midRollEverySec ?? resolved.midRollEverySec,
+    };
+  }
+
+  return resolved;
 }
