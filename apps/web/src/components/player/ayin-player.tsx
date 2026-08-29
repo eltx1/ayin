@@ -90,7 +90,9 @@ export function AyinPlayer({
   const [muted, setMuted] = useState(initiallyMuted);
   const [rate, setRate] = useState(1);
   const [captionsEnabled, setCaptionsEnabled] = useState(captions.some((track) => track.default));
-  const [resumePositionMs, setResumePositionMs] = useState(initialPositionMs);
+  const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const effectivePolicy = progressPolicy ?? {
@@ -116,7 +118,6 @@ export function AyinPlayer({
 
   useEffect(() => {
     resumeAppliedRef.current = false;
-    setResumePositionMs(initialPositionMs);
     lastPersistedAtRef.current = 0;
     lastPersistedPositionRef.current = 0;
     if (!progressEnabled || initialPositionMs > 0) return;
@@ -124,7 +125,10 @@ export function AyinPlayer({
     let cancelled = false;
     void readWatchProgress(videoId, profileId).then((snapshot) => {
       if (cancelled || !snapshot) return;
-      setResumePositionMs(resumablePositionMs(snapshot, declaredDurationMs));
+      setSavedResume({
+        videoId,
+        positionMs: resumablePositionMs(snapshot, declaredDurationMs),
+      });
       lastPersistedPositionRef.current = snapshot.positionMs;
       lastPersistedAtRef.current = Date.now();
     });
@@ -132,6 +136,9 @@ export function AyinPlayer({
       cancelled = true;
     };
   }, [declaredDurationMs, initialPositionMs, profileId, progressEnabled, videoId]);
+
+  const resumePositionMs =
+    savedResume?.videoId === videoId ? savedResume.positionMs : initialPositionMs;
 
   const applyResume = useCallback(() => {
     const video = videoRef.current;
