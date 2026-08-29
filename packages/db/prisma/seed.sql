@@ -157,3 +157,42 @@ VALUES
     CURRENT_TIMESTAMP
   )
 ON CONFLICT ("namespace", "key") DO NOTHING;
+
+INSERT INTO "FeatureFlag" (
+  "id",
+  "key",
+  "description",
+  "enabled",
+  "rolloutPercentage",
+  "createdAt",
+  "updatedAt"
+)
+VALUES (
+  '12000000-0000-4000-8000-000000000001',
+  'navigation.my-ayin',
+  'Show the My AYIN consumer library in primary navigation.',
+  true,
+  100,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+)
+ON CONFLICT ("key") DO NOTHING;
+
+INSERT INTO "HomeRowConfig" (
+  "id", "key", "title", "source", "audience", "enabled", "position", "maxItems",
+  "regionPersonalizationRequired", "createdAt", "updatedAt"
+)
+VALUES
+  ('12000000-0000-4000-8000-000000000101', 'continue-watching', 'Continue Watching', 'CONTINUE_WATCHING', 'AUTHENTICATED', true, 10, 24, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000102', 'trending-worldwide', 'Trending Worldwide', 'TRENDING_WORLDWIDE', 'ALL', true, 20, 30, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000103', 'popular-now', 'Popular Now', 'POPULAR_NOW', 'ALL', true, 30, 30, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000104', 'new-on-ayin', 'New on AYIN', 'NEW_ON_AYIN', 'ALL', true, 40, 30, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000105', 'because-you-watched', 'Because You Watched', 'BECAUSE_YOU_WATCHED', 'AUTHENTICATED', true, 50, 24, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000106', 'popular-region', 'Popular Near You', 'POPULAR_REGION', 'ALL', false, 60, 30, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000107', 'movies', 'Movies', 'MOVIES', 'ALL', false, 70, 30, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000108', 'series', 'Series', 'SERIES', 'ALL', false, 80, 30, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000109', 'creator-tv', 'Creator TV', 'CREATOR_TV', 'ALL', true, 90, 24, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000110', 'creators-you-follow', 'Creators You Follow', 'CREATORS_YOU_FOLLOW', 'AUTHENTICATED', false, 100, 24, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000111', 'recently-added', 'Recently Added', 'RECENTLY_ADDED', 'ALL', true, 110, 30, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+  ('12000000-0000-4000-8000-000000000112', 'editor-picks', 'Editor Picks', 'EDITOR_PICKS', 'ALL', true, 120, 30, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+ON CONFLICT ("key") DO NOTHING;

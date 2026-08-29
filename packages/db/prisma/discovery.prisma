@@ -1,0 +1,62 @@
+enum HomeRowSource {
+  CONTINUE_WATCHING
+  TRENDING_WORLDWIDE
+  POPULAR_NOW
+  NEW_ON_AYIN
+  BECAUSE_YOU_WATCHED
+  POPULAR_REGION
+  MOVIES
+  SERIES
+  CREATOR_TV
+  CREATORS_YOU_FOLLOW
+  RECENTLY_ADDED
+  EDITOR_PICKS
+}
+
+enum HomeRowAudience {
+  ALL
+  AUTHENTICATED
+  ANONYMOUS
+}
+
+enum HomeManualItemType {
+  VIDEO
+  CREATOR_TV
+  CHANNEL
+  PLAYLIST
+}
+
+model HomeRowConfig {
+  id                            String          @id @default(uuid()) @db.Uuid
+  key                           String          @unique @db.VarChar(80)
+  title                         String          @db.VarChar(120)
+  source                        HomeRowSource
+  audience                      HomeRowAudience @default(ALL)
+  enabled                       Boolean         @default(true)
+  position                      Int
+  maxItems                      Int             @default(24)
+  regionPersonalizationRequired Boolean         @default(false)
+  createdAt                     DateTime        @default(now())
+  updatedAt                     DateTime        @updatedAt
+
+  manualItems HomeRowManualItem[]
+
+  @@index([enabled, position])
+  @@index([audience, enabled, position])
+}
+
+model HomeRowManualItem {
+  id         String             @id @default(uuid()) @db.Uuid
+  rowId      String             @db.Uuid
+  entityType HomeManualItemType
+  entityId   String             @db.Uuid
+  position   Int
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  row HomeRowConfig @relation(fields: [rowId], references: [id], onDelete: Cascade)
+
+  @@unique([rowId, position])
+  @@unique([rowId, entityType, entityId])
+  @@index([entityType, entityId])
+}
