@@ -102,6 +102,6 @@ export class PublicProductController {
 
   @Get()
   getPublicControls() {
-    return this.product.getPublicControls();
+    return this.product.getPublicSnapshot();
   }
 }
