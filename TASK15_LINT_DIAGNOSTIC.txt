@@ -1,0 +1,23 @@
+$ corepack pnpm --recursive --if-present run lint
+Scope: 6 of 7 workspace projects
+packages/config lint$ eslint .
+packages/db lint$ eslint .
+packages/types lint$ eslint .
+packages/ui lint$ eslint .
+packages/config lint: Done
+packages/types lint: Done
+packages/ui lint: Done
+packages/db lint: Done
+apps/api lint$ eslint .
+apps/web lint$ eslint .
+apps/api lint: /home/runner/work/ayin/ayin/apps/api/src/comments/comment-policy.ts
+apps/api lint:   16:14  error  Unexpected control character(s) in regular expression: \x00, \x08, \x0b, \x0c, \x0e, \x1f  no-control-regex
+apps/api lint: /home/runner/work/ayin/ayin/apps/api/src/comments/comments.controller.ts
+apps/api lint:   18:1  error  Imports "CommentsService" are only used as type  @typescript-eslint/consistent-type-imports
+apps/api lint: ✖ 2 problems (2 errors, 0 warnings)
+apps/api lint:   1 error and 0 warnings potentially fixable with the `--fix` option.
+apps/api lint: Failed
+/home/runner/work/ayin/ayin/apps/api:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @ayin/api@0.0.0 lint: `eslint .`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.
