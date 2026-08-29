@@ -46,7 +46,7 @@ export interface VideoAdService {
 export async function fetchVideoAdDecision(videoId: string, signal?: AbortSignal) {
   const response = await fetch(`${apiBaseUrl}/ads/video/decision/${encodeURIComponent(videoId)}`, {
     cache: "no-store",
-    signal,
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok)
     return { enabled: false, reason: "DECISION_UNAVAILABLE" } as DisabledVideoAdDecision;
