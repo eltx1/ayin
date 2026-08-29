@@ -48,7 +48,8 @@ export async function fetchVideoAdDecision(videoId: string, signal?: AbortSignal
     cache: "no-store",
     signal,
   });
-  if (!response.ok) return { enabled: false, reason: "DECISION_UNAVAILABLE" } as DisabledVideoAdDecision;
+  if (!response.ok)
+    return { enabled: false, reason: "DECISION_UNAVAILABLE" } as DisabledVideoAdDecision;
   return (await response.json()) as VideoAdDecision | DisabledVideoAdDecision;
 }
 

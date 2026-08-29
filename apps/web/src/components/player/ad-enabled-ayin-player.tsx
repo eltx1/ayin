@@ -151,7 +151,11 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         onAdContainerReady={handleAdContainerReady}
       />
       {adEligible && !activated ? (
-        <button className={styles.start} data-tv-focusable="true" onClick={() => void activatePlayback()}>
+        <button
+          className={styles.start}
+          data-tv-focusable="true"
+          onClick={() => void activatePlayback()}
+        >
           Start playback
         </button>
       ) : null}

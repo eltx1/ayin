@@ -27,7 +27,10 @@ interface ImaAdsLoader {
 }
 
 interface ImaNamespace {
-  AdDisplayContainer: new (container: HTMLDivElement, content: HTMLVideoElement) => { initialize(): void };
+  AdDisplayContainer: new (
+    container: HTMLDivElement,
+    content: HTMLVideoElement,
+  ) => { initialize(): void };
   AdsLoader: new (displayContainer: { initialize(): void }) => ImaAdsLoader;
   AdsRequest: new () => ImaAdsRequest;
   AdsManagerLoadedEvent: { Type: { ADS_MANAGER_LOADED: string } };
@@ -74,7 +77,9 @@ async function loadImaSdk(): Promise<ImaNamespace> {
         if (ima) resolve(ima);
         else reject(new Error("Google IMA SDK loaded without its runtime namespace."));
       });
-      script.addEventListener("error", () => reject(new Error("Google IMA SDK could not be loaded.")));
+      script.addEventListener("error", () =>
+        reject(new Error("Google IMA SDK could not be loaded.")),
+      );
       document.head.append(script);
     });
   }
@@ -121,7 +126,10 @@ export class GoogleImaVideoAdService implements VideoAdService {
       const fail = (error: unknown) => {
         const imaError = error as ImaErrorEvent;
         const detail = imaError.getError?.();
-        callbacks.onEvent("ERROR", String(detail?.getErrorCode?.() ?? detail?.toString?.() ?? "IMA_ERROR"));
+        callbacks.onEvent(
+          "ERROR",
+          String(detail?.getErrorCode?.() ?? detail?.toString?.() ?? "IMA_ERROR"),
+        );
         this.adsManager?.destroy();
         this.adsManager = null;
         callbacks.onContentResume();
@@ -138,7 +146,9 @@ export class GoogleImaVideoAdService implements VideoAdService {
           this.adsManager?.destroy();
           this.adsManager = manager;
           manager.addEventListener(ima.AdErrorEvent.Type.AD_ERROR, fail);
-          manager.addEventListener(ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, () => callbacks.onContentPause());
+          manager.addEventListener(ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, () =>
+            callbacks.onContentPause(),
+          );
           manager.addEventListener(ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => {
             callbacks.onContentResume();
             if (!settled) {
@@ -159,7 +169,11 @@ export class GoogleImaVideoAdService implements VideoAdService {
           for (const [imaEvent, ayinEvent] of eventMap) {
             manager.addEventListener(imaEvent, () => callbacks.onEvent(ayinEvent));
           }
-          manager.init(Math.max(container.clientWidth, 1), Math.max(container.clientHeight, 1), ima.ViewMode.NORMAL);
+          manager.init(
+            Math.max(container.clientWidth, 1),
+            Math.max(container.clientHeight, 1),
+            ima.ViewMode.NORMAL,
+          );
           manager.start();
         } catch (error) {
           fail(error);

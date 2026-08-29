@@ -33,10 +33,14 @@ describe("video ad policy", () => {
   });
 
   it("does not let an unsupported provider override replace Google IMA", () => {
-    const resolved = resolveVideoAdPolicy(defaultVideoAdSettings, {
-      ...emptyOverride,
-      provider: "UNTRUSTED_PROVIDER",
-    }, null);
+    const resolved = resolveVideoAdPolicy(
+      defaultVideoAdSettings,
+      {
+        ...emptyOverride,
+        provider: "UNTRUSTED_PROVIDER",
+      },
+      null,
+    );
     expect(resolved.provider).toBe("GOOGLE_IMA");
   });
 });
