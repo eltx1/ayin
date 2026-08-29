@@ -57,9 +57,7 @@ export function AdminProductControls() {
         if (!active) return;
         setRows(snapshot.rows);
         setControls(snapshot.controls);
-        setManualDrafts(
-          Object.fromEntries(snapshot.rows.map((row) => [row.id, manualText(row)])),
-        );
+        setManualDrafts(Object.fromEntries(snapshot.rows.map((row) => [row.id, manualText(row)])));
       })
       .catch((error) => {
         if (active) {
@@ -115,7 +113,11 @@ export function AdminProductControls() {
       .filter(Boolean);
     return lines.map((line) => {
       const [entityType, entityId] = line.split(":", 2);
-      if (!entityType || !entityId || !["VIDEO", "CREATOR_TV", "CHANNEL", "PLAYLIST"].includes(entityType)) {
+      if (
+        !entityType ||
+        !entityId ||
+        !["VIDEO", "CREATOR_TV", "CHANNEL", "PLAYLIST"].includes(entityType)
+      ) {
         throw new Error("Manual items must use TYPE:UUID, one per line.");
       }
       return {
@@ -148,7 +150,8 @@ export function AdminProductControls() {
       <section className={styles.card}>
         <h2>Home Builder</h2>
         <p className={styles.muted}>
-          Rename, source, audience, limits, regional requirements and manual Editor Picks update the public discovery feed without a deployment.
+          Rename, source, audience, limits, regional requirements and manual Editor Picks update the
+          public discovery feed without a deployment.
         </p>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
