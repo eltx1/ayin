@@ -11,9 +11,12 @@ export const defaultCommentPolicy: CommentPolicy = {
 };
 
 export function normalizeCommentBody(input: string, policy: CommentPolicy): string {
-  const normalized = input
-    .normalize("NFKC")
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+  const normalized = Array.from(input.normalize("NFKC"))
+    .filter((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint === 9 || codePoint === 10 || codePoint === 13 || codePoint >= 32;
+    })
+    .join("")
     .replace(/\r\n?/g, "\n")
     .trim();
   if (!normalized) throw new Error("COMMENT_EMPTY");
