@@ -142,7 +142,7 @@ export class CommentsService {
       throw this.policyError(error);
     }
     return this.database.client.comment.create({
-      data: { videoId, authorProfileId: profile.id, parentId, body: normalized },
+      data: { videoId, authorProfileId: profile.id, parentId: parentId ?? null, body: normalized },
       select: { id: true, body: true, parentId: true, createdAt: true },
     });
   }
