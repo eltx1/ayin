@@ -44,7 +44,17 @@ export class AdminProductService {
   }
 
   async patchRow(actorAccountId: string, rowId: string, input: HomeRowPatch) {
-    const { reason, ...patch } = input;
+    const reason = input.reason;
+    const patch: Prisma.HomeRowConfigUpdateInput = {};
+    if (input.title !== undefined) patch.title = input.title;
+    if (input.source !== undefined) patch.source = input.source;
+    if (input.audience !== undefined) patch.audience = input.audience;
+    if (input.enabled !== undefined) patch.enabled = input.enabled;
+    if (input.maxItems !== undefined) patch.maxItems = input.maxItems;
+    if (input.regionPersonalizationRequired !== undefined) {
+      patch.regionPersonalizationRequired = input.regionPersonalizationRequired;
+    }
+
     const existing = await this.database.client.homeRowConfig.findUnique({ where: { id: rowId } });
     if (!existing) throw adminBadRequest("HOME_ROW_NOT_FOUND", "Home row was not found.");
 
