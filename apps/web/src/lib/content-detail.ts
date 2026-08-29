@@ -3,14 +3,7 @@ import type { PublicPlaybackResponse } from "./ayin-player";
 import type { SearchResult } from "./search";
 
 export type ContentDetailKind =
-  | "VIDEO"
-  | "MOVIE"
-  | "SERIES"
-  | "SEASON"
-  | "EPISODE"
-  | "SHORT"
-  | "TV_CHANNEL"
-  | "LIVE_EVENT";
+  "VIDEO" | "MOVIE" | "SERIES" | "SEASON" | "EPISODE" | "SHORT" | "TV_CHANNEL" | "LIVE_EVENT";
 
 export type ExternalAdPlacementKey = "watch_below_player" | "content_detail";
 
@@ -51,10 +44,9 @@ export interface ContentDetailViewModel {
 }
 
 export async function fetchVideoContentDetail(slug: string): Promise<VideoContentDetailResponse> {
-  const response = await fetch(
-    `${apiBaseUrl}/public/content/videos/${encodeURIComponent(slug)}`,
-    { cache: "no-store" },
-  );
+  const response = await fetch(`${apiBaseUrl}/public/content/videos/${encodeURIComponent(slug)}`, {
+    cache: "no-store",
+  });
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as VideoContentDetailResponse;
 }

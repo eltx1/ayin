@@ -174,7 +174,9 @@ databaseDescribe("Task 13 search and unified content detail", () => {
     });
     expect(second.statusCode).toBe(200);
     const firstIds = new Set(first.json().results.map((item: { id: string }) => item.id));
-    expect(second.json().results.every((item: { id: string }) => !firstIds.has(item.id))).toBe(true);
+    expect(second.json().results.every((item: { id: string }) => !firstIds.has(item.id))).toBe(
+      true,
+    );
 
     const suggestions = await app.inject({
       method: "GET",
@@ -183,9 +185,11 @@ databaseDescribe("Task 13 search and unified content detail", () => {
     expect(suggestions.statusCode).toBe(200);
     expect(suggestions.json().suggestions.length).toBeGreaterThan(0);
     expect(
-      suggestions.json().suggestions.every((item: { type: string }) =>
-        ["VIDEO", "CHANNEL", "PLAYLIST", "CREATOR_TV"].includes(item.type),
-      ),
+      suggestions
+        .json()
+        .suggestions.every((item: { type: string }) =>
+          ["VIDEO", "CHANNEL", "PLAYLIST", "CREATOR_TV"].includes(item.type),
+        ),
     ).toBe(true);
   });
 

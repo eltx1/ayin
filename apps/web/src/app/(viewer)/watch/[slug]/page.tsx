@@ -3,18 +3,14 @@ import { notFound } from "next/navigation";
 import { ContentDetailLayout } from "@/components/content/content-detail-layout";
 import { AyinPlayer } from "@/components/player/ayin-player";
 import { apiBaseUrl, readApiError } from "@/lib/api";
-import {
-  type VideoContentDetailResponse,
-  videoDetailViewModel,
-} from "@/lib/content-detail";
+import { type VideoContentDetailResponse, videoDetailViewModel } from "@/lib/content-detail";
 import { mediaAssetUrl } from "@/lib/channel";
 
 export default async function WatchPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const response = await fetch(
-    `${apiBaseUrl}/public/content/videos/${encodeURIComponent(slug)}`,
-    { cache: "no-store" },
-  );
+  const response = await fetch(`${apiBaseUrl}/public/content/videos/${encodeURIComponent(slug)}`, {
+    cache: "no-store",
+  });
   if (response.status === 404) notFound();
   if (!response.ok) throw new Error(await readApiError(response));
 

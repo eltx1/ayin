@@ -41,7 +41,9 @@ export class SearchController {
   async search(@Req() request: FastifyRequest, @Query() query: unknown) {
     const parsed = searchQuerySchema.safeParse(query);
     if (!parsed.success) {
-      throw searchHttpError(new SearchError("INVALID_SEARCH_QUERY", "The search request is invalid."));
+      throw searchHttpError(
+        new SearchError("INVALID_SEARCH_QUERY", "The search request is invalid."),
+      );
     }
     this.rateLimiter.consume("search", request.ip, searchRequestsPerMinute);
     return runSearch(() =>
@@ -58,7 +60,9 @@ export class SearchController {
   async suggestions(@Req() request: FastifyRequest, @Query() query: unknown) {
     const parsed = suggestionsQuerySchema.safeParse(query);
     if (!parsed.success) {
-      throw searchHttpError(new SearchError("INVALID_SEARCH_QUERY", "The search request is invalid."));
+      throw searchHttpError(
+        new SearchError("INVALID_SEARCH_QUERY", "The search request is invalid."),
+      );
     }
     this.rateLimiter.consume("suggestions", request.ip, suggestionRequestsPerMinute);
     const normalizedQuery = normalizeSearchQuery(parsed.data.q);
@@ -70,12 +74,21 @@ export class SearchController {
 }
 
 function parseTypes(raw: string): SearchResultType[] {
-  const values = [...new Set(raw.split(",").map((value) => value.trim()).filter(Boolean))];
+  const values = [
+    ...new Set(
+      raw
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
   if (
     values.length === 0 ||
     values.some((value) => !searchResultTypes.includes(value as SearchResultType))
   ) {
-    throw searchHttpError(new SearchError("INVALID_SEARCH_TYPES", "The selected search types are invalid."));
+    throw searchHttpError(
+      new SearchError("INVALID_SEARCH_TYPES", "The selected search types are invalid."),
+    );
   }
   return values as SearchResultType[];
 }

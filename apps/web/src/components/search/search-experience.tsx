@@ -46,7 +46,9 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
       })
       .catch((loadError: unknown) => {
         if ((loadError as { name?: string }).name !== "AbortError") {
-          setError(loadError instanceof Error ? loadError.message : "Search is unavailable right now.");
+          setError(
+            loadError instanceof Error ? loadError.message : "Search is unavailable right now.",
+          );
         }
       })
       .finally(() => setLoading(false));
@@ -96,7 +98,9 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
       setSubmittedQuery(response.query);
       setQuery(response.query);
       setSuggestions([]);
-      setResults((current) => (append ? mergeResults(current, response.results) : response.results));
+      setResults((current) =>
+        append ? mergeResults(current, response.results) : response.results,
+      );
       setCursor(response.nextCursor);
       router.replace(`/search?q=${encodeURIComponent(response.query)}`, { scroll: false });
     } catch (loadError) {
@@ -150,7 +154,10 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
             {suggestions.map((suggestion) => (
               <Link href={suggestion.href} key={`${suggestion.type}:${suggestion.id}`}>
                 <strong>{suggestion.title}</strong>
-                <span>{suggestion.kicker}{suggestion.meta ? ` · ${suggestion.meta}` : ""}</span>
+                <span>
+                  {suggestion.kicker}
+                  {suggestion.meta ? ` · ${suggestion.meta}` : ""}
+                </span>
               </Link>
             ))}
           </div>
@@ -172,11 +179,17 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
         ))}
       </div>
 
-      {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {loading ? (
         <div className={styles.results} aria-label="Loading search results">
-          {Array.from({ length: 8 }, (_, index) => <MediaCardSkeleton key={index} />)}
+          {Array.from({ length: 8 }, (_, index) => (
+            <MediaCardSkeleton key={index} />
+          ))}
         </div>
       ) : submittedQuery.trim().length < 2 ? (
         <section className={styles.empty}>
@@ -199,7 +212,11 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
                   {...(result.meta ? { meta: result.meta } : {})}
                   title={result.title}
                   tone={toneFor(result.id)}
-                  variant={result.type === "CHANNEL" || result.type === "CREATOR_TV" ? "landscape" : "poster"}
+                  variant={
+                    result.type === "CHANNEL" || result.type === "CREATOR_TV"
+                      ? "landscape"
+                      : "poster"
+                  }
                 />
               </div>
             ))}

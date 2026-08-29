@@ -213,7 +213,12 @@ export class SearchService {
         meta: playlist.channel.name,
         artworkObjectKey: null,
       },
-      score: relevanceScore("PLAYLIST", playlist.name, [playlist.description, playlist.channel.name], query),
+      score: relevanceScore(
+        "PLAYLIST",
+        playlist.name,
+        [playlist.description, playlist.channel.name],
+        query,
+      ),
     }));
   }
 
@@ -251,7 +256,12 @@ export class SearchService {
         meta: tv.channel.name,
         artworkObjectKey: null,
       },
-      score: relevanceScore("CREATOR_TV", tv.name, [tv.slug, tv.channel.name, tv.channel.handle], query),
+      score: relevanceScore(
+        "CREATOR_TV",
+        tv.name,
+        [tv.slug, tv.channel.name, tv.channel.handle],
+        query,
+      ),
     }));
   }
 }

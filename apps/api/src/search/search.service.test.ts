@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { SearchError } from "./search.errors.js";
 import { SearchRateLimiter } from "./search-rate-limiter.js";
-import {
-  decodeSearchCursor,
-  encodeSearchCursor,
-  normalizeSearchQuery,
-} from "./search.service.js";
+import { decodeSearchCursor, encodeSearchCursor, normalizeSearchQuery } from "./search.service.js";
 
 describe("Task 13 search safety helpers", () => {
   it("normalizes Unicode, control characters and whitespace before searching", () => {
