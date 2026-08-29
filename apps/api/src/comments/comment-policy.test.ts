@@ -31,4 +31,8 @@ describe("comment policy", () => {
       }),
     ).toThrow("COMMENT_TOO_LONG");
   });
+
+  it("removes low control characters without stripping ordinary unicode", () => {
+    expect(normalizeCommentBody("AYIN\u0000 ✨", defaultCommentPolicy)).toBe("AYIN ✨");
+  });
 });
