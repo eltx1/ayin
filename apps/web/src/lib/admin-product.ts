@@ -61,6 +61,16 @@ export const reorderAdminHomeRows = (rowIds: string[], reason: string) =>
     body: JSON.stringify({ rowIds, reason }),
   });
 
+export const replaceAdminHomeRowManualItems = (
+  rowId: string,
+  items: Array<{ entityType: "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST"; entityId: string }>,
+  reason: string,
+) =>
+  request<AdminHomeRow>(`/admin/product-controls/home-rows/${rowId}/manual-items`, {
+    method: "PUT",
+    body: JSON.stringify({ items, reason }),
+  });
+
 export const updateAdminProductControls = (controls: ProductControls, reason: string) =>
   request<ProductControls>("/admin/product-controls/global", {
     method: "PUT",
