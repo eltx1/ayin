@@ -1,0 +1,28 @@
+name: Task 20 formatter
+on:
+  push:
+    branches: [task-20-page-ads-gpt]
+    paths:
+      - ".github/workflows/task20-format.yml"
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-20-page-ads-gpt
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable && corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/ads apps/web/src docs packages/db/prisma/migrations/20260830002000_page_ad_placements
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "style: format Task 20 page ads"
+          git push origin HEAD:task-20-page-ads-gpt
