@@ -52,6 +52,11 @@ databaseDescribe("Task 16 Creator Studio", () => {
     return { cookie: cookiePair(response.headers["set-cookie"]), user: response.json().user };
   }
 
+  it("requires authentication for Studio data", async () => {
+    const response = await app.inject({ method: "GET", url: "/creator/studio/overview" });
+    expect(response.statusCode).toBe(401);
+  });
+
   it("shows real dashboard counters and lets the owner manage content", async () => {
     const owner = await register("Studio Owner", "studio-owner@example.com");
     const video = await prisma.video.create({
