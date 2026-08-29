@@ -22,4 +22,13 @@ describe("comment policy", () => {
       false,
     );
   });
+
+  it("rejects bodies longer than the configured maximum", () => {
+    expect(() =>
+      normalizeCommentBody("abcd", {
+        ...defaultCommentPolicy,
+        maxLength: 3,
+      }),
+    ).toThrow("COMMENT_TOO_LONG");
+  });
 });
