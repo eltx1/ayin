@@ -1,0 +1,110 @@
+.page {
+  display: grid;
+  gap: 1.4rem;
+  margin: 0 auto;
+  max-width: 1380px;
+  padding: 1.4rem;
+}
+
+.media {
+  min-width: 0;
+}
+
+.summary {
+  align-items: flex-start;
+  display: flex;
+  gap: 1.2rem;
+  justify-content: space-between;
+  padding: 0 0.2rem;
+}
+
+.copy {
+  max-width: 74ch;
+}
+
+.eyebrow {
+  color: #63d1cc;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.copy h1 {
+  font-size: clamp(1.7rem, 4vw, 2.8rem);
+  margin: 0.25rem 0 0.55rem;
+}
+
+.meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  gap: 0.65rem;
+}
+
+.description {
+  color: #b7c1cc;
+  line-height: 1.65;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  justify-content: flex-end;
+}
+
+.creator,
+.reservedAction {
+  border: 1px solid #2b3744;
+  border-radius: 0.9rem;
+  padding: 0.7rem 0.9rem;
+}
+
+.creator {
+  display: grid;
+  gap: 0.1rem;
+  text-decoration: none;
+}
+
+.creator span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.reservedAction {
+  background: rgb(255 255 255 / 5%);
+  color: var(--muted);
+  cursor: not-allowed;
+  font: inherit;
+  font-weight: 700;
+}
+
+.commentsSlot {
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 1rem;
+  display: grid;
+  gap: 0.3rem;
+  padding: 1rem;
+}
+
+.commentsSlot span {
+  color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .page {
+    padding: 0.75rem;
+  }
+
+  .summary {
+    display: grid;
+  }
+
+  .actions {
+    justify-content: flex-start;
+  }
+}
