@@ -32,6 +32,16 @@ describe("AYIN player watch-state helpers", () => {
         force: true,
       }),
     ).toBe(true);
+    expect(
+      shouldPersistProgress({
+        nowMs: 2_000,
+        lastPersistedAtMs: 1_500,
+        positionMs: 6_100,
+        lastPersistedPositionMs: 6_000,
+        intervalMs: 15_000,
+        force: true,
+      }),
+    ).toBe(false);
   });
 
   it("resumes meaningful unfinished progress and restarts completed or near-finished videos", () => {
