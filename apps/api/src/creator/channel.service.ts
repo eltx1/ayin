@@ -116,7 +116,8 @@ export class ChannelService {
       },
       appearance,
       subscription: {
-        available: false,
+        available: true,
+        subscriberCount: channel._count.subscriptions,
       },
       features: {
         shorts: flags["channel.shorts"] ?? false,
@@ -460,6 +461,7 @@ export class ChannelService {
       status: true,
       removedAt: true,
       createdAt: true,
+      _count: { select: { subscriptions: true } },
       primaryTvChannel: {
         select: { id: true, slug: true, name: true, status: true },
       },
