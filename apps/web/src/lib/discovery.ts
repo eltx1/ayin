@@ -38,7 +38,7 @@ export async function getIdentity(signal?: AbortSignal): Promise<AyinIdentity | 
   const response = await fetch(`${apiBaseUrl}/auth/me`, {
     cache: "no-store",
     credentials: "include",
-    signal,
+    signal: signal ?? null,
   });
   if (!response.ok) return null;
   return (await response.json()) as AyinIdentity;
@@ -50,7 +50,7 @@ export async function fetchDiscoveryHome(
 ): Promise<DiscoveryHomeResponse> {
   const response = await fetch(
     `${apiBaseUrl}/${authenticated ? "discovery" : "public/discovery"}/home`,
-    { cache: "no-store", credentials: "include", signal },
+    { cache: "no-store", credentials: "include", signal: signal ?? null },
   );
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as DiscoveryHomeResponse;
@@ -74,7 +74,7 @@ export async function fetchMyAyin(signal?: AbortSignal): Promise<MyAyinResponse>
   const response = await fetch(`${apiBaseUrl}/discovery/my-ayin`, {
     cache: "no-store",
     credentials: "include",
-    signal,
+    signal: signal ?? null,
   });
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as MyAyinResponse;
