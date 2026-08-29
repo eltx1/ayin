@@ -36,7 +36,6 @@ jobs:
           apps/web/src/components/discovery/discovery.module.css
           apps/web/src/components/discovery/my-ayin-library.tsx
           apps/web/src/lib/discovery.ts
-          packages/db/prisma/discovery.prisma
           packages/db/src/discovery.test.mjs
       - run: |
           git config user.name "github-actions[bot]"
