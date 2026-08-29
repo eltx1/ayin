@@ -10,6 +10,7 @@ const links = [
   ["Videos", "/admin/videos"],
   ["Creator TV", "/admin/tv"],
   ["Moderation", "/admin/moderation"],
+  ["Product Controls", "/admin/product-controls"],
   ["Settings", "/admin/settings"],
 ] as const;
 
