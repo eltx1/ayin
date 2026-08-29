@@ -1,0 +1,297 @@
+$ corepack pnpm --filter @ayin/db run test:integration && corepack pnpm --filter @ayin/api run test:integration
+$ vitest run --testTimeout=30000 test/database.integration.test.mjs
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/ayin/ayin/packages/db[39m
+
+ [32m✓[39m test/database.integration.test.mjs [2m([22m[2m2 tests[22m[2m)[22m[33m 11842[2mms[22m[39m
+     [33m[2m✓[22m[39m deploys and seeds a disposable clean database idempotently [33m 7683[2mms[22m[39m
+     [33m[2m✓[22m[39m enforces important relational and value constraints [33m 4157[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m   Start at [22m 21:42:41
+[2m   Duration [22m 12.00s[2m (transform 16ms, setup 0ms, import 28ms, tests 11.84s, environment 0ms)[22m
+
+$ vitest run --testTimeout=30000 --fileParallelism=false test
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/home/runner/work/ayin/ayin/apps/api[39m
+
+ [31m❯[39m test/playlist-product.integration.test.ts [2m([22m[2m5 tests[22m[2m | [22m[33m5 skipped[39m[2m)[22m[32m 61[2mms[22m[39m
+     [2m[90m↓[39m[22m protects Uploads and follows the creator rename policy while preserving admin override
+     [2m[90m↓[39m[22m prevents duplicates and keeps add, reorder and remove positions gapless
+     [2m[90m↓[39m[22m enforces channel ownership for playlist management
+     [2m[90m↓[39m[22m supports public and unlisted links without exposing private playlists or private videos
+     [2m[90m↓[39m[22m models Watch Later as a profile-owned dedicated list with duplicate protection
+ [31m❯[39m test/discovery.integration.test.ts [2m([22m[2m4 tests[22m[2m | [22m[33m4 skipped[39m[2m)[22m[32m 56[2mms[22m[39m
+     [2m[90m↓[39m[22m renders configured rows in database order using only real eligible data
+     [2m[90m↓[39m[22m paginates large rows without per-item queries or fake catalog entries
+     [2m[90m↓[39m[22m builds My AYIN from the selected profile and rejects cross-account profile access
+     [2m[90m↓[39m[22m suppresses regional discovery unless both a signal and privacy permission are present
+ [31m❯[39m test/channel-pages.integration.test.ts [2m([22m[2m5 tests[22m[2m | [22m[33m5 skipped[39m[2m)[22m[32m 32[2mms[22m[39m
+     [2m[90m↓[39m[22m publishes a clean channel boundary with public videos, playlists and Creator TV only
+     [2m[90m↓[39m[22m lets the owner edit essentials and keeps old handle links durable
+     [2m[90m↓[39m[22m rejects handle collisions and another channel owner editing the draft
+     [2m[90m↓[39m[22m keeps an explicit server-authorized admin override boundary in the channel service
+     [2m[90m↓[39m[22m authorizes and selects server-keyed R2 channel artwork
+ [31m❯[39m test/auth.integration.test.ts [2m([22m[2m6 tests[22m[2m | [22m[33m6 skipped[39m[2m)[22m[32m 42[2mms[22m[39m
+     [2m[90m↓[39m[22m creates the complete viewer and creator identity in one successful registration
+     [2m[90m↓[39m[22m keeps provisioning idempotent when the same default identity is repaired
+     [2m[90m↓[39m[22m rejects duplicate email registration after normalization
+     [2m[90m↓[39m[22m uses the deterministic account suffix when the clean handle is already taken
+     [2m[90m↓[39m[22m rolls back the Account and all provisioning when a late provisioning write fails
+     [2m[90m↓[39m[22m supports login, logout and current-user authorization for cookie and bearer transports
+ [31m❯[39m test/creator-tv.integration.test.ts [2m([22m[2m4 tests[22m[2m | [22m[33m4 skipped[39m[2m)[22m[32m 48[2mms[22m[39m
+     [2m[90m↓[39m[22m keeps every registered channel TV polished and off-air when its eligible library is empty
+     [2m[90m↓[39m[22m automatically rotates newly published eligible MP4 videos and ignores ineligible media
+     [2m[90m↓[39m[22m lets the owner exclude a video while denying another channel owner
+     [2m[90m↓[39m[22m exposes audited admin enable/disable and schedule override hooks
+ [31m❯[39m test/watch-progress.integration.test.ts [2m([22m[2m3 tests[22m[2m | [22m[33m3 skipped[39m[2m)[22m[32m 57[2mms[22m[39m
+     [2m[90m↓[39m[22m returns a progressive MP4 playback contract and resumes persisted progress
+     [2m[90m↓[39m[22m marks progress completed at the configured threshold and keeps history efficient
+     [2m[90m↓[39m[22m isolates progress by viewer profile and rejects profiles from another account
+ [31m❯[39m test/quick-upload.integration.test.ts [2m([22m[2m5 tests[22m[2m | [22m[33m5 skipped[39m[2m)[22m[32m 56[2mms[22m[39m
+     [2m[90m↓[39m[22m publishes the happy path with a durable rights declaration
+     [2m[90m↓[39m[22m cannot publish before the direct R2 upload completes
+     [2m[90m↓[39m[22m requires explicit rights confirmation
+     [2m[90m↓[39m[22m prevents a creator from publishing another channel's draft
+     [2m[90m↓[39m[22m associates Uploads and Creator TV exactly once across repeated publish requests
+ [31m❯[39m test/media-upload.integration.test.ts [2m([22m[2m4 tests[22m[2m | [22m[33m4 skipped[39m[2m)[22m[32m 34[2mms[22m[39m
+     [2m[90m↓[39m[22m requires authentication and channel ownership
+     [2m[90m↓[39m[22m uses a stable server-generated asset id in an owner-scoped R2 key
+     [2m[90m↓[39m[22m rejects invalid type and oversize files with friendly errors
+     [2m[90m↓[39m[22m marks a multipart MediaAsset uploaded only after complete succeeds
+ [31m❯[39m test/admin-settings.integration.test.ts [2m([22m[2m6 tests[22m[2m | [22m[33m6 skipped[39m[2m)[22m[32m 42[2mms[22m[39m
+     [2m[90m↓[39m[22m rejects a settings mutation from a non-admin account
+     [2m[90m↓[39m[22m allows ADMIN to change a validated ordinary setting
+     [2m[90m↓[39m[22m rejects an invalid typed setting value
+     [2m[90m↓[39m[22m requires SUPERADMIN confirmation and audits a sensitive settings change
+     [2m[90m↓[39m[22m falls back to safe defaults when a setting is not stored
+     [2m[90m↓[39m[22m keeps unknown feature flags disabled and allows an admin to define a validated flag
+ [31m❯[39m test/social.integration.test.ts [2m([22m[2m2 tests[22m[2m | [22m[33m2 skipped[39m[2m)[22m[32m 58[2mms[22m[39m
+     [2m[90m↓[39m[22m requires authentication and keeps subscription toggles idempotent
+     [2m[90m↓[39m[22m makes reactions and both saved lists idempotent and profile isolated
+ [32m✓[39m src/creator/creator-tv.scheduler.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [31m❯[39m test/public-navigation.integration.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m[32m 31[2mms[22m[39m
+     [2m[90m↓[39m[22m keeps unfinished navigation hidden unless its allowlisted feature flag is enabled
+ [32m✓[39m src/search/search.service.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m src/media/media-storage.config.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m src/comments/comment-policy.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [31m❯[39m test/health.integration.test.ts [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m[32m 37[2mms[22m[39m
+     [2m[90m↓[39m[22m reports that the API is healthy
+ [32m✓[39m src/auth/password.service.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 297[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 12 [49m[22m[31m⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m test/admin-settings.integration.test.ts[2m > [22mTask 04 platform settings and admin authorization
+[41m[1m FAIL [22m[49m test/auth.integration.test.ts[2m > [22mauthentication and instant creator provisioning
+[41m[1m FAIL [22m[49m test/channel-pages.integration.test.ts[2m > [22mTask 08 public creator channels
+[41m[1m FAIL [22m[49m test/creator-tv.integration.test.ts[2m > [22mTask 10 Creator TV V1
+[41m[1m FAIL [22m[49m test/discovery.integration.test.ts[2m > [22mTask 12 discovery and My AYIN
+[41m[1m FAIL [22m[49m test/health.integration.test.ts[2m > [22mGET /health
+[41m[1m FAIL [22m[49m test/media-upload.integration.test.ts[2m > [22mdirect creator media upload
+[41m[1m FAIL [22m[49m test/playlist-product.integration.test.ts[2m > [22mTask 09 playlist product
+[41m[1m FAIL [22m[49m test/public-navigation.integration.test.ts[2m > [22mTask 05 public navigation feature flags
+[41m[1m FAIL [22m[49m test/quick-upload.integration.test.ts[2m > [22mcreator quick upload and publish
+[41m[1m FAIL [22m[49m test/social.integration.test.ts[2m > [22mTask 14 social graph
+[41m[1m FAIL [22m[49m test/watch-progress.integration.test.ts[2m > [22mTask 11 AYIN Player watch progress
+[31m[1mError[22m: Nest can't resolve dependencies of the CommentsService (DatabaseService, ?). Please make sure that the argument at index [1] is available in the current module.
+
+Potential solutions:
+- The dependency at index [1] appears to be undefined at runtime
+- This commonly occurs when using 'import type' instead of 'import' for injectable classes
+- Check your imports and change:
+  ❌ import type { SomeService } from './some.service';
+  ✅ import { SomeService } from './some.service';
+- Ensure the imported class is decorated with @Injectable() or is a valid provider
+- If using dynamic imports, ensure the class is available at runtime, not just for type checking
+
+For more common dependency resolution issues, see: https://docs.nestjs.com/faq/common-errors[39m
+[90m [2m❯[22m TestingInjector.resolveSingleParam ../../node_modules/.pnpm/@nestjs+core@12.0.1_@nestjs+common@12.0.1_reflect-metadata@0.2.2_rxjs@7.8.2_supports-co_557a87a794be69e79bb46e486446b915/node_modules/@nestjs/core/injector/injector.js:[2m236:19[22m[39m
+[90m [2m❯[22m resolveParam ../../node_modules/.pnpm/@nestjs+core@12.0.1_@nestjs+common@12.0.1_reflect-metadata@0.2.2_rxjs@7.8.2_supports-co_557a87a794be69e79bb46e486446b915/node_modules/@nestjs/core/injector/injector.js:[2m149:49[22m[39m
+[90m [2m❯[22m TestingInjector.resolveConstructorParams ../../node_modules/.pnpm/@nestjs+core@12.0.1_@nestjs+common@12.0.1_reflect-metadata@0.2.2_rxjs@7.8.2_supports-co_557a87a794be69e79bb46e486446b915/node_modules/@nestjs/core/injector/injector.js:[2m181:58[22m[39m
+[90m [2m❯[22m TestingInjector.loadInstance ../../node_modules/.pnpm/@nestjs+core@12.0.1_@nestjs+common@12.0.1_reflect-metadata@0.2.2_rxjs@7.8.2_supports-co_557a87a794be69e79bb46e486446b915/node_modules/@nestjs/core/injector/injector.js:[2m75:24[22m[39m
+[90m [2m❯[22m TestingInjector.loadProvider ../../node_modules/.pnpm/@nestjs+core@12.0.1_@nestjs+common@12.0.1_reflect-metadata@0.2.2_rxjs@7.8.2_supports-co_557a87a794be69e79bb46e486446b915/node_modules/@nestjs/core/injector/injector.js:[2m109:20[22m[39m
+[90m [2m❯[22m ../../node_modules/.pnpm/@nestjs+core@12.0.1_@nestjs+common@12.0.1_reflect-metadata@0.2.2_rxjs@7.8.2_supports-co_557a87a794be69e79bb46e486446b915/node_modules/@nestjs/core/injector/instance-loader.js:[2m57:33[22m[39m
+[90m [2m❯[22m TestingInstanceLoader.createInstancesOfProviders ../../node_modules/.pnpm/@nestjs+core@12.0.1_@nestjs+common@12.0.1_reflect-metadata@0.2.2_rxjs@7.8.2_supports-co_557a87a794be69e79bb46e486446b915/node_modules/@nestjs/core/injector/instance-loader.js:[2m56:36[22m[39m
+[90m [2m❯[22m ../../node_modules/.pnpm/@nestjs+core@12.0.1_@nestjs+common@12.0.1_reflect-metadata@0.2.2_rxjs@7.8.2_supports-co_557a87a794be69e79bb46e486446b915/node_modules/@nestjs/core/injector/instance-loader.js:[2m41:24[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/admin-settings.integration.test.ts[2m > [22mTask 04 platform settings and admin authorization
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/admin-settings.integration.test.ts:[2m46:15[22m[39m
+    [90m 44|[39m
+    [90m 45|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 46|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 47|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 48|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/auth.integration.test.ts[2m > [22mauthentication and instant creator provisioning
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/auth.integration.test.ts:[2m45:15[22m[39m
+    [90m 43|[39m
+    [90m 44|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 45|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 46|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 47|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/channel-pages.integration.test.ts[2m > [22mTask 08 public creator channels
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/channel-pages.integration.test.ts:[2m86:15[22m[39m
+    [90m 84|[39m
+    [90m 85|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 86|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 87|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 88|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/creator-tv.integration.test.ts[2m > [22mTask 10 Creator TV V1
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/creator-tv.integration.test.ts:[2m86:15[22m[39m
+    [90m 84|[39m
+    [90m 85|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 86|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 87|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 88|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/discovery.integration.test.ts[2m > [22mTask 12 discovery and My AYIN
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/discovery.integration.test.ts:[2m120:15[22m[39m
+    [90m118|[39m
+    [90m119|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m120|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m121|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m122|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/health.integration.test.ts[2m > [22mGET /health
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/health.integration.test.ts:[2m21:15[22m[39m
+    [90m 19|[39m
+    [90m 20|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 21|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 22|[39m   })[33m;[39m
+    [90m 23|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/media-upload.integration.test.ts[2m > [22mdirect creator media upload
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/media-upload.integration.test.ts:[2m75:15[22m[39m
+    [90m 73|[39m
+    [90m 74|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 75|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 76|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 77|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/playlist-product.integration.test.ts[2m > [22mTask 09 playlist product
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/playlist-product.integration.test.ts:[2m46:15[22m[39m
+    [90m 44|[39m
+    [90m 45|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 46|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 47|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 48|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/public-navigation.integration.test.ts[2m > [22mTask 05 public navigation feature flags
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/public-navigation.integration.test.ts:[2m35:15[22m[39m
+    [90m 33|[39m
+    [90m 34|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 35|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 36|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 37|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/quick-upload.integration.test.ts[2m > [22mcreator quick upload and publish
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/quick-upload.integration.test.ts:[2m77:15[22m[39m
+    [90m 75|[39m
+    [90m 76|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 77|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 78|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 79|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/social.integration.test.ts[2m > [22mTask 14 social graph
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/social.integration.test.ts:[2m37:15[22m[39m
+    [90m 35|[39m   })[33m;[39m
+    [90m 36|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 37|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 38|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 39|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/24]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/watch-progress.integration.test.ts[2m > [22mTask 11 AYIN Player watch progress
+[31m[1mTypeError[22m: Cannot read properties of undefined (reading 'close')[39m
+[36m [2m❯[22m test/watch-progress.integration.test.ts:[2m81:15[22m[39m
+    [90m 79|[39m
+    [90m 80|[39m   [34mafterAll[39m([35masync[39m () [33m=>[39m {
+    [90m 81|[39m     [35mawait[39m app[33m.[39m[34mclose[39m()[33m;[39m
+    [90m   |[39m               [31m^[39m
+    [90m 82|[39m     [35mawait[39m prisma[33m.[39m[34m$disconnect[39m()[33m;[39m
+    [90m 83|[39m   })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/24]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m12 failed[39m[22m[2m | [22m[1m[32m5 passed[39m[22m[90m (17)[39m
+[2m      Tests [22m [1m[32m16 passed[39m[22m[2m | [22m[33m46 skipped[39m[90m (62)[39m
+[2m   Start at [22m 21:42:54
+[2m   Duration [22m 9.82s[2m (transform 537ms, setup 0ms, import 6.75s, tests 891ms, environment 2ms)[22m
+
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/admin-settings.integration.test.ts,title=test/admin-settings.integration.test.ts > Task 04 platform settings and admin authorization,line=46,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/admin-settings.integration.test.ts:46:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/auth.integration.test.ts,title=test/auth.integration.test.ts > authentication and instant creator provisioning,line=45,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/auth.integration.test.ts:45:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/channel-pages.integration.test.ts,title=test/channel-pages.integration.test.ts > Task 08 public creator channels,line=86,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/channel-pages.integration.test.ts:86:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/creator-tv.integration.test.ts,title=test/creator-tv.integration.test.ts > Task 10 Creator TV V1,line=86,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/creator-tv.integration.test.ts:86:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/discovery.integration.test.ts,title=test/discovery.integration.test.ts > Task 12 discovery and My AYIN,line=120,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/discovery.integration.test.ts:120:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/health.integration.test.ts,title=test/health.integration.test.ts > GET /health,line=21,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/health.integration.test.ts:21:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/media-upload.integration.test.ts,title=test/media-upload.integration.test.ts > direct creator media upload,line=75,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/media-upload.integration.test.ts:75:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/playlist-product.integration.test.ts,title=test/playlist-product.integration.test.ts > Task 09 playlist product,line=46,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/playlist-product.integration.test.ts:46:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/public-navigation.integration.test.ts,title=test/public-navigation.integration.test.ts > Task 05 public navigation feature flags,line=35,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/public-navigation.integration.test.ts:35:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/quick-upload.integration.test.ts,title=test/quick-upload.integration.test.ts > creator quick upload and publish,line=77,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/quick-upload.integration.test.ts:77:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/social.integration.test.ts,title=test/social.integration.test.ts > Task 14 social graph,line=37,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/social.integration.test.ts:37:15%0A%0A
+
+::error file=/home/runner/work/ayin/ayin/apps/api/test/watch-progress.integration.test.ts,title=test/watch-progress.integration.test.ts > Task 11 AYIN Player watch progress,line=81,column=15::TypeError: Cannot read properties of undefined (reading 'close')%0A ❯ test/watch-progress.integration.test.ts:81:15%0A%0A
+/home/runner/work/ayin/ayin/apps/api:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @ayin/api@0.0.0 test:integration: `vitest run --testTimeout=30000 --fileParallelism=false test`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.
