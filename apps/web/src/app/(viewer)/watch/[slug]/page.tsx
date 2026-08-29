@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AyinPlayer } from "@/components/player/ayin-player";
+import { VideoSocialActions } from "@/components/social/video-social-actions";
 import { apiBaseUrl } from "@/lib/api";
 import { type PublicPlaybackResponse } from "@/lib/ayin-player";
 import { mediaAssetUrl } from "@/lib/channel";
@@ -52,12 +53,7 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
           <p className={styles.eyebrow}>AYIN video</p>
           <h1>{data.video.title}</h1>
           {data.video.description ? <p>{data.video.description}</p> : null}
-          <div className={styles.actions} aria-label="Content actions">
-            <button disabled={!data.detail.saveHook.available} type="button">
-              Save for later
-            </button>
-            <button type="button">Share</button>
-          </div>
+          <VideoSocialActions className={styles.actions} videoId={data.video.id} />
         </div>
         <Link
           className={styles.channel}
