@@ -141,7 +141,7 @@ export class WatchService {
       },
       detail: {
         contentType: "CREATOR_VIDEO" as const,
-        saveHook: { action: "WATCH_LATER" as const, available: false },
+        saveHook: { action: "WATCH_LATER" as const, available: true },
         commentsSlot: { reserved: true, enabled: video.commentsEnabled },
         externalAdPlacementKeys: ["watch_below_player", "content_detail"],
         related: related.map((item) => ({
