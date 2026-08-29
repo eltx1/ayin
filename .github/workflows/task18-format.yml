@@ -1,0 +1,28 @@
+name: Task 18 formatter
+on:
+  push:
+    branches: [task-18-admin-product-controls]
+    paths:
+      - ".github/workflows/task18-format.yml"
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-18-admin-product-controls
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable && corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/admin apps/web/src/components/admin/admin-product-controls.tsx apps/web/src/lib/admin-product.ts apps/web/src/app/admin
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "style: format Task 18 product controls"
+          git push origin HEAD:task-18-admin-product-controls
