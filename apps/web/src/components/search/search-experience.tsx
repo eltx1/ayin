@@ -30,14 +30,15 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
   const [results, setResults] = useState<SearchResult[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(initialQuery.trim().length >= 2);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const suggestionsVisible =
+    query.trim().length >= 2 && query.trim() !== submittedQuery.trim();
 
   useEffect(() => {
     if (initialQuery.trim().length < 2) return;
     const controller = new AbortController();
-    setLoading(true);
     void fetchSearch(initialQuery, { signal: controller.signal })
       .then((response) => {
         setResults(response.results);
@@ -57,10 +58,7 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
 
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed.length < 2 || trimmed === submittedQuery.trim()) {
-      setSuggestions([]);
-      return;
-    }
+    if (trimmed.length < 2 || trimmed === submittedQuery.trim()) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       void fetchSearchSuggestions(trimmed, controller.signal)
@@ -88,7 +86,8 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
       return;
     }
     const append = Boolean(nextCursor);
-    append ? setLoadingMore(true) : setLoading(true);
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError(null);
     try {
       const response = await fetchSearch(trimmed, {
@@ -149,7 +148,7 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
           </button>
         </form>
 
-        {suggestions.length > 0 ? (
+        {suggestionsVisible && suggestions.length > 0 ? (
           <div className={styles.suggestions} aria-label="Search suggestions">
             {suggestions.map((suggestion) => (
               <Link href={suggestion.href} key={`${suggestion.type}:${suggestion.id}`}>
