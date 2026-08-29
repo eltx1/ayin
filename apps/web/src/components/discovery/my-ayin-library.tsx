@@ -39,14 +39,18 @@ export function MyAyinLibrary() {
   if (signedIn === false) {
     return (
       <div className={styles.authState}>
-        <strong>Sign in to open My AYIN.</strong>{" "}
-        Your Continue Watching, Watch Later, history, likes and playlists stay tied to your viewer profile. <Link href="/login">Sign in</Link>
+        <strong>Sign in to open My AYIN.</strong> Your Continue Watching, Watch Later, history,
+        likes and playlists stay tied to your viewer profile. <Link href="/login">Sign in</Link>
       </div>
     );
   }
 
   if (error) {
-    return <div className={styles.authState} role="alert">{error}</div>;
+    return (
+      <div className={styles.authState} role="alert">
+        {error}
+      </div>
+    );
   }
 
   if (!library) return <DiscoverySkeleton />;
@@ -54,12 +58,7 @@ export function MyAyinLibrary() {
   return (
     <div className={styles.rows}>
       {library.sections.map((section) => (
-        <DiscoveryRow
-          authenticated
-          key={section.key}
-          row={section}
-          scope="my-ayin"
-        />
+        <DiscoveryRow authenticated key={section.key} row={section} scope="my-ayin" />
       ))}
     </div>
   );

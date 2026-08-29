@@ -259,7 +259,11 @@ export class DiscoveryService {
           "UNAVAILABLE",
         );
       default:
-        throw new DiscoveryError("SECTION_NOT_FOUND", "This My AYIN section is not available.", 404);
+        throw new DiscoveryError(
+          "SECTION_NOT_FOUND",
+          "This My AYIN section is not available.",
+          404,
+        );
     }
   }
 
@@ -364,7 +368,11 @@ export class DiscoveryService {
       take: limit + 1,
       select: videoCardSelect,
     });
-    return paged(records.map((video) => toVideoItem(video, kicker)), offset, limit);
+    return paged(
+      records.map((video) => toVideoItem(video, kicker)),
+      offset,
+      limit,
+    );
   }
 
   private async loadRankedVideos(
@@ -637,7 +645,9 @@ export class DiscoveryService {
     }
 
     const visible = manual.slice(0, limit + 1);
-    const videoIds = visible.filter((item) => item.entityType === "VIDEO").map((item) => item.entityId);
+    const videoIds = visible
+      .filter((item) => item.entityType === "VIDEO")
+      .map((item) => item.entityId);
     const tvIds = visible
       .filter((item) => item.entityType === "CREATOR_TV")
       .map((item) => item.entityId);
@@ -744,7 +754,8 @@ function toVideoItem(video: VideoCardRecord, kicker: string): DiscoveryItem {
     title: video.title,
     href: `/watch/${video.slug}`,
     kicker,
-    meta: [video.channel.name, formatDuration(video.durationMs)].filter(Boolean).join(" · ") || null,
+    meta:
+      [video.channel.name, formatDuration(video.durationMs)].filter(Boolean).join(" · ") || null,
     artworkObjectKey: video.mediaAssets[0]?.r2ObjectKey ?? null,
   };
 }

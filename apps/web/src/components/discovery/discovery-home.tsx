@@ -3,11 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { MediaCardSkeleton } from "@/components/viewer/media-card";
-import {
-  fetchDiscoveryHome,
-  getIdentity,
-  type DiscoveryHomeResponse,
-} from "@/lib/discovery";
+import { fetchDiscoveryHome, getIdentity, type DiscoveryHomeResponse } from "@/lib/discovery";
 
 import { DiscoveryRow } from "./discovery-row";
 import styles from "./discovery.module.css";
@@ -28,7 +24,9 @@ export function DiscoveryHome() {
         if (!controller.signal.aborted) setHome(response);
       } catch (loadError) {
         if (!controller.signal.aborted) {
-          setError(loadError instanceof Error ? loadError.message : "Could not load AYIN discovery.");
+          setError(
+            loadError instanceof Error ? loadError.message : "Could not load AYIN discovery.",
+          );
         }
       }
     })();

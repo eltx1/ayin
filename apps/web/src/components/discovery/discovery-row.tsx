@@ -54,10 +54,14 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
     <div className={styles.rowBlock}>
       <ContentRow rowId={`${scope}-${row.key}`} title={row.title}>
         {items.length > 0 ? (
-          items.map((item) => <DiscoveryCard item={item} key={`${item.type}:${item.id}`} variant={variant} />)
+          items.map((item) => (
+            <DiscoveryCard item={item} key={`${item.type}:${item.id}`} variant={variant} />
+          ))
         ) : (
           <div className={styles.emptyCard} role="status">
-            <strong>{row.availability === "UNAVAILABLE" ? "Not available yet" : "Nothing here yet"}</strong>
+            <strong>
+              {row.availability === "UNAVAILABLE" ? "Not available yet" : "Nothing here yet"}
+            </strong>
             <span>{row.emptyMessage}</span>
           </div>
         )}
@@ -88,13 +92,7 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
   );
 }
 
-function DiscoveryCard({
-  item,
-  variant,
-}: {
-  item: DiscoveryItem;
-  variant: MediaCardVariant;
-}) {
+function DiscoveryCard({ item, variant }: { item: DiscoveryItem; variant: MediaCardVariant }) {
   const progress = item.progress?.positionMs
     ? `Resume at ${formatPosition(item.progress.positionMs)}`
     : null;

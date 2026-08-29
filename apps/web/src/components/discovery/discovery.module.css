@@ -93,7 +93,12 @@
   width: 13rem;
   height: 1.4rem;
   border-radius: 0.5rem;
-  background: linear-gradient(90deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 12%), rgb(255 255 255 / 5%));
+  background: linear-gradient(
+    90deg,
+    rgb(255 255 255 / 5%),
+    rgb(255 255 255 / 12%),
+    rgb(255 255 255 / 5%)
+  );
   background-size: 220% 100%;
   animation: discovery-pulse 1.5s ease-in-out infinite;
 }
@@ -118,8 +123,13 @@
 }
 
 @keyframes discovery-pulse {
-  0%, 100% { background-position: 0 0; }
-  50% { background-position: 100% 0; }
+  0%,
+  100% {
+    background-position: 0 0;
+  }
+  50% {
+    background-position: 100% 0;
+  }
 }
 
 @media (max-width: 720px) {

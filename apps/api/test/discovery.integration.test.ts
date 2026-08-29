@@ -249,7 +249,9 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     });
     expect(library.statusCode).toBe(200);
     const sections = Object.fromEntries(
-      library.json().sections.map((section: { key: string; items: unknown[] }) => [section.key, section]),
+      library
+        .json()
+        .sections.map((section: { key: string; items: unknown[] }) => [section.key, section]),
     ) as Record<string, { items: Array<{ title: string }>; availability: string }>;
     expect(sections["watch-later"]?.items[0]?.title).toBe("Profile-owned activity");
     expect(sections.liked?.items[0]?.title).toBe("Profile-owned activity");
@@ -265,7 +267,9 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
 
   it("suppresses regional discovery unless both a signal and privacy permission are present", async () => {
     const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });
-    expect(withoutSignal.json().rows.some((row: { key: string }) => row.key === "popular-region")).toBe(false);
+    expect(
+      withoutSignal.json().rows.some((row: { key: string }) => row.key === "popular-region"),
+    ).toBe(false);
 
     const withSignal = await app.inject({
       method: "GET",
@@ -275,9 +279,10 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
         "x-ayin-region-personalization": "allow",
       },
     });
-    const regional = withSignal.json().rows.find(
-      (row: { key: string }) => row.key === "popular-region",
-    ) as { availability: string; items: unknown[] } | undefined;
+    const regional = withSignal
+      .json()
+      .rows.find((row: { key: string }) => row.key === "popular-region") as
+      { availability: string; items: unknown[] } | undefined;
     expect(regional).toMatchObject({ availability: "UNAVAILABLE", items: [] });
   });
 });
