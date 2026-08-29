@@ -1,0 +1,18 @@
+model VideoAdOverride {
+  id              String   @id @default(uuid()) @db.Uuid
+  channelId       String?  @unique @db.Uuid
+  videoId         String?  @unique @db.Uuid
+  enabled         Boolean?
+  preRollEnabled  Boolean?
+  midRollEnabled  Boolean?
+  postRollEnabled Boolean?
+  provider        String?  @db.VarChar(40)
+  vastTagUrl      String?  @db.Text
+  midRollEverySec Int?
+  updatedBy       String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([channelId])
+  @@index([videoId])
+}
