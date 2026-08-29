@@ -6,9 +6,10 @@ import { type ReactNode, useEffect, useState } from "react";
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
 import { apiBaseUrl, type AyinIdentity } from "@/lib/api";
 import {
+  navigationItems,
   parseNavigationFlags,
+  type NavigationFeatureFlag,
   type NavigationFlagState,
-  visibleNavigationItems,
 } from "@/lib/navigation";
 
 import styles from "./viewer-shell.module.css";
@@ -17,23 +18,60 @@ interface ViewerShellProperties {
   children: ReactNode;
 }
 
-function NavigationLinks({ flags, surface }: { flags: NavigationFlagState; surface: string }) {
-  return visibleNavigationItems(flags).map((item) => (
-    <Link
-      className={styles.navLink}
-      data-tv-focus-id={`${surface}-${item.id}`}
-      data-tv-focusable="true"
-      href={item.href}
-      key={item.id}
-    >
-      {item.label}
-    </Link>
-  ));
+interface ProductNavigationItem {
+  key: string;
+  label: string;
+  href: string;
+  enabled: boolean;
+  featureFlag: string | null;
+}
+
+interface PublicProductControls {
+  navigation: ProductNavigationItem[];
+  announcement: { enabled: boolean; text: string; href: string | null };
+  deviceVisibility: { web: boolean; mobile: boolean; tv: boolean };
+}
+
+const fallbackNavigation: ProductNavigationItem[] = navigationItems.map((item) => ({
+  key: item.id,
+  label: item.label,
+  href: item.href,
+  enabled: true,
+  featureFlag: "featureFlag" in item ? item.featureFlag : null,
+}));
+
+function NavigationLinks({
+  flags,
+  items,
+  surface,
+}: {
+  flags: NavigationFlagState;
+  items: ProductNavigationItem[];
+  surface: string;
+}) {
+  return items
+    .filter(
+      (item) =>
+        item.enabled &&
+        (!item.featureFlag || flags[item.featureFlag as NavigationFeatureFlag] === true),
+    )
+    .map((item) => (
+      <Link
+        className={styles.navLink}
+        data-tv-focus-id={`${surface}-${item.key}`}
+        data-tv-focusable="true"
+        href={item.href}
+        key={item.key}
+      >
+        {item.label}
+      </Link>
+    ));
 }
 
 export function ViewerShell({ children }: ViewerShellProperties) {
   const [flags, setFlags] = useState<NavigationFlagState>({});
   const [identity, setIdentity] = useState<AyinIdentity | null>(null);
+  const [productControls, setProductControls] = useState<PublicProductControls | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -46,6 +84,16 @@ export function ViewerShell({ children }: ViewerShellProperties) {
         .then(async (response) => {
           if (!response.ok) return;
           setFlags(parseNavigationFlags((await response.json()) as unknown));
+        })
+        .catch(() => undefined),
+      fetch(`${apiBaseUrl}/product-controls`, {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) return;
+          const body = (await response.json()) as PublicProductControls;
+          setProductControls(body);
         })
         .catch(() => undefined),
       fetch(`${apiBaseUrl}/auth/me`, {
@@ -63,6 +111,9 @@ export function ViewerShell({ children }: ViewerShellProperties) {
     return () => controller.abort();
   }, []);
 
+  const navigation = productControls?.navigation ?? fallbackNavigation;
+  const announcement = productControls?.announcement;
+
   return (
     <TvFocusScope className={styles.shell}>
       <header className={styles.topbar}>
@@ -79,9 +130,13 @@ export function ViewerShell({ children }: ViewerShellProperties) {
           <span className={styles.brandWord}>AYIN</span>
         </Link>
 
-        <nav aria-label="Primary navigation" className={styles.desktopNavigation}>
-          <NavigationLinks flags={flags} surface="desktop" />
-        </nav>
+        {productControls?.deviceVisibility.web !== false ? (
+          <nav aria-label="Primary navigation" className={styles.desktopNavigation}>
+            <NavigationLinks flags={flags} items={navigation} surface="desktop" />
+          </nav>
+        ) : (
+          <span />
+        )}
 
         <div className={styles.accountActions}>
           {identity ? (
@@ -115,11 +170,19 @@ export function ViewerShell({ children }: ViewerShellProperties) {
         </div>
       </header>
 
+      {announcement?.enabled && announcement.text ? (
+        <div className={styles.announcement} role="status">
+          {announcement.href ? <Link href={announcement.href}>{announcement.text}</Link> : announcement.text}
+        </div>
+      ) : null}
+
       <div className={styles.content}>{children}</div>
 
-      <nav aria-label="Mobile navigation" className={styles.mobileNavigation}>
-        <NavigationLinks flags={flags} surface="mobile" />
-      </nav>
+      {productControls?.deviceVisibility.mobile !== false ? (
+        <nav aria-label="Mobile navigation" className={styles.mobileNavigation}>
+          <NavigationLinks flags={flags} items={navigation} surface="mobile" />
+        </nav>
+      ) : null}
     </TvFocusScope>
   );
 }
