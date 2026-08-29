@@ -1,0 +1,41 @@
+.page {
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: clamp(1rem, 3vw, 2.4rem);
+  display: grid;
+  gap: 2rem;
+}
+.page header {
+  display: grid;
+  gap: 0.45rem;
+}
+.page header > p {
+  margin: 0;
+  color: #63d1cc;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+}
+.page h1 {
+  margin: 0 0 0.8rem;
+  font-size: clamp(2rem, 6vw, 4rem);
+}
+.page h2 {
+  margin: 0 0 1rem;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+.more {
+  display: inline-flex;
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #405368;
+  border-radius: 999px;
+}
+.more:focus-visible {
+  outline: 3px solid #f5c86b;
+  outline-offset: 3px;
+}
