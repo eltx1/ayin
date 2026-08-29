@@ -96,11 +96,12 @@ function DiscoveryCard({ item, variant }: { item: DiscoveryItem; variant: MediaC
   const progress = item.progress?.positionMs
     ? `Resume at ${formatPosition(item.progress.positionMs)}`
     : null;
+  const meta = [item.meta, progress].filter(Boolean).join(" · ");
   return (
     <MediaCard
       href={item.href}
       kicker={item.kicker}
-      meta={[item.meta, progress].filter(Boolean).join(" · ") || undefined}
+      {...(meta ? { meta } : {})}
       title={item.title}
       tone={toneFor(item.id)}
       variant={variant}
