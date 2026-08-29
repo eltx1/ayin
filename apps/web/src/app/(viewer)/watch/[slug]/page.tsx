@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { CommentsPanel } from "@/components/comments/comments-panel";
 import { AdEnabledAyinPlayer } from "@/components/player/ad-enabled-ayin-player";
 import { VideoSocialActions } from "@/components/social/video-social-actions";
@@ -60,11 +61,7 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
           {data.video.channel.name} · @{data.video.channel.handle}
         </Link>
       </section>
-      <section
-        className={styles.reservedSlot}
-        data-ad-placement="watch_below_player"
-        aria-label="Reserved advertising placement"
-      />
+      <PageAdSlot placementKey="watch_below_player" />
       {data.detail.related.length > 0 ? (
         <section className={styles.related}>
           <h2>More from {data.video.channel.name}</h2>

@@ -1,0 +1,8 @@
+# AYIN app-ads.txt template
+# Populate only from verified authorized seller/provider records before native/CTV distribution.
+# Do not deploy placeholder values.
+#
+# Format:
+# <advertising-system-domain>, <publisher-account-id>, <DIRECT|RESELLER>, <certification-authority-id-if-required>
+#
+# example.invalid, REPLACE_WITH_REAL_PUBLISHER_ID, DIRECT, REPLACE_IF_REQUIRED
