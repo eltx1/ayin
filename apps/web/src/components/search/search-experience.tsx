@@ -241,7 +241,13 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
 
 function mergeResults(current: SearchResult[], incoming: SearchResult[]): SearchResult[] {
   const seen = new Set(current.map((item) => `${item.type}:${item.id}`));
-  return [...current, ...incoming.filter((item) => !seen.has(`${item.type}:${item.id}`))];
+  const uniqueIncoming = incoming.filter((item) => {
+    const key = `${item.type}:${item.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return [...current, ...uniqueIncoming];
 }
 
 function toneFor(value: string): MediaCardTone {
