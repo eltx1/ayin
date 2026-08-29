@@ -23,6 +23,7 @@ describe("Task 12 consumer discovery surfaces", () => {
     expect(discoveryRow).toContain("Load more");
     expect(discoveryRow).toContain("MediaCardSkeleton");
     expect(discoveryRow).toContain("nextCursor");
+    expect(discoveryRow).toContain("data-tv-focus-id");
   });
 
   it("builds My AYIN from authenticated API data rather than fake entries", () => {
