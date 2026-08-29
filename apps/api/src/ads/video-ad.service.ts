@@ -43,6 +43,8 @@ export const overrideSchema = z.object({
   midRollEverySec: z.number().int().min(60).max(7200).nullable().optional(),
 });
 
+type VideoAdOverrideInput = z.infer<typeof overrideSchema>;
+
 export const adEventSchema = z.object({
   videoId: z.string().uuid(),
   slot: z.enum(["PRE_ROLL", "MID_ROLL", "POST_ROLL"]),
@@ -141,20 +143,21 @@ export class VideoAdService {
     if ((target.channelId ? 1 : 0) + (target.videoId ? 1 : 0) !== 1) {
       throw new Error("Exactly one video ad override target is required.");
     }
+    const writeData = this.overrideWriteData(data, actorAccountId);
     if (target.channelId) {
       await this.database.client.channel.findUniqueOrThrow({ where: { id: target.channelId } });
       return this.database.client.videoAdOverride.upsert({
         where: { channelId: target.channelId },
-        update: { ...data, updatedBy: actorAccountId },
-        create: { channelId: target.channelId, ...data, updatedBy: actorAccountId },
+        update: writeData,
+        create: { channelId: target.channelId, ...writeData },
       });
     }
     const videoId = target.videoId as string;
     await this.database.client.video.findUniqueOrThrow({ where: { id: videoId } });
     return this.database.client.videoAdOverride.upsert({
       where: { videoId },
-      update: { ...data, updatedBy: actorAccountId },
-      create: { videoId, ...data, updatedBy: actorAccountId },
+      update: writeData,
+      create: { videoId, ...writeData },
     });
   }
 
@@ -193,6 +196,19 @@ export class VideoAdService {
       ? `<ClickThrough><![CDATA[${this.xml(settings.houseClickUrl)}]]></ClickThrough>`
       : "";
     return `<?xml version="1.0" encoding="UTF-8"?><VAST version="3.0"><Ad id="ayin-house-v1"><InLine><AdSystem>AYIN House</AdSystem><AdTitle>AYIN House Test</AdTitle><Impression><![CDATA[]]></Impression><Creatives><Creative><Linear><Duration>00:00:15</Duration><MediaFiles><MediaFile delivery="progressive" type="video/mp4"><![CDATA[${this.xml(settings.houseCreativeUrl)}]]></MediaFile></MediaFiles><VideoClicks>${click}</VideoClicks></Linear></Creative></Creatives></InLine></Ad></VAST>`;
+  }
+
+  private overrideWriteData(data: VideoAdOverrideInput, actorAccountId: string) {
+    return {
+      ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
+      ...(data.preRollEnabled !== undefined ? { preRollEnabled: data.preRollEnabled } : {}),
+      ...(data.midRollEnabled !== undefined ? { midRollEnabled: data.midRollEnabled } : {}),
+      ...(data.postRollEnabled !== undefined ? { postRollEnabled: data.postRollEnabled } : {}),
+      ...(data.provider !== undefined ? { provider: data.provider } : {}),
+      ...(data.vastTagUrl !== undefined ? { vastTagUrl: data.vastTagUrl } : {}),
+      ...(data.midRollEverySec !== undefined ? { midRollEverySec: data.midRollEverySec } : {}),
+      updatedBy: actorAccountId,
+    };
   }
 
   private houseTagUrl(origin: string | null, settings: VideoAdSettings) {
