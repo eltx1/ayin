@@ -45,10 +45,12 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.24.0 --activate
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:integration > TASK15_INTEGRATION_DIAGNOSTIC.txt 2>&1 || true
+      - run: pnpm typecheck > /tmp/task15-typecheck.txt 2>&1
+      - run: pnpm test:integration > TASK15_INTEGRATION_DIAGNOSTIC_2.txt 2>&1 || true
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add TASK15_INTEGRATION_DIAGNOSTIC.txt
-          git commit -m "chore: capture Task 15 integration diagnostic"
+          rm -f TASK15_INTEGRATION_DIAGNOSTIC.txt
+          git add -A TASK15_INTEGRATION_DIAGNOSTIC.txt TASK15_INTEGRATION_DIAGNOSTIC_2.txt
+          git commit -m "chore: capture Task 15 integration diagnostic 2"
           git push origin HEAD:main
