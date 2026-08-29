@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { AdminModule } from "./admin/admin.module.js";
+import { AdsModule } from "./ads/ads.module.js";
 import { AppController } from "./app.controller.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { CommentsModule } from "./comments/comments.module.js";
@@ -19,6 +20,7 @@ import { WatchModule } from "./watch/watch.module.js";
     PlatformConfigModule,
     AuthModule,
     AdminModule,
+    AdsModule,
     MediaModule,
     CreatorModule,
     WatchModule,
