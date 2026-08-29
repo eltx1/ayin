@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { CommentsError } from "./comments.errors.js";
 import { canEditComment, defaultCommentPolicy, normalizeCommentBody } from "./comment-policy.js";
 
 describe("comment policy", () => {
@@ -34,5 +35,10 @@ describe("comment policy", () => {
 
   it("removes low control characters without stripping ordinary unicode", () => {
     expect(normalizeCommentBody("AYIN\u0000 ✨", defaultCommentPolicy)).toBe("AYIN ✨");
+  });
+
+  it("keeps HTTP-facing comment errors independent from service wiring", () => {
+    const error = new CommentsError("COMMENT_RATE_LIMITED", "Too many comment actions.", 429);
+    expect(error).toMatchObject({ code: "COMMENT_RATE_LIMITED", statusCode: 429 });
   });
 });
