@@ -66,10 +66,10 @@ export interface DiscoveryPage {
 }
 
 export interface DiscoveryContext {
-  accountId?: string;
-  profileId?: string;
-  regionCode?: string;
-  regionPersonalizationAllowed?: boolean;
+  accountId?: string | undefined;
+  profileId?: string | undefined;
+  regionCode?: string | undefined;
+  regionPersonalizationAllowed?: boolean | undefined;
 }
 
 export class DiscoveryError extends Error {
@@ -368,11 +368,7 @@ export class DiscoveryService {
       take: limit + 1,
       select: videoCardSelect,
     });
-    return paged(
-      records.map((video) => toVideoItem(video, kicker)),
-      offset,
-      limit,
-    );
+    return paged(records.map((video) => toVideoItem(video, kicker)), offset, limit);
   }
 
   private async loadRankedVideos(
@@ -754,8 +750,7 @@ function toVideoItem(video: VideoCardRecord, kicker: string): DiscoveryItem {
     title: video.title,
     href: `/watch/${video.slug}`,
     kicker,
-    meta:
-      [video.channel.name, formatDuration(video.durationMs)].filter(Boolean).join(" · ") || null,
+    meta: [video.channel.name, formatDuration(video.durationMs)].filter(Boolean).join(" · ") || null,
     artworkObjectKey: video.mediaAssets[0]?.r2ObjectKey ?? null,
   };
 }
