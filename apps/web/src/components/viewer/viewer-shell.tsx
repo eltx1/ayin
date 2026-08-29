@@ -172,7 +172,11 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
       {announcement?.enabled && announcement.text ? (
         <div className={styles.announcement} role="status">
-          {announcement.href ? <Link href={announcement.href}>{announcement.text}</Link> : announcement.text}
+          {announcement.href ? (
+            <Link href={announcement.href}>{announcement.text}</Link>
+          ) : (
+            announcement.text
+          )}
         </div>
       ) : null}
 

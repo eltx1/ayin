@@ -36,23 +36,33 @@ export function AdminFeatureFlags() {
         if (active) setFlags(body.flags);
       })
       .catch((error) => {
-        if (active) setMessage(error instanceof Error ? error.message : "Feature flags could not be loaded.");
+        if (active)
+          setMessage(error instanceof Error ? error.message : "Feature flags could not be loaded.");
       });
     return () => {
       active = false;
     };
   }, []);
 
-  async function update(flag: FeatureFlag, patch: Partial<Pick<FeatureFlag, "enabled" | "rolloutPercentage">>) {
+  async function update(
+    flag: FeatureFlag,
+    patch: Partial<Pick<FeatureFlag, "enabled" | "rolloutPercentage">>,
+  ) {
     setBusyKey(flag.key);
     setMessage(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/admin/feature-flags/${encodeURIComponent(flag.key)}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ enabled: patch.enabled ?? flag.enabled, rolloutPercentage: patch.rolloutPercentage ?? flag.rolloutPercentage }),
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/admin/feature-flags/${encodeURIComponent(flag.key)}`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            enabled: patch.enabled ?? flag.enabled,
+            rolloutPercentage: patch.rolloutPercentage ?? flag.rolloutPercentage,
+          }),
+        },
+      );
       if (!response.ok) throw new Error(await readApiError(response));
       await load();
       setMessage(`${flag.key} updated.`);
@@ -69,20 +79,72 @@ export function AdminFeatureFlags() {
         <div>
           <span className={styles.eyebrow}>Product controls</span>
           <h1>Feature flags</h1>
-          <p className={styles.muted}>Enable product surfaces or adjust staged rollout percentages without a deployment. Every mutation is audited server-side.</p>
+          <p className={styles.muted}>
+            Enable product surfaces or adjust staged rollout percentages without a deployment. Every
+            mutation is audited server-side.
+          </p>
         </div>
       </header>
       {message ? <p className={styles.muted}>{message}</p> : null}
       <section className={styles.card}>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
-            <thead><tr><th>Flag</th><th>State</th><th>Rollout</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Flag</th>
+                <th>State</th>
+                <th>Rollout</th>
+              </tr>
+            </thead>
             <tbody>
               {flags.map((flag) => (
                 <tr key={flag.key}>
-                  <td><strong>{flag.key}</strong>{flag.description ? <><br /><span className={styles.muted}>{flag.description}</span></> : null}</td>
-                  <td><button disabled={busyKey === flag.key} onClick={() => void update(flag, { enabled: !flag.enabled })}>{flag.enabled ? "Enabled" : "Disabled"}</button></td>
-                  <td><input aria-label={`${flag.key} rollout percentage`} disabled={busyKey === flag.key} min={0} max={100} type="number" value={flag.rolloutPercentage} onChange={(event) => setFlags((current) => current.map((entry) => entry.key === flag.key ? { ...entry, rolloutPercentage: Math.max(0, Math.min(100, Number(event.target.value))) } : entry))} onBlur={() => void update(flag, { rolloutPercentage: flag.rolloutPercentage })} />%</td>
+                  <td>
+                    <strong>{flag.key}</strong>
+                    {flag.description ? (
+                      <>
+                        <br />
+                        <span className={styles.muted}>{flag.description}</span>
+                      </>
+                    ) : null}
+                  </td>
+                  <td>
+                    <button
+                      disabled={busyKey === flag.key}
+                      onClick={() => void update(flag, { enabled: !flag.enabled })}
+                    >
+                      {flag.enabled ? "Enabled" : "Disabled"}
+                    </button>
+                  </td>
+                  <td>
+                    <input
+                      aria-label={`${flag.key} rollout percentage`}
+                      disabled={busyKey === flag.key}
+                      min={0}
+                      max={100}
+                      type="number"
+                      value={flag.rolloutPercentage}
+                      onChange={(event) =>
+                        setFlags((current) =>
+                          current.map((entry) =>
+                            entry.key === flag.key
+                              ? {
+                                  ...entry,
+                                  rolloutPercentage: Math.max(
+                                    0,
+                                    Math.min(100, Number(event.target.value)),
+                                  ),
+                                }
+                              : entry,
+                          ),
+                        )
+                      }
+                      onBlur={() =>
+                        void update(flag, { rolloutPercentage: flag.rolloutPercentage })
+                      }
+                    />
+                    %
+                  </td>
                 </tr>
               ))}
             </tbody>
