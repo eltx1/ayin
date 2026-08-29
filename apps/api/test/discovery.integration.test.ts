@@ -238,6 +238,9 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     await prisma.watchLaterItem.create({
       data: { profileId: secondProfile.id, videoId: video.id },
     });
+    await prisma.myListItem.create({
+      data: { profileId: secondProfile.id, videoId: video.id },
+    });
     await prisma.reaction.create({
       data: { profileId: secondProfile.id, videoId: video.id, type: "LIKE" },
     });
@@ -255,7 +258,7 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     ) as Record<string, { items: Array<{ title: string }>; availability: string }>;
     expect(sections["watch-later"]?.items[0]?.title).toBe("Profile-owned activity");
     expect(sections.liked?.items[0]?.title).toBe("Profile-owned activity");
-    expect(sections["my-list"]?.availability).toBe("UNAVAILABLE");
+    expect(sections["my-list"]?.items[0]?.title).toBe("Profile-owned activity");
 
     const forbidden = await app.inject({
       method: "GET",
