@@ -43,6 +43,14 @@ export class AdminProductService {
     return parsed.success ? parsed.data : defaultProductControls;
   }
 
+  async getPublicSnapshot() {
+    const controls = await this.getPublicControls();
+    return {
+      ...controls,
+      resolvedHero: await this.resolveHero(controls),
+    };
+  }
+
   async patchRow(actorAccountId: string, rowId: string, input: HomeRowPatch) {
     const reason = input.reason;
     const patch: Prisma.HomeRowConfigUpdateInput = {};
@@ -167,6 +175,73 @@ export class AdminProductService {
       });
       return controls;
     });
+  }
+
+  private async resolveHero(controls: ProductControls) {
+    const { entityType, entityId } = controls.hero;
+    if (!entityType || !entityId) return null;
+
+    if (entityType === "VIDEO") {
+      const video = await this.database.client.video.findFirst({
+        where: { id: entityId, status: "PUBLISHED", visibility: { in: ["PUBLIC", "UNLISTED"] } },
+        select: { id: true, title: true, description: true },
+      });
+      return video
+        ? {
+            entityType,
+            entityId,
+            title: video.title,
+            description: video.description ?? "Featured on AYIN.",
+            href: `/watch/${video.id}`,
+          }
+        : null;
+    }
+
+    if (entityType === "CHANNEL") {
+      const channel = await this.database.client.channel.findFirst({
+        where: { id: entityId, status: "ACTIVE" },
+        select: { handle: true, name: true, description: true },
+      });
+      return channel
+        ? {
+            entityType,
+            entityId,
+            title: channel.name,
+            description: channel.description ?? "Featured creator on AYIN.",
+            href: `/c/${channel.handle}`,
+          }
+        : null;
+    }
+
+    if (entityType === "CREATOR_TV") {
+      const tv = await this.database.client.creatorTvChannel.findFirst({
+        where: { id: entityId, status: "ACTIVE" },
+        select: { slug: true, name: true },
+      });
+      return tv
+        ? {
+            entityType,
+            entityId,
+            title: tv.name,
+            description: "Featured Creator TV on AYIN.",
+            href: `/tv/${tv.slug}`,
+          }
+        : null;
+    }
+
+    const playlist = await this.database.client.playlist.findFirst({
+      where: { id: entityId, deletedAt: null, visibility: "PUBLIC" },
+      select: { slug: true, name: true, description: true },
+    });
+    return playlist
+      ? {
+          entityType,
+          entityId,
+          title: playlist.name,
+          description: playlist.description ?? "Featured playlist on AYIN.",
+          href: `/playlist/${playlist.slug}`,
+        }
+      : null;
   }
 
   private async assertEntitiesExist(
