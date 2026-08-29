@@ -8,18 +8,21 @@ import { AdminControlController } from "./admin-control.controller.js";
 import { AdminControlService } from "./admin-control.service.js";
 import { AdminController } from "./admin.controller.js";
 import { AdminGuard } from "./admin.guard.js";
+import { AdminProductController, PublicProductController } from "./admin-product.controller.js";
+import { AdminProductService } from "./admin-product.service.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
 
 @Module({
   imports: [AuthModule, PlatformConfigModule],
-  controllers: [AdminController, AdminControlController],
+  controllers: [AdminController, AdminControlController, AdminProductController, PublicProductController],
   providers: [
     AdminAuditLogService,
     AdminAuthorizationService,
     AdminGuard,
     AdminSettingsService,
     AdminControlService,
+    AdminProductService,
   ],
-  exports: [AdminAuthorizationService, AdminGuard, AdminControlService],
+  exports: [AdminAuthorizationService, AdminGuard, AdminControlService, AdminProductService],
 })
 export class AdminModule {}
