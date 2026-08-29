@@ -1,8 +1,20 @@
-import { Body, Controller, Get, Header, HttpException, Inject, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpException,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
-import { AuthGuard } from "../auth/auth.guard.js";
 import { AdminGuard, type AdminAuthenticatedRequest } from "../admin/admin.guard.js";
+import { AuthGuard } from "../auth/auth.guard.js";
 import { VideoAdService, adEventSchema } from "./video-ad.service.js";
 
 const uuid = z.string().uuid();
@@ -12,7 +24,10 @@ export class VideoAdController {
   constructor(@Inject(VideoAdService) private readonly videoAds: VideoAdService) {}
 
   @Get("video/decision/:videoId")
-  async getDecision(@Param("videoId") videoIdRaw: string, @Req() request: { protocol?: string; headers?: Record<string, unknown> }) {
+  async getDecision(
+    @Param("videoId") videoIdRaw: string,
+    @Req() request: { protocol?: string; headers?: Record<string, unknown> },
+  ) {
     const videoId = this.id(videoIdRaw);
     const host = typeof request.headers?.host === "string" ? request.headers.host : null;
     const origin = host ? `${request.protocol === "http" ? "http" : "https"}://${host}` : null;
@@ -22,7 +37,12 @@ export class VideoAdController {
   @Post("video/events")
   async recordEvent(@Body() body: unknown) {
     const parsed = adEventSchema.safeParse(body);
-    if (!parsed.success) throw new HttpException({ error: { code: "INVALID_AD_EVENT", message: "Invalid ad event." } }, 400);
+    if (!parsed.success) {
+      throw new HttpException(
+        { error: { code: "INVALID_AD_EVENT", message: "Invalid ad event." } },
+        400,
+      );
+    }
     return this.videoAds.recordEvent(parsed.data);
   }
 
@@ -30,13 +50,28 @@ export class VideoAdController {
   @Header("content-type", "application/xml; charset=utf-8")
   async houseVast() {
     const vast = this.videoAds.getHouseVast(await this.videoAds.getSettings());
-    if (!vast) throw new HttpException({ error: { code: "HOUSE_CREATIVE_NOT_CONFIGURED", message: "No AYIN-owned house creative is configured." } }, 503);
+    if (!vast) {
+      throw new HttpException(
+        {
+          error: {
+            code: "HOUSE_CREATIVE_NOT_CONFIGURED",
+            message: "No AYIN-owned house creative is configured.",
+          },
+        },
+        503,
+      );
+    }
     return vast;
   }
 
   private id(value: string) {
     const parsed = uuid.safeParse(value);
-    if (!parsed.success) throw new HttpException({ error: { code: "INVALID_VIDEO_ID", message: "Invalid video ID." } }, 400);
+    if (!parsed.success) {
+      throw new HttpException(
+        { error: { code: "INVALID_VIDEO_ID", message: "Invalid video ID." } },
+        400,
+      );
+    }
     return parsed.data;
   }
 }
@@ -52,27 +87,70 @@ export class AdminVideoAdController {
   }
 
   @Patch("settings")
-  updateSettings(@Body() body: unknown) {
+  async updateSettings(@Body() body: unknown) {
     try {
-      return this.videoAds.updateSettings(body);
+      return await this.videoAds.updateSettings(body);
     } catch {
-      throw new HttpException({ error: { code: "INVALID_VIDEO_AD_SETTINGS", message: "Check video advertising settings." } }, 400);
+      throw new HttpException(
+        {
+          error: {
+            code: "INVALID_VIDEO_AD_SETTINGS",
+            message: "Check video advertising settings.",
+          },
+        },
+        400,
+      );
     }
   }
 
   @Patch("channels/:channelId")
-  updateChannelOverride(@Req() request: AdminAuthenticatedRequest, @Param("channelId") channelIdRaw: string, @Body() body: unknown) {
-    return this.videoAds.upsertOverride(request.ayinAuth.accountId, { channelId: this.id(channelIdRaw) }, body);
+  async updateChannelOverride(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("channelId") channelIdRaw: string,
+    @Body() body: unknown,
+  ) {
+    try {
+      return await this.videoAds.upsertOverride(
+        request.ayinAuth.accountId,
+        { channelId: this.id(channelIdRaw) },
+        body,
+      );
+    } catch {
+      throw new HttpException(
+        { error: { code: "INVALID_VIDEO_AD_OVERRIDE", message: "Check the channel ad override." } },
+        400,
+      );
+    }
   }
 
   @Patch("videos/:videoId")
-  updateVideoOverride(@Req() request: AdminAuthenticatedRequest, @Param("videoId") videoIdRaw: string, @Body() body: unknown) {
-    return this.videoAds.upsertOverride(request.ayinAuth.accountId, { videoId: this.id(videoIdRaw) }, body);
+  async updateVideoOverride(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("videoId") videoIdRaw: string,
+    @Body() body: unknown,
+  ) {
+    try {
+      return await this.videoAds.upsertOverride(
+        request.ayinAuth.accountId,
+        { videoId: this.id(videoIdRaw) },
+        body,
+      );
+    } catch {
+      throw new HttpException(
+        { error: { code: "INVALID_VIDEO_AD_OVERRIDE", message: "Check the video ad override." } },
+        400,
+      );
+    }
   }
 
   private id(value: string) {
     const parsed = uuid.safeParse(value);
-    if (!parsed.success) throw new HttpException({ error: { code: "INVALID_ID", message: "Invalid resource ID." } }, 400);
+    if (!parsed.success) {
+      throw new HttpException(
+        { error: { code: "INVALID_ID", message: "Invalid resource ID." } },
+        400,
+      );
+    }
     return parsed.data;
   }
 }
