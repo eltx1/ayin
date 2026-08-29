@@ -25,7 +25,7 @@ export interface PublicChannelResponse {
     createdAt: string;
   };
   appearance: ChannelAppearance;
-  subscription: { available: false };
+  subscription: { available: true; subscriberCount: number };
   features: { shorts: boolean; posts: boolean };
   creatorTv: {
     id: string;
