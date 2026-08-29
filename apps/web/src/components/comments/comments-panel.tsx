@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 
 import { apiBaseUrl } from "@/lib/api";
 import styles from "./comments.module.css";
@@ -22,25 +22,25 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
   const [items, setItems] = useState<CommentItem[]>([]);
   const [body, setBody] = useState("");
   const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(enabled);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!enabled) return;
+  async function load() {
+    if (!enabled || loading) return;
+    setLoading(true);
     try {
       const response = await fetch(`${apiBaseUrl}/comments/videos/${encodeURIComponent(videoId)}`);
       if (!response.ok) throw new Error("Comments are unavailable.");
       const data = (await response.json()) as { items: CommentItem[] };
       setItems(data.items);
+      setLoaded(true);
+      setMessage("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Comments are unavailable.");
     } finally {
       setLoading(false);
     }
-  }, [enabled, videoId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  }
 
   async function submit() {
     if (!body.trim()) return;
@@ -63,7 +63,12 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
   }
 
   return (
-    <details className={styles.panel} open={false}>
+    <details
+      className={styles.panel}
+      onToggle={(event) => {
+        if (event.currentTarget.open && !loaded) void load();
+      }}
+    >
       <summary data-tv-focusable="true">Comments {items.length ? `(${items.length})` : ""}</summary>
       {!enabled ? <p>Comments are disabled for this video.</p> : null}
       {enabled ? (
@@ -91,7 +96,7 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
             {items.map((item) => (
               <CommentView item={item} key={item.id} />
             ))}
-            {!loading && items.length === 0 ? <p>Be the first to comment.</p> : null}
+            {loaded && !loading && items.length === 0 ? <p>Be the first to comment.</p> : null}
           </div>
         </>
       ) : null}
