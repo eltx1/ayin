@@ -7,22 +7,47 @@ import {
   getAdminProductControls,
   patchAdminHomeRow,
   reorderAdminHomeRows,
+  replaceAdminHomeRowManualItems,
   updateAdminProductControls,
   type AdminHomeRow,
   type ProductControls,
 } from "@/lib/admin-product";
 
+const homeRowSources = [
+  "CONTINUE_WATCHING",
+  "TRENDING_WORLDWIDE",
+  "POPULAR_NOW",
+  "NEW_ON_AYIN",
+  "BECAUSE_YOU_WATCHED",
+  "POPULAR_REGION",
+  "MOVIES",
+  "SERIES",
+  "CREATOR_TV",
+  "CREATORS_YOU_FOLLOW",
+  "RECENTLY_ADDED",
+  "EDITOR_PICKS",
+] as const;
+
+function manualText(row: AdminHomeRow): string {
+  return row.manualItems.map((item) => `${item.entityType}:${item.entityId}`).join("\n");
+}
+
 export function AdminProductControls() {
   const [rows, setRows] = useState<AdminHomeRow[]>([]);
+  const [manualDrafts, setManualDrafts] = useState<Record<string, string>>({});
   const [controls, setControls] = useState<ProductControls | null>(null);
   const [reason, setReason] = useState("Routine merchandising update");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function refresh() {
-    const snapshot = await getAdminProductControls();
+  function applySnapshot(snapshot: Awaited<ReturnType<typeof getAdminProductControls>>) {
     setRows(snapshot.rows);
     setControls(snapshot.controls);
+    setManualDrafts(Object.fromEntries(snapshot.rows.map((row) => [row.id, manualText(row)])));
+  }
+
+  async function refresh() {
+    applySnapshot(await getAdminProductControls());
   }
 
   useEffect(() => {
@@ -32,6 +57,9 @@ export function AdminProductControls() {
         if (!active) return;
         setRows(snapshot.rows);
         setControls(snapshot.controls);
+        setManualDrafts(
+          Object.fromEntries(snapshot.rows.map((row) => [row.id, manualText(row)])),
+        );
       })
       .catch((error) => {
         if (active) {
@@ -57,6 +85,10 @@ export function AdminProductControls() {
     }
   }
 
+  function updateRowDraft(rowId: string, patch: Partial<AdminHomeRow>) {
+    setRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
+  }
+
   function moveRow(index: number, delta: number) {
     const target = index + delta;
     if (target < 0 || target >= rows.length) return;
@@ -74,6 +106,23 @@ export function AdminProductControls() {
         ),
       "Home row order updated.",
     );
+  }
+
+  function parseManualItems(rowId: string) {
+    const lines = (manualDrafts[rowId] ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    return lines.map((line) => {
+      const [entityType, entityId] = line.split(":", 2);
+      if (!entityType || !entityId || !["VIDEO", "CREATOR_TV", "CHANNEL", "PLAYLIST"].includes(entityType)) {
+        throw new Error("Manual items must use TYPE:UUID, one per line.");
+      }
+      return {
+        entityType: entityType as "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST",
+        entityId,
+      };
+    });
   }
 
   if (!controls) return <p className={styles.muted}>Loading product controls…</p>;
@@ -98,6 +147,9 @@ export function AdminProductControls() {
 
       <section className={styles.card}>
         <h2>Home Builder</h2>
+        <p className={styles.muted}>
+          Rename, source, audience, limits, regional requirements and manual Editor Picks update the public discovery feed without a deployment.
+        </p>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -106,21 +158,103 @@ export function AdminProductControls() {
                 <th>Source</th>
                 <th>Audience</th>
                 <th>Limit</th>
-                <th>Enabled</th>
+                <th>State</th>
                 <th>Order</th>
+                <th>Save</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((row, index) => (
                 <tr key={row.id}>
                   <td>
-                    <strong>{row.title}</strong>
+                    <input
+                      aria-label={`${row.key} title`}
+                      maxLength={120}
+                      value={row.title}
+                      onChange={(event) => updateRowDraft(row.id, { title: event.target.value })}
+                    />
                     <br />
                     <span className={styles.muted}>{row.key}</span>
+                    <label className={styles.checkboxRow}>
+                      <input
+                        type="checkbox"
+                        checked={row.regionPersonalizationRequired}
+                        onChange={(event) =>
+                          updateRowDraft(row.id, {
+                            regionPersonalizationRequired: event.target.checked,
+                          })
+                        }
+                      />
+                      Region signal required
+                    </label>
+                    {row.source === "EDITOR_PICKS" ? (
+                      <>
+                        <textarea
+                          aria-label={`${row.key} manual items`}
+                          placeholder={"VIDEO:uuid\nCHANNEL:uuid"}
+                          value={manualDrafts[row.id] ?? ""}
+                          onChange={(event) =>
+                            setManualDrafts((current) => ({
+                              ...current,
+                              [row.id]: event.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          disabled={busy || reason.trim().length < 3}
+                          onClick={() =>
+                            void mutate(
+                              () =>
+                                replaceAdminHomeRowManualItems(
+                                  row.id,
+                                  parseManualItems(row.id),
+                                  reason,
+                                ),
+                              "Manual featured items updated.",
+                            )
+                          }
+                        >
+                          Save featured items
+                        </button>
+                      </>
+                    ) : null}
                   </td>
-                  <td>{row.source}</td>
-                  <td>{row.audience}</td>
-                  <td>{row.maxItems}</td>
+                  <td>
+                    <select
+                      value={row.source}
+                      onChange={(event) => updateRowDraft(row.id, { source: event.target.value })}
+                    >
+                      {homeRowSources.map((source) => (
+                        <option key={source} value={source}>
+                          {source}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <select
+                      value={row.audience}
+                      onChange={(event) => updateRowDraft(row.id, { audience: event.target.value })}
+                    >
+                      <option value="ALL">ALL</option>
+                      <option value="AUTHENTICATED">AUTHENTICATED</option>
+                      <option value="ANONYMOUS">ANONYMOUS</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      aria-label={`${row.key} item limit`}
+                      min={1}
+                      max={100}
+                      type="number"
+                      value={row.maxItems}
+                      onChange={(event) =>
+                        updateRowDraft(row.id, {
+                          maxItems: Math.max(1, Math.min(100, Number(event.target.value))),
+                        })
+                      }
+                    />
+                  </td>
                   <td>
                     <button
                       disabled={busy}
@@ -143,6 +277,27 @@ export function AdminProductControls() {
                       onClick={() => moveRow(index, 1)}
                     >
                       ↓
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      disabled={busy || reason.trim().length < 3 || row.title.trim().length === 0}
+                      onClick={() =>
+                        void mutate(
+                          () =>
+                            patchAdminHomeRow(row.id, {
+                              title: row.title,
+                              source: row.source,
+                              audience: row.audience,
+                              maxItems: row.maxItems,
+                              regionPersonalizationRequired: row.regionPersonalizationRequired,
+                              reason,
+                            }),
+                          "Home row updated.",
+                        )
+                      }
+                    >
+                      Save row
                     </button>
                   </td>
                 </tr>
