@@ -26,6 +26,15 @@ describe("admin product controls", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("rejects arbitrary external announcement links", () => {
+    const parsed = updateProductControlsSchema.safeParse({
+      ...defaultProductControls,
+      announcement: { enabled: true, text: "Update", href: "https://example.com" },
+      reason: "Trying invalid announcement navigation",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   it("requires an audit reason for home row mutations", () => {
     expect(homeRowPatchSchema.safeParse({ enabled: false }).success).toBe(false);
     expect(
