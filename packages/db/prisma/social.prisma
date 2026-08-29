@@ -1,0 +1,13 @@
+model MyListItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  profileId String   @db.Uuid
+  videoId   String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  profile ViewerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  video   Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, videoId])
+  @@index([profileId, createdAt])
+  @@index([videoId, createdAt])
+}
