@@ -29,8 +29,13 @@ export function OwnerChannelActions({ handle }: { handle: string }) {
   if (!owner) return null;
 
   return (
-    <Link className={styles.editAction} href="/channel/edit">
-      Edit channel
-    </Link>
+    <>
+      <Link className={styles.editAction} href="/channel/playlists">
+        Manage playlists
+      </Link>
+      <Link className={styles.editAction} href="/channel/edit">
+        Edit channel
+      </Link>
+    </>
   );
 }
