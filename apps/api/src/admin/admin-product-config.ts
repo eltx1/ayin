@@ -46,7 +46,10 @@ export const manualItemsSchema = z.object({
 });
 
 export const navigationItemSchema = z.object({
-  key: z.string().regex(/^[a-z0-9_-]+$/).max(40),
+  key: z
+    .string()
+    .regex(/^[a-z0-9_-]+$/)
+    .max(40),
   label: z.string().trim().min(1).max(60),
   href: z.string().startsWith("/").max(160),
   enabled: z.boolean(),
@@ -54,7 +57,10 @@ export const navigationItemSchema = z.object({
 });
 
 export const taxonomyItemSchema = z.object({
-  key: z.string().regex(/^[a-z0-9_-]+$/).max(60),
+  key: z
+    .string()
+    .regex(/^[a-z0-9_-]+$/)
+    .max(60),
   label: z.string().trim().min(1).max(80),
   enabled: z.boolean(),
 });
@@ -93,7 +99,13 @@ export const defaultProductControls: ProductControls = {
     { key: "series", label: "Series", href: "/series", enabled: true, featureFlag: "series" },
     { key: "tv", label: "TV", href: "/tv", enabled: true, featureFlag: null },
     { key: "creators", label: "Creators", href: "/creators", enabled: true, featureFlag: null },
-    { key: "shorts", label: "Shorts / Clips", href: "/shorts", enabled: false, featureFlag: "shorts" },
+    {
+      key: "shorts",
+      label: "Shorts / Clips",
+      href: "/shorts",
+      enabled: false,
+      featureFlag: "shorts",
+    },
     { key: "kids", label: "Kids", href: "/kids", enabled: false, featureFlag: "kids" },
     { key: "my-ayin", label: "My AYIN", href: "/my-ayin", enabled: true, featureFlag: null },
     { key: "search", label: "Search", href: "/search", enabled: true, featureFlag: null },

@@ -14,7 +14,12 @@ import { AdminSettingsService } from "./admin-settings.service.js";
 
 @Module({
   imports: [AuthModule, PlatformConfigModule],
-  controllers: [AdminController, AdminControlController, AdminProductController, PublicProductController],
+  controllers: [
+    AdminController,
+    AdminControlController,
+    AdminProductController,
+    PublicProductController,
+  ],
   providers: [
     AdminAuditLogService,
     AdminAuthorizationService,

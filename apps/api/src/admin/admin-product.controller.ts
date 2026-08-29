@@ -25,15 +25,29 @@ export class AdminProductController {
   }
 
   @Patch("home-rows/:rowId")
-  patchRow(@Req() request: AdminAuthenticatedRequest, @Param("rowId") rowIdRaw: string, @Body() body: unknown) {
+  patchRow(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("rowId") rowIdRaw: string,
+    @Body() body: unknown,
+  ) {
     const rowId = this.uuid(rowIdRaw);
-    const input = this.parse(homeRowPatchSchema, body, "INVALID_HOME_ROW", "Check the home row settings.");
+    const input = this.parse(
+      homeRowPatchSchema,
+      body,
+      "INVALID_HOME_ROW",
+      "Check the home row settings.",
+    );
     return this.product.patchRow(request.ayinAuth.accountId, rowId, input);
   }
 
   @Put("home-rows/order")
   reorderRows(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
-    const input = this.parse(reorderHomeRowsSchema, body, "INVALID_HOME_ROW_ORDER", "Check the home row order.");
+    const input = this.parse(
+      reorderHomeRowsSchema,
+      body,
+      "INVALID_HOME_ROW_ORDER",
+      "Check the home row order.",
+    );
     return this.product.reorderRows(request.ayinAuth.accountId, input.rowIds, input.reason);
   }
 
@@ -44,13 +58,28 @@ export class AdminProductController {
     @Body() body: unknown,
   ) {
     const rowId = this.uuid(rowIdRaw);
-    const input = this.parse(manualItemsSchema, body, "INVALID_MANUAL_ITEMS", "Check the manual merchandising items.");
-    return this.product.replaceManualItems(request.ayinAuth.accountId, rowId, input.items, input.reason);
+    const input = this.parse(
+      manualItemsSchema,
+      body,
+      "INVALID_MANUAL_ITEMS",
+      "Check the manual merchandising items.",
+    );
+    return this.product.replaceManualItems(
+      request.ayinAuth.accountId,
+      rowId,
+      input.items,
+      input.reason,
+    );
   }
 
   @Put("global")
   updateControls(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
-    const input = this.parse(updateProductControlsSchema, body, "INVALID_PRODUCT_CONTROLS", "Check the product controls.");
+    const input = this.parse(
+      updateProductControlsSchema,
+      body,
+      "INVALID_PRODUCT_CONTROLS",
+      "Check the product controls.",
+    );
     return this.product.updateControls(request.ayinAuth.accountId, input);
   }
 

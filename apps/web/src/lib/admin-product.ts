@@ -14,8 +14,17 @@ export interface AdminHomeRow {
 }
 
 export interface ProductControls {
-  navigation: Array<{ key: string; label: string; href: string; enabled: boolean; featureFlag: string | null }>;
-  hero: { entityType: "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST" | null; entityId: string | null };
+  navigation: Array<{
+    key: string;
+    label: string;
+    href: string;
+    enabled: boolean;
+    featureFlag: string | null;
+  }>;
+  hero: {
+    entityType: "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST" | null;
+    entityId: string | null;
+  };
   taxonomy: Array<{ key: string; label: string; enabled: boolean }>;
   announcement: { enabled: boolean; text: string; href: string | null };
   deviceVisibility: { web: boolean; mobile: boolean; tv: boolean };
@@ -37,10 +46,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export const getAdminProductControls = () => request<AdminProductSnapshot>("/admin/product-controls");
+export const getAdminProductControls = () =>
+  request<AdminProductSnapshot>("/admin/product-controls");
 
 export const patchAdminHomeRow = (rowId: string, body: Record<string, unknown>) =>
-  request<AdminHomeRow>(`/admin/product-controls/home-rows/${rowId}`, { method: "PATCH", body: JSON.stringify(body) });
+  request<AdminHomeRow>(`/admin/product-controls/home-rows/${rowId}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 
 export const reorderAdminHomeRows = (rowIds: string[], reason: string) =>
   request<{ rowIds: string[] }>("/admin/product-controls/home-rows/order", {

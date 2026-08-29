@@ -67,7 +67,8 @@ export class AdminProductService {
       throw adminBadRequest("DUPLICATE_HOME_ROW", "Home row ordering contains duplicates.");
     }
     const count = await this.database.client.homeRowConfig.count({ where: { id: { in: rowIds } } });
-    if (count !== rowIds.length) throw adminBadRequest("HOME_ROW_NOT_FOUND", "One or more home rows were not found.");
+    if (count !== rowIds.length)
+      throw adminBadRequest("HOME_ROW_NOT_FOUND", "One or more home rows were not found.");
 
     return this.database.client.$transaction(async (tx) => {
       for (const [position, rowId] of rowIds.entries()) {
@@ -93,10 +94,14 @@ export class AdminProductService {
     const row = await this.database.client.homeRowConfig.findUnique({ where: { id: rowId } });
     if (!row) throw adminBadRequest("HOME_ROW_NOT_FOUND", "Home row was not found.");
     if (row.source !== "EDITOR_PICKS") {
-      throw adminBadRequest("MANUAL_ITEMS_NOT_ALLOWED", "Manual items are only supported for Editor Picks rows.");
+      throw adminBadRequest(
+        "MANUAL_ITEMS_NOT_ALLOWED",
+        "Manual items are only supported for Editor Picks rows.",
+      );
     }
     const unique = new Set(items.map((item) => `${item.entityType}:${item.entityId}`));
-    if (unique.size !== items.length) throw adminBadRequest("DUPLICATE_MANUAL_ITEM", "Manual items contain duplicates.");
+    if (unique.size !== items.length)
+      throw adminBadRequest("DUPLICATE_MANUAL_ITEM", "Manual items contain duplicates.");
     await this.assertEntitiesExist(items);
 
     return this.database.client.$transaction(async (tx) => {
@@ -134,7 +139,8 @@ export class AdminProductService {
           valueType: "JSON",
           value,
           schemaVersion: 1,
-          description: "Typed public merchandising, navigation, taxonomy and announcement controls.",
+          description:
+            "Typed public merchandising, navigation, taxonomy and announcement controls.",
         },
       });
       await this.audit.recordInTransaction(tx, {
@@ -157,24 +163,32 @@ export class AdminProductService {
     items: Array<{ entityType: "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST"; entityId: string }>,
   ) {
     const groups = new Map<string, string[]>();
-    for (const item of items) groups.set(item.entityType, [...(groups.get(item.entityType) ?? []), item.entityId]);
+    for (const item of items)
+      groups.set(item.entityType, [...(groups.get(item.entityType) ?? []), item.entityId]);
     const checks = await Promise.all([
       this.countExisting("VIDEO", groups.get("VIDEO") ?? []),
       this.countExisting("CREATOR_TV", groups.get("CREATOR_TV") ?? []),
       this.countExisting("CHANNEL", groups.get("CHANNEL") ?? []),
       this.countExisting("PLAYLIST", groups.get("PLAYLIST") ?? []),
     ]);
-    const expected = ["VIDEO", "CREATOR_TV", "CHANNEL", "PLAYLIST"].map((type) => groups.get(type)?.length ?? 0);
+    const expected = ["VIDEO", "CREATOR_TV", "CHANNEL", "PLAYLIST"].map(
+      (type) => groups.get(type)?.length ?? 0,
+    );
     if (checks.some((count, index) => count !== expected[index])) {
-      throw adminBadRequest("INVALID_MANUAL_ITEM", "One or more manual merchandising entities do not exist.");
+      throw adminBadRequest(
+        "INVALID_MANUAL_ITEM",
+        "One or more manual merchandising entities do not exist.",
+      );
     }
   }
 
   private async countExisting(type: string, ids: string[]): Promise<number> {
     if (ids.length === 0) return 0;
     if (type === "VIDEO") return this.database.client.video.count({ where: { id: { in: ids } } });
-    if (type === "CREATOR_TV") return this.database.client.creatorTvChannel.count({ where: { id: { in: ids } } });
-    if (type === "CHANNEL") return this.database.client.channel.count({ where: { id: { in: ids } } });
+    if (type === "CREATOR_TV")
+      return this.database.client.creatorTvChannel.count({ where: { id: { in: ids } } });
+    if (type === "CHANNEL")
+      return this.database.client.channel.count({ where: { id: { in: ids } } });
     return this.database.client.playlist.count({ where: { id: { in: ids } } });
   }
 }
