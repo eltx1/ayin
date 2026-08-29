@@ -201,8 +201,9 @@ export class DiscoveryService {
       throw new DiscoveryError("PROFILE_NOT_FOUND", "A viewer profile is required.", 403);
     }
     const profileId = context.profileId;
-    const [continueWatching, watchLater, history, liked, playlists] = await Promise.all([
+    const [continueWatching, myList, watchLater, history, liked, playlists] = await Promise.all([
       this.loadContinueWatching(profileId, 0, firstPageSize),
+      this.loadMyList(profileId, 0, firstPageSize),
       this.loadWatchLater(profileId, 0, firstPageSize),
       this.loadHistory(profileId, 0, firstPageSize),
       this.loadLiked(profileId, 0, firstPageSize),
@@ -213,14 +214,7 @@ export class DiscoveryService {
       profileId,
       sections: [
         { key: "continue-watching", title: "Continue Watching", ...continueWatching },
-        {
-          key: "my-list",
-          title: "My List",
-          ...emptyPage(
-            "My List is prepared as a consumer-library section; saving actions arrive with the social actions task.",
-            "UNAVAILABLE",
-          ),
-        },
+        { key: "my-list", title: "My List", ...myList },
         { key: "watch-later", title: "Watch Later", ...watchLater },
         { key: "history", title: "Watch History", ...history },
         { key: "liked", title: "Liked Content", ...liked },
@@ -254,10 +248,7 @@ export class DiscoveryService {
       case "playlists":
         return this.loadOwnedPlaylists(accountId, offset, limit);
       case "my-list":
-        return emptyPage(
-          "My List is prepared as a consumer-library section; saving actions arrive with the social actions task.",
-          "UNAVAILABLE",
-        );
+        return this.loadMyList(context.profileId, offset, limit);
       default:
         throw new DiscoveryError(
           "SECTION_NOT_FOUND",
@@ -548,6 +539,26 @@ export class DiscoveryService {
       offset,
       limit,
       "Your Watch Later list is empty.",
+    );
+  }
+
+  private async loadMyList(
+    profileId: string,
+    offset: number,
+    limit: number,
+  ): Promise<DiscoveryPage> {
+    const records = await this.database.client.myListItem.findMany({
+      where: { profileId, video: publicVideoWhere },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: offset,
+      take: limit + 1,
+      select: { video: { select: videoCardSelect } },
+    });
+    return paged(
+      records.map(({ video }) => toVideoItem(video, "My List")),
+      offset,
+      limit,
+      "My List is empty.",
     );
   }
 
