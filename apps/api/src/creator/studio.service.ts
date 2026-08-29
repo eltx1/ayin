@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 
@@ -23,7 +23,7 @@ export interface StudioVideoPatch {
 
 @Injectable()
 export class StudioService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async overview(accountId: string) {
     const channel = await this.channelForAccount(accountId);
