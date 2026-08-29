@@ -14,11 +14,18 @@ export class StudioError extends Error {
 }
 
 export interface StudioVideoPatch {
-  title?: string;
-  description?: string | null;
-  visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE";
-  commentsEnabled?: boolean;
-  tvIncluded?: boolean;
+  title?: string | undefined;
+  description?: string | null | undefined;
+  visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE" | undefined;
+  commentsEnabled?: boolean | undefined;
+  tvIncluded?: boolean | undefined;
+}
+
+interface StudioContentQuery {
+  query?: string | undefined;
+  status?: string | undefined;
+  visibility?: string | undefined;
+  take?: number | undefined;
 }
 
 @Injectable()
@@ -65,13 +72,7 @@ export class StudioService {
 
     return {
       channel,
-      counters: {
-        videos,
-        publishedVideos,
-        subscribers,
-        comments,
-        playlists,
-      },
+      counters: { videos, publishedVideos, subscribers, comments, playlists },
       analytics: {
         views: null,
         watchTimeMs: null,
@@ -91,10 +92,7 @@ export class StudioService {
     };
   }
 
-  async content(
-    accountId: string,
-    input: { query?: string; status?: string; visibility?: string; take?: number },
-  ) {
+  async content(accountId: string, input: StudioContentQuery) {
     const channel = await this.channelForAccount(accountId);
     const take = Math.min(Math.max(input.take ?? 50, 1), 100);
     const query = input.query?.trim();
