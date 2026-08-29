@@ -20,11 +20,23 @@ type VideoItem = {
   commentsEnabled: boolean;
   updatedAt: string;
   channel: { id: string; handle: string; name: string; status: string };
-  tvPreferences: Array<{ tvChannelId: string; included: boolean; priority: number; sortOrder: number | null }>;
+  tvPreferences: Array<{
+    tvChannelId: string;
+    included: boolean;
+    priority: number;
+    sortOrder: number | null;
+  }>;
   _count: { comments: number; reports: number };
 };
 type Response = { items: VideoItem[]; pagination: AdminPagination };
-type Draft = { title: string; description: string; status: string; visibility: string; commentsEnabled: boolean; tvIncluded: boolean };
+type Draft = {
+  title: string;
+  description: string;
+  status: string;
+  visibility: string;
+  commentsEnabled: boolean;
+  tvIncluded: boolean;
+};
 
 export function AdminVideos() {
   const [data, setData] = useState<Response | null>(null);
@@ -62,7 +74,9 @@ export function AdminVideos() {
         ]),
       ),
     );
-    setSelected((current) => current.filter((id) => response.items.some((video) => video.id === id)));
+    setSelected((current) =>
+      current.filter((id) => response.items.some((video) => video.id === id)),
+    );
   }
 
   async function load() {
@@ -80,7 +94,8 @@ export function AdminVideos() {
           }
         })
         .catch((caught) => {
-          if (active) setError(caught instanceof Error ? caught.message : "Videos could not be loaded.");
+          if (active)
+            setError(caught instanceof Error ? caught.message : "Videos could not be loaded.");
         });
     }, 180);
     return () => {
@@ -114,7 +129,9 @@ export function AdminVideos() {
 
   async function runBulk(action: "UNPUBLISH" | "DISABLE_COMMENTS" | "ENABLE_COMMENTS") {
     if (!selected.length) return;
-    const reason = window.prompt(`Audit reason for ${action.toLowerCase().replaceAll("_", " ")} on ${selected.length} videos:`);
+    const reason = window.prompt(
+      `Audit reason for ${action.toLowerCase().replaceAll("_", " ")} on ${selected.length} videos:`,
+    );
     if (!reason?.trim()) return;
     setBusyId("bulk");
     setError(null);
@@ -136,29 +153,85 @@ export function AdminVideos() {
         <div>
           <span className={styles.eyebrow}>Control Plane</span>
           <h1>Videos & Content</h1>
-          <p className={styles.muted}>Search every video, edit state, comments and Creator TV inclusion, or apply safe bulk actions.</p>
+          <p className={styles.muted}>
+            Search every video, edit state, comments and Creator TV inclusion, or apply safe bulk
+            actions.
+          </p>
         </div>
       </header>
       <div className={styles.toolbar}>
-        <input aria-label="Search videos" onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Search title, slug or channel" value={query} />
-        <select aria-label="Filter video status" onChange={(event) => { setPage(1); setStatus(event.target.value); }} value={status}>
-          <option value="">Active records</option><option value="PUBLISHED">Published</option><option value="DRAFT">Draft</option><option value="UPLOADING">Uploading</option><option value="VALIDATING">Validating</option><option value="SCHEDULED">Scheduled</option><option value="REMOVED">Removed</option>
+        <input
+          aria-label="Search videos"
+          onChange={(event) => {
+            setPage(1);
+            setQuery(event.target.value);
+          }}
+          placeholder="Search title, slug or channel"
+          value={query}
+        />
+        <select
+          aria-label="Filter video status"
+          onChange={(event) => {
+            setPage(1);
+            setStatus(event.target.value);
+          }}
+          value={status}
+        >
+          <option value="">Active records</option>
+          <option value="PUBLISHED">Published</option>
+          <option value="DRAFT">Draft</option>
+          <option value="UPLOADING">Uploading</option>
+          <option value="VALIDATING">Validating</option>
+          <option value="SCHEDULED">Scheduled</option>
+          <option value="REMOVED">Removed</option>
         </select>
-        <select aria-label="Filter video visibility" onChange={(event) => { setPage(1); setVisibility(event.target.value); }} value={visibility}>
-          <option value="">All visibility</option><option value="PUBLIC">Public</option><option value="UNLISTED">Unlisted</option><option value="PRIVATE">Private</option>
+        <select
+          aria-label="Filter video visibility"
+          onChange={(event) => {
+            setPage(1);
+            setVisibility(event.target.value);
+          }}
+          value={visibility}
+        >
+          <option value="">All visibility</option>
+          <option value="PUBLIC">Public</option>
+          <option value="UNLISTED">Unlisted</option>
+          <option value="PRIVATE">Private</option>
         </select>
       </div>
       {selected.length ? (
         <div className={styles.bulk}>
           <strong>{selected.length} selected</strong>
           <div className={styles.actions}>
-            <button className={styles.button} disabled={busyId === "bulk"} onClick={() => void runBulk("UNPUBLISH")} type="button">Unpublish selected</button>
-            <button className={styles.button} disabled={busyId === "bulk"} onClick={() => void runBulk("DISABLE_COMMENTS")} type="button">Disable comments</button>
-            <button className={styles.button} disabled={busyId === "bulk"} onClick={() => void runBulk("ENABLE_COMMENTS")} type="button">Enable comments</button>
+            <button
+              className={styles.button}
+              disabled={busyId === "bulk"}
+              onClick={() => void runBulk("UNPUBLISH")}
+              type="button"
+            >
+              Unpublish selected
+            </button>
+            <button
+              className={styles.button}
+              disabled={busyId === "bulk"}
+              onClick={() => void runBulk("DISABLE_COMMENTS")}
+              type="button"
+            >
+              Disable comments
+            </button>
+            <button
+              className={styles.button}
+              disabled={busyId === "bulk"}
+              onClick={() => void runBulk("ENABLE_COMMENTS")}
+              type="button"
+            >
+              Enable comments
+            </button>
           </div>
         </div>
       ) : null}
-      {message ? <p className={styles.notice}>{message}</p> : null}{error ? <p className={styles.error}>{error}</p> : null}
+      {message ? <p className={styles.notice}>{message}</p> : null}
+      {error ? <p className={styles.error}>{error}</p> : null}
       <section className={styles.grid}>
         {data?.items.map((video) => {
           const draft = drafts[video.id];
@@ -167,25 +240,143 @@ export function AdminVideos() {
           return (
             <article className={styles.card} key={video.id}>
               <div className={styles.cardHeader}>
-                <label className={styles.check}><input checked={selected.includes(video.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, video.id] : current.filter((id) => id !== video.id))} type="checkbox" />Select</label>
-                <div><strong>@{video.channel.handle}</strong><p className={styles.muted}>{video._count.comments} comments · {video._count.reports} reports</p></div>
+                <label className={styles.check}>
+                  <input
+                    checked={selected.includes(video.id)}
+                    onChange={(event) =>
+                      setSelected((current) =>
+                        event.target.checked
+                          ? [...current, video.id]
+                          : current.filter((id) => id !== video.id),
+                      )
+                    }
+                    type="checkbox"
+                  />
+                  Select
+                </label>
+                <div>
+                  <strong>@{video.channel.handle}</strong>
+                  <p className={styles.muted}>
+                    {video._count.comments} comments · {video._count.reports} reports
+                  </p>
+                </div>
               </div>
               <div className={styles.form}>
-                <input disabled={disabled} onChange={(event) => setDrafts((current) => ({ ...current, [video.id]: { ...draft, title: event.target.value } }))} value={draft.title}/>
-                <select disabled={disabled} onChange={(event) => setDrafts((current) => ({ ...current, [video.id]: { ...draft, status: event.target.value } }))} value={draft.status}><option value="DRAFT">Draft</option><option value="SCHEDULED">Scheduled</option><option value="PUBLISHED">Published</option><option value="REMOVED">Removed</option></select>
-                <textarea disabled={disabled} onChange={(event) => setDrafts((current) => ({ ...current, [video.id]: { ...draft, description: event.target.value } }))} value={draft.description}/>
-                <select disabled={disabled} onChange={(event) => setDrafts((current) => ({ ...current, [video.id]: { ...draft, visibility: event.target.value } }))} value={draft.visibility}><option value="PUBLIC">Public</option><option value="UNLISTED">Unlisted</option><option value="PRIVATE">Private</option></select>
+                <input
+                  disabled={disabled}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [video.id]: { ...draft, title: event.target.value },
+                    }))
+                  }
+                  value={draft.title}
+                />
+                <select
+                  disabled={disabled}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [video.id]: { ...draft, status: event.target.value },
+                    }))
+                  }
+                  value={draft.status}
+                >
+                  <option value="DRAFT">Draft</option>
+                  <option value="SCHEDULED">Scheduled</option>
+                  <option value="PUBLISHED">Published</option>
+                  <option value="REMOVED">Removed</option>
+                </select>
+                <textarea
+                  disabled={disabled}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [video.id]: { ...draft, description: event.target.value },
+                    }))
+                  }
+                  value={draft.description}
+                />
+                <select
+                  disabled={disabled}
+                  onChange={(event) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [video.id]: { ...draft, visibility: event.target.value },
+                    }))
+                  }
+                  value={draft.visibility}
+                >
+                  <option value="PUBLIC">Public</option>
+                  <option value="UNLISTED">Unlisted</option>
+                  <option value="PRIVATE">Private</option>
+                </select>
               </div>
               <div className={styles.actions}>
-                <label className={styles.check}><input checked={draft.commentsEnabled} disabled={disabled} onChange={(event) => setDrafts((current) => ({ ...current, [video.id]: { ...draft, commentsEnabled: event.target.checked } }))} type="checkbox"/>Comments</label>
-                <label className={styles.check}><input checked={draft.tvIncluded} disabled={disabled} onChange={(event) => setDrafts((current) => ({ ...current, [video.id]: { ...draft, tvIncluded: event.target.checked } }))} type="checkbox"/>Creator TV</label>
-                <button className={draft.status === "REMOVED" ? styles.danger : styles.button} disabled={disabled} onClick={() => void save(video)} type="button">Save video</button>
+                <label className={styles.check}>
+                  <input
+                    checked={draft.commentsEnabled}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [video.id]: { ...draft, commentsEnabled: event.target.checked },
+                      }))
+                    }
+                    type="checkbox"
+                  />
+                  Comments
+                </label>
+                <label className={styles.check}>
+                  <input
+                    checked={draft.tvIncluded}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [video.id]: { ...draft, tvIncluded: event.target.checked },
+                      }))
+                    }
+                    type="checkbox"
+                  />
+                  Creator TV
+                </label>
+                <button
+                  className={draft.status === "REMOVED" ? styles.danger : styles.button}
+                  disabled={disabled}
+                  onClick={() => void save(video)}
+                  type="button"
+                >
+                  Save video
+                </button>
               </div>
             </article>
           );
         })}
       </section>
-      {data ? <div className={styles.pager}><button className={styles.button} disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} type="button">Previous</button><span className={styles.muted}>Page {data.pagination.page} of {data.pagination.pages} · {data.pagination.total} videos</span><button className={styles.button} disabled={page >= data.pagination.pages} onClick={() => setPage((value) => value + 1)} type="button">Next</button></div> : null}
+      {data ? (
+        <div className={styles.pager}>
+          <button
+            className={styles.button}
+            disabled={page <= 1}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+            type="button"
+          >
+            Previous
+          </button>
+          <span className={styles.muted}>
+            Page {data.pagination.page} of {data.pagination.pages} · {data.pagination.total} videos
+          </span>
+          <button
+            className={styles.button}
+            disabled={page >= data.pagination.pages}
+            onClick={() => setPage((value) => value + 1)}
+            type="button"
+          >
+            Next
+          </button>
+        </div>
+      ) : null}
     </>
   );
 }

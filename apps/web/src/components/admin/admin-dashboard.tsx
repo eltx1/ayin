@@ -28,7 +28,10 @@ export function AdminDashboard() {
         if (active) setData(body as unknown as DashboardData);
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : "Admin dashboard could not be loaded.");
+        if (active)
+          setError(
+            caught instanceof Error ? caught.message : "Admin dashboard could not be loaded.",
+          );
       });
     return () => {
       active = false;
@@ -55,7 +58,9 @@ export function AdminDashboard() {
         <div>
           <span className={styles.eyebrow}>Control Plane</span>
           <h1>AYIN Admin</h1>
-          <p className={styles.muted}>Operational control with server-side authorization and audit logs.</p>
+          <p className={styles.muted}>
+            Operational control with server-side authorization and audit logs.
+          </p>
         </div>
       </header>
       <section aria-label="Platform counters" className={styles.metrics}>

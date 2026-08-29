@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
@@ -12,15 +23,25 @@ const pageSchema = z.object({
   take: z.coerce.number().int().min(1).max(100).optional(),
   query: z.string().trim().max(200).optional(),
 });
-const userQuerySchema = pageSchema.extend({ status: z.enum(["ACTIVE", "SUSPENDED", "CLOSED"]).optional() });
-const channelQuerySchema = pageSchema.extend({ status: z.enum(["ACTIVE", "HIDDEN", "SUSPENDED", "REMOVED"]).optional() });
+const userQuerySchema = pageSchema.extend({
+  status: z.enum(["ACTIVE", "SUSPENDED", "CLOSED"]).optional(),
+});
+const channelQuerySchema = pageSchema.extend({
+  status: z.enum(["ACTIVE", "HIDDEN", "SUSPENDED", "REMOVED"]).optional(),
+});
 const videoQuerySchema = pageSchema.extend({
-  status: z.enum(["DRAFT", "UPLOADING", "VALIDATING", "SCHEDULED", "PUBLISHED", "REMOVED"]).optional(),
+  status: z
+    .enum(["DRAFT", "UPLOADING", "VALIDATING", "SCHEDULED", "PUBLISHED", "REMOVED"])
+    .optional(),
   visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
   channelId: z.string().uuid().optional(),
 });
-const tvQuerySchema = pageSchema.extend({ status: z.enum(["ACTIVE", "OFF_AIR", "DISABLED"]).optional() });
-const moderationQuerySchema = pageSchema.extend({ status: z.enum(["OPEN", "REVIEWING", "RESOLVED", "DISMISSED"]).optional() });
+const tvQuerySchema = pageSchema.extend({
+  status: z.enum(["ACTIVE", "OFF_AIR", "DISABLED"]).optional(),
+});
+const moderationQuerySchema = pageSchema.extend({
+  status: z.enum(["OPEN", "REVIEWING", "RESOLVED", "DISMISSED"]).optional(),
+});
 const reasonSchema = z.string().trim().min(3).max(500).optional();
 const accountPatchSchema = z
   .object({
@@ -160,14 +181,18 @@ export class AdminControlController {
 
   private id(raw: string) {
     const parsed = uuidSchema.safeParse(raw);
-    if (!parsed.success) throw adminBadRequest("INVALID_ID", "The requested resource id is invalid.");
+    if (!parsed.success)
+      throw adminBadRequest("INVALID_ID", "The requested resource id is invalid.");
     return parsed.data;
   }
 
   private parse<T extends z.ZodTypeAny>(schema: T, value: unknown, code: string): z.infer<T> {
     const parsed = schema.safeParse(value);
     if (!parsed.success) {
-      throw adminBadRequest(code, parsed.error.issues[0]?.message ?? "The admin request is invalid.");
+      throw adminBadRequest(
+        code,
+        parsed.error.issues[0]?.message ?? "The admin request is invalid.",
+      );
     }
     return parsed.data;
   }

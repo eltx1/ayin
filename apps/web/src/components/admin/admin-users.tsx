@@ -42,7 +42,9 @@ export function AdminUsers() {
     setData(response);
     setDrafts((current) => ({
       ...current,
-      ...Object.fromEntries(response.items.map((user) => [user.id, current[user.id] ?? user.displayName])),
+      ...Object.fromEntries(
+        response.items.map((user) => [user.id, current[user.id] ?? user.displayName]),
+      ),
     }));
   }
 
@@ -55,12 +57,15 @@ export function AdminUsers() {
           setData(response);
           setDrafts((current) => ({
             ...current,
-            ...Object.fromEntries(response.items.map((user) => [user.id, current[user.id] ?? user.displayName])),
+            ...Object.fromEntries(
+              response.items.map((user) => [user.id, current[user.id] ?? user.displayName]),
+            ),
           }));
           setError(null);
         })
         .catch((caught) => {
-          if (active) setError(caught instanceof Error ? caught.message : "Users could not be loaded.");
+          if (active)
+            setError(caught instanceof Error ? caught.message : "Users could not be loaded.");
         });
     }, 180);
     return () => {
@@ -74,7 +79,9 @@ export function AdminUsers() {
     setError(null);
     setMessage(null);
     try {
-      await patchAdminResource("users", user.id, { displayName: drafts[user.id] ?? user.displayName });
+      await patchAdminResource("users", user.id, {
+        displayName: drafts[user.id] ?? user.displayName,
+      });
       await load();
       setMessage(`Updated ${user.email}.`);
     } catch (caught) {
@@ -86,7 +93,9 @@ export function AdminUsers() {
 
   async function toggleSuspension(user: AdminUser) {
     const nextStatus = user.status === "SUSPENDED" ? "ACTIVE" : "SUSPENDED";
-    const reason = window.prompt(`Reason for ${nextStatus === "SUSPENDED" ? "suspending" : "reactivating"} ${user.email}:`);
+    const reason = window.prompt(
+      `Reason for ${nextStatus === "SUSPENDED" ? "suspending" : "reactivating"} ${user.email}:`,
+    );
     if (!reason?.trim()) return;
     setBusyId(user.id);
     setError(null);
@@ -96,7 +105,9 @@ export function AdminUsers() {
       await load();
       setMessage(`${user.email} is now ${nextStatus.toLowerCase()}.`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The account status could not be changed.");
+      setError(
+        caught instanceof Error ? caught.message : "The account status could not be changed.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -108,7 +119,9 @@ export function AdminUsers() {
         <div>
           <span className={styles.eyebrow}>Control Plane</span>
           <h1>Users & Accounts</h1>
-          <p className={styles.muted}>Search, inspect and suspend accounts with session invalidation and audit logging.</p>
+          <p className={styles.muted}>
+            Search, inspect and suspend accounts with session invalidation and audit logging.
+          </p>
         </div>
       </header>
       <div className={styles.toolbar}>
@@ -144,24 +157,41 @@ export function AdminUsers() {
               <div>
                 <strong>{user.email}</strong>
                 <p className={styles.muted}>
-                  {user.status.toLowerCase()} · joined {new Date(user.createdAt).toLocaleDateString()}
+                  {user.status.toLowerCase()} · joined{" "}
+                  {new Date(user.createdAt).toLocaleDateString()}
                 </p>
               </div>
-              <span>{user.channelMemberships[0]?.channel.handle ? `@${user.channelMemberships[0].channel.handle}` : "No owned channel"}</span>
+              <span>
+                {user.channelMemberships[0]?.channel.handle
+                  ? `@${user.channelMemberships[0].channel.handle}`
+                  : "No owned channel"}
+              </span>
             </div>
             <div className={styles.form}>
               <input
                 aria-label={`Display name for ${user.email}`}
-                onChange={(event) => setDrafts((current) => ({ ...current, [user.id]: event.target.value }))}
+                onChange={(event) =>
+                  setDrafts((current) => ({ ...current, [user.id]: event.target.value }))
+                }
                 value={drafts[user.id] ?? user.displayName}
               />
             </div>
             <div className={styles.actions}>
-              <button className={styles.button} disabled={busyId === user.id} onClick={() => void save(user)} type="button">
+              <button
+                className={styles.button}
+                disabled={busyId === user.id}
+                onClick={() => void save(user)}
+                type="button"
+              >
                 Save basics
               </button>
               {user.status !== "CLOSED" ? (
-                <button className={user.status === "SUSPENDED" ? styles.button : styles.danger} disabled={busyId === user.id} onClick={() => void toggleSuspension(user)} type="button">
+                <button
+                  className={user.status === "SUSPENDED" ? styles.button : styles.danger}
+                  disabled={busyId === user.id}
+                  onClick={() => void toggleSuspension(user)}
+                  type="button"
+                >
                   {user.status === "SUSPENDED" ? "Reactivate" : "Suspend"}
                 </button>
               ) : null}
@@ -171,11 +201,24 @@ export function AdminUsers() {
       </section>
       {data ? (
         <div className={styles.pager}>
-          <button className={styles.button} disabled={data.pagination.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">
+          <button
+            className={styles.button}
+            disabled={data.pagination.page <= 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            type="button"
+          >
             Previous
           </button>
-          <span className={styles.muted}>Page {data.pagination.page} of {data.pagination.pages} · {data.pagination.total} accounts</span>
-          <button className={styles.button} disabled={data.pagination.page >= data.pagination.pages} onClick={() => setPage((current) => current + 1)} type="button">
+          <span className={styles.muted}>
+            Page {data.pagination.page} of {data.pagination.pages} · {data.pagination.total}{" "}
+            accounts
+          </span>
+          <button
+            className={styles.button}
+            disabled={data.pagination.page >= data.pagination.pages}
+            onClick={() => setPage((current) => current + 1)}
+            type="button"
+          >
             Next
           </button>
         </div>

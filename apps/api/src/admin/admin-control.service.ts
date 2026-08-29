@@ -61,17 +61,27 @@ export class AdminControlService {
   ) {}
 
   async dashboard() {
-    const [accounts, activeAccounts, channels, videos, publishedVideos, tvChannels, openReports, openCases] =
-      await Promise.all([
-        this.database.client.account.count(),
-        this.database.client.account.count({ where: { status: "ACTIVE" } }),
-        this.database.client.channel.count({ where: { status: { not: "REMOVED" } } }),
-        this.database.client.video.count({ where: { status: { not: "REMOVED" } } }),
-        this.database.client.video.count({ where: { status: "PUBLISHED" } }),
-        this.database.client.creatorTvChannel.count(),
-        this.database.client.report.count({ where: { status: { in: ["OPEN", "REVIEWING"] } } }),
-        this.database.client.moderationCase.count({ where: { status: { in: ["OPEN", "REVIEWING"] } } }),
-      ]);
+    const [
+      accounts,
+      activeAccounts,
+      channels,
+      videos,
+      publishedVideos,
+      tvChannels,
+      openReports,
+      openCases,
+    ] = await Promise.all([
+      this.database.client.account.count(),
+      this.database.client.account.count({ where: { status: "ACTIVE" } }),
+      this.database.client.channel.count({ where: { status: { not: "REMOVED" } } }),
+      this.database.client.video.count({ where: { status: { not: "REMOVED" } } }),
+      this.database.client.video.count({ where: { status: "PUBLISHED" } }),
+      this.database.client.creatorTvChannel.count(),
+      this.database.client.report.count({ where: { status: { in: ["OPEN", "REVIEWING"] } } }),
+      this.database.client.moderationCase.count({
+        where: { status: { in: ["OPEN", "REVIEWING"] } },
+      }),
+    ]);
 
     return {
       accounts,
@@ -86,7 +96,8 @@ export class AdminControlService {
         watchTimeMs: null,
         revenue: null,
         available: false,
-        reason: "Watch-time and revenue totals become available from the analytics and revenue pipelines.",
+        reason:
+          "Watch-time and revenue totals become available from the analytics and revenue pipelines.",
       },
     };
   }
@@ -133,7 +144,10 @@ export class AdminControlService {
 
   async updateAccount(actorAccountId: string, accountId: string, patch: AdminAccountPatch) {
     if (actorAccountId === accountId && patch.status === "SUSPENDED") {
-      throw adminBadRequest("SELF_SUSPEND_BLOCKED", "Use another administrator to suspend this account.");
+      throw adminBadRequest(
+        "SELF_SUSPEND_BLOCKED",
+        "Use another administrator to suspend this account.",
+      );
     }
     const displayName = patch.displayName?.trim();
     if (patch.displayName !== undefined && !displayName) {
@@ -151,7 +165,14 @@ export class AdminControlService {
               }
             : {}),
         },
-        select: { id: true, email: true, displayName: true, status: true, authVersion: true, updatedAt: true },
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          status: true,
+          authVersion: true,
+          updatedAt: true,
+        },
       });
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
@@ -196,7 +217,9 @@ export class AdminControlService {
           members: {
             where: { role: "OWNER" },
             take: 1,
-            select: { account: { select: { id: true, email: true, displayName: true, status: true } } },
+            select: {
+              account: { select: { id: true, email: true, displayName: true, status: true } },
+            },
           },
           creatorContracts: {
             orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
@@ -216,8 +239,15 @@ export class AdminControlService {
     if (patch.name !== undefined && !name) {
       throw adminBadRequest("INVALID_CHANNEL_NAME", "Channel name cannot be empty.");
     }
-    if (patch.revenueShareBps !== undefined && patch.revenueShareBps !== null && (patch.revenueShareBps < 0 || patch.revenueShareBps > 10_000)) {
-      throw adminBadRequest("INVALID_REVENUE_SHARE", "Revenue share must be between 0 and 10000 basis points.");
+    if (
+      patch.revenueShareBps !== undefined &&
+      patch.revenueShareBps !== null &&
+      (patch.revenueShareBps < 0 || patch.revenueShareBps > 10_000)
+    ) {
+      throw adminBadRequest(
+        "INVALID_REVENUE_SHARE",
+        "Revenue share must be between 0 and 10000 basis points.",
+      );
     }
     return this.database.client.$transaction(async (tx) => {
       const channel = await tx.channel.update({
@@ -227,7 +257,14 @@ export class AdminControlService {
           ...(patch.description !== undefined ? { description: patch.description } : {}),
           ...(patch.status !== undefined ? { status: patch.status } : {}),
         },
-        select: { id: true, handle: true, name: true, description: true, status: true, updatedAt: true },
+        select: {
+          id: true,
+          handle: true,
+          name: true,
+          description: true,
+          status: true,
+          updatedAt: true,
+        },
       });
 
       if (patch.contractStatus !== undefined || patch.revenueShareBps !== undefined) {
@@ -240,7 +277,9 @@ export class AdminControlService {
             data: {
               channelId,
               status: patch.contractStatus ?? "PENDING",
-              ...(patch.revenueShareBps !== undefined ? { revenueShareBps: patch.revenueShareBps } : {}),
+              ...(patch.revenueShareBps !== undefined
+                ? { revenueShareBps: patch.revenueShareBps }
+                : {}),
               effectiveFrom: patch.contractStatus === "ACTIVE" ? new Date() : null,
             },
           });
@@ -249,8 +288,12 @@ export class AdminControlService {
             where: { id: contract.id },
             data: {
               ...(patch.contractStatus !== undefined ? { status: patch.contractStatus } : {}),
-              ...(patch.revenueShareBps !== undefined ? { revenueShareBps: patch.revenueShareBps } : {}),
-              ...(patch.contractStatus === "ACTIVE" && !contract.effectiveFrom ? { effectiveFrom: new Date() } : {}),
+              ...(patch.revenueShareBps !== undefined
+                ? { revenueShareBps: patch.revenueShareBps }
+                : {}),
+              ...(patch.contractStatus === "ACTIVE" && !contract.effectiveFrom
+                ? { effectiveFrom: new Date() }
+                : {}),
             },
           });
         }
@@ -265,7 +308,9 @@ export class AdminControlService {
         metadata: {
           status: channel.status,
           ...(patch.contractStatus !== undefined ? { contractStatus: patch.contractStatus } : {}),
-          ...(patch.revenueShareBps !== undefined ? { revenueShareBps: patch.revenueShareBps } : {}),
+          ...(patch.revenueShareBps !== undefined
+            ? { revenueShareBps: patch.revenueShareBps }
+            : {}),
         },
       });
       return channel;
@@ -307,7 +352,9 @@ export class AdminControlService {
           publishedAt: true,
           updatedAt: true,
           channel: { select: { id: true, handle: true, name: true, status: true } },
-          tvPreferences: { select: { tvChannelId: true, included: true, priority: true, sortOrder: true } },
+          tvPreferences: {
+            select: { tvChannelId: true, included: true, priority: true, sortOrder: true },
+          },
           _count: { select: { comments: true, reports: true } },
         },
       }),
@@ -332,7 +379,9 @@ export class AdminControlService {
           ...(title !== undefined ? { title } : {}),
           ...(patch.description !== undefined ? { description: patch.description } : {}),
           ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
-          ...(patch.commentsEnabled !== undefined ? { commentsEnabled: patch.commentsEnabled } : {}),
+          ...(patch.commentsEnabled !== undefined
+            ? { commentsEnabled: patch.commentsEnabled }
+            : {}),
           ...(nextStatus !== undefined
             ? {
                 status: nextStatus,
@@ -342,7 +391,14 @@ export class AdminControlService {
               }
             : {}),
         },
-        select: { id: true, title: true, status: true, visibility: true, commentsEnabled: true, updatedAt: true },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          visibility: true,
+          commentsEnabled: true,
+          updatedAt: true,
+        },
       });
       if (patch.tvIncluded !== undefined) {
         const tv = await tx.creatorTvChannel.findFirst({
@@ -359,7 +415,10 @@ export class AdminControlService {
         }
       }
       if (nextStatus === "REMOVED") {
-        await tx.creatorTvVideoPreference.updateMany({ where: { videoId }, data: { included: false } });
+        await tx.creatorTvVideoPreference.updateMany({
+          where: { videoId },
+          data: { included: false },
+        });
       }
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
@@ -380,14 +439,21 @@ export class AdminControlService {
 
   async bulkVideos(
     actorAccountId: string,
-    input: { ids: string[]; action: "UNPUBLISH" | "DISABLE_COMMENTS" | "ENABLE_COMMENTS"; reason: string },
+    input: {
+      ids: string[];
+      action: "UNPUBLISH" | "DISABLE_COMMENTS" | "ENABLE_COMMENTS";
+      reason: string;
+    },
   ) {
     const ids = [...new Set(input.ids)];
     if (!ids.length || ids.length > 100) {
       throw adminBadRequest("INVALID_BULK_SELECTION", "Select between 1 and 100 videos.");
     }
     return this.database.client.$transaction(async (tx) => {
-      const existing = await tx.video.findMany({ where: { id: { in: ids } }, select: { id: true } });
+      const existing = await tx.video.findMany({
+        where: { id: { in: ids } },
+        select: { id: true },
+      });
       if (existing.length !== ids.length) {
         throw adminBadRequest("VIDEO_NOT_FOUND", "One or more selected videos no longer exist.");
       }
@@ -395,7 +461,10 @@ export class AdminControlService {
         input.action === "UNPUBLISH"
           ? { status: "DRAFT" as const, publishedAt: null, scheduledPublishAt: null }
           : { commentsEnabled: input.action === "ENABLE_COMMENTS" };
-      const result = await tx.video.updateMany({ where: { id: { in: ids }, status: { not: "REMOVED" } }, data });
+      const result = await tx.video.updateMany({
+        where: { id: { in: ids }, status: { not: "REMOVED" } },
+        data,
+      });
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
         action: "video.bulk_updated",
@@ -442,7 +511,13 @@ export class AdminControlService {
             where: { endsAt: { gt: now }, status: { in: ["SCHEDULED", "ACTIVE"] } },
             orderBy: { startsAt: "asc" },
             take: 2,
-            select: { id: true, startsAt: true, endsAt: true, status: true, video: { select: { id: true, title: true } } },
+            select: {
+              id: true,
+              startsAt: true,
+              endsAt: true,
+              status: true,
+              video: { select: { id: true, title: true } },
+            },
           },
         },
       }),
@@ -476,9 +551,15 @@ export class AdminControlService {
     });
   }
 
-  async moderation(input: PageInput & { status?: "OPEN" | "REVIEWING" | "RESOLVED" | "DISMISSED" | undefined }) {
+  async moderation(
+    input: PageInput & { status?: "OPEN" | "REVIEWING" | "RESOLVED" | "DISMISSED" | undefined },
+  ) {
     const { page, take, skip } = this.page(input);
-    const where = { ...(input.status ? { status: input.status } : { status: { in: ["OPEN" as const, "REVIEWING" as const] } }) };
+    const where = {
+      ...(input.status
+        ? { status: input.status }
+        : { status: { in: ["OPEN" as const, "REVIEWING" as const] } }),
+    };
     const [total, reports] = await Promise.all([
       this.database.client.report.count({ where }),
       this.database.client.report.findMany({

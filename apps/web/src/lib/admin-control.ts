@@ -30,14 +30,22 @@ export function getAdminCollection<T>(
   return adminFetch(`/admin/control/${resource}${suffix}`);
 }
 
-export function patchAdminResource<T>(resource: "users" | "channels" | "videos" | "tv", id: string, body: unknown) {
+export function patchAdminResource<T>(
+  resource: "users" | "channels" | "videos" | "tv",
+  id: string,
+  body: unknown,
+) {
   return adminFetch<T>(`/admin/control/${resource}/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
 }
 
-export function bulkAdminVideos(ids: string[], action: "UNPUBLISH" | "DISABLE_COMMENTS" | "ENABLE_COMMENTS", reason: string) {
+export function bulkAdminVideos(
+  ids: string[],
+  action: "UNPUBLISH" | "DISABLE_COMMENTS" | "ENABLE_COMMENTS",
+  reason: string,
+) {
   return adminFetch<{ affected: number; action: string }>("/admin/control/videos/bulk", {
     method: "POST",
     body: JSON.stringify({ ids, action, reason }),

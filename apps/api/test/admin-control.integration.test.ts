@@ -83,7 +83,9 @@ databaseDescribe("Task 17 Admin control plane", () => {
     expect(list.json().items).toHaveLength(1);
     expect(list.json().pagination).toMatchObject({ page: 1, take: 1, total: 1 });
 
-    const before = await prisma.account.findUniqueOrThrow({ where: { id: target.user.account.id } });
+    const before = await prisma.account.findUniqueOrThrow({
+      where: { id: target.user.account.id },
+    });
     const suspended = await app.inject({
       method: "PATCH",
       url: `/admin/control/users/${target.user.account.id}`,
@@ -96,7 +98,11 @@ databaseDescribe("Task 17 Admin control plane", () => {
     const after = await prisma.account.findUniqueOrThrow({ where: { id: target.user.account.id } });
     expect(after.authVersion).toBe(before.authVersion + 1);
     const audit = await prisma.adminAuditLog.findFirst({
-      where: { actorAccountId: admin.user.account.id, action: "account.status_updated", entityId: target.user.account.id },
+      where: {
+        actorAccountId: admin.user.account.id,
+        action: "account.status_updated",
+        entityId: target.user.account.id,
+      },
     });
     expect(audit?.reason).toBe("Repeated platform abuse review");
   });
@@ -133,9 +139,13 @@ databaseDescribe("Task 17 Admin control plane", () => {
     });
     expect(bulk.statusCode).toBe(201);
     expect(bulk.json()).toMatchObject({ affected: 1, action: "UNPUBLISH" });
-    expect((await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).status).toBe("DRAFT");
+    expect((await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).status).toBe(
+      "DRAFT",
+    );
 
-    const tv = await prisma.creatorTvChannel.findFirstOrThrow({ where: { channelId: creator.user.channel.id } });
+    const tv = await prisma.creatorTvChannel.findFirstOrThrow({
+      where: { channelId: creator.user.channel.id },
+    });
     const disableTv = await app.inject({
       method: "PATCH",
       url: `/admin/control/tv/${tv.id}`,
@@ -145,9 +155,15 @@ databaseDescribe("Task 17 Admin control plane", () => {
     expect(disableTv.statusCode).toBe(200);
     expect(disableTv.json().status).toBe("DISABLED");
 
-    const actions = await prisma.adminAuditLog.findMany({ where: { actorAccountId: admin.user.account.id } });
+    const actions = await prisma.adminAuditLog.findMany({
+      where: { actorAccountId: admin.user.account.id },
+    });
     expect(actions.map((entry) => entry.action)).toEqual(
-      expect.arrayContaining(["video.admin_updated", "video.bulk_updated", "creator_tv.status_updated"]),
+      expect.arrayContaining([
+        "video.admin_updated",
+        "video.bulk_updated",
+        "creator_tv.status_updated",
+      ]),
     );
   });
 });
