@@ -1,3 +1,4 @@
+import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
 import { ManagedHero } from "@/components/viewer/managed-hero";
 
@@ -14,6 +15,7 @@ export default async function Home({ searchParams }: HomeProperties) {
   return (
     <main>
       <ManagedHero />
+      <PageAdSlot placementKey="home_top" />
 
       <div className={styles.homeBody}>
         <section aria-label="AYIN account" className={styles.accountStrip}>
