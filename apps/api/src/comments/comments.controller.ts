@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpException,
+  Inject,
   Param,
   Patch,
   Post,
@@ -54,7 +55,7 @@ const moderate = z
 
 @Controller("comments")
 export class CommentsController {
-  constructor(private readonly comments: CommentsService) {}
+  constructor(@Inject(CommentsService) private readonly comments: CommentsService) {}
 
   @Get("videos/:videoId")
   list(@Param("videoId") rawId: string, @Query() rawQuery: unknown) {
