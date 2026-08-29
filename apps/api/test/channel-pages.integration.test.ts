@@ -151,9 +151,8 @@ databaseDescribe("Task 08 public creator channels", () => {
       true,
     );
     expect(body.creatorTv.name).toBe(owner.user.creatorTv.name);
-    expect(body.subscription).toEqual({ available: false });
+    expect(body.subscription).toEqual({ available: true, subscriberCount: 0 });
     expect(body.features).toEqual({ shorts: false, posts: false });
-    expect(JSON.stringify(body)).not.toContain("subscriberCount");
   });
 
   it("lets the owner edit essentials and keeps old handle links durable", async () => {

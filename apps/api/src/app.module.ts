@@ -9,6 +9,7 @@ import { DiscoveryModule } from "./discovery/discovery.module.js";
 import { MediaModule } from "./media/media.module.js";
 import { PlatformConfigModule } from "./platform-config/platform-config.module.js";
 import { SearchModule } from "./search/search.module.js";
+import { SocialModule } from "./social/social.module.js";
 import { WatchModule } from "./watch/watch.module.js";
 
 @Module({
@@ -22,6 +23,7 @@ import { WatchModule } from "./watch/watch.module.js";
     WatchModule,
     DiscoveryModule,
     SearchModule,
+    SocialModule,
   ],
   controllers: [AppController],
 })

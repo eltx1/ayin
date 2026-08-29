@@ -3,6 +3,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import type { CSSProperties } from "react";
 
 import { OwnerChannelActions } from "@/components/channel/owner-channel-actions";
+import { SubscribeButton } from "@/components/social/subscribe-button";
 import styles from "@/components/channel/public-channel.module.css";
 import { apiBaseUrl } from "@/lib/api";
 import {
@@ -66,15 +67,11 @@ export default async function PublicChannelPage({
         </div>
 
         <div className={styles.actions}>
-          <button
+          <SubscribeButton
+            channelId={data.channel.id}
             className={styles.subscribe}
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Channel subscriptions are not enabled yet."
-          >
-            Subscribe
-          </button>
+            initialCount={data.subscription.subscriberCount}
+          />
           <OwnerChannelActions handle={data.channel.handle} />
         </div>
       </section>

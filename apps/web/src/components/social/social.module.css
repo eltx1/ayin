@@ -1,0 +1,40 @@
+.notifications {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.notifications li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #2b3744;
+  border-radius: 0.8rem;
+  background: #111923;
+}
+.notifications li[data-read="false"] {
+  border-left: 4px solid #63d1cc;
+}
+.notifications div {
+  display: grid;
+  gap: 0.3rem;
+}
+.notifications small {
+  color: #63d1cc;
+}
+.notifications p,
+.notifications time,
+.empty {
+  color: #9eabb8;
+  margin: 0;
+}
+.notifications button {
+  align-self: center;
+  border: 1px solid #405368;
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  padding: 0.55rem 0.8rem;
+}
