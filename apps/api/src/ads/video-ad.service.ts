@@ -3,8 +3,9 @@ import { Inject, Injectable } from "@nestjs/common";
 import { z } from "zod";
 
 import { DatabaseService } from "../database/database.service.js";
+import { resolveVideoAdPolicy } from "./video-ad-policy.js";
 
-const settingsSchema = z.object({
+export const videoAdSettingsSchema = z.object({
   masterEnabled: z.boolean(),
   provider: z.enum(["GOOGLE_IMA"]),
   preRollEnabled: z.boolean(),
@@ -17,7 +18,7 @@ const settingsSchema = z.object({
   houseClickUrl: z.string().url().max(4096).nullable(),
 });
 
-export type VideoAdSettings = z.infer<typeof settingsSchema>;
+export type VideoAdSettings = z.infer<typeof videoAdSettingsSchema>;
 
 export const defaultVideoAdSettings: VideoAdSettings = {
   masterEnabled: false,
@@ -74,12 +75,12 @@ export class VideoAdService {
       where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
       select: { value: true },
     });
-    const parsed = settingsSchema.safeParse(row?.value);
+    const parsed = videoAdSettingsSchema.safeParse(row?.value);
     return parsed.success ? parsed.data : defaultVideoAdSettings;
   }
 
   async updateSettings(input: unknown): Promise<VideoAdSettings> {
-    const settings = settingsSchema.parse(input);
+    const settings = videoAdSettingsSchema.parse(input);
     const value = settings as unknown as Prisma.InputJsonValue;
     await this.database.client.platformSetting.upsert({
       where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
@@ -110,10 +111,11 @@ export class VideoAdService {
     ]);
     if (!settings.masterEnabled) return { enabled: false, reason: "ADS_DISABLED" as const };
 
-    const resolved = this.resolve(settings, channelOverride, videoOverride);
+    const resolved = resolveVideoAdPolicy(settings, channelOverride, videoOverride);
     if (!resolved.enabled) return { enabled: false, reason: "CONTENT_OVERRIDE_DISABLED" as const };
 
-    const tagUrl = resolved.vastTagUrl ?? settings.externalVastTagUrl ?? this.houseTagUrl(origin, settings);
+    const tagUrl =
+      resolved.vastTagUrl ?? settings.externalVastTagUrl ?? this.houseTagUrl(origin, settings);
     if (!tagUrl) return { enabled: false, reason: "NO_AD_SOURCE_CONFIGURED" as const };
 
     return {
@@ -121,7 +123,8 @@ export class VideoAdService {
       provider: resolved.provider,
       tagUrl,
       preRollEnabled: resolved.preRollEnabled,
-      midRollEnabled: resolved.midRollEnabled && (video.durationMs ?? 0) >= resolved.midRollEverySec * 1000,
+      midRollEnabled:
+        resolved.midRollEnabled && (video.durationMs ?? 0) >= resolved.midRollEverySec * 1000,
       postRollEnabled: resolved.postRollEnabled,
       midRollEverySec: resolved.midRollEverySec,
       frequencyCapPerSession: settings.frequencyCapPerSession,
@@ -192,30 +195,6 @@ export class VideoAdService {
     return `<?xml version="1.0" encoding="UTF-8"?><VAST version="3.0"><Ad id="ayin-house-v1"><InLine><AdSystem>AYIN House</AdSystem><AdTitle>AYIN House Test</AdTitle><Impression><![CDATA[]]></Impression><Creatives><Creative><Linear><Duration>00:00:15</Duration><MediaFiles><MediaFile delivery="progressive" type="video/mp4"><![CDATA[${this.xml(settings.houseCreativeUrl)}]]></MediaFile></MediaFiles><VideoClicks>${click}</VideoClicks></Linear></Creative></Creatives></InLine></Ad></VAST>`;
   }
 
-  private resolve(settings: VideoAdSettings, channelOverride: OverrideRow, videoOverride: OverrideRow) {
-    const candidates = [channelOverride, videoOverride].filter(Boolean) as NonNullable<OverrideRow>[];
-    return candidates.reduce(
-      (value, override) => ({
-        enabled: override.enabled ?? value.enabled,
-        provider: (override.provider as "GOOGLE_IMA" | null) ?? value.provider,
-        vastTagUrl: override.vastTagUrl ?? value.vastTagUrl,
-        preRollEnabled: override.preRollEnabled ?? value.preRollEnabled,
-        midRollEnabled: override.midRollEnabled ?? value.midRollEnabled,
-        postRollEnabled: override.postRollEnabled ?? value.postRollEnabled,
-        midRollEverySec: override.midRollEverySec ?? value.midRollEverySec,
-      }),
-      {
-        enabled: true,
-        provider: settings.provider,
-        vastTagUrl: null as string | null,
-        preRollEnabled: settings.preRollEnabled,
-        midRollEnabled: settings.midRollEnabled,
-        postRollEnabled: settings.postRollEnabled,
-        midRollEverySec: settings.midRollEverySec,
-      },
-    );
-  }
-
   private houseTagUrl(origin: string | null, settings: VideoAdSettings) {
     if (!settings.houseCreativeUrl || !origin) return null;
     return `${origin.replace(/\/$/, "")}/ads/house/vast`;
@@ -225,5 +204,3 @@ export class VideoAdService {
     return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
   }
 }
-
-type OverrideRow = Awaited<ReturnType<DatabaseService["client"]["videoAdOverride"]["findUnique"]>>;
