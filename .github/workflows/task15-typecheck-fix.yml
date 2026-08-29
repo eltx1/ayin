@@ -1,0 +1,40 @@
+name: Temporary Task 15 typecheck fix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/task15-typecheck-fix.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fix exact optional parent id and clean diagnostics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/api/src/comments/comments.service.ts')
+          text = path.read_text()
+          old = 'data: { videoId, authorProfileId: profile.id, parentId, body: normalized },'
+          new = 'data: { videoId, authorProfileId: profile.id, parentId: parentId ?? null, body: normalized },'
+          if old not in text:
+              raise SystemExit('expected Task 15 create payload not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          rm -f TASK15_TYPECHECK_DIAGNOSTIC.txt
+          rm -f .github/workflows/task15-typecheck-diagnostic.yml
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: satisfy Task 15 exact optional types"
+          git push origin HEAD:main
