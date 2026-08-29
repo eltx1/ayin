@@ -28,6 +28,12 @@ import { AdminSettingsService } from "./admin-settings.service.js";
     AdminControlService,
     AdminProductService,
   ],
-  exports: [AdminAuthorizationService, AdminGuard, AdminControlService, AdminProductService],
+  exports: [
+    AdminAuditLogService,
+    AdminAuthorizationService,
+    AdminGuard,
+    AdminControlService,
+    AdminProductService,
+  ],
 })
 export class AdminModule {}
