@@ -85,14 +85,24 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
         <div className={styles.accountActions}>
           {identity ? (
-            <Link
-              className={styles.channelAction}
-              data-tv-focus-id="my-channel"
-              data-tv-focusable="true"
-              href={`/c/${identity.channel.handle}`}
-            >
-              My channel
-            </Link>
+            <>
+              <Link
+                className={styles.channelAction}
+                data-tv-focus-id="notifications"
+                data-tv-focusable="true"
+                href="/notifications"
+              >
+                Notifications
+              </Link>
+              <Link
+                className={styles.channelAction}
+                data-tv-focus-id="my-channel"
+                data-tv-focusable="true"
+                href={`/c/${identity.channel.handle}`}
+              >
+                My channel
+              </Link>
+            </>
           ) : null}
           <Link
             className={styles.joinAction}
