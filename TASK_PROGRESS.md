@@ -2,10 +2,10 @@
 
 Persistent resume ledger for `docs/AYIN_EXECUTION_ROADMAP.md`.
 
-- [x] Task 13 — Unified search and content detail. Verified merged on main: `9d10a4fac00f511b3602ee6823891be5a0100bfe`.
-- [x] Task 14 — Social graph and notifications baseline. Verified merged on main: `69d63a8b543d5235b9251e80e6e5da7953cfc38e`.
-- [x] Task 15 — Comments and creator moderation controls. Commit: this Task 15 commit (resolved by git history; exact SHA is recorded by the next progress update). Checks: GitHub Task quality gate required after push. Blockers: none. Next: Task 16.
-- [ ] Task 16 — Creator Studio V1.
+- [x] Task 13 — Unified search and content detail. Main: `9d10a4fac00f511b3602ee6823891be5a0100bfe`.
+- [x] Task 14 — Social graph and notifications baseline. Main: `69d63a8b543d5235b9251e80e6e5da7953cfc38e`.
+- [x] Task 15 — Comments and creator moderation controls. Verified SHA: `c89177a3ea07f57b346bbec77046b12199a60861`. CI `33276822732`: format, lint, typecheck, tests, clean PostgreSQL integration, build passed. Blockers: none.
+- [x] Task 16 — Creator Studio V1. Verified code SHA: `fa81d45ce8911067462742db82784dbc99a53b93`. CI `33278502335`: format, lint, typecheck, tests, clean PostgreSQL integration, build passed. Studio includes Dashboard, Content, Playlists, TV, Analytics, Comments, Monetization and Channel settings; Quick Upload remains separate. Real detailed analytics and revenue metrics remain pending their later roadmap pipelines. Blockers: none for Task 16. Next: Task 17.
 - [ ] Task 17 — Admin control plane V1.
 - [ ] Task 18 — Admin home builder, navigation, taxonomy and global settings.
 - [ ] Task 19 — In-player video ads + Google IMA-ready integration.
@@ -29,4 +29,4 @@ Persistent resume ledger for `docs/AYIN_EXECUTION_ROADMAP.md`.
 - [ ] Task 37 — Android / Google TV / Fire TV shells.
 - [ ] Task 38 — Samsung Tizen and LG webOS packages.
 
-Resume rule: read this file, git history, the roadmap and current tests; continue from the first unchecked task. External live verification is never reported as passed without actual access.
+Resume rule: read this file, git history, roadmap and tests, then continue from the first unchecked task. Never report an external production check as passed without actual access.
