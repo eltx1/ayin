@@ -19,7 +19,11 @@ export class CommentRateLimiter {
       return;
     }
     if (current.count >= limit) {
-      throw new CommentsError("COMMENT_RATE_LIMITED", "Too many comment actions. Try again shortly.", 429);
+      throw new CommentsError(
+        "COMMENT_RATE_LIMITED",
+        "Too many comment actions. Try again shortly.",
+        429,
+      );
     }
     current.count += 1;
   }

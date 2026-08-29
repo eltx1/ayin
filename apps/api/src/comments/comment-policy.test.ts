@@ -15,7 +15,11 @@ describe("comment policy", () => {
 
   it("enforces the configurable edit window", () => {
     const createdAt = new Date("2026-01-01T00:00:00Z");
-    expect(canEditComment(createdAt, new Date("2026-01-01T00:29:00Z"), defaultCommentPolicy)).toBe(true);
-    expect(canEditComment(createdAt, new Date("2026-01-01T00:31:00Z"), defaultCommentPolicy)).toBe(false);
+    expect(canEditComment(createdAt, new Date("2026-01-01T00:29:00Z"), defaultCommentPolicy)).toBe(
+      true,
+    );
+    expect(canEditComment(createdAt, new Date("2026-01-01T00:31:00Z"), defaultCommentPolicy)).toBe(
+      false,
+    );
   });
 });

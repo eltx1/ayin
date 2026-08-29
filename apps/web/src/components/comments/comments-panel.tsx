@@ -39,7 +39,9 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
     }
   }, [enabled, videoId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function submit() {
     if (!body.trim()) return;
@@ -51,7 +53,9 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
       body: JSON.stringify({ body }),
     });
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      const payload = (await response.json().catch(() => null)) as {
+        error?: { message?: string };
+      } | null;
       setMessage(payload?.error?.message ?? "Sign in to join the conversation.");
       return;
     }
@@ -67,13 +71,27 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
         <>
           <div className={styles.composer}>
             <label htmlFor={`comment-${videoId}`}>Join the conversation</label>
-            <textarea id={`comment-${videoId}`} maxLength={3000} onChange={(event) => setBody(event.target.value)} value={body} />
-            <button data-tv-focusable="true" disabled={!body.trim()} onClick={() => void submit()} type="button">Comment</button>
+            <textarea
+              id={`comment-${videoId}`}
+              maxLength={3000}
+              onChange={(event) => setBody(event.target.value)}
+              value={body}
+            />
+            <button
+              data-tv-focusable="true"
+              disabled={!body.trim()}
+              onClick={() => void submit()}
+              type="button"
+            >
+              Comment
+            </button>
           </div>
           {message ? <p role="status">{message}</p> : null}
           {loading ? <p>Loading comments…</p> : null}
           <div className={styles.list}>
-            {items.map((item) => <CommentView item={item} key={item.id} />)}
+            {items.map((item) => (
+              <CommentView item={item} key={item.id} />
+            ))}
             {!loading && items.length === 0 ? <p>Be the first to comment.</p> : null}
           </div>
         </>
@@ -85,10 +103,22 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
 function CommentView({ item }: { item: CommentItem }) {
   return (
     <article className={styles.comment}>
-      <header><strong>{item.authorProfile.name}</strong>{item.pinned ? <span> · Pinned</span> : null}{item.creatorHearted ? <span> · ♥ Creator</span> : null}</header>
+      <header>
+        <strong>{item.authorProfile.name}</strong>
+        {item.pinned ? <span> · Pinned</span> : null}
+        {item.creatorHearted ? <span> · ♥ Creator</span> : null}
+      </header>
       <p>{item.body}</p>
-      <small>{item.likeCount} likes{item.edited ? " · edited" : ""}</small>
-      {item.replies?.length ? <div className={styles.replies}>{item.replies.map((reply) => <CommentView item={reply} key={reply.id} />)}</div> : null}
+      <small>
+        {item.likeCount} likes{item.edited ? " · edited" : ""}
+      </small>
+      {item.replies?.length ? (
+        <div className={styles.replies}>
+          {item.replies.map((reply) => (
+            <CommentView item={reply} key={reply.id} />
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
