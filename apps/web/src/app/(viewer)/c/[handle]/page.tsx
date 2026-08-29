@@ -160,7 +160,11 @@ function VideoSection({ data, limit }: { data: PublicChannelResponse; limit?: nu
           {videos.map((video) => {
             const thumbnail = mediaAssetUrl(video.thumbnail?.objectKey);
             return (
-              <article className={styles.videoCard} key={video.id}>
+              <Link
+                className={styles.videoCard}
+                href={`/watch/${encodeURIComponent(video.slug)}`}
+                key={video.id}
+              >
                 <div
                   className={styles.thumbnail}
                   style={thumbnail ? { backgroundImage: `url("${thumbnail}")` } : undefined}
@@ -171,7 +175,7 @@ function VideoSection({ data, limit }: { data: PublicChannelResponse; limit?: nu
                 </div>
                 <h3>{video.title}</h3>
                 <p className={styles.meta}>{formatDate(video.publishedAt)}</p>
-              </article>
+              </Link>
             );
           })}
         </div>

@@ -1,0 +1,143 @@
+.player {
+  display: grid;
+  gap: 0.75rem;
+  background: #080b10;
+  border: 1px solid #202833;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 18px 60px #0008;
+}
+.stage {
+  position: relative;
+  aspect-ratio: 16/9;
+  background: #000;
+  outline: none;
+}
+.stage:focus-visible {
+  box-shadow: inset 0 0 0 3px #63d1cc;
+}
+.video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000;
+  object-fit: contain;
+}
+.titleBar {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  top: 1rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  text-shadow: 0 1px 6px #000;
+  background: linear-gradient(90deg, #0009, transparent);
+  padding: 0.5rem;
+  border-radius: 8px;
+  pointer-events: none;
+}
+.titleBar span {
+  opacity: 0.72;
+}
+.controls {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.2rem 0.8rem 0.8rem;
+}
+.scrubber {
+  width: 100%;
+  accent-color: #63d1cc;
+}
+.controlRow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.controlRow button,
+.controlRow select {
+  border: 1px solid #33404f;
+  background: #121923;
+  color: #f5f8fb;
+  border-radius: 9px;
+  padding: 0.55rem 0.7rem;
+}
+.controlRow button:focus-visible,
+.controlRow select:focus-visible,
+.volume:focus-visible,
+.scrubber:focus-visible {
+  outline: 3px solid #63d1cc;
+  outline-offset: 2px;
+}
+.controlRow button:disabled {
+  opacity: 0.45;
+}
+.time {
+  font-variant-numeric: tabular-nums;
+  color: #b7c1cc;
+  min-width: 7.5rem;
+}
+.volume {
+  width: 92px;
+  accent-color: #63d1cc;
+}
+.adContainer {
+  position: absolute;
+  inset: 0;
+  display: none;
+  place-items: center;
+  background: #000;
+  z-index: 10;
+}
+.adActive {
+  display: grid;
+}
+.adActive span {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  background: #111c;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  color: #fff;
+}
+.upNext {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0 0.9rem 0.9rem;
+  color: #dfe7ef;
+}
+.upNext span {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7f8b98;
+}
+.upNext small {
+  color: #8f9aa6;
+}
+.error {
+  position: absolute;
+  inset: auto 1rem 1rem;
+  background: #511d25e6;
+  border: 1px solid #a84d59;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  color: #fff;
+}
+@media (max-width: 720px) {
+  .controlRow {
+    gap: 0.35rem;
+  }
+  .controlRow button,
+  .controlRow select {
+    padding: 0.5rem 0.58rem;
+    font-size: 0.84rem;
+  }
+  .time {
+    order: -1;
+    width: 100%;
+  }
+}

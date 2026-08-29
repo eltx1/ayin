@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
+import { AyinPlayer } from "@/components/player/ayin-player";
 import { apiBaseUrl } from "@/lib/api";
 import { mediaAssetUrl } from "@/lib/channel";
 import type { CreatorTvProgram, PublicCreatorTvResponse } from "@/lib/creator-tv";
@@ -13,7 +14,6 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
   const [data, setData] = useState(initialData);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const current = data.schedule.nowPlaying;
   const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);
@@ -49,24 +49,6 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
     }
   }, [data.canonicalHandle, refreshing]);
 
-  const seekToCurrentWallClock = useCallback(() => {
-    const element = videoRef.current;
-    const program = data.schedule.nowPlaying;
-    if (!element || !program || !Number.isFinite(element.duration)) return;
-
-    const wallClockOffsetSeconds = Math.max(
-      0,
-      (Date.now() - new Date(program.startsAt).getTime()) / 1000,
-    );
-    const safeOffset = Math.min(wallClockOffsetSeconds, Math.max(0, element.duration - 0.25));
-    if (safeOffset <= 0.25) return;
-    try {
-      element.currentTime = safeOffset;
-    } catch {
-      // Progressive MP4 seeking is best-effort in V1; the schedule remains authoritative.
-    }
-  }, [data.schedule.nowPlaying]);
-
   if (data.tv.state === "OFF_AIR" || !current) {
     return (
       <main className={styles.page} style={style}>
@@ -97,17 +79,23 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
       <div className={styles.layout}>
         <section className={styles.playerCard} aria-labelledby="now-playing-heading">
           {mediaUrl ? (
-            <video
+            <AyinPlayer
               autoPlay
-              className={styles.video}
-              controls
-              key={current.occurrenceKey}
+              initialPositionMs={current.playbackOffsetMs}
               muted
-              onEnded={() => void refreshSchedule()}
-              onLoadedMetadata={seekToCurrentWallClock}
-              playsInline
-              ref={videoRef}
-              src={mediaUrl}
+              onNext={() => void refreshSchedule()}
+              progressEnabled={false}
+              sourceUrl={mediaUrl}
+              title={current.video.title}
+              upNext={
+                data.schedule.upNext
+                  ? {
+                      title: data.schedule.upNext.video.title,
+                      detail: formatTime(data.schedule.upNext.startsAt),
+                    }
+                  : null
+              }
+              videoId={current.video.id}
             />
           ) : (
             <div className={styles.offAir}>
