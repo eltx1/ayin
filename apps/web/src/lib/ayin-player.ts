@@ -59,6 +59,13 @@ export interface PublicPlaybackResponse {
     }>;
     chapters: AyinPlayerChapter[];
   };
+  detail: {
+    contentType: "CREATOR_VIDEO";
+    saveHook: { action: "WATCH_LATER"; available: boolean };
+    commentsSlot: { reserved: boolean; enabled: boolean };
+    externalAdPlacementKeys: string[];
+    related: Array<{ id: string; title: string; href: string; durationMs: number | null }>;
+  };
   playerPolicy: {
     progressSaveIntervalMs: number;
     completionThresholdPercent: number;
