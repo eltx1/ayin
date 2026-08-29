@@ -1,0 +1,136 @@
+.page {
+  min-height: 100vh;
+  padding-bottom: 5rem;
+}
+
+.header {
+  display: grid;
+  gap: 0.75rem;
+  padding: clamp(2rem, 6vw, 5.5rem) clamp(1rem, 4vw, 4.5rem) 1rem;
+}
+
+.header p,
+.header h1 {
+  margin: 0;
+}
+
+.header p {
+  max-width: 52rem;
+  color: var(--ayin-text-muted, #a7abb8);
+  line-height: 1.6;
+}
+
+.rows {
+  display: grid;
+  gap: 1.2rem;
+}
+
+.rowBlock {
+  min-width: 0;
+}
+
+.emptyCard {
+  display: grid;
+  align-content: center;
+  gap: 0.55rem;
+  width: min(34rem, 78vw);
+  min-height: 11rem;
+  padding: 1.3rem;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 4%);
+  color: var(--ayin-text-muted, #a7abb8);
+}
+
+.emptyCard strong {
+  color: var(--ayin-text, #f7f7fb);
+}
+
+.loadMoreLine {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0 4vw 0.35rem;
+}
+
+.loadMoreButton {
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 7%);
+  color: inherit;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+}
+
+.loadMoreButton:hover,
+.loadMoreButton:focus-visible {
+  background: rgb(255 255 255 / 13%);
+}
+
+.loadMoreButton:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.errorText {
+  color: #ffb9b9;
+  font-size: 0.9rem;
+}
+
+.skeletonRows {
+  display: grid;
+  gap: 2rem;
+  padding-top: 1rem;
+}
+
+.skeletonRow {
+  display: grid;
+  gap: 1rem;
+  padding-inline: 4vw;
+}
+
+.skeletonTitle {
+  width: 13rem;
+  height: 1.4rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(90deg, rgb(255 255 255 / 5%), rgb(255 255 255 / 12%), rgb(255 255 255 / 5%));
+  background-size: 220% 100%;
+  animation: discovery-pulse 1.5s ease-in-out infinite;
+}
+
+.skeletonCards {
+  display: flex;
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.authState {
+  margin: 0 4vw 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 4%);
+  color: var(--ayin-text-muted, #a7abb8);
+}
+
+.authState a {
+  color: var(--ayin-text, #fff);
+}
+
+@keyframes discovery-pulse {
+  0%, 100% { background-position: 0 0; }
+  50% { background-position: 100% 0; }
+}
+
+@media (max-width: 720px) {
+  .header {
+    padding-top: 2rem;
+  }
+
+  .loadMoreLine,
+  .skeletonRow,
+  .authState {
+    padding-inline: 1rem;
+    margin-inline: 0;
+  }
+}
