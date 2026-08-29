@@ -1,0 +1,8 @@
+# AYIN ads.txt template
+# Replace each placeholder only with values supplied by an authorized advertising seller/provider.
+# Do not deploy this template with placeholder values.
+#
+# Format:
+# <advertising-system-domain>, <publisher-account-id>, <DIRECT|RESELLER>, <certification-authority-id-if-required>
+#
+# example.invalid, REPLACE_WITH_REAL_PUBLISHER_ID, DIRECT, REPLACE_IF_REQUIRED
