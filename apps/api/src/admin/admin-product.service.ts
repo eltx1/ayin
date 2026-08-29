@@ -184,7 +184,7 @@ export class AdminProductService {
     if (entityType === "VIDEO") {
       const video = await this.database.client.video.findFirst({
         where: { id: entityId, status: "PUBLISHED", visibility: { in: ["PUBLIC", "UNLISTED"] } },
-        select: { id: true, title: true, description: true },
+        select: { slug: true, title: true, description: true },
       });
       return video
         ? {
@@ -192,7 +192,7 @@ export class AdminProductService {
             entityId,
             title: video.title,
             description: video.description ?? "Featured on AYIN.",
-            href: `/watch/${video.id}`,
+            href: `/watch/${video.slug}`,
           }
         : null;
     }
