@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CommentsPanel } from "@/components/comments/comments-panel";
-import { AyinPlayer } from "@/components/player/ayin-player";
+import { AdEnabledAyinPlayer } from "@/components/player/ad-enabled-ayin-player";
 import { VideoSocialActions } from "@/components/social/video-social-actions";
 import { apiBaseUrl } from "@/lib/api";
 import { type PublicPlaybackResponse } from "@/lib/ayin-player";
@@ -37,7 +37,7 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
 
   return (
     <main className={styles.page}>
-      <AyinPlayer
+      <AdEnabledAyinPlayer
         captions={captions}
         chapters={data.video.chapters}
         durationMs={data.video.durationMs}
