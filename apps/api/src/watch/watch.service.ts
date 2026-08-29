@@ -37,6 +37,7 @@ export class WatchService {
         slug: true,
         title: true,
         description: true,
+        commentsEnabled: true,
         durationMs: true,
         publishedAt: true,
         status: true,
@@ -96,6 +97,28 @@ export class WatchService {
         default: index === 0,
       }));
 
+    const related = await this.database.client.video.findMany({
+      where: {
+        id: { not: video.id },
+        channelId: video.channel.id,
+        status: "PUBLISHED",
+        visibility: "PUBLIC",
+        removedAt: null,
+        channel: { status: "ACTIVE", removedAt: null },
+        mediaAssets: {
+          some: {
+            kind: "SOURCE_VIDEO",
+            status: { in: [...playableStates] },
+            removedAt: null,
+            mimeType: "video/mp4",
+          },
+        },
+      },
+      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+      take: 8,
+      select: { id: true, slug: true, title: true, durationMs: true },
+    });
+
     return {
       video: {
         id: video.id,
@@ -115,6 +138,18 @@ export class WatchService {
         },
         captions,
         chapters: [],
+      },
+      detail: {
+        contentType: "CREATOR_VIDEO" as const,
+        saveHook: { action: "WATCH_LATER" as const, available: false },
+        commentsSlot: { reserved: true, enabled: video.commentsEnabled },
+        externalAdPlacementKeys: ["watch_below_player", "content_detail"],
+        related: related.map((item) => ({
+          id: item.id,
+          title: item.title,
+          href: `/watch/${item.slug}`,
+          durationMs: item.durationMs,
+        })),
       },
       playerPolicy: await this.getPlayerPolicy(),
     };
