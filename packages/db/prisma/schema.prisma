@@ -373,6 +373,7 @@ model Video {
   mediaAssets        MediaAsset[]
   playlistItems      PlaylistItem[]
   tvScheduleItems    TvScheduleItem[]
+  tvPreferences      CreatorTvVideoPreference[]
   watchProgress      WatchProgress[]
   watchHistory       WatchHistory[]
   watchLaterItems    WatchLaterItem[]
@@ -467,6 +468,7 @@ model CreatorTvChannel {
   sourcePlaylist    Playlist?            @relation(fields: [sourcePlaylistId], references: [id], onDelete: SetNull)
   primaryForChannel Channel?             @relation("PrimaryCreatorTvChannel")
   scheduleItems     TvScheduleItem[]
+  videoPreferences  CreatorTvVideoPreference[]
 
   @@index([channelId, status])
   @@index([sourcePlaylistId])

@@ -1,0 +1,17 @@
+model CreatorTvVideoPreference {
+  id          String   @id @default(uuid()) @db.Uuid
+  tvChannelId String   @db.Uuid
+  videoId     String   @db.Uuid
+  included    Boolean  @default(true)
+  priority    Int      @default(0)
+  sortOrder   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tvChannel CreatorTvChannel @relation(fields: [tvChannelId], references: [id], onDelete: Cascade)
+  video     Video            @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([tvChannelId, videoId])
+  @@index([tvChannelId, included, priority, sortOrder])
+  @@index([videoId])
+}
