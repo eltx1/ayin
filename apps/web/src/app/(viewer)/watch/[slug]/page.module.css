@@ -33,6 +33,55 @@
   padding: 0.65rem 0.9rem;
   white-space: nowrap;
 }
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+.actions button {
+  border: 1px solid #405368;
+  border-radius: 999px;
+  background: #16212c;
+  color: #fff;
+  padding: 0.65rem 0.9rem;
+}
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.reservedSlot {
+  display: none;
+}
+.related,
+.commentsSlot {
+  padding: 0.2rem 0.2rem 1.5rem;
+}
+.related h2,
+.commentsSlot h2 {
+  margin: 0 0 0.8rem;
+}
+.related > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.related a {
+  display: grid;
+  gap: 0.35rem;
+  min-height: 90px;
+  padding: 1rem;
+  border: 1px solid #2b3744;
+  border-radius: 0.8rem;
+  background: #111923;
+}
+.related a:focus-visible {
+  outline: 3px solid #f5c86b;
+  outline-offset: 3px;
+}
+.related span,
+.commentsSlot p {
+  color: #9eabb8;
+}
 @media (max-width: 760px) {
   .page {
     padding: 0.75rem;
