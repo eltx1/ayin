@@ -17,11 +17,14 @@ import {
 import { PlaylistService } from "./playlist.service.js";
 import { QuickUploadController } from "./quick-upload.controller.js";
 import { QuickUploadService } from "./quick-upload.service.js";
+import { StudioController } from "./studio.controller.js";
+import { StudioService } from "./studio.service.js";
 
 @Module({
   imports: [AuthModule, DatabaseModule, MediaModule, PlatformConfigModule],
   controllers: [
     QuickUploadController,
+    StudioController,
     PublicChannelController,
     CreatorChannelController,
     PublicPlaylistController,
@@ -32,11 +35,12 @@ import { QuickUploadService } from "./quick-upload.service.js";
   ],
   providers: [
     QuickUploadService,
+    StudioService,
     ChannelService,
     PlaylistService,
     CreatorTvService,
     { provide: CREATOR_TV_AD_BREAK_HOOK, useClass: NoopCreatorTvAdBreakHook },
   ],
-  exports: [ChannelService, PlaylistService, CreatorTvService],
+  exports: [ChannelService, PlaylistService, CreatorTvService, StudioService],
 })
 export class CreatorModule {}
