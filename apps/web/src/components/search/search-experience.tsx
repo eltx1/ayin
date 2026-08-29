@@ -33,8 +33,7 @@ export function SearchExperience({ initialQuery = "" }: { initialQuery?: string 
   const [loading, setLoading] = useState(initialQuery.trim().length >= 2);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const suggestionsVisible =
-    query.trim().length >= 2 && query.trim() !== submittedQuery.trim();
+  const suggestionsVisible = query.trim().length >= 2 && query.trim() !== submittedQuery.trim();
 
   useEffect(() => {
     if (initialQuery.trim().length < 2) return;
