@@ -1,5 +1,5 @@
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
-import { Hero } from "@/components/viewer/hero";
+import { ManagedHero } from "@/components/viewer/managed-hero";
 
 import { SessionPanel } from "../session-panel";
 import styles from "./page.module.css";
@@ -13,13 +13,7 @@ export default async function Home({ searchParams }: HomeProperties) {
 
   return (
     <main>
-      <Hero
-        description="A global entertainment network built for watching, discovering and creating without friction. Discovery is powered by real AYIN catalog and viewing data."
-        eyebrow="Watch · Create · Tune in"
-        primaryAction={{ href: "#discovery", label: "Start exploring" }}
-        secondaryAction={{ href: "/search", label: "Search AYIN" }}
-        title="Stories move differently here."
-      />
+      <ManagedHero />
 
       <div className={styles.homeBody}>
         <section aria-label="AYIN account" className={styles.accountStrip}>
