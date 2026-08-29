@@ -26,9 +26,21 @@ export function AdminProductControls() {
   }
 
   useEffect(() => {
-    void refresh().catch((error) =>
-      setMessage(error instanceof Error ? error.message : "Controls could not be loaded."),
-    );
+    let active = true;
+    void getAdminProductControls()
+      .then((snapshot) => {
+        if (!active) return;
+        setRows(snapshot.rows);
+        setControls(snapshot.controls);
+      })
+      .catch((error) => {
+        if (active) {
+          setMessage(error instanceof Error ? error.message : "Controls could not be loaded.");
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function mutate(operation: () => Promise<unknown>, success: string) {
