@@ -1,0 +1,33 @@
+$ corepack pnpm --recursive --if-present run lint
+Scope: 6 of 7 workspace projects
+packages/config lint$ eslint .
+packages/db lint$ eslint .
+packages/types lint$ eslint .
+packages/ui lint$ eslint .
+packages/config lint: Done
+packages/types lint: Done
+packages/ui lint: Done
+packages/db lint: Done
+apps/api lint$ eslint .
+apps/web lint$ eslint .
+apps/api lint: Done
+apps/web lint: /home/runner/work/ayin/ayin/apps/web/src/components/comments/comments-panel.tsx
+apps/web lint:   43:10  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+apps/web lint: Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+apps/web lint: * Update external systems with the latest state from React.
+apps/web lint: * Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+apps/web lint: Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+apps/web lint: /home/runner/work/ayin/ayin/apps/web/src/components/comments/comments-panel.tsx:43:10
+apps/web lint:   41 |
+apps/web lint:   42 |   useEffect(() => {
+apps/web lint: > 43 |     void load();
+apps/web lint:      |          ^^^^ Avoid calling setState() directly within an effect
+apps/web lint:   44 |   }, [load]);
+apps/web lint:   45 |
+apps/web lint:   46 |   async function submit() {  react-hooks/set-state-in-effect
+apps/web lint: ✖ 1 problem (1 error, 0 warnings)
+apps/web lint: Failed
+/home/runner/work/ayin/ayin/apps/web:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @ayin/web@0.0.0 lint: `eslint .`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.
