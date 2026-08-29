@@ -23,6 +23,8 @@ describe("Task 13 search and unified content detail surfaces", () => {
     expect(searchResultTypes).toEqual(["VIDEO", "CHANNEL", "PLAYLIST", "CREATOR_TV"]);
     expect(searchExperience).toContain("fetchSearchSuggestions");
     expect(searchExperience).toContain("}, 250)");
+    expect(searchExperience).toContain("suggestionsVisible");
+    expect(searchExperience).toContain("if (append) setLoadingMore(true)");
     expect(searchExperience).toContain("Load more");
     expect(searchExperience).toContain("No results for");
   });
