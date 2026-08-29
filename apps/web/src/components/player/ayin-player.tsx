@@ -192,7 +192,15 @@ export function AyinPlayer({
         persistBusyRef.current = false;
       }
     },
-    [adMode.active, analytics, durationMs, effectivePolicy.progressSaveIntervalMs, profileId, progressEnabled, videoId],
+    [
+      adMode.active,
+      analytics,
+      durationMs,
+      effectivePolicy.progressSaveIntervalMs,
+      profileId,
+      progressEnabled,
+      videoId,
+    ],
   );
 
   useEffect(() => {
@@ -255,7 +263,8 @@ export function AyinPlayer({
 
   const togglePip = useCallback(async () => {
     const video = videoRef.current;
-    if (!video || !document.pictureInPictureEnabled || !("requestPictureInPicture" in video)) return;
+    if (!video || !document.pictureInPictureEnabled || !("requestPictureInPicture" in video))
+      return;
     if (document.pictureInPictureElement) await document.exitPictureInPicture();
     else await video.requestPictureInPicture();
   }, []);
@@ -331,7 +340,7 @@ export function AyinPlayer({
             onLoadedMetadata={(event) => {
               const nextDurationMs = Number.isFinite(event.currentTarget.duration)
                 ? Math.floor(event.currentTarget.duration * 1000)
-                : declaredDurationMs ?? 0;
+                : (declaredDurationMs ?? 0);
               setDurationMs(nextDurationMs);
               applyResume();
             }}
@@ -397,13 +406,44 @@ export function AyinPlayer({
           />
 
           <div className={styles.controlRow}>
-            <button data-tv-focusable="true" data-tv-focus-id={`player-play-${videoId}`} disabled={locked} onClick={() => void togglePlay()} type="button">
+            <button
+              data-tv-focusable="true"
+              data-tv-focus-id={`player-play-${videoId}`}
+              disabled={locked}
+              onClick={() => void togglePlay()}
+              type="button"
+            >
               {playing ? "Pause" : "Play"}
             </button>
-            <button data-tv-focusable="true" data-tv-focus-id={`player-back-${videoId}`} disabled={locked} onClick={() => seekBy(-10)} type="button">−10s</button>
-            <button data-tv-focusable="true" data-tv-focus-id={`player-forward-${videoId}`} disabled={locked} onClick={() => seekBy(10)} type="button">+10s</button>
-            <span className={styles.time}>{formatTime(positionMs)} / {formatTime(durationMs)}</span>
-            <button data-tv-focusable="true" data-tv-focus-id={`player-mute-${videoId}`} onClick={toggleMute} type="button">{muted ? "Unmute" : "Mute"}</button>
+            <button
+              data-tv-focusable="true"
+              data-tv-focus-id={`player-back-${videoId}`}
+              disabled={locked}
+              onClick={() => seekBy(-10)}
+              type="button"
+            >
+              −10s
+            </button>
+            <button
+              data-tv-focusable="true"
+              data-tv-focus-id={`player-forward-${videoId}`}
+              disabled={locked}
+              onClick={() => seekBy(10)}
+              type="button"
+            >
+              +10s
+            </button>
+            <span className={styles.time}>
+              {formatTime(positionMs)} / {formatTime(durationMs)}
+            </span>
+            <button
+              data-tv-focusable="true"
+              data-tv-focus-id={`player-mute-${videoId}`}
+              onClick={toggleMute}
+              type="button"
+            >
+              {muted ? "Unmute" : "Mute"}
+            </button>
             <input
               aria-label="Volume"
               className={styles.volume}
@@ -435,9 +475,22 @@ export function AyinPlayer({
               }}
               value={rate}
             >
-              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => <option key={value} value={value}>{value}×</option>)}
+              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => (
+                <option key={value} value={value}>
+                  {value}×
+                </option>
+              ))}
             </select>
-            {captions.length > 0 ? <button data-tv-focusable="true" data-tv-focus-id={`player-cc-${videoId}`} onClick={toggleCaptions} type="button">CC {captionsEnabled ? "On" : "Off"}</button> : null}
+            {captions.length > 0 ? (
+              <button
+                data-tv-focusable="true"
+                data-tv-focus-id={`player-cc-${videoId}`}
+                onClick={toggleCaptions}
+                type="button"
+              >
+                CC {captionsEnabled ? "On" : "Off"}
+              </button>
+            ) : null}
             {chapters.length > 0 ? (
               <select
                 aria-label="Chapters"
@@ -446,15 +499,53 @@ export function AyinPlayer({
                 onChange={(event) => seekTo(Number(event.currentTarget.value))}
                 value={activeChapter?.startMs ?? chapters[0]?.startMs ?? 0}
               >
-                {[...chapters].sort((a, b) => a.startMs - b.startMs).map((chapter) => <option key={chapter.id} value={chapter.startMs}>{chapter.title}</option>)}
+                {[...chapters]
+                  .sort((a, b) => a.startMs - b.startMs)
+                  .map((chapter) => (
+                    <option key={chapter.id} value={chapter.startMs}>
+                      {chapter.title}
+                    </option>
+                  ))}
               </select>
             ) : null}
-            <button data-tv-focusable="true" data-tv-focus-id={`player-pip-${videoId}`} onClick={() => void togglePip()} type="button">PiP</button>
-            <button data-tv-focusable="true" data-tv-focus-id={`player-fullscreen-${videoId}`} onClick={() => void toggleFullscreen()} type="button">Fullscreen</button>
-            {onNext ? <button data-tv-focusable="true" data-tv-focus-id={`player-next-${videoId}`} onClick={() => { analytics.emit({ type: "next", videoId }); onNext(); }} type="button">Next{upNext ? ` · ${upNext.title}` : ""}</button> : null}
+            <button
+              data-tv-focusable="true"
+              data-tv-focus-id={`player-pip-${videoId}`}
+              onClick={() => void togglePip()}
+              type="button"
+            >
+              PiP
+            </button>
+            <button
+              data-tv-focusable="true"
+              data-tv-focus-id={`player-fullscreen-${videoId}`}
+              onClick={() => void toggleFullscreen()}
+              type="button"
+            >
+              Fullscreen
+            </button>
+            {onNext ? (
+              <button
+                data-tv-focusable="true"
+                data-tv-focus-id={`player-next-${videoId}`}
+                onClick={() => {
+                  analytics.emit({ type: "next", videoId });
+                  onNext();
+                }}
+                type="button"
+              >
+                Next{upNext ? ` · ${upNext.title}` : ""}
+              </button>
+            ) : null}
           </div>
         </div>
-        {upNext ? <div className={styles.upNext}><span>Up Next</span><strong>{upNext.title}</strong>{upNext.detail ? <small>{upNext.detail}</small> : null}</div> : null}
+        {upNext ? (
+          <div className={styles.upNext}>
+            <span>Up Next</span>
+            <strong>{upNext.title}</strong>
+            {upNext.detail ? <small>{upNext.detail}</small> : null}
+          </div>
+        ) : null}
         {footer}
       </section>
     </TvFocusScope>

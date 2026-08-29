@@ -52,10 +52,13 @@ export async function readWatchProgress(
   profileId?: string,
 ): Promise<WatchProgressSnapshot | null> {
   const query = profileId ? `?profileId=${encodeURIComponent(profileId)}` : "";
-  const response = await fetch(`${apiBaseUrl}/watch/progress/${encodeURIComponent(videoId)}${query}`, {
-    cache: "no-store",
-    credentials: "include",
-  });
+  const response = await fetch(
+    `${apiBaseUrl}/watch/progress/${encodeURIComponent(videoId)}${query}`,
+    {
+      cache: "no-store",
+      credentials: "include",
+    },
+  );
   if (response.status === 401 || response.status === 403) return null;
   if (!response.ok) return null;
   return (await response.json()) as WatchProgressSnapshot;
@@ -68,7 +71,8 @@ export async function persistWatchProgress(
 ): Promise<WatchProgressSnapshot | null> {
   const body: Record<string, unknown> = { positionMs: Math.max(0, Math.floor(input.positionMs)) };
   if (input.profileId) body.profileId = input.profileId;
-  if (input.durationMs && Number.isFinite(input.durationMs)) body.durationMs = Math.floor(input.durationMs);
+  if (input.durationMs && Number.isFinite(input.durationMs))
+    body.durationMs = Math.floor(input.durationMs);
 
   const response = await fetch(`${apiBaseUrl}/watch/progress/${encodeURIComponent(videoId)}`, {
     method: "PUT",

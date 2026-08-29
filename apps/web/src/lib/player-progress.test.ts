@@ -38,7 +38,9 @@ describe("AYIN player watch-state helpers", () => {
     expect(resumablePositionMs({ positionMs: 42_000, completedAt: null }, 120_000)).toBe(42_000);
     expect(resumablePositionMs({ positionMs: 1_500, completedAt: null }, 120_000)).toBe(0);
     expect(resumablePositionMs({ positionMs: 115_500, completedAt: null }, 120_000)).toBe(0);
-    expect(resumablePositionMs({ positionMs: 42_000, completedAt: "2026-08-29T00:00:00Z" }, 120_000)).toBe(0);
+    expect(
+      resumablePositionMs({ positionMs: 42_000, completedAt: "2026-08-29T00:00:00Z" }, 120_000),
+    ).toBe(0);
   });
 
   it("uses the configured threshold for completion", () => {

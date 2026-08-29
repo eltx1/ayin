@@ -19,8 +19,17 @@ const uuidSchema = z.string().uuid();
 const progressBodySchema = z
   .object({
     profileId: uuidSchema.optional(),
-    positionMs: z.number().int().min(0).max(7 * 24 * 60 * 60 * 1000),
-    durationMs: z.number().int().positive().max(7 * 24 * 60 * 60 * 1000).optional(),
+    positionMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(7 * 24 * 60 * 60 * 1000),
+    durationMs: z
+      .number()
+      .int()
+      .positive()
+      .max(7 * 24 * 60 * 60 * 1000)
+      .optional(),
   })
   .strict();
 const progressQuerySchema = z.object({ profileId: uuidSchema.optional() }).strict();
@@ -67,9 +76,7 @@ export class WatchProgressController {
     const videoId = parseUuid(videoIdRaw);
     const parsed = progressBodySchema.safeParse(body);
     if (!parsed.success) {
-      throw watchHttpError(
-        new WatchError("INVALID_PROGRESS", "The playback position is invalid."),
-      );
+      throw watchHttpError(new WatchError("INVALID_PROGRESS", "The playback position is invalid."));
     }
     return runWatchOperation(() =>
       this.watch.saveProgress(request.ayinAuth.accountId, videoId, parsed.data),

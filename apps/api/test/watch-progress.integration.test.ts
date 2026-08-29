@@ -130,7 +130,10 @@ databaseDescribe("Task 11 AYIN Player watch progress", () => {
     const viewer = await register("Viewer", "task11-viewer@example.com");
     const video = await publishVideo(viewer.user.channel.id, "Player Video");
 
-    const playback = await app.inject({ method: "GET", url: `/public/videos/${video.slug}/playback` });
+    const playback = await app.inject({
+      method: "GET",
+      url: `/public/videos/${video.slug}/playback`,
+    });
     expect(playback.statusCode).toBe(200);
     expect(playback.json().video).toMatchObject({
       id: video.id,

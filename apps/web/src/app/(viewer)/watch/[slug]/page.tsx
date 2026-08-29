@@ -23,7 +23,17 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
   }
   const captions = data.video.captions.flatMap((track) => {
     const src = mediaAssetUrl(track.objectKey);
-    return src ? [{ id: track.id, src, label: track.label, language: track.language, default: track.default }] : [];
+    return src
+      ? [
+          {
+            id: track.id,
+            src,
+            label: track.label,
+            language: track.language,
+            default: track.default,
+          },
+        ]
+      : [];
   });
 
   return (
@@ -43,7 +53,10 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
           <h1>{data.video.title}</h1>
           {data.video.description ? <p>{data.video.description}</p> : null}
         </div>
-        <Link className={styles.channel} href={`/c/${encodeURIComponent(data.video.channel.handle)}`}>
+        <Link
+          className={styles.channel}
+          href={`/c/${encodeURIComponent(data.video.channel.handle)}`}
+        >
           {data.video.channel.name} · @{data.video.channel.handle}
         </Link>
       </section>
