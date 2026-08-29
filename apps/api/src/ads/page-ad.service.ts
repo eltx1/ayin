@@ -9,7 +9,10 @@ import {
   type PageAdPlacementConfig,
 } from "./page-ad-policy.js";
 
-const adSizeSchema = z.tuple([z.number().int().positive().max(4096), z.number().int().positive().max(4096)]);
+const adSizeSchema = z.tuple([
+  z.number().int().positive().max(4096),
+  z.number().int().positive().max(4096),
+]);
 
 export const pageAdPlacementConfigSchema = z.object({
   routePatterns: z.array(z.string().trim().min(1).max(200)).min(1),

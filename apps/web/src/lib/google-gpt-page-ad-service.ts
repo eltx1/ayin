@@ -58,7 +58,9 @@ export function loadGooglePublisherTag() {
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${GPT_SRC}"]`);
     if (existing) {
       existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("GPT_SCRIPT_FAILED")), { once: true });
+      existing.addEventListener("error", () => reject(new Error("GPT_SCRIPT_FAILED")), {
+        once: true,
+      });
       return;
     }
     const script = document.createElement("script");

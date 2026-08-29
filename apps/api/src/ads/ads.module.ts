@@ -10,12 +10,7 @@ import { VideoAdService } from "./video-ad.service.js";
 
 @Module({
   imports: [DatabaseModule, AuthModule, AdminModule],
-  controllers: [
-    VideoAdController,
-    AdminVideoAdController,
-    PageAdController,
-    AdminPageAdController,
-  ],
+  controllers: [VideoAdController, AdminVideoAdController, PageAdController, AdminPageAdController],
   providers: [VideoAdService, PageAdService],
   exports: [VideoAdService, PageAdService],
 })

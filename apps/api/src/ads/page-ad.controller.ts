@@ -98,7 +98,9 @@ export class AdminPageAdController {
       return await this.pageAds.updateSettings(body);
     } catch {
       throw new HttpException(
-        { error: { code: "INVALID_PAGE_AD_SETTINGS", message: "Check page advertising settings." } },
+        {
+          error: { code: "INVALID_PAGE_AD_SETTINGS", message: "Check page advertising settings." },
+        },
         400,
       );
     }
