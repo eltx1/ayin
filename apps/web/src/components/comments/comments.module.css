@@ -1,0 +1,10 @@
+.panel { margin-top: 1.5rem; border: 1px solid rgba(255,255,255,.14); border-radius: 1rem; padding: 1rem; background: rgba(255,255,255,.03); }
+.panel > summary { cursor: pointer; font-size: 1.15rem; font-weight: 700; min-height: 44px; display: flex; align-items: center; }
+.composer { display: grid; gap: .6rem; margin: 1rem 0; }
+.composer textarea { min-height: 88px; resize: vertical; border-radius: .75rem; padding: .8rem; background: rgba(0,0,0,.25); color: inherit; border: 1px solid rgba(255,255,255,.18); }
+.composer button { justify-self: start; min-height: 44px; border-radius: 999px; padding: 0 1rem; }
+.list { display: grid; gap: .8rem; }
+.comment { padding: .8rem; border-radius: .8rem; background: rgba(255,255,255,.04); overflow-wrap: anywhere; }
+.comment p { white-space: pre-wrap; }
+.replies { margin: .8rem 0 0 1.25rem; display: grid; gap: .6rem; border-left: 2px solid rgba(255,255,255,.12); padding-left: .8rem; }
+@media (min-width: 1400px) and (pointer: coarse) { .panel:not([open]) { opacity: .9; } }

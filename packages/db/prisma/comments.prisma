@@ -1,0 +1,25 @@
+model CommentControl {
+  commentId            String    @id @db.Uuid
+  creatorHeartedAt     DateTime?
+  pinnedAt             DateTime?
+  pinnedByAccountId    String?   @db.Uuid
+  editedAt             DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([pinnedAt])
+  @@index([creatorHeartedAt])
+}
+
+model ChannelHiddenProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  channelId          String   @db.Uuid
+  profileId          String   @db.Uuid
+  hiddenByAccountId  String   @db.Uuid
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([channelId, profileId])
+  @@index([profileId])
+  @@index([hiddenByAccountId, createdAt])
+}
