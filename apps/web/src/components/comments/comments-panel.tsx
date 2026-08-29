@@ -26,7 +26,6 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
 
   const load = useCallback(async () => {
     if (!enabled) return;
-    setLoading(true);
     try {
       const response = await fetch(`${apiBaseUrl}/comments/videos/${encodeURIComponent(videoId)}`);
       if (!response.ok) throw new Error("Comments are unavailable.");
