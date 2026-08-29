@@ -1,22 +1,25 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ContentDetailLayout } from "@/components/content/content-detail-layout";
 import { AyinPlayer } from "@/components/player/ayin-player";
-import { apiBaseUrl } from "@/lib/api";
-import { type PublicPlaybackResponse } from "@/lib/ayin-player";
+import { apiBaseUrl, readApiError } from "@/lib/api";
+import {
+  type VideoContentDetailResponse,
+  videoDetailViewModel,
+} from "@/lib/content-detail";
 import { mediaAssetUrl } from "@/lib/channel";
-
-import styles from "./page.module.css";
 
 export default async function WatchPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const response = await fetch(`${apiBaseUrl}/public/videos/${encodeURIComponent(slug)}/playback`, {
-    cache: "no-store",
-  });
+  const response = await fetch(
+    `${apiBaseUrl}/public/content/videos/${encodeURIComponent(slug)}`,
+    { cache: "no-store" },
+  );
   if (response.status === 404) notFound();
-  if (!response.ok) throw new Error("This video could not be loaded right now.");
+  if (!response.ok) throw new Error(await readApiError(response));
 
-  const data = (await response.json()) as PublicPlaybackResponse;
+  const detail = (await response.json()) as VideoContentDetailResponse;
+  const data = detail.playback;
   const sourceUrl = mediaAssetUrl(data.video.source.objectKey);
   if (!sourceUrl) {
     throw new Error("AYIN media delivery is not configured for this client.");
@@ -37,29 +40,19 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
   });
 
   return (
-    <main className={styles.page}>
-      <AyinPlayer
-        captions={captions}
-        chapters={data.video.chapters}
-        durationMs={data.video.durationMs}
-        progressPolicy={data.playerPolicy}
-        sourceUrl={sourceUrl}
-        title={data.video.title}
-        videoId={data.video.id}
-      />
-      <section className={styles.details}>
-        <div>
-          <p className={styles.eyebrow}>AYIN video</p>
-          <h1>{data.video.title}</h1>
-          {data.video.description ? <p>{data.video.description}</p> : null}
-        </div>
-        <Link
-          className={styles.channel}
-          href={`/c/${encodeURIComponent(data.video.channel.handle)}`}
-        >
-          {data.video.channel.name} · @{data.video.channel.handle}
-        </Link>
-      </section>
-    </main>
+    <ContentDetailLayout
+      detail={videoDetailViewModel(detail)}
+      media={
+        <AyinPlayer
+          captions={captions}
+          chapters={data.video.chapters}
+          durationMs={data.video.durationMs}
+          progressPolicy={data.playerPolicy}
+          sourceUrl={sourceUrl}
+          title={data.video.title}
+          videoId={data.video.id}
+        />
+      }
+    />
   );
 }
