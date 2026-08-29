@@ -1,0 +1,183 @@
+.page {
+  display: grid;
+  gap: 1.4rem;
+  margin: 0 auto;
+  max-width: 1380px;
+  padding: clamp(1rem, 3vw, 2rem);
+}
+
+.heading {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 60rem;
+}
+
+.heading p {
+  color: #8fe0da;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.heading h1 {
+  font-size: clamp(2.2rem, 6vw, 4.5rem);
+  line-height: 0.95;
+  margin: 0;
+}
+
+.heading span,
+.empty span {
+  color: var(--muted);
+}
+
+.searchArea {
+  max-width: 58rem;
+  position: relative;
+  z-index: 3;
+}
+
+.form {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.inputWrap {
+  flex: 1;
+}
+
+.inputWrap input {
+  background: rgb(10 14 22 / 94%);
+  border: 1px solid rgb(255 255 255 / 15%);
+  border-radius: 0.9rem;
+  color: var(--foreground);
+  font: inherit;
+  min-height: 3.2rem;
+  padding: 0 1rem;
+  width: 100%;
+}
+
+.form button,
+.filters button,
+.loadMore {
+  background: #e8c46a;
+  border: 0;
+  border-radius: 0.8rem;
+  color: #11131a;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  padding: 0.75rem 1rem;
+}
+
+.suggestions {
+  background: #0c111b;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.85rem;
+  box-shadow: 0 1.4rem 3rem rgb(0 0 0 / 38%);
+  display: grid;
+  left: 0;
+  margin-top: 0.4rem;
+  overflow: hidden;
+  position: absolute;
+  right: 5.8rem;
+  top: 100%;
+}
+
+.suggestions a {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.9rem;
+  text-decoration: none;
+}
+
+.suggestions a + a {
+  border-top: 1px solid rgb(255 255 255 / 7%);
+}
+
+.suggestions span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.filters button {
+  background: rgb(255 255 255 / 7%);
+  color: var(--foreground);
+  font-weight: 700;
+}
+
+.filters button[aria-pressed="true"] {
+  background: var(--foreground);
+  color: #080b11;
+}
+
+.results {
+  display: grid;
+  gap: clamp(0.8rem, 2vw, 1.2rem);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11rem), 1fr));
+}
+
+.resultCard {
+  min-width: 0;
+}
+
+.resultCard > a {
+  width: 100%;
+}
+
+.empty {
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 1rem;
+  display: grid;
+  gap: 0.35rem;
+  padding: 1.2rem;
+}
+
+.error {
+  color: #ffb9b9;
+  margin: 0;
+}
+
+.loadMore {
+  justify-self: center;
+  min-width: 10rem;
+}
+
+.loadMore:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.srOnly {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .form {
+    display: grid;
+  }
+
+  .suggestions {
+    right: 0;
+    top: calc(100% - 3.5rem);
+  }
+
+  .results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
