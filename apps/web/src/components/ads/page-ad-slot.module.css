@@ -1,0 +1,53 @@
+.probe {
+  min-height: 1px;
+  width: 100%;
+}
+
+.slot {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  justify-content: center;
+  margin: 1.25rem auto;
+  max-width: 100%;
+  min-height: 50px;
+  overflow: hidden;
+  padding: 0.5rem;
+}
+
+.label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+  text-transform: uppercase;
+}
+
+.house {
+  display: block;
+  max-width: 100%;
+  text-decoration: none;
+}
+
+.houseCreative {
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  display: block;
+  height: min(250px, 40vw);
+  max-height: 250px;
+  max-width: 970px;
+  min-height: 50px;
+  width: min(970px, 90vw);
+}
+
+.gpt {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  min-height: 1px;
+}
+
+.hidden {
+  display: none;
+}
