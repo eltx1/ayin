@@ -91,7 +91,9 @@ export async function getStudioContent(filters?: {
 
 export function updateStudioVideo(
   videoId: string,
-  patch: Partial<Pick<StudioVideo, "title" | "description" | "visibility" | "commentsEnabled" | "tvIncluded">>,
+  patch: Partial<
+    Pick<StudioVideo, "title" | "description" | "visibility" | "commentsEnabled" | "tvIncluded">
+  >,
 ) {
   return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}`, {
     method: "PATCH",

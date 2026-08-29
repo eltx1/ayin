@@ -76,7 +76,8 @@ export class StudioService {
         views: null,
         watchTimeMs: null,
         available: false,
-        reason: "Detailed viewing analytics become available after the analytics pipeline is enabled.",
+        reason:
+          "Detailed viewing analytics become available after the analytics pipeline is enabled.",
       },
       recentUploads,
       monetization: {
@@ -253,7 +254,11 @@ export class StudioService {
       select: { channel: { select: { id: true, handle: true, name: true, status: true } } },
     });
     if (!membership) {
-      throw new StudioError("CHANNEL_NOT_FOUND", "No creator channel is available for this account.", 404);
+      throw new StudioError(
+        "CHANNEL_NOT_FOUND",
+        "No creator channel is available for this account.",
+        404,
+      );
     }
     return membership.channel;
   }

@@ -20,7 +20,9 @@ import { StudioError, StudioService } from "./studio.service.js";
 const uuidSchema = z.string().uuid();
 const contentQuerySchema = z.object({
   query: z.string().trim().max(200).optional(),
-  status: z.enum(["DRAFT", "UPLOADING", "VALIDATING", "SCHEDULED", "PUBLISHED", "REMOVED"]).optional(),
+  status: z
+    .enum(["DRAFT", "UPLOADING", "VALIDATING", "SCHEDULED", "PUBLISHED", "REMOVED"])
+    .optional(),
   visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
   take: z.coerce.number().int().min(1).max(100).optional(),
 });
@@ -48,7 +50,9 @@ export class StudioController {
   content(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
     const parsed = contentQuerySchema.safeParse(query);
     if (!parsed.success) {
-      throw this.httpError(new StudioError("INVALID_CONTENT_FILTER", "Check the content filters and try again."));
+      throw this.httpError(
+        new StudioError("INVALID_CONTENT_FILTER", "Check the content filters and try again."),
+      );
     }
     return this.run(() => this.studio.content(request.ayinAuth.accountId, parsed.data));
   }
@@ -62,14 +66,20 @@ export class StudioController {
     const videoId = this.videoId(videoIdRaw);
     const parsed = videoPatchSchema.safeParse(body);
     if (!parsed.success) {
-      throw this.httpError(new StudioError("INVALID_VIDEO_UPDATE", "Check the video changes and try again."));
+      throw this.httpError(
+        new StudioError("INVALID_VIDEO_UPDATE", "Check the video changes and try again."),
+      );
     }
-    return this.run(() => this.studio.updateVideo(request.ayinAuth.accountId, videoId, parsed.data));
+    return this.run(() =>
+      this.studio.updateVideo(request.ayinAuth.accountId, videoId, parsed.data),
+    );
   }
 
   @Post("videos/:videoId/unpublish")
   unpublish(@Req() request: AuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
-    return this.run(() => this.studio.unpublish(request.ayinAuth.accountId, this.videoId(videoIdRaw)));
+    return this.run(() =>
+      this.studio.unpublish(request.ayinAuth.accountId, this.videoId(videoIdRaw)),
+    );
   }
 
   @Delete("videos/:videoId")

@@ -17,7 +17,8 @@ export function StudioComments() {
         if (active) setComments(response.comments);
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : "Comments could not be loaded.");
+        if (active)
+          setError(caught instanceof Error ? caught.message : "Comments could not be loaded.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -39,7 +40,9 @@ export function StudioComments() {
       {error ? <p className={styles.error}>{error}</p> : null}
       {loading ? <p className={styles.muted}>Loading comments…</p> : null}
       <section className={styles.commentGrid}>
-        {!loading && comments.length === 0 ? <p className={styles.muted}>No comments yet.</p> : null}
+        {!loading && comments.length === 0 ? (
+          <p className={styles.muted}>No comments yet.</p>
+        ) : null}
         {comments.map((comment) => (
           <article className={styles.card} key={comment.id}>
             <div className={styles.cardHeader}>
@@ -53,7 +56,8 @@ export function StudioComments() {
             </div>
             <p>{comment.body}</p>
             <p className={styles.muted}>
-              {comment._count.reactions} likes · {comment._count.replies} replies · {comment._count.reports} reports
+              {comment._count.reactions} likes · {comment._count.replies} replies ·{" "}
+              {comment._count.reports} reports
             </p>
           </article>
         ))}

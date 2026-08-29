@@ -16,7 +16,10 @@ export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) 
         if (active) setData(overview);
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : "Studio summary could not be loaded.");
+        if (active)
+          setError(
+            caught instanceof Error ? caught.message : "Studio summary could not be loaded.",
+          );
       });
     return () => {
       active = false;
@@ -33,7 +36,9 @@ export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) 
           <div>
             <span className={styles.eyebrow}>Creator Studio</span>
             <h1>Analytics</h1>
-            <p className={styles.muted}>Only real metrics are shown. No synthetic views or watch time are invented.</p>
+            <p className={styles.muted}>
+              Only real metrics are shown. No synthetic views or watch time are invented.
+            </p>
           </div>
         </header>
         <section className={styles.metrics}>
@@ -53,7 +58,10 @@ export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) 
         <section className={styles.panel}>
           <h2>Viewing analytics</h2>
           <p className={styles.muted}>{data.analytics.reason}</p>
-          <p className={styles.muted}>Views and watch time will populate from Task 22 event analytics rather than guessed counters.</p>
+          <p className={styles.muted}>
+            Views and watch time will populate from Task 22 event analytics rather than guessed
+            counters.
+          </p>
         </section>
       </>
     );
@@ -65,7 +73,9 @@ export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) 
         <div>
           <span className={styles.eyebrow}>Creator Studio</span>
           <h1>Monetization</h1>
-          <p className={styles.muted}>Current contract state is real; revenue stays unavailable until attribution exists.</p>
+          <p className={styles.muted}>
+            Current contract state is real; revenue stays unavailable until attribution exists.
+          </p>
         </div>
       </header>
       <section className={styles.panel}>

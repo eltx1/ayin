@@ -17,7 +17,8 @@ export function StudioDashboard() {
         if (active) setData(overview);
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : "Studio could not be loaded.");
+        if (active)
+          setError(caught instanceof Error ? caught.message : "Studio could not be loaded.");
       });
     return () => {
       active = false;
@@ -41,7 +42,9 @@ export function StudioDashboard() {
         <div>
           <span className={styles.eyebrow}>Creator Studio</span>
           <h1>{data.channel.name}</h1>
-          <p className={styles.muted}>Manage your channel without adding friction to Quick Upload.</p>
+          <p className={styles.muted}>
+            Manage your channel without adding friction to Quick Upload.
+          </p>
         </div>
         <Link className={styles.primary} href="/upload">
           Quick upload
@@ -109,7 +112,9 @@ export function StudioDashboard() {
 
         <section className={styles.panel}>
           <h2>Creator TV</h2>
-          <p className={styles.muted}>Your automatically created TV channel remains managed separately from upload.</p>
+          <p className={styles.muted}>
+            Your automatically created TV channel remains managed separately from upload.
+          </p>
           <Link className={styles.secondary} href="/studio/tv">
             Manage TV
           </Link>

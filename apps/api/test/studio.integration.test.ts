@@ -83,7 +83,12 @@ databaseDescribe("Task 16 Creator Studio", () => {
       headers: { cookie: owner.cookie },
     });
     expect(overview.statusCode).toBe(200);
-    expect(overview.json().counters).toMatchObject({ videos: 1, publishedVideos: 1, subscribers: 1, comments: 1 });
+    expect(overview.json().counters).toMatchObject({
+      videos: 1,
+      publishedVideos: 1,
+      subscribers: 1,
+      comments: 1,
+    });
     expect(overview.json().analytics.available).toBe(false);
     expect(overview.json().analytics.views).toBeNull();
 

@@ -11,7 +11,10 @@ import {
   updateStudioVideo,
 } from "@/lib/studio";
 
-type Draft = Pick<StudioVideo, "title" | "description" | "visibility" | "commentsEnabled" | "tvIncluded">;
+type Draft = Pick<
+  StudioVideo,
+  "title" | "description" | "visibility" | "commentsEnabled" | "tvIncluded"
+>;
 
 export function StudioContentManager() {
   const [videos, setVideos] = useState<StudioVideo[]>([]);
@@ -50,7 +53,8 @@ export function StudioContentManager() {
           setError(null);
         })
         .catch((caught) => {
-          if (active) setError(caught instanceof Error ? caught.message : "Content could not be loaded.");
+          if (active)
+            setError(caught instanceof Error ? caught.message : "Content could not be loaded.");
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -121,7 +125,9 @@ export function StudioContentManager() {
         <div>
           <span className={styles.eyebrow}>Creator Studio</span>
           <h1>Content</h1>
-          <p className={styles.muted}>Edit only what you need. Publishing remains a separate Quick Upload flow.</p>
+          <p className={styles.muted}>
+            Edit only what you need. Publishing remains a separate Quick Upload flow.
+          </p>
         </div>
       </header>
 
@@ -132,7 +138,11 @@ export function StudioContentManager() {
           placeholder="Search your videos"
           value={query}
         />
-        <select aria-label="Filter by status" onChange={(event) => setStatus(event.target.value)} value={status}>
+        <select
+          aria-label="Filter by status"
+          onChange={(event) => setStatus(event.target.value)}
+          value={status}
+        >
           <option value="">All statuses</option>
           <option value="PUBLISHED">Published</option>
           <option value="DRAFT">Draft</option>
@@ -158,7 +168,9 @@ export function StudioContentManager() {
       {loading ? <p className={styles.muted}>Loading content…</p> : null}
 
       <section className={styles.videoGrid}>
-        {!loading && videos.length === 0 ? <p className={styles.muted}>No videos match these filters.</p> : null}
+        {!loading && videos.length === 0 ? (
+          <p className={styles.muted}>No videos match these filters.</p>
+        ) : null}
         {videos.map((video) => {
           const draft = drafts[video.id] ?? {
             title: video.title,
@@ -174,7 +186,8 @@ export function StudioContentManager() {
                 <div>
                   <strong>{video.title}</strong>
                   <p className={styles.muted}>
-                    {video.status.toLowerCase()} · updated {new Date(video.updatedAt).toLocaleDateString()}
+                    {video.status.toLowerCase()} · updated{" "}
+                    {new Date(video.updatedAt).toLocaleDateString()}
                   </p>
                 </div>
               </div>
@@ -183,7 +196,10 @@ export function StudioContentManager() {
                 <input
                   disabled={disabled}
                   onChange={(event) =>
-                    setDrafts((current) => ({ ...current, [video.id]: { ...draft, title: event.target.value } }))
+                    setDrafts((current) => ({
+                      ...current,
+                      [video.id]: { ...draft, title: event.target.value },
+                    }))
                   }
                   value={draft.title}
                 />
@@ -192,7 +208,10 @@ export function StudioContentManager() {
                   onChange={(event) =>
                     setDrafts((current) => ({
                       ...current,
-                      [video.id]: { ...draft, visibility: event.target.value as Draft["visibility"] },
+                      [video.id]: {
+                        ...draft,
+                        visibility: event.target.value as Draft["visibility"],
+                      },
                     }))
                   }
                   value={draft.visibility}
@@ -246,15 +265,30 @@ export function StudioContentManager() {
               </div>
 
               <div className={styles.actions}>
-                <button className={styles.primary} disabled={disabled} onClick={() => void save(video)} type="button">
+                <button
+                  className={styles.primary}
+                  disabled={disabled}
+                  onClick={() => void save(video)}
+                  type="button"
+                >
                   {busyId === video.id ? "Working…" : "Save"}
                 </button>
                 {video.status === "PUBLISHED" ? (
-                  <button className={styles.secondary} disabled={disabled} onClick={() => void unpublish(video)} type="button">
+                  <button
+                    className={styles.secondary}
+                    disabled={disabled}
+                    onClick={() => void unpublish(video)}
+                    type="button"
+                  >
                     Unpublish
                   </button>
                 ) : null}
-                <button className={styles.danger} disabled={disabled} onClick={() => void remove(video)} type="button">
+                <button
+                  className={styles.danger}
+                  disabled={disabled}
+                  onClick={() => void remove(video)}
+                  type="button"
+                >
                   Remove
                 </button>
               </div>
