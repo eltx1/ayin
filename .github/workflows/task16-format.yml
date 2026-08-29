@@ -1,0 +1,46 @@
+name: Temporary Task 16 formatter
+
+on:
+  push:
+    branches:
+      - task-16-creator-studio
+    paths:
+      - ".github/workflows/task16-format.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Format Task 16 files
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/creator/studio.controller.ts \
+            apps/api/src/creator/studio.service.ts \
+            apps/api/test/studio.integration.test.ts \
+            apps/web/src/app/studio/studio.module.css \
+            apps/web/src/components/studio/studio-comments.tsx \
+            apps/web/src/components/studio/studio-content-manager.tsx \
+            apps/web/src/components/studio/studio-dashboard.tsx \
+            apps/web/src/components/studio/studio-summary.tsx \
+            apps/web/src/lib/studio.ts
+          rm -f .github/workflows/task16-format.yml
+      - name: Commit formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: format Task 16 Creator Studio"
+          git push origin HEAD:task-16-creator-studio
