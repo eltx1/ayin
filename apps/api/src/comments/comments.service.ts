@@ -8,17 +8,7 @@ import {
   type CommentPolicy,
 } from "./comment-policy.js";
 import { CommentRateLimiter } from "./comment-rate-limiter.js";
-
-export class CommentsError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly statusCode = 400,
-  ) {
-    super(message);
-    this.name = "CommentsError";
-  }
-}
+import { CommentsError } from "./comments.errors.js";
 
 @Injectable()
 export class CommentsService {

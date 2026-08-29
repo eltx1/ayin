@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 
-import { CommentsError } from "./comments.service.js";
+import { CommentsError } from "./comments.errors.js";
 
 interface Counter {
   count: number;

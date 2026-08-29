@@ -16,7 +16,8 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
-import { CommentsError, CommentsService } from "./comments.service.js";
+import { CommentsError } from "./comments.errors.js";
+import { CommentsService } from "./comments.service.js";
 
 const uuid = z.string().uuid();
 const page = z
