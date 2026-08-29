@@ -40,7 +40,7 @@ export async function fetchSearch(
 
   const response = await fetch(`${apiBaseUrl}/public/search?${parameters.toString()}`, {
     cache: "no-store",
-    signal: options.signal,
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as SearchResponse;
@@ -53,7 +53,7 @@ export async function fetchSearchSuggestions(
   const parameters = new URLSearchParams({ q: query, limit: "6" });
   const response = await fetch(`${apiBaseUrl}/public/search/suggestions?${parameters.toString()}`, {
     cache: "no-store",
-    signal,
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as SearchSuggestionsResponse;
