@@ -52,6 +52,12 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
           <p className={styles.eyebrow}>AYIN video</p>
           <h1>{data.video.title}</h1>
           {data.video.description ? <p>{data.video.description}</p> : null}
+          <div className={styles.actions} aria-label="Content actions">
+            <button disabled={!data.detail.saveHook.available} type="button">
+              Save for later
+            </button>
+            <button type="button">Share</button>
+          </div>
         </div>
         <Link
           className={styles.channel}
@@ -59,6 +65,32 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
         >
           {data.video.channel.name} · @{data.video.channel.handle}
         </Link>
+      </section>
+      <section
+        className={styles.reservedSlot}
+        data-ad-placement="watch_below_player"
+        aria-label="Reserved advertising placement"
+      />
+      {data.detail.related.length > 0 ? (
+        <section className={styles.related}>
+          <h2>More from {data.video.channel.name}</h2>
+          <div>
+            {data.detail.related.map((item) => (
+              <Link data-tv-focusable="true" href={item.href} key={item.id}>
+                <strong>{item.title}</strong>
+                {item.durationMs ? <span>{Math.ceil(item.durationMs / 60_000)} min</span> : null}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      <section className={styles.commentsSlot} aria-label="Comments">
+        <h2>Comments</h2>
+        <p>
+          {data.detail.commentsSlot.enabled
+            ? "Comments will appear here when conversations launch."
+            : "Comments are disabled for this video."}
+        </p>
       </section>
     </main>
   );
