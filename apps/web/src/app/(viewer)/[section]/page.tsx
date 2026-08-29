@@ -34,10 +34,6 @@ const sectionCopy = {
     title: "My AYIN",
     description: "Continue Watching, lists, subscriptions and history will come together here.",
   },
-  search: {
-    title: "Search",
-    description: "Search across AYIN as the catalog and discovery data become available.",
-  },
 } as const;
 
 export default async function SectionPage({ params }: { params: Promise<{ section: string }> }) {
