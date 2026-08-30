@@ -6,55 +6,76 @@ import {
   usesCookieSession,
 } from "./request-security.js";
 
+const webOrigin = "https://ayin.stream";
+
 describe("request security", () => {
-  it("requires the configured origin for cookie-authenticated mutations", () => {
+  it("accepts same-origin cookie mutations", () => {
     const request = {
       method: "POST",
-      headers: { cookie: "ayin_session=abc", origin: "https://ayin.stream" },
+      headers: {
+        cookie: "ayin_session=abc",
+        origin: webOrigin,
+      },
     };
-    expect(isAllowedCookieMutationOrigin(request as never, "https://ayin.stream")).toBe(true);
-    expect(
-      isAllowedCookieMutationOrigin(
-        { ...request, headers: { ...request.headers, origin: "https://evil.example" } } as never,
-        "https://ayin.stream",
-      ),
-    ).toBe(false);
+
+    const allowed = isAllowedCookieMutationOrigin(request as never, webOrigin);
+    expect(allowed).toBe(true);
   });
 
-  it("rejects originless cookie mutations but permits bearer and safe requests", () => {
-    expect(
-      isAllowedCookieMutationOrigin(
-        { method: "PATCH", headers: { cookie: "ayin_session=abc" } } as never,
-        "https://ayin.stream",
-      ),
-    ).toBe(false);
-    expect(
-      isAllowedCookieMutationOrigin(
-        {
-          method: "PATCH",
-          headers: { cookie: "ayin_session=abc", authorization: "Bearer token" },
-        } as never,
-        "https://ayin.stream",
-      ),
-    ).toBe(true);
-    expect(
-      isAllowedCookieMutationOrigin(
-        { method: "GET", headers: { cookie: "ayin_session=abc" } } as never,
-        "https://ayin.stream",
-      ),
-    ).toBe(true);
+  it("rejects cross-origin and originless cookie mutations", () => {
+    const crossOrigin = {
+      method: "PATCH",
+      headers: {
+        cookie: "ayin_session=abc",
+        origin: "https://evil.example",
+      },
+    };
+    const originless = {
+      method: "PATCH",
+      headers: {
+        cookie: "ayin_session=abc",
+      },
+    };
+
+    expect(isAllowedCookieMutationOrigin(crossOrigin as never, webOrigin)).toBe(false);
+    expect(isAllowedCookieMutationOrigin(originless as never, webOrigin)).toBe(false);
   });
 
-  it("detects unsafe methods and cookie transport precisely", () => {
+  it("permits bearer mutations and safe cookie reads", () => {
+    const bearerMutation = {
+      method: "PATCH",
+      headers: {
+        cookie: "ayin_session=abc",
+        authorization: "Bearer token",
+      },
+    };
+    const safeRead = {
+      method: "GET",
+      headers: {
+        cookie: "ayin_session=abc",
+      },
+    };
+
+    expect(isAllowedCookieMutationOrigin(bearerMutation as never, webOrigin)).toBe(true);
+    expect(isAllowedCookieMutationOrigin(safeRead as never, webOrigin)).toBe(true);
+  });
+
+  it("detects unsafe methods and cookie transport", () => {
+    const cookieRequest = {
+      headers: {
+        cookie: "other=1; ayin_session=abc",
+      },
+    };
+    const bearerRequest = {
+      headers: {
+        cookie: "ayin_session=abc",
+        authorization: "Bearer token",
+      },
+    };
+
     expect(isUnsafeMethod("DELETE")).toBe(true);
     expect(isUnsafeMethod("HEAD")).toBe(false);
-    expect(
-      usesCookieSession({ headers: { cookie: "other=1; ayin_session=abc" } } as never),
-    ).toBe(true);
-    expect(
-      usesCookieSession({
-        headers: { cookie: "ayin_session=abc", authorization: "Bearer token" },
-      } as never),
-    ).toBe(false);
+    expect(usesCookieSession(cookieRequest as never)).toBe(true);
+    expect(usesCookieSession(bearerRequest as never)).toBe(false);
   });
 });
