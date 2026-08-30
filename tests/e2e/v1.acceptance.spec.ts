@@ -324,7 +324,7 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
         channelId: creator.user.channel.id,
         idempotencyKey: "E2E:e2e-launch-revenue-001",
       }),
-    ).toEqual({ grossAmount: "100.000000", amount: "70.000000", revenueShareBps: 7000 });
+    ).toEqual({ grossAmount: "100", amount: "70", revenueShareBps: 7000 });
   });
 
   await test.step("12. suspension and unpublish moderation path is enforceable and audited", async () => {
