@@ -16,6 +16,7 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { CommentRateLimiter } from "./comment-rate-limiter.js";
 import { CommentsError } from "./comments.errors.js";
 import { CommentsService } from "./comments.service.js";
 
@@ -56,7 +57,10 @@ const moderate = z
 
 @Controller("comments")
 export class CommentsController {
-  constructor(@Inject(CommentsService) private readonly comments: CommentsService) {}
+  constructor(
+    @Inject(CommentsService) private readonly comments: CommentsService,
+    @Inject(CommentRateLimiter) private readonly rateLimiter: CommentRateLimiter,
+  ) {}
 
   @Get("videos/:videoId")
   list(@Param("videoId") rawId: string, @Query() rawQuery: unknown) {
@@ -72,6 +76,7 @@ export class CommentsController {
     @Param("videoId") rawId: string,
     @Body() rawBody: unknown,
   ) {
+    this.rateLimiter.consume(`create:${request.ayinAuth.accountId}`, 20);
     const body = parse(write, rawBody);
     return run(() =>
       this.comments.create(
@@ -91,6 +96,7 @@ export class CommentsController {
     @Param("commentId") rawId: string,
     @Body() rawBody: unknown,
   ) {
+    this.rateLimiter.consume(`edit:${request.ayinAuth.accountId}`, 30);
     const body = parse(edit, rawBody);
     return run(() => this.comments.edit(request.ayinAuth.accountId, parseUuid(rawId), body.body));
   }
@@ -98,6 +104,7 @@ export class CommentsController {
   @Delete(":commentId")
   @UseGuards(AuthGuard)
   remove(@Req() request: AuthenticatedRequest, @Param("commentId") rawId: string) {
+    this.rateLimiter.consume(`remove:${request.ayinAuth.accountId}`, 30);
     return run(() => this.comments.remove(request.ayinAuth.accountId, parseUuid(rawId)));
   }
 
@@ -160,6 +167,7 @@ export class CommentsController {
     @Param("commentId") rawId: string,
     @Body() rawBody: unknown,
   ) {
+    this.rateLimiter.consume(`report:${request.ayinAuth.accountId}`, 10);
     const body = parse(report, rawBody);
     return run(() =>
       this.comments.report(
