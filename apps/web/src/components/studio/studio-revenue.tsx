@@ -20,7 +20,8 @@ export function StudioRevenue() {
         if (active) setData(result);
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : "Revenue could not be loaded.");
+        if (active)
+          setError(caught instanceof Error ? caught.message : "Revenue could not be loaded.");
       });
     return () => {
       active = false;
@@ -37,7 +38,8 @@ export function StudioRevenue() {
           <span className={styles.eyebrow}>Creator Studio</span>
           <h1>Monetization</h1>
           <p className={styles.muted}>
-            Ledger-backed estimates, finalized earnings and payout records. Payment execution is not connected yet.
+            Ledger-backed estimates, finalized earnings and payout records. Payment execution is not
+            connected yet.
           </p>
         </div>
       </header>
@@ -64,7 +66,8 @@ export function StudioRevenue() {
         {data.byPeriod.length ? (
           data.byPeriod.map((row) => (
             <p key={row.period}>
-              <strong>{row.period}</strong> · estimated {money(row.estimated, data.currency)} · finalized {money(row.finalized, data.currency)}
+              <strong>{row.period}</strong> · estimated {money(row.estimated, data.currency)} ·
+              finalized {money(row.finalized, data.currency)}
             </p>
           ))
         ) : (
@@ -76,7 +79,8 @@ export function StudioRevenue() {
         {data.byVideo.length ? (
           data.byVideo.map((row) => (
             <p key={row.videoId}>
-              <strong>{row.title}</strong> · estimated {money(row.estimated, data.currency)} · finalized {money(row.finalized, data.currency)}
+              <strong>{row.title}</strong> · estimated {money(row.estimated, data.currency)} ·
+              finalized {money(row.finalized, data.currency)}
             </p>
           ))
         ) : (
@@ -88,7 +92,8 @@ export function StudioRevenue() {
         {data.payouts.length ? (
           data.payouts.map((payout) => (
             <p key={payout.id}>
-              <strong>{money(payout.amount, payout.currency)}</strong> · {payout.status} · {new Date(payout.requestedAt).toLocaleDateString()}
+              <strong>{money(payout.amount, payout.currency)}</strong> · {payout.status} ·{" "}
+              {new Date(payout.requestedAt).toLocaleDateString()}
             </p>
           ))
         ) : (

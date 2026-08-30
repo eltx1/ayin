@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  applyRevenueShareMicros,
-  formatMoneyMicros,
-  parseMoneyMicros,
-} from "./money.js";
+import { applyRevenueShareMicros, formatMoneyMicros, parseMoneyMicros } from "./money.js";
 
 describe("revenue money math", () => {
   it("round-trips six-decimal money without floating point", () => {

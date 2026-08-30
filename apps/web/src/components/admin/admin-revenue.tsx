@@ -140,8 +140,20 @@ export function AdminRevenue() {
             );
           }}
         >
-          <input aria-label="Channel ID" placeholder="Channel UUID" value={channelId} onChange={(event) => setChannelId(event.target.value)} />
-          <input aria-label="Revenue share basis points" type="number" min="0" max="10000" value={shareBps} onChange={(event) => setShareBps(event.target.value)} />
+          <input
+            aria-label="Channel ID"
+            placeholder="Channel UUID"
+            value={channelId}
+            onChange={(event) => setChannelId(event.target.value)}
+          />
+          <input
+            aria-label="Revenue share basis points"
+            type="number"
+            min="0"
+            max="10000"
+            value={shareBps}
+            onChange={(event) => setShareBps(event.target.value)}
+          />
           <button type="submit">Create effective override</button>
         </form>
       </section>
@@ -159,9 +171,24 @@ export function AdminRevenue() {
             );
           }}
         >
-          <input aria-label="Adjustment amount" placeholder="10.000000 or -10.000000" value={amount} onChange={(event) => setAmount(event.target.value)} />
-          <input aria-label="Currency" maxLength={3} value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} />
-          <input aria-label="Adjustment reason" placeholder="Mandatory reason" value={reason} onChange={(event) => setReason(event.target.value)} />
+          <input
+            aria-label="Adjustment amount"
+            placeholder="10.000000 or -10.000000"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+          />
+          <input
+            aria-label="Currency"
+            maxLength={3}
+            value={currency}
+            onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+          />
+          <input
+            aria-label="Adjustment reason"
+            placeholder="Mandatory reason"
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
           <button type="submit">Append adjustment</button>
         </form>
       </section>
@@ -174,13 +201,19 @@ export function AdminRevenue() {
             void load();
           }}
         >
-          <input aria-label="Filter by channel ID" placeholder="Channel UUID" value={filterChannel} onChange={(event) => setFilterChannel(event.target.value)} />
+          <input
+            aria-label="Filter by channel ID"
+            placeholder="Channel UUID"
+            value={filterChannel}
+            onChange={(event) => setFilterChannel(event.target.value)}
+          />
           <button type="submit">Search ledger</button>
         </form>
         <div style={{ display: "grid", gap: "0.5rem" }}>
           {ledger?.items.map((entry) => (
             <article key={entry.id}>
-              <strong>{entry.channel.name}</strong> · {entry.state} · {entry.currency} {entry.amount}
+              <strong>{entry.channel.name}</strong> · {entry.state} · {entry.currency}{" "}
+              {entry.amount}
               {entry.video ? ` · ${entry.video.title}` : ""}
               {entry.campaign ? ` · ${entry.campaign.name}` : ""}
               {entry.adSource ? ` · ${entry.adSource}` : ""}
@@ -198,7 +231,10 @@ export function AdminRevenue() {
           type="button"
           disabled={!channelId}
           onClick={() =>
-            void act(() => createPayout(channelId, currency), "Payout record created from finalized balance.")
+            void act(
+              () => createPayout(channelId, currency),
+              "Payout record created from finalized balance.",
+            )
           }
         >
           Create payout record for channel
@@ -206,14 +242,60 @@ export function AdminRevenue() {
         <div style={{ display: "grid", gap: "0.5rem" }}>
           {payouts?.items.map((payout) => (
             <article key={payout.id}>
-              <strong>{payout.channel.name}</strong> · {payout.currency} {payout.amount} · {payout.status}{" "}
+              <strong>{payout.channel.name}</strong> · {payout.currency} {payout.amount} ·{" "}
+              {payout.status}{" "}
               {payout.status === "PENDING" ? (
-                <button type="button" onClick={() => void act(() => updatePayoutStatus(payout.id, "PROCESSING", "Admin started payout processing"), "Payout moved to processing.")}>Process</button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void act(
+                      () =>
+                        updatePayoutStatus(
+                          payout.id,
+                          "PROCESSING",
+                          "Admin started payout processing",
+                        ),
+                      "Payout moved to processing.",
+                    )
+                  }
+                >
+                  Process
+                </button>
               ) : null}
               {payout.status === "PROCESSING" ? (
                 <>
-                  <button type="button" onClick={() => void act(() => updatePayoutStatus(payout.id, "PAID", "Admin confirmed external payment completion"), "Payout marked paid.")}>Mark paid</button>
-                  <button type="button" onClick={() => void act(() => updatePayoutStatus(payout.id, "FAILED", "Admin recorded payout processing failure"), "Payout marked failed and balance released.")}>Fail</button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void act(
+                        () =>
+                          updatePayoutStatus(
+                            payout.id,
+                            "PAID",
+                            "Admin confirmed external payment completion",
+                          ),
+                        "Payout marked paid.",
+                      )
+                    }
+                  >
+                    Mark paid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void act(
+                        () =>
+                          updatePayoutStatus(
+                            payout.id,
+                            "FAILED",
+                            "Admin recorded payout processing failure",
+                          ),
+                        "Payout marked failed and balance released.",
+                      )
+                    }
+                  >
+                    Fail
+                  </button>
                 </>
               ) : null}
             </article>

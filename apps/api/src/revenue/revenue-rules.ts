@@ -5,7 +5,11 @@ export function buildRevenueImportKey(source: string, idempotencyKey: string) {
 }
 
 export function sumPayableLedgerMicros(
-  entries: Array<{ state: "ESTIMATED" | "FINAL" | "ADJUSTMENT"; amount: string; payoutId: string | null }>,
+  entries: Array<{
+    state: "ESTIMATED" | "FINAL" | "ADJUSTMENT";
+    amount: string;
+    payoutId: string | null;
+  }>,
 ) {
   return entries.reduce((total, entry) => {
     if (entry.state === "ESTIMATED" || entry.payoutId !== null) return total;

@@ -4,11 +4,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { selectEffectiveContract } from "./contract-selection.js";
-import {
-  applyRevenueShareMicros,
-  formatMoneyMicros,
-  parseMoneyMicros,
-} from "./money.js";
+import { applyRevenueShareMicros, formatMoneyMicros, parseMoneyMicros } from "./money.js";
 import {
   adjustmentSchema,
   contractOverrideSchema,
@@ -171,7 +167,12 @@ export class RevenueService {
 
         const periodStart = new Date(entry.periodStart);
         const periodEnd = new Date(entry.periodEnd);
-        await this.assertAttribution(tx, entry.channelId, entry.videoId ?? null, entry.campaignId ?? null);
+        await this.assertAttribution(
+          tx,
+          entry.channelId,
+          entry.videoId ?? null,
+          entry.campaignId ?? null,
+        );
         const contract = await this.resolveContractWithClient(tx, entry.channelId, periodEnd);
         const grossMicros = parseMoneyMicros(entry.grossAmount);
         const creatorMicros = applyRevenueShareMicros(grossMicros, contract.revenueShareBps);
@@ -315,7 +316,10 @@ export class RevenueService {
     let estimated = 0n;
     let finalized = 0n;
     let available = 0n;
-    const byVideo = new Map<string, { videoId: string; title: string; estimated: bigint; finalized: bigint }>();
+    const byVideo = new Map<
+      string,
+      { videoId: string; title: string; estimated: bigint; finalized: bigint }
+    >();
     const byPeriod = new Map<string, { period: string; estimated: bigint; finalized: bigint }>();
     for (const entry of entries) {
       const amount = parseMoneyMicros(String(entry.amount));
@@ -438,7 +442,9 @@ export class RevenueService {
             : {}),
           ...(data.failureReason !== undefined ? { failureReason: data.failureReason } : {}),
           ...(data.status === "PROCESSING" ? { processedAt: now } : {}),
-          ...(data.status === "PAID" ? { processedAt: current.processedAt ?? now, paidAt: now } : {}),
+          ...(data.status === "PAID"
+            ? { processedAt: current.processedAt ?? now, paidAt: now }
+            : {}),
         },
       });
       if (data.status === "FAILED" || data.status === "CANCELLED") {
@@ -464,7 +470,8 @@ export class RevenueService {
     const take = Math.max(1, Math.min(100, query.take ?? 25));
     const where: Prisma.PayoutWhereInput = {
       ...(query.channelId ? { channelId: query.channelId } : {}),
-      ...(query.status && ["PENDING", "PROCESSING", "PAID", "FAILED", "CANCELLED"].includes(query.status)
+      ...(query.status &&
+      ["PENDING", "PROCESSING", "PAID", "FAILED", "CANCELLED"].includes(query.status)
         ? { status: query.status as Prisma.EnumPayoutStatusFilter["equals"] }
         : {}),
     };

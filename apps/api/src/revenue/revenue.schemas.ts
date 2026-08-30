@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-const moneySchema = z.string().trim().regex(/^-?\d{1,14}(?:\.\d{1,6})?$/);
+const moneySchema = z
+  .string()
+  .trim()
+  .regex(/^-?\d{1,14}(?:\.\d{1,6})?$/);
 const positiveMoneySchema = moneySchema.refine((value) => !value.startsWith("-"), {
   message: "Amount must be non-negative.",
 });
@@ -15,7 +18,11 @@ export const revenueImportEntrySchema = z
     periodStart: z.string().datetime({ offset: true }),
     periodEnd: z.string().datetime({ offset: true }),
     grossAmount: positiveMoneySchema,
-    currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((value) => value.toUpperCase()),
     state: z.enum(["ESTIMATED", "FINAL"]),
     memo: z.string().trim().max(500).nullable().optional(),
   })
@@ -50,7 +57,11 @@ export const adjustmentSchema = z
   .object({
     channelId: z.string().uuid(),
     amount: moneySchema.refine((value) => value !== "0" && value !== "0.0" && value !== "0.000000"),
-    currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((value) => value.toUpperCase()),
     reason: z.string().trim().min(8).max(500),
     videoId: z.string().uuid().nullable().optional(),
     campaignId: z.string().uuid().nullable().optional(),
@@ -62,7 +73,11 @@ export const adjustmentSchema = z
 export const payoutCreateSchema = z
   .object({
     channelId: z.string().uuid(),
-    currency: z.string().trim().length(3).transform((value) => value.toUpperCase()),
+    currency: z
+      .string()
+      .trim()
+      .length(3)
+      .transform((value) => value.toUpperCase()),
   })
   .strict();
 
@@ -87,7 +102,12 @@ export const ledgerQuerySchema = z.object({
   videoId: z.string().uuid().optional(),
   campaignId: z.string().uuid().optional(),
   state: z.enum(["ESTIMATED", "FINAL", "ADJUSTMENT"]).optional(),
-  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).optional(),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((value) => value.toUpperCase())
+    .optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
   page: z.coerce.number().int().min(1).default(1),
