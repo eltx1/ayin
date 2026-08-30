@@ -59,7 +59,8 @@ export class RecommendationService implements RecommendationServiceContract {
           orderBy: { createdAt: "asc" },
           select: { id: true },
         });
-    if (!profile) throw new RecommendationError("PROFILE_NOT_FOUND", "A viewer profile is required.", 403);
+    if (!profile)
+      throw new RecommendationError("PROFILE_NOT_FOUND", "A viewer profile is required.", 403);
     return profile.id;
   }
 
@@ -104,7 +105,8 @@ export class RecommendationService implements RecommendationServiceContract {
       .map((tv) => {
         const followed = signals.subscribedChannels.has(tv.channelId);
         const affinity = signals.historyAffinity.get(tv.channelId) ?? 0;
-        const score = (followed ? 60 : 0) + Math.min(30, affinity * 8) + recencyScore(tv.createdAt) * 10;
+        const score =
+          (followed ? 60 : 0) + Math.min(30, affinity * 8) + recencyScore(tv.createdAt) * 10;
         return {
           id: tv.id,
           name: tv.name,
@@ -212,7 +214,10 @@ export class RecommendationService implements RecommendationServiceContract {
         const likedChannel = signals.likedChannels.has(video.channelId);
         const completedChannel = signals.completedChannels.has(video.channelId);
         const relatedChannel = related?.channelId === video.channelId;
-        const popularity = Math.min(1, Math.log1p(video._count.watchHistory + video._count.reactions) / 5);
+        const popularity = Math.min(
+          1,
+          Math.log1p(video._count.watchHistory + video._count.reactions) / 5,
+        );
         const recent = recencyScore(video.publishedAt ?? new Date(0));
         const score = personalized
           ? (followed ? weights.subscriptions : 0) +
@@ -223,16 +228,20 @@ export class RecommendationService implements RecommendationServiceContract {
             recent * weights.recency +
             (relatedChannel ? 20 : 0)
           : popularity * 35 + recent * 65 + (relatedChannel ? 20 : 0);
-        return this.toItem(video, roundScore(score), this.reason({
-          followed,
-          historyAffinity,
-          likedChannel,
-          completedChannel,
-          relatedChannel,
-          popularity,
-          recent,
-          personalized,
-        }));
+        return this.toItem(
+          video,
+          roundScore(score),
+          this.reason({
+            followed,
+            historyAffinity,
+            likedChannel,
+            completedChannel,
+            relatedChannel,
+            popularity,
+            recent,
+            personalized,
+          }),
+        );
       })
       .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
       .slice(0, limit);
@@ -308,7 +317,10 @@ export class RecommendationService implements RecommendationServiceContract {
     ]);
     const historyAffinity = new Map<string, number>();
     for (const row of history) {
-      historyAffinity.set(row.video.channelId, (historyAffinity.get(row.video.channelId) ?? 0) + row.viewCount);
+      historyAffinity.set(
+        row.video.channelId,
+        (historyAffinity.get(row.video.channelId) ?? 0) + row.viewCount,
+      );
     }
     return {
       subscribedChannels: new Set(subscriptions.map((row) => row.channelId)),
@@ -340,7 +352,8 @@ export class RecommendationService implements RecommendationServiceContract {
   }): RecommendationReason {
     if (input.relatedChannel) return { code: "RELATED_CHANNEL", label: "More from this creator" };
     if (input.followed) return { code: "FOLLOWED_CHANNEL", label: "From a channel you follow" };
-    if (input.likedChannel) return { code: "LIKED_CHANNEL", label: "Because you liked this creator" };
+    if (input.likedChannel)
+      return { code: "LIKED_CHANNEL", label: "Because you liked this creator" };
     if (input.completedChannel)
       return { code: "COMPLETED_CHANNEL", label: "Because you finish videos from this creator" };
     if (input.historyAffinity > 0)
@@ -380,7 +393,8 @@ export class RecommendationService implements RecommendationServiceContract {
       where: { id: videoId, ...playableVideoWhere },
       select: { id: true },
     });
-    if (!exists) throw new RecommendationError("VIDEO_NOT_FOUND", "This video is not available.", 404);
+    if (!exists)
+      throw new RecommendationError("VIDEO_NOT_FOUND", "This video is not available.", 404);
   }
 }
 

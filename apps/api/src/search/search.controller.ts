@@ -1,6 +1,7 @@
 import { Controller, Get, HttpException, Inject, Query, Req } from "@nestjs/common";
 import { z } from "zod";
 
+import { LensSearchService } from "./lens-search.service.js";
 import { SearchRateLimiter } from "./search-rate-limiter.js";
 import { SearchError, SearchService } from "./search.service.js";
 
@@ -19,6 +20,7 @@ const suggestSchema = z
 export class SearchController {
   constructor(
     @Inject(SearchService) private readonly searchService: SearchService,
+    @Inject(LensSearchService) private readonly lensSearch: LensSearchService,
     @Inject(SearchRateLimiter) private readonly rateLimiter: SearchRateLimiter,
   ) {}
 
@@ -30,6 +32,17 @@ export class SearchController {
       if (!parsed.success)
         throw new SearchError("INVALID_SEARCH_QUERY", "The search request is invalid.");
       return this.searchService.search(parsed.data.q, parsed.data.cursor, parsed.data.limit);
+    });
+  }
+
+  @Get("lens")
+  async lens(@Req() request: { ip?: string }, @Query() query: unknown) {
+    return runSearch(() => {
+      this.rateLimiter.consume(`lens:${request.ip ?? "unknown"}`);
+      const parsed = searchSchema.safeParse(query);
+      if (!parsed.success)
+        throw new SearchError("INVALID_SEARCH_QUERY", "The Lens search request is invalid.");
+      return this.lensSearch.searchLens(parsed.data.q, parsed.data.limit);
     });
   }
 

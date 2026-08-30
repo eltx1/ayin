@@ -297,6 +297,11 @@ enum PayoutStatus {
   CANCELLED
 }
 
+enum RecommendationFeedbackType {
+  NOT_INTERESTED
+  DISMISSED
+}
+
 model Account {
   id              String        @id @default(uuid()) @db.Uuid
   email           String        @unique @db.VarChar(320)
@@ -332,20 +337,22 @@ model ViewerProfile {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  account            Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  watchProgress      WatchProgress[]
-  watchHistory       WatchHistory[]
-  watchLaterItems    WatchLaterItem[]
-  myListItems        MyListItem[]
-  subscriptions      Subscription[]
-  reactions          Reaction[]
-  comments           Comment[]
-  reports            Report[]
-  adEvents           AdEvent[]
-  communityReactions CommunityPostReaction[]
-  communityComments  CommunityPostComment[]
-  communityPollVotes CommunityPollVote[]
-  communityReports   CommunityPostReport[]
+  account                Account                     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  watchProgress          WatchProgress[]
+  watchHistory           WatchHistory[]
+  watchLaterItems        WatchLaterItem[]
+  myListItems            MyListItem[]
+  subscriptions          Subscription[]
+  reactions              Reaction[]
+  comments               Comment[]
+  reports                Report[]
+  adEvents               AdEvent[]
+  communityReactions     CommunityPostReaction[]
+  communityComments      CommunityPostComment[]
+  communityPollVotes     CommunityPollVote[]
+  communityReports       CommunityPostReport[]
+  recommendationFeedback RecommendationFeedback[]
+  recommendationState    RecommendationProfileState?
 
   @@unique([accountId, slug])
   @@index([accountId, isDefault])
@@ -429,23 +436,24 @@ model Video {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
-  channel            Channel                    @relation(fields: [channelId], references: [id], onDelete: Restrict)
-  mediaAssets        MediaAsset[]
-  playlistItems      PlaylistItem[]
-  tvScheduleItems    TvScheduleItem[]
-  tvPreferences      CreatorTvVideoPreference[]
-  watchProgress      WatchProgress[]
-  watchHistory       WatchHistory[]
-  watchLaterItems    WatchLaterItem[]
-  myListItems        MyListItem[]
-  reactions          Reaction[]
-  comments           Comment[]
-  rightsDeclarations ContentRightsDeclaration[]
-  reports            Report[]
-  adEvents           AdEvent[]
-  earningsEntries    EarningsLedgerEntry[]
-  contentSeedItem    ContentSeedItem?
-  communityShares    CommunityPost[]            @relation("CommunitySharedVideo")
+  channel                Channel                    @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  mediaAssets            MediaAsset[]
+  playlistItems          PlaylistItem[]
+  tvScheduleItems        TvScheduleItem[]
+  tvPreferences          CreatorTvVideoPreference[]
+  watchProgress          WatchProgress[]
+  watchHistory           WatchHistory[]
+  watchLaterItems        WatchLaterItem[]
+  myListItems            MyListItem[]
+  reactions              Reaction[]
+  comments               Comment[]
+  rightsDeclarations     ContentRightsDeclaration[]
+  reports                Report[]
+  adEvents               AdEvent[]
+  earningsEntries        EarningsLedgerEntry[]
+  contentSeedItem        ContentSeedItem?
+  communityShares        CommunityPost[]            @relation("CommunitySharedVideo")
+  recommendationFeedback RecommendationFeedback[]
 
   @@index([channelId, status, publishedAt])
   @@index([status, visibility, publishedAt])
@@ -726,6 +734,31 @@ model ModerationCase {
 
   @@index([status, createdAt])
   @@index([assignedToAccountId, status])
+}
+
+model RecommendationProfileState {
+  profileId String    @id @db.Uuid
+  resetAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  profile ViewerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model RecommendationFeedback {
+  id        String                     @id @default(uuid()) @db.Uuid
+  profileId String                     @db.Uuid
+  videoId   String                     @db.Uuid
+  type      RecommendationFeedbackType
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+
+  profile ViewerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  video   Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, videoId])
+  @@index([profileId, type, createdAt])
+  @@index([videoId, type])
 }
 
 model PlatformSetting {

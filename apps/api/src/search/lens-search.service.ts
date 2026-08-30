@@ -1,10 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
-import {
-  AYIN_LENS_SEARCH_PROVIDER,
-  type AyinLensSearchProvider,
-} from "./lens-search.provider.js";
+import { AYIN_LENS_SEARCH_PROVIDER, type AyinLensSearchProvider } from "./lens-search.provider.js";
 import { SearchService } from "./search.service.js";
 
 @Injectable()

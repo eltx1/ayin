@@ -101,7 +101,9 @@ export function AyinLensClient() {
       <div className={styles.toolbar}>
         <div>
           <strong>{data?.mode === "HEURISTIC_V1" ? "Personalized V1" : "Safe fallback"}</strong>
-          <p>AYIN uses explainable weighted signals here; this is not presented as machine learning.</p>
+          <p>
+            AYIN uses explainable weighted signals here; this is not presented as machine learning.
+          </p>
         </div>
         <button type="button" onClick={() => void reset()} disabled={!data}>
           Reset personalization

@@ -9,7 +9,7 @@ CREATE TABLE "RecommendationProfileState" (
 );
 
 CREATE TABLE "RecommendationFeedback" (
-  "id" UUID NOT NULL,
+  "id" UUID NOT NULL DEFAULT gen_random_uuid(),
   "profileId" UUID NOT NULL,
   "videoId" UUID NOT NULL,
   "type" "RecommendationFeedbackType" NOT NULL,

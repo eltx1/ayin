@@ -53,7 +53,9 @@ describe("RecommendationService", () => {
     const database = {
       client: {
         recommendationProfileState: { findUnique: vi.fn(async () => null) },
-        subscription: { findMany: vi.fn(async () => [{ channelId: "21111111-1111-4111-8111-111111111111" }]) },
+        subscription: {
+          findMany: vi.fn(async () => [{ channelId: "21111111-1111-4111-8111-111111111111" }]),
+        },
         watchHistory: { findMany: vi.fn(async () => []) },
         reaction: { findMany: vi.fn(async () => []) },
         watchProgress: { findMany: vi.fn(async () => []) },
