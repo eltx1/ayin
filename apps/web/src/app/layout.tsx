@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
+import { InstallUpdateController } from "@/components/pwa/install-update-controller";
 
 import "./globals.css";
 
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: RootLayoutProperties) {
     <html lang="en">
       <body>
         <ServiceWorkerRegistration />
+        <InstallUpdateController />
         {children}
       </body>
     </html>
