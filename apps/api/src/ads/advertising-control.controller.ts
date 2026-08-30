@@ -59,7 +59,14 @@ export class DirectAdController {
   async event(@Body() body: unknown) {
     const parsed = directEventSchema.safeParse(body);
     if (!parsed.success) throw this.invalid("INVALID_DIRECT_AD_EVENT");
-    return this.advertising.recordDirectEvent(parsed.data);
+    return this.advertising.recordDirectEvent({
+      placementKey: parsed.data.placementKey,
+      campaignId: parsed.data.campaignId,
+      creativeId: parsed.data.creativeId,
+      eventType: parsed.data.eventType,
+      sessionId: parsed.data.sessionId,
+      ...(parsed.data.requestId !== undefined ? { requestId: parsed.data.requestId } : {}),
+    });
   }
 
   private invalid(code: string) {

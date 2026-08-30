@@ -104,8 +104,8 @@ export class AdvertisingControlService {
           ...(data.inventoryFamily !== undefined ? { inventoryFamily: data.inventoryFamily } : {}),
           ...(data.format !== undefined ? { format: data.format } : {}),
           ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
-          ...(data.config !== undefined
-            ? { config: data.config === null ? undefined : json(data.config) }
+          ...(data.config !== undefined && data.config !== null
+            ? { config: json(data.config) }
             : {}),
         },
       });
@@ -152,7 +152,13 @@ export class AdvertisingControlService {
   async updateAdvertiser(actorAccountId: string, advertiserId: string, input: unknown) {
     const data = advertiserPatchSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
-      const advertiser = await tx.advertiser.update({ where: { id: advertiserId }, data });
+      const advertiser = await tx.advertiser.update({
+        where: { id: advertiserId },
+        data: {
+          ...(data.name !== undefined ? { name: data.name } : {}),
+          ...(data.status !== undefined ? { status: data.status } : {}),
+        },
+      });
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
         action: "ADVERTISER_UPDATED",
