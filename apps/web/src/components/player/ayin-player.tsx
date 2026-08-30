@@ -360,6 +360,12 @@ export function AyinPlayer({
               setPlaying(true);
               analytics.emit({ type: "play", videoId });
             }}
+            onWaiting={() => {
+              analytics.emit({ type: "buffer", videoId, positionMs });
+            }}
+            onStalled={() => {
+              analytics.emit({ type: "buffer", videoId, positionMs });
+            }}
             onTimeUpdate={(event) => {
               setPositionMs(Math.floor(event.currentTarget.currentTime * 1000));
               void persist(false);

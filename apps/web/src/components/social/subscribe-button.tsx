@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 
 export function SubscribeButton({
@@ -38,19 +39,23 @@ export function SubscribeButton({
       router.push("/login");
       return;
     }
+    const wasSubscribed = state.subscribed;
     setBusy(true);
     try {
       const response = await fetch(`${apiBaseUrl}/social/channels/${channelId}/subscription`, {
-        method: state.subscribed ? "DELETE" : "PUT",
+        method: wasSubscribed ? "DELETE" : "PUT",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        ...(state.subscribed ? {} : { body: "{}" }),
+        ...(wasSubscribed ? {} : { body: "{}" }),
       });
       if (response.status === 401) {
         router.push("/login");
         return;
       }
-      if (response.ok) setState((await response.json()) as typeof state);
+      if (response.ok) {
+        setState((await response.json()) as typeof state);
+        if (!wasSubscribed) trackAnalyticsEvent("SUBSCRIBE", { channelId });
+      }
     } finally {
       setBusy(false);
     }

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AyinPlayer } from "@/components/player/ayin-player";
+import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 import { mediaAssetUrl } from "@/lib/channel";
 import type { CreatorTvProgram, PublicCreatorTvResponse } from "@/lib/creator-tv";
@@ -16,6 +17,13 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const current = data.schedule.nowPlaying;
+  useEffect(() => {
+    if (!current) return;
+    trackAnalyticsEvent("TV_START", {
+      channelId: data.channel.id,
+      videoId: current.video.id,
+    });
+  }, [current?.occurrenceKey, current?.video.id, data.channel.id]);
   const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);
   const accent = data.appearance.accentColor ?? "#63D1CC";
   const avatar = mediaAssetUrl(data.appearance.avatar?.objectKey);

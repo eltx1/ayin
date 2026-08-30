@@ -7,6 +7,18 @@ export interface AdminPagination {
   pages: number;
 }
 
+export interface AdminAnalyticsMetrics {
+  refresh: "query-time";
+  dauApprox: number;
+  mauApprox: number;
+  watchTimeMs: number;
+  watchHours: number;
+  uploads: number;
+  tvStarts: number;
+  adEvents: number;
+  errors: number;
+}
+
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
@@ -20,6 +32,10 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getAdminDashboard() {
   return adminFetch<Record<string, unknown>>("/admin/control/dashboard");
+}
+
+export function getAdminAnalytics() {
+  return adminFetch<AdminAnalyticsMetrics>("/admin/analytics");
 }
 
 export function getAdminCollection<T>(

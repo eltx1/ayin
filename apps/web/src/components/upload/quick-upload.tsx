@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";
 import { uploadPreparedVideoDirectly } from "@/lib/direct-video-upload";
 import {
@@ -96,6 +97,7 @@ export function QuickUpload() {
         setMessage(result.message);
         return;
       }
+      trackAnalyticsEvent("UPLOAD_START", { channelId: identity.channel.id });
       const draft = await createQuickDraft({
         channelId: identity.channel.id,
         title: nextTitle,
@@ -120,6 +122,10 @@ export function QuickUpload() {
         onProgress: setProgress,
       });
       await confirmQuickUpload(draft.video.id);
+      trackAnalyticsEvent("UPLOAD_COMPLETE", {
+        channelId: identity.channel.id,
+        videoId: draft.video.id,
+      });
       setUploadComplete(true);
       setMessage("Upload complete. Add the rights confirmation and publish when ready.");
     } catch (error) {
@@ -170,6 +176,11 @@ export function QuickUpload() {
       const result = await publishQuickVideo(videoId, {
         ...detailsPayload(),
         rightsConfirmed,
+      });
+      trackAnalyticsEvent("PUBLISH", {
+        ...(identity ? { channelId: identity.channel.id } : {}),
+        videoId,
+        metadata: { scheduled: result.video.status === "SCHEDULED" },
       });
       setPublished(true);
       setMessage(

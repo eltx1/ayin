@@ -1,3 +1,4 @@
+import { trackAnalyticsEvent } from "./analytics";
 import { apiBaseUrl } from "./api";
 
 export type VideoAdSlot = "PRE_ROLL" | "MID_ROLL" | "POST_ROLL";
@@ -81,6 +82,33 @@ export async function recordVideoAdEvent(input: {
   provider: "GOOGLE_IMA";
   errorCode?: string;
 }) {
+  const analyticsName =
+    input.eventType === "REQUEST"
+      ? "AD_REQUEST"
+      : input.eventType === "START"
+        ? "AD_START"
+        : input.eventType === "QUARTILE_25" ||
+            input.eventType === "MIDPOINT" ||
+            input.eventType === "QUARTILE_75"
+          ? "AD_QUARTILE"
+          : input.eventType === "COMPLETE"
+            ? "AD_COMPLETE"
+            : input.eventType === "CLICK"
+              ? "AD_CLICK"
+              : input.eventType === "ERROR"
+                ? "AD_ERROR"
+                : null;
+  if (analyticsName) {
+    trackAnalyticsEvent(analyticsName, {
+      videoId: input.videoId,
+      metadata: {
+        slot: input.slot,
+        provider: input.provider,
+        eventType: input.eventType,
+        ...(input.errorCode ? { errorCode: input.errorCode } : {}),
+      },
+    });
+  }
   try {
     await fetch(`${apiBaseUrl}/ads/video/events`, {
       method: "POST",

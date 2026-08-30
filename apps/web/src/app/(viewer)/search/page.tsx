@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SearchAnalytics, SearchResultLinkAnalytics } from "@/components/search/search-analytics";
 import { SearchBox } from "@/components/search/search-box";
 import { MediaCard } from "@/components/viewer/media-card";
 import { EmptyState } from "@/components/viewer/view-states";
@@ -28,6 +29,7 @@ export default async function SearchPage({
 
   return (
     <main className={styles.page}>
+      <SearchAnalytics queryLength={query.length} resultCount={results?.items.length ?? 0} />
       <header>
         <p>Find something worth watching</p>
         <h1>Search AYIN</h1>
@@ -45,15 +47,16 @@ export default async function SearchPage({
           <h2>Results for “{results.query}”</h2>
           <div className={styles.grid}>
             {results.items.map((item, index) => (
-              <MediaCard
-                key={`${item.type}-${item.id}`}
-                href={item.href}
-                kicker={item.kicker}
-                {...(item.meta ? { meta: item.meta } : {})}
-                title={item.title}
-                tone={((index % 5) + 1) as 1 | 2 | 3 | 4 | 5}
-                variant="landscape"
-              />
+              <SearchResultLinkAnalytics key={`${item.type}-${item.id}`}>
+                <MediaCard
+                  href={item.href}
+                  kicker={item.kicker}
+                  {...(item.meta ? { meta: item.meta } : {})}
+                  title={item.title}
+                  tone={((index % 5) + 1) as 1 | 2 | 3 | 4 | 5}
+                  variant="landscape"
+                />
+              </SearchResultLinkAnalytics>
             ))}
           </div>
           {results.nextCursor ? (

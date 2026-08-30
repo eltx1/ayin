@@ -3,17 +3,29 @@
 import { useEffect, useState } from "react";
 
 import styles from "@/app/studio/studio.module.css";
-import { getStudioOverview, type StudioOverview } from "@/lib/studio";
+import {
+  getStudioAnalytics,
+  getStudioOverview,
+  type StudioAnalytics,
+  type StudioOverview,
+} from "@/lib/studio";
 
 export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) {
   const [data, setData] = useState<StudioOverview | null>(null);
+  const [analytics, setAnalytics] = useState<StudioAnalytics | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void getStudioOverview()
-      .then((overview) => {
-        if (active) setData(overview);
+    const request =
+      kind === "analytics"
+        ? Promise.all([getStudioOverview(), getStudioAnalytics()])
+        : Promise.all([getStudioOverview(), Promise.resolve(null)]);
+    void request
+      .then(([overview, nextAnalytics]) => {
+        if (!active) return;
+        setData(overview);
+        setAnalytics(nextAnalytics);
       })
       .catch((caught) => {
         if (active)
@@ -24,12 +36,14 @@ export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) 
     return () => {
       active = false;
     };
-  }, []);
+  }, [kind]);
 
   if (error) return <p className={styles.error}>{error}</p>;
-  if (!data) return <p className={styles.muted}>Loading…</p>;
+  if (!data || (kind === "analytics" && !analytics)) {
+    return <p className={styles.muted}>Loading…</p>;
+  }
 
-  if (kind === "analytics") {
+  if (kind === "analytics" && analytics) {
     return (
       <>
         <header className={styles.header}>
@@ -37,31 +51,44 @@ export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) 
             <span className={styles.eyebrow}>Creator Studio</span>
             <h1>Analytics</h1>
             <p className={styles.muted}>
-              Only real metrics are shown. No synthetic views or watch time are invented.
+              Real sampled event metrics for the last {analytics.periodDays} days. Refresh is
+              query-time, not realtime streaming.
             </p>
           </div>
         </header>
         <section className={styles.metrics}>
           <article className={styles.metric}>
+            <span className={styles.muted}>Views</span>
+            <strong>{analytics.views.toLocaleString()}</strong>
+          </article>
+          <article className={styles.metric}>
+            <span className={styles.muted}>Watch time</span>
+            <strong>{(analytics.watchTimeMs / 3_600_000).toFixed(1)} h</strong>
+          </article>
+          <article className={styles.metric}>
+            <span className={styles.muted}>Avg view duration</span>
+            <strong>{Math.round(analytics.averageViewDurationMs / 1000)} s</strong>
+          </article>
+          <article className={styles.metric}>
+            <span className={styles.muted}>Completion</span>
+            <strong>{(analytics.completionRate * 100).toFixed(1)}%</strong>
+          </article>
+          <article className={styles.metric}>
             <span className={styles.muted}>Subscribers</span>
-            <strong>{data.counters.subscribers.toLocaleString()}</strong>
-          </article>
-          <article className={styles.metric}>
-            <span className={styles.muted}>Published videos</span>
-            <strong>{data.counters.publishedVideos.toLocaleString()}</strong>
-          </article>
-          <article className={styles.metric}>
-            <span className={styles.muted}>Comments</span>
-            <strong>{data.counters.comments.toLocaleString()}</strong>
+            <strong>{analytics.subscribers.toLocaleString()}</strong>
           </article>
         </section>
         <section className={styles.panel}>
-          <h2>Viewing analytics</h2>
-          <p className={styles.muted}>{data.analytics.reason}</p>
-          <p className={styles.muted}>
-            Views and watch time will populate from Task 22 event analytics rather than guessed
-            counters.
-          </p>
+          <h2>Top videos</h2>
+          {analytics.topVideos.length ? (
+            analytics.topVideos.map((video) => (
+              <p key={video.videoId}>
+                <strong>{video.title}</strong> · {video.views.toLocaleString()} views
+              </p>
+            ))
+          ) : (
+            <p className={styles.muted}>No viewing events have been recorded in this period yet.</p>
+          )}
         </section>
       </>
     );
