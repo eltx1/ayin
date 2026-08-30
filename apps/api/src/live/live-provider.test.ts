@@ -9,6 +9,6 @@ describe("live ingest provider boundary", () => {
     expect(provider.configured).toBe(false);
     await expect(provider.provision()).rejects.toBeInstanceOf(LiveProviderUnavailableError);
     await expect(provider.rotateKey()).rejects.toBeInstanceOf(LiveProviderUnavailableError);
-    await expect(provider.stop(null)).resolves.toBeUndefined();
+    await expect(provider.stop()).resolves.toBeUndefined();
   });
 });
