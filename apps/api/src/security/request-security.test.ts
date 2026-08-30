@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { isAllowedCookieMutationOrigin, isUnsafeMethod, usesCookieSession } from "./request-security.js";
+import {
+  isAllowedCookieMutationOrigin,
+  isUnsafeMethod,
+  usesCookieSession,
+} from "./request-security.js";
 
 describe("request security", () => {
   it("requires the configured origin for cookie-authenticated mutations", () => {
@@ -44,9 +48,9 @@ describe("request security", () => {
   it("detects unsafe methods and cookie transport precisely", () => {
     expect(isUnsafeMethod("DELETE")).toBe(true);
     expect(isUnsafeMethod("HEAD")).toBe(false);
-    expect(usesCookieSession({ headers: { cookie: "other=1; ayin_session=abc" } } as never)).toBe(
-      true,
-    );
+    expect(
+      usesCookieSession({ headers: { cookie: "other=1; ayin_session=abc" } } as never),
+    ).toBe(true);
     expect(
       usesCookieSession({
         headers: { cookie: "ayin_session=abc", authorization: "Bearer token" },
