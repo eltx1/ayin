@@ -17,7 +17,7 @@ jobs:
           node-version-file: .nvmrc
       - run: corepack enable && corepack prepare pnpm@11.24.0 --activate
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec prettier --write apps/web/src/lib/tv-platform-runtime.ts apps/web/src/lib/tv-platform-runtime.test.ts apps/web/src/components/platform/tv-platform-runtime.tsx apps/web/src/app/layout.tsx scripts/validate-tv-packages.mjs .github/workflows/tv-web-packages.yml .github/workflows/task38-format.yml docs/TV_TIZEN_WEBOS.md platforms/tizen/index.html platforms/webos/appinfo.json platforms/webos/index.html .prettierignore
+      - run: pnpm exec prettier --write apps/web/src/lib/tv-platform-runtime.ts apps/web/src/lib/tv-platform-runtime.test.ts apps/web/src/components/platform/tv-platform-runtime.tsx apps/web/src/app/layout.tsx scripts/validate-tv-packages.mjs .github/workflows/tv-web-packages.yml .github/workflows/task38-format.yml docs/TV_TIZEN_WEBOS.md platforms/tizen/index.html platforms/webos/appinfo.json platforms/webos/index.html
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
