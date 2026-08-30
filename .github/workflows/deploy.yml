@@ -1,0 +1,109 @@
+name: Production deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_sha:
+        description: Exact commit SHA to deploy (defaults to the selected ref SHA)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ayin_test
+          POSTGRES_PASSWORD: ayin
+          POSTGRES_USER: ayin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      AUTH_TOKEN_SECRET: task-26-ci-auth-secret-with-more-than-32-characters
+      CORS_ORIGIN: http://localhost:3000
+      WEB_ORIGIN: http://localhost:3000
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run repository quality gates
+        run: |
+          pnpm format:check
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm test:integration
+          pnpm build
+
+  deploy:
+    needs: quality
+    if: ${{ vars.AYIN_CD_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Validate deployment inputs
+        env:
+          DEPLOY_HOST: ${{ secrets.AYIN_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.AYIN_DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.AYIN_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+
+      - name: Configure SSH
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.AYIN_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy exact commit
+        env:
+          DEPLOY_HOST: ${{ secrets.AYIN_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.AYIN_DEPLOY_USER }}
+          REQUESTED_SHA: ${{ inputs.git_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$REQUESTED_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+            echo "Invalid deployment SHA" >&2
+            exit 64
+          fi
+          ssh -o BatchMode=yes "$DEPLOY_USER@$DEPLOY_HOST" \
+            "/home/ayin/htdocs/current/deploy/release.sh '$REQUESTED_SHA'"
