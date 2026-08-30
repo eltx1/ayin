@@ -1,0 +1,251 @@
+name: Task 24 implementation
+on:
+  push:
+    branches: [task-24-moderation-rights-trust]
+    paths: [".github/workflows/task24-build.yml"]
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: task-24-moderation-rights-trust }
+      - run: |
+          mkdir -p apps/api/src/trust packages/db/prisma/migrations/20260830002400_moderation_trust apps/web/src/app/admin/trust apps/web/src/app/studio/trust docs
+          cat > packages/db/prisma/trust.prisma <<'EOF'
+          enum CreatorTrustLevel {
+            NEW
+            STANDARD
+            TRUSTED
+            RESTRICTED
+          }
+
+          enum ModerationActionKind {
+            WARN
+            STRIKE
+            SUSPEND_ACCOUNT
+            SUSPEND_CHANNEL
+            UNPUBLISH_VIDEO
+            REMOVE_VIDEO
+          }
+
+          enum AppealStatus {
+            OPEN
+            REVIEWING
+            UPHELD
+            OVERTURNED
+          }
+
+          enum TakedownStatus {
+            OPEN
+            REVIEWING
+            ACTIONED
+            DISMISSED
+          }
+
+          model CreatorTrustState {
+            id             String            @id @default(uuid()) @db.Uuid
+            channelId      String            @unique @db.Uuid
+            level          CreatorTrustLevel @default(NEW)
+            strikeCount    Int               @default(0)
+            reviewRequired Boolean           @default(false)
+            createdAt      DateTime          @default(now())
+            updatedAt      DateTime          @updatedAt
+            @@index([level, reviewRequired])
+          }
+
+          model ModerationAction {
+            id              String               @id @default(uuid()) @db.Uuid
+            caseId          String?              @db.Uuid
+            actorAccountId  String               @db.Uuid
+            targetAccountId String?              @db.Uuid
+            channelId       String?              @db.Uuid
+            videoId         String?              @db.Uuid
+            kind            ModerationActionKind
+            reason          String               @db.Text
+            createdAt       DateTime             @default(now())
+            appeals         ModerationAppeal[]
+            @@index([channelId, createdAt])
+            @@index([targetAccountId, createdAt])
+            @@index([videoId, createdAt])
+          }
+
+          model ModerationAppeal {
+            id         String       @id @default(uuid()) @db.Uuid
+            actionId   String       @db.Uuid
+            accountId  String       @db.Uuid
+            status     AppealStatus @default(OPEN)
+            message    String       @db.Text
+            resolution String?      @db.Text
+            createdAt  DateTime     @default(now())
+            updatedAt  DateTime     @updatedAt
+            action     ModerationAction @relation(fields: [actionId], references: [id], onDelete: Cascade)
+            @@index([accountId, status, createdAt])
+            @@index([status, createdAt])
+          }
+
+          model TakedownRequest {
+            id            String         @id @default(uuid()) @db.Uuid
+            requesterId   String         @db.Uuid
+            videoId       String?        @db.Uuid
+            claimantName  String         @db.VarChar(160)
+            contactEmail  String         @db.VarChar(320)
+            rightsBasis   String         @db.VarChar(120)
+            details       String         @db.Text
+            status        TakedownStatus @default(OPEN)
+            resolution    String?        @db.Text
+            createdAt     DateTime       @default(now())
+            updatedAt     DateTime       @updatedAt
+            @@index([status, createdAt])
+            @@index([videoId, createdAt])
+          }
+          EOF
+          cat > packages/db/prisma/migrations/20260830002400_moderation_trust/migration.sql <<'EOF'
+          CREATE TYPE "CreatorTrustLevel" AS ENUM ('NEW','STANDARD','TRUSTED','RESTRICTED');
+          CREATE TYPE "ModerationActionKind" AS ENUM ('WARN','STRIKE','SUSPEND_ACCOUNT','SUSPEND_CHANNEL','UNPUBLISH_VIDEO','REMOVE_VIDEO');
+          CREATE TYPE "AppealStatus" AS ENUM ('OPEN','REVIEWING','UPHELD','OVERTURNED');
+          CREATE TYPE "TakedownStatus" AS ENUM ('OPEN','REVIEWING','ACTIONED','DISMISSED');
+          CREATE TABLE "CreatorTrustState" (
+            "id" UUID PRIMARY KEY, "channelId" UUID NOT NULL UNIQUE, "level" "CreatorTrustLevel" NOT NULL DEFAULT 'NEW',
+            "strikeCount" INTEGER NOT NULL DEFAULT 0, "reviewRequired" BOOLEAN NOT NULL DEFAULT false,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL
+          );
+          CREATE TABLE "ModerationAction" (
+            "id" UUID PRIMARY KEY, "caseId" UUID, "actorAccountId" UUID NOT NULL, "targetAccountId" UUID, "channelId" UUID, "videoId" UUID,
+            "kind" "ModerationActionKind" NOT NULL, "reason" TEXT NOT NULL, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE "ModerationAppeal" (
+            "id" UUID PRIMARY KEY, "actionId" UUID NOT NULL, "accountId" UUID NOT NULL, "status" "AppealStatus" NOT NULL DEFAULT 'OPEN',
+            "message" TEXT NOT NULL, "resolution" TEXT, "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL
+          );
+          CREATE TABLE "TakedownRequest" (
+            "id" UUID PRIMARY KEY, "requesterId" UUID NOT NULL, "videoId" UUID, "claimantName" VARCHAR(160) NOT NULL, "contactEmail" VARCHAR(320) NOT NULL,
+            "rightsBasis" VARCHAR(120) NOT NULL, "details" TEXT NOT NULL, "status" "TakedownStatus" NOT NULL DEFAULT 'OPEN', "resolution" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL
+          );
+          ALTER TABLE "CreatorTrustState" ADD CONSTRAINT "CreatorTrustState_channel_fkey" FOREIGN KEY ("channelId") REFERENCES "Channel"("id") ON DELETE CASCADE;
+          ALTER TABLE "ModerationAction" ADD CONSTRAINT "ModerationAction_case_fkey" FOREIGN KEY ("caseId") REFERENCES "ModerationCase"("id") ON DELETE SET NULL;
+          ALTER TABLE "ModerationAction" ADD CONSTRAINT "ModerationAction_actor_fkey" FOREIGN KEY ("actorAccountId") REFERENCES "Account"("id") ON DELETE RESTRICT;
+          ALTER TABLE "ModerationAction" ADD CONSTRAINT "ModerationAction_account_fkey" FOREIGN KEY ("targetAccountId") REFERENCES "Account"("id") ON DELETE SET NULL;
+          ALTER TABLE "ModerationAction" ADD CONSTRAINT "ModerationAction_channel_fkey" FOREIGN KEY ("channelId") REFERENCES "Channel"("id") ON DELETE SET NULL;
+          ALTER TABLE "ModerationAction" ADD CONSTRAINT "ModerationAction_video_fkey" FOREIGN KEY ("videoId") REFERENCES "Video"("id") ON DELETE SET NULL;
+          ALTER TABLE "ModerationAppeal" ADD CONSTRAINT "ModerationAppeal_action_fkey" FOREIGN KEY ("actionId") REFERENCES "ModerationAction"("id") ON DELETE CASCADE;
+          ALTER TABLE "ModerationAppeal" ADD CONSTRAINT "ModerationAppeal_account_fkey" FOREIGN KEY ("accountId") REFERENCES "Account"("id") ON DELETE CASCADE;
+          ALTER TABLE "TakedownRequest" ADD CONSTRAINT "TakedownRequest_requester_fkey" FOREIGN KEY ("requesterId") REFERENCES "Account"("id") ON DELETE RESTRICT;
+          ALTER TABLE "TakedownRequest" ADD CONSTRAINT "TakedownRequest_video_fkey" FOREIGN KEY ("videoId") REFERENCES "Video"("id") ON DELETE SET NULL;
+          CREATE INDEX "CreatorTrustState_level_reviewRequired_idx" ON "CreatorTrustState"("level","reviewRequired");
+          CREATE INDEX "ModerationAction_channelId_createdAt_idx" ON "ModerationAction"("channelId","createdAt");
+          CREATE INDEX "ModerationAction_targetAccountId_createdAt_idx" ON "ModerationAction"("targetAccountId","createdAt");
+          CREATE INDEX "ModerationAction_videoId_createdAt_idx" ON "ModerationAction"("videoId","createdAt");
+          CREATE INDEX "ModerationAppeal_accountId_status_createdAt_idx" ON "ModerationAppeal"("accountId","status","createdAt");
+          CREATE INDEX "ModerationAppeal_status_createdAt_idx" ON "ModerationAppeal"("status","createdAt");
+          CREATE INDEX "TakedownRequest_status_createdAt_idx" ON "TakedownRequest"("status","createdAt");
+          CREATE INDEX "TakedownRequest_videoId_createdAt_idx" ON "TakedownRequest"("videoId","createdAt");
+          EOF
+          cat > apps/api/src/trust/trust.schemas.ts <<'EOF'
+          import { z } from "zod";
+          const uuid = z.string().uuid();
+          export const reportSchema = z.object({ videoId: uuid.optional(), commentId: uuid.optional(), reason: z.enum(["COPYRIGHT","SPAM","HARASSMENT","HATE","SEXUAL_CONTENT","VIOLENCE","MISLEADING","OTHER"]), details: z.string().max(4000).optional() }).refine(v => Number(Boolean(v.videoId))+Number(Boolean(v.commentId))===1, "Exactly one report target is required");
+          export const takedownSchema = z.object({ videoId: uuid.optional(), claimantName: z.string().trim().min(2).max(160), contactEmail: z.string().email().max(320), rightsBasis: z.string().trim().min(2).max(120), details: z.string().trim().min(20).max(10000) });
+          export const appealSchema = z.object({ actionId: uuid, message: z.string().trim().min(20).max(5000) });
+          export const actionSchema = z.object({ caseId: uuid.optional(), targetAccountId: uuid.optional(), channelId: uuid.optional(), videoId: uuid.optional(), kind: z.enum(["WARN","STRIKE","SUSPEND_ACCOUNT","SUSPEND_CHANNEL","UNPUBLISH_VIDEO","REMOVE_VIDEO"]), reason: z.string().trim().min(10).max(4000) });
+          export const appealDecisionSchema = z.object({ status: z.enum(["REVIEWING","UPHELD","OVERTURNED"]), resolution: z.string().trim().min(10).max(4000) });
+          export const trustSchema = z.object({ level: z.enum(["NEW","STANDARD","TRUSTED","RESTRICTED"]), reviewRequired: z.boolean().optional() });
+          export const settingsSchema = z.object({ blockedTerms: z.array(z.string().trim().min(1).max(100)).max(500), newCreatorsRequireReview: z.boolean() });
+          export const caseSchema = z.object({ status: z.enum(["OPEN","REVIEWING","ACTIONED","DISMISSED","CLOSED"]), resolution: z.string().trim().max(4000).optional() });
+          export const takedownDecisionSchema = z.object({ status: z.enum(["REVIEWING","ACTIONED","DISMISSED"]), resolution: z.string().trim().min(10).max(4000) });
+          EOF
+          cat > apps/api/src/trust/trust-policy.ts <<'EOF'
+          export function containsBlockedTerm(text: string, terms: string[]) {
+            const normalized = text.toLocaleLowerCase();
+            return terms.some((term) => term.trim() !== "" && normalized.includes(term.trim().toLocaleLowerCase()));
+          }
+          EOF
+          cat > apps/api/src/trust/trust-policy.test.ts <<'EOF'
+          import { describe, expect, it } from "vitest";
+          import { containsBlockedTerm } from "./trust-policy.js";
+          describe("moderation trust policy", () => {
+            it("matches blocked terms case-insensitively", () => expect(containsBlockedTerm("Bad TERM here", ["term"])).toBe(true));
+            it("ignores empty terms", () => expect(containsBlockedTerm("safe", [" "])).toBe(false));
+          });
+          EOF
+          cat > apps/api/src/trust/trust.service.ts <<'EOF'
+          import { Inject, Injectable } from "@nestjs/common";
+          import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
+          import { DatabaseService } from "../database/database.service.js";
+          import { actionSchema, appealDecisionSchema, appealSchema, caseSchema, reportSchema, settingsSchema, takedownDecisionSchema, takedownSchema, trustSchema } from "./trust.schemas.js";
+          import { containsBlockedTerm } from "./trust-policy.js";
+
+          @Injectable()
+          export class TrustService {
+            constructor(@Inject(DatabaseService) private readonly db: DatabaseService, @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService) {}
+            private async profile(accountId: string) { return this.db.client.viewerProfile.findFirstOrThrow({ where: { accountId }, orderBy: { createdAt: "asc" } }); }
+            async report(accountId: string, input: unknown) {
+              const data=reportSchema.parse(input); const profile=await this.profile(accountId);
+              if (data.videoId) await this.db.client.video.findUniqueOrThrow({where:{id:data.videoId}});
+              if (data.commentId) await this.db.client.comment.findUniqueOrThrow({where:{id:data.commentId}});
+              return this.db.client.report.create({data:{reporterProfileId:profile.id,reason:data.reason,...(data.videoId?{videoId:data.videoId}:{}),...(data.commentId?{commentId:data.commentId}:{}),...(data.details?{details:data.details}:{})}});
+            }
+            async takedown(accountId: string,input:unknown){const d=takedownSchema.parse(input);if(d.videoId)await this.db.client.video.findUniqueOrThrow({where:{id:d.videoId}});return this.db.client.takedownRequest.create({data:{requesterId:accountId,...d}});}
+            async appeal(accountId:string,input:unknown){const d=appealSchema.parse(input);const action=await this.db.client.moderationAction.findUniqueOrThrow({where:{id:d.actionId}});const member=action.channelId?await this.db.client.channelMember.findFirst({where:{accountId,channelId:action.channelId}}):null;if(action.targetAccountId!==accountId&&!member)throw new Error("NOT_ACTION_TARGET");return this.db.client.moderationAppeal.create({data:{actionId:d.actionId,accountId,message:d.message}});}
+            async creatorHistory(accountId:string){const memberships=await this.db.client.channelMember.findMany({where:{accountId},select:{channelId:true}});const channelIds=memberships.map(x=>x.channelId);const [actions,appeals,notices,trust]=await Promise.all([this.db.client.moderationAction.findMany({where:{OR:[{targetAccountId:accountId},{channelId:{in:channelIds}}]},orderBy:{createdAt:"desc"},take:100}),this.db.client.moderationAppeal.findMany({where:{accountId},include:{action:true},orderBy:{createdAt:"desc"},take:100}),this.db.client.notification.findMany({where:{accountId,type:"MODERATION"},orderBy:{createdAt:"desc"},take:100}),this.db.client.creatorTrustState.findMany({where:{channelId:{in:channelIds}}})]);return{actions,appeals,notices,trust};}
+            async listQueue(){return Promise.all([this.db.client.report.findMany({where:{status:{in:["OPEN","REVIEWING"]}},orderBy:{createdAt:"asc"},take:250}),this.db.client.moderationCase.findMany({where:{status:{in:["OPEN","REVIEWING"]}},include:{reports:true},orderBy:{createdAt:"asc"},take:250}),this.db.client.takedownRequest.findMany({where:{status:{in:["OPEN","REVIEWING"]}},orderBy:{createdAt:"asc"},take:250}),this.db.client.moderationAppeal.findMany({where:{status:{in:["OPEN","REVIEWING"]}},include:{action:true},orderBy:{createdAt:"asc"},take:250})]).then(([reports,cases,takedowns,appeals])=>({reports,cases,takedowns,appeals}));}
+            async updateCase(actor:string,id:string,input:unknown){const d=caseSchema.parse(input);return this.db.client.$transaction(async tx=>{const row=await tx.moderationCase.update({where:{id},data:{status:d.status,...(d.resolution?{resolution:d.resolution}:{}),...(["CLOSED","DISMISSED"].includes(d.status)?{closedAt:new Date()}:{})}});await this.audit.recordInTransaction(tx,{actorAccountId:actor,action:"MODERATION_CASE_UPDATED",entityType:"ModerationCase",entityId:id,reason:d.resolution,metadata:{status:d.status}});return row;});}
+            async act(actor:string,input:unknown){const d=actionSchema.parse(input);return this.db.client.$transaction(async tx=>{if(d.kind==="SUSPEND_ACCOUNT"){if(!d.targetAccountId)throw new Error("ACCOUNT_REQUIRED");await tx.account.update({where:{id:d.targetAccountId},data:{status:"SUSPENDED",authVersion:{increment:1}}});}if(d.kind==="SUSPEND_CHANNEL"){if(!d.channelId)throw new Error("CHANNEL_REQUIRED");await tx.channel.update({where:{id:d.channelId},data:{status:"SUSPENDED"}});}if(d.kind==="UNPUBLISH_VIDEO"||d.kind==="REMOVE_VIDEO"){if(!d.videoId)throw new Error("VIDEO_REQUIRED");await tx.video.update({where:{id:d.videoId},data:{status:d.kind==="REMOVE_VIDEO"?"REMOVED":"DRAFT",publishedAt:null}});}if(d.kind==="STRIKE"&&d.channelId){await tx.creatorTrustState.upsert({where:{channelId:d.channelId},update:{strikeCount:{increment:1},level:"RESTRICTED"},create:{channelId:d.channelId,strikeCount:1,level:"RESTRICTED"}});}const row=await tx.moderationAction.create({data:{actorAccountId:actor,...d}});if(d.targetAccountId)await tx.notification.create({data:{accountId:d.targetAccountId,type:"MODERATION",title:`Moderation action: ${d.kind}`,body:d.reason,data:{actionId:row.id,channelId:d.channelId??null,videoId:d.videoId??null}}});await this.audit.recordInTransaction(tx,{actorAccountId:actor,action:`MODERATION_${d.kind}`,entityType:"ModerationAction",entityId:row.id,reason:d.reason,metadata:{targetAccountId:d.targetAccountId??null,channelId:d.channelId??null,videoId:d.videoId??null}});return row;});}
+            async decideAppeal(actor:string,id:string,input:unknown){const d=appealDecisionSchema.parse(input);return this.db.client.$transaction(async tx=>{const row=await tx.moderationAppeal.update({where:{id},data:{status:d.status,resolution:d.resolution}});await this.audit.recordInTransaction(tx,{actorAccountId:actor,action:"MODERATION_APPEAL_UPDATED",entityType:"ModerationAppeal",entityId:id,reason:d.resolution,metadata:{status:d.status}});return row;});}
+            async decideTakedown(actor:string,id:string,input:unknown){const d=takedownDecisionSchema.parse(input);return this.db.client.$transaction(async tx=>{const row=await tx.takedownRequest.update({where:{id},data:d});await this.audit.recordInTransaction(tx,{actorAccountId:actor,action:"TAKEDOWN_UPDATED",entityType:"TakedownRequest",entityId:id,reason:d.resolution,metadata:{status:d.status}});return row;});}
+            async setTrust(actor:string,channelId:string,input:unknown){const d=trustSchema.parse(input);return this.db.client.$transaction(async tx=>{const row=await tx.creatorTrustState.upsert({where:{channelId},update:d,create:{channelId,...d}});await this.audit.recordInTransaction(tx,{actorAccountId:actor,action:"CREATOR_TRUST_UPDATED",entityType:"Channel",entityId:channelId,metadata:d});return row;});}
+            async settings(){const rows=await this.db.client.platformSetting.findMany({where:{namespace:"MODERATION",key:{in:["blockedTerms","newCreatorsRequireReview"]}}});const m=new Map(rows.map(x=>[x.key,x.value]));return{blockedTerms:Array.isArray(m.get("blockedTerms"))?m.get("blockedTerms") as string[]:[],newCreatorsRequireReview:m.get("newCreatorsRequireReview")===true};}
+            async updateSettings(actor:string,input:unknown){const d=settingsSchema.parse(input);await this.db.client.$transaction(async tx=>{for(const [key,value,type] of [["blockedTerms",d.blockedTerms,"JSON"],["newCreatorsRequireReview",d.newCreatorsRequireReview,"BOOLEAN"]] as const){await tx.platformSetting.upsert({where:{namespace_key:{namespace:"MODERATION",key}},update:{value,valueType:type},create:{namespace:"MODERATION",key,value,valueType:type}});}await this.audit.recordInTransaction(tx,{actorAccountId:actor,action:"MODERATION_SETTINGS_UPDATED",entityType:"PlatformSetting",entityId:"MODERATION",metadata:d});});return d;}
+            async textAllowed(text:string){const s=await this.settings();return !containsBlockedTerm(text,s.blockedTerms);}
+          }
+          EOF
+          cat > apps/api/src/trust/trust.controller.ts <<'EOF'
+          import { Body, Controller, Get, Inject, Param, Patch, Post, Put, Req, UseGuards } from "@nestjs/common";
+          import { AdminGuard } from "../admin/admin.guard.js";
+          import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+          import { TrustService } from "./trust.service.js";
+          @Controller("trust") @UseGuards(AuthGuard)
+          export class TrustController { constructor(@Inject(TrustService) private readonly trust:TrustService){} @Post("reports") report(@Req()r:AuthenticatedRequest,@Body()b:unknown){return this.trust.report(r.ayinAuth.accountId,b)} @Post("takedowns") takedown(@Req()r:AuthenticatedRequest,@Body()b:unknown){return this.trust.takedown(r.ayinAuth.accountId,b)} @Post("appeals") appeal(@Req()r:AuthenticatedRequest,@Body()b:unknown){return this.trust.appeal(r.ayinAuth.accountId,b)} @Get("creator/history") history(@Req()r:AuthenticatedRequest){return this.trust.creatorHistory(r.ayinAuth.accountId)} }
+          @Controller("admin/trust") @UseGuards(AuthGuard,AdminGuard)
+          export class AdminTrustController { constructor(@Inject(TrustService) private readonly trust:TrustService){} @Get("queue") queue(){return this.trust.listQueue()} @Get("settings") settings(){return this.trust.settings()} @Put("settings") updateSettings(@Req()r:AuthenticatedRequest,@Body()b:unknown){return this.trust.updateSettings(r.ayinAuth.accountId,b)} @Post("actions") act(@Req()r:AuthenticatedRequest,@Body()b:unknown){return this.trust.act(r.ayinAuth.accountId,b)} @Patch("cases/:id") updateCase(@Req()r:AuthenticatedRequest,@Param("id")id:string,@Body()b:unknown){return this.trust.updateCase(r.ayinAuth.accountId,id,b)} @Patch("appeals/:id") appeal(@Req()r:AuthenticatedRequest,@Param("id")id:string,@Body()b:unknown){return this.trust.decideAppeal(r.ayinAuth.accountId,id,b)} @Patch("takedowns/:id") takedown(@Req()r:AuthenticatedRequest,@Param("id")id:string,@Body()b:unknown){return this.trust.decideTakedown(r.ayinAuth.accountId,id,b)} @Put("channels/:id") setTrust(@Req()r:AuthenticatedRequest,@Param("id")id:string,@Body()b:unknown){return this.trust.setTrust(r.ayinAuth.accountId,id,b)} }
+          EOF
+          cat > apps/api/src/trust/trust.module.ts <<'EOF'
+          import { Module } from "@nestjs/common";
+          import { AdminModule } from "../admin/admin.module.js";
+          import { AuthModule } from "../auth/auth.module.js";
+          import { AdminTrustController, TrustController } from "./trust.controller.js";
+          import { TrustService } from "./trust.service.js";
+          @Module({imports:[AuthModule,AdminModule],controllers:[TrustController,AdminTrustController],providers:[TrustService],exports:[TrustService]}) export class TrustModule {}
+          EOF
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('apps/api/src/app.module.ts');s=p.read_text();s=s.replace('import { WatchModule } from "./watch/watch.module.js";','import { WatchModule } from "./watch/watch.module.js";\nimport { TrustModule } from "./trust/trust.module.js";').replace('    CommentsModule,\n','    CommentsModule,\n    TrustModule,\n');p.write_text(s)
+          p=Path('apps/web/src/app/admin/layout.tsx');s=p.read_text();needle='{ href: "/admin/revenue", label: "Revenue" },';
+          if needle in s:s=s.replace(needle,needle+'\n  { href: "/admin/trust", label: "Trust & Safety" },')
+          else:s=s.replace('{ href: "/admin/advertising", label: "Advertising" },','{ href: "/admin/advertising", label: "Advertising" },\n  { href: "/admin/trust", label: "Trust & Safety" },')
+          p.write_text(s)
+          PY
+          cat > apps/web/src/app/admin/trust/page.tsx <<'EOF'
+          import { apiFetch } from "../../../lib/api";
+          export default async function AdminTrustPage(){let data:any=null;try{data=await apiFetch("/admin/trust/queue");}catch{}return <main><h1>Trust &amp; Safety</h1><p>Moderation reports, takedowns, cases and appeals. Destructive actions require the protected API and are audited.</p><pre>{JSON.stringify(data,null,2)}</pre></main>}
+          EOF
+          cat > apps/web/src/app/studio/trust/page.tsx <<'EOF'
+          import { apiFetch } from "../../../lib/api";
+          export default async function StudioTrustPage(){let data:any=null;try{data=await apiFetch("/trust/creator/history");}catch{}return <main><h1>Trust &amp; Safety</h1><p>Your moderation notices, trust status and appeal history.</p><pre>{JSON.stringify(data,null,2)}</pre></main>}
+          EOF
+          cat > docs/MODERATION_RIGHTS_TRUST.md <<'EOF'
+          # Moderation, rights and creator trust
+          Task 24 keeps publishing UX simple while retaining the existing versioned `ContentRightsDeclaration`; channel context remains normalized through each declaration's immutable video-to-channel relationship.
+          Authenticated viewers can report videos/comments and submit copyright/takedown requests. Admin has queues for reports, moderation cases, takedowns and appeals, plus audited warn/strike/suspend/unpublish/remove actions. Creator-facing history exposes notices, actions, appeals and trust state.
+          Moderation settings include blocked-term hooks and `newCreatorsRequireReview`, whose default is false. Trust levels are NEW, STANDARD, TRUSTED and RESTRICTED. Destructive state changes and trust/settings changes are audit logged.
+          No external legal notice processor or automated copyright matching service is represented as configured.
+          EOF
+          corepack enable && corepack prepare pnpm@11.24.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm format
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps packages docs
+          git commit -m "feat: implement moderation rights and creator trust"
+          git push origin HEAD:task-24-moderation-rights-trust
