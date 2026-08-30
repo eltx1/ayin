@@ -138,7 +138,7 @@ export async function flushAnalytics(keepalive = false) {
 }
 
 export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
-  let lastProgressMs = 0;
+  let lastProgressMs: number | null = null;
   let started = false;
   return {
     emit(event: AyinPlayerAnalyticsEvent) {
@@ -158,8 +158,14 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           lastProgressMs = event.positionMs;
           trackAnalyticsEvent("VIDEO_SEEK", { ...common, positionMs: event.positionMs });
           break;
+        case "buffer":
+          trackAnalyticsEvent("VIDEO_BUFFER", { ...common, positionMs: event.positionMs });
+          break;
         case "progress_checkpoint": {
-          const delta = Math.max(0, Math.min(60_000, event.positionMs - lastProgressMs));
+          const delta =
+            lastProgressMs === null
+              ? Math.min(15_000, event.positionMs)
+              : Math.max(0, Math.min(60_000, event.positionMs - lastProgressMs));
           lastProgressMs = event.positionMs;
           trackAnalyticsEvent("VIDEO_PROGRESS", {
             ...common,
