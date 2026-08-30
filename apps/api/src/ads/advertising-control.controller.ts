@@ -35,7 +35,9 @@ const directEventSchema = z.object({
 
 @Controller("ads/direct")
 export class DirectAdController {
-  constructor(@Inject(AdvertisingControlService) private readonly advertising: AdvertisingControlService) {}
+  constructor(
+    @Inject(AdvertisingControlService) private readonly advertising: AdvertisingControlService,
+  ) {}
 
   @Get("decision")
   async decide(@Query() query: Record<string, unknown>) {
@@ -61,14 +63,19 @@ export class DirectAdController {
   }
 
   private invalid(code: string) {
-    return new HttpException({ error: { code, message: "Invalid direct advertising request." } }, 400);
+    return new HttpException(
+      { error: { code, message: "Invalid direct advertising request." } },
+      400,
+    );
   }
 }
 
 @Controller("admin/advertising")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminAdvertisingControlController {
-  constructor(@Inject(AdvertisingControlService) private readonly advertising: AdvertisingControlService) {}
+  constructor(
+    @Inject(AdvertisingControlService) private readonly advertising: AdvertisingControlService,
+  ) {}
 
   @Get("overview")
   async overview() {

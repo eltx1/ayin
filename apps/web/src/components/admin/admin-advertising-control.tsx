@@ -5,7 +5,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { apiBaseUrl } from "@/lib/api";
 
-type Placement = { id: string; key: string; name: string; enabled: boolean; inventoryFamily: string };
+type Placement = {
+  id: string;
+  key: string;
+  name: string;
+  enabled: boolean;
+  inventoryFamily: string;
+};
 type Advertiser = { id: string; name: string; status: string };
 type Campaign = { id: string; name: string; status: string; advertiser: { name: string } };
 type Overview = {
@@ -93,7 +99,10 @@ export function AdminAdvertisingControl() {
         <h2>Inventory</h2>
         <div style={{ display: "grid", gap: "0.5rem" }}>
           {overview?.placements.map((placement) => (
-            <div key={placement.id} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+            <div
+              key={placement.id}
+              style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}
+            >
               <strong>{placement.key}</strong>
               <span>{placement.inventoryFamily}</span>
               <span>{placement.enabled ? "Enabled" : "Disabled"}</span>
@@ -222,9 +231,9 @@ export function AdminAdvertisingControl() {
       <section>
         <h2>Creative API</h2>
         <p>
-          Video/display/native/VAST creative CRUD, approved references, asset URLs and activation are
-          available through the protected Admin Advertising API. This surface deliberately avoids inventing
-          production asset references.
+          Video/display/native/VAST creative CRUD, approved references, asset URLs and activation
+          are available through the protected Admin Advertising API. This surface deliberately
+          avoids inventing production asset references.
         </p>
       </section>
     </div>

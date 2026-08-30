@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-const decimalString = z.string().regex(/^\d+(?:\.\d{1,6})?$/).max(40);
+const decimalString = z
+  .string()
+  .regex(/^\d+(?:\.\d{1,6})?$/)
+  .max(40);
 
 export const directCampaignConfigSchema = z.object({
   priority: z.number().int().min(1).max(1000).default(100),
@@ -13,7 +16,15 @@ export const directCampaignConfigSchema = z.object({
   pacing: z.enum(["EVEN", "ASAP"]).default("EVEN"),
   targeting: z.object({
     placementKeys: z.array(z.string().trim().min(1).max(120)).default([]),
-    countries: z.array(z.string().trim().length(2).transform((value) => value.toUpperCase())).default([]),
+    countries: z
+      .array(
+        z
+          .string()
+          .trim()
+          .length(2)
+          .transform((value) => value.toUpperCase()),
+      )
+      .default([]),
     regions: z.array(z.string().trim().min(1).max(120)).default([]),
     devices: z.array(z.enum(["MOBILE", "DESKTOP", "TV"])).default([]),
     categories: z.array(z.string().trim().min(1).max(120)).default([]),
@@ -38,7 +49,13 @@ export const campaignCreateSchema = z.object({
   startsAt: z.coerce.date().nullable().default(null),
   endsAt: z.coerce.date().nullable().default(null),
   budget: decimalString.nullable().default(null),
-  currency: z.string().trim().length(3).transform((value) => value.toUpperCase()).nullable().default(null),
+  currency: z
+    .string()
+    .trim()
+    .length(3)
+    .transform((value) => value.toUpperCase())
+    .nullable()
+    .default(null),
   direct: directCampaignConfigSchema,
 });
 
@@ -79,7 +96,13 @@ export const directDecisionContextSchema = z.object({
   placementKey: z.string().trim().min(1).max(120),
   sessionId: z.string().trim().min(1).max(120),
   device: z.enum(["MOBILE", "DESKTOP", "TV"]),
-  country: z.string().trim().length(2).transform((value) => value.toUpperCase()).nullable().optional(),
+  country: z
+    .string()
+    .trim()
+    .length(2)
+    .transform((value) => value.toUpperCase())
+    .nullable()
+    .optional(),
   region: z.string().trim().min(1).max(120).nullable().optional(),
   category: z.string().trim().min(1).max(120).nullable().optional(),
   channelId: z.string().uuid().nullable().optional(),

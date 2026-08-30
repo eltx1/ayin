@@ -64,7 +64,9 @@ export class AdvertisingControlService {
   }
 
   async listPlacements() {
-    return this.database.client.adPlacement.findMany({ orderBy: [{ inventoryFamily: "asc" }, { key: "asc" }] });
+    return this.database.client.adPlacement.findMany({
+      orderBy: [{ inventoryFamily: "asc" }, { key: "asc" }],
+    });
   }
 
   async createPlacement(actorAccountId: string, input: unknown) {
@@ -127,7 +129,9 @@ export class AdvertisingControlService {
   }
 
   async listAdvertisers() {
-    return this.database.client.advertiser.findMany({ orderBy: [{ status: "asc" }, { name: "asc" }] });
+    return this.database.client.advertiser.findMany({
+      orderBy: [{ status: "asc" }, { name: "asc" }],
+    });
   }
 
   async createAdvertiser(actorAccountId: string, input: unknown) {
@@ -185,7 +189,10 @@ export class AdvertisingControlService {
       where: { campaignId: { in: campaigns.map((item) => item.id) } },
     });
     const byCampaign = new Map(configs.map((item) => [item.campaignId, item]));
-    return campaigns.map((campaign) => ({ ...campaign, direct: byCampaign.get(campaign.id) ?? null }));
+    return campaigns.map((campaign) => ({
+      ...campaign,
+      direct: byCampaign.get(campaign.id) ?? null,
+    }));
   }
 
   async createCampaign(actorAccountId: string, input: unknown) {
@@ -223,7 +230,9 @@ export class AdvertisingControlService {
 
   async updateCampaign(actorAccountId: string, campaignId: string, input: unknown) {
     const data = campaignPatchSchema.parse(input);
-    const current = await this.database.client.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+    const current = await this.database.client.campaign.findUniqueOrThrow({
+      where: { id: campaignId },
+    });
     const startsAt = data.startsAt !== undefined ? data.startsAt : current.startsAt;
     const endsAt = data.endsAt !== undefined ? data.endsAt : current.endsAt;
     this.assertDates(startsAt, endsAt);
@@ -283,7 +292,10 @@ export class AdvertisingControlService {
       where: { creativeId: { in: creatives.map((item) => item.id) } },
     });
     const byCreative = new Map(configs.map((item) => [item.creativeId, item]));
-    return creatives.map((creative) => ({ ...creative, direct: byCreative.get(creative.id) ?? null }));
+    return creatives.map((creative) => ({
+      ...creative,
+      direct: byCreative.get(creative.id) ?? null,
+    }));
   }
 
   async createCreative(actorAccountId: string, input: unknown) {
@@ -381,7 +393,8 @@ export class AdvertisingControlService {
   }
 
   async decideDirectAd(context: DirectDecisionContext) {
-    if (await this.isEmergencyKilled()) return { enabled: false as const, reason: "EMERGENCY_KILL_SWITCH" };
+    if (await this.isEmergencyKilled())
+      return { enabled: false as const, reason: "EMERGENCY_KILL_SWITCH" };
     const campaigns = await this.database.client.campaign.findMany({
       where: { status: "ACTIVE" },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -390,7 +403,9 @@ export class AdvertisingControlService {
 
     const campaignIds = campaigns.map((item) => item.id);
     const [configs, totalGroups, sessionGroups] = await Promise.all([
-      this.database.client.directCampaignConfig.findMany({ where: { campaignId: { in: campaignIds } } }),
+      this.database.client.directCampaignConfig.findMany({
+        where: { campaignId: { in: campaignIds } },
+      }),
       this.database.client.adEvent.groupBy({
         by: ["campaignId"],
         where: { campaignId: { in: campaignIds }, eventType: "IMPRESSION" },

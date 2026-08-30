@@ -34,7 +34,10 @@ function pacingAllows(candidate: DirectCampaignCandidate, now: Date) {
   if (!candidate.startsAt || !candidate.endsAt) return true;
   const totalMs = candidate.endsAt.getTime() - candidate.startsAt.getTime();
   if (totalMs <= 0) return false;
-  const elapsed = Math.max(0, Math.min(1, (now.getTime() - candidate.startsAt.getTime()) / totalMs));
+  const elapsed = Math.max(
+    0,
+    Math.min(1, (now.getTime() - candidate.startsAt.getTime()) / totalMs),
+  );
   const expected = candidate.impressionGoal * elapsed;
   const allowance = Math.max(1, Math.ceil(candidate.impressionGoal * 0.01));
   return candidate.totalImpressions <= expected + allowance;
@@ -48,7 +51,8 @@ export function isDirectCampaignEligible(
   if (candidate.status !== "ACTIVE") return false;
   if (candidate.startsAt && now < candidate.startsAt) return false;
   if (candidate.endsAt && now >= candidate.endsAt) return false;
-  if (candidate.frequencyCap > 0 && candidate.sessionImpressions >= candidate.frequencyCap) return false;
+  if (candidate.frequencyCap > 0 && candidate.sessionImpressions >= candidate.frequencyCap)
+    return false;
   if (!pacingAllows(candidate, now)) return false;
 
   const target = candidate.targeting;
@@ -71,6 +75,8 @@ export function chooseDirectCampaign(
   return (
     candidates
       .filter((candidate) => isDirectCampaignEligible(candidate, context, now))
-      .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id))[0] ?? null
+      .sort(
+        (left, right) => right.priority - left.priority || left.id.localeCompare(right.id),
+      )[0] ?? null
   );
 }
