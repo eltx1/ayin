@@ -195,10 +195,18 @@ export class AdvertisingControlService {
       where: { campaignId: { in: campaigns.map((item) => item.id) } },
     });
     const byCampaign = new Map(configs.map((item) => [item.campaignId, item]));
-    return campaigns.map((campaign) => ({
-      ...campaign,
-      direct: byCampaign.get(campaign.id) ?? null,
-    }));
+    return campaigns.map((campaign) => {
+      const direct = byCampaign.get(campaign.id);
+      return {
+        ...campaign,
+        direct: direct
+          ? {
+              ...direct,
+              impressionGoal: direct.impressionGoal === null ? null : Number(direct.impressionGoal),
+            }
+          : null,
+      };
+    });
   }
 
   async createCampaign(actorAccountId: string, input: unknown) {
@@ -401,6 +409,12 @@ export class AdvertisingControlService {
   async decideDirectAd(context: DirectDecisionContext) {
     if (await this.isEmergencyKilled())
       return { enabled: false as const, reason: "EMERGENCY_KILL_SWITCH" };
+    const placement = await this.database.client.adPlacement.findUnique({
+      where: { key: context.placementKey },
+      select: { enabled: true },
+    });
+    if (!placement?.enabled)
+      return { enabled: false as const, reason: "PLACEMENT_DISABLED" };
     const campaigns = await this.database.client.campaign.findMany({
       where: { status: "ACTIVE" },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
