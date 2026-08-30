@@ -127,7 +127,8 @@ class MainActivity : AppCompatActivity() {
             setOf(AYIN_ORIGIN_RULE),
         ) { _, message, sourceOrigin, isMainFrame, _ ->
             if (!isMainFrame || !isTrustedOrigin(sourceOrigin)) return@addWebMessageListener
-            handleBridgeMessage(message.data)
+            val data = message.data ?: return@addWebMessageListener
+            handleBridgeMessage(data)
         }
 
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
