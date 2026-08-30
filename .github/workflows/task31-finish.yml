@@ -1,0 +1,58 @@
+name: Task31 finish surfaces
+
+on:
+  push:
+    branches: [task-31-shorts-clips]
+    paths: [.github/workflows/task31-finish.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-31-shorts-clips
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('apps/web/src/components/upload/quick-upload.tsx')
+          s = p.read_text()
+          s = s.replace('import {\n  confirmQuickUpload,', 'import {\n  confirmQuickUpload,')
+          s = s.replace('  uploadQuickThumbnail,\n} from "@/lib/quick-upload";', '  uploadQuickThumbnail,\n  type VideoForm,\n} from "@/lib/quick-upload";')
+          s = s.replace('  const [commentsEnabled, setCommentsEnabled] = useState(true);\n', '  const [commentsEnabled, setCommentsEnabled] = useState(true);\n  const [videoForm, setVideoForm] = useState<VideoForm>("LONG_FORM");\n')
+          s = s.replace('        durationMs: result.durationSeconds ? Math.round(result.durationSeconds * 1000) : null,\n      });', '        durationMs: result.durationSeconds ? Math.round(result.durationSeconds * 1000) : null,\n        videoForm,\n      });')
+          s = s.replace('      scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt).toISOString() : null,\n    };', '      scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt).toISOString() : null,\n      videoForm,\n    };')
+          anchor = '''      <label className={styles.picker}>\n        <strong>{file ? file.name : "Choose your MP4"}</strong>'''
+          replacement = '''      <label>\n        <span>Video format</span>\n        <select\n          value={videoForm}\n          disabled={Boolean(videoId) || busy || published}\n          onChange={(event) => setVideoForm(event.target.value as VideoForm)}\n        >\n          <option value="LONG_FORM">Standard video</option>\n          <option value="CLIP">AYIN Clip</option>\n        </select>\n      </label>\n      <p className={styles.hint}>\n        Clips use the same direct MP4 upload and rights rules. Keep Clips within the platform duration limit; no music license is implied.\n      </p>\n\n      <label className={styles.picker}>\n        <strong>{file ? file.name : "Choose your MP4"}</strong>'''
+          s = s.replace(anchor, replacement)
+          p.write_text(s)
+
+          p = Path('apps/api/src/creator/studio.service.ts')
+          s = p.read_text()
+          s = s.replace('            visibility: true,\n            commentsEnabled: true,', '            visibility: true,\n            videoForm: true,\n            commentsEnabled: true,', 1)
+          s = s.replace('        visibility: true,\n        commentsEnabled: true,', '        visibility: true,\n        videoForm: true,\n        commentsEnabled: true,', 1)
+          p.write_text(s)
+
+          p = Path('apps/api/src/admin/admin-control.service.ts')
+          s = p.read_text()
+          marker = '          visibility: true,\n          commentsEnabled: true,\n          publishedAt: true,'
+          if marker in s:
+              s = s.replace(marker, '          visibility: true,\n          videoForm: true,\n          commentsEnabled: true,\n          publishedAt: true,', 1)
+          p.write_text(s)
+          PY
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --write apps/web/src/components/upload/quick-upload.tsx apps/web/src/lib/quick-upload.ts 'apps/web/src/app/(viewer)/clips/clips-feed.tsx' apps/api/src/creator/studio.service.ts apps/api/src/admin/admin-control.service.ts
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/web/src/components/upload/quick-upload.tsx apps/web/src/lib/quick-upload.ts 'apps/web/src/app/(viewer)/clips/clips-feed.tsx' apps/api/src/creator/studio.service.ts apps/api/src/admin/admin-control.service.ts
+          git commit -m "Task 31: complete Clips creator and admin surfaces"
+          git push
