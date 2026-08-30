@@ -71,7 +71,8 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.24.0 --activate
           pnpm install --frozen-lockfile
-          pnpm exec prettier --write packages/db/prisma/schema.prisma apps/api/src/media/upload-session-token.service.ts apps/api/src/media/media-upload.service.ts apps/api/src/admin/admin.module.ts apps/api/src/admin/admin-control.controller.ts apps/api/src/admin/admin-control.service.ts apps/api/src/admin/content-seeding.controller.ts apps/api/src/admin/content-seeding.service.ts
+          pnpm --filter @ayin/db exec prisma format
+          pnpm exec prettier --write apps/api/src/media/upload-session-token.service.ts apps/api/src/media/media-upload.service.ts apps/api/src/admin/admin.module.ts apps/api/src/admin/admin-control.controller.ts apps/api/src/admin/admin-control.service.ts apps/api/src/admin/content-seeding.controller.ts apps/api/src/admin/content-seeding.service.ts
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add packages/db/prisma/schema.prisma apps/api/src/media/upload-session-token.service.ts apps/api/src/media/media-upload.service.ts apps/api/src/admin/admin.module.ts apps/api/src/admin/admin-control.controller.ts apps/api/src/admin/admin-control.service.ts apps/api/src/admin/content-seeding.controller.ts apps/api/src/admin/content-seeding.service.ts
