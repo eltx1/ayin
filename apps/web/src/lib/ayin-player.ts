@@ -27,6 +27,7 @@ export type AyinPlayerAnalyticsEvent =
   | { type: "play"; videoId: string }
   | { type: "pause"; videoId: string; positionMs: number }
   | { type: "seek"; videoId: string; positionMs: number }
+  | { type: "buffer"; videoId: string; positionMs: number }
   | { type: "progress_checkpoint"; videoId: string; positionMs: number }
   | { type: "complete"; videoId: string }
   | { type: "next"; videoId: string }
