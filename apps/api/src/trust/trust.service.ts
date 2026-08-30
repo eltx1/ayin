@@ -45,7 +45,16 @@ export class TrustService {
   async takedown(accountId: string, input: unknown) {
     const d = takedownSchema.parse(input);
     if (d.videoId) await this.db.client.video.findUniqueOrThrow({ where: { id: d.videoId } });
-    return this.db.client.takedownRequest.create({ data: { requesterId: accountId, ...d } });
+    return this.db.client.takedownRequest.create({
+      data: {
+        requesterId: accountId,
+        claimantName: d.claimantName,
+        contactEmail: d.contactEmail,
+        rightsBasis: d.rightsBasis,
+        details: d.details,
+        ...(d.videoId ? { videoId: d.videoId } : {}),
+      },
+    });
   }
   async appeal(accountId: string, input: unknown) {
     const d = appealSchema.parse(input);
@@ -131,7 +140,7 @@ export class TrustService {
         action: "MODERATION_CASE_UPDATED",
         entityType: "ModerationCase",
         entityId: id,
-        reason: d.resolution,
+        ...(d.resolution ? { reason: d.resolution } : {}),
         metadata: { status: d.status },
       });
       return row;
@@ -165,7 +174,17 @@ export class TrustService {
           create: { channelId: d.channelId, strikeCount: 1, level: "RESTRICTED" },
         });
       }
-      const row = await tx.moderationAction.create({ data: { actorAccountId: actor, ...d } });
+      const row = await tx.moderationAction.create({
+        data: {
+          actorAccountId: actor,
+          kind: d.kind,
+          reason: d.reason,
+          ...(d.caseId ? { caseId: d.caseId } : {}),
+          ...(d.targetAccountId ? { targetAccountId: d.targetAccountId } : {}),
+          ...(d.channelId ? { channelId: d.channelId } : {}),
+          ...(d.videoId ? { videoId: d.videoId } : {}),
+        },
+      });
       if (d.targetAccountId)
         await tx.notification.create({
           data: {
@@ -227,10 +246,14 @@ export class TrustService {
   async setTrust(actor: string, channelId: string, input: unknown) {
     const d = trustSchema.parse(input);
     return this.db.client.$transaction(async (tx) => {
+      const trustData = {
+        level: d.level,
+        ...(d.reviewRequired === undefined ? {} : { reviewRequired: d.reviewRequired }),
+      };
       const row = await tx.creatorTrustState.upsert({
         where: { channelId },
-        update: d,
-        create: { channelId, ...d },
+        update: trustData,
+        create: { channelId, ...trustData },
       });
       await this.audit.recordInTransaction(tx, {
         actorAccountId: actor,
