@@ -55,7 +55,10 @@ export function AdminAdvertisingControl() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   const mutate = async (path: string, method: string, body?: unknown) => {
