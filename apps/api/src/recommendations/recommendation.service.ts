@@ -24,7 +24,7 @@ const playableVideoWhere = {
   },
 };
 
-interface Weights {
+export interface Weights {
   history: number;
   subscriptions: number;
   likes: number;
@@ -117,7 +117,10 @@ export class RecommendationService implements RecommendationServiceContract {
           reason: followed
             ? { code: "FOLLOWED_CHANNEL" as const, label: "From a channel you follow" }
             : affinity > 0
-              ? { code: "CHANNEL_AFFINITY" as const, label: "Because you watch this creator" }
+              ? {
+                  code: "CHANNEL_AFFINITY" as const,
+                  label: "Because you watch this creator",
+                }
               : { code: "SAFE_FALLBACK" as const, label: "Active Creator TV" },
         };
       })
@@ -350,16 +353,23 @@ export class RecommendationService implements RecommendationServiceContract {
     recent: number;
     personalized: boolean;
   }): RecommendationReason {
-    if (input.relatedChannel) return { code: "RELATED_CHANNEL", label: "More from this creator" };
-    if (input.followed) return { code: "FOLLOWED_CHANNEL", label: "From a channel you follow" };
+    if (input.relatedChannel)
+      return { code: "RELATED_CHANNEL", label: "More from this creator" };
+    if (input.followed)
+      return { code: "FOLLOWED_CHANNEL", label: "From a channel you follow" };
     if (input.likedChannel)
       return { code: "LIKED_CHANNEL", label: "Because you liked this creator" };
     if (input.completedChannel)
-      return { code: "COMPLETED_CHANNEL", label: "Because you finish videos from this creator" };
+      return {
+        code: "COMPLETED_CHANNEL",
+        label: "Because you finish videos from this creator",
+      };
     if (input.historyAffinity > 0)
       return { code: "CHANNEL_AFFINITY", label: "Because you watch this creator" };
-    if (!input.personalized) return { code: "SAFE_FALLBACK", label: "Popular and recent on AYIN" };
-    if (input.popularity >= input.recent) return { code: "POPULAR", label: "Popular on AYIN" };
+    if (!input.personalized)
+      return { code: "SAFE_FALLBACK", label: "Popular and recent on AYIN" };
+    if (input.popularity >= input.recent)
+      return { code: "POPULAR", label: "Popular on AYIN" };
     return { code: "RECENT", label: "Recently published" };
   }
 
