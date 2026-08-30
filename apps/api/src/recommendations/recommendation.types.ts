@@ -1,5 +1,5 @@
 export interface RecommendationContext {
-  limit?: number;
+  limit?: number | undefined;
 }
 
 export interface RecommendationReason {
