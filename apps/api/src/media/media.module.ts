@@ -13,6 +13,7 @@ import { loadMediaStorageConfig, type MediaStorageConfig } from "./media-storage
 import { MediaUploadController } from "./media-upload.controller.js";
 import { MediaUploadService } from "./media-upload.service.js";
 import { R2MediaStorageAdapter } from "./r2-media-storage.adapter.js";
+import { UploadRateLimiter } from "./upload-rate-limiter.js";
 import { UploadSessionTokenService } from "./upload-session-token.service.js";
 
 @Module({
@@ -29,6 +30,7 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
           : new DevelopmentMediaStorageAdapter(),
     },
     UploadSessionTokenService,
+    UploadRateLimiter,
     MediaUploadService,
   ],
   exports: [MEDIA_STORAGE_ADAPTER, MEDIA_STORAGE_CONFIG, MediaUploadService],
