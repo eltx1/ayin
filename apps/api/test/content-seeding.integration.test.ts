@@ -23,8 +23,10 @@ databaseDescribe("Task 30 controlled content seeding", () => {
 
   beforeAll(async () => {
     process.env.APP_ENV = "test";
-    process.env.AUTH_TOKEN_SECRET = "task-30-test-auth-secret-with-more-than-32-characters";
-    process.env.UPLOAD_SESSION_SECRET = "task-30-upload-secret-with-more-than-32-characters";
+    process.env.AUTH_TOKEN_SECRET =
+      "task-30-test-auth-secret-with-more-than-32-characters";
+    process.env.UPLOAD_SESSION_SECRET =
+      "task-30-upload-secret-with-more-than-32-characters";
     process.env.AYIN_E2E_STORAGE = "1";
     process.env.DATABASE_URL = testDatabaseUrl;
     process.env.WEB_ORIGIN = "http://localhost:3000";
@@ -51,7 +53,10 @@ databaseDescribe("Task 30 controlled content seeding", () => {
       payload: { name, email, password: "strong-pass-123" },
     });
     expect(response.statusCode).toBe(201);
-    return { cookie: cookiePair(response.headers["set-cookie"]), user: response.json().user };
+    return {
+      cookie: cookiePair(response.headers["set-cookie"]),
+      user: response.json().user,
+    };
   }
 
   it("imports validated rights metadata, uploads through the shared media abstraction and publishes", async () => {
@@ -131,9 +136,7 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     });
     expect(publish.statusCode).toBe(201);
     expect(publish.json().status).toBe("PUBLISHED");
-    expect(
-      await prisma.playlistItem.count({ where: { videoId: item.video.id } }),
-    ).toBe(1);
+    expect(await prisma.playlistItem.count({ where: { videoId: item.video.id } })).toBe(1);
   });
 
   it("rejects non-platform channels and safely rolls back unpublished batches", async () => {
@@ -192,9 +195,9 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     });
     expect(rolledBack.statusCode).toBe(201);
     expect(rolledBack.json().status).toBe("ROLLED_BACK");
-    expect(
-      (await prisma.video.findUniqueOrThrow({ where: { id: item.video.id } })).status,
-    ).toBe("REMOVED");
+    expect((await prisma.video.findUniqueOrThrow({ where: { id: item.video.id } })).status).toBe(
+      "REMOVED",
+    );
     expect(
       (await prisma.contentSeedItem.findUniqueOrThrow({ where: { id: item.id } })).status,
     ).toBe("ROLLED_BACK");
