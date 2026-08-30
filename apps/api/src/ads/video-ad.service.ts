@@ -100,6 +100,14 @@ export class VideoAdService {
   }
 
   async getDecision(videoId: string, origin: string | null) {
+    const killSwitch = await this.database.client.platformSetting.findUnique({
+      where: { namespace_key: { namespace: "ADVERTISING", key: "emergencyKillSwitch" } },
+      select: { value: true },
+    });
+    if (killSwitch?.value === true) {
+      return { enabled: false as const, reason: "EMERGENCY_KILL_SWITCH" as const };
+    }
+
     const video = await this.database.client.video.findFirst({
       where: { id: videoId, status: "PUBLISHED", visibility: { in: ["PUBLIC", "UNLISTED"] } },
       select: { id: true, channelId: true, durationMs: true },
