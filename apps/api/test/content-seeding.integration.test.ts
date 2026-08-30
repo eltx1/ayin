@@ -1,3 +1,4 @@
+// formatter diagnostic trigger
 import "reflect-metadata";
 
 import { createPrismaClient } from "@ayin/db";
