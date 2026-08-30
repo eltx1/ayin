@@ -74,6 +74,7 @@ enum MediaAssetKind {
   CHANNEL_AVATAR
   CHANNEL_BANNER
   CREATIVE
+  COMMUNITY_IMAGE
 }
 
 enum MediaAssetStatus {
@@ -125,6 +126,21 @@ enum ReactionType {
 }
 
 enum CommentStatus {
+  PUBLISHED
+  HIDDEN
+  REMOVED
+}
+
+enum CommunityPostType {
+  TEXT
+  IMAGE
+  POLL
+  VIDEO_SHARE
+}
+
+enum CommunityPostStatus {
+  DRAFT
+  SCHEDULED
   PUBLISHED
   HIDDEN
   REMOVED
@@ -300,6 +316,7 @@ model Account {
   auditLogs               AdminAuditLog[]            @relation("AdminAuditActor")
   assignedModerationCases ModerationCase[]           @relation("ModerationAssignee")
   contentSeedBatches      ContentSeedBatch[]
+  communityPosts          CommunityPost[]
 
   @@index([status, createdAt])
 }
@@ -315,16 +332,20 @@ model ViewerProfile {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  watchProgress   WatchProgress[]
-  watchHistory    WatchHistory[]
-  watchLaterItems WatchLaterItem[]
-  myListItems     MyListItem[]
-  subscriptions   Subscription[]
-  reactions       Reaction[]
-  comments        Comment[]
-  reports         Report[]
-  adEvents        AdEvent[]
+  account            Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  watchProgress      WatchProgress[]
+  watchHistory       WatchHistory[]
+  watchLaterItems    WatchLaterItem[]
+  myListItems        MyListItem[]
+  subscriptions      Subscription[]
+  reactions          Reaction[]
+  comments           Comment[]
+  reports            Report[]
+  adEvents           AdEvent[]
+  communityReactions CommunityPostReaction[]
+  communityComments  CommunityPostComment[]
+  communityPollVotes CommunityPollVote[]
+  communityReports   CommunityPostReport[]
 
   @@unique([accountId, slug])
   @@index([accountId, isDefault])
@@ -355,6 +376,7 @@ model Channel {
   earningsEntries    EarningsLedgerEntry[]
   payouts            Payout[]
   contentSeedBatches ContentSeedBatch[]
+  communityPosts     CommunityPost[]
 
   @@index([status, createdAt])
 }
@@ -423,6 +445,7 @@ model Video {
   adEvents           AdEvent[]
   earningsEntries    EarningsLedgerEntry[]
   contentSeedItem    ContentSeedItem?
+  communityShares    CommunityPost[]            @relation("CommunitySharedVideo")
 
   @@index([channelId, status, publishedAt])
   @@index([status, visibility, publishedAt])
@@ -447,9 +470,10 @@ model MediaAsset {
   updatedAt   DateTime         @updatedAt
   removedAt   DateTime?
 
-  video     Video?     @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  channel   Channel?   @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  creatives Creative[]
+  video         Video?         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  channel       Channel?       @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  creatives     Creative[]
+  communityPost CommunityPost? @relation("CommunityImageAsset")
 
   @@index([videoId, kind, status])
   @@index([channelId, kind])
@@ -788,10 +812,14 @@ model Campaign {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  advertiser      Advertiser            @relation(fields: [advertiserId], references: [id], onDelete: Restrict)
-  creatives       Creative[]
-  adEvents        AdEvent[]
-  earningsEntries EarningsLedgerEntry[]
+  advertiser         Advertiser              @relation(fields: [advertiserId], references: [id], onDelete: Restrict)
+  creatives          Creative[]
+  adEvents           AdEvent[]
+  communityReactions CommunityPostReaction[]
+  communityComments  CommunityPostComment[]
+  communityPollVotes CommunityPollVote[]
+  communityReports   CommunityPostReport[]
+  earningsEntries    EarningsLedgerEntry[]
 
   @@index([advertiserId, status])
   @@index([status, startsAt, endsAt])
@@ -957,4 +985,125 @@ model ContentSeedItem {
   video Video            @relation(fields: [videoId], references: [id], onDelete: Cascade)
 
   @@index([batchId, status])
+}
+
+model CommunityPost {
+  id                 String              @id @default(uuid()) @db.Uuid
+  channelId          String              @db.Uuid
+  authorAccountId    String              @db.Uuid
+  type               CommunityPostType
+  status             CommunityPostStatus @default(DRAFT)
+  body               String?             @db.Text
+  imageAssetId       String?             @unique @db.Uuid
+  sharedVideoId      String?             @db.Uuid
+  scheduledPublishAt DateTime?
+  publishedAt        DateTime?
+  notifiedAt         DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  removedAt          DateTime?
+
+  channel     Channel                 @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      Account                 @relation(fields: [authorAccountId], references: [id], onDelete: Restrict)
+  imageAsset  MediaAsset?             @relation("CommunityImageAsset", fields: [imageAssetId], references: [id], onDelete: SetNull)
+  sharedVideo Video?                  @relation("CommunitySharedVideo", fields: [sharedVideoId], references: [id], onDelete: SetNull)
+  pollOptions CommunityPollOption[]
+  pollVotes   CommunityPollVote[]
+  reactions   CommunityPostReaction[]
+  comments    CommunityPostComment[]
+  reports     CommunityPostReport[]
+
+  @@index([channelId, status, publishedAt])
+  @@index([status, scheduledPublishAt])
+  @@index([authorAccountId, createdAt])
+}
+
+model CommunityPollOption {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @db.Uuid
+  label     String   @db.VarChar(160)
+  position  Int
+  createdAt DateTime @default(now())
+
+  post  CommunityPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  votes CommunityPollVote[]
+
+  @@unique([postId, position])
+}
+
+model CommunityPollVote {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @db.Uuid
+  optionId  String   @db.Uuid
+  profileId String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post       CommunityPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  option     CommunityPollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  profile    ViewerProfile       @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  campaign   Campaign?           @relation(fields: [campaignId], references: [id])
+  campaignId String?             @db.Uuid
+
+  @@unique([postId, profileId])
+  @@index([optionId])
+}
+
+model CommunityPostReaction {
+  id        String       @id @default(uuid()) @db.Uuid
+  postId    String       @db.Uuid
+  profileId String       @db.Uuid
+  type      ReactionType @default(LIKE)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  post       CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  profile    ViewerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  campaign   Campaign?     @relation(fields: [campaignId], references: [id])
+  campaignId String?       @db.Uuid
+
+  @@unique([postId, profileId])
+  @@index([postId, type])
+}
+
+model CommunityPostComment {
+  id              String        @id @default(uuid()) @db.Uuid
+  postId          String        @db.Uuid
+  authorProfileId String        @db.Uuid
+  parentId        String?       @db.Uuid
+  body            String        @db.Text
+  status          CommentStatus @default(PUBLISHED)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  removedAt       DateTime?
+
+  post          CommunityPost          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorProfile ViewerProfile          @relation(fields: [authorProfileId], references: [id], onDelete: Cascade)
+  parent        CommunityPostComment?  @relation("CommunityCommentThread", fields: [parentId], references: [id], onDelete: SetNull)
+  replies       CommunityPostComment[] @relation("CommunityCommentThread")
+  campaign      Campaign?              @relation(fields: [campaignId], references: [id])
+  campaignId    String?                @db.Uuid
+
+  @@index([postId, status, createdAt])
+  @@index([parentId, createdAt])
+}
+
+model CommunityPostReport {
+  id                String       @id @default(uuid()) @db.Uuid
+  postId            String       @db.Uuid
+  reporterProfileId String       @db.Uuid
+  reason            ReportReason
+  details           String?      @db.Text
+  status            ReportStatus @default(OPEN)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  resolvedAt        DateTime?
+
+  post            CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reporterProfile ViewerProfile @relation(fields: [reporterProfileId], references: [id], onDelete: Cascade)
+  campaign        Campaign?     @relation(fields: [campaignId], references: [id])
+  campaignId      String?       @db.Uuid
+
+  @@index([status, createdAt])
+  @@index([postId, status])
 }
