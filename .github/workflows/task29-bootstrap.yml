@@ -1,0 +1,30 @@
+name: Task29 bootstrap
+
+on:
+  push:
+    branches: [task-29-e2e-launch-checklist]
+    paths: [.github/workflows/task29-bootstrap.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-29-e2e-launch-checklist
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          pnpm add -Dw @playwright/test@1.55.0
+          pnpm exec prettier --write package.json pnpm-lock.yaml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add package.json pnpm-lock.yaml
+          git diff --cached --quiet || git commit -m "Task 29: add Playwright dependency"
+          git push
