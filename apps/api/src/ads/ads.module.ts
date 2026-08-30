@@ -8,6 +8,15 @@ import {
   DirectAdController,
 } from "./advertising-control.controller.js";
 import { AdvertisingControlService } from "./advertising-control.service.js";
+import {
+  AdminGamDiagnosticsController,
+  GamClientConfigurationController,
+} from "./gam-production.controller.js";
+import {
+  createGamProductionConfig,
+  GAM_PRODUCTION_CONFIG,
+  GamProductionService,
+} from "./gam-production.service.js";
 import { AdminPageAdController, PageAdController } from "./page-ad.controller.js";
 import { PageAdService } from "./page-ad.service.js";
 import { AdminVideoAdController, VideoAdController } from "./video-ad.controller.js";
@@ -22,8 +31,16 @@ import { VideoAdService } from "./video-ad.service.js";
     AdminPageAdController,
     DirectAdController,
     AdminAdvertisingControlController,
+    GamClientConfigurationController,
+    AdminGamDiagnosticsController,
   ],
-  providers: [VideoAdService, PageAdService, AdvertisingControlService],
-  exports: [VideoAdService, PageAdService, AdvertisingControlService],
+  providers: [
+    VideoAdService,
+    PageAdService,
+    AdvertisingControlService,
+    GamProductionService,
+    { provide: GAM_PRODUCTION_CONFIG, useFactory: createGamProductionConfig },
+  ],
+  exports: [VideoAdService, PageAdService, AdvertisingControlService, GamProductionService],
 })
 export class AdsModule {}
