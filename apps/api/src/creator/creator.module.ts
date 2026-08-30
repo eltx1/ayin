@@ -6,6 +6,8 @@ import { MediaModule } from "../media/media.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { CreatorChannelController, PublicChannelController } from "./channel.controller.js";
 import { ChannelService } from "./channel.service.js";
+import { PublicClipsController } from "./clips.controller.js";
+import { ClipsService } from "./clips.service.js";
 import { CREATOR_TV_AD_BREAK_HOOK, NoopCreatorTvAdBreakHook } from "./creator-tv-ad-break.hook.js";
 import { CreatorTvController, PublicCreatorTvController } from "./creator-tv.controller.js";
 import { CreatorTvService } from "./creator-tv.service.js";
@@ -26,6 +28,7 @@ import { StudioService } from "./studio.service.js";
     QuickUploadController,
     StudioController,
     PublicChannelController,
+    PublicClipsController,
     CreatorChannelController,
     PublicPlaylistController,
     CreatorPlaylistCollectionController,
@@ -37,6 +40,7 @@ import { StudioService } from "./studio.service.js";
     QuickUploadService,
     StudioService,
     ChannelService,
+    ClipsService,
     PlaylistService,
     CreatorTvService,
     { provide: CREATOR_TV_AD_BREAK_HOOK, useClass: NoopCreatorTvAdBreakHook },

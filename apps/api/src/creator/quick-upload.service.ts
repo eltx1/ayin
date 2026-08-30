@@ -35,6 +35,7 @@ export interface DraftDetailsInput {
   visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE";
   commentsEnabled?: boolean;
   scheduledPublishAt?: Date | null;
+  videoForm?: "LONG_FORM" | "CLIP";
 }
 
 export interface CreateQuickDraftInput {
@@ -43,6 +44,7 @@ export interface CreateQuickDraftInput {
   sizeBytes: number;
   mimeType: string;
   durationMs?: number | null;
+  videoForm?: "LONG_FORM" | "CLIP";
 }
 
 function normalizeTitle(value: string): string {
@@ -79,6 +81,23 @@ export class QuickUploadService {
       throw new QuickUploadError("TITLE_TOO_LONG", "Keep the video title under 200 characters.");
     }
     await this.assertOwner(accountId, input.channelId);
+    const videoForm = input.videoForm ?? "LONG_FORM";
+    if (videoForm === "CLIP") {
+      const clipsEnabled = (await this.settings.get("clipsEnabled")) as boolean;
+      const clipsMaxDurationMs = (await this.settings.get("clipsMaxDurationMs")) as number;
+      if (!clipsEnabled)
+        throw new QuickUploadError(
+          "CLIPS_DISABLED",
+          "AYIN Clips uploads are currently disabled.",
+          409,
+        );
+      if (input.durationMs && input.durationMs > clipsMaxDurationMs) {
+        throw new QuickUploadError(
+          "CLIP_TOO_LONG",
+          `Clips must be ${Math.floor(clipsMaxDurationMs / 1000)} seconds or shorter.`,
+        );
+      }
+    }
 
     const channelSettings = await this.database.client.channelSettings.findUnique({
       where: { channelId: input.channelId },
@@ -95,6 +114,7 @@ export class QuickUploadService {
         status: "DRAFT",
         visibility: channelSettings?.defaultVideoVisibility ?? "PUBLIC",
         commentsEnabled: channelSettings?.defaultCommentsEnabled ?? true,
+        videoForm,
         durationMs:
           input.durationMs && Number.isSafeInteger(input.durationMs) && input.durationMs > 0
             ? input.durationMs
@@ -109,6 +129,7 @@ export class QuickUploadService {
         visibility: true,
         commentsEnabled: true,
         durationMs: true,
+        videoForm: true,
       },
     });
 
@@ -469,6 +490,7 @@ export class QuickUploadService {
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
       ...(input.commentsEnabled !== undefined ? { commentsEnabled: input.commentsEnabled } : {}),
+      ...(input.videoForm !== undefined ? { videoForm: input.videoForm } : {}),
       ...(input.scheduledPublishAt !== undefined
         ? { scheduledPublishAt: input.scheduledPublishAt }
         : {}),

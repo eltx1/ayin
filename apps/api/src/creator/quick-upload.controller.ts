@@ -27,6 +27,7 @@ const detailsSchema = z.object({
   visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
   commentsEnabled: z.boolean().optional(),
   scheduledPublishAt: z.string().datetime().nullable().optional(),
+  videoForm: z.enum(["LONG_FORM", "CLIP"]).optional(),
 });
 const createDraftSchema = z.object({
   channelId: z.string().uuid(),
@@ -34,6 +35,7 @@ const createDraftSchema = z.object({
   sizeBytes: z.number().int().positive(),
   mimeType: z.string().trim().min(1).max(255),
   durationMs: z.number().int().positive().nullable().optional(),
+  videoForm: z.enum(["LONG_FORM", "CLIP"]).default("LONG_FORM"),
 });
 const publishSchema = detailsSchema.extend({ rightsConfirmed: z.boolean() });
 const thumbnailAuthorizeSchema = z.object({
@@ -163,6 +165,7 @@ export class QuickUploadController {
     if (input.description !== undefined) details.description = input.description;
     if (input.visibility !== undefined) details.visibility = input.visibility;
     if (input.commentsEnabled !== undefined) details.commentsEnabled = input.commentsEnabled;
+    if (input.videoForm !== undefined) details.videoForm = input.videoForm;
     if (input.scheduledPublishAt !== undefined) {
       details.scheduledPublishAt = input.scheduledPublishAt
         ? new Date(input.scheduledPublishAt)

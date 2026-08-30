@@ -47,6 +47,11 @@ enum VideoContentType {
   DOCUMENTARY
 }
 
+enum VideoForm {
+  LONG_FORM
+  CLIP
+}
+
 enum ContentSeedBatchStatus {
   DRAFT
   READY
@@ -391,6 +396,7 @@ model Video {
   title              String           @db.VarChar(200)
   description        String?          @db.Text
   contentType        VideoContentType @default(CREATOR_VIDEO)
+  videoForm          VideoForm        @default(LONG_FORM)
   status             VideoStatus      @default(DRAFT)
   visibility         VideoVisibility  @default(PUBLIC)
   commentsEnabled    Boolean          @default(true)
@@ -420,6 +426,7 @@ model Video {
 
   @@index([channelId, status, publishedAt])
   @@index([status, visibility, publishedAt])
+  @@index([videoForm, status, visibility, publishedAt])
   @@index([scheduledPublishAt, status])
 }
 
