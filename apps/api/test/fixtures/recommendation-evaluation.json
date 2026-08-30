@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "description": "Deterministic offline fixtures for AYIN heuristic recommendation evaluation. No production viewer data is included.",
+  "cases": [
+    {
+      "name": "subscription affinity outranks generic recent content",
+      "signals": { "subscribedChannelIds": ["channel-followed"], "historyChannelCounts": {} },
+      "candidates": [
+        { "id": "followed-video", "channelId": "channel-followed", "ageDays": 5, "popularity": 0.2 },
+        { "id": "generic-video", "channelId": "channel-generic", "ageDays": 0, "popularity": 0.3 }
+      ],
+      "expectedTopId": "followed-video",
+      "expectedReason": "FOLLOWED_CHANNEL"
+    },
+    {
+      "name": "cold start is deterministic fallback",
+      "signals": { "subscribedChannelIds": [], "historyChannelCounts": {} },
+      "candidates": [
+        { "id": "recent-video", "channelId": "channel-a", "ageDays": 0, "popularity": 0.2 },
+        { "id": "older-video", "channelId": "channel-b", "ageDays": 30, "popularity": 0.2 }
+      ],
+      "expectedTopId": "recent-video",
+      "expectedReason": "SAFE_FALLBACK"
+    },
+    {
+      "name": "not interested removes candidate before ranking",
+      "signals": { "subscribedChannelIds": ["channel-followed"], "historyChannelCounts": {} },
+      "excludedVideoIds": ["blocked-video"],
+      "candidates": [
+        { "id": "blocked-video", "channelId": "channel-followed", "ageDays": 0, "popularity": 1 },
+        { "id": "allowed-video", "channelId": "channel-other", "ageDays": 1, "popularity": 0.4 }
+      ],
+      "expectedTopId": "allowed-video"
+    }
+  ]
+}
