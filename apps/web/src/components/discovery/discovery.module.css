@@ -27,6 +27,8 @@
 
 .rowBlock {
   min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 28rem;
 }
 
 .emptyCard {
@@ -129,6 +131,12 @@
   }
   50% {
     background-position: 100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonTitle {
+    animation: none;
   }
 }
 

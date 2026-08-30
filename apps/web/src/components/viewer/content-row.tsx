@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useId, useRef } from "react";
+import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
 
 import styles from "./content-row.module.css";
 
@@ -18,14 +18,23 @@ export function ContentRow({ anchorId, children, eyebrow, rowId, title }: Conten
 
   function scroll(direction: -1 | 1) {
     const scroller = scrollerReference.current;
-    if (!scroller) {
-      return;
-    }
+    if (!scroller) return;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     scroller.scrollBy({
       behavior: reduceMotion ? "auto" : "smooth",
       left: scroller.clientWidth * 0.82 * direction,
     });
+  }
+
+  function onScrollerKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key === "PageUp") {
+      event.preventDefault();
+      scroll(-1);
+    } else if (event.key === "PageDown") {
+      event.preventDefault();
+      scroll(1);
+    }
   }
 
   return (
@@ -56,7 +65,14 @@ export function ContentRow({ anchorId, children, eyebrow, rowId, title }: Conten
           </button>
         </div>
       </div>
-      <div className={styles.scroller} ref={scrollerReference}>
+      <div
+        aria-label={`${title} content`}
+        className={styles.scroller}
+        onKeyDown={onScrollerKeyDown}
+        ref={scrollerReference}
+        role="region"
+        tabIndex={0}
+      >
         {children}
       </div>
     </section>

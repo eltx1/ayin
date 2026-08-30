@@ -2,6 +2,12 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const sessionCookiePrefix = "ayin_session=";
+const cacheablePublicPrefixes = [
+  "/public/discovery",
+  "/public/channels",
+  "/public/videos",
+  "/public/playlists",
+];
 
 export function usesCookieSession(request: Pick<FastifyRequest, "headers">): boolean {
   if (request.headers.authorization?.startsWith("Bearer ")) return false;
@@ -28,11 +34,27 @@ export function isAllowedCookieMutationOrigin(
   }
 }
 
-export function applyApiSecurityHeaders(reply: FastifyReply): void {
+export function cacheControlForRequest(request: Pick<FastifyRequest, "method" | "url">): string {
+  const cacheable = cacheablePublicPrefixes.some(
+    (prefix) =>
+      request.url === prefix ||
+      request.url.startsWith(`${prefix}/`) ||
+      request.url.startsWith(`${prefix}?`),
+  );
+  if (request.method.toUpperCase() === "GET" && cacheable) {
+    return "public, max-age=30, s-maxage=60, stale-while-revalidate=120";
+  }
+  return "no-store";
+}
+
+export function applyApiSecurityHeaders(
+  reply: FastifyReply,
+  request?: Pick<FastifyRequest, "method" | "url">,
+): void {
   reply.header("x-content-type-options", "nosniff");
   reply.header("x-frame-options", "DENY");
   reply.header("referrer-policy", "strict-origin-when-cross-origin");
   reply.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
   reply.header("cross-origin-resource-policy", "same-site");
-  reply.header("cache-control", "no-store");
+  reply.header("cache-control", request ? cacheControlForRequest(request) : "no-store");
 }

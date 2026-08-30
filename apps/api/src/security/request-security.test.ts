@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  cacheControlForRequest,
   isAllowedCookieMutationOrigin,
   isUnsafeMethod,
   usesCookieSession,
@@ -77,5 +78,15 @@ describe("request security", () => {
     expect(isUnsafeMethod("HEAD")).toBe(false);
     expect(usesCookieSession(cookieRequest as never)).toBe(true);
     expect(usesCookieSession(bearerRequest as never)).toBe(false);
+  });
+
+  it("only allows short shared caching for known public catalog reads", () => {
+    expect(cacheControlForRequest({ method: "GET", url: "/public/discovery/home" } as never)).toBe(
+      "public, max-age=30, s-maxage=60, stale-while-revalidate=120",
+    );
+    expect(cacheControlForRequest({ method: "GET", url: "/auth/me" } as never)).toBe("no-store");
+    expect(cacheControlForRequest({ method: "POST", url: "/public/discovery/home" } as never)).toBe(
+      "no-store",
+    );
   });
 });

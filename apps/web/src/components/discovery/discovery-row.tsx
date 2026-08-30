@@ -9,6 +9,7 @@ import {
   type MediaCardTone,
   type MediaCardVariant,
 } from "@/components/viewer/media-card";
+import { mediaAssetUrl } from "@/lib/channel";
 import {
   fetchDiscoveryRow,
   fetchMyAyinSection,
@@ -51,7 +52,7 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
   const variant = row.source === "CREATOR_TV" ? "landscape" : "poster";
 
   return (
-    <div className={styles.rowBlock}>
+    <div aria-busy={loading} className={styles.rowBlock}>
       <ContentRow rowId={`${scope}-${row.key}`} title={row.title}>
         {items.length > 0 ? (
           items.map((item) => (
@@ -83,10 +84,16 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
           >
             {loading ? "Loading…" : "Load more"}
           </button>
-          {error ? <span className={styles.errorText}>{error}</span> : null}
+          {error ? (
+            <span aria-live="polite" className={styles.errorText} role="status">
+              {error}
+            </span>
+          ) : null}
         </div>
       ) : error ? (
-        <p className={styles.errorText}>{error}</p>
+        <p aria-live="polite" className={styles.errorText} role="status">
+          {error}
+        </p>
       ) : null}
     </div>
   );
@@ -97,8 +104,10 @@ function DiscoveryCard({ item, variant }: { item: DiscoveryItem; variant: MediaC
     ? `Resume at ${formatPosition(item.progress.positionMs)}`
     : null;
   const meta = [item.meta, progress].filter(Boolean).join(" · ");
+  const artworkUrl = item.artworkObjectKey ? mediaAssetUrl(item.artworkObjectKey) : null;
   return (
     <MediaCard
+      {...(artworkUrl ? { artworkUrl } : {})}
       href={item.href}
       kicker={item.kicker}
       {...(meta ? { meta } : {})}

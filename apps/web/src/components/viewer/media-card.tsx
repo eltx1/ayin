@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import styles from "./media-card.module.css";
@@ -6,6 +7,7 @@ export type MediaCardVariant = "poster" | "landscape";
 export type MediaCardTone = 1 | 2 | 3 | 4 | 5;
 
 interface MediaCardProperties {
+  artworkUrl?: string;
   badge?: string;
   href: string;
   kicker?: string;
@@ -23,6 +25,7 @@ function mediaFocusId(variant: MediaCardVariant, href: string, title: string) {
 }
 
 export function MediaCard({
+  artworkUrl,
   badge,
   href,
   kicker,
@@ -31,16 +34,30 @@ export function MediaCard({
   tone = 1,
   variant = "poster",
 }: MediaCardProperties) {
+  const imageSizes = variant === "landscape" ? "(max-width: 720px) 72vw, 352px" : "176px";
+
   return (
     <Link
-      aria-label={title}
+      aria-label={meta ? `${title}, ${meta}` : title}
       className={`${styles.card} ${styles[variant]}`}
       data-tv-focus-id={mediaFocusId(variant, href, title)}
       data-tv-focusable="true"
       href={href}
     >
       <div className={styles.art} data-tone={tone}>
-        <span aria-hidden="true" className={styles.signal} />
+        {artworkUrl ? (
+          <Image
+            alt=""
+            className={styles.artwork}
+            fill
+            loading="lazy"
+            sizes={imageSizes}
+            src={artworkUrl}
+            unoptimized
+          />
+        ) : (
+          <span aria-hidden="true" className={styles.signal} />
+        )}
         {badge ? <span className={styles.badge}>{badge}</span> : null}
       </div>
       <div className={styles.copy}>
