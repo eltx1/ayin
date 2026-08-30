@@ -353,10 +353,8 @@ export class RecommendationService implements RecommendationServiceContract {
     recent: number;
     personalized: boolean;
   }): RecommendationReason {
-    if (input.relatedChannel)
-      return { code: "RELATED_CHANNEL", label: "More from this creator" };
-    if (input.followed)
-      return { code: "FOLLOWED_CHANNEL", label: "From a channel you follow" };
+    if (input.relatedChannel) return { code: "RELATED_CHANNEL", label: "More from this creator" };
+    if (input.followed) return { code: "FOLLOWED_CHANNEL", label: "From a channel you follow" };
     if (input.likedChannel)
       return { code: "LIKED_CHANNEL", label: "Because you liked this creator" };
     if (input.completedChannel)
@@ -366,10 +364,8 @@ export class RecommendationService implements RecommendationServiceContract {
       };
     if (input.historyAffinity > 0)
       return { code: "CHANNEL_AFFINITY", label: "Because you watch this creator" };
-    if (!input.personalized)
-      return { code: "SAFE_FALLBACK", label: "Popular and recent on AYIN" };
-    if (input.popularity >= input.recent)
-      return { code: "POPULAR", label: "Popular on AYIN" };
+    if (!input.personalized) return { code: "SAFE_FALLBACK", label: "Popular and recent on AYIN" };
+    if (input.popularity >= input.recent) return { code: "POPULAR", label: "Popular on AYIN" };
     return { code: "RECENT", label: "Recently published" };
   }
 
