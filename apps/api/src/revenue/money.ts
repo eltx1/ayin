@@ -4,7 +4,7 @@ export function parseMoneyMicros(value: string): bigint {
   const match = /^(-?)(\d{1,14})(?:\.(\d{1,6}))?$/.exec(value.trim());
   if (!match) throw new Error("INVALID_MONEY");
   const sign = match[1] === "-" ? -1n : 1n;
-  const whole = BigInt(match[2]);
+  const whole = BigInt(match[2]!);
   const fraction = BigInt((match[3] ?? "").padEnd(6, "0"));
   return sign * (whole * MONEY_SCALE + fraction);
 }
