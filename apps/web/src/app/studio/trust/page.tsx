@@ -1,6 +1,6 @@
 import { apiFetch } from "../../../lib/api";
 export default async function StudioTrustPage() {
-  let data: any = null;
+  let data: unknown = null;
   try {
     data = await apiFetch("/trust/creator/history");
   } catch {}
