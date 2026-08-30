@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { PageAdSlot } from "@/components/ads/page-ad-slot";
 import { CommentsPanel } from "@/components/comments/comments-panel";
-import { AdEnabledAyinPlayer } from "@/components/player/ad-enabled-ayin-player";
+import { AnalyticsAyinPlayer } from "@/components/player/analytics-ayin-player";
 import { VideoSocialActions } from "@/components/social/video-social-actions";
 import { apiBaseUrl } from "@/lib/api";
 import { type PublicPlaybackResponse } from "@/lib/ayin-player";
@@ -38,7 +38,7 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
 
   return (
     <main className={styles.page}>
-      <AdEnabledAyinPlayer
+      <AnalyticsAyinPlayer
         captions={captions}
         chapters={data.video.chapters}
         durationMs={data.video.durationMs}
