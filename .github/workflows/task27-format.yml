@@ -1,0 +1,34 @@
+name: Task 27 format
+
+on:
+  push:
+    branches:
+      - task-27-security-hardening
+    paths:
+      - .github/workflows/task27-format.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-27-security-hardening
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          python3 scripts/task27_patch.py
+          pnpm install --frozen-lockfile
+          pnpm format
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Task 27: apply security hardening fixes" || exit 0
+          git push origin HEAD:task-27-security-hardening
