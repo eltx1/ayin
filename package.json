@@ -19,7 +19,7 @@
     "dev:api": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run dev",
     "dev:web": "corepack pnpm packages:build && corepack pnpm --filter @ayin/web run dev",
     "format": "prettier --write .",
-    "format:check": "prettier --write apps/api/test/content-seeding.integration.test.ts && cat apps/api/test/content-seeding.integration.test.ts && exit 1",
+    "format:check": "prettier --check .",
     "lint": "corepack pnpm --recursive --if-present run lint",
     "packages:build": "corepack pnpm --filter './packages/*' --workspace-concurrency=1 run build",
     "test": "corepack pnpm --recursive --if-present run test",
