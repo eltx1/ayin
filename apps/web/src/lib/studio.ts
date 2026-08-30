@@ -47,6 +47,17 @@ export type StudioOverview = {
   };
 };
 
+export type StudioAnalytics = {
+  periodDays: number;
+  refresh: "query-time";
+  views: number;
+  watchTimeMs: number;
+  averageViewDurationMs: number;
+  completionRate: number;
+  subscribers: number;
+  topVideos: Array<{ videoId: string; title: string; views: number }>;
+};
+
 export type StudioComment = {
   id: string;
   body: string;
@@ -74,6 +85,10 @@ async function studioFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getStudioOverview(): Promise<StudioOverview> {
   return studioFetch("/creator/studio/overview");
+}
+
+export function getStudioAnalytics(days = 28): Promise<StudioAnalytics> {
+  return studioFetch(`/creator/studio/analytics?days=${encodeURIComponent(String(days))}`);
 }
 
 export async function getStudioContent(filters?: {
