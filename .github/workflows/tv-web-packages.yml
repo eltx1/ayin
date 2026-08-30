@@ -1,0 +1,32 @@
+name: TV web package validation
+
+on:
+  pull_request:
+    paths:
+      - "platforms/tizen/**"
+      - "platforms/webos/**"
+      - "apps/web/src/lib/tv-platform-runtime.ts"
+      - "apps/web/src/lib/tv-platform-runtime.test.ts"
+      - "apps/web/src/components/platform/tv-platform-runtime.tsx"
+      - "scripts/validate-tv-packages.mjs"
+      - ".github/workflows/tv-web-packages.yml"
+  push:
+    branches: [main]
+    paths:
+      - "platforms/tizen/**"
+      - "platforms/webos/**"
+      - "apps/web/src/lib/tv-platform-runtime.ts"
+      - "apps/web/src/lib/tv-platform-runtime.test.ts"
+      - "apps/web/src/components/platform/tv-platform-runtime.tsx"
+      - "scripts/validate-tv-packages.mjs"
+      - ".github/workflows/tv-web-packages.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/validate-tv-packages.mjs
