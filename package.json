@@ -23,6 +23,7 @@
     "lint": "corepack pnpm --recursive --if-present run lint",
     "packages:build": "corepack pnpm --filter './packages/*' --workspace-concurrency=1 run build",
     "test": "corepack pnpm --recursive --if-present run test",
+    "test:e2e": "playwright test",
     "test:integration": "corepack pnpm --filter @ayin/db run test:integration && corepack pnpm --filter @ayin/api run test:integration",
     "typecheck": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run typecheck && corepack pnpm --filter @ayin/web run typecheck"
   },
