@@ -19,25 +19,31 @@ jobs:
 
           p=Path('apps/web/src/components/player/ayin-player.tsx')
           s=p.read_text()
-          s=s.replace('''            onPause={() => {\n              setPlaying(false);''','''            onPause={() => {\n              setPlaying(false);''')
-          s=s.replace('''            onPlay={() => {\n              setPlaying(true);\n              analytics.emit({ type: "play", videoId });\n            }}\n            onTimeUpdate''','''            onPlay={() => {\n              setPlaying(true);\n              analytics.emit({ type: "play", videoId });\n            }}\n            onWaiting={() => {\n              analytics.emit({ type: "buffer", videoId, positionMs });\n            }}\n            onStalled={() => {\n              analytics.emit({ type: "buffer", videoId, positionMs });\n            }}\n            onTimeUpdate''')
+          if 'onWaiting={() =>' not in s:
+              s=s.replace('''            onPlay={() => {\n              setPlaying(true);\n              analytics.emit({ type: "play", videoId });\n            }}\n            onTimeUpdate''','''            onPlay={() => {\n              setPlaying(true);\n              analytics.emit({ type: "play", videoId });\n            }}\n            onWaiting={() => {\n              analytics.emit({ type: "buffer", videoId, positionMs });\n            }}\n            onStalled={() => {\n              analytics.emit({ type: "buffer", videoId, positionMs });\n            }}\n            onTimeUpdate''')
           p.write_text(s)
 
           p=Path('apps/web/src/components/upload/quick-upload.tsx')
           s=p.read_text()
-          s=s.replace('''import { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";''','''import { trackAnalyticsEvent } from "@/lib/analytics";\nimport { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";''')
-          s=s.replace('''      const draft = await createQuickDraft({''','''      trackAnalyticsEvent("UPLOAD_START", { channelId: identity.channel.id });\n      const draft = await createQuickDraft({''')
-          s=s.replace('''      await confirmQuickUpload(draft.video.id);\n      setUploadComplete(true);''','''      await confirmQuickUpload(draft.video.id);\n      trackAnalyticsEvent("UPLOAD_COMPLETE", {\n        channelId: identity.channel.id,\n        videoId: draft.video.id,\n      });\n      setUploadComplete(true);''')
-          s=s.replace('''      setPublished(true);\n      setMessage(''','''      trackAnalyticsEvent("PUBLISH", {\n        channelId: identity?.channel.id,\n        videoId,\n        metadata: { scheduled: result.video.status === "SCHEDULED" },\n      });\n      setPublished(true);\n      setMessage(''')
+          if 'from "@/lib/analytics"' not in s:
+              s=s.replace('''import { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";''','''import { trackAnalyticsEvent } from "@/lib/analytics";\nimport { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";''')
+          if 'trackAnalyticsEvent("UPLOAD_START"' not in s:
+              s=s.replace('''      const draft = await createQuickDraft({''','''      trackAnalyticsEvent("UPLOAD_START", { channelId: identity.channel.id });\n      const draft = await createQuickDraft({''')
+          if 'trackAnalyticsEvent("UPLOAD_COMPLETE"' not in s:
+              s=s.replace('''      await confirmQuickUpload(draft.video.id);\n      setUploadComplete(true);''','''      await confirmQuickUpload(draft.video.id);\n      trackAnalyticsEvent("UPLOAD_COMPLETE", {\n        channelId: identity.channel.id,\n        videoId: draft.video.id,\n      });\n      setUploadComplete(true);''')
+          if 'trackAnalyticsEvent("PUBLISH"' not in s:
+              s=s.replace('''      setPublished(true);\n      setMessage(''','''      trackAnalyticsEvent("PUBLISH", {\n        ...(identity ? { channelId: identity.channel.id } : {}),\n        videoId,\n        metadata: { scheduled: result.video.status === "SCHEDULED" },\n      });\n      setPublished(true);\n      setMessage(''')
           p.write_text(s)
 
           p=Path('apps/web/src/components/creator-tv/creator-tv-player.tsx')
           s=p.read_text()
           s=s.replace('''import { useCallback, useMemo, useState } from "react";''','''import { useCallback, useEffect, useMemo, useState } from "react";''')
-          s=s.replace('''import { apiBaseUrl } from "@/lib/api";''','''import { trackAnalyticsEvent } from "@/lib/analytics";\nimport { apiBaseUrl } from "@/lib/api";''')
+          if 'from "@/lib/analytics"' not in s:
+              s=s.replace('''import { apiBaseUrl } from "@/lib/api";''','''import { trackAnalyticsEvent } from "@/lib/analytics";\nimport { apiBaseUrl } from "@/lib/api";''')
           marker='''  const current = data.schedule.nowPlaying;\n  const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);'''
-          repl='''  const current = data.schedule.nowPlaying;\n  useEffect(() => {\n    if (!current) return;\n    trackAnalyticsEvent("TV_START", {\n      channelId: data.channel.id,\n      videoId: current.video.id,\n    });\n  }, [current?.occurrenceKey, current?.video.id, data.channel.id]);\n  const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);'''
-          s=s.replace(marker,repl)
+          if 'trackAnalyticsEvent("TV_START"' not in s:
+              repl='''  const current = data.schedule.nowPlaying;\n  useEffect(() => {\n    if (!current) return;\n    trackAnalyticsEvent("TV_START", {\n      channelId: data.channel.id,\n      videoId: current.video.id,\n    });\n  }, [current?.occurrenceKey, current?.video.id, data.channel.id]);\n  const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);'''
+              s=s.replace(marker,repl)
           p.write_text(s)
           PY
       - uses: actions/setup-node@v4
@@ -50,5 +56,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add apps/web/src/components/player/ayin-player.tsx apps/web/src/components/upload/quick-upload.tsx apps/web/src/components/creator-tv/creator-tv-player.tsx apps/api/src/analytics apps/web/src/lib/analytics.ts apps/web/src/lib/video-ads.ts apps/web/src/components apps/web/src/app packages/db/prisma
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m "feat: complete Task 22 event instrumentation"
+          git pull --rebase origin task-22-analytics-pipeline
           git push origin HEAD:task-22-analytics-pipeline
