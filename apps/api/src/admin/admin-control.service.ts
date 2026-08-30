@@ -355,6 +355,7 @@ export class AdminControlService {
           description: true,
           status: true,
           visibility: true,
+          videoForm: true,
           commentsEnabled: true,
           publishedAt: true,
           updatedAt: true,

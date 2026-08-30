@@ -1,6 +1,8 @@
 import { apiBaseUrl, readApiError } from "@/lib/api";
 import type { UploadSession } from "@/lib/direct-video-upload";
 
+export type VideoForm = "LONG_FORM" | "CLIP";
+
 export interface QuickDraftResponse {
   video: {
     id: string;
@@ -10,6 +12,7 @@ export interface QuickDraftResponse {
     visibility: "PUBLIC" | "UNLISTED" | "PRIVATE";
     commentsEnabled: boolean;
     durationMs: number | null;
+    videoForm: VideoForm;
   };
   uploadSession: UploadSession;
 }
@@ -20,6 +23,7 @@ export interface QuickVideoDetails {
   visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE";
   commentsEnabled?: boolean;
   scheduledPublishAt?: string | null;
+  videoForm?: VideoForm;
 }
 
 export async function createQuickDraft(input: {
@@ -27,6 +31,7 @@ export async function createQuickDraft(input: {
   title: string;
   file: File;
   durationMs: number | null;
+  videoForm?: VideoForm;
 }): Promise<QuickDraftResponse> {
   return apiJson<QuickDraftResponse>("/creator/videos/drafts", "POST", {
     channelId: input.channelId,
@@ -34,6 +39,7 @@ export async function createQuickDraft(input: {
     sizeBytes: input.file.size,
     mimeType: "video/mp4",
     durationMs: input.durationMs,
+    videoForm: input.videoForm ?? "LONG_FORM",
   });
 }
 

@@ -16,6 +16,7 @@ import {
   publishQuickVideo,
   saveQuickVideoDetails,
   uploadQuickThumbnail,
+  type VideoForm,
 } from "@/lib/quick-upload";
 import { titleFromFilename } from "@/lib/title-from-filename";
 import { inspectVideoFile, type VideoInspectionResult } from "@/lib/video-inspection";
@@ -33,6 +34,7 @@ export function QuickUpload() {
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<Visibility>("PUBLIC");
   const [commentsEnabled, setCommentsEnabled] = useState(true);
+  const [videoForm, setVideoForm] = useState<VideoForm>("LONG_FORM");
   const [scheduledPublishAt, setScheduledPublishAt] = useState("");
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -103,6 +105,7 @@ export function QuickUpload() {
         title: nextTitle,
         file: selected,
         durationMs: result.durationSeconds ? Math.round(result.durationSeconds * 1000) : null,
+        videoForm,
       });
       setVideoId(draft.video.id);
       setVisibility(draft.video.visibility);
@@ -202,6 +205,7 @@ export function QuickUpload() {
       visibility,
       commentsEnabled,
       scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt).toISOString() : null,
+      videoForm,
     };
   }
 
@@ -215,6 +219,22 @@ export function QuickUpload() {
           uploads the video straight to Cloudflare R2.
         </p>
       </div>
+
+      <label>
+        <span>Video format</span>
+        <select
+          value={videoForm}
+          disabled={Boolean(videoId) || busy || published}
+          onChange={(event) => setVideoForm(event.target.value as VideoForm)}
+        >
+          <option value="LONG_FORM">Standard video</option>
+          <option value="CLIP">AYIN Clip</option>
+        </select>
+      </label>
+      <p className={styles.hint}>
+        Clips use the same direct MP4 upload and rights rules. Keep Clips within the platform
+        duration limit; no music license is implied.
+      </p>
 
       <label className={styles.picker}>
         <strong>{file ? file.name : "Choose your MP4"}</strong>
