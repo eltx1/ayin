@@ -12,24 +12,33 @@ import {
 } from "@nestjs/common";
 import { AdminGuard } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { TrustRateLimiter } from "./trust-rate-limiter.js";
 import { TrustService } from "./trust.service.js";
+
 @Controller("trust")
 @UseGuards(AuthGuard)
 export class TrustController {
-  constructor(@Inject(TrustService) private readonly trust: TrustService) {}
+  constructor(
+    @Inject(TrustService) private readonly trust: TrustService,
+    @Inject(TrustRateLimiter) private readonly rateLimiter: TrustRateLimiter,
+  ) {}
   @Post("reports") report(@Req() r: AuthenticatedRequest, @Body() b: unknown) {
+    this.rateLimiter.consume(`report:${r.ayinAuth.accountId}`, 10);
     return this.trust.report(r.ayinAuth.accountId, b);
   }
   @Post("takedowns") takedown(@Req() r: AuthenticatedRequest, @Body() b: unknown) {
+    this.rateLimiter.consume(`takedown:${r.ayinAuth.accountId}`, 5);
     return this.trust.takedown(r.ayinAuth.accountId, b);
   }
   @Post("appeals") appeal(@Req() r: AuthenticatedRequest, @Body() b: unknown) {
+    this.rateLimiter.consume(`appeal:${r.ayinAuth.accountId}`, 10);
     return this.trust.appeal(r.ayinAuth.accountId, b);
   }
   @Get("creator/history") history(@Req() r: AuthenticatedRequest) {
     return this.trust.creatorHistory(r.ayinAuth.accountId);
   }
 }
+
 @Controller("admin/trust")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminTrustController {

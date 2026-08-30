@@ -6,6 +6,10 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { z } from "zod";
 
 import { AppModule } from "./app.module.js";
+import {
+  applyApiSecurityHeaders,
+  isAllowedCookieMutationOrigin,
+} from "./security/request-security.js";
 
 const apiEnvironmentSchema = z.object({
   API_HOST: z.string().min(1).default("127.0.0.1"),
@@ -22,6 +26,19 @@ async function bootstrap(): Promise<void> {
     allowedHeaders: ["authorization", "content-type", "x-ayin-auth-transport"],
     credentials: true,
     origin: environment.CORS_ORIGIN,
+  });
+
+  const fastify = app.getHttpAdapter().getInstance();
+  fastify.addHook("onRequest", async (request, reply) => {
+    applyApiSecurityHeaders(reply);
+    if (!isAllowedCookieMutationOrigin(request, environment.CORS_ORIGIN)) {
+      await reply.code(403).send({
+        error: {
+          code: "CSRF_ORIGIN_REJECTED",
+          message: "This authenticated mutation did not come from the configured AYIN web origin.",
+        },
+      });
+    }
   });
 
   await app.listen({ host: environment.API_HOST, port: environment.PORT });
