@@ -15,7 +15,9 @@ export class UnconfiguredAyinLensSearchProvider implements AyinLensSearchProvide
     return false;
   }
 
-  async search(_query: string, _limit: number): Promise<SearchResult[]> {
+  async search(query: string, limit: number): Promise<SearchResult[]> {
+    void query;
+    void limit;
     return [];
   }
 }
