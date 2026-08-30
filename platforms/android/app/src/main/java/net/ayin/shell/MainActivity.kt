@@ -44,6 +44,7 @@ class MainActivity : AppCompatActivity() {
             webChromeClient = AyinChromeClient()
         }
         setContentView(webView)
+        webView.requestFocus()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 when {
@@ -93,13 +94,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
+            if (event.action == KeyEvent.ACTION_DOWN) emitRemoteKey("BACK")
+            if (event.action == KeyEvent.ACTION_UP) onBackPressedDispatcher.onBackPressed()
+            return true
+        }
+
         if (event.action == KeyEvent.ACTION_DOWN) {
-            val key = remoteKey(event.keyCode)
+            val key = mediaRemoteKey(event.keyCode)
             if (key != null) {
                 emitRemoteKey(key)
                 return true
             }
         }
+
+        // D-pad/Enter intentionally flow through to WebView so the shared web TV UI receives
+        // standard Arrow*/Enter keyboard events and owns focus traversal.
         return super.dispatchKeyEvent(event)
     }
 
@@ -143,13 +153,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun remoteKey(keyCode: Int): String? = when (keyCode) {
-        KeyEvent.KEYCODE_DPAD_UP -> "UP"
-        KeyEvent.KEYCODE_DPAD_DOWN -> "DOWN"
-        KeyEvent.KEYCODE_DPAD_LEFT -> "LEFT"
-        KeyEvent.KEYCODE_DPAD_RIGHT -> "RIGHT"
-        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> "SELECT"
-        KeyEvent.KEYCODE_BACK -> "BACK"
+    private fun mediaRemoteKey(keyCode: Int): String? = when (keyCode) {
         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> "PLAY_PAUSE"
         KeyEvent.KEYCODE_MEDIA_PLAY -> "PLAY"
         KeyEvent.KEYCODE_MEDIA_PAUSE -> "PAUSE"
@@ -163,7 +167,7 @@ class MainActivity : AppCompatActivity() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url
             if (uri.scheme == "https" && uri.host == "ayin.stream") return false
-            startActivity(Intent(Intent.ACTION_VIEW, uri))
+            openExternalUri(uri)
             return true
         }
     }
@@ -196,6 +200,13 @@ class MainActivity : AppCompatActivity() {
         customViewCallback?.onCustomViewHidden()
         customViewCallback = null
         webView.visibility = View.VISIBLE
+        webView.requestFocus()
+    }
+
+    private fun openExternalUri(uri: Uri) {
+        if (uri.scheme !in setOf("https", "http", "mailto", "tel")) return
+        val intent = Intent(Intent.ACTION_VIEW, uri)
+        if (intent.resolveActivity(packageManager) != null) startActivity(intent)
     }
 
     private inner class AyinJavascriptBridge {
@@ -205,7 +216,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun openExternal(url: String) {
             val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
-            runOnUiThread { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+            runOnUiThread { openExternalUri(uri) }
         }
 
         @JavascriptInterface
