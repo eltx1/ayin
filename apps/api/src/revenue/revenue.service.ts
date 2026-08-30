@@ -468,13 +468,17 @@ export class RevenueService {
   async listPayouts(query: { channelId?: string; status?: string; page?: number; take?: number }) {
     const page = Math.max(1, query.page ?? 1);
     const take = Math.max(1, Math.min(100, query.take ?? 25));
-    const where: Prisma.PayoutWhereInput = {
-      ...(query.channelId ? { channelId: query.channelId } : {}),
-      ...(query.status &&
-      ["PENDING", "PROCESSING", "PAID", "FAILED", "CANCELLED"].includes(query.status)
-        ? { status: query.status as Prisma.EnumPayoutStatusFilter["equals"] }
-        : {}),
-    };
+    const where: Prisma.PayoutWhereInput = {};
+    if (query.channelId) where.channelId = query.channelId;
+    if (
+      query.status === "PENDING" ||
+      query.status === "PROCESSING" ||
+      query.status === "PAID" ||
+      query.status === "FAILED" ||
+      query.status === "CANCELLED"
+    ) {
+      where.status = query.status;
+    }
     const [total, items] = await Promise.all([
       this.database.client.payout.count({ where }),
       this.database.client.payout.findMany({
