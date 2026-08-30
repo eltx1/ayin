@@ -1,4 +1,10 @@
-export type NativeShellPlatform = "android" | "android-tv" | "google-tv" | "fire-tv" | "tizen" | "webos";
+export type NativeShellPlatform =
+  | "android"
+  | "android-tv"
+  | "google-tv"
+  | "fire-tv"
+  | "tizen"
+  | "webos";
 
 export type NativeRemoteKey =
   | "UP"
@@ -66,7 +72,8 @@ export function normalizePlatform(value: string): NativeShellPlatform | null {
 export function normalizeAyinDeepLink(raw: string): string | null {
   try {
     const url = new URL(raw);
-    if (url.protocol === "https:" && url.hostname === "ayin.stream") return `${url.pathname}${url.search}${url.hash}`;
+    if (url.protocol === "https:" && url.hostname === "ayin.stream")
+      return `${url.pathname}${url.search}${url.hash}`;
     if (url.protocol !== "ayin:") return null;
     const route = `/${url.hostname}${url.pathname}`.replace(/\/{2,}/g, "/");
     return `${route}${url.search}${url.hash}`;
