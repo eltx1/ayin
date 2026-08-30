@@ -5,6 +5,7 @@ import { AdsModule } from "./ads/ads.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { AppController } from "./app.controller.js";
 import { AuthModule } from "./auth/auth.module.js";
+import { ClipsModule } from "./clips/clips.module.js";
 import { CommentsModule } from "./comments/comments.module.js";
 import { CreatorModule } from "./creator/creator.module.js";
 import { DatabaseModule } from "./database/database.module.js";
@@ -34,6 +35,7 @@ import { TrustModule } from "./trust/trust.module.js";
     SocialModule,
     CommentsModule,
     TrustModule,
+    ClipsModule,
   ],
   controllers: [AppController],
 })
