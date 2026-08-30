@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { MediaStorageUnavailableError } from "./media-storage.adapter.js";
 import { MediaUploadError, MediaUploadService } from "./media-upload.service.js";
+import { UploadRateLimiter } from "./upload-rate-limiter.js";
 
 const createSessionSchema = z.object({
   channelId: z.string().uuid(),
@@ -27,10 +28,14 @@ const completeSchema = sessionSchema.extend({
 @Controller("media/uploads")
 @UseGuards(AuthGuard)
 export class MediaUploadController {
-  constructor(@Inject(MediaUploadService) private readonly uploads: MediaUploadService) {}
+  constructor(
+    @Inject(MediaUploadService) private readonly uploads: MediaUploadService,
+    @Inject(UploadRateLimiter) private readonly rateLimiter: UploadRateLimiter,
+  ) {}
 
   @Post("sessions")
   async createSession(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    this.rateLimiter.consume(`create:${request.ayinAuth.accountId}`);
     const parsed = createSessionSchema.safeParse(body);
     if (!parsed.success) {
       throw this.httpError(
