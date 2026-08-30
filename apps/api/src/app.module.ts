@@ -6,6 +6,7 @@ import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { AppController } from "./app.controller.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { CommentsModule } from "./comments/comments.module.js";
+import { CommunityModule } from "./community/community.module.js";
 import { CreatorModule } from "./creator/creator.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { DiscoveryModule } from "./discovery/discovery.module.js";
@@ -33,6 +34,7 @@ import { TrustModule } from "./trust/trust.module.js";
     SearchModule,
     SocialModule,
     CommentsModule,
+    CommunityModule,
     TrustModule,
   ],
   controllers: [AppController],
