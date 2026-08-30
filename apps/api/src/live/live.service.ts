@@ -285,6 +285,7 @@ function hashKey(value: string) {
 function stripSecretHash<T extends { streamKeyHash: string | null }>(
   stream: T,
 ): Omit<T, "streamKeyHash"> {
-  const { streamKeyHash: _streamKeyHash, ...safe } = stream;
+  const { streamKeyHash, ...safe } = stream;
+  void streamKeyHash;
   return safe;
 }
