@@ -13,9 +13,9 @@ export type SeedRightsBasis = "OWNED" | "LICENSED" | "AUTHORIZED" | "PUBLIC_DOMA
 
 export interface ContentSeedInputItem {
   title: string;
-  description?: string | null;
+  description?: string | null | undefined;
   contentType: SeedContentType;
-  visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE";
+  visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE" | undefined;
   rightsBasis: SeedRightsBasis;
   sourceNotes: string;
 }
@@ -139,7 +139,11 @@ export class ContentSeedingService {
   async createUploadSession(
     actorAccountId: string,
     itemId: string,
-    input: { sizeBytes: number; mimeType: string; durationMs?: number | null },
+    input: {
+      sizeBytes: number;
+      mimeType: string;
+      durationMs?: number | null | undefined;
+    },
   ) {
     const item = await this.item(itemId);
     if (item.batch.status === "ROLLED_BACK" || item.status === "PUBLISHED") {
@@ -160,7 +164,10 @@ export class ContentSeedingService {
       }),
       this.database.client.video.update({
         where: { id: item.videoId },
-        data: { status: "UPLOADING", durationMs: input.durationMs ?? undefined },
+        data: {
+          status: "UPLOADING",
+          ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
+        },
       }),
       this.database.client.contentSeedItem.update({
         where: { id: itemId },
