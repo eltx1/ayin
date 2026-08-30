@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import { trackAnalyticsEvent } from "@/lib/analytics";
 
@@ -20,14 +20,9 @@ export function SearchAnalytics({
   return null;
 }
 
-export function SearchResultLinkAnalytics({ children }: { children: React.ReactNode }) {
+export function SearchResultLinkAnalytics({ children }: { children: ReactNode }) {
   return (
-    <span
-      onClick={() => trackAnalyticsEvent("SEARCH_CLICK")}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") trackAnalyticsEvent("SEARCH_CLICK");
-      }}
-    >
+    <span style={{ display: "contents" }} onClick={() => trackAnalyticsEvent("SEARCH_CLICK")}>
       {children}
     </span>
   );
