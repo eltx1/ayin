@@ -2,7 +2,11 @@ import type { NativeRemoteKey, NativeShellPlatform } from "./native-shell-bridge
 
 type TizenInputDevice = {
   registerKey?: (name: string) => void;
-  registerKeyBatch?: (names: string[], success?: () => void, error?: (error: unknown) => void) => void;
+  registerKeyBatch?: (
+    names: string[],
+    success?: () => void,
+    error?: (error: unknown) => void,
+  ) => void;
 };
 
 type TizenApplication = {
@@ -19,7 +23,13 @@ declare global {
   }
 }
 
-const TIZEN_MEDIA_KEYS = ["MediaPlayPause", "MediaPlay", "MediaPause", "MediaRewind", "MediaFastForward"];
+const TIZEN_MEDIA_KEYS = [
+  "MediaPlayPause",
+  "MediaPlay",
+  "MediaPause",
+  "MediaRewind",
+  "MediaFastForward",
+];
 
 const KEY_BY_CODE: Record<number, NativeRemoteKey> = {
   13: "SELECT",
@@ -56,7 +66,9 @@ export function detectTvWebPlatform(target: Window = window): NativeShellPlatfor
   return null;
 }
 
-export function normalizeTvRemoteEvent(event: Pick<KeyboardEvent, "key" | "keyCode">): NativeRemoteKey | null {
+export function normalizeTvRemoteEvent(
+  event: Pick<KeyboardEvent, "key" | "keyCode">,
+): NativeRemoteKey | null {
   return KEY_BY_NAME[event.key] ?? KEY_BY_CODE[event.keyCode] ?? null;
 }
 
@@ -78,7 +90,9 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   };
   const onWebOsLaunch = () => {
     target.dispatchEvent(
-      new CustomEvent("ayin:native-lifecycle", { detail: { state: "relaunch", platform: "webos" } }),
+      new CustomEvent("ayin:native-lifecycle", {
+        detail: { state: "relaunch", platform: "webos" },
+      }),
     );
   };
 
