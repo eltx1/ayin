@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 import styles from "./comments.module.css";
 
@@ -58,6 +59,7 @@ export function CommentsPanel({ videoId, enabled }: { videoId: string; enabled: 
       setMessage(payload?.error?.message ?? "Sign in to join the conversation.");
       return;
     }
+    trackAnalyticsEvent("COMMENT", { videoId });
     setBody("");
     await load();
   }
