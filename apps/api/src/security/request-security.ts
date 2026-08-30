@@ -35,12 +35,13 @@ export function isAllowedCookieMutationOrigin(
 }
 
 export function cacheControlForRequest(request: Pick<FastifyRequest, "method" | "url">): string {
-  if (
-    request.method.toUpperCase() === "GET" &&
-    cacheablePublicPrefixes.some((prefix) =>
-      request.url === prefix ? true : request.url.startsWith(`${prefix}/`) || request.url.startsWith(`${prefix}?`),
-    )
-  ) {
+  const cacheable = cacheablePublicPrefixes.some(
+    (prefix) =>
+      request.url === prefix ||
+      request.url.startsWith(`${prefix}/`) ||
+      request.url.startsWith(`${prefix}?`),
+  );
+  if (request.method.toUpperCase() === "GET" && cacheable) {
     return "public, max-age=30, s-maxage=60, stale-while-revalidate=120";
   }
   return "no-store";
