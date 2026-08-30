@@ -23,7 +23,7 @@ AYIN_API_HEALTH_URL="${AYIN_API_HEALTH_URL:-http://127.0.0.1:4000/health}"
 AYIN_HEALTH_RETRIES="${AYIN_HEALTH_RETRIES:-12}"
 AYIN_HEALTH_DELAY_SECONDS="${AYIN_HEALTH_DELAY_SECONDS:-2}"
 
-for required in git corepack pnpm pm2 curl; do
+for required in git corepack pm2 curl; do
   command -v "$required" >/dev/null 2>&1 || {
     echo "error: required command '$required' is missing" >&2
     exit 69
@@ -59,6 +59,11 @@ git -C "$release_dir" checkout --detach "$GIT_SHA"
 
 cd "$release_dir"
 corepack enable
+corepack prepare pnpm@11.24.0 --activate
+command -v pnpm >/dev/null 2>&1 || {
+  echo "error: pnpm was not activated by Corepack" >&2
+  exit 69
+}
 pnpm install --frozen-lockfile
 pnpm db:generate
 
