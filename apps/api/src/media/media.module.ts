@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { DevelopmentMediaStorageAdapter } from "./development-media-storage.adapter.js";
+import { E2eMediaStorageAdapter } from "./e2e-media-storage.adapter.js";
 import {
   MEDIA_STORAGE_ADAPTER,
   MEDIA_STORAGE_CONFIG,
@@ -24,10 +25,11 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     {
       provide: MEDIA_STORAGE_ADAPTER,
       inject: [MEDIA_STORAGE_CONFIG],
-      useFactory: (config: MediaStorageConfig): MediaStorageAdapter =>
-        config.mode === "r2"
-          ? new R2MediaStorageAdapter(config)
-          : new DevelopmentMediaStorageAdapter(),
+      useFactory: (config: MediaStorageConfig): MediaStorageAdapter => {
+        if (config.mode === "r2") return new R2MediaStorageAdapter(config);
+        if (config.mode === "e2e") return new E2eMediaStorageAdapter();
+        return new DevelopmentMediaStorageAdapter();
+      },
     },
     UploadSessionTokenService,
     UploadRateLimiter,

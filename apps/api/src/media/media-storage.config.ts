@@ -5,6 +5,7 @@ const GIB = 1024 * MIB;
 
 const environmentSchema = z.object({
   APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
+  AYIN_E2E_STORAGE: z.enum(["0", "1"]).default("0"),
   R2_ACCOUNT_ID: z.string().trim().min(1).optional(),
   R2_BUCKET: z.string().trim().min(1).optional(),
   R2_ACCESS_KEY_ID: z.string().trim().min(1).optional(),
@@ -27,7 +28,7 @@ const environmentSchema = z.object({
 });
 
 export interface MediaStorageConfig {
-  mode: "r2" | "development";
+  mode: "r2" | "development" | "e2e";
   appEnv: "development" | "test" | "staging" | "production";
   accountId: string | null;
   bucket: string | null;
@@ -45,6 +46,11 @@ export function loadMediaStorageConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): MediaStorageConfig {
   const parsed = environmentSchema.parse(environment);
+  const e2eMode = parsed.AYIN_E2E_STORAGE === "1";
+  if (e2eMode && parsed.APP_ENV !== "test") {
+    throw new Error("AYIN_E2E_STORAGE is permitted only when APP_ENV=test.");
+  }
+
   const credentialValues = [
     parsed.R2_ACCOUNT_ID,
     parsed.R2_BUCKET,
@@ -71,7 +77,7 @@ export function loadMediaStorageConfig(
   }
 
   return {
-    mode: hasR2 ? "r2" : "development",
+    mode: e2eMode ? "e2e" : hasR2 ? "r2" : "development",
     appEnv: parsed.APP_ENV,
     accountId: parsed.R2_ACCOUNT_ID ?? null,
     bucket: parsed.R2_BUCKET ?? null,

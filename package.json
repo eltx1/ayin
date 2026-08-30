@@ -23,11 +23,13 @@
     "lint": "corepack pnpm --recursive --if-present run lint",
     "packages:build": "corepack pnpm --filter './packages/*' --workspace-concurrency=1 run build",
     "test": "corepack pnpm --recursive --if-present run test",
+    "test:e2e": "playwright test",
     "test:integration": "corepack pnpm --filter @ayin/db run test:integration && corepack pnpm --filter @ayin/api run test:integration",
     "typecheck": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run typecheck && corepack pnpm --filter @ayin/web run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "9.39.2",
+    "@playwright/test": "1.55.0",
     "eslint": "9.39.2",
     "globals": "17.11.0",
     "prettier": "3.9.6",
