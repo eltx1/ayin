@@ -1,0 +1,25 @@
+model AnalyticsEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  clientEventId   String   @unique @db.VarChar(120)
+  schemaVersion   Int      @default(1)
+  eventName       String   @db.VarChar(64)
+  occurredAt      DateTime
+  receivedAt      DateTime @default(now())
+  sessionHash     String   @db.Char(64)
+  profileHash     String?  @db.Char(64)
+  accountId       String?  @db.Uuid
+  channelId       String?  @db.Uuid
+  videoId         String?  @db.Uuid
+  source          String   @default("WEB") @db.VarChar(32)
+  deviceClass     String?  @db.VarChar(24)
+  durationDeltaMs Int?
+  positionMs      Int?
+  metadata        Json?
+
+  @@index([occurredAt])
+  @@index([eventName, occurredAt])
+  @@index([sessionHash, occurredAt])
+  @@index([channelId, occurredAt])
+  @@index([videoId, occurredAt])
+  @@index([accountId, occurredAt])
+}
