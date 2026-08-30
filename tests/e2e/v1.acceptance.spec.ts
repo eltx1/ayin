@@ -148,9 +148,11 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
       title: "E2E Launch Film",
     });
     expect(
-      (await creator.api.put(`/watch/progress/${video.id}`, {
-        data: { positionMs: 42_000, durationMs: 120_000 },
-      })).ok(),
+      (
+        await creator.api.put(`/watch/progress/${video.id}`, {
+          data: { positionMs: 42_000, durationMs: 120_000 },
+        })
+      ).ok(),
     ).toBeTruthy();
     const resumed = await creator.api.get(`/watch/progress/${video.id}`);
     expect(resumed.ok()).toBeTruthy();
@@ -164,13 +166,23 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
     viewer = await registerApi("Social Viewer");
     const video = db<VideoRecord>("find-video", { channelId: creator.user.channel.id });
     expect(
-      (await viewer.api.put(`/social/channels/${creator.user.channel.id}/subscription`, { data: {} })).ok(),
+      (
+        await viewer.api.put(`/social/channels/${creator.user.channel.id}/subscription`, {
+          data: {},
+        })
+      ).ok(),
     ).toBeTruthy();
     expect(
-      (await viewer.api.put(`/social/videos/${video.id}/reaction`, { data: { type: "LIKE" } })).ok(),
+      (
+        await viewer.api.put(`/social/videos/${video.id}/reaction`, { data: { type: "LIKE" } })
+      ).ok(),
     ).toBeTruthy();
     expect(
-      (await viewer.api.post(`/comments/videos/${video.id}`, { data: { body: "Launch looks good." } })).ok(),
+      (
+        await viewer.api.post(`/comments/videos/${video.id}`, {
+          data: { body: "Launch looks good." },
+        })
+      ).ok(),
     ).toBeTruthy();
     expect(db("social-counts", { channelId: creator.user.channel.id, videoId: video.id })).toEqual({
       subscriptions: 1,
@@ -187,20 +199,26 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
     expect(users.ok()).toBeTruthy();
     expect(((await users.json()) as { items: unknown[] }).items.length).toBeGreaterThan(0);
     expect(
-      (await admin.api.patch(`/admin/control/users/${creator.user.account.id}`, {
-        data: { displayName: "Edited Creator", reason: "E2E admin acceptance" },
-      })).ok(),
+      (
+        await admin.api.patch(`/admin/control/users/${creator.user.account.id}`, {
+          data: { displayName: "Edited Creator", reason: "E2E admin acceptance" },
+        })
+      ).ok(),
     ).toBeTruthy();
     expect(
-      (await admin.api.patch(`/admin/control/channels/${creator.user.channel.id}`, {
-        data: { name: "Edited Channel", reason: "E2E admin acceptance" },
-      })).ok(),
+      (
+        await admin.api.patch(`/admin/control/channels/${creator.user.channel.id}`, {
+          data: { name: "Edited Channel", reason: "E2E admin acceptance" },
+        })
+      ).ok(),
     ).toBeTruthy();
     const video = db<VideoRecord>("find-video", { channelId: creator.user.channel.id });
     expect(
-      (await admin.api.patch(`/admin/control/videos/${video.id}`, {
-        data: { title: "Edited Launch Film", reason: "E2E admin acceptance" },
-      })).ok(),
+      (
+        await admin.api.patch(`/admin/control/videos/${video.id}`, {
+          data: { title: "Edited Launch Film", reason: "E2E admin acceptance" },
+        })
+      ).ok(),
     ).toBeTruthy();
   });
 
@@ -211,9 +229,11 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
     const snapshot = (await snapshotResponse.json()) as { rows: Array<{ id: string }> };
     expect(snapshot.rows.length).toBeGreaterThan(0);
     expect(
-      (await admin.api.patch(`/admin/product-controls/home-rows/${snapshot.rows[0]!.id}`, {
-        data: { title: "E2E Editor Picks", reason: "E2E merchandising acceptance" },
-      })).ok(),
+      (
+        await admin.api.patch(`/admin/product-controls/home-rows/${snapshot.rows[0]!.id}`, {
+          data: { title: "E2E Editor Picks", reason: "E2E merchandising acceptance" },
+        })
+      ).ok(),
     ).toBeTruthy();
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "E2E Editor Picks" })).toBeVisible();
@@ -270,27 +290,32 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
 
   await test.step("11. creator revenue contract math smoke path", async () => {
     if (!admin || !creator) throw new Error("Revenue setup missing.");
-    const contract = await admin.api.post(`/admin/revenue/channels/${creator.user.channel.id}/contracts`, {
-      data: {
-        revenueShareBps: 7000,
-        effectiveFrom: new Date(Date.now() - 60_000).toISOString(),
-        status: "ACTIVE",
-        termsVersion: "e2e-v1",
+    const contract = await admin.api.post(
+      `/admin/revenue/channels/${creator.user.channel.id}/contracts`,
+      {
+        data: {
+          revenueShareBps: 7000,
+          effectiveFrom: new Date(Date.now() - 60_000).toISOString(),
+          status: "ACTIVE",
+          termsVersion: "e2e-v1",
+        },
       },
-    });
+    );
     expect(contract.ok()).toBeTruthy();
     const imported = await admin.api.post("/admin/revenue/imports", {
       data: {
         source: "E2E",
-        entries: [{
-          idempotencyKey: "e2e-launch-revenue-001",
-          channelId: creator.user.channel.id,
-          periodStart: new Date(Date.now() - 3_600_000).toISOString(),
-          periodEnd: new Date().toISOString(),
-          grossAmount: "100.000000",
-          currency: "USD",
-          state: "FINAL",
-        }],
+        entries: [
+          {
+            idempotencyKey: "e2e-launch-revenue-001",
+            channelId: creator.user.channel.id,
+            periodStart: new Date(Date.now() - 3_600_000).toISOString(),
+            periodEnd: new Date().toISOString(),
+            grossAmount: "100.000000",
+            currency: "USD",
+            state: "FINAL",
+          },
+        ],
       },
     });
     expect(imported.ok()).toBeTruthy();
@@ -306,20 +331,27 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
     if (!admin || !creator) throw new Error("Moderation setup missing.");
     const video = db<VideoRecord>("find-video", { channelId: creator.user.channel.id });
     expect(
-      (await admin.api.post("/admin/control/videos/bulk", {
-        data: { ids: [video.id], action: "UNPUBLISH", reason: "E2E moderation acceptance" },
-      })).ok(),
+      (
+        await admin.api.post("/admin/control/videos/bulk", {
+          data: { ids: [video.id], action: "UNPUBLISH", reason: "E2E moderation acceptance" },
+        })
+      ).ok(),
     ).toBeTruthy();
     expect(
-      (await admin.api.patch(`/admin/control/users/${creator.user.account.id}`, {
-        data: { status: "SUSPENDED", reason: "E2E moderation acceptance" },
-      })).ok(),
+      (
+        await admin.api.patch(`/admin/control/users/${creator.user.account.id}`, {
+          data: { status: "SUSPENDED", reason: "E2E moderation acceptance" },
+        })
+      ).ok(),
     ).toBeTruthy();
-    const state = db<{ videoStatus: string; accountStatus: string; auditCount: number }>("moderation", {
-      videoId: video.id,
-      accountId: creator.user.account.id,
-      adminAccountId: admin.user.account.id,
-    });
+    const state = db<{ videoStatus: string; accountStatus: string; auditCount: number }>(
+      "moderation",
+      {
+        videoId: video.id,
+        accountId: creator.user.account.id,
+        adminAccountId: admin.user.account.id,
+      },
+    );
     expect(state.videoStatus).toBe("DRAFT");
     expect(state.accountStatus).toBe("SUSPENDED");
     expect(state.auditCount).toBeGreaterThan(0);
