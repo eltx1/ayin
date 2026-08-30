@@ -23,22 +23,16 @@ android {
             dimension = "surface"
             applicationIdSuffix = ".mobile"
             buildConfigField("String", "SHELL_PLATFORM", "\"android\"")
-            manifestPlaceholders["isTv"] = "false"
-            manifestPlaceholders["leanbackRequired"] = "false"
         }
         create("tv") {
             dimension = "surface"
             applicationIdSuffix = ".tv"
             buildConfigField("String", "SHELL_PLATFORM", "\"google-tv\"")
-            manifestPlaceholders["isTv"] = "true"
-            manifestPlaceholders["leanbackRequired"] = "true"
         }
         create("fireTv") {
             dimension = "surface"
             applicationIdSuffix = ".firetv"
             buildConfigField("String", "SHELL_PLATFORM", "\"fire-tv\"")
-            manifestPlaceholders["isTv"] = "true"
-            manifestPlaceholders["leanbackRequired"] = "true"
         }
     }
 
@@ -63,4 +57,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    implementation("androidx.activity:activity-ktx:1.13.0")
+    implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("androidx.webkit:webkit:1.15.0")
 }
