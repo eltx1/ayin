@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import { getAdminDashboard } from "@/lib/admin-control";
+import {
+  getAdminAnalytics,
+  getAdminDashboard,
+  type AdminAnalyticsMetrics,
+} from "@/lib/admin-control";
 
 interface DashboardData {
   accounts: number;
@@ -19,13 +23,16 @@ interface DashboardData {
 
 export function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [analytics, setAnalytics] = useState<AdminAnalyticsMetrics | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void getAdminDashboard()
-      .then((body) => {
-        if (active) setData(body as unknown as DashboardData);
+    void Promise.all([getAdminDashboard(), getAdminAnalytics()])
+      .then(([body, nextAnalytics]) => {
+        if (!active) return;
+        setData(body as unknown as DashboardData);
+        setAnalytics(nextAnalytics);
       })
       .catch((caught) => {
         if (active)
@@ -39,7 +46,7 @@ export function AdminDashboard() {
   }, []);
 
   if (error) return <p className={styles.error}>{error}</p>;
-  if (!data) return <p className={styles.muted}>Loading Admin…</p>;
+  if (!data || !analytics) return <p className={styles.muted}>Loading Admin…</p>;
 
   const metrics = [
     ["Accounts", data.accounts],
@@ -50,6 +57,16 @@ export function AdminDashboard() {
     ["Creator TVs", data.tvChannels],
     ["Open reports", data.openReports],
     ["Open cases", data.openCases],
+  ] as const;
+
+  const analyticsMetrics = [
+    ["DAU approx", analytics.dauApprox.toLocaleString()],
+    ["MAU approx", analytics.mauApprox.toLocaleString()],
+    ["Watch hours / 30d", analytics.watchHours.toFixed(1)],
+    ["Uploads / 30d", analytics.uploads.toLocaleString()],
+    ["TV starts / 30d", analytics.tvStarts.toLocaleString()],
+    ["Ad events / 30d", analytics.adEvents.toLocaleString()],
+    ["Tracked errors / 30d", analytics.errors.toLocaleString()],
   ] as const;
 
   return (
@@ -72,8 +89,19 @@ export function AdminDashboard() {
         ))}
       </section>
       <section className={styles.card}>
-        <h2>Analytics and revenue</h2>
-        <p className={styles.muted}>{data.analytics.reason}</p>
+        <h2>Platform analytics</h2>
+        <p className={styles.muted}>Query-time V1 metrics; not advertised as realtime.</p>
+        {analyticsMetrics.map(([label, value]) => (
+          <p key={label}>
+            {label}: <strong>{value}</strong>
+          </p>
+        ))}
+      </section>
+      <section className={styles.card}>
+        <h2>Revenue</h2>
+        <p className={styles.muted}>
+          Revenue remains unavailable until Task 23 attribution and ledger processing are enabled.
+        </p>
       </section>
     </>
   );
