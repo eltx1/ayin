@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("TEST_DATABASE_URL or DATABASE_URL is required for Playwright E2E.");
+if (!databaseUrl)
+  throw new Error("TEST_DATABASE_URL or DATABASE_URL is required for Playwright E2E.");
 
 export default defineConfig({
   testDir: "tests/e2e",

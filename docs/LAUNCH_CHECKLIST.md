@@ -3,24 +3,28 @@
 Use this as a release gate. A box is checked only from evidence in the target environment; repository defaults do not count as production verification.
 
 ## DNS and domains
+
 - [ ] `ayin.stream` resolves through the intended Cloudflare zone to the CloudPanel web origin.
 - [ ] `api.ayin.stream` resolves to the API origin and is not accidentally cached as static content.
 - [ ] media/R2 custom domain resolves separately from AWS/CloudPanel.
 - [ ] HTTPS is valid end to end and HTTP redirects to HTTPS.
 
 ## CloudPanel and application health
+
 - [ ] Web process is running under the documented PM2 configuration.
 - [ ] API process is running and `/health` returns success through the public reverse proxy.
 - [ ] Nginx forwards host/proto/client information as documented.
 - [ ] Restart and rollback procedure from `deploy/README.md` has been exercised in staging.
 
 ## PostgreSQL
+
 - [ ] Production `DATABASE_URL` is stored outside git.
 - [ ] `pnpm db:migrate:deploy` succeeds against a staging copy before production migration.
 - [ ] Automated backups exist, retention is defined, and at least one restore test has succeeded.
 - [ ] Database access is network-restricted and uses a least-privilege application role where practical.
 
 ## R2 and media delivery
+
 - [ ] R2 account, bucket and credentials are configured outside git.
 - [ ] Media custom domain serves byte-range requests required by progressive MP4 playback.
 - [ ] CORS permits only required upload/media origins and methods.
@@ -28,12 +32,14 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] Upload a real playback-ready MP4, publish it, seek it, and resume it on the target environment.
 
 ## Authentication and email
+
 - [ ] `AUTH_TOKEN_SECRET` and `UPLOAD_SESSION_SECRET` are unique production secrets and have rotation ownership.
 - [ ] Session cookies are Secure/HttpOnly/SameSite as intended through the deployed proxy.
 - [ ] Register, login and logout succeed on the production domains.
 - [ ] Any transactional email provider required by enabled product flows is configured and tested; do not advertise email-dependent flows before it is live.
 
 ## Advertising
+
 - [ ] Emergency ad kill switch is verified.
 - [ ] House/direct fallback works when external fill is unavailable.
 - [ ] `ads.txt` and `app-ads.txt` contain only seller/publisher identifiers actually supplied by the relevant account/partner.
@@ -41,6 +47,7 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] Google Ad Manager/IMA production configuration is completed only under Task 36 with real account data.
 
 ## Legal and policy
+
 - [ ] Privacy policy is published and matches actual analytics/advertising/data behavior.
 - [ ] Terms of service are published.
 - [ ] Content/community policy and reporting/takedown path are published.
@@ -48,12 +55,14 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] Moderation/takedown operational owner is assigned.
 
 ## Admin and operations
+
 - [ ] At least one intended superuser/admin account is provisioned through a controlled process.
 - [ ] Admin RBAC is verified from a non-admin account and an admin account.
 - [ ] Suspension/unpublish/moderation actions are audited.
 - [ ] No default/test admin credentials exist in production.
 
 ## Analytics and revenue sanity
+
 - [ ] Page/content/playback/social/upload/TV/ad events arrive without leaking raw secrets.
 - [ ] Event volume is within expected write rate and retention policy is running.
 - [ ] Creator analytics numbers are sampled against database facts.
@@ -61,6 +70,7 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] Payment execution remains disabled until a real payment rail and operating procedure exist.
 
 ## Security headers and edge behavior
+
 - [ ] CSP works with required AYIN, R2 and approved Google advertising origins without broad wildcard relaxation.
 - [ ] `X-Content-Type-Options`, frame protections, referrer policy and permissions policy are present at the public edge.
 - [ ] Cookie-authenticated cross-origin mutation attempts are rejected.
@@ -68,12 +78,14 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] Cloudflare/CloudPanel does not strip or replace required application security headers unexpectedly.
 
 ## Error monitoring
+
 - [ ] Production error monitoring/log aggregation is configured with secrets/PII redaction.
 - [ ] API process crashes/restarts generate an actionable alert.
 - [ ] Health-check failure and elevated 5xx rate have an alert owner.
 - [ ] R2/media delivery failures can be distinguished from API/web failures.
 
 ## Final acceptance
+
 - [ ] Run `pnpm test:e2e` against the release candidate with the isolated E2E storage adapter only in `APP_ENV=test`, or against an explicitly safe R2 test environment.
 - [ ] Register -> automatic profile/channel/Uploads/TV verified.
 - [ ] Direct upload -> publish -> channel/Uploads/Creator TV verified.
@@ -84,6 +96,7 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] Revenue contract smoke and moderation/suspension smoke pass.
 
 ## Rollback
+
 - [ ] Previous release path is known before deployment.
 - [ ] Database migration compatibility/rollback implications are reviewed before switching the `current` symlink.
 - [ ] PM2 rollback and public health checks are documented and executable.
