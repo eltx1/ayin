@@ -1,0 +1,26 @@
+name: Task37 format
+on:
+  push:
+    branches: [task-37-android-tv-shells]
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-37-android-tv-shells
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable && corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --write apps/web/src/lib/native-shell-bridge.ts
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/lib/native-shell-bridge.ts
+          git diff --cached --quiet || git commit -m "Format Task 37 web bridge"
+          git push origin HEAD:task-37-android-tv-shells
