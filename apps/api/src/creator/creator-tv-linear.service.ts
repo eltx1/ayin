@@ -105,7 +105,8 @@ export class CreatorTvLinearService {
       where: { id: tvChannelId },
       select: { id: true, channelId: true, channel: { select: { handle: true } } },
     });
-    if (!tv) throw new CreatorTvError("CREATOR_TV_NOT_FOUND", "This Creator TV could not be found.", 404);
+    if (!tv)
+      throw new CreatorTvError("CREATOR_TV_NOT_FOUND", "This Creator TV could not be found.", 404);
     await this.creatorTv.getManagement(actor, tv.channelId);
     return { id: tv.id, channelId: tv.channelId, handle: tv.channel.handle };
   }
