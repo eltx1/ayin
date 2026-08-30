@@ -1,10 +1,13 @@
 name: Task33 format
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - task-33-recommendations-lens
 permissions:
   contents: write
 jobs:
   format:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
