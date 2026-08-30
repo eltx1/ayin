@@ -15,6 +15,7 @@ import { RevenueModule } from "./revenue/revenue.module.js";
 import { SearchModule } from "./search/search.module.js";
 import { SocialModule } from "./social/social.module.js";
 import { WatchModule } from "./watch/watch.module.js";
+import { TrustModule } from "./trust/trust.module.js";
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { WatchModule } from "./watch/watch.module.js";
     SearchModule,
     SocialModule,
     CommentsModule,
+    TrustModule,
   ],
   controllers: [AppController],
 })
