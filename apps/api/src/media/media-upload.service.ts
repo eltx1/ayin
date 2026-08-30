@@ -43,7 +43,11 @@ export class MediaUploadService {
     @Inject(UploadSessionTokenService) private readonly tokens: UploadSessionTokenService,
   ) {}
 
-  async createSession(accountId: string, input: CreateUploadSessionInput) {
+  async createSession(
+    accountId: string,
+    input: CreateUploadSessionInput,
+    options: { adminOverride?: boolean } = {},
+  ) {
     this.ensureStorageAvailable();
     if (input.mimeType !== "video/mp4") {
       throw new MediaUploadError(
@@ -55,7 +59,7 @@ export class MediaUploadService {
       throw new MediaUploadError("INVALID_FILE_SIZE", "This video file size could not be read.");
     }
 
-    await this.assertChannelOwner(accountId, input.channelId);
+    if (!options.adminOverride) await this.assertChannelOwner(accountId, input.channelId);
     const [maxSizeRaw, quotaRaw] = await Promise.all([
       this.settings.get("uploadMaxSizeBytes"),
       this.settings.get("uploadChannelQuotaBytes"),
@@ -124,6 +128,7 @@ export class MediaUploadService {
     const payload: UploadSessionPayload = {
       version: 1,
       accountId,
+      ...(options.adminOverride ? { adminOverride: true } : {}),
       channelId: input.channelId,
       assetId,
       objectKey,
@@ -332,7 +337,7 @@ export class MediaUploadService {
         403,
       );
     }
-    await this.assertChannelOwner(accountId, session.channelId);
+    if (!session.adminOverride) await this.assertChannelOwner(accountId, session.channelId);
     const asset = await this.database.client.mediaAsset.findUnique({
       where: { id: session.assetId },
       select: {

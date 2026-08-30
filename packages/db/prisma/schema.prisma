@@ -41,6 +41,27 @@ enum VideoVisibility {
   PRIVATE
 }
 
+enum VideoContentType {
+  CREATOR_VIDEO
+  MOVIE
+  DOCUMENTARY
+}
+
+enum ContentSeedBatchStatus {
+  DRAFT
+  READY
+  ROLLED_BACK
+}
+
+enum ContentSeedItemStatus {
+  DRAFT
+  UPLOADING
+  READY
+  PUBLISHED
+  FAILED
+  ROLLED_BACK
+}
+
 enum MediaAssetKind {
   SOURCE_VIDEO
   THUMBNAIL
@@ -267,37 +288,38 @@ model Account {
   updatedAt       DateTime      @updatedAt
   closedAt        DateTime?
 
-  viewerProfiles         ViewerProfile[]
+  viewerProfiles          ViewerProfile[]
   channelMemberships      ChannelMember[]
   rightsDeclarations      ContentRightsDeclaration[]
   notifications           Notification[]
-  auditLogs               AdminAuditLog[]   @relation("AdminAuditActor")
-  assignedModerationCases ModerationCase[] @relation("ModerationAssignee")
+  auditLogs               AdminAuditLog[]            @relation("AdminAuditActor")
+  assignedModerationCases ModerationCase[]           @relation("ModerationAssignee")
+  contentSeedBatches      ContentSeedBatch[]
 
   @@index([status, createdAt])
 }
 
 model ViewerProfile {
-  id        String   @id @default(uuid()) @db.Uuid
-  accountId String   @db.Uuid
-  name      String   @db.VarChar(120)
-  slug      String   @db.VarChar(120)
-  isDefault Boolean  @default(false)
-  isKids    Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String    @id @default(uuid()) @db.Uuid
+  accountId String    @db.Uuid
+  name      String    @db.VarChar(120)
+  slug      String    @db.VarChar(120)
+  isDefault Boolean   @default(false)
+  isKids    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  account       Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  watchProgress  WatchProgress[]
-  watchHistory   WatchHistory[]
+  account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  watchProgress   WatchProgress[]
+  watchHistory    WatchHistory[]
   watchLaterItems WatchLaterItem[]
   myListItems     MyListItem[]
-  subscriptions  Subscription[]
-  reactions     Reaction[]
-  comments      Comment[]
-  reports       Report[]
-  adEvents      AdEvent[]
+  subscriptions   Subscription[]
+  reactions       Reaction[]
+  comments        Comment[]
+  reports         Report[]
+  adEvents        AdEvent[]
 
   @@unique([accountId, slug])
   @@index([accountId, isDefault])
@@ -313,19 +335,21 @@ model Channel {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
   removedAt          DateTime?
+  isPlatformOwned    Boolean       @default(false)
 
-  primaryTvChannel  CreatorTvChannel?  @relation("PrimaryCreatorTvChannel", fields: [primaryTvChannelId], references: [id], onDelete: SetNull)
-  members           ChannelMember[]
-  settings          ChannelSettings?
-  videos            Video[]
-  mediaAssets       MediaAsset[]
-  playlists         Playlist[]
-  creatorTvChannels CreatorTvChannel[] @relation("ChannelCreatorTvChannels")
-  subscriptions     Subscription[]
-  reports           Report[]
-  creatorContracts  CreatorContract[]
-  earningsEntries   EarningsLedgerEntry[]
-  payouts           Payout[]
+  primaryTvChannel   CreatorTvChannel?     @relation("PrimaryCreatorTvChannel", fields: [primaryTvChannelId], references: [id], onDelete: SetNull)
+  members            ChannelMember[]
+  settings           ChannelSettings?
+  videos             Video[]
+  mediaAssets        MediaAsset[]
+  playlists          Playlist[]
+  creatorTvChannels  CreatorTvChannel[]    @relation("ChannelCreatorTvChannels")
+  subscriptions      Subscription[]
+  reports            Report[]
+  creatorContracts   CreatorContract[]
+  earningsEntries    EarningsLedgerEntry[]
+  payouts            Payout[]
+  contentSeedBatches ContentSeedBatch[]
 
   @@index([status, createdAt])
 }
@@ -361,20 +385,21 @@ model ChannelSettings {
 }
 
 model Video {
-  id                 String          @id @default(uuid()) @db.Uuid
-  channelId          String          @db.Uuid
-  slug               String          @unique @db.VarChar(160)
-  title              String          @db.VarChar(200)
-  description        String?         @db.Text
-  status             VideoStatus     @default(DRAFT)
-  visibility         VideoVisibility @default(PUBLIC)
-  commentsEnabled    Boolean         @default(true)
+  id                 String           @id @default(uuid()) @db.Uuid
+  channelId          String           @db.Uuid
+  slug               String           @unique @db.VarChar(160)
+  title              String           @db.VarChar(200)
+  description        String?          @db.Text
+  contentType        VideoContentType @default(CREATOR_VIDEO)
+  status             VideoStatus      @default(DRAFT)
+  visibility         VideoVisibility  @default(PUBLIC)
+  commentsEnabled    Boolean          @default(true)
   durationMs         Int?
   scheduledPublishAt DateTime?
   publishedAt        DateTime?
   removedAt          DateTime?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   channel            Channel                    @relation(fields: [channelId], references: [id], onDelete: Restrict)
   mediaAssets        MediaAsset[]
@@ -391,6 +416,7 @@ model Video {
   reports            Report[]
   adEvents           AdEvent[]
   earningsEntries    EarningsLedgerEntry[]
+  contentSeedItem    ContentSeedItem?
 
   @@index([channelId, status, publishedAt])
   @@index([status, visibility, publishedAt])
@@ -472,9 +498,9 @@ model CreatorTvChannel {
   updatedAt        DateTime        @updatedAt
   disabledAt       DateTime?
 
-  channel           Channel             @relation("ChannelCreatorTvChannels", fields: [channelId], references: [id], onDelete: Cascade)
-  sourcePlaylist    Playlist?            @relation(fields: [sourcePlaylistId], references: [id], onDelete: SetNull)
-  primaryForChannel Channel?             @relation("PrimaryCreatorTvChannel")
+  channel           Channel                    @relation("ChannelCreatorTvChannels", fields: [channelId], references: [id], onDelete: Cascade)
+  sourcePlaylist    Playlist?                  @relation(fields: [sourcePlaylistId], references: [id], onDelete: SetNull)
+  primaryForChannel Channel?                   @relation("PrimaryCreatorTvChannel")
   scheduleItems     TvScheduleItem[]
   videoPreferences  CreatorTvVideoPreference[]
 
@@ -502,14 +528,14 @@ model TvScheduleItem {
 }
 
 model WatchProgress {
-  id            String   @id @default(uuid()) @db.Uuid
-  profileId     String   @db.Uuid
-  videoId       String   @db.Uuid
-  positionMs    Int      @default(0)
-  lastWatchedAt DateTime @default(now())
+  id            String    @id @default(uuid()) @db.Uuid
+  profileId     String    @db.Uuid
+  videoId       String    @db.Uuid
+  positionMs    Int       @default(0)
+  lastWatchedAt DateTime  @default(now())
   completedAt   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   profile ViewerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   video   Video         @relation(fields: [videoId], references: [id], onDelete: Cascade)
@@ -610,14 +636,14 @@ model Notification {
 }
 
 model ContentRightsDeclaration {
-  id                  String                   @id @default(uuid()) @db.Uuid
-  videoId             String                   @db.Uuid
-  declaredByAccountId String                   @db.Uuid
+  id                  String                  @id @default(uuid()) @db.Uuid
+  videoId             String                  @db.Uuid
+  declaredByAccountId String                  @db.Uuid
   version             Int
   basis               RightsBasis
   status              RightsDeclarationStatus @default(CONFIRMED)
-  statement           String?                  @db.Text
-  declaredAt          DateTime                 @default(now())
+  statement           String?                 @db.Text
+  declaredAt          DateTime                @default(now())
   revokedAt           DateTime?
 
   video      Video   @relation(fields: [videoId], references: [id], onDelete: Cascade)
@@ -827,33 +853,33 @@ model CreatorContract {
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
-  channel       Channel                @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  channel       Channel               @relation(fields: [channelId], references: [id], onDelete: Restrict)
   ledgerEntries EarningsLedgerEntry[]
 
   @@index([channelId, status, effectiveFrom])
 }
 
 model EarningsLedgerEntry {
-  id          String            @id @default(uuid()) @db.Uuid
-  channelId   String            @db.Uuid
-  contractId  String?           @db.Uuid
-  campaignId  String?           @db.Uuid
-  videoId     String?           @db.Uuid
-  payoutId    String?           @db.Uuid
-  type             EarningsEntryType
-  state            EarningsEntryState @default(ESTIMATED)
-  grossAmount      Decimal?          @db.Decimal(20, 6)
-  amount           Decimal           @db.Decimal(20, 6)
-  currency         String            @db.Char(3)
-  revenueShareBps  Int?
-  idempotencyKey   String?           @unique @db.VarChar(200)
-  adSource         String?           @db.VarChar(80)
-  periodStart      DateTime?
-  periodEnd        DateTime?
-  memo             String?           @db.VarChar(500)
-  occurredAt       DateTime          @default(now())
-  finalizedAt      DateTime?
-  createdAt        DateTime          @default(now())
+  id              String             @id @default(uuid()) @db.Uuid
+  channelId       String             @db.Uuid
+  contractId      String?            @db.Uuid
+  campaignId      String?            @db.Uuid
+  videoId         String?            @db.Uuid
+  payoutId        String?            @db.Uuid
+  type            EarningsEntryType
+  state           EarningsEntryState @default(ESTIMATED)
+  grossAmount     Decimal?           @db.Decimal(20, 6)
+  amount          Decimal            @db.Decimal(20, 6)
+  currency        String             @db.Char(3)
+  revenueShareBps Int?
+  idempotencyKey  String?            @unique @db.VarChar(200)
+  adSource        String?            @db.VarChar(80)
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  memo            String?            @db.VarChar(500)
+  occurredAt      DateTime           @default(now())
+  finalizedAt     DateTime?
+  createdAt       DateTime           @default(now())
 
   channel  Channel          @relation(fields: [channelId], references: [id], onDelete: Restrict)
   contract CreatorContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
@@ -889,4 +915,39 @@ model Payout {
 
   @@index([channelId, status, requestedAt])
   @@index([status, requestedAt])
+}
+
+model ContentSeedBatch {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  createdByAccountId String                 @db.Uuid
+  channelId          String                 @db.Uuid
+  sourceLabel        String                 @db.VarChar(200)
+  status             ContentSeedBatchStatus @default(DRAFT)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  rolledBackAt       DateTime?
+
+  createdBy Account           @relation(fields: [createdByAccountId], references: [id], onDelete: Restrict)
+  channel   Channel           @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  items     ContentSeedItem[]
+
+  @@index([channelId, status, createdAt])
+  @@index([createdByAccountId, createdAt])
+}
+
+model ContentSeedItem {
+  id          String                @id @default(uuid()) @db.Uuid
+  batchId     String                @db.Uuid
+  videoId     String                @unique @db.Uuid
+  sourceNotes String                @db.Text
+  rightsBasis RightsBasis
+  status      ContentSeedItemStatus @default(DRAFT)
+  error       String?               @db.Text
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  batch ContentSeedBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  video Video            @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([batchId, status])
 }
