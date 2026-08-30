@@ -20,6 +20,10 @@
   position: relative;
 }
 
+.artwork {
+  object-fit: cover;
+}
+
 .poster .art {
   aspect-ratio: 2 / 3;
 }
@@ -159,6 +163,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+
+  .card:hover {
+    transform: none;
+  }
+
   .skeleton .art,
   .skeletonLine,
   .skeletonLineShort {
