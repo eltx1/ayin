@@ -65,8 +65,8 @@ try {
     }
     case "grant-admin": {
       await prisma.adminRoleAssignment.upsert({
-        where: { accountId: payload.accountId },
-        update: { role: "ADMIN" },
+        where: { accountId_role: { accountId: payload.accountId, role: "ADMIN" } },
+        update: {},
         create: { accountId: payload.accountId, role: "ADMIN" },
       });
       result = { ok: true };
