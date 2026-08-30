@@ -241,6 +241,12 @@ enum EarningsEntryType {
   PAYOUT
 }
 
+enum EarningsEntryState {
+  ESTIMATED
+  FINAL
+  ADJUSTMENT
+}
+
 enum PayoutStatus {
   PENDING
   PROCESSING
@@ -834,13 +840,20 @@ model EarningsLedgerEntry {
   campaignId  String?           @db.Uuid
   videoId     String?           @db.Uuid
   payoutId    String?           @db.Uuid
-  type        EarningsEntryType
-  amount      Decimal           @db.Decimal(20, 6)
-  currency    String            @db.Char(3)
-  memo        String?           @db.VarChar(500)
-  occurredAt  DateTime          @default(now())
-  finalizedAt DateTime?
-  createdAt   DateTime          @default(now())
+  type             EarningsEntryType
+  state            EarningsEntryState @default(ESTIMATED)
+  grossAmount      Decimal?          @db.Decimal(20, 6)
+  amount           Decimal           @db.Decimal(20, 6)
+  currency         String            @db.Char(3)
+  revenueShareBps  Int?
+  idempotencyKey   String?           @unique @db.VarChar(200)
+  adSource         String?           @db.VarChar(80)
+  periodStart      DateTime?
+  periodEnd        DateTime?
+  memo             String?           @db.VarChar(500)
+  occurredAt       DateTime          @default(now())
+  finalizedAt      DateTime?
+  createdAt        DateTime          @default(now())
 
   channel  Channel          @relation(fields: [channelId], references: [id], onDelete: Restrict)
   contract CreatorContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
@@ -849,9 +862,12 @@ model EarningsLedgerEntry {
   payout   Payout?          @relation(fields: [payoutId], references: [id], onDelete: SetNull)
 
   @@index([channelId, occurredAt])
+  @@index([channelId, state, occurredAt])
   @@index([contractId, occurredAt])
   @@index([payoutId])
   @@index([type, occurredAt])
+  @@index([videoId, periodStart])
+  @@index([campaignId, periodStart])
 }
 
 model Payout {

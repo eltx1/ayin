@@ -1,5 +1,5 @@
-import { StudioSummary } from "@/components/studio/studio-summary";
+import { StudioRevenue } from "@/components/studio/studio-revenue";
 
 export default function StudioMonetizationPage() {
-  return <StudioSummary kind="monetization" />;
+  return <StudioRevenue />;
 }
