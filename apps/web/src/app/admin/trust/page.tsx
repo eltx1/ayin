@@ -7,8 +7,13 @@ export default function AdminTrustPage() {
   const [data, setData] = useState<unknown>(null);
   useEffect(() => {
     const controller = new AbortController();
-    void fetch(`${apiBaseUrl}/admin/trust/queue`, { credentials: "include", signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("REQUEST_FAILED"))))
+    void fetch(`${apiBaseUrl}/admin/trust/queue`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then((response) =>
+        response.ok ? response.json() : Promise.reject(new Error("REQUEST_FAILED")),
+      )
       .then(setData)
       .catch(() => undefined);
     return () => controller.abort();

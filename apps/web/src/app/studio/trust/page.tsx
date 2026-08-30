@@ -11,7 +11,9 @@ export default function StudioTrustPage() {
       credentials: "include",
       signal: controller.signal,
     })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("REQUEST_FAILED"))))
+      .then((response) =>
+        response.ok ? response.json() : Promise.reject(new Error("REQUEST_FAILED")),
+      )
       .then(setData)
       .catch(() => undefined);
     return () => controller.abort();
