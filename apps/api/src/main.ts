@@ -30,7 +30,7 @@ async function bootstrap(): Promise<void> {
 
   const fastify = app.getHttpAdapter().getInstance();
   fastify.addHook("onRequest", async (request, reply) => {
-    applyApiSecurityHeaders(reply);
+    applyApiSecurityHeaders(reply, request);
     if (!isAllowedCookieMutationOrigin(request, environment.CORS_ORIGIN)) {
       await reply.code(403).send({
         error: {
