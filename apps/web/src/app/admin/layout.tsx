@@ -12,6 +12,7 @@ const links = [
   ["Moderation", "/admin/moderation"],
   ["Product Controls", "/admin/product-controls"],
   ["Feature Flags", "/admin/feature-flags"],
+  ["Advertising", "/admin/advertising"],
   ["Video Ads", "/admin/video-ads"],
   ["Settings", "/admin/settings"],
 ] as const;

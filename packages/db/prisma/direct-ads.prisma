@@ -1,0 +1,25 @@
+model DirectCampaignConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  campaignId     String   @unique @db.Uuid
+  priority       Int      @default(100)
+  pricing        Json     @db.JsonB
+  impressionGoal BigInt?
+  frequencyCap   Int      @default(3)
+  pacing         String   @default("EVEN") @db.VarChar(20)
+  targeting      Json     @db.JsonB
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([priority, updatedAt])
+}
+
+model DirectCreativeConfig {
+  id                String   @id @default(uuid()) @db.Uuid
+  creativeId        String   @unique @db.Uuid
+  assetUrl          String?  @db.Text
+  width             Int?
+  height            Int?
+  approvedReference String?  @db.VarChar(500)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

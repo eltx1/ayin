@@ -96,6 +96,14 @@ export class PageAdService {
   }
 
   async getDecision(key: string, context: PageAdContext) {
+    const killSwitch = await this.database.client.platformSetting.findUnique({
+      where: { namespace_key: { namespace: "ADVERTISING", key: "emergencyKillSwitch" } },
+      select: { value: true },
+    });
+    if (killSwitch?.value === true) {
+      return { enabled: false as const, reason: "EMERGENCY_KILL_SWITCH" as const };
+    }
+
     const [settings, placement] = await Promise.all([
       this.getSettings(),
       this.database.client.adPlacement.findUnique({ where: { key } }),
