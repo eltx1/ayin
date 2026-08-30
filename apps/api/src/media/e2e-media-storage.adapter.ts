@@ -15,17 +15,26 @@ export class E2eMediaStorageAdapter implements MediaStorageAdapter {
     return { uploadId: `e2e-${randomUUID()}` };
   }
 
-  async authorizeMultipartPart(input: { objectKey: string; uploadId: string; partNumber: number }): Promise<{ url: string; expiresAt: Date }> {
+  async authorizeMultipartPart(input: {
+    key: string;
+    uploadId: string;
+    partNumber: number;
+    expiresInSeconds: number;
+  }): Promise<{ url: string; expiresAt: Date }> {
     return {
-      url: `http://e2e-upload.invalid/multipart/${encodeURIComponent(input.uploadId)}/${input.partNumber}?key=${encodeURIComponent(input.objectKey)}`,
-      expiresAt: new Date(Date.now() + 15 * 60_000),
+      url: `http://e2e-upload.invalid/multipart/${encodeURIComponent(input.uploadId)}/${input.partNumber}?key=${encodeURIComponent(input.key)}`,
+      expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000),
     };
   }
 
-  async authorizeSinglePut(input: { objectKey: string }): Promise<{ url: string; expiresAt: Date }> {
+  async authorizeSinglePut(input: {
+    key: string;
+    contentType: string;
+    expiresInSeconds: number;
+  }): Promise<{ url: string; expiresAt: Date }> {
     return {
-      url: `http://e2e-upload.invalid/object?key=${encodeURIComponent(input.objectKey)}`,
-      expiresAt: new Date(Date.now() + 15 * 60_000),
+      url: `http://e2e-upload.invalid/object?key=${encodeURIComponent(input.key)}&type=${encodeURIComponent(input.contentType)}`,
+      expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000),
     };
   }
 
@@ -40,11 +49,7 @@ export class E2eMediaStorageAdapter implements MediaStorageAdapter {
   async abortMultipartUpload(): Promise<void> {}
 
   async headObject(): Promise<StoredObjectMetadata> {
-    return {
-      sizeBytes: 1024,
-      contentType: "video/mp4",
-      etag: '"e2e-object"',
-    };
+    return { sizeBytes: 1024, contentType: "video/mp4", etag: '"e2e-object"' };
   }
 
   async deleteObject(): Promise<void> {}
