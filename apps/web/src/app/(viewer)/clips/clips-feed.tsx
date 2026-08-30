@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 
 import { trackAnalyticsEvent } from "../../../lib/analytics";
+import { apiBaseUrl } from "../../../lib/api";
 import styles from "./clips.module.css";
 
 export interface ClipItem {
@@ -22,6 +23,35 @@ function mediaUrl(key: string) {
   return base ? `${base}/${key}` : key;
 }
 
+async function socialMutation(path: string, method: "PUT" | "DELETE", body?: unknown) {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method,
+    credentials: "include",
+    headers: body ? { "content-type": "application/json" } : undefined,
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (response.status === 401 || response.status === 403) {
+    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+    return null;
+  }
+  return response.ok ? response.json() : null;
+}
+
+function persistWatchProgress(clip: ClipItem, video: HTMLVideoElement) {
+  const durationMs = Number.isFinite(video.duration)
+    ? Math.max(1, Math.round(video.duration * 1000))
+    : (clip.durationMs ?? undefined);
+  void fetch(`${apiBaseUrl}/watch/progress/${clip.id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      positionMs: Math.max(0, Math.round(video.currentTime * 1000)),
+      ...(durationMs ? { durationMs } : {}),
+    }),
+  }).catch(() => undefined);
+}
+
 export function ClipsFeed({
   items,
   autoplayEnabled,
@@ -32,6 +62,12 @@ export function ClipsFeed({
   adPolicy: { enabled: boolean; minimumOrganicClips: number };
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const activeId = useRef<string | null>(null);
+  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [subscribed, setSubscribed] = useState<Record<string, boolean>>({});
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>(() =>
+    Object.fromEntries(items.map((item) => [item.id, item._count.reactions])),
+  );
 
   useEffect(() => {
     const container = root.current;
@@ -45,11 +81,30 @@ export function ClipsFeed({
           const channelId = article.dataset.channelId;
           if (!video || !videoId) continue;
           if (entry.isIntersecting && entry.intersectionRatio >= 0.7) {
-            trackAnalyticsEvent("CLIP_IMPRESSION", { videoId, channelId });
-            if (autoplayEnabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            if (activeId.current && activeId.current !== videoId) {
+              trackAnalyticsEvent("CLIP_SWIPE", {
+                videoId,
+                ...(channelId ? { channelId } : {}),
+                metadata: { fromVideoId: activeId.current },
+              });
+            }
+            activeId.current = videoId;
+            trackAnalyticsEvent("CLIP_IMPRESSION", {
+              videoId,
+              ...(channelId ? { channelId } : {}),
+            });
+            if (
+              autoplayEnabled &&
+              !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ) {
               void video
                 .play()
-                .then(() => trackAnalyticsEvent("CLIP_PLAY", { videoId, channelId }))
+                .then(() =>
+                  trackAnalyticsEvent("CLIP_PLAY", {
+                    videoId,
+                    ...(channelId ? { channelId } : {}),
+                  }),
+                )
                 .catch(() => undefined);
             }
           } else {
@@ -62,6 +117,33 @@ export function ClipsFeed({
     container.querySelectorAll("article").forEach((element) => observer.observe(element));
     return () => observer.disconnect();
   }, [autoplayEnabled]);
+
+  async function toggleLike(clip: ClipItem) {
+    const next = !liked[clip.id];
+    const result = await socialMutation(
+      `/social/videos/${clip.id}/reaction`,
+      next ? "PUT" : "DELETE",
+      next ? { type: "LIKE" } : undefined,
+    );
+    if (!result) return;
+    setLiked((current) => ({ ...current, [clip.id]: next }));
+    setLikeCounts((current) => ({ ...current, [clip.id]: result.likeCount ?? current[clip.id] ?? 0 }));
+    if (next) trackAnalyticsEvent("LIKE", { videoId: clip.id, channelId: clip.channel.id });
+  }
+
+  async function toggleSubscription(clip: ClipItem) {
+    const next = !subscribed[clip.channel.id];
+    const result = await socialMutation(
+      `/social/channels/${clip.channel.id}/subscription`,
+      next ? "PUT" : "DELETE",
+      next ? {} : undefined,
+    );
+    if (!result) return;
+    setSubscribed((current) => ({ ...current, [clip.channel.id]: next }));
+    if (next) {
+      trackAnalyticsEvent("SUBSCRIBE", { videoId: clip.id, channelId: clip.channel.id });
+    }
+  }
 
   return (
     <div ref={root} className={styles.feed} aria-label="AYIN Clips feed">
@@ -83,12 +165,14 @@ export function ClipsFeed({
               muted
               controls
               preload="metadata"
-              onEnded={() =>
+              onPause={(event) => persistWatchProgress(clip, event.currentTarget)}
+              onEnded={(event) => {
+                persistWatchProgress(clip, event.currentTarget);
                 trackAnalyticsEvent("CLIP_COMPLETE", {
                   videoId: clip.id,
                   channelId: clip.channel.id,
-                })
-              }
+                });
+              }}
             />
             <div className={styles.overlay}>
               <div>
@@ -97,14 +181,22 @@ export function ClipsFeed({
                 {clip.description ? <p>{clip.description}</p> : null}
               </div>
               <nav className={styles.actions} aria-label={`Actions for ${clip.title}`}>
-                <Link href={`/watch/${clip.slug}`}>♡ {clip._count.reactions}</Link>
+                <button type="button" onClick={() => void toggleLike(clip)}>
+                  {liked[clip.id] ? "♥" : "♡"} {likeCounts[clip.id] ?? clip._count.reactions}
+                </button>
                 <Link href={`/watch/${clip.slug}#comments`}>💬 {clip._count.comments}</Link>
-                <Link href={`/c/${clip.channel.handle}`}>Subscribe</Link>
+                <button type="button" onClick={() => void toggleSubscription(clip)}>
+                  {subscribed[clip.channel.id] ? "Subscribed" : "Subscribe"}
+                </button>
                 <button
                   type="button"
                   onClick={() => {
                     const url = `${window.location.origin}/watch/${clip.slug}`;
                     trackAnalyticsEvent("CLIP_SHARE", {
+                      videoId: clip.id,
+                      channelId: clip.channel.id,
+                    });
+                    trackAnalyticsEvent("SHARE", {
                       videoId: clip.id,
                       channelId: clip.channel.id,
                     });
