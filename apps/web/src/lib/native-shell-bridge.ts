@@ -1,10 +1,5 @@
 export type NativeShellPlatform =
-  | "android"
-  | "android-tv"
-  | "google-tv"
-  | "fire-tv"
-  | "tizen"
-  | "webos";
+  "android" | "android-tv" | "google-tv" | "fire-tv" | "tizen" | "webos";
 
 export type NativeRemoteKey =
   | "UP"
