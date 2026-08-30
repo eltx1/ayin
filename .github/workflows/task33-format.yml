@@ -1,0 +1,24 @@
+name: Task33 format
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-33-recommendations-lens
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable && corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prettier --write apps/api/src/recommendations/recommendation.service.ts
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/recommendations/recommendation.service.ts
+          git diff --cached --quiet || git commit -m "Format recommendation service"
+          git push origin HEAD:task-33-recommendations-lens
