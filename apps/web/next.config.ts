@@ -11,6 +11,7 @@ function configuredOrigin(value: string | undefined): string | null {
 
 const apiOrigin = configuredOrigin(process.env.NEXT_PUBLIC_API_BASE_URL);
 const mediaOrigin = configuredOrigin(process.env.NEXT_PUBLIC_MEDIA_BASE_URL);
+const mediaRemotePattern = mediaOrigin ? new URL("/**", mediaOrigin) : null;
 const explicitConnectOrigins = [...new Set([apiOrigin, mediaOrigin].filter(Boolean))].join(" ");
 const explicitMediaOrigins = mediaOrigin ?? "";
 const productionOnlyDirectives =
@@ -45,6 +46,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@ayin/ui"],
+  images: {
+    remotePatterns: mediaRemotePattern ? [mediaRemotePattern] : [],
+  },
   async headers() {
     return [
       {

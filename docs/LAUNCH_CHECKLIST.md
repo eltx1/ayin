@@ -44,7 +44,8 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] House/direct fallback works when external fill is unavailable.
 - [ ] `ads.txt` and `app-ads.txt` contain only seller/publisher identifiers actually supplied by the relevant account/partner.
 - [ ] Remove every placeholder before claiming an external seller relationship.
-- [ ] Google Ad Manager/IMA production configuration is completed only under Task 36 with real account data.
+- [ ] Supply the real Google Ad Manager network/ad-unit/seller data to the completed Task 36
+      integration boundary, then verify test line items, consent, fill, reporting and target devices.
 
 ## Legal and policy
 

@@ -17,13 +17,15 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const current = data.schedule.nowPlaying;
+  const currentOccurrenceKey = current?.occurrenceKey;
+  const currentVideoId = current?.video.id;
   useEffect(() => {
-    if (!current) return;
+    if (!currentVideoId) return;
     trackAnalyticsEvent("TV_START", {
       channelId: data.channel.id,
-      videoId: current.video.id,
+      videoId: currentVideoId,
     });
-  }, [current?.occurrenceKey, current?.video.id, data.channel.id]);
+  }, [currentOccurrenceKey, currentVideoId, data.channel.id]);
   const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);
   const accent = data.appearance.accentColor ?? "#63D1CC";
   const avatar = mediaAssetUrl(data.appearance.avatar?.objectKey);

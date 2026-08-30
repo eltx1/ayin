@@ -1,31 +1,42 @@
 # AYIN Development Contract
 
-Status: Implemented baseline through Task 01
-Last updated: 2026-08-27
+Status: Current development contract through Task 38
+Last updated: 2026-08-30
 
-This document defines the local-development and repository conventions that Task 01 and later tasks must preserve. Commands marked “reserved” are part of the intended command surface and should be added when the owning capability exists; they must not be misleading no-op scripts.
+This document defines the local-development and repository conventions that maintenance and
+post-roadmap work must preserve. The listed command surface is implemented and must remain
+truthful; do not add misleading no-op scripts.
 
 ## 1. Current repository baseline
 
-Task 01 establishes the pnpm workspace, baseline applications, shared packages, quality tooling, lockfile, and placeholder environment examples. Database entities, migrations, authentication, uploads, playback, advertising, creator features, and admin features are intentionally not implemented yet.
+Tasks 00–38 are implemented on `main`. The repository contains the complete roadmap-side Web/PWA,
+API, database, creator, admin, advertising, analytics, revenue, trust, live/linear adapter, and
+thin platform-shell foundations. Provider- or device-dependent production verification remains
+tracked separately in `TASK_PROGRESS.md` and `docs/LAUNCH_CHECKLIST.md`.
 
-| Existing area                    | Purpose                                               |
-| -------------------------------- | ----------------------------------------------------- |
-| `README.md`                      | Product and repository entry point                    |
-| `docs/AYIN_MASTER_PLAN.md`       | Authoritative product/platform plan                   |
-| `docs/AYIN_AI_AGENT_RULES.md`    | Mandatory implementation and reporting rules          |
-| `docs/AYIN_EXECUTION_ROADMAP.md` | Sequential task scope and acceptance criteria         |
-| `docs/ARCHITECTURE.md`           | Engineering boundaries and runtime/data-flow contract |
-| `docs/DEVELOPMENT.md`            | Local workflow and conventions                        |
-| `docs/DECISIONS.md`              | Accepted architectural decisions                      |
-| `apps/web`                       | Next.js App Router Web/PWA baseline                   |
-| `apps/api`                       | NestJS/Fastify API baseline and health endpoint       |
-| `packages/ui`                    | Shared React UI primitives                            |
-| `packages/config`                | Shared typed runtime configuration helpers            |
-| `packages/types`                 | Genuinely cross-application TypeScript contracts      |
-| `packages/db`                    | Prisma/PostgreSQL boundary placeholder for Task 02    |
+| Existing area                    | Purpose                                                |
+| -------------------------------- | ------------------------------------------------------ |
+| `README.md`                      | Product and repository entry point                     |
+| `docs/AYIN_MASTER_PLAN.md`       | Authoritative product/platform plan                    |
+| `docs/AYIN_AI_AGENT_RULES.md`    | Mandatory implementation and reporting rules           |
+| `docs/AYIN_EXECUTION_ROADMAP.md` | Sequential task scope and acceptance criteria          |
+| `docs/ARCHITECTURE.md`           | Engineering boundaries and runtime/data-flow contract  |
+| `docs/DEVELOPMENT.md`            | Local workflow and conventions                         |
+| `docs/DECISIONS.md`              | Accepted architectural decisions                       |
+| `apps/web`                       | Viewer, Studio, Admin, PWA and shared platform UI      |
+| `apps/api`                       | NestJS/Fastify modular monolith and health endpoint    |
+| `packages/ui`                    | Shared React UI primitives                             |
+| `packages/config`                | Shared typed runtime configuration helpers             |
+| `packages/types`                 | Genuinely cross-application TypeScript contracts       |
+| `packages/db`                    | Prisma schema, migrations, seed and database client    |
+| `platforms/android`              | Android mobile, Google TV and Fire TV hybrid shells    |
+| `platforms/tizen`                | Samsung Tizen hosted package                           |
+| `platforms/webos`                | LG webOS hosted package                                |
+| `deploy`                         | CloudPanel/AWS process, proxy and atomic release tools |
+| `tests/e2e`                      | Launch-critical Playwright acceptance journeys         |
 
-No repository evidence conflicts with NestJS/Fastify or Prisma, so those are the accepted baseline.
+NestJS/Fastify, Prisma/PostgreSQL, Next.js App Router, R2-only creator video storage, and the
+modular-monolith boundary are the accepted implemented baseline.
 
 ## 2. Local prerequisites
 
@@ -35,7 +46,8 @@ Exact baseline tool versions are pinned by `package.json` files and `pnpm-lock.y
 - Node.js 24.19.0 as pinned by `.nvmrc`, or a compatible version allowed by the root `engines` field.
 - Corepack enabled.
 - pnpm 11.24.0 through Corepack, pinned in the root `packageManager` field.
-- PostgreSQL for database tasks beginning with Task 02. A local instance or disposable container is acceptable.
+- PostgreSQL 17-compatible local instance or disposable container for migrations, integration
+  tests, and browser acceptance.
 - Docker/Compose may be offered as a convenience for local infrastructure, but must not be the only supported way to run the TypeScript applications.
 
 Do not install production credentials locally merely to make a test pass. Provider-dependent features must use explicit development adapters or skip with an honest message when their roadmap task introduces them.
@@ -48,7 +60,7 @@ Do not install production credentials locally merely to make a test pass. Provid
 - Language: strict TypeScript for applications, packages, tests, scripts, and configuration whenever the tool supports TypeScript.
 - Web: Next.js 16.3.3 App Router with React 19.2.8, pinned by the lockfile.
 - API: NestJS 12.0.1 with the Fastify 5.12.1 adapter.
-- Database: PostgreSQL through Prisma 7.10.0 in `packages/db`; the schema begins in Task 02.
+- Database: PostgreSQL through Prisma 7.10.0 in `packages/db`, with committed forward migrations.
 - TypeScript: 5.9.3, the current version compatible with the pinned lint ecosystem.
 - Runtime schemas: Zod 4.4.3 where shared contracts, environment values, request/event payloads, or other untrusted inputs need runtime validation.
 - Architecture: one modular monolith. Do not add service-to-service networking, independent databases, or message brokers without a later task and ADR.
@@ -57,40 +69,42 @@ Applications may depend on packages. Packages must not depend on an application,
 
 ## 4. Root command surface
 
-Task 01 provides the applicable root commands below. Later tasks add reserved commands only when the capability exists; do not create misleading no-op scripts.
+The root commands below are the implemented acceptance surface. Do not create misleading no-op
+scripts.
 
-| Command                          | Required behavior                                                        |
-| -------------------------------- | ------------------------------------------------------------------------ |
-| `pnpm install --frozen-lockfile` | Reproduce dependencies in CI after the initial lockfile exists           |
-| `pnpm dev`                       | Run the normal local web and API development processes together          |
-| `pnpm dev:web`                   | Run only `apps/web`                                                      |
-| `pnpm dev:api`                   | Run only `apps/api`                                                      |
-| `pnpm lint`                      | Lint every relevant workspace project                                    |
-| `pnpm format`                    | Apply the repository formatter                                           |
-| `pnpm format:check`              | Verify formatting without modifying files                                |
-| `pnpm typecheck`                 | Type-check every relevant workspace project without emitting artifacts   |
-| `pnpm test`                      | Run the normal unit/test suite deterministically                         |
-| `pnpm test:integration`          | Run the API integration smoke suite                                      |
-| `pnpm build`                     | Produce production builds for all deployable applications/packages       |
-| `pnpm db:generate`               | Reserved for deterministic Prisma client generation                      |
-| `pnpm db:migrate`                | Reserved for local forward migration development                         |
-| `pnpm db:migrate:deploy`         | Reserved for applying committed migrations outside development           |
-| `pnpm db:seed`                   | Reserved for safe minimal system defaults; never fake production content |
+| Command                          | Required behavior                                                      |
+| -------------------------------- | ---------------------------------------------------------------------- |
+| `pnpm install --frozen-lockfile` | Reproduce dependencies in CI after the initial lockfile exists         |
+| `pnpm dev`                       | Run the normal local web and API development processes together        |
+| `pnpm dev:web`                   | Run only `apps/web`                                                    |
+| `pnpm dev:api`                   | Run only `apps/api`                                                    |
+| `pnpm lint`                      | Lint every relevant workspace project                                  |
+| `pnpm audit:prod`                | Fail on known high-severity production dependency advisories           |
+| `pnpm format`                    | Apply the repository formatter                                         |
+| `pnpm format:check`              | Verify formatting without modifying files                              |
+| `pnpm typecheck`                 | Type-check every relevant workspace project without emitting artifacts |
+| `pnpm test`                      | Run the normal unit/test suite deterministically                       |
+| `pnpm test:integration`          | Run the API integration smoke suite                                    |
+| `pnpm build`                     | Produce production builds for all deployable applications/packages     |
+| `pnpm db:generate`               | Generate the pinned Prisma client deterministically                    |
+| `pnpm db:migrate`                | Run local forward migration development                                |
+| `pnpm db:migrate:deploy`         | Apply committed migrations outside development                         |
+| `pnpm db:seed`                   | Seed safe minimal system defaults; never fake production content       |
 
 Filtering a workspace for diagnosis is allowed, but the root quality commands remain the final acceptance gate. CI uses frozen installs and must not mutate the lockfile.
 
 ## 5. Local defaults and domains
 
-Unless Task 01 discovers a conflict, use these development defaults:
+Use these development defaults unless an explicit environment override is documented:
 
-| Surface                                   | Local default                               | Production-facing name                                                     |
-| ----------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------- |
-| Web/PWA, including `/studio` and `/admin` | `http://localhost:3000`                     | `https://ayin.stream`                                                      |
-| API                                       | `http://localhost:3001`                     | `https://api.ayin.stream`                                                  |
-| Creator Studio route                      | `http://localhost:3000/studio`              | `/studio` initially; `studio.ayin.stream` may route to it later            |
-| Admin route                               | `http://localhost:3000/admin`               | `/admin` initially; `admin.ayin.stream` may route to it later              |
-| Media delivery                            | Explicit local adapter URL when implemented | `https://media.ayin.stream`                                                |
-| Advertising service                       | Local API module/adapter when implemented   | `https://ads.ayin.stream` only when a distinct public endpoint is required |
+| Surface                                   | Local default                   | Production-facing name                                                     |
+| ----------------------------------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| Web/PWA, including `/studio` and `/admin` | `http://localhost:3000`         | `https://ayin.stream`                                                      |
+| API                                       | `http://localhost:3001`         | `https://api.ayin.stream`                                                  |
+| Creator Studio route                      | `http://localhost:3000/studio`  | `/studio` initially; `studio.ayin.stream` may route to it later            |
+| Admin route                               | `http://localhost:3000/admin`   | `/admin` initially; `admin.ayin.stream` may route to it later              |
+| Media delivery                            | Explicit local/test adapter URL | `https://media.ayin.stream`                                                |
+| Advertising service                       | API-owned provider adapters     | `https://ads.ayin.stream` only when a distinct public endpoint is required |
 
 Port values are development defaults, not business configuration. They may be overridden with documented environment variables.
 
@@ -195,7 +209,7 @@ Provider tags and credentials belong in validated configuration/adapters, not Re
 
 - Use the Next.js App Router; do not add a parallel Pages Router.
 - Keep viewer, Studio, and Admin code in isolated route/module trees with independently enforced access rules.
-- Quick Upload remains available outside Studio when implemented.
+- Quick Upload remains available outside Studio.
 - Build accessible shared UI primitives before duplicating patterns.
 - Interactive components must support their relevant pointer, touch, keyboard, and directional-focus behavior.
 - TV focus state and remote key mapping belong in reusable primitives/adapters.
@@ -225,7 +239,9 @@ Each task must run every configured relevant gate and report the exact outcome:
 
 Tests should emphasize behavior and invariants: provisioning, authorization, upload signing/state, Creator TV, settings, ads, revenue, and destructive admin actions. Framework snapshot churn is not a substitute for domain tests.
 
-Task 00 has no application toolchain, so only documentation and repository checks can run. This is expected and must be reported honestly.
+CI additionally runs clean PostgreSQL migrations/integration tests, Playwright launch journeys,
+and platform-package validation where affected. Provider/device production checks must still be
+reported separately and never inferred from repository tests.
 
 ## 15. Change discipline
 

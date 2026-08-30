@@ -105,9 +105,19 @@ export class CreatorCommunityController {
     @Param("postId") raw: string,
     @Body() body: unknown,
   ) {
-    const parsed = z.object({ assetId: uuid }).parse(body);
+    const parsed = z
+      .object({
+        assetId: uuid,
+        width: z.number().int().min(1).max(16_384).optional(),
+        height: z.number().int().min(1).max(16_384).optional(),
+      })
+      .strict()
+      .parse(body);
     return run(() =>
-      this.service.completeImage(request.ayinAuth.accountId, id(raw), parsed.assetId),
+      this.service.completeImage(request.ayinAuth.accountId, id(raw), parsed.assetId, {
+        width: parsed.width,
+        height: parsed.height,
+      }),
     );
   }
 }

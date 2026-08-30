@@ -10,7 +10,10 @@ const navigation = [
   ["TV", "/studio/tv"],
   ["Analytics", "/studio/analytics"],
   ["Comments", "/studio/comments"],
+  ["Community", "/studio/community"],
+  ["Live", "/studio/live"],
   ["Monetization", "/studio/monetization"],
+  ["Trust & safety", "/studio/trust"],
   ["Channel settings", "/studio/channel"],
 ] as const;
 

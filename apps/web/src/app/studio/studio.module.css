@@ -218,6 +218,11 @@
   gap: 10px;
 }
 
+.formGrid label {
+  display: grid;
+  gap: 7px;
+}
+
 .formGrid textarea {
   grid-column: 1 / -1;
   min-height: 88px;

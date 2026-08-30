@@ -47,7 +47,8 @@ export class CommunityService {
     await this.ensureEnabled();
     const channel = await this.creatorChannel(accountId);
     await this.validateInput(input);
-    const status = input.scheduledPublishAt ? "SCHEDULED" : "DRAFT";
+    // Image posts cannot become visible until their separately uploaded object is validated.
+    const status = input.scheduledPublishAt && input.type !== "IMAGE" ? "SCHEDULED" : "DRAFT";
     return this.database.client.communityPost.create({
       data: {
         channelId: channel.id,
@@ -88,7 +89,11 @@ export class CommunityService {
           body: input.body ?? null,
           sharedVideoId: input.sharedVideoId ?? null,
           scheduledPublishAt: input.scheduledPublishAt ? new Date(input.scheduledPublishAt) : null,
-          status: input.scheduledPublishAt ? "SCHEDULED" : "DRAFT",
+          status:
+            input.scheduledPublishAt &&
+            (input.type !== "IMAGE" || post.imageAsset?.status === "VALIDATED")
+              ? "SCHEDULED"
+              : "DRAFT",
           ...(input.type === "POLL" && input.pollOptions
             ? {
                 pollOptions: {
@@ -150,6 +155,12 @@ export class CommunityService {
     const post = await this.ownedPost(accountId, postId);
     if (post.type !== "IMAGE")
       throw new CommunityError("IMAGE_POST_REQUIRED", "Only image posts accept an image upload.");
+    if (post.status === "PUBLISHED")
+      throw new CommunityError(
+        "PUBLISHED_IMAGE_IMMUTABLE",
+        "Published image posts cannot replace their media. Create a new post instead.",
+        409,
+      );
     if (!this.storage.available)
       throw new CommunityError(
         "MEDIA_STORAGE_UNAVAILABLE",
@@ -167,20 +178,27 @@ export class CommunityService {
       );
     const assetId = randomUUID();
     const key = `channels/${post.channelId}/community/${post.id}/${assetId}`;
-    await this.database.client.mediaAsset.create({
-      data: {
-        id: assetId,
-        channelId: post.channelId,
-        kind: "COMMUNITY_IMAGE",
-        status: "PENDING",
-        r2ObjectKey: key,
-        mimeType: input.mimeType,
-        sizeBytes: BigInt(input.sizeBytes),
-      },
-    });
-    await this.database.client.communityPost.update({
-      where: { id: postId },
-      data: { imageAssetId: assetId },
+    await this.database.client.$transaction(async (tx) => {
+      await tx.mediaAsset.create({
+        data: {
+          id: assetId,
+          channelId: post.channelId,
+          kind: "COMMUNITY_IMAGE",
+          status: "PENDING",
+          r2ObjectKey: key,
+          mimeType: input.mimeType,
+          sizeBytes: BigInt(input.sizeBytes),
+        },
+      });
+      await tx.communityPost.update({
+        where: { id: postId },
+        data: { imageAssetId: assetId },
+      });
+      if (post.imageAssetId)
+        await tx.mediaAsset.update({
+          where: { id: post.imageAssetId },
+          data: { status: "REMOVED", removedAt: new Date() },
+        });
     });
     const authorization = await this.storage.authorizeSinglePut({
       key,
@@ -198,7 +216,12 @@ export class CommunityService {
     };
   }
 
-  async completeImage(accountId: string, postId: string, assetId: string) {
+  async completeImage(
+    accountId: string,
+    postId: string,
+    assetId: string,
+    dimensions: { width?: number | undefined; height?: number | undefined } = {},
+  ) {
     const post = await this.ownedPost(accountId, postId);
     if (post.imageAssetId !== assetId)
       throw new CommunityError("IMAGE_ASSET_MISMATCH", "This image does not belong to the post.");
@@ -215,9 +238,21 @@ export class CommunityService {
         "INVALID_STORED_IMAGE",
         "The stored image did not match the authorized upload.",
       );
-    await this.database.client.mediaAsset.update({
-      where: { id: assetId },
-      data: { status: "VALIDATED", sizeBytes: BigInt(head.sizeBytes) },
+    await this.database.client.$transaction(async (tx) => {
+      await tx.mediaAsset.update({
+        where: { id: assetId },
+        data: {
+          status: "VALIDATED",
+          sizeBytes: BigInt(head.sizeBytes),
+          ...(dimensions.width ? { width: dimensions.width } : {}),
+          ...(dimensions.height ? { height: dimensions.height } : {}),
+        },
+      });
+      if (post.scheduledPublishAt)
+        await tx.communityPost.update({
+          where: { id: postId },
+          data: { status: "SCHEDULED" },
+        });
     });
     return { assetId, status: "VALIDATED" as const };
   }
@@ -362,7 +397,15 @@ export class CommunityService {
   private include(): Prisma.CommunityPostInclude {
     return {
       channel: { select: { id: true, handle: true, name: true } },
-      imageAsset: { select: { id: true, r2ObjectKey: true, status: true } },
+      imageAsset: {
+        select: {
+          id: true,
+          r2ObjectKey: true,
+          status: true,
+          width: true,
+          height: true,
+        },
+      },
       sharedVideo: { select: { id: true, slug: true, title: true } },
       pollOptions: {
         orderBy: { position: "asc" },
@@ -377,9 +420,16 @@ export class CommunityService {
       where: {
         ...where,
         removedAt: null,
-        OR: [
-          { status: "PUBLISHED", publishedAt: { lte: now } },
-          { status: "SCHEDULED", scheduledPublishAt: { lte: now } },
+        AND: [
+          {
+            OR: [
+              { status: "PUBLISHED", publishedAt: { lte: now } },
+              { status: "SCHEDULED", scheduledPublishAt: { lte: now } },
+            ],
+          },
+          {
+            OR: [{ type: { not: "IMAGE" } }, { imageAsset: { is: { status: "VALIDATED" } } }],
+          },
         ],
       },
       orderBy: [{ publishedAt: "desc" }, { scheduledPublishAt: "desc" }, { createdAt: "desc" }],
@@ -437,9 +487,16 @@ export class CommunityService {
         id: postId,
         removedAt: null,
         channel: { status: "ACTIVE", removedAt: null },
-        OR: [
-          { status: "PUBLISHED", publishedAt: { lte: now } },
-          { status: "SCHEDULED", scheduledPublishAt: { lte: now } },
+        AND: [
+          {
+            OR: [
+              { status: "PUBLISHED", publishedAt: { lte: now } },
+              { status: "SCHEDULED", scheduledPublishAt: { lte: now } },
+            ],
+          },
+          {
+            OR: [{ type: { not: "IMAGE" } }, { imageAsset: { is: { status: "VALIDATED" } } }],
+          },
         ],
       },
       include: { pollOptions: true },
