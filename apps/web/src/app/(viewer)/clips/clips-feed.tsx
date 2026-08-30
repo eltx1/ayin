@@ -93,10 +93,7 @@ export function ClipsFeed({
               videoId,
               ...(channelId ? { channelId } : {}),
             });
-            if (
-              autoplayEnabled &&
-              !window.matchMedia("(prefers-reduced-motion: reduce)").matches
-            ) {
+            if (autoplayEnabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
               void video
                 .play()
                 .then(() =>
@@ -127,7 +124,10 @@ export function ClipsFeed({
     );
     if (!result) return;
     setLiked((current) => ({ ...current, [clip.id]: next }));
-    setLikeCounts((current) => ({ ...current, [clip.id]: result.likeCount ?? current[clip.id] ?? 0 }));
+    setLikeCounts((current) => ({
+      ...current,
+      [clip.id]: result.likeCount ?? current[clip.id] ?? 0,
+    }));
     if (next) trackAnalyticsEvent("LIKE", { videoId: clip.id, channelId: clip.channel.id });
   }
 
