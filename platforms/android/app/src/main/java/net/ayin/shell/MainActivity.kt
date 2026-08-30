@@ -48,6 +48,7 @@ class MainActivity : AppCompatActivity() {
         webView.requestFocus()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                emitRemoteKey("BACK")
                 when {
                     customView != null -> hideCustomView()
                     webView.canGoBack() -> webView.goBack()
@@ -94,12 +95,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode == KeyEvent.KEYCODE_BACK) {
-            if (event.action == KeyEvent.ACTION_DOWN) emitRemoteKey("BACK")
-            if (event.action == KeyEvent.ACTION_UP) onBackPressedDispatcher.onBackPressed()
-            return true
-        }
-
         if (event.action == KeyEvent.ACTION_DOWN) {
             val key = mediaRemoteKey(event.keyCode)
             if (key != null) {
@@ -109,7 +104,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         // D-pad/Enter deliberately remain normal WebView keyboard events so the shared
-        // web TV focus system remains the single source of truth for traversal.
+        // web TV focus system remains the single source of truth for traversal. Back is
+        // owned by OnBackPressedDispatcher so Android 16 predictive-back remains correct.
         return super.dispatchKeyEvent(event)
     }
 
