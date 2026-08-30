@@ -24,12 +24,12 @@ function mediaUrl(key: string) {
 }
 
 async function socialMutation(path: string, method: "PUT" | "DELETE", body?: unknown) {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method,
-    credentials: "include",
-    headers: body ? { "content-type": "application/json" } : undefined,
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  const options: RequestInit = { method, credentials: "include" };
+  if (body !== undefined) {
+    options.headers = { "content-type": "application/json" };
+    options.body = JSON.stringify(body);
+  }
+  const response = await fetch(`${apiBaseUrl}${path}`, options);
   if (response.status === 401 || response.status === 403) {
     window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
     return null;
