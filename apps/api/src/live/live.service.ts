@@ -121,7 +121,11 @@ export class LiveService {
   async setState(accountId: string, streamId: string, status: "LIVE" | "ENDED" | "CANCELLED") {
     const stream = await this.ownedStream(accountId, streamId);
     if (status === "LIVE" && (!stream.playbackUrl || stream.providerKey === "unconfigured"))
-      throw new LiveError("LIVE_PLAYBACK_UNAVAILABLE", "A configured playback output is required.", 409);
+      throw new LiveError(
+        "LIVE_PLAYBACK_UNAVAILABLE",
+        "A configured playback output is required.",
+        409,
+      );
     if (status === "ENDED") await this.provider.stop(stream.providerStreamId);
     const updated = await this.database.client.liveStream.update({
       where: { id: stream.id },
@@ -142,7 +146,11 @@ export class LiveService {
       select: { id: true, handle: true, name: true },
     });
     if (!channel) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
-    return { ...stripSecretHash(stream), channel, adBreakHook: stream.adBreaksEnabled ? "IMA_CLIENT_BREAK" : null };
+    return {
+      ...stripSecretHash(stream),
+      channel,
+      adBreakHook: stream.adBreaksEnabled ? "IMA_CLIENT_BREAK" : null,
+    };
   }
 
   async chat(slug: string) {
@@ -157,8 +165,10 @@ export class LiveService {
 
   async postChat(accountId: string, slug: string, body: string) {
     const stream = await this.publicStream(slug);
-    if (!stream.chatEnabled) throw new LiveError("LIVE_CHAT_DISABLED", "Live chat is disabled.", 409);
-    if (stream.status !== "LIVE") throw new LiveError("LIVE_CHAT_NOT_ACTIVE", "Chat is available while live.", 409);
+    if (!stream.chatEnabled)
+      throw new LiveError("LIVE_CHAT_DISABLED", "Live chat is disabled.", 409);
+    if (stream.status !== "LIVE")
+      throw new LiveError("LIVE_CHAT_NOT_ACTIVE", "Chat is available while live.", 409);
     const profile = await this.database.client.viewerProfile.findFirst({
       where: { accountId, isDefault: true, deletedAt: null },
       select: { id: true },
@@ -190,7 +200,13 @@ export class LiveService {
         },
       }),
       this.database.client.liveModerationAction.create({
-        data: { liveStreamId: stream.id, messageId, actorAccountId: accountId, action, reason: reason ?? null },
+        data: {
+          liveStreamId: stream.id,
+          messageId,
+          actorAccountId: accountId,
+          action,
+          reason: reason ?? null,
+        },
       }),
     ]);
     return { messageId, status: action === "HIDE_MESSAGE" ? "HIDDEN" : "REMOVED" };
@@ -199,7 +215,10 @@ export class LiveService {
   async setChatEnabled(accountId: string, streamId: string, enabled: boolean) {
     const stream = await this.ownedStream(accountId, streamId);
     await this.database.client.$transaction([
-      this.database.client.liveStream.update({ where: { id: stream.id }, data: { chatEnabled: enabled } }),
+      this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: { chatEnabled: enabled },
+      }),
       this.database.client.liveModerationAction.create({
         data: {
           liveStreamId: stream.id,
@@ -217,26 +236,42 @@ export class LiveService {
 
   private async creatorChannel(accountId: string) {
     const membership = await this.database.client.channelMember.findFirst({
-      where: { accountId, role: { in: ["OWNER", "ADMIN", "EDITOR"] }, channel: { status: "ACTIVE" } },
+      where: {
+        accountId,
+        role: { in: ["OWNER", "ADMIN", "EDITOR"] },
+        channel: { status: "ACTIVE" },
+      },
       orderBy: { createdAt: "asc" },
       select: { channel: { select: { id: true, handle: true, name: true } } },
     });
-    if (!membership) throw new LiveError("CHANNEL_REQUIRED", "An active creator channel is required.", 403);
+    if (!membership)
+      throw new LiveError("CHANNEL_REQUIRED", "An active creator channel is required.", 403);
     return membership.channel;
   }
 
   private async ownedStream(accountId: string, streamId: string) {
     const channel = await this.creatorChannel(accountId);
-    const stream = await this.database.client.liveStream.findFirst({ where: { id: streamId, channelId: channel.id } });
+    const stream = await this.database.client.liveStream.findFirst({
+      where: { id: streamId, channelId: channel.id },
+    });
     if (!stream) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
     return stream;
   }
 
   private async uniqueSlug(title: string) {
-    const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 120) || "live";
+    const base =
+      title
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "")
+        .slice(0, 120) || "live";
     for (let i = 0; i < 8; i += 1) {
       const slug = `${base}-${randomBytes(4).toString("hex")}`;
-      const exists = await this.database.client.liveStream.findUnique({ where: { slug }, select: { id: true } });
+      const exists = await this.database.client.liveStream.findUnique({
+        where: { slug },
+        select: { id: true },
+      });
       if (!exists) return slug;
     }
     throw new LiveError("LIVE_SLUG_EXHAUSTED", "Could not allocate a live URL.", 500);
@@ -247,7 +282,9 @@ function hashKey(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function stripSecretHash<T extends { streamKeyHash: string | null }>(stream: T): Omit<T, "streamKeyHash"> {
+function stripSecretHash<T extends { streamKeyHash: string | null }>(
+  stream: T,
+): Omit<T, "streamKeyHash"> {
   const { streamKeyHash: _streamKeyHash, ...safe } = stream;
   return safe;
 }

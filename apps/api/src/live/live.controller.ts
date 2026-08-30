@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpException, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -85,7 +95,11 @@ export class StudioLiveController {
     @Body() body: unknown,
   ) {
     return call(() =>
-      this.live.setChatEnabled(request.ayinAuth.accountId, id, toggleChatSchema.parse(body).enabled),
+      this.live.setChatEnabled(
+        request.ayinAuth.accountId,
+        id,
+        toggleChatSchema.parse(body).enabled,
+      ),
     );
   }
 

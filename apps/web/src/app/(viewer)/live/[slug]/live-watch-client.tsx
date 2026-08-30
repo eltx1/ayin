@@ -28,7 +28,9 @@ export function LiveWatchClient({ slug }: { slug: string }) {
   useEffect(() => {
     let active = true;
     async function load() {
-      const response = await fetch(`${apiBaseUrl}/live/${encodeURIComponent(slug)}`, { cache: "no-store" });
+      const response = await fetch(`${apiBaseUrl}/live/${encodeURIComponent(slug)}`, {
+        cache: "no-store",
+      });
       if (!response.ok) {
         if (active) setStatus("This live session is unavailable.");
         return;
@@ -37,8 +39,13 @@ export function LiveWatchClient({ slug }: { slug: string }) {
       if (!active) return;
       setStream(next);
       setStatus("");
-      trackAnalyticsEvent("LIVE_PAGE_VIEW", { channelId: next.channel.id, metadata: { liveStreamId: next.id } });
-      const chatResponse = await fetch(`${apiBaseUrl}/live/${encodeURIComponent(slug)}/chat`, { cache: "no-store" });
+      trackAnalyticsEvent("LIVE_PAGE_VIEW", {
+        channelId: next.channel.id,
+        metadata: { liveStreamId: next.id },
+      });
+      const chatResponse = await fetch(`${apiBaseUrl}/live/${encodeURIComponent(slug)}/chat`, {
+        cache: "no-store",
+      });
       if (chatResponse.ok && active) {
         const chat = (await chatResponse.json()) as { messages: ChatMessage[] };
         setMessages(chat.messages);
@@ -63,7 +70,10 @@ export function LiveWatchClient({ slug }: { slug: string }) {
     const message = (await response.json()) as ChatMessage;
     setMessages((current) => [...current, message]);
     setBody("");
-    trackAnalyticsEvent("LIVE_CHAT_MESSAGE", { channelId: stream.channel.id, metadata: { liveStreamId: stream.id } });
+    trackAnalyticsEvent("LIVE_CHAT_MESSAGE", {
+      channelId: stream.channel.id,
+      metadata: { liveStreamId: stream.id },
+    });
   }
 
   return (
@@ -98,7 +108,9 @@ export function LiveWatchClient({ slug }: { slug: string }) {
           ) : (
             <section aria-live="polite">
               <strong>{stream.status === "SCHEDULED" ? "Scheduled" : stream.status}</strong>
-              {stream.scheduledStartAt ? <p>Starts {new Date(stream.scheduledStartAt).toLocaleString()}</p> : null}
+              {stream.scheduledStartAt ? (
+                <p>Starts {new Date(stream.scheduledStartAt).toLocaleString()}</p>
+              ) : null}
             </section>
           )}
           {stream.adBreakHook ? (
@@ -123,7 +135,11 @@ export function LiveWatchClient({ slug }: { slug: string }) {
               <form onSubmit={submit}>
                 <label>
                   Message
-                  <input value={body} onChange={(event) => setBody(event.target.value)} maxLength={500} />
+                  <input
+                    value={body}
+                    onChange={(event) => setBody(event.target.value)}
+                    maxLength={500}
+                  />
                 </label>
                 <button type="submit">Send</button>
               </form>

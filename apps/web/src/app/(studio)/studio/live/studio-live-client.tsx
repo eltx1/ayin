@@ -27,7 +27,10 @@ export function StudioLiveClient() {
   const [message, setMessage] = useState("");
 
   async function load() {
-    const response = await fetch(`${apiBaseUrl}/studio/live`, { credentials: "include", cache: "no-store" });
+    const response = await fetch(`${apiBaseUrl}/studio/live`, {
+      credentials: "include",
+      cache: "no-store",
+    });
     if (!response.ok) {
       setMessage("Sign in with an active creator channel to manage live sessions.");
       return;
@@ -74,19 +77,32 @@ export function StudioLiveClient() {
   return (
     <section>
       <p>
-        Provider: <strong>{data?.provider.key ?? "checking"}</strong> — {data?.provider.configured ? "configured" : "not configured"}
+        Provider: <strong>{data?.provider.key ?? "checking"}</strong> —{" "}
+        {data?.provider.configured ? "configured" : "not configured"}
       </p>
       {!data?.provider.configured ? (
-        <p>R2 is VOD storage and is not used as a live transcoder. Provisioning stays disabled until a real provider is configured.</p>
+        <p>
+          R2 is VOD storage and is not used as a live transcoder. Provisioning stays disabled until
+          a real provider is configured.
+        </p>
       ) : null}
       <form onSubmit={create}>
         <label>
           Title
-          <input required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} />
+          <input
+            required
+            maxLength={200}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
         </label>
         <label>
           Scheduled start
-          <input type="datetime-local" value={scheduledStartAt} onChange={(event) => setScheduledStartAt(event.target.value)} />
+          <input
+            type="datetime-local"
+            value={scheduledStartAt}
+            onChange={(event) => setScheduledStartAt(event.target.value)}
+          />
         </label>
         <button type="submit">Create live session</button>
       </form>
@@ -99,7 +115,11 @@ export function StudioLiveClient() {
             <p>{stream.status}</p>
             <p>/live/{stream.slug}</p>
             {stream.ingestEndpoint ? <p>Ingest: {stream.ingestEndpoint}</p> : null}
-            <button type="button" disabled={!data.provider.configured} onClick={() => void provision(stream.id)}>
+            <button
+              type="button"
+              disabled={!data.provider.configured}
+              onClick={() => void provision(stream.id)}
+            >
               Provision / rotate credentials
             </button>
           </article>
