@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
@@ -17,6 +16,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
@@ -24,7 +25,7 @@ class MainActivity : AppCompatActivity() {
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
-    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         webView = WebView(this).apply {
@@ -39,10 +40,10 @@ class MainActivity : AppCompatActivity() {
             settings.setSupportZoom(false)
             isFocusable = true
             isFocusableInTouchMode = true
-            addJavascriptInterface(AyinJavascriptBridge(), "AyinNative")
             webViewClient = AyinWebViewClient()
             webChromeClient = AyinChromeClient()
         }
+        installOriginScopedBridge(webView)
         setContentView(webView)
         webView.requestFocus()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -84,7 +85,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         customViewCallback = null
         customView = null
-        webView.removeJavascriptInterface("AyinNative")
         webView.stopLoading()
         webView.loadUrl("about:blank")
         webView.clearHistory()
@@ -108,8 +108,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // D-pad/Enter intentionally flow through to WebView so the shared web TV UI receives
-        // standard Arrow*/Enter keyboard events and owns focus traversal.
+        // D-pad/Enter deliberately remain normal WebView keyboard events so the shared
+        // web TV focus system remains the single source of truth for traversal.
         return super.dispatchKeyEvent(event)
     }
 
@@ -118,6 +118,69 @@ class MainActivity : AppCompatActivity() {
         emitLifecycle("configuration-change")
     }
 
+    private fun installOriginScopedBridge(view: WebView) {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return
+
+        WebViewCompat.addWebMessageListener(
+            view,
+            "AyinNativeTransport",
+            setOf(AYIN_ORIGIN_RULE),
+        ) { _, message, sourceOrigin, isMainFrame, _ ->
+            if (!isMainFrame || !isTrustedOrigin(sourceOrigin)) return@addWebMessageListener
+            handleBridgeMessage(message.data)
+        }
+
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        WebViewCompat.addDocumentStartJavaScript(
+            view,
+            nativeBridgeBootstrapScript(),
+            setOf(AYIN_ORIGIN_RULE),
+        )
+    }
+
+    private fun nativeBridgeBootstrapScript(): String {
+        val platform = JSONObject.quote(BuildConfig.SHELL_PLATFORM)
+        return """
+            (() => {
+              const transport = window.AyinNativeTransport;
+              if (!transport) return;
+              const send = (payload) => transport.postMessage(JSON.stringify(payload));
+              const bridge = Object.freeze({
+                getPlatform: () => $platform,
+                openExternal: (url) => send({ type: 'openExternal', url: String(url).slice(0, 2048) }),
+                setFullscreen: (enabled) => send({ type: 'setFullscreen', enabled: Boolean(enabled) }),
+                notifyPlaybackState: (state) => send({ type: 'notifyPlaybackState', state: String(state).slice(0, 64) })
+              });
+              Object.defineProperty(window, 'AyinNative', {
+                value: bridge,
+                configurable: false,
+                enumerable: false,
+                writable: false
+              });
+            })();
+        """.trimIndent()
+    }
+
+    private fun handleBridgeMessage(raw: String) {
+        if (raw.length > MAX_BRIDGE_MESSAGE_LENGTH) return
+        val payload = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        when (payload.optString("type")) {
+            "openExternal" -> {
+                val url = payload.optString("url").take(MAX_EXTERNAL_URL_LENGTH)
+                val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
+                runOnUiThread { openExternalUri(uri) }
+            }
+            "setFullscreen" -> runOnUiThread { setFullscreen(payload.optBoolean("enabled", false)) }
+            "notifyPlaybackState" -> {
+                // Bounded state notification reserved for a future native MediaSession adapter.
+                payload.optString("state").take(MAX_PLAYBACK_STATE_LENGTH)
+            }
+        }
+    }
+
+    private fun isTrustedOrigin(origin: Uri): Boolean =
+        origin.scheme == "https" && origin.host == AYIN_HOST && (origin.port == -1 || origin.port == 443)
+
     private fun loadIntent(intent: Intent) {
         val target = normalizeDeepLink(intent.data) ?: Uri.parse(BuildConfig.AYIN_ORIGIN)
         webView.loadUrl(target.toString())
@@ -125,7 +188,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun normalizeDeepLink(uri: Uri?): Uri? {
         if (uri == null) return null
-        if (uri.scheme == "https" && uri.host == "ayin.stream") return uri
+        if (uri.scheme == "https" && uri.host == AYIN_HOST) return uri
         if (uri.scheme != "ayin") return null
         val host = uri.host?.trim('/') ?: return Uri.parse(BuildConfig.AYIN_ORIGIN)
         val path = uri.path ?: ""
@@ -137,6 +200,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun emitRemoteKey(key: String) {
+        if (!::webView.isInitialized) return
         val payload = JSONObject().put("key", key).toString()
         webView.evaluateJavascript(
             "window.dispatchEvent(new CustomEvent('ayin:native-remote',{detail:$payload}));",
@@ -166,7 +230,7 @@ class MainActivity : AppCompatActivity() {
     private inner class AyinWebViewClient : WebViewClient() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url
-            if (uri.scheme == "https" && uri.host == "ayin.stream") return false
+            if (uri.scheme == "https" && uri.host == AYIN_HOST) return false
             openExternalUri(uri)
             return true
         }
@@ -205,38 +269,24 @@ class MainActivity : AppCompatActivity() {
 
     private fun openExternalUri(uri: Uri) {
         if (uri.scheme !in setOf("https", "http", "mailto", "tel")) return
-        val intent = Intent(Intent.ACTION_VIEW, uri)
-        if (intent.resolveActivity(packageManager) != null) startActivity(intent)
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
     }
 
-    private inner class AyinJavascriptBridge {
-        @JavascriptInterface
-        fun getPlatform(): String = BuildConfig.SHELL_PLATFORM
-
-        @JavascriptInterface
-        fun openExternal(url: String) {
-            val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return
-            runOnUiThread { openExternalUri(uri) }
+    private fun setFullscreen(enabled: Boolean) {
+        window.decorView.systemUiVisibility = if (enabled) {
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        } else {
+            View.SYSTEM_UI_FLAG_VISIBLE
         }
+    }
 
-        @JavascriptInterface
-        fun setFullscreen(enabled: Boolean) {
-            runOnUiThread {
-                window.decorView.systemUiVisibility = if (enabled) {
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                } else {
-                    View.SYSTEM_UI_FLAG_VISIBLE
-                }
-            }
-        }
-
-        @JavascriptInterface
-        fun notifyPlaybackState(state: String) {
-            // Intentionally bounded: a later MediaSession adapter can consume this state.
-            // The thin shell does not duplicate the web player's playback state machine.
-            state.take(64)
-        }
+    companion object {
+        private const val AYIN_HOST = "ayin.stream"
+        private const val AYIN_ORIGIN_RULE = "https://ayin.stream"
+        private const val MAX_BRIDGE_MESSAGE_LENGTH = 4096
+        private const val MAX_EXTERNAL_URL_LENGTH = 2048
+        private const val MAX_PLAYBACK_STATE_LENGTH = 64
     }
 }
