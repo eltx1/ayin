@@ -57,7 +57,9 @@ databaseDescribe("Task 30 controlled content seeding", () => {
   it("imports validated rights metadata, uploads through the shared media abstraction and publishes", async () => {
     const admin = await register("Seed Admin", "seed-admin@example.com");
     const owner = await register("AYIN Catalog", "ayin-catalog@example.com");
-    await prisma.adminRoleAssignment.create({ data: { accountId: admin.user.account.id, role: "ADMIN" } });
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: admin.user.account.id, role: "ADMIN" },
+    });
 
     const markOwned = await app.inject({
       method: "PATCH",
@@ -90,7 +92,9 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     const item = created.json().items[0];
     expect(item.video.contentType).toBe("DOCUMENTARY");
 
-    const rights = await prisma.contentRightsDeclaration.findFirstOrThrow({ where: { videoId: item.video.id } });
+    const rights = await prisma.contentRightsDeclaration.findFirstOrThrow({
+      where: { videoId: item.video.id },
+    });
     expect(rights.basis).toBe("LICENSED");
     expect(rights.statement).toContain("LIC-TEST-001");
 
@@ -127,13 +131,17 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     });
     expect(publish.statusCode).toBe(201);
     expect(publish.json().status).toBe("PUBLISHED");
-    expect(await prisma.playlistItem.count({ where: { videoId: item.video.id } })).toBe(1);
+    expect(
+      await prisma.playlistItem.count({ where: { videoId: item.video.id } }),
+    ).toBe(1);
   });
 
   it("rejects non-platform channels and safely rolls back unpublished batches", async () => {
     const admin = await register("Rollback Admin", "rollback-admin@example.com");
     const owner = await register("External Creator", "external-creator@example.com");
-    await prisma.adminRoleAssignment.create({ data: { accountId: admin.user.account.id, role: "ADMIN" } });
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: admin.user.account.id, role: "ADMIN" },
+    });
 
     const rejected = await app.inject({
       method: "POST",
@@ -142,12 +150,22 @@ databaseDescribe("Task 30 controlled content seeding", () => {
       payload: {
         channelId: owner.user.channel.id,
         sourceLabel: "Should fail",
-        items: [{ title: "Nope", contentType: "MOVIE", rightsBasis: "OWNED", sourceNotes: "Not a platform channel" }],
+        items: [
+          {
+            title: "Nope",
+            contentType: "MOVIE",
+            rightsBasis: "OWNED",
+            sourceNotes: "Not a platform channel",
+          },
+        ],
       },
     });
     expect(rejected.statusCode).toBe(400);
 
-    await prisma.channel.update({ where: { id: owner.user.channel.id }, data: { isPlatformOwned: true } });
+    await prisma.channel.update({
+      where: { id: owner.user.channel.id },
+      data: { isPlatformOwned: true },
+    });
     const created = await app.inject({
       method: "POST",
       url: "/admin/content-seeding/batches",
@@ -155,7 +173,14 @@ databaseDescribe("Task 30 controlled content seeding", () => {
       payload: {
         channelId: owner.user.channel.id,
         sourceLabel: "Rollback fixture",
-        items: [{ title: "Rollback Film", contentType: "MOVIE", rightsBasis: "OWNED", sourceNotes: "Owned fixture source note" }],
+        items: [
+          {
+            title: "Rollback Film",
+            contentType: "MOVIE",
+            rightsBasis: "OWNED",
+            sourceNotes: "Owned fixture source note",
+          },
+        ],
       },
     });
     const batch = created.json().batch;
@@ -167,7 +192,11 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     });
     expect(rolledBack.statusCode).toBe(201);
     expect(rolledBack.json().status).toBe("ROLLED_BACK");
-    expect((await prisma.video.findUniqueOrThrow({ where: { id: item.video.id } })).status).toBe("REMOVED");
-    expect((await prisma.contentSeedItem.findUniqueOrThrow({ where: { id: item.id } })).status).toBe("ROLLED_BACK");
+    expect(
+      (await prisma.video.findUniqueOrThrow({ where: { id: item.video.id } })).status,
+    ).toBe("REMOVED");
+    expect(
+      (await prisma.contentSeedItem.findUniqueOrThrow({ where: { id: item.id } })).status,
+    ).toBe("ROLLED_BACK");
   });
 });
