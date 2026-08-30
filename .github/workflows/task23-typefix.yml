@@ -1,0 +1,33 @@
+name: Task 23 type fixes
+on:
+  push:
+    branches: [task-23-revenue-ledger]
+    paths:
+      - ".github/workflows/task23-typefix.yml"
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-23-revenue-ledger
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('apps/api/src/revenue/revenue.service.ts')
+          s=p.read_text()
+          old='''    const where: Prisma.PayoutWhereInput = {\n      ...(query.channelId ? { channelId: query.channelId } : {}),\n      ...(query.status &&\n      ["PENDING", "PROCESSING", "PAID", "FAILED", "CANCELLED"].includes(query.status)\n        ? { status: query.status as Prisma.EnumPayoutStatusFilter["equals"] }\n        : {}),\n    };'''
+          new='''    const where: Prisma.PayoutWhereInput = {};\n    if (query.channelId) where.channelId = query.channelId;\n    if (\n      query.status === "PENDING" ||\n      query.status === "PROCESSING" ||\n      query.status === "PAID" ||\n      query.status === "FAILED" ||\n      query.status === "CANCELLED"\n    ) {\n      where.status = query.status;\n    }'''
+          if old not in s:
+              raise SystemExit('target block not found')
+          p.write_text(s.replace(old,new))
+          PY
+      - run: corepack enable && corepack prepare pnpm@11.24.0 --activate && pnpm exec prettier --write apps/api/src/revenue/revenue.service.ts
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/revenue/revenue.service.ts
+          git commit -m "fix: narrow payout status filters"
+          git push origin HEAD:task-23-revenue-ledger
