@@ -1,0 +1,35 @@
+name: Task 21 kill switch enforcement
+on:
+  push:
+    branches: [task-21-ad-control-direct-campaigns]
+    paths:
+      - ".github/workflows/task21-killswitch.yml"
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: task-21-ad-control-direct-campaigns
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          for name, marker in [
+              ('apps/api/src/ads/video-ad.service.ts', '  async getDecision(videoId: string, origin: string | null) {\n'),
+              ('apps/api/src/ads/page-ad.service.ts', '  async getDecision(key: string, context: PageAdContext) {\n'),
+          ]:
+              p=Path(name)
+              s=p.read_text()
+              insert = marker + '''    const killSwitch = await this.database.client.platformSetting.findUnique({\n      where: { namespace_key: { namespace: "ADVERTISING", key: "emergencyKillSwitch" } },\n      select: { value: true },\n    });\n    if (killSwitch?.value === true) {\n      return { enabled: false as const, reason: "EMERGENCY_KILL_SWITCH" as const };\n    }\n\n'''
+              if 'const killSwitch = await this.database.client.platformSetting.findUnique' not in s:
+                  s=s.replace(marker, insert)
+              p.write_text(s)
+          PY
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/ads
+          git commit -m "fix: enforce emergency kill switch across ad decisions"
+          git push origin HEAD:task-21-ad-control-direct-campaigns
