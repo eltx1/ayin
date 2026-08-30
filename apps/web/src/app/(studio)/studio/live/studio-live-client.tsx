@@ -26,7 +26,7 @@ export function StudioLiveClient() {
   const [oneTimeKey, setOneTimeKey] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
-  async function load() {
+  async function refresh() {
     const response = await fetch(`${apiBaseUrl}/studio/live`, {
       credentials: "include",
       cache: "no-store",
@@ -39,7 +39,21 @@ export function StudioLiveClient() {
   }
 
   useEffect(() => {
-    void load();
+    let active = true;
+    void fetch(`${apiBaseUrl}/studio/live`, { credentials: "include", cache: "no-store" }).then(
+      async (response) => {
+        if (!active) return;
+        if (!response.ok) {
+          setMessage("Sign in with an active creator channel to manage live sessions.");
+          return;
+        }
+        const next = (await response.json()) as StudioResponse;
+        if (active) setData(next);
+      },
+    );
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function create(event: FormEvent) {
@@ -55,7 +69,7 @@ export function StudioLiveClient() {
     if (!response.ok) return;
     setTitle("");
     setScheduledStartAt("");
-    await load();
+    await refresh();
   }
 
   async function provision(id: string) {
@@ -71,7 +85,7 @@ export function StudioLiveClient() {
     }
     setOneTimeKey(payload.streamKey ?? null);
     setMessage("Copy the stream key now. AYIN stores only its hash.");
-    await load();
+    await refresh();
   }
 
   return (
