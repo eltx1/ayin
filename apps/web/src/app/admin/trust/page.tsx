@@ -1,6 +1,6 @@
 import { apiFetch } from "../../../lib/api";
 export default async function AdminTrustPage() {
-  let data: any = null;
+  let data: unknown = null;
   try {
     data = await apiFetch("/admin/trust/queue");
   } catch {}
