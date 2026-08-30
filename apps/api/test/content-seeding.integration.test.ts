@@ -1,4 +1,3 @@
-// formatter diagnostic trigger
 import "reflect-metadata";
 
 import { createPrismaClient } from "@ayin/db";
@@ -24,10 +23,8 @@ databaseDescribe("Task 30 controlled content seeding", () => {
 
   beforeAll(async () => {
     process.env.APP_ENV = "test";
-    process.env.AUTH_TOKEN_SECRET =
-      "task-30-test-auth-secret-with-more-than-32-characters";
-    process.env.UPLOAD_SESSION_SECRET =
-      "task-30-upload-secret-with-more-than-32-characters";
+    process.env.AUTH_TOKEN_SECRET = "task-30-test-auth-secret-with-more-than-32-characters";
+    process.env.UPLOAD_SESSION_SECRET = "task-30-upload-secret-with-more-than-32-characters";
     process.env.AYIN_E2E_STORAGE = "1";
     process.env.DATABASE_URL = testDatabaseUrl;
     process.env.WEB_ORIGIN = "http://localhost:3000";
