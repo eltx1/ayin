@@ -19,7 +19,9 @@ export class AnalyticsService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async ingest(events: AnalyticsEventInput[]) {
-    const videoIds = [...new Set(events.flatMap((event) => (event.videoId ? [event.videoId] : [])))];
+    const videoIds = [
+      ...new Set(events.flatMap((event) => (event.videoId ? [event.videoId] : []))),
+    ];
     const videos = videoIds.length
       ? await this.database.client.video.findMany({
           where: { id: { in: videoIds } },
@@ -32,7 +34,9 @@ export class AnalyticsService {
         await this.database.client.channel.findMany({
           where: {
             id: {
-              in: [...new Set(events.flatMap((event) => (event.channelId ? [event.channelId] : [])))],
+              in: [
+                ...new Set(events.flatMap((event) => (event.channelId ? [event.channelId] : []))),
+              ],
             },
           },
           select: { id: true },
@@ -44,7 +48,11 @@ export class AnalyticsService {
     for (const event of events) {
       if (event.videoId && !videoChannels.has(event.videoId)) continue;
       const derivedChannelId = event.videoId ? videoChannels.get(event.videoId) : event.channelId;
-      if (derivedChannelId && !videoChannels.has(event.videoId ?? "") && !validChannelIds.has(derivedChannelId)) {
+      if (
+        derivedChannelId &&
+        !videoChannels.has(event.videoId ?? "") &&
+        !validChannelIds.has(derivedChannelId)
+      ) {
         continue;
       }
       data.push({
@@ -69,7 +77,10 @@ export class AnalyticsService {
     }
 
     if (!data.length) return { accepted: 0, duplicateOrInvalid: events.length };
-    const result = await this.database.client.analyticsEvent.createMany({ data, skipDuplicates: true });
+    const result = await this.database.client.analyticsEvent.createMany({
+      data,
+      skipDuplicates: true,
+    });
     return { accepted: result.count, duplicateOrInvalid: events.length - result.count };
   }
 
@@ -92,7 +103,9 @@ export class AnalyticsService {
     const where = { channelId, occurredAt: { gte: since } };
     const [views, completes, watch, subscribers, videoGroups] = await Promise.all([
       this.database.client.analyticsEvent.count({ where: { ...where, eventName: "VIDEO_START" } }),
-      this.database.client.analyticsEvent.count({ where: { ...where, eventName: "VIDEO_COMPLETE" } }),
+      this.database.client.analyticsEvent.count({
+        where: { ...where, eventName: "VIDEO_COMPLETE" },
+      }),
       this.database.client.analyticsEvent.aggregate({
         where: { ...where, eventName: "VIDEO_PROGRESS" },
         _sum: { durationDeltaMs: true },
@@ -161,7 +174,9 @@ export class AnalyticsService {
         this.database.client.analyticsEvent.count({
           where: {
             occurredAt: { gte: month },
-            eventName: { in: ["AD_REQUEST", "AD_START", "AD_QUARTILE", "AD_COMPLETE", "AD_CLICK", "AD_ERROR"] },
+            eventName: {
+              in: ["AD_REQUEST", "AD_START", "AD_QUARTILE", "AD_COMPLETE", "AD_CLICK", "AD_ERROR"],
+            },
           },
         }),
         this.database.client.analyticsEvent.count({
@@ -185,12 +200,15 @@ export class AnalyticsService {
   async deleteExpired(retentionDays = 400) {
     const days = Math.max(30, Math.min(retentionDays, 3650));
     const before = new Date(Date.now() - days * DAY_MS);
-    const result = await this.database.client.analyticsEvent.deleteMany({ where: { occurredAt: { lt: before } } });
+    const result = await this.database.client.analyticsEvent.deleteMany({
+      where: { occurredAt: { lt: before } },
+    });
     return { deleted: result.count, before, retentionDays: days };
   }
 
   private pseudonym(value: string) {
-    const salt = process.env.ANALYTICS_HASH_SALT ?? process.env.AUTH_TOKEN_SECRET ?? "ayin-local-analytics-v1";
+    const salt =
+      process.env.ANALYTICS_HASH_SALT ?? process.env.AUTH_TOKEN_SECRET ?? "ayin-local-analytics-v1";
     return createHmac("sha256", salt).update(value).digest("hex");
   }
 }

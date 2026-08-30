@@ -89,7 +89,13 @@ export function trackAnalyticsEvent(
   eventName: AnalyticsEventName,
   input: Omit<
     Partial<QueuedEvent>,
-    "clientEventId" | "schemaVersion" | "eventName" | "occurredAt" | "sessionId" | "source" | "deviceClass"
+    | "clientEventId"
+    | "schemaVersion"
+    | "eventName"
+    | "occurredAt"
+    | "sessionId"
+    | "source"
+    | "deviceClass"
   > = {},
 ) {
   if (typeof window === "undefined") return;

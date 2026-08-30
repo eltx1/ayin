@@ -87,7 +87,9 @@ export async function recordVideoAdEvent(input: {
       ? "AD_REQUEST"
       : input.eventType === "START"
         ? "AD_START"
-        : input.eventType === "QUARTILE_25" || input.eventType === "MIDPOINT" || input.eventType === "QUARTILE_75"
+        : input.eventType === "QUARTILE_25" ||
+            input.eventType === "MIDPOINT" ||
+            input.eventType === "QUARTILE_75"
           ? "AD_QUARTILE"
           : input.eventType === "COMPLETE"
             ? "AD_COMPLETE"

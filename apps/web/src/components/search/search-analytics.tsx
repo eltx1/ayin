@@ -4,7 +4,13 @@ import { useEffect } from "react";
 
 import { trackAnalyticsEvent } from "@/lib/analytics";
 
-export function SearchAnalytics({ queryLength, resultCount }: { queryLength: number; resultCount: number }) {
+export function SearchAnalytics({
+  queryLength,
+  resultCount,
+}: {
+  queryLength: number;
+  resultCount: number;
+}) {
   useEffect(() => {
     if (queryLength < 2) return;
     trackAnalyticsEvent("SEARCH", {

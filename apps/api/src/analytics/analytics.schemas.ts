@@ -43,7 +43,9 @@ export const analyticsEventSchema = z
     deviceClass: z.enum(["MOBILE", "TABLET", "DESKTOP", "TV", "UNKNOWN"]).nullable().optional(),
     durationDeltaMs: z.number().int().min(0).max(3_600_000).nullable().optional(),
     positionMs: z.number().int().min(0).nullable().optional(),
-    metadata: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
+    metadata: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+      .optional(),
   })
   .strict();
 

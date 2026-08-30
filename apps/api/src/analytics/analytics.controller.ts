@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpException, Inject, Post, Query, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  Inject,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AdminGuard } from "../admin/admin.guard.js";
@@ -7,7 +17,9 @@ import { analyticsBatchSchema } from "./analytics.schemas.js";
 import { AnalyticsService } from "./analytics.service.js";
 
 const daysSchema = z.coerce.number().int().min(1).max(365).default(28);
-const cleanupSchema = z.object({ retentionDays: z.coerce.number().int().min(30).max(3650).default(400) });
+const cleanupSchema = z.object({
+  retentionDays: z.coerce.number().int().min(30).max(3650).default(400),
+});
 
 @Controller("analytics")
 export class PublicAnalyticsController {
