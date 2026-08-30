@@ -19,12 +19,12 @@ try {
     case "bootstrap": {
       const account = await prisma.account.findUniqueOrThrow({
         where: { email: payload.email },
-        include: { profiles: true, channelMemberships: true },
+        include: { viewerProfiles: true, channelMemberships: true },
       });
       const channelId = account.channelMemberships[0]?.channelId;
       if (!channelId) throw new Error("Expected a channel membership.");
       result = {
-        profiles: account.profiles.length,
+        profiles: account.viewerProfiles.length,
         memberships: account.channelMemberships.length,
         uploads: await prisma.playlist.count({ where: { channelId, systemKey: "UPLOADS" } }),
         tv: await prisma.creatorTvChannel.count({ where: { channelId } }),
