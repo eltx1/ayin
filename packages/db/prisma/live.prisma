@@ -1,0 +1,75 @@
+enum LiveStreamStatus {
+  DRAFT
+  SCHEDULED
+  READY
+  LIVE
+  ENDED
+  CANCELLED
+  FAILED
+}
+
+enum LiveChatMessageStatus {
+  PUBLISHED
+  HIDDEN
+  REMOVED
+}
+
+enum LiveModerationActionType {
+  HIDE_MESSAGE
+  REMOVE_MESSAGE
+  DISABLE_CHAT
+  ENABLE_CHAT
+}
+
+model LiveStream {
+  id                 String           @id @default(uuid()) @db.Uuid
+  channelId          String           @db.Uuid
+  createdByAccountId String           @db.Uuid
+  slug               String           @unique @db.VarChar(160)
+  title              String           @db.VarChar(200)
+  description        String?          @db.Text
+  status             LiveStreamStatus @default(DRAFT)
+  providerKey        String           @default("unconfigured") @db.VarChar(80)
+  providerStreamId   String?          @db.VarChar(255)
+  streamKeyHash      String?          @db.VarChar(128)
+  ingestEndpoint     String?          @db.Text
+  playbackUrl        String?          @db.Text
+  scheduledStartAt   DateTime?
+  startedAt          DateTime?
+  endedAt            DateTime?
+  chatEnabled        Boolean          @default(true)
+  adBreaksEnabled    Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([channelId, status, scheduledStartAt])
+  @@index([status, scheduledStartAt])
+}
+
+model LiveChatMessage {
+  id              String                @id @default(uuid()) @db.Uuid
+  liveStreamId    String                @db.Uuid
+  authorProfileId String                @db.Uuid
+  body            String                @db.Text
+  status          LiveChatMessageStatus @default(PUBLISHED)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  removedAt       DateTime?
+
+  @@index([liveStreamId, status, createdAt])
+  @@index([authorProfileId, createdAt])
+}
+
+model LiveModerationAction {
+  id             String                   @id @default(uuid()) @db.Uuid
+  liveStreamId   String                   @db.Uuid
+  messageId      String?                  @db.Uuid
+  actorAccountId String                   @db.Uuid
+  action         LiveModerationActionType
+  reason         String?                  @db.Text
+  createdAt      DateTime                 @default(now())
+
+  @@index([liveStreamId, createdAt])
+  @@index([messageId, createdAt])
+  @@index([actorAccountId, createdAt])
+}

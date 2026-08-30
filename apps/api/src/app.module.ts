@@ -10,6 +10,7 @@ import { CommunityModule } from "./community/community.module.js";
 import { CreatorModule } from "./creator/creator.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { DiscoveryModule } from "./discovery/discovery.module.js";
+import { LiveModule } from "./live/live.module.js";
 import { MediaModule } from "./media/media.module.js";
 import { PlatformConfigModule } from "./platform-config/platform-config.module.js";
 import { RecommendationModule } from "./recommendations/recommendation.module.js";
@@ -31,6 +32,7 @@ import { TrustModule } from "./trust/trust.module.js";
     RecommendationModule,
     MediaModule,
     CreatorModule,
+    LiveModule,
     WatchModule,
     DiscoveryModule,
     SearchModule,
