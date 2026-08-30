@@ -52,6 +52,11 @@ export class DirectAdController {
       videoId: query.videoId ?? null,
     });
     if (!parsed.success) throw this.invalid("INVALID_DIRECT_AD_CONTEXT");
+    const placements = await this.advertising.listPlacements();
+    const placement = placements.find((item) => item.key === parsed.data.placementKey);
+    if (!placement?.enabled) {
+      return { enabled: false as const, reason: "PLACEMENT_DISABLED" };
+    }
     return this.advertising.decideDirectAd(parsed.data);
   }
 
@@ -155,8 +160,20 @@ export class AdminAdvertisingControlController {
   }
 
   @Get("campaigns")
-  campaigns() {
-    return this.advertising.listCampaigns();
+  async campaigns() {
+    const campaigns = await this.advertising.listCampaigns();
+    return campaigns.map((campaign) => ({
+      ...campaign,
+      direct: campaign.direct
+        ? {
+            ...campaign.direct,
+            impressionGoal:
+              campaign.direct.impressionGoal === null
+                ? null
+                : Number(campaign.direct.impressionGoal),
+          }
+        : null,
+    }));
   }
 
   @Post("campaigns")
