@@ -6,17 +6,21 @@ on:
       - "apps/api/**"
       - "apps/web/**"
       - "packages/db/**"
+      - "deploy/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/database.yml"
+      - ".github/workflows/deploy.yml"
   pull_request:
     paths:
       - "apps/api/**"
       - "apps/web/**"
       - "packages/db/**"
+      - "deploy/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/database.yml"
+      - ".github/workflows/deploy.yml"
 
 permissions:
   contents: read
