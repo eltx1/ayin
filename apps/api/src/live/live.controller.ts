@@ -1,8 +1,7 @@
 import { Body, Controller, Get, HttpException, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 
-import { AuthGuard } from "../auth/auth.guard.js";
-import type { AuthenticatedRequest } from "../auth/auth.types.js";
+import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { LiveError, LiveService } from "./live.service.js";
 
 const createSchema = z.object({
@@ -40,7 +39,7 @@ export class PublicLiveController {
     @Body() body: unknown,
   ) {
     const input = chatSchema.parse(body);
-    return call(() => this.live.postChat(request.account.id, slug, input.body));
+    return call(() => this.live.postChat(request.ayinAuth.accountId, slug, input.body));
   }
 }
 
@@ -51,22 +50,22 @@ export class StudioLiveController {
 
   @Get()
   async list(@Req() request: AuthenticatedRequest) {
-    return call(() => this.live.studioStreams(request.account.id));
+    return call(() => this.live.studioStreams(request.ayinAuth.accountId));
   }
 
   @Post()
   async create(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
-    return call(() => this.live.create(request.account.id, createSchema.parse(body)));
+    return call(() => this.live.create(request.ayinAuth.accountId, createSchema.parse(body)));
   }
 
   @Post(":id/provision")
   async provision(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
-    return call(() => this.live.provision(request.account.id, id));
+    return call(() => this.live.provision(request.ayinAuth.accountId, id));
   }
 
   @Post(":id/rotate-key")
   async rotate(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
-    return call(() => this.live.rotateKey(request.account.id, id));
+    return call(() => this.live.rotateKey(request.ayinAuth.accountId, id));
   }
 
   @Patch(":id/state")
@@ -76,7 +75,7 @@ export class StudioLiveController {
     @Body() body: unknown,
   ) {
     const input = stateSchema.parse(body);
-    return call(() => this.live.setState(request.account.id, id, input.status));
+    return call(() => this.live.setState(request.ayinAuth.accountId, id, input.status));
   }
 
   @Patch(":id/chat")
@@ -85,7 +84,9 @@ export class StudioLiveController {
     @Param("id") id: string,
     @Body() body: unknown,
   ) {
-    return call(() => this.live.setChatEnabled(request.account.id, id, toggleChatSchema.parse(body).enabled));
+    return call(() =>
+      this.live.setChatEnabled(request.ayinAuth.accountId, id, toggleChatSchema.parse(body).enabled),
+    );
   }
 
   @Post(":id/chat/:messageId/moderate")
@@ -97,7 +98,13 @@ export class StudioLiveController {
   ) {
     const input = moderationSchema.parse(body);
     return call(() =>
-      this.live.moderateMessage(request.account.id, id, messageId, input.action, input.reason),
+      this.live.moderateMessage(
+        request.ayinAuth.accountId,
+        id,
+        messageId,
+        input.action,
+        input.reason,
+      ),
     );
   }
 }
@@ -106,8 +113,10 @@ async function call<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof LiveError) throw new HttpException({ code: error.code, message: error.message }, error.statusCode);
-    if (error instanceof z.ZodError) throw new HttpException({ code: "INVALID_LIVE_INPUT", issues: error.issues }, 400);
+    if (error instanceof LiveError)
+      throw new HttpException({ code: error.code, message: error.message }, error.statusCode);
+    if (error instanceof z.ZodError)
+      throw new HttpException({ code: "INVALID_LIVE_INPUT", issues: error.issues }, 400);
     throw error;
   }
 }
