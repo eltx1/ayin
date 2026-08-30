@@ -13,6 +13,7 @@ const apiOrigin = configuredOrigin(process.env.NEXT_PUBLIC_API_BASE_URL);
 const mediaOrigin = configuredOrigin(process.env.NEXT_PUBLIC_MEDIA_BASE_URL);
 const explicitConnectOrigins = [...new Set([apiOrigin, mediaOrigin].filter(Boolean))].join(" ");
 const explicitMediaOrigins = mediaOrigin ?? "";
+const productionOnlyDirectives = process.env.NODE_ENV === "production" ? ["upgrade-insecure-requests"] : [];
 
 const contentSecurityPolicy = [
   "default-src 'self'",
@@ -28,7 +29,7 @@ const contentSecurityPolicy = [
   "frame-src https://securepubads.g.doubleclick.net https://*.doubleclick.net https://*.googlesyndication.com",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
-  "upgrade-insecure-requests",
+  ...productionOnlyDirectives,
 ].join("; ");
 
 const securityHeaders = [
