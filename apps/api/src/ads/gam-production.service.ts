@@ -59,7 +59,8 @@ export class GamProductionService {
   async buildClientConfiguration(context: GamRequestContext) {
     const killed = await this.advertising.isEmergencyKilled();
     if (killed) return { enabled: false as const, reason: "EMERGENCY_KILL_SWITCH" as const };
-    if (!this.config.complete) return { enabled: false as const, reason: "GAM_CONFIG_INCOMPLETE" as const };
+    if (!this.config.complete)
+      return { enabled: false as const, reason: "GAM_CONFIG_INCOMPLETE" as const };
     if (!this.config.productionEnabled && !this.config.testMode)
       return { enabled: false as const, reason: "GAM_DISABLED" as const };
 

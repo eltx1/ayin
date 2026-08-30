@@ -36,9 +36,9 @@ export function loadGamProductionConfig(
 
   const complete = Boolean(
     parsed.GAM_NETWORK_CODE &&
-      parsed.GAM_PUBLISHER_ID &&
-      parsed.GAM_VIDEO_AD_UNIT_PATH &&
-      parsed.GAM_DISPLAY_AD_UNIT_PREFIX,
+    parsed.GAM_PUBLISHER_ID &&
+    parsed.GAM_VIDEO_AD_UNIT_PATH &&
+    parsed.GAM_DISPLAY_AD_UNIT_PREFIX,
   );
   const productionEnabled = parsed.GAM_PRODUCTION_ENABLED === "1";
   const testMode = parsed.GAM_TEST_MODE === "1";

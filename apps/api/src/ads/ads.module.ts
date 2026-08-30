@@ -41,11 +41,6 @@ import { VideoAdService } from "./video-ad.service.js";
     GamProductionService,
     { provide: GAM_PRODUCTION_CONFIG, useFactory: createGamProductionConfig },
   ],
-  exports: [
-    VideoAdService,
-    PageAdService,
-    AdvertisingControlService,
-    GamProductionService,
-  ],
+  exports: [VideoAdService, PageAdService, AdvertisingControlService, GamProductionService],
 })
 export class AdsModule {}
