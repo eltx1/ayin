@@ -1,0 +1,10 @@
+{
+  "id": "com.ayin.stream.tv",
+  "version": "1.0.0",
+  "vendor": "AYIN",
+  "type": "web",
+  "main": "index.html",
+  "title": "AYIN",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png"
+}

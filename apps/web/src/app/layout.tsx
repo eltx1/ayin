@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
-import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { InstallUpdateController } from "@/components/pwa/install-update-controller";
+import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
+import { TvPlatformRuntime } from "@/components/platform/tv-platform-runtime";
 
 import "./globals.css";
 
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: RootLayoutProperties) {
       <body>
         <ServiceWorkerRegistration />
         <InstallUpdateController />
+        <TvPlatformRuntime />
         {children}
       </body>
     </html>
