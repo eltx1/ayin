@@ -1,4 +1,6 @@
-import { createPrismaClient } from "@ayin/db";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+
 import {
   expect,
   request as playwrightRequest,
@@ -8,10 +10,7 @@ import {
 
 const API = "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error("E2E database URL is required.");
-
-const prisma = createPrismaClient(databaseUrl);
+const DB_HELPER = path.resolve(process.cwd(), "tests/e2e/db-helper.mjs");
 
 type Registered = {
   account: { id: string; displayName: string };
@@ -20,11 +19,19 @@ type Registered = {
   creatorTv: { id: string };
 };
 
-async function apiContext(): Promise<APIRequestContext> {
-  return playwrightRequest.newContext({
-    baseURL: API,
-    extraHTTPHeaders: { origin: WEB },
+type VideoRecord = { id: string; slug: string; title: string; status: string };
+
+function db<T>(command: string, payload: Record<string, unknown> = {}): T {
+  const output = execFileSync(process.execPath, [DB_HELPER, command, JSON.stringify(payload)], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: "utf8",
   });
+  return JSON.parse(output) as T;
+}
+
+async function apiContext(): Promise<APIRequestContext> {
+  return playwrightRequest.newContext({ baseURL: API, extraHTTPHeaders: { origin: WEB } });
 }
 
 async function registerApi(label: string) {
@@ -63,28 +70,27 @@ async function publishThroughDirectUpload(
     partNumber: index + 1,
     etag: `e2e-etag-${index + 1}`,
   }));
-  const complete = await api.post("/media/uploads/sessions/complete", {
-    data: { sessionToken: draft.uploadSession.sessionToken, parts },
-  });
-  expect(complete.ok()).toBeTruthy();
-  const confirm = await api.post(`/creator/videos/${draft.video.id}/upload-complete`, { data: {} });
-  expect(confirm.ok()).toBeTruthy();
+  expect(
+    (
+      await api.post("/media/uploads/sessions/complete", {
+        data: { sessionToken: draft.uploadSession.sessionToken, parts },
+      })
+    ).ok(),
+  ).toBeTruthy();
+  expect(
+    (await api.post(`/creator/videos/${draft.video.id}/upload-complete`, { data: {} })).ok(),
+  ).toBeTruthy();
   const publish = await api.post(`/creator/videos/${draft.video.id}/publish`, {
     data: { rightsConfirmed: true, title },
   });
   expect(publish.ok()).toBeTruthy();
-  const body = (await publish.json()) as { video: { id: string; slug: string; status: string } };
+  const body = (await publish.json()) as { video: VideoRecord };
   expect(body.video.status).toBe("PUBLISHED");
   return body.video;
 }
 
-test.beforeAll(async () => {
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account" CASCADE');
-  await prisma.adminAuditLog.deleteMany();
-});
-
-test.afterAll(async () => {
-  await prisma.$disconnect();
+test.beforeAll(() => {
+  db("reset");
 });
 
 test("V1 critical journeys remain launchable end to end", async ({ page }) => {
@@ -99,19 +105,12 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
     await page.getByLabel("Password").fill("strong-pass-123");
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(page.getByText("Your AYIN channel and TV are ready.")).toBeVisible();
-
-    const account = await prisma.account.findUniqueOrThrow({
-      where: { email: "browser-creator@e2e.ayin.test" },
-      include: {
-        profiles: true,
-        channelMemberships: { include: { channel: true } },
-      },
+    expect(db("bootstrap", { email: "browser-creator@e2e.ayin.test" })).toEqual({
+      profiles: 1,
+      memberships: 1,
+      uploads: 1,
+      tv: 1,
     });
-    expect(account.profiles).toHaveLength(1);
-    expect(account.channelMemberships).toHaveLength(1);
-    const channelId = account.channelMemberships[0]!.channelId;
-    expect(await prisma.playlist.count({ where: { channelId, systemKey: "UPLOADS" } })).toBe(1);
-    expect(await prisma.creatorTvChannel.count({ where: { channelId } })).toBe(1);
   });
 
   await test.step("2. login and logout work through the browser UI", async () => {
@@ -131,31 +130,28 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
       creator.user.channel.id,
       "E2E Launch Film",
     );
-    const uploads = await prisma.playlist.findUniqueOrThrow({
-      where: {
-        channelId_systemKey: { channelId: creator.user.channel.id, systemKey: "UPLOADS" },
-      },
-    });
     expect(
-      await prisma.playlistItem.count({ where: { playlistId: uploads.id, videoId: video.id } }),
-    ).toBe(1);
-    const tv = await prisma.creatorTvChannel.findUniqueOrThrow({
-      where: { id: creator.user.creatorTv.id },
-    });
-    expect(tv.sourcePlaylistId).toBe(uploads.id);
+      db("upload-association", {
+        channelId: creator.user.channel.id,
+        tvId: creator.user.creatorTv.id,
+        videoId: video.id,
+      }),
+    ).toEqual({ playlistItems: 1, tvUsesUploads: true });
     await page.goto(`/c/${creator.user.channel.handle}`);
     await expect(page.getByText("E2E Launch Film")).toBeVisible();
   });
 
   await test.step("5. watch progress persists and resumes", async () => {
     if (!creator) throw new Error("Creator setup missing.");
-    const video = await prisma.video.findFirstOrThrow({
-      where: { channelId: creator.user.channel.id, title: "E2E Launch Film" },
+    const video = db<VideoRecord>("find-video", {
+      channelId: creator.user.channel.id,
+      title: "E2E Launch Film",
     });
-    const saved = await creator.api.put(`/watch/progress/${video.id}`, {
-      data: { positionMs: 42_000, durationMs: 120_000 },
-    });
-    expect(saved.ok()).toBeTruthy();
+    expect(
+      (await creator.api.put(`/watch/progress/${video.id}`, {
+        data: { positionMs: 42_000, durationMs: 120_000 },
+      })).ok(),
+    ).toBeTruthy();
     const resumed = await creator.api.get(`/watch/progress/${video.id}`);
     expect(resumed.ok()).toBeTruthy();
     expect((await resumed.json()).positionMs).toBe(42_000);
@@ -166,67 +162,45 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
   await test.step("6. subscribe, like and comment traverse authenticated APIs", async () => {
     if (!creator) throw new Error("Creator setup missing.");
     viewer = await registerApi("Social Viewer");
-    const video = await prisma.video.findFirstOrThrow({
-      where: { channelId: creator.user.channel.id },
+    const video = db<VideoRecord>("find-video", { channelId: creator.user.channel.id });
+    expect(
+      (await viewer.api.put(`/social/channels/${creator.user.channel.id}/subscription`, { data: {} })).ok(),
+    ).toBeTruthy();
+    expect(
+      (await viewer.api.put(`/social/videos/${video.id}/reaction`, { data: { type: "LIKE" } })).ok(),
+    ).toBeTruthy();
+    expect(
+      (await viewer.api.post(`/comments/videos/${video.id}`, { data: { body: "Launch looks good." } })).ok(),
+    ).toBeTruthy();
+    expect(db("social-counts", { channelId: creator.user.channel.id, videoId: video.id })).toEqual({
+      subscriptions: 1,
+      reactions: 1,
+      comments: 1,
     });
-    expect(
-      (
-        await viewer.api.put(`/social/channels/${creator.user.channel.id}/subscription`, {
-          data: {},
-        })
-      ).ok(),
-    ).toBeTruthy();
-    expect(
-      (
-        await viewer.api.put(`/social/videos/${video.id}/reaction`, { data: { type: "LIKE" } })
-      ).ok(),
-    ).toBeTruthy();
-    expect(
-      (
-        await viewer.api.post(`/comments/videos/${video.id}`, {
-          data: { body: "Launch looks good." },
-        })
-      ).ok(),
-    ).toBeTruthy();
-    expect(await prisma.subscription.count({ where: { channelId: creator.user.channel.id } })).toBe(
-      1,
-    );
-    expect(await prisma.reaction.count({ where: { videoId: video.id } })).toBe(1);
-    expect(await prisma.comment.count({ where: { videoId: video.id } })).toBe(1);
   });
 
   await test.step("7. admin finds and edits user, channel and video", async () => {
     if (!creator) throw new Error("Creator setup missing.");
     admin = await registerApi("Launch Admin");
-    await prisma.adminRoleAssignment.create({
-      data: { accountId: admin.user.account.id, role: "ADMIN" },
-    });
+    db("grant-admin", { accountId: admin.user.account.id });
     const users = await admin.api.get("/admin/control/users?query=upload&take=10&page=1");
     expect(users.ok()).toBeTruthy();
     expect(((await users.json()) as { items: unknown[] }).items.length).toBeGreaterThan(0);
     expect(
-      (
-        await admin.api.patch(`/admin/control/users/${creator.user.account.id}`, {
-          data: { displayName: "Edited Creator", reason: "E2E admin acceptance" },
-        })
-      ).ok(),
+      (await admin.api.patch(`/admin/control/users/${creator.user.account.id}`, {
+        data: { displayName: "Edited Creator", reason: "E2E admin acceptance" },
+      })).ok(),
     ).toBeTruthy();
     expect(
-      (
-        await admin.api.patch(`/admin/control/channels/${creator.user.channel.id}`, {
-          data: { name: "Edited Channel", reason: "E2E admin acceptance" },
-        })
-      ).ok(),
+      (await admin.api.patch(`/admin/control/channels/${creator.user.channel.id}`, {
+        data: { name: "Edited Channel", reason: "E2E admin acceptance" },
+      })).ok(),
     ).toBeTruthy();
-    const video = await prisma.video.findFirstOrThrow({
-      where: { channelId: creator.user.channel.id },
-    });
+    const video = db<VideoRecord>("find-video", { channelId: creator.user.channel.id });
     expect(
-      (
-        await admin.api.patch(`/admin/control/videos/${video.id}`, {
-          data: { title: "Edited Launch Film", reason: "E2E admin acceptance" },
-        })
-      ).ok(),
+      (await admin.api.patch(`/admin/control/videos/${video.id}`, {
+        data: { title: "Edited Launch Film", reason: "E2E admin acceptance" },
+      })).ok(),
     ).toBeTruthy();
   });
 
@@ -234,24 +208,20 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
     if (!admin) throw new Error("Admin setup missing.");
     const snapshotResponse = await admin.api.get("/admin/product-controls");
     expect(snapshotResponse.ok()).toBeTruthy();
-    const snapshot = (await snapshotResponse.json()) as { homeRows: Array<{ id: string }> };
-    expect(snapshot.homeRows.length).toBeGreaterThan(0);
-    const changed = await admin.api.patch(
-      `/admin/product-controls/home-rows/${snapshot.homeRows[0]!.id}`,
-      {
+    const snapshot = (await snapshotResponse.json()) as { rows: Array<{ id: string }> };
+    expect(snapshot.rows.length).toBeGreaterThan(0);
+    expect(
+      (await admin.api.patch(`/admin/product-controls/home-rows/${snapshot.rows[0]!.id}`, {
         data: { title: "E2E Editor Picks", reason: "E2E merchandising acceptance" },
-      },
-    );
-    expect(changed.ok()).toBeTruthy();
+      })).ok(),
+    ).toBeTruthy();
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "E2E Editor Picks" })).toBeVisible();
   });
 
-  await test.step("9. failed house/IMA ad startup never blocks the content element", async () => {
+  await test.step("9. failed IMA ad startup never blocks the content element", async () => {
     if (!creator) throw new Error("Creator setup missing.");
-    const video = await prisma.video.findFirstOrThrow({
-      where: { channelId: creator.user.channel.id },
-    });
+    const video = db<VideoRecord>("find-video", { channelId: creator.user.channel.id });
     await page.route(`**/ads/video/decision/${video.id}`, async (route) => {
       await route.fulfill({
         status: 200,
@@ -300,63 +270,59 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
 
   await test.step("11. creator revenue contract math smoke path", async () => {
     if (!admin || !creator) throw new Error("Revenue setup missing.");
-    const effectiveFrom = new Date(Date.now() - 60_000).toISOString();
-    const contract = await admin.api.post(
-      `/admin/revenue/channels/${creator.user.channel.id}/contracts`,
-      {
-        data: { revenueShareBps: 7000, effectiveFrom, status: "ACTIVE", termsVersion: "e2e-v1" },
+    const contract = await admin.api.post(`/admin/revenue/channels/${creator.user.channel.id}/contracts`, {
+      data: {
+        revenueShareBps: 7000,
+        effectiveFrom: new Date(Date.now() - 60_000).toISOString(),
+        status: "ACTIVE",
+        termsVersion: "e2e-v1",
       },
-    );
+    });
     expect(contract.ok()).toBeTruthy();
-    const periodEnd = new Date().toISOString();
-    const periodStart = new Date(Date.now() - 3600_000).toISOString();
     const imported = await admin.api.post("/admin/revenue/imports", {
       data: {
         source: "E2E",
-        entries: [
-          {
-            idempotencyKey: "e2e-launch-revenue-001",
-            channelId: creator.user.channel.id,
-            periodStart,
-            periodEnd,
-            grossAmount: "100.000000",
-            currency: "USD",
-            state: "FINAL",
-          },
-        ],
+        entries: [{
+          idempotencyKey: "e2e-launch-revenue-001",
+          channelId: creator.user.channel.id,
+          periodStart: new Date(Date.now() - 3_600_000).toISOString(),
+          periodEnd: new Date().toISOString(),
+          grossAmount: "100.000000",
+          currency: "USD",
+          state: "FINAL",
+        }],
       },
     });
     expect(imported.ok()).toBeTruthy();
-    const ledger = await prisma.earningsLedgerEntry.findFirstOrThrow({
-      where: { channelId: creator.user.channel.id, idempotencyKey: "E2E:e2e-launch-revenue-001" },
-    });
-    expect(ledger.grossAmount.toString()).toBe("100.000000");
-    expect(ledger.amount.toString()).toBe("70.000000");
-    expect(ledger.revenueShareBps).toBe(7000);
+    expect(
+      db("ledger", {
+        channelId: creator.user.channel.id,
+        idempotencyKey: "E2E:e2e-launch-revenue-001",
+      }),
+    ).toEqual({ grossAmount: "100.000000", amount: "70.000000", revenueShareBps: 7000 });
   });
 
   await test.step("12. suspension and unpublish moderation path is enforceable and audited", async () => {
     if (!admin || !creator) throw new Error("Moderation setup missing.");
-    const video = await prisma.video.findFirstOrThrow({
-      where: { channelId: creator.user.channel.id },
-    });
-    const unpublish = await admin.api.post("/admin/control/videos/bulk", {
-      data: { ids: [video.id], action: "UNPUBLISH", reason: "E2E moderation acceptance" },
-    });
-    expect(unpublish.ok()).toBeTruthy();
-    const suspend = await admin.api.patch(`/admin/control/users/${creator.user.account.id}`, {
-      data: { status: "SUSPENDED", reason: "E2E moderation acceptance" },
-    });
-    expect(suspend.ok()).toBeTruthy();
-    expect((await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).status).toBe(
-      "DRAFT",
-    );
+    const video = db<VideoRecord>("find-video", { channelId: creator.user.channel.id });
     expect(
-      (await prisma.account.findUniqueOrThrow({ where: { id: creator.user.account.id } })).status,
-    ).toBe("SUSPENDED");
+      (await admin.api.post("/admin/control/videos/bulk", {
+        data: { ids: [video.id], action: "UNPUBLISH", reason: "E2E moderation acceptance" },
+      })).ok(),
+    ).toBeTruthy();
     expect(
-      await prisma.adminAuditLog.count({ where: { actorAccountId: admin.user.account.id } }),
-    ).toBeGreaterThan(0);
+      (await admin.api.patch(`/admin/control/users/${creator.user.account.id}`, {
+        data: { status: "SUSPENDED", reason: "E2E moderation acceptance" },
+      })).ok(),
+    ).toBeTruthy();
+    const state = db<{ videoStatus: string; accountStatus: string; auditCount: number }>("moderation", {
+      videoId: video.id,
+      accountId: creator.user.account.id,
+      adminAccountId: admin.user.account.id,
+    });
+    expect(state.videoStatus).toBe("DRAFT");
+    expect(state.accountStatus).toBe("SUSPENDED");
+    expect(state.auditCount).toBeGreaterThan(0);
   });
 
   await creator?.api.dispose();
