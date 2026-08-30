@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { apiBaseUrl } from "../../../../../lib/api";
 type Item = {
@@ -6,14 +7,14 @@ type Item = {
   type: "TEXT" | "IMAGE" | "POLL" | "VIDEO_SHARE";
   body: string | null;
   channel: { handle: string; name: string };
-  imageAsset: { r2ObjectKey: string } | null;
+  imageAsset: { r2ObjectKey: string; width: number | null; height: number | null } | null;
   sharedVideo: { slug: string; title: string } | null;
   pollOptions: Array<{ id: string; label: string; _count: { votes: number } }>;
   _count: { reactions: number; comments: number };
 };
 const media = (key: string) => {
   const base = process.env.NEXT_PUBLIC_MEDIA_BASE_URL?.replace(/\/$/, "") ?? "";
-  return base ? `${base}/${key}` : key;
+  return base ? `${base}/${key}` : `/${key.replace(/^\/+/, "")}`;
 };
 async function mutate(path: string, method: "PUT" | "POST", body?: unknown) {
   return fetch(`${apiBaseUrl}${path}`, {
@@ -39,10 +40,13 @@ export function CommunityFeed({ items }: { items: Item[] }) {
           <Link href={`/c/${post.channel.handle}`}>@{post.channel.handle}</Link>
           {post.body ? <p>{post.body}</p> : null}
           {post.imageAsset ? (
-            <img
+            <Image
               src={media(post.imageAsset.r2ObjectKey)}
-              alt="Community post"
-              style={{ maxWidth: "100%", borderRadius: ".75rem" }}
+              alt={post.body?.slice(0, 160) ?? `Community post from ${post.channel.name}`}
+              width={post.imageAsset.width ?? 1200}
+              height={post.imageAsset.height ?? 675}
+              sizes="(max-width: 768px) 100vw, 48rem"
+              style={{ width: "100%", height: "auto", borderRadius: ".75rem" }}
             />
           ) : null}
           {post.sharedVideo ? (

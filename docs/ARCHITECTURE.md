@@ -1,9 +1,11 @@
 # AYIN Architecture
 
-Status: Accepted implementation contract for Task 00  
-Last updated: 2026-08-27
+Status: Implemented architecture contract through Task 38
+Last updated: 2026-08-30
 
-This document turns the AYIN master plan into the initial engineering contract. The repository is currently a greenfield documentation baseline; application scaffolding begins in Task 01, not here.
+This document is the engineering contract implemented by the current AYIN repository. The
+initial Task 00 invariants remain authoritative; Tasks 01–38 added the application, domain,
+provider-adapter, deployment, and platform-shell layers without changing the core boundaries.
 
 ## 1. Architectural invariants
 
@@ -26,9 +28,10 @@ The following rules are non-negotiable unless a later, explicit ADR supersedes t
 - Every external service is accessed through an AYIN-owned adapter contract. Provider SDK types must not leak into domain logic.
 - In-player video advertising and outside-player display/native advertising are separate inventory families, with separate placement and rendering paths.
 
-## 2. Target repository topology
+## 2. Repository topology
 
-Task 01 will create the initial structure. Later tasks may add packages only when ownership is clear.
+The implemented structure follows this topology. New packages are added only when ownership is
+clear and code is genuinely shared.
 
 ```text
 ayin/
@@ -228,7 +231,11 @@ Provider credentials are loaded only from validated server-side environment conf
 | Secrets | Deployment secret/environment configuration | Never committed or exposed as ordinary admin settings |
 | Build output and server logs | Application infrastructure | Must not contain video request bodies or credentials |
 
-PostgreSQL backups and media lifecycle/retention are operational concerns to be defined in later tasks. Any backup design must preserve encryption, access controls, and the rule that application servers do not become creator video storage.
+PostgreSQL backup/restore validation and R2 lifecycle/retention are production operational gates
+documented in `deploy/README.md`, `docs/SECURITY_HARDENING.md`, and
+`docs/LAUNCH_CHECKLIST.md`. Any production configuration must preserve encryption, access
+controls, tested restore ownership, and the rule that application servers do not become creator
+video storage.
 
 ## 9. Security and reliability baseline
 
@@ -239,7 +246,8 @@ PostgreSQL backups and media lifecycle/retention are operational concerns to be 
 - Use database transactions for registration provisioning and other multi-record invariants.
 - Audit high-impact admin and moderation actions.
 - Keep secrets out of source control, logs, client bundles, and persisted ordinary settings.
-- Add health checks, structured logs, backups, idempotency, and abandoned-upload cleanup in the roadmap tasks that introduce those responsibilities.
+- Preserve the implemented health checks, idempotency boundaries, deployment rollback, and
+  abandoned-upload cleanup; verify backups, alerts, and edge behavior in the target environment.
 
 ## 10. Evolution rules
 

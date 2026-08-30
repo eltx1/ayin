@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { trackAnalyticsEvent } from "../../../lib/analytics";
@@ -23,7 +24,12 @@ function mediaUrl(key: string) {
   return base ? `${base}/${key}` : key;
 }
 
-async function socialMutation(path: string, method: "PUT" | "DELETE", body?: unknown) {
+async function socialMutation(
+  path: string,
+  method: "PUT" | "DELETE",
+  onUnauthorized: () => void,
+  body?: unknown,
+) {
   const options: RequestInit = { method, credentials: "include" };
   if (body !== undefined) {
     options.headers = { "content-type": "application/json" };
@@ -31,7 +37,7 @@ async function socialMutation(path: string, method: "PUT" | "DELETE", body?: unk
   }
   const response = await fetch(`${apiBaseUrl}${path}`, options);
   if (response.status === 401 || response.status === 403) {
-    window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`;
+    onUnauthorized();
     return null;
   }
   return response.ok ? response.json() : null;
@@ -61,6 +67,7 @@ export function ClipsFeed({
   autoplayEnabled: boolean;
   adPolicy: { enabled: boolean; minimumOrganicClips: number };
 }) {
+  const router = useRouter();
   const root = useRef<HTMLDivElement>(null);
   const activeId = useRef<string | null>(null);
   const [liked, setLiked] = useState<Record<string, boolean>>({});
@@ -120,6 +127,7 @@ export function ClipsFeed({
     const result = await socialMutation(
       `/social/videos/${clip.id}/reaction`,
       next ? "PUT" : "DELETE",
+      () => router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`),
       next ? { type: "LIKE" } : undefined,
     );
     if (!result) return;
@@ -136,6 +144,7 @@ export function ClipsFeed({
     const result = await socialMutation(
       `/social/channels/${clip.channel.id}/subscription`,
       next ? "PUT" : "DELETE",
+      () => router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`),
       next ? {} : undefined,
     );
     if (!result) return;

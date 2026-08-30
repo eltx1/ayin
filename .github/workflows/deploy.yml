@@ -58,6 +58,7 @@ jobs:
         run: |
           pnpm format:check
           pnpm lint
+          pnpm audit:prod
           pnpm typecheck
           pnpm test
           pnpm test:integration

@@ -57,8 +57,8 @@ export function AdminModeration() {
           <span className={styles.eyebrow}>Control Plane</span>
           <h1>Moderation</h1>
           <p className={styles.muted}>
-            V1 triage entry point for reports and cases. Full rights/trust workflows arrive in Task
-            24.
+            Triage reports and cases here; detailed rights, takedown, appeal and creator-trust
+            controls are available in Trust &amp; Safety.
           </p>
         </div>
       </header>

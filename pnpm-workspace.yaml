@@ -10,6 +10,9 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+overrides:
+  deepmerge-ts: 8.0.0
+
 minimumReleaseAgeExclude:
   - "@nestjs/common@12.0.1"
   - "@nestjs/core@12.0.1"

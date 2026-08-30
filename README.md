@@ -6,7 +6,17 @@ The target product combines premium Netflix-style viewing, a frictionless YouTub
 
 ## Current status
 
-Task 01 foundation complete. AYIN now has a buildable pnpm monorepo with a Next.js Web/PWA application, a NestJS/Fastify API, and shared TypeScript packages. Product features begin in later roadmap tasks.
+The repository-side scope of the complete Tasks 00–38 roadmap is implemented on `main`.
+AYIN includes the Web/PWA viewer product, Creator Studio, Admin control plane, direct-to-R2
+media workflows, Creator TV, advertising and revenue foundations, analytics, moderation,
+Clips, community posts, recommendations, provider-neutral live/FAST boundaries, and thin
+Android/Tizen/webOS shells.
+
+Production provider activation and store release checks that require real credentials,
+infrastructure, Google Ad Manager account data, signing identities, or physical target devices
+remain explicit launch gates rather than simulated repository completion. See
+[`TASK_PROGRESS.md`](TASK_PROGRESS.md) and the
+[`V1 launch checklist`](docs/LAUNCH_CHECKLIST.md) for the evidence and remaining live checks.
 
 ## Product decisions
 
@@ -32,7 +42,9 @@ Task 01 foundation complete. AYIN now has a buildable pnpm monorepo with a Next.
 
 ## Execution
 
-Implementation should follow the numbered roadmap tasks one at a time. Each task has a copy-ready AI prompt, acceptance criteria and a defined stop point to minimize agent drift and incomplete multi-feature runs.
+The numbered roadmap is complete through Task 38. New work should begin by verifying `main`,
+`TASK_PROGRESS.md`, the relevant architecture contract, and the current CI state. Preserve the
+same branch → review → CI → merge discipline for maintenance and post-roadmap work.
 
 ## Workspace commands
 
@@ -49,6 +61,7 @@ Quality and production checks:
 ```bash
 pnpm format:check
 pnpm lint
+pnpm audit:prod
 pnpm typecheck
 pnpm test
 pnpm test:integration

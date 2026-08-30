@@ -4,6 +4,8 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { apiBaseUrl } from "@/lib/api";
 
+import styles from "@/app/studio/studio.module.css";
+
 type LiveStream = {
   id: string;
   slug: string;
@@ -100,7 +102,7 @@ export function StudioLiveClient() {
           a real provider is configured.
         </p>
       ) : null}
-      <form onSubmit={create}>
+      <form className={styles.card} onSubmit={create}>
         <label>
           Title
           <input
@@ -118,18 +120,21 @@ export function StudioLiveClient() {
             onChange={(event) => setScheduledStartAt(event.target.value)}
           />
         </label>
-        <button type="submit">Create live session</button>
+        <button className={styles.primary} type="submit">
+          Create live session
+        </button>
       </form>
       {message ? <p aria-live="polite">{message}</p> : null}
       {oneTimeKey ? <code>{oneTimeKey}</code> : null}
       <div>
         {data?.streams.map((stream) => (
-          <article key={stream.id}>
+          <article className={styles.card} key={stream.id}>
             <h2>{stream.title}</h2>
             <p>{stream.status}</p>
             <p>/live/{stream.slug}</p>
             {stream.ingestEndpoint ? <p>Ingest: {stream.ingestEndpoint}</p> : null}
             <button
+              className={styles.secondary}
               type="button"
               disabled={!data.provider.configured}
               onClick={() => void provision(stream.id)}

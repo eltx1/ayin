@@ -10,6 +10,7 @@
     "pnpm": ">=11.24.0 <12"
   },
   "scripts": {
+    "audit:prod": "corepack pnpm audit --prod --audit-level high",
     "build": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run build && corepack pnpm --filter @ayin/web run build",
     "db:generate": "corepack pnpm --filter @ayin/db run db:generate",
     "db:migrate": "corepack pnpm --filter @ayin/db run db:migrate",
@@ -29,7 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.2",
-    "@playwright/test": "1.55.0",
+    "@playwright/test": "1.55.1",
     "eslint": "9.39.2",
     "globals": "17.11.0",
     "prettier": "3.9.6",
