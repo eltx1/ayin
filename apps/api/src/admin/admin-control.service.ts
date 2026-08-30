@@ -40,6 +40,7 @@ export interface AdminChannelPatch {
   status?: "ACTIVE" | "HIDDEN" | "SUSPENDED" | undefined;
   contractStatus?: "PENDING" | "ACTIVE" | "SUSPENDED" | "ENDED" | undefined;
   revenueShareBps?: number | null | undefined;
+  isPlatformOwned?: boolean | undefined;
   reason?: string | undefined;
 }
 
@@ -213,6 +214,7 @@ export class AdminControlService {
           name: true,
           description: true,
           status: true,
+          isPlatformOwned: true,
           createdAt: true,
           members: {
             where: { role: "OWNER" },
@@ -256,6 +258,9 @@ export class AdminControlService {
           ...(name !== undefined ? { name } : {}),
           ...(patch.description !== undefined ? { description: patch.description } : {}),
           ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(patch.isPlatformOwned !== undefined
+            ? { isPlatformOwned: patch.isPlatformOwned }
+            : {}),
         },
         select: {
           id: true,
@@ -263,6 +268,7 @@ export class AdminControlService {
           name: true,
           description: true,
           status: true,
+          isPlatformOwned: true,
           updatedAt: true,
         },
       });
@@ -307,6 +313,7 @@ export class AdminControlService {
         reason: patch.reason,
         metadata: {
           status: channel.status,
+          isPlatformOwned: channel.isPlatformOwned,
           ...(patch.contractStatus !== undefined ? { contractStatus: patch.contractStatus } : {}),
           ...(patch.revenueShareBps !== undefined
             ? { revenueShareBps: patch.revenueShareBps }

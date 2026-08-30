@@ -55,6 +55,7 @@ const channelPatchSchema = z
     name: z.string().trim().min(1).max(120).optional(),
     description: z.string().max(20_000).nullable().optional(),
     status: z.enum(["ACTIVE", "HIDDEN", "SUSPENDED"]).optional(),
+    isPlatformOwned: z.boolean().optional(),
     contractStatus: z.enum(["PENDING", "ACTIVE", "SUSPENDED", "ENDED"]).optional(),
     revenueShareBps: z.number().int().min(0).max(10_000).nullable().optional(),
     reason: reasonSchema,

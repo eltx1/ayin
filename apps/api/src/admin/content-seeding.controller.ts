@@ -76,7 +76,8 @@ export class ContentSeedingController {
 
   private id(raw: string) {
     const parsed = uuidSchema.safeParse(raw);
-    if (!parsed.success) throw adminBadRequest("INVALID_ID", "The requested resource id is invalid.");
+    if (!parsed.success)
+      throw adminBadRequest("INVALID_ID", "The requested resource id is invalid.");
     return parsed.data;
   }
 

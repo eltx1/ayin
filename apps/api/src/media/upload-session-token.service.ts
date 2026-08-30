@@ -8,6 +8,7 @@ import type { MediaStorageConfig } from "./media-storage.config.js";
 const payloadSchema = z.object({
   version: z.literal(1),
   accountId: z.string().uuid(),
+  adminOverride: z.boolean().optional(),
   channelId: z.string().uuid(),
   assetId: z.string().uuid(),
   objectKey: z.string().min(1).max(1024),

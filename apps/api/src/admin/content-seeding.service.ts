@@ -126,7 +126,11 @@ export class ContentSeedingService {
         channel: { select: { id: true, handle: true, name: true, isPlatformOwned: true } },
         items: {
           orderBy: { createdAt: "asc" },
-          include: { video: { select: { id: true, slug: true, title: true, contentType: true, status: true } } },
+          include: {
+            video: {
+              select: { id: true, slug: true, title: true, contentType: true, status: true },
+            },
+          },
         },
       },
     });
@@ -139,7 +143,10 @@ export class ContentSeedingService {
   ) {
     const item = await this.item(itemId);
     if (item.batch.status === "ROLLED_BACK" || item.status === "PUBLISHED") {
-      throw adminBadRequest("SEED_ITEM_NOT_UPLOADABLE", "This seed item cannot accept a new upload.");
+      throw adminBadRequest(
+        "SEED_ITEM_NOT_UPLOADABLE",
+        "This seed item cannot accept a new upload.",
+      );
     }
     const uploadSession = await this.uploads.createSession(
       actorAccountId,
@@ -175,11 +182,17 @@ export class ContentSeedingService {
       select: { id: true },
     });
     if (!source) {
-      throw adminBadRequest("SEED_UPLOAD_NOT_COMPLETE", "The MP4 upload has not completed successfully.");
+      throw adminBadRequest(
+        "SEED_UPLOAD_NOT_COMPLETE",
+        "The MP4 upload has not completed successfully.",
+      );
     }
     await this.database.client.$transaction([
       this.database.client.video.update({ where: { id: item.videoId }, data: { status: "DRAFT" } }),
-      this.database.client.contentSeedItem.update({ where: { id: itemId }, data: { status: "READY" } }),
+      this.database.client.contentSeedItem.update({
+        where: { id: itemId },
+        data: { status: "READY" },
+      }),
     ]);
     return { itemId, videoId: item.videoId, status: "READY" as const };
   }
@@ -190,7 +203,12 @@ export class ContentSeedingService {
       throw adminBadRequest("SEED_BATCH_ROLLED_BACK", "This content seed batch was rolled back.");
     }
     const source = await this.database.client.mediaAsset.findFirst({
-      where: { videoId: item.videoId, kind: "SOURCE_VIDEO", status: { in: ["UPLOADED", "VALIDATED"] }, removedAt: null },
+      where: {
+        videoId: item.videoId,
+        kind: "SOURCE_VIDEO",
+        status: { in: ["UPLOADED", "VALIDATED"] },
+        removedAt: null,
+      },
       select: { id: true },
     });
     if (!source) {
@@ -202,29 +220,55 @@ export class ContentSeedingService {
         where: { channelId_systemKey: { channelId: item.batch.channelId, systemKey: "UPLOADS" } },
         select: { id: true },
       });
-      if (!uploads) throw adminBadRequest("UPLOADS_PLAYLIST_MISSING", "The AYIN-owned channel has no Uploads playlist.");
+      if (!uploads)
+        throw adminBadRequest(
+          "UPLOADS_PLAYLIST_MISSING",
+          "The AYIN-owned channel has no Uploads playlist.",
+        );
       const existing = await tx.playlistItem.findUnique({
         where: { playlistId_videoId: { playlistId: uploads.id, videoId: item.videoId } },
         select: { id: true },
       });
       if (!existing) {
-        const last = await tx.playlistItem.aggregate({ where: { playlistId: uploads.id }, _max: { position: true } });
-        await tx.playlistItem.create({ data: { playlistId: uploads.id, videoId: item.videoId, position: (last._max.position ?? -1) + 1 } });
+        const last = await tx.playlistItem.aggregate({
+          where: { playlistId: uploads.id },
+          _max: { position: true },
+        });
+        await tx.playlistItem.create({
+          data: {
+            playlistId: uploads.id,
+            videoId: item.videoId,
+            position: (last._max.position ?? -1) + 1,
+          },
+        });
       }
       const channel = await tx.channel.findUniqueOrThrow({
         where: { id: item.batch.channelId },
         select: { primaryTvChannelId: true },
       });
       if (channel.primaryTvChannelId) {
-        const tv = await tx.creatorTvChannel.findUnique({ where: { id: channel.primaryTvChannelId }, select: { sourcePlaylistId: true } });
+        const tv = await tx.creatorTvChannel.findUnique({
+          where: { id: channel.primaryTvChannelId },
+          select: { sourcePlaylistId: true },
+        });
         if (tv && !tv.sourcePlaylistId) {
-          await tx.creatorTvChannel.update({ where: { id: channel.primaryTvChannelId }, data: { sourcePlaylistId: uploads.id } });
+          await tx.creatorTvChannel.update({
+            where: { id: channel.primaryTvChannelId },
+            data: { sourcePlaylistId: uploads.id },
+          });
         }
       }
       const video = await tx.video.update({
         where: { id: item.videoId },
         data: { status: "PUBLISHED", publishedAt: new Date() },
-        select: { id: true, slug: true, title: true, contentType: true, status: true, publishedAt: true },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          contentType: true,
+          status: true,
+          publishedAt: true,
+        },
       });
       await tx.contentSeedItem.update({ where: { id: itemId }, data: { status: "PUBLISHED" } });
       await this.audit.recordInTransaction(tx, {
@@ -243,10 +287,16 @@ export class ContentSeedingService {
       where: { id: batchId },
       include: { items: { include: { video: { include: { mediaAssets: true } } } } },
     });
-    if (!batch) throw adminBadRequest("SEED_BATCH_NOT_FOUND", "The content seed batch does not exist.");
+    if (!batch)
+      throw adminBadRequest("SEED_BATCH_NOT_FOUND", "The content seed batch does not exist.");
     if (batch.status === "ROLLED_BACK") return { batchId, status: "ROLLED_BACK" as const };
-    if (batch.items.some((item) => item.status === "PUBLISHED" || item.video.status === "PUBLISHED")) {
-      throw adminBadRequest("SEED_ROLLBACK_PUBLISHED", "Published seed content must be unpublished explicitly before rollback.");
+    if (
+      batch.items.some((item) => item.status === "PUBLISHED" || item.video.status === "PUBLISHED")
+    ) {
+      throw adminBadRequest(
+        "SEED_ROLLBACK_PUBLISHED",
+        "Published seed content must be unpublished explicitly before rollback.",
+      );
     }
     for (const item of batch.items) {
       for (const asset of item.video.mediaAssets) {
@@ -264,7 +314,10 @@ export class ContentSeedingService {
         data: { status: "REMOVED", removedAt: now },
       });
       await tx.contentSeedItem.updateMany({ where: { batchId }, data: { status: "ROLLED_BACK" } });
-      await tx.contentSeedBatch.update({ where: { id: batchId }, data: { status: "ROLLED_BACK", rolledBackAt: now } });
+      await tx.contentSeedBatch.update({
+        where: { id: batchId },
+        data: { status: "ROLLED_BACK", rolledBackAt: now },
+      });
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
         action: "CONTENT_SEED_BATCH_ROLLED_BACK",
@@ -281,7 +334,8 @@ export class ContentSeedingService {
       where: { id: itemId },
       include: { batch: true },
     });
-    if (!item) throw adminBadRequest("SEED_ITEM_NOT_FOUND", "The content seed item does not exist.");
+    if (!item)
+      throw adminBadRequest("SEED_ITEM_NOT_FOUND", "The content seed item does not exist.");
     return item;
   }
 }
