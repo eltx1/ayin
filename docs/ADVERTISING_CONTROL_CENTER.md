@@ -18,13 +18,13 @@ Campaigns can be paused or resumed immediately by status mutation. Draft campaig
 
 ## Decision service
 
-`GET /ads/direct/decision` uses a deterministic policy. A candidate must be active, within its date window, below its impression goal and session frequency cap, pass targeting, and pass the V1 pacing rule. Highest priority wins; campaign ID provides deterministic tie-breaking. No eligible campaign returns a disabled decision rather than fake fill.
+`GET /ads/direct/decision` uses a deterministic policy. A candidate must be active, within its date window, below its impression goal and session frequency cap, pass targeting, and pass the V1 pacing rule. The requested logical placement must also exist and be enabled. Highest priority wins; campaign ID provides deterministic tie-breaking. No eligible campaign returns a disabled decision rather than fake fill.
 
-The decision returns only an active creative and its approved repository metadata. Delivery events are recorded through `/ads/direct/events` and attach placement, campaign and creative IDs to `AdEvent`.
+The decision returns only an active creative and its approved repository metadata. Delivery events are recorded through `/ads/direct/events` and attach placement, campaign and creative IDs to `AdEvent`. Campaign list responses convert database `BigInt` impression goals into JSON-safe numeric values.
 
 ## Emergency kill switch
 
-`ADVERTISING/emergencyKillSwitch` is a platform-level emergency state. Direct decisioning checks it before returning demand. All page and video demand adapters must treat this setting as authoritative before production enablement; live provider enforcement is revalidated in Task 36.
+`ADVERTISING/emergencyKillSwitch` is a platform-level emergency state. Direct, page, and in-player video decisions check it before returning demand. Live provider enforcement is revalidated in Task 36.
 
 ## External boundaries
 
