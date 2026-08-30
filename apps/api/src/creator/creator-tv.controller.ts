@@ -5,6 +5,7 @@ import {
   HttpException,
   Inject,
   Param,
+  Post,
   Put,
   Req,
   UseGuards,
@@ -12,6 +13,7 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { CreatorTvLinearService } from "./creator-tv-linear.service.js";
 import { CreatorTvError, CreatorTvService } from "./creator-tv.service.js";
 
 const uuidSchema = z.string().uuid();
@@ -25,18 +27,29 @@ const preferenceSchema = z
 
 @Controller("public/channels")
 export class PublicCreatorTvController {
-  constructor(@Inject(CreatorTvService) private readonly creatorTv: CreatorTvService) {}
+  constructor(
+    @Inject(CreatorTvService) private readonly creatorTv: CreatorTvService,
+    @Inject(CreatorTvLinearService) private readonly linear: CreatorTvLinearService,
+  ) {}
 
   @Get(":handle/tv")
   async getTv(@Param("handle") handle: string) {
     return runTvOperation(() => this.creatorTv.getPublicTv(handle));
+  }
+
+  @Get(":handle/tv/linear")
+  async getLinear(@Param("handle") handle: string) {
+    return runTvOperation(() => this.linear.publicCapability(handle));
   }
 }
 
 @Controller("creator")
 @UseGuards(AuthGuard)
 export class CreatorTvController {
-  constructor(@Inject(CreatorTvService) private readonly creatorTv: CreatorTvService) {}
+  constructor(
+    @Inject(CreatorTvService) private readonly creatorTv: CreatorTvService,
+    @Inject(CreatorTvLinearService) private readonly linear: CreatorTvLinearService,
+  ) {}
 
   @Get("channels/:channelId/tv")
   async getManagement(
@@ -68,6 +81,42 @@ export class CreatorTvController {
     return runTvOperation(() =>
       this.creatorTv.setVideoPreference(ownerActor(request), tvChannelId, videoId, parsed.data),
     );
+  }
+
+  @Get("tv/:tvChannelId/linear")
+  async linearStatus(
+    @Req() request: AuthenticatedRequest,
+    @Param("tvChannelId") tvChannelIdRaw: string,
+  ) {
+    const tvChannelId = parseUuid(tvChannelIdRaw, "This Creator TV link is invalid.");
+    return runTvOperation(() => this.linear.status(ownerActor(request), tvChannelId));
+  }
+
+  @Post("tv/:tvChannelId/linear/provision")
+  async provisionLinear(
+    @Req() request: AuthenticatedRequest,
+    @Param("tvChannelId") tvChannelIdRaw: string,
+  ) {
+    const tvChannelId = parseUuid(tvChannelIdRaw, "This Creator TV link is invalid.");
+    return runTvOperation(() => this.linear.provision(ownerActor(request), tvChannelId));
+  }
+
+  @Post("tv/:tvChannelId/linear/reconcile")
+  async reconcileLinear(
+    @Req() request: AuthenticatedRequest,
+    @Param("tvChannelId") tvChannelIdRaw: string,
+  ) {
+    const tvChannelId = parseUuid(tvChannelIdRaw, "This Creator TV link is invalid.");
+    return runTvOperation(() => this.linear.reconcile(ownerActor(request), tvChannelId));
+  }
+
+  @Post("tv/:tvChannelId/linear/stop")
+  async stopLinear(
+    @Req() request: AuthenticatedRequest,
+    @Param("tvChannelId") tvChannelIdRaw: string,
+  ) {
+    const tvChannelId = parseUuid(tvChannelIdRaw, "This Creator TV link is invalid.");
+    return runTvOperation(() => this.linear.stop(ownerActor(request), tvChannelId));
   }
 }
 

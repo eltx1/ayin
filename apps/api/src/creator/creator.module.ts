@@ -10,6 +10,11 @@ import { PublicClipsController } from "./clips.controller.js";
 import { ClipsService } from "./clips.service.js";
 import { CREATOR_TV_AD_BREAK_HOOK, NoopCreatorTvAdBreakHook } from "./creator-tv-ad-break.hook.js";
 import { CreatorTvController, PublicCreatorTvController } from "./creator-tv.controller.js";
+import {
+  CREATOR_TV_LINEAR_PROVIDER,
+  UnconfiguredLinearStreamingProvider,
+} from "./creator-tv-linear.provider.js";
+import { CreatorTvLinearService } from "./creator-tv-linear.service.js";
 import { CreatorTvService } from "./creator-tv.service.js";
 import {
   CreatorPlaylistCollectionController,
@@ -43,8 +48,16 @@ import { StudioService } from "./studio.service.js";
     ClipsService,
     PlaylistService,
     CreatorTvService,
+    CreatorTvLinearService,
     { provide: CREATOR_TV_AD_BREAK_HOOK, useClass: NoopCreatorTvAdBreakHook },
+    { provide: CREATOR_TV_LINEAR_PROVIDER, useClass: UnconfiguredLinearStreamingProvider },
   ],
-  exports: [ChannelService, PlaylistService, CreatorTvService, StudioService],
+  exports: [
+    ChannelService,
+    PlaylistService,
+    CreatorTvService,
+    CreatorTvLinearService,
+    StudioService,
+  ],
 })
 export class CreatorModule {}
