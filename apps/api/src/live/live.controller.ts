@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpException,
+  Inject,
   Param,
   Patch,
   Post,
@@ -29,7 +30,7 @@ const toggleChatSchema = z.object({ enabled: z.boolean() });
 
 @Controller("live")
 export class PublicLiveController {
-  constructor(private readonly live: LiveService) {}
+  constructor(@Inject(LiveService) private readonly live: LiveService) {}
 
   @Get(":slug")
   async stream(@Param("slug") slug: string) {
@@ -56,7 +57,7 @@ export class PublicLiveController {
 @Controller("studio/live")
 @UseGuards(AuthGuard)
 export class StudioLiveController {
-  constructor(private readonly live: LiveService) {}
+  constructor(@Inject(LiveService) private readonly live: LiveService) {}
 
   @Get()
   async list(@Req() request: AuthenticatedRequest) {
