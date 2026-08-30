@@ -13,8 +13,8 @@ describe("Task 10 Creator TV schema", () => {
   it("models per-TV include and priority/order preferences without manual schedule duplication", () => {
     expect(preferences).toContain("model CreatorTvVideoPreference {");
     expect(preferences).toContain("@@unique([tvChannelId, videoId])");
-    expect(schema).toContain("tvPreferences      CreatorTvVideoPreference[]");
-    expect(schema).toContain("videoPreferences  CreatorTvVideoPreference[]");
+    expect(schema).toMatch(/tvPreferences\s+CreatorTvVideoPreference\[\]/);
+    expect(schema).toMatch(/videoPreferences\s+CreatorTvVideoPreference\[\]/);
   });
 
   it("adds defensive range constraints and useful preference indexes", () => {
