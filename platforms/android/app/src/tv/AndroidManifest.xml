@@ -4,7 +4,7 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <application android:banner="@drawable/ayin_tv_banner">
-        <activity android:name="net.ayin.shell.MainActivity">
+        <activity android:name="net.ayin.shell.MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
