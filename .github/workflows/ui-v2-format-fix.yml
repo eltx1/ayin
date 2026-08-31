@@ -1,0 +1,44 @@
+name: UI V2 temporary formatter
+
+on:
+  push:
+    branches:
+      - design/ui-ux-v2-modern-responsive
+    paths:
+      - ".github/workflows/ui-v2-format-fix.yml"
+      - "apps/web/**"
+      - "tests/e2e/responsive.acceptance.spec.ts"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: design/ui-ux-v2-modern-responsive
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format UI V2 files
+        run: pnpm exec prettier --write apps/web/src tests/e2e/responsive.acceptance.spec.ts docs/AYIN_UI_UX_V2_IMPLEMENTATION_PLAN.md
+      - name: Commit formatting
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src tests/e2e/responsive.acceptance.spec.ts docs/AYIN_UI_UX_V2_IMPLEMENTATION_PLAN.md
+          git commit -m "style: apply UI V2 formatting"
+          git push origin HEAD:design/ui-ux-v2-modern-responsive
