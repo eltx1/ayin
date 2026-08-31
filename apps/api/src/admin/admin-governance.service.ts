@@ -163,7 +163,9 @@ export class AdminGovernanceService {
       }),
     ]);
     const actors = await this.database.client.account.findMany({
-      where: { id: { in: items.flatMap((item) => (item.actorAccountId ? [item.actorAccountId] : [])) } },
+      where: {
+        id: { in: items.flatMap((item) => (item.actorAccountId ? [item.actorAccountId] : [])) },
+      },
       select: { id: true, email: true, displayName: true },
     });
     const actorMap = new Map(actors.map((actor) => [actor.id, actor]));
@@ -304,7 +306,9 @@ export class AdminGovernanceService {
     });
     const accountIds = [
       ...new Set(
-        items.flatMap((item) => [item.createdByAccountId, item.assignedToAccountId].filter(Boolean)),
+        items.flatMap((item) =>
+          [item.createdByAccountId, item.assignedToAccountId].filter(Boolean),
+        ),
       ),
     ] as string[];
     const accounts = await this.database.client.account.findMany({
@@ -353,9 +357,7 @@ export class AdminGovernanceService {
             : {}),
           ...(input.resolution !== undefined ? { resolution: input.resolution } : {}),
           closedAt:
-            status === "CLOSED" || status === "RESOLVED"
-              ? (current.closedAt ?? new Date())
-              : null,
+            status === "CLOSED" || status === "RESOLVED" ? (current.closedAt ?? new Date()) : null,
         },
       });
       await this.audit.recordInTransaction(tx, {
@@ -393,52 +395,125 @@ export class AdminGovernanceService {
     if (resource === "channels") {
       const rows = await this.database.client.channel.findMany({
         orderBy: { createdAt: "desc" },
-        select: { id: true, handle: true, name: true, status: true, isPlatformOwned: true, createdAt: true },
+        select: {
+          id: true,
+          handle: true,
+          name: true,
+          status: true,
+          isPlatformOwned: true,
+          createdAt: true,
+        },
       });
       return {
         filename: `ayin-channels-${generatedAt.slice(0, 10)}.csv`,
         content: toCsv(
           ["id", "handle", "name", "status", "isPlatformOwned", "createdAt"],
-          rows.map((item) => [item.id, item.handle, item.name, item.status, item.isPlatformOwned, item.createdAt]),
+          rows.map((item) => [
+            item.id,
+            item.handle,
+            item.name,
+            item.status,
+            item.isPlatformOwned,
+            item.createdAt,
+          ]),
         ),
       };
     }
     if (resource === "videos") {
       const rows = await this.database.client.video.findMany({
         orderBy: { createdAt: "desc" },
-        select: { id: true, channelId: true, slug: true, title: true, status: true, visibility: true, createdAt: true },
+        select: {
+          id: true,
+          channelId: true,
+          slug: true,
+          title: true,
+          status: true,
+          visibility: true,
+          createdAt: true,
+        },
       });
       return {
         filename: `ayin-videos-${generatedAt.slice(0, 10)}.csv`,
         content: toCsv(
           ["id", "channelId", "slug", "title", "status", "visibility", "createdAt"],
-          rows.map((item) => [item.id, item.channelId, item.slug, item.title, item.status, item.visibility, item.createdAt]),
+          rows.map((item) => [
+            item.id,
+            item.channelId,
+            item.slug,
+            item.title,
+            item.status,
+            item.visibility,
+            item.createdAt,
+          ]),
         ),
       };
     }
     if (resource === "payouts") {
       const rows = await this.database.client.payout.findMany({
         orderBy: { requestedAt: "desc" },
-        select: { id: true, channelId: true, status: true, amount: true, currency: true, externalReference: true, requestedAt: true, paidAt: true },
+        select: {
+          id: true,
+          channelId: true,
+          status: true,
+          amount: true,
+          currency: true,
+          externalReference: true,
+          requestedAt: true,
+          paidAt: true,
+        },
       });
       return {
         filename: `ayin-payouts-${generatedAt.slice(0, 10)}.csv`,
         content: toCsv(
-          ["id", "channelId", "status", "amount", "currency", "externalReference", "requestedAt", "paidAt"],
-          rows.map((item) => [item.id, item.channelId, item.status, item.amount, item.currency, item.externalReference, item.requestedAt, item.paidAt]),
+          [
+            "id",
+            "channelId",
+            "status",
+            "amount",
+            "currency",
+            "externalReference",
+            "requestedAt",
+            "paidAt",
+          ],
+          rows.map((item) => [
+            item.id,
+            item.channelId,
+            item.status,
+            item.amount,
+            item.currency,
+            item.externalReference,
+            item.requestedAt,
+            item.paidAt,
+          ]),
         ),
       };
     }
     const rows = await this.database.client.adminAuditLog.findMany({
       orderBy: { createdAt: "desc" },
       take: 10_000,
-      select: { id: true, actorAccountId: true, action: true, entityType: true, entityId: true, reason: true, createdAt: true },
+      select: {
+        id: true,
+        actorAccountId: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        reason: true,
+        createdAt: true,
+      },
     });
     return {
       filename: `ayin-audit-${generatedAt.slice(0, 10)}.csv`,
       content: toCsv(
         ["id", "actorAccountId", "action", "entityType", "entityId", "reason", "createdAt"],
-        rows.map((item) => [item.id, item.actorAccountId, item.action, item.entityType, item.entityId, item.reason, item.createdAt]),
+        rows.map((item) => [
+          item.id,
+          item.actorAccountId,
+          item.action,
+          item.entityType,
+          item.entityId,
+          item.reason,
+          item.createdAt,
+        ]),
       ),
     };
   }

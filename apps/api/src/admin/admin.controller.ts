@@ -7,11 +7,7 @@ import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import {
-  AdminGuard,
-  type AdminAuthenticatedRequest,
-  RequireAdminRoles,
-} from "./admin.guard.js";
+import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
 
 const updateSettingSchema = z.object({
@@ -20,12 +16,7 @@ const updateSettingSchema = z.object({
   reason: z.string().trim().min(3).max(500).optional(),
 });
 
-const staffRoles = [
-  "OPERATIONS",
-  "CONTENT_MODERATOR",
-  "AD_MANAGER",
-  "FINANCE_MANAGER",
-] as const;
+const staffRoles = ["OPERATIONS", "CONTENT_MODERATOR", "AD_MANAGER", "FINANCE_MANAGER"] as const;
 
 @Controller("admin")
 @UseGuards(AuthGuard, AdminGuard)

@@ -42,12 +42,7 @@ export interface AdminSystemHealth {
 }
 
 export type AdminRole =
-  | "SUPERADMIN"
-  | "ADMIN"
-  | "OPERATIONS"
-  | "CONTENT_MODERATOR"
-  | "AD_MANAGER"
-  | "FINANCE_MANAGER";
+  "SUPERADMIN" | "ADMIN" | "OPERATIONS" | "CONTENT_MODERATOR" | "AD_MANAGER" | "FINANCE_MANAGER";
 
 export interface AdminStaffMember {
   id: string;

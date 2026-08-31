@@ -3,11 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import styles from "@/app/studio/studio.module.css";
-import {
-  createSupportTicket,
-  getMySupportTickets,
-  type SupportTicket,
-} from "@/lib/support";
+import { createSupportTicket, getMySupportTickets, type SupportTicket } from "@/lib/support";
 
 import supportStyles from "./studio-support.module.css";
 
@@ -61,7 +57,9 @@ export function StudioSupport() {
       setMessage("Support ticket created. AYIN staff can now triage it from Admin Operations.");
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The support ticket could not be created.");
+      setMessage(
+        error instanceof Error ? error.message : "The support ticket could not be created.",
+      );
     } finally {
       setBusy(false);
     }
@@ -113,7 +111,10 @@ export function StudioSupport() {
           </label>
           <label className={supportStyles.fullField}>
             Details
-            <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
           </label>
         </div>
         <button

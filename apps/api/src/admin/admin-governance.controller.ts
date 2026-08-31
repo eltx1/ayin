@@ -15,18 +15,16 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { adminBadRequest } from "./admin.errors.js";
 import { AdminGovernanceService } from "./admin-governance.service.js";
-import {
-  AdminGuard,
-  type AdminAuthenticatedRequest,
-  RequireAdminRoles,
-} from "./admin.guard.js";
+import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
 import { assignableAdminRoles } from "./admin.roles.js";
 
 const uuidSchema = z.string().uuid();
 const reasonSchema = z.string().trim().min(8).max(500);
 const staffRolesSchema = z
   .object({
-    roles: z.array(z.enum(assignableAdminRoles as [string, ...string[]])).max(assignableAdminRoles.length),
+    roles: z
+      .array(z.enum(assignableAdminRoles as [string, ...string[]]))
+      .max(assignableAdminRoles.length),
     reason: reasonSchema,
   })
   .strict();
@@ -89,7 +87,9 @@ const exportResourceSchema = z.enum(["users", "channels", "videos", "payouts", "
 @Controller("support/tickets")
 @UseGuards(AuthGuard)
 export class SupportTicketController {
-  constructor(@Inject(AdminGovernanceService) private readonly governance: AdminGovernanceService) {}
+  constructor(
+    @Inject(AdminGovernanceService) private readonly governance: AdminGovernanceService,
+  ) {}
 
   @Get()
   myTickets(@Req() request: AuthenticatedRequest) {
@@ -112,7 +112,9 @@ export class SupportTicketController {
 @Controller("admin/operations")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminGovernanceController {
-  constructor(@Inject(AdminGovernanceService) private readonly governance: AdminGovernanceService) {}
+  constructor(
+    @Inject(AdminGovernanceService) private readonly governance: AdminGovernanceService,
+  ) {}
 
   @Get("roles")
   @RequireAdminRoles("OPERATIONS")
@@ -254,7 +256,8 @@ export class AdminGovernanceController {
 
   private uuid(raw: string) {
     const parsed = uuidSchema.safeParse(raw);
-    if (!parsed.success) throw adminBadRequest("INVALID_ID", "The requested resource id is invalid.");
+    if (!parsed.success)
+      throw adminBadRequest("INVALID_ID", "The requested resource id is invalid.");
     return parsed.data;
   }
 }

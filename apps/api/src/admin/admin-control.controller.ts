@@ -16,11 +16,7 @@ import { AuthGuard } from "../auth/auth.guard.js";
 import { AdminCommandCenterService } from "./admin-command-center.service.js";
 import { AdminControlService } from "./admin-control.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import {
-  AdminGuard,
-  type AdminAuthenticatedRequest,
-  RequireAdminRoles,
-} from "./admin.guard.js";
+import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
 
 const uuidSchema = z.string().uuid();
 const searchSchema = z.object({ query: z.string().trim().min(2).max(200) });

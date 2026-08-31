@@ -3,11 +3,7 @@ import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
 import { adminBadRequest } from "./admin.errors.js";
-import {
-  AdminGuard,
-  type AdminAuthenticatedRequest,
-  RequireAdminRoles,
-} from "./admin.guard.js";
+import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
 
 const uuidSchema = z.string().uuid();

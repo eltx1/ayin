@@ -182,7 +182,9 @@ export class CreatorMonetizationAnalyticsService {
         "videoId",
         "payoutIdOrReference",
         "memoOrFailure",
-      ].map(csv).join(","),
+      ]
+        .map(csv)
+        .join(","),
       ...ledger.map((item) =>
         [
           `LEDGER_${item.type}`,
@@ -199,7 +201,9 @@ export class CreatorMonetizationAnalyticsService {
           item.videoId,
           item.payoutId,
           item.memo,
-        ].map(csv).join(","),
+        ]
+          .map(csv)
+          .join(","),
       ),
       ...payouts.map((item) =>
         [
@@ -217,7 +221,9 @@ export class CreatorMonetizationAnalyticsService {
           null,
           item.externalReference,
           item.failureReason,
-        ].map(csv).join(","),
+        ]
+          .map(csv)
+          .join(","),
       ),
     ];
     return {

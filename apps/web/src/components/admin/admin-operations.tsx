@@ -42,9 +42,9 @@ export function AdminOperations() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [channelId, setChannelId] = useState("");
-  const [compliance, setCompliance] = useState<Awaited<ReturnType<typeof getCreatorCompliance>> | null>(
-    null,
-  );
+  const [compliance, setCompliance] = useState<Awaited<
+    ReturnType<typeof getCreatorCompliance>
+  > | null>(null);
   const [complianceReason, setComplianceReason] = useState("");
 
   const load = useCallback(async () => {
@@ -54,7 +54,9 @@ export function AdminOperations() {
         getAdminRoles(),
         getAdminStaff(staffQuery),
         getAdminAudit(
-          auditQuery.trim() ? new URLSearchParams({ query: auditQuery.trim(), take: "50" }) : undefined,
+          auditQuery.trim()
+            ? new URLSearchParams({ query: auditQuery.trim(), take: "50" })
+            : undefined,
         ),
         getAdminSupportTickets(),
       ]);
@@ -87,7 +89,8 @@ export function AdminOperations() {
   }
 
   const openTicketCount = useMemo(
-    () => tickets.filter((ticket) => ticket.status !== "RESOLVED" && ticket.status !== "CLOSED").length,
+    () =>
+      tickets.filter((ticket) => ticket.status !== "RESOLVED" && ticket.status !== "CLOSED").length,
     [tickets],
   );
 
@@ -220,7 +223,9 @@ export function AdminOperations() {
             void getCreatorCompliance(channelId.trim())
               .then(setCompliance)
               .catch((error) =>
-                setMessage(error instanceof Error ? error.message : "Compliance could not be loaded."),
+                setMessage(
+                  error instanceof Error ? error.message : "Compliance could not be loaded.",
+                ),
               )
               .finally(() => setBusy(false));
           }}
@@ -483,17 +488,14 @@ function ComplianceEditor({
           disabled={busy || reason.trim().length < 8}
           type="button"
           onClick={() =>
-            void onAct(
-              async () => {
-                const result = await updateCreatorCompliance(channelId, {
-                  identityStatus,
-                  taxStatus,
-                  reason,
-                });
-                onSaved(result);
-              },
-              "Creator compliance status updated.",
-            )
+            void onAct(async () => {
+              const result = await updateCreatorCompliance(channelId, {
+                identityStatus,
+                taxStatus,
+                reason,
+              });
+              onSaved(result);
+            }, "Creator compliance status updated.")
           }
         >
           Save compliance
