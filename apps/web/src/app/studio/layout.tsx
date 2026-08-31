@@ -14,6 +14,7 @@ const navigation = [
   ["Community", "/studio/community"],
   ["Live", "/studio/live"],
   ["Monetization", "/studio/monetization"],
+  ["Support", "/studio/support"],
   ["Trust & safety", "/studio/trust"],
   ["Channel settings", "/studio/channel"],
 ] as const;
