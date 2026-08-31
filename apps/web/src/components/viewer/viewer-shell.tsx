@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useEffect, useState } from "react";
 
@@ -125,7 +126,7 @@ export function ViewerShell({ children }: ViewerShellProperties) {
           href="/"
         >
           <span aria-hidden="true" className={styles.brandMark}>
-            <span />
+            <Image alt="" height={64} priority src="/brand/ayin-logo.png" width={64} />
           </span>
           <span className={styles.brandWord}>AYIN</span>
         </Link>
