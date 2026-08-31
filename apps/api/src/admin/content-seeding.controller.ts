@@ -3,7 +3,11 @@ import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest } from "./admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+} from "./admin.guard.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
 
 const uuidSchema = z.string().uuid();
@@ -29,6 +33,7 @@ const listSchema = z.object({ take: z.coerce.number().int().min(1).max(100).defa
 
 @Controller("admin/content-seeding")
 @UseGuards(AuthGuard, AdminGuard)
+@RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
 export class ContentSeedingController {
   constructor(@Inject(ContentSeedingService) private readonly seeding: ContentSeedingService) {}
 
