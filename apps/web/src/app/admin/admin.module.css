@@ -221,16 +221,28 @@
   margin: 7px 0;
 }
 
-.form {
+.form,
+.formGrid {
   display: grid;
   gap: 9px;
   grid-template-columns: minmax(0, 1fr) 180px;
   margin-top: 14px;
 }
 
-.form textarea {
+.form textarea,
+.fullField {
   grid-column: 1/-1;
-  min-height: 72px;
+}
+
+.form textarea,
+.formGrid textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.formGrid label {
+  display: grid;
+  gap: 7px;
 }
 
 .button,
@@ -241,6 +253,12 @@
   font-weight: 750;
   min-height: var(--control-height);
   padding: 10px 14px;
+}
+
+.button:disabled,
+.danger:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .button {
@@ -302,7 +320,8 @@
   text-decoration: none;
 }
 
-.statusPill {
+.statusPill,
+.statusBadge {
   background: rgb(139 24 248 / 12%);
   border: 1px solid rgb(220 25 232 / 18%);
   border-radius: 999px;
@@ -311,12 +330,64 @@
   font-size: 0.78rem;
   font-weight: 800;
   padding: 5px 9px;
+  white-space: nowrap;
 }
 
 .commandGrid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.operationsGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  margin-bottom: 16px;
+}
+
+.cardInset {
+  background: rgb(3 2 10 / 52%);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.roleGrid {
+  display: grid;
+  gap: 8px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.auditList {
+  display: grid;
+  gap: 9px;
+}
+
+.auditItem {
+  background: rgb(255 255 255 / 2.5%);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 11px 12px;
+}
+
+.auditItem > div {
+  display: grid;
+  gap: 3px;
+}
+
+.auditItem > div:nth-child(2) {
+  text-align: right;
+}
+
+.auditItem > p {
+  grid-column: 1/-1;
+  margin: 0;
 }
 
 .searchResults {
@@ -382,7 +453,8 @@
   }
 
   .metrics,
-  .commandGrid {
+  .commandGrid,
+  .operationsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -401,11 +473,21 @@
 
   .metrics,
   .form,
-  .commandGrid {
+  .formGrid,
+  .commandGrid,
+  .operationsGrid,
+  .roleGrid,
+  .auditItem {
     grid-template-columns: 1fr;
   }
 
-  .form textarea {
+  .form textarea,
+  .fullField,
+  .auditItem > p {
     grid-column: auto;
+  }
+
+  .auditItem > div:nth-child(2) {
+    text-align: left;
   }
 }
