@@ -18,6 +18,7 @@ import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
 import { CreatorMonetizationAnalyticsService } from "./creator-monetization-analytics.service.js";
 import { CreatorMonetizationNotificationService } from "./creator-monetization-notification.service.js";
+import { CreatorRevenueCurrencyViewService } from "./creator-revenue-currency-view.service.js";
 import { RevenueService } from "./revenue.service.js";
 
 @Controller("creator/studio/revenue")
@@ -29,13 +30,15 @@ export class CreatorRevenueController {
     private readonly monetizationAnalytics: CreatorMonetizationAnalyticsService,
     @Inject(CreatorMonetizationNotificationService)
     private readonly notifications: CreatorMonetizationNotificationService,
+    @Inject(CreatorRevenueCurrencyViewService)
+    private readonly currencyView: CreatorRevenueCurrencyViewService,
   ) {}
 
   @Get()
   async overview(@Req() request: AuthenticatedRequest) {
     const result = await this.finance.overview(request.ayinAuth.accountId);
     if (!result) throw new HttpException("Creator channel not found.", 404);
-    return result;
+    return this.currencyView.normalize(result);
   }
 
   @Get("analytics")
