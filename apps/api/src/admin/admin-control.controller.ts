@@ -13,11 +13,13 @@ import {
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
+import { AdminCommandCenterService } from "./admin-command-center.service.js";
 import { AdminControlService } from "./admin-control.service.js";
 import { adminBadRequest } from "./admin.errors.js";
 import { AdminGuard, type AdminAuthenticatedRequest } from "./admin.guard.js";
 
 const uuidSchema = z.string().uuid();
+const searchSchema = z.object({ query: z.string().trim().min(2).max(200) });
 const pageSchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   take: z.coerce.number().int().min(1).max(100).optional(),
@@ -86,11 +88,25 @@ const tvPatchSchema = z
 @Controller("admin/control")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminControlController {
-  constructor(@Inject(AdminControlService) private readonly control: AdminControlService) {}
+  constructor(
+    @Inject(AdminControlService) private readonly control: AdminControlService,
+    @Inject(AdminCommandCenterService) private readonly commandCenter: AdminCommandCenterService,
+  ) {}
 
   @Get("dashboard")
   dashboard() {
     return this.control.dashboard();
+  }
+
+  @Get("search")
+  search(@Query() raw: unknown) {
+    const query = this.parse(searchSchema, raw, "INVALID_GLOBAL_SEARCH");
+    return this.commandCenter.search(query.query);
+  }
+
+  @Get("health")
+  health() {
+    return this.commandCenter.health();
   }
 
   @Get("users")
