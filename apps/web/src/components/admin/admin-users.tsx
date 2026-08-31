@@ -25,9 +25,9 @@ type AdminUser = {
 
 type UsersResponse = { items: AdminUser[]; pagination: AdminPagination };
 
-export function AdminUsers() {
+export function AdminUsers({ initialQuery = "" }: { initialQuery?: string }) {
   const [data, setData] = useState<UsersResponse | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
