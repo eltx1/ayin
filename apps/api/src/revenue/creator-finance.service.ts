@@ -62,7 +62,9 @@ export class CreatorFinanceService {
     const openPayout = base.payouts.some(
       (payout) => payout.status === "PENDING" || payout.status === "PROCESSING",
     );
-    const profileReady = Boolean(profile?.legalName && profile.destinationEncrypted && profile.destinationMask);
+    const profileReady = Boolean(
+      profile?.legalName && profile.destinationEncrypted && profile.destinationMask,
+    );
     const thresholdMet = thresholdMicros <= 0n || availableMicros >= thresholdMicros;
     const providerReady = Boolean(
       profile && profile.provider === this.payoutProvider.kind && this.payoutProvider.connected,
@@ -89,7 +91,8 @@ export class CreatorFinanceService {
       recentLedger: ledger.items,
       providerConnection: {
         activeProvider: this.payoutProvider.kind,
-        manualPayoutEnabled: this.payoutProvider.kind === "MANUAL" && this.payoutProvider.connected,
+        manualPayoutEnabled:
+          this.payoutProvider.kind === "MANUAL" && this.payoutProvider.connected,
         externalProvidersConnected: false,
       },
     };
@@ -162,27 +165,34 @@ export class CreatorFinanceService {
     });
     if (activePayout > 0) throw new Error("PAYOUT_ALREADY_IN_PROGRESS");
 
-    const result = await this.revenue.createPayout(accountId, { channelId: channel.id, currency });
+    const payout = await this.revenue.createPayout(accountId, { channelId: channel.id, currency });
     const handoff = await this.payoutProvider.createHandoff({
-      payoutId: result.payout.id,
+      payoutId: payout.id,
       channelId: channel.id,
-      amount: String(result.payout.amount),
+      amount: payout.amount,
       currency,
       destinationMask: profile.destinationMask,
     });
-    if (!handoff.accepted) throw new Error("PAYOUT_PROVIDER_HANDOFF_REJECTED");
+    if (!handoff.accepted) {
+      await this.revenue.updatePayoutStatus(accountId, payout.id, {
+        status: "CANCELLED",
+        reason: "Payout provider did not accept the payout handoff.",
+        failureReason: "PAYOUT_PROVIDER_HANDOFF_REJECTED",
+      });
+      throw new Error("PAYOUT_PROVIDER_HANDOFF_REJECTED");
+    }
 
     await this.database.client.$executeRaw`
       UPDATE "Payout"
       SET "provider" = ${this.payoutProvider.kind}, "requestSource" = 'CREATOR', "paymentProfileId" = ${profile.id}::uuid
-      WHERE "id" = ${result.payout.id}::uuid
+      WHERE "id" = ${payout.id}::uuid
     `;
     await this.database.client.adminAuditLog.create({
       data: {
         actorAccountId: accountId,
         action: "creator.payout_requested",
         entityType: "Payout",
-        entityId: result.payout.id,
+        entityId: payout.id,
         metadata: {
           channelId: channel.id,
           currency,
@@ -194,7 +204,7 @@ export class CreatorFinanceService {
     });
 
     return {
-      ...result,
+      payout,
       requestSource: "CREATOR",
       provider: handoff.provider,
       destinationMask: profile.destinationMask,
