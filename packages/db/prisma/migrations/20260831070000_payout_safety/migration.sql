@@ -3,8 +3,11 @@
 -- Preserve every payout record, keep the active payout that owns the most ledger rows (then the
 -- oldest request as a deterministic tie-breaker), release ledger reservations owned by the other
 -- duplicates, and mark those duplicate payout records CANCELLED before enforcing uniqueness.
+--
+-- Do not use ON COMMIT DROP here: Prisma migrate may execute migration statements with statement-
+-- level commits, which would drop the temporary table immediately after CREATE TABLE.
 
-CREATE TEMP TABLE "_PayoutActiveDedup" ON COMMIT DROP AS
+CREATE TEMP TABLE "_PayoutActiveDedup" AS
 SELECT
   p."id",
   ROW_NUMBER() OVER (
