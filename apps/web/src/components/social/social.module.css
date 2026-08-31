@@ -1,40 +1,84 @@
 .notifications {
+  display: grid;
+  gap: 0.75rem;
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 0.75rem;
 }
+
 .notifications li {
+  align-items: center;
+  background: linear-gradient(145deg, rgb(255 255 255 / 4%), rgb(139 24 248 / 2.5%));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 26px rgb(0 0 0 / 10%);
   display: flex;
-  justify-content: space-between;
   gap: 1rem;
+  justify-content: space-between;
+  min-height: 74px;
+  overflow: hidden;
   padding: 1rem;
-  border: 1px solid #2b3744;
-  border-radius: 0.8rem;
-  background: #111923;
+  position: relative;
 }
-.notifications li[data-read="false"] {
-  border-left: 4px solid #63d1cc;
+
+.notifications li:hover {
+  background: rgb(139 24 248 / 5%);
+  border-color: rgb(220 25 232 / 15%);
 }
+
+.notifications li[data-read="false"]::before {
+  background: var(--brand-gradient);
+  bottom: 12px;
+  content: "";
+  left: 0;
+  position: absolute;
+  top: 12px;
+  width: 3px;
+}
+
 .notifications div {
   display: grid;
   gap: 0.3rem;
+  min-width: 0;
 }
+
 .notifications small {
-  color: #63d1cc;
+  background: var(--brand-gradient);
+  background-clip: text;
+  color: transparent;
+  font-weight: 760;
 }
+
 .notifications p,
 .notifications time,
 .empty {
-  color: #9eabb8;
+  color: var(--muted);
   margin: 0;
 }
+
 .notifications button {
-  align-self: center;
-  border: 1px solid #405368;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  background: transparent;
   color: #fff;
+  cursor: pointer;
+  flex: 0 0 auto;
+  min-height: 42px;
   padding: 0.55rem 0.8rem;
+}
+
+.notifications button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-brand);
+}
+
+@media (max-width: 560px) {
+  .notifications li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notifications button {
+    width: 100%;
+  }
 }
