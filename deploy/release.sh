@@ -20,6 +20,7 @@ AYIN_WEB_ENV_FILE="${AYIN_WEB_ENV_FILE:-/home/ayin/env/web.env}"
 AYIN_API_ENV_FILE="${AYIN_API_ENV_FILE:-/home/ayin/env/api.env}"
 AYIN_WEB_HEALTH_URL="${AYIN_WEB_HEALTH_URL:-http://127.0.0.1:3000/}"
 AYIN_API_HEALTH_URL="${AYIN_API_HEALTH_URL:-http://127.0.0.1:4000/ready}"
+AYIN_API_LIVENESS_URL="${AYIN_API_LIVENESS_URL:-http://127.0.0.1:4000/health}"
 AYIN_HEALTH_RETRIES="${AYIN_HEALTH_RETRIES:-12}"
 AYIN_HEALTH_DELAY_SECONDS="${AYIN_HEALTH_DELAY_SECONDS:-2}"
 
@@ -101,6 +102,28 @@ check_health() {
   return 1
 }
 
+check_rollback_api_health() {
+  local attempt
+  local status
+  for ((attempt = 1; attempt <= AYIN_HEALTH_RETRIES; attempt += 1)); do
+    status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "$AYIN_API_HEALTH_URL" || true)"
+    if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+      echo "rollback api readiness check passed"
+      return 0
+    fi
+
+    # A release created before /ready existed may legitimately return 404. Only in that compatibility
+    # case may rollback fall back to process liveness. A 5xx readiness response never falls back.
+    if [[ "$status" == "404" ]] && curl --fail --silent --show-error --max-time 10 "$AYIN_API_LIVENESS_URL" >/dev/null; then
+      echo "rollback api liveness check passed because the previous release has no /ready endpoint"
+      return 0
+    fi
+    sleep "$AYIN_HEALTH_DELAY_SECONDS"
+  done
+  echo "error: rollback api health check failed" >&2
+  return 1
+}
+
 rollback_application() {
   if [[ -z "$previous_release" || ! -d "$previous_release" ]]; then
     echo "error: no valid previous application release is available for automatic rollback" >&2
@@ -122,7 +145,7 @@ rollback_application() {
     return 1
   fi
 
-  if ! check_health "rollback web" "$AYIN_WEB_HEALTH_URL" || ! check_health "rollback api" "$AYIN_API_HEALTH_URL"; then
+  if ! check_health "rollback web" "$AYIN_WEB_HEALTH_URL" || ! check_rollback_api_health; then
     echo "error: previous application release did not become healthy after rollback" >&2
     return 1
   fi
