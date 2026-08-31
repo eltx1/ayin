@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Query, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 
-import { AdminGuard } from "../admin/admin.guard.js";
+import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { GamProductionService } from "./gam-production.service.js";
 
@@ -36,6 +36,7 @@ export class GamClientConfigurationController {
 
 @Controller("admin/advertising/gam")
 @UseGuards(AuthGuard, AdminGuard)
+@RequireAdminRoles("AD_MANAGER")
 export class AdminGamDiagnosticsController {
   constructor(@Inject(GamProductionService) private readonly gam: GamProductionService) {}
 
