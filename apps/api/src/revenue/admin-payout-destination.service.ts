@@ -14,8 +14,17 @@ const revealPayoutDestinationSchema = z
 interface PayoutDestinationRow {
   payoutId: string;
   channelId: string;
+  channelName: string;
+  channelHandle: string;
   payoutStatus: string;
   payoutProvider: string;
+  amount: string;
+  currency: string;
+  requestedAt: Date;
+  processedAt: Date | null;
+  paidAt: Date | null;
+  externalReference: string | null;
+  failureReason: string | null;
   paymentProfileId: string | null;
   legalName: string | null;
   profileProvider: string | null;
@@ -31,29 +40,45 @@ export class AdminPayoutDestinationService {
     @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
   ) {}
 
+  async details(payoutId: string) {
+    const row = await this.payoutRow(payoutId);
+    return {
+      payoutId: row.payoutId,
+      channel: {
+        id: row.channelId,
+        name: row.channelName,
+        handle: row.channelHandle,
+      },
+      status: row.payoutStatus,
+      provider: row.payoutProvider,
+      amount: row.amount,
+      currency: row.currency,
+      requestedAt: row.requestedAt,
+      processedAt: row.processedAt,
+      paidAt: row.paidAt,
+      externalReference: row.externalReference,
+      failureReason: row.failureReason,
+      paymentProfile: row.paymentProfileId
+        ? {
+            id: row.paymentProfileId,
+            legalName: row.legalName,
+            provider: row.profileProvider,
+            destinationMask: row.destinationMask,
+            countryCode: row.countryCode,
+            hasDestination: Boolean(row.destinationEncrypted),
+          }
+        : null,
+      destinationRevealAllowed:
+        Boolean(row.destinationEncrypted) &&
+        row.payoutProvider === "MANUAL" &&
+        row.profileProvider === "MANUAL" &&
+        (row.payoutStatus === "PENDING" || row.payoutStatus === "PROCESSING"),
+    };
+  }
+
   async reveal(actorAccountId: string, payoutId: string, raw: unknown) {
     const input = revealPayoutDestinationSchema.parse(raw);
-    const rows = await this.database.client.$queryRaw<PayoutDestinationRow[]>`
-      SELECT
-        p."id" AS "payoutId",
-        p."channelId" AS "channelId",
-        p."status"::text AS "payoutStatus",
-        p."provider" AS "payoutProvider",
-        p."paymentProfileId" AS "paymentProfileId",
-        cpp."legalName" AS "legalName",
-        cpp."provider" AS "profileProvider",
-        cpp."destinationEncrypted" AS "destinationEncrypted",
-        cpp."destinationMask" AS "destinationMask",
-        cpp."countryCode" AS "countryCode"
-      FROM "Payout" p
-      LEFT JOIN "CreatorPayoutProfile" cpp
-        ON cpp."id" = p."paymentProfileId"
-        OR (p."paymentProfileId" IS NULL AND cpp."channelId" = p."channelId")
-      WHERE p."id" = ${payoutId}::uuid
-      LIMIT 1
-    `;
-    const row = rows[0];
-    if (!row) throw new Error("PAYOUT_NOT_FOUND");
+    const row = await this.payoutRow(payoutId);
     if (!row.destinationEncrypted || !row.legalName) {
       throw new Error("PAYOUT_DESTINATION_NOT_CONFIGURED");
     }
@@ -93,5 +118,40 @@ export class AdminPayoutDestinationService {
       sensitive: true,
       cacheable: false,
     };
+  }
+
+  private async payoutRow(payoutId: string): Promise<PayoutDestinationRow> {
+    const rows = await this.database.client.$queryRaw<PayoutDestinationRow[]>`
+      SELECT
+        p."id" AS "payoutId",
+        p."channelId" AS "channelId",
+        c."name" AS "channelName",
+        c."handle" AS "channelHandle",
+        p."status"::text AS "payoutStatus",
+        p."provider" AS "payoutProvider",
+        p."amount"::text AS "amount",
+        p."currency" AS "currency",
+        p."requestedAt" AS "requestedAt",
+        p."processedAt" AS "processedAt",
+        p."paidAt" AS "paidAt",
+        p."externalReference" AS "externalReference",
+        p."failureReason" AS "failureReason",
+        p."paymentProfileId" AS "paymentProfileId",
+        cpp."legalName" AS "legalName",
+        cpp."provider" AS "profileProvider",
+        cpp."destinationEncrypted" AS "destinationEncrypted",
+        cpp."destinationMask" AS "destinationMask",
+        cpp."countryCode" AS "countryCode"
+      FROM "Payout" p
+      JOIN "Channel" c ON c."id" = p."channelId"
+      LEFT JOIN "CreatorPayoutProfile" cpp
+        ON cpp."id" = p."paymentProfileId"
+        OR (p."paymentProfileId" IS NULL AND cpp."channelId" = p."channelId")
+      WHERE p."id" = ${payoutId}::uuid
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row) throw new Error("PAYOUT_NOT_FOUND");
+    return row;
   }
 }
