@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { AdminPayoutCreationService } from "./admin-payout-creation.service.js";
 import { encryptPayoutDestination, maskPayoutDestination } from "./creator-finance.crypto.js";
 import {
   CreatorFinanceRepository,
@@ -8,6 +9,7 @@ import {
   type RevenueDisputeStatus,
 } from "./creator-finance.repository.js";
 import { PAYOUT_PROVIDER_ADAPTER, type PayoutProviderAdapter } from "./payout-provider.adapter.js";
+import { toSafePayoutView } from "./payout-safe-view.js";
 import {
   creatorPayoutRequestSchema,
   payoutProfileSchema,
@@ -39,6 +41,8 @@ export class CreatorFinanceService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CreatorFinanceRepository) private readonly finance: CreatorFinanceRepository,
     @Inject(RevenueService) private readonly revenue: RevenueService,
+    @Inject(AdminPayoutCreationService)
+    private readonly payoutCreation: AdminPayoutCreationService,
     @Inject(PAYOUT_PROVIDER_ADAPTER) private readonly payoutProvider: PayoutProviderAdapter,
   ) {}
 
@@ -73,6 +77,7 @@ export class CreatorFinanceService {
 
     return {
       ...base,
+      payouts: base.payouts.map((payout) => toSafePayoutView(payout)),
       onHoldForPayout: microsToMoney(onHoldMicros > 0n ? onHoldMicros : 0n),
       payoutThreshold: microsToMoney(thresholdMicros),
       payoutProgressPercent: Math.min(100, Math.max(0, progress)),
@@ -154,31 +159,22 @@ export class CreatorFinanceService {
       throw new Error("PAYOUT_PROVIDER_NOT_CONNECTED");
     }
 
-    const currency = input.currency ?? profile.preferredCurrency;
-    const activePayout = await this.database.client.payout.count({
-      where: { channelId: channel.id, currency, status: { in: ["PENDING", "PROCESSING"] } },
+    const payout = await this.payoutCreation.createForCreator({
+      actorAccountId: accountId,
+      channelId: channel.id,
+      ...(input.currency ? { requestedCurrency: input.currency } : {}),
+      expectedProvider: this.payoutProvider.kind,
     });
-    if (activePayout > 0) throw new Error("PAYOUT_ALREADY_IN_PROGRESS");
+    if (!payout.destinationMaskSnapshot) {
+      throw new Error("PAYOUT_PROFILE_INCOMPLETE");
+    }
 
-    const payout = await this.revenue.createPayout(accountId, { channelId: channel.id, currency });
-    await this.database.client.payout.update({
-      where: { id: payout.id },
-      data: {
-        provider: this.payoutProvider.kind,
-        requestSource: "CREATOR",
-        paymentProfileId: profile.id,
-        destinationEncryptedSnapshot: profile.destinationEncrypted,
-        destinationMaskSnapshot: profile.destinationMask,
-        legalNameSnapshot: profile.legalName,
-        countryCodeSnapshot: profile.countryCode,
-      },
-    });
     const handoff = await this.payoutProvider.createHandoff({
       payoutId: payout.id,
       channelId: channel.id,
       amount: payout.amount,
-      currency,
-      destinationMask: profile.destinationMask,
+      currency: payout.currency,
+      destinationMask: payout.destinationMaskSnapshot,
     });
     if (!handoff.accepted) {
       await this.revenue.updatePayoutStatus(accountId, payout.id, {
@@ -197,19 +193,19 @@ export class CreatorFinanceService {
         entityId: payout.id,
         metadata: {
           channelId: channel.id,
-          currency,
+          currency: payout.currency,
           provider: handoff.provider,
           providerMode: handoff.mode,
-          paymentProfileId: profile.id,
+          paymentProfileId: payout.paymentProfileId,
         },
       },
     });
 
     return {
-      payout,
+      payout: toSafePayoutView(payout),
       requestSource: "CREATOR",
       provider: handoff.provider,
-      destinationMask: profile.destinationMask,
+      destinationMask: payout.destinationMaskSnapshot,
       paymentIntegration: handoff.mode,
     };
   }
