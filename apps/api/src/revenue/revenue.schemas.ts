@@ -7,6 +7,18 @@ const moneySchema = z
 const positiveMoneySchema = moneySchema.refine((value) => !value.startsWith("-"), {
   message: "Amount must be non-negative.",
 });
+const currencySchema = z
+  .string()
+  .trim()
+  .length(3)
+  .regex(/^[A-Za-z]{3}$/)
+  .transform((value) => value.toUpperCase());
+const countryCodeSchema = z
+  .string()
+  .trim()
+  .length(2)
+  .regex(/^[A-Za-z]{2}$/)
+  .transform((value) => value.toUpperCase());
 
 export const revenueImportEntrySchema = z
   .object({
@@ -18,11 +30,7 @@ export const revenueImportEntrySchema = z
     periodStart: z.string().datetime({ offset: true }),
     periodEnd: z.string().datetime({ offset: true }),
     grossAmount: positiveMoneySchema,
-    currency: z
-      .string()
-      .trim()
-      .length(3)
-      .transform((value) => value.toUpperCase()),
+    currency: currencySchema,
     state: z.enum(["ESTIMATED", "FINAL"]),
     memo: z.string().trim().max(500).nullable().optional(),
   })
@@ -57,11 +65,7 @@ export const adjustmentSchema = z
   .object({
     channelId: z.string().uuid(),
     amount: moneySchema.refine((value) => value !== "0" && value !== "0.0" && value !== "0.000000"),
-    currency: z
-      .string()
-      .trim()
-      .length(3)
-      .transform((value) => value.toUpperCase()),
+    currency: currencySchema,
     reason: z.string().trim().min(8).max(500),
     videoId: z.string().uuid().nullable().optional(),
     campaignId: z.string().uuid().nullable().optional(),
@@ -73,11 +77,13 @@ export const adjustmentSchema = z
 export const payoutCreateSchema = z
   .object({
     channelId: z.string().uuid(),
-    currency: z
-      .string()
-      .trim()
-      .length(3)
-      .transform((value) => value.toUpperCase()),
+    currency: currencySchema,
+  })
+  .strict();
+
+export const creatorPayoutRequestSchema = z
+  .object({
+    currency: currencySchema.optional(),
   })
   .strict();
 
@@ -97,17 +103,42 @@ export const revenueSettingsSchema = z
   })
   .strict();
 
+export const payoutProfileSchema = z
+  .object({
+    legalName: z.string().trim().min(2).max(160),
+    preferredCurrency: currencySchema,
+    provider: z.enum(["MANUAL", "BANK_TRANSFER", "PAYPAL", "PAYONEER", "WISE"]).default("MANUAL"),
+    destination: z.string().trim().min(4).max(1500).optional(),
+    countryCode: countryCodeSchema.nullable().optional(),
+  })
+  .strict();
+
+export const revenueDisputeCreateSchema = z
+  .object({
+    category: z.enum(["EARNINGS", "PAYOUT", "OTHER"]),
+    payoutId: z.string().uuid().nullable().optional(),
+    message: z.string().trim().min(20).max(5000),
+  })
+  .strict();
+
+export const revenueDisputeUpdateSchema = z
+  .object({
+    status: z.enum(["OPEN", "REVIEWING", "RESOLVED", "REJECTED"]),
+    resolution: z.string().trim().min(8).max(5000).nullable().optional(),
+    reason: z.string().trim().min(8).max(500),
+  })
+  .strict()
+  .refine(
+    (value) => !["RESOLVED", "REJECTED"].includes(value.status) || Boolean(value.resolution),
+    { message: "A resolution is required when closing a dispute.", path: ["resolution"] },
+  );
+
 export const ledgerQuerySchema = z.object({
   channelId: z.string().uuid().optional(),
   videoId: z.string().uuid().optional(),
   campaignId: z.string().uuid().optional(),
   state: z.enum(["ESTIMATED", "FINAL", "ADJUSTMENT"]).optional(),
-  currency: z
-    .string()
-    .trim()
-    .length(3)
-    .transform((value) => value.toUpperCase())
-    .optional(),
+  currency: currencySchema.optional(),
   from: z.string().datetime({ offset: true }).optional(),
   to: z.string().datetime({ offset: true }).optional(),
   page: z.coerce.number().int().min(1).default(1),
@@ -117,3 +148,5 @@ export const ledgerQuerySchema = z.object({
 export type RevenueImportInput = z.infer<typeof revenueImportSchema>;
 export type ContractOverrideInput = z.infer<typeof contractOverrideSchema>;
 export type AdjustmentInput = z.infer<typeof adjustmentSchema>;
+export type PayoutProfileInput = z.infer<typeof payoutProfileSchema>;
+export type RevenueDisputeCreateInput = z.infer<typeof revenueDisputeCreateSchema>;

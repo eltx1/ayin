@@ -1,0 +1,48 @@
+// Creator finance records added by 20260831032000_creator_finance_center.
+// Provider/status fields intentionally remain strings because the migration uses
+// VARCHAR + CHECK constraints so future provider adapters can be introduced
+// without a PostgreSQL enum migration.
+
+model CreatorPayoutProfile {
+  id                   String   @id @default(uuid()) @db.Uuid
+  channelId            String   @unique @db.Uuid
+  legalName            String   @db.VarChar(160)
+  preferredCurrency    String   @db.Char(3)
+  provider             String   @default("MANUAL") @db.VarChar(32)
+  destinationEncrypted String?  @db.Text
+  destinationMask      String?  @db.VarChar(120)
+  countryCode          String?  @db.Char(2)
+  identityStatus       String   @default("NOT_STARTED") @db.VarChar(24)
+  taxStatus            String   @default("NOT_PROVIDED") @db.VarChar(24)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  channel Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  payouts Payout[]
+
+  @@index([provider, updatedAt])
+}
+
+model RevenueDispute {
+  id                  String    @id @default(uuid()) @db.Uuid
+  channelId           String    @db.Uuid
+  payoutId            String?   @db.Uuid
+  createdByAccountId  String    @db.Uuid
+  category            String    @db.VarChar(24)
+  message             String    @db.Text
+  status              String    @default("OPEN") @db.VarChar(24)
+  resolution          String?   @db.Text
+  resolvedByAccountId String?   @db.Uuid
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  resolvedAt          DateTime?
+
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  payout     Payout?  @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  createdBy  Account  @relation("RevenueDisputeCreator", fields: [createdByAccountId], references: [id], onDelete: Restrict)
+  resolvedBy Account? @relation("RevenueDisputeResolver", fields: [resolvedByAccountId], references: [id], onDelete: SetNull)
+
+  @@index([channelId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([payoutId])
+}

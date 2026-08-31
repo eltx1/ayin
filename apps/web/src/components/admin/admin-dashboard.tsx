@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
 import {
   getAdminAnalytics,
   getAdminDashboard,
+  getAdminSession,
+  getAdminSystemHealth,
+  searchAdmin,
   type AdminAnalyticsMetrics,
+  type AdminGlobalSearchResult,
+  type AdminSystemHealth,
 } from "@/lib/admin-control";
+import { getAdminFinanceSummary } from "@/lib/revenue";
 
 interface DashboardData {
   accounts: number;
@@ -18,21 +25,38 @@ interface DashboardData {
   tvChannels: number;
   openReports: number;
   openCases: number;
-  analytics: { watchTimeMs: null; revenue: null; available: boolean; reason: string };
 }
+
+type FinanceSummary = Awaited<ReturnType<typeof getAdminFinanceSummary>>;
 
 export function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [analytics, setAnalytics] = useState<AdminAnalyticsMetrics | null>(null);
+  const [health, setHealth] = useState<AdminSystemHealth | null>(null);
+  const [finance, setFinance] = useState<FinanceSummary | null>(null);
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<AdminGlobalSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([getAdminDashboard(), getAdminAnalytics()])
-      .then(([body, nextAnalytics]) => {
+    void getAdminSession()
+      .then(async (session) => {
+        const canReadFinance = session.roles.some((role) =>
+          ["SUPERADMIN", "ADMIN", "FINANCE_MANAGER"].includes(role),
+        );
+        const [body, nextAnalytics, nextHealth, nextFinance] = await Promise.all([
+          getAdminDashboard(),
+          getAdminAnalytics(),
+          getAdminSystemHealth(),
+          canReadFinance ? getAdminFinanceSummary() : Promise.resolve(null),
+        ]);
         if (!active) return;
         setData(body as unknown as DashboardData);
         setAnalytics(nextAnalytics);
+        setHealth(nextHealth);
+        setFinance(nextFinance);
       })
       .catch((caught) => {
         if (active)
@@ -45,8 +69,25 @@ export function AdminDashboard() {
     };
   }, []);
 
-  if (error) return <p className={styles.error}>{error}</p>;
-  if (!data || !analytics) return <p className={styles.muted}>Loading Admin…</p>;
+  async function runSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = query.trim();
+    if (normalized.length < 2) return;
+    setSearching(true);
+    setError(null);
+    try {
+      const result = await searchAdmin(normalized);
+      setSearchResults(result.items);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Global search failed.");
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  if (error && !data) return <p className={styles.error}>{error}</p>;
+  if (!data || !analytics || !health)
+    return <p className={styles.muted}>Loading Admin Control Center…</p>;
 
   const metrics = [
     ["Accounts", data.accounts],
@@ -73,13 +114,62 @@ export function AdminDashboard() {
     <>
       <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>Control Plane</span>
+          <span className={styles.eyebrow}>Control Center</span>
           <h1>AYIN Admin</h1>
           <p className={styles.muted}>
-            Operational control with server-side authorization and audit logs.
+            Search, operate, review revenue and observe platform health through protected, audited
+            controls.
           </p>
         </div>
+        <span className={styles.statusPill}>Query-time operational view</span>
       </header>
+
+      {error ? <p className={styles.error}>{error}</p> : null}
+
+      <section className={styles.card}>
+        <h2>Global search</h2>
+        <p className={styles.muted}>
+          Find accounts, channels, videos and payout records from one protected search.
+        </p>
+        <form className={styles.toolbar} onSubmit={runSearch}>
+          <input
+            aria-label="Search AYIN administration"
+            minLength={2}
+            placeholder="Email, creator, channel, video, payout reference…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <button
+            className={styles.button}
+            disabled={searching || query.trim().length < 2}
+            type="submit"
+          >
+            {searching ? "Searching…" : "Search"}
+          </button>
+        </form>
+        {searchResults.length ? (
+          <div className={styles.searchResults}>
+            {searchResults.map((result) => (
+              <Link
+                className={styles.searchResult}
+                href={result.href}
+                key={`${result.kind}-${result.id}`}
+              >
+                <span>
+                  <span className={styles.statusPill}>{result.kind}</span>{" "}
+                  <strong>{result.label}</strong>
+                  <br />
+                  <span className={styles.muted}>{result.detail}</span>
+                </span>
+                <span>Open →</span>
+              </Link>
+            ))}
+          </div>
+        ) : query.trim().length >= 2 && !searching ? (
+          <p className={styles.muted}>No search results loaded yet, or no matches were found.</p>
+        ) : null}
+      </section>
+
       <section aria-label="Platform counters" className={styles.metrics}>
         {metrics.map(([label, value]) => (
           <article className={styles.metric} key={label}>
@@ -88,20 +178,103 @@ export function AdminDashboard() {
           </article>
         ))}
       </section>
-      <section className={styles.card}>
-        <h2>Platform analytics</h2>
-        <p className={styles.muted}>Query-time V1 metrics; not advertised as realtime.</p>
-        {analyticsMetrics.map(([label, value]) => (
-          <p key={label}>
-            {label}: <strong>{value}</strong>
+
+      <section className={styles.commandGrid}>
+        <article className={styles.card}>
+          <h2>Revenue operations</h2>
+          {finance ? (
+            <>
+              <p>
+                <strong>{finance.pendingPayouts}</strong> pending payouts
+              </p>
+              <p>
+                <strong>{finance.processingPayouts}</strong> processing payouts
+              </p>
+              <p>
+                <strong>{finance.openDisputes}</strong> open revenue disputes
+              </p>
+              {finance.pendingValue.map((item) => (
+                <p key={item.currency}>
+                  {item.currency} {item.amount} pending/processing
+                </p>
+              ))}
+              <p className={styles.muted}>
+                Provider mode: audited manual payout. External providers are not represented as
+                connected.
+              </p>
+              <Link className={styles.button} href="/admin/revenue">
+                Open Revenue Control Center
+              </Link>
+            </>
+          ) : (
+            <p className={styles.muted}>
+              Finance metrics are intentionally hidden for this scoped staff role.
+            </p>
+          )}
+        </article>
+
+        <article className={styles.card}>
+          <h2>System health</h2>
+          <p>
+            API <strong>{health.api.status}</strong>
           </p>
-        ))}
+          <p>
+            Database <strong>{health.database.status}</strong>
+          </p>
+          <p>
+            Media storage <strong>{health.mediaStorage.status}</strong>
+          </p>
+          <p>
+            Storage mode <strong>{health.mediaStorage.mode.toUpperCase()}</strong>
+          </p>
+          <p>
+            Queues <strong>{health.backgroundProcessing.queues.status}</strong>
+          </p>
+          <p className={styles.muted}>{health.backgroundProcessing.queues.reason}</p>
+          <p>
+            Workers <strong>{health.backgroundProcessing.workers.status}</strong>
+          </p>
+          <p className={styles.muted}>{health.backgroundProcessing.workers.reason}</p>
+          <p className={styles.muted}>
+            Direct client-to-storage upload architecture remains enabled. This view observes
+            existing R2 readiness only.
+          </p>
+        </article>
+
+        <article className={styles.card}>
+          <h2>Priority queues</h2>
+          <p>
+            <Link href="/admin/moderation">
+              Moderation · {data.openReports} reports / {data.openCases} cases
+            </Link>
+          </p>
+          <p>
+            <Link href="/admin/videos">Video operations</Link>
+          </p>
+          <p>
+            <Link href="/admin/tv">Creator TV operations</Link>
+          </p>
+          <p>
+            <Link href="/admin/product-controls">Home & product controls</Link>
+          </p>
+          <p>
+            <Link href="/admin/feature-flags">Feature flags</Link>
+          </p>
+        </article>
       </section>
-      <section className={styles.card}>
-        <h2>Revenue</h2>
+
+      <section className={styles.card} style={{ marginTop: 18 }}>
+        <h2>Platform analytics</h2>
         <p className={styles.muted}>
-          Revenue remains unavailable until Task 23 attribution and ledger processing are enabled.
+          Query-time V1 metrics; intentionally not advertised as realtime.
         </p>
+        <div className={styles.commandGrid}>
+          {analyticsMetrics.map(([label, value]) => (
+            <p key={label}>
+              {label}: <strong>{value}</strong>
+            </p>
+          ))}
+        </div>
       </section>
     </>
   );

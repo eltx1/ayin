@@ -13,11 +13,13 @@ import {
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
+import { AdminCommandCenterService } from "./admin-command-center.service.js";
 import { AdminControlService } from "./admin-control.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest } from "./admin.guard.js";
+import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
 
 const uuidSchema = z.string().uuid();
+const searchSchema = z.object({ query: z.string().trim().min(2).max(200) });
 const pageSchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   take: z.coerce.number().int().min(1).max(100).optional(),
@@ -83,22 +85,48 @@ const tvPatchSchema = z
   .object({ status: z.enum(["ACTIVE", "OFF_AIR", "DISABLED"]), reason: reasonSchema })
   .strict();
 
+const sharedStaffRoles = [
+  "OPERATIONS",
+  "CONTENT_MODERATOR",
+  "AD_MANAGER",
+  "FINANCE_MANAGER",
+] as const;
+
 @Controller("admin/control")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminControlController {
-  constructor(@Inject(AdminControlService) private readonly control: AdminControlService) {}
+  constructor(
+    @Inject(AdminControlService) private readonly control: AdminControlService,
+    @Inject(AdminCommandCenterService) private readonly commandCenter: AdminCommandCenterService,
+  ) {}
 
   @Get("dashboard")
+  @RequireAdminRoles(...sharedStaffRoles)
   dashboard() {
     return this.control.dashboard();
   }
 
+  @Get("search")
+  @RequireAdminRoles(...sharedStaffRoles)
+  search(@Req() request: AdminAuthenticatedRequest, @Query() raw: unknown) {
+    const query = this.parse(searchSchema, raw, "INVALID_GLOBAL_SEARCH");
+    return this.commandCenter.search(query.query, request.ayinAdmin.roles);
+  }
+
+  @Get("health")
+  @RequireAdminRoles(...sharedStaffRoles)
+  health() {
+    return this.commandCenter.health();
+  }
+
   @Get("users")
+  @RequireAdminRoles("OPERATIONS")
   users(@Query() query: unknown) {
     return this.control.users(this.parse(userQuerySchema, query, "INVALID_USER_FILTER"));
   }
 
   @Patch("users/:accountId")
+  @RequireAdminRoles("OPERATIONS")
   updateUser(
     @Req() request: AdminAuthenticatedRequest,
     @Param("accountId") accountIdRaw: string,
@@ -112,11 +140,13 @@ export class AdminControlController {
   }
 
   @Get("channels")
+  @RequireAdminRoles("OPERATIONS")
   channels(@Query() query: unknown) {
     return this.control.channels(this.parse(channelQuerySchema, query, "INVALID_CHANNEL_FILTER"));
   }
 
   @Patch("channels/:channelId")
+  @RequireAdminRoles("OPERATIONS")
   updateChannel(
     @Req() request: AdminAuthenticatedRequest,
     @Param("channelId") channelIdRaw: string,
@@ -130,11 +160,13 @@ export class AdminControlController {
   }
 
   @Get("videos")
+  @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
   videos(@Query() query: unknown) {
     return this.control.videos(this.parse(videoQuerySchema, query, "INVALID_VIDEO_FILTER"));
   }
 
   @Patch("videos/:videoId")
+  @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
   updateVideo(
     @Req() request: AdminAuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
@@ -148,6 +180,7 @@ export class AdminControlController {
   }
 
   @Post("videos/bulk")
+  @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
   bulkVideos(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     return this.control.bulkVideos(
       request.ayinAuth.accountId,
@@ -156,11 +189,13 @@ export class AdminControlController {
   }
 
   @Get("tv")
+  @RequireAdminRoles("OPERATIONS")
   tv(@Query() query: unknown) {
     return this.control.tvChannels(this.parse(tvQuerySchema, query, "INVALID_TV_FILTER"));
   }
 
   @Patch("tv/:tvChannelId")
+  @RequireAdminRoles("OPERATIONS")
   updateTv(
     @Req() request: AdminAuthenticatedRequest,
     @Param("tvChannelId") tvChannelIdRaw: string,
@@ -174,6 +209,7 @@ export class AdminControlController {
   }
 
   @Get("moderation")
+  @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
   moderation(@Query() query: unknown) {
     return this.control.moderation(
       this.parse(moderationQuerySchema, query, "INVALID_MODERATION_FILTER"),

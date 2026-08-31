@@ -10,12 +10,13 @@ import {
 } from "./admin-product-config.js";
 import { AdminProductService } from "./admin-product.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest } from "./admin.guard.js";
+import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
 
 const uuidSchema = z.string().uuid();
 
 @Controller("admin/product-controls")
 @UseGuards(AuthGuard, AdminGuard)
+@RequireAdminRoles("OPERATIONS")
 export class AdminProductController {
   constructor(@Inject(AdminProductService) private readonly product: AdminProductService) {}
 

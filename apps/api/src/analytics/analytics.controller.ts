@@ -11,7 +11,7 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 
-import { AdminGuard } from "../admin/admin.guard.js";
+import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { analyticsBatchSchema } from "./analytics.schemas.js";
 import { AnalyticsService } from "./analytics.service.js";
@@ -20,6 +20,12 @@ const daysSchema = z.coerce.number().int().min(1).max(365).default(28);
 const cleanupSchema = z.object({
   retentionDays: z.coerce.number().int().min(30).max(3650).default(400),
 });
+const dashboardStaffRoles = [
+  "OPERATIONS",
+  "CONTENT_MODERATOR",
+  "AD_MANAGER",
+  "FINANCE_MANAGER",
+] as const;
 
 @Controller("analytics")
 export class PublicAnalyticsController {
@@ -59,11 +65,13 @@ export class AdminAnalyticsController {
   constructor(@Inject(AnalyticsService) private readonly analytics: AnalyticsService) {}
 
   @Get()
+  @RequireAdminRoles(...dashboardStaffRoles)
   metrics() {
     return this.analytics.adminMetrics();
   }
 
   @Post("cleanup")
+  @RequireAdminRoles("OPERATIONS")
   cleanup(@Body() body: unknown) {
     const parsed = cleanupSchema.safeParse(body ?? {});
     if (!parsed.success) throw new HttpException("Invalid retention configuration.", 400);

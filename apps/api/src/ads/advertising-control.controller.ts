@@ -14,7 +14,11 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 
-import { AdminGuard, type AdminAuthenticatedRequest } from "../admin/admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+} from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { AdvertisingControlService } from "./advertising-control.service.js";
 import { directDecisionContextSchema } from "./direct-ad.schemas.js";
@@ -84,6 +88,7 @@ export class DirectAdController {
 
 @Controller("admin/advertising")
 @UseGuards(AuthGuard, AdminGuard)
+@RequireAdminRoles("AD_MANAGER")
 export class AdminAdvertisingControlController {
   constructor(
     @Inject(AdvertisingControlService) private readonly advertising: AdvertisingControlService,

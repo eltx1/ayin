@@ -10,6 +10,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   applicationName: "AYIN",
   description: "AYIN is a global web-first streaming and creator platform.",
+  icons: {
+    icon: "/brand/ayin-logo.png",
+    apple: "/brand/ayin-logo.png",
+  },
   manifest: "/manifest.webmanifest",
   title: {
     default: "AYIN",
@@ -19,7 +23,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "dark",
-  themeColor: "#05070d",
+  themeColor: "#03030a",
 };
 
 interface RootLayoutProperties {

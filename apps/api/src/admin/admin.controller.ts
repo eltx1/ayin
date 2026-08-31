@@ -7,7 +7,7 @@ import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest } from "./admin.guard.js";
+import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
 
 const updateSettingSchema = z.object({
@@ -15,6 +15,8 @@ const updateSettingSchema = z.object({
   confirmHighImpact: z.boolean().optional(),
   reason: z.string().trim().min(3).max(500).optional(),
 });
+
+const staffRoles = ["OPERATIONS", "CONTENT_MODERATOR", "AD_MANAGER", "FINANCE_MANAGER"] as const;
 
 @Controller("admin")
 @UseGuards(AuthGuard, AdminGuard)
@@ -29,6 +31,7 @@ export class AdminController {
   ) {}
 
   @Get("session")
+  @RequireAdminRoles(...staffRoles)
   async session(@Req() request: AdminAuthenticatedRequest) {
     return {
       accountId: request.ayinAuth.accountId,
@@ -37,11 +40,13 @@ export class AdminController {
   }
 
   @Get("settings")
+  @RequireAdminRoles("OPERATIONS")
   async listSettings(@Req() request: AdminAuthenticatedRequest) {
     return this.settings.list(request.ayinAdmin.roles);
   }
 
   @Patch("settings/:key")
+  @RequireAdminRoles("OPERATIONS")
   async updateSetting(
     @Req() request: AdminAuthenticatedRequest,
     @Param("key") key: string,
@@ -66,11 +71,13 @@ export class AdminController {
   }
 
   @Get("feature-flags")
+  @RequireAdminRoles("OPERATIONS")
   async listFeatureFlags() {
     return { flags: await this.featureFlags.list() };
   }
 
   @Patch("feature-flags/:key")
+  @RequireAdminRoles("OPERATIONS")
   async updateFeatureFlag(
     @Req() request: AdminAuthenticatedRequest,
     @Param("key") key: string,

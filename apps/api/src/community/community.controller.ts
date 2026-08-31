@@ -14,8 +14,8 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { z } from "zod";
+import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
-import { AdminGuard } from "../admin/admin.guard.js";
 import {
   communityCommentSchema,
   communityPostInputSchema,
@@ -181,6 +181,7 @@ export class CommunityController {
 
 @Controller("admin/community")
 @UseGuards(AuthGuard, AdminGuard)
+@RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
 export class AdminCommunityController {
   constructor(@Inject(CommunityService) private readonly service: CommunityService) {}
   @Get("reports") queue() {

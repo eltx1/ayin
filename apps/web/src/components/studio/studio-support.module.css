@@ -1,0 +1,33 @@
+.fullField {
+  grid-column: 1 / -1;
+}
+
+.ticketList {
+  display: grid;
+  gap: 12px;
+}
+
+.ticket {
+  background: rgb(3 2 10 / 52%);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 14px;
+}
+
+.statusBadge {
+  background: rgb(139 24 248 / 12%);
+  border: 1px solid rgb(220 25 232 / 18%);
+  border-radius: 999px;
+  color: #efdfff;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .fullField {
+    grid-column: auto;
+  }
+}
