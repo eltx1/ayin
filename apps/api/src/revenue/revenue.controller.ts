@@ -20,6 +20,7 @@ import { CreatorFinanceService } from "./creator-finance.service.js";
 import { CreatorMonetizationAnalyticsService } from "./creator-monetization-analytics.service.js";
 import { CreatorMonetizationNotificationService } from "./creator-monetization-notification.service.js";
 import { CreatorRevenueCurrencyViewService } from "./creator-revenue-currency-view.service.js";
+import { toSafePayoutView } from "./payout-safe-view.js";
 import { RevenueService } from "./revenue.service.js";
 
 @Controller("creator/studio/revenue")
@@ -170,18 +171,22 @@ export class AdminRevenueController {
   }
 
   @Get("payouts")
-  payouts(
+  async payouts(
     @Query("channelId") channelId?: string,
     @Query("status") status?: string,
     @Query("page") page?: string,
     @Query("take") take?: string,
   ) {
-    return this.revenue.listPayouts({
+    const result = await this.revenue.listPayouts({
       ...(channelId ? { channelId } : {}),
       ...(status ? { status } : {}),
       ...(page ? { page: Number(page) } : {}),
       ...(take ? { take: Number(take) } : {}),
     });
+    return {
+      ...result,
+      items: result.items.map((payout) => toSafePayoutView(payout)),
+    };
   }
 
   @Post("payouts")
@@ -217,7 +222,7 @@ export class AdminRevenueController {
         data: { event: "PAYOUT_STATUS_UPDATED", payoutId: payout.id, status: payout.status },
       })
       .catch(() => undefined);
-    return payout;
+    return toSafePayoutView(payout);
   }
 
   @Get("finance-summary")
