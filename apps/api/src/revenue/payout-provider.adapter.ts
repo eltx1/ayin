@@ -28,7 +28,7 @@ export class ManualPayoutProviderAdapter implements PayoutProviderAdapter {
   readonly kind = "MANUAL";
   readonly connected = true;
 
-  async createHandoff(_request: PayoutProviderRequest): Promise<PayoutProviderHandoff> {
+  async createHandoff(): Promise<PayoutProviderHandoff> {
     return {
       provider: this.kind,
       mode: "MANUAL_REVIEW",
