@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
@@ -41,13 +42,20 @@ const fallbackNavigation: ProductNavigationItem[] = navigationItems.map((item) =
   featureFlag: "featureFlag" in item ? item.featureFlag : null,
 }));
 
+function itemIsActive(pathname: string, href: string): boolean {
+  if (href === "/") return pathname === "/";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 function NavigationLinks({
   flags,
   items,
+  pathname,
   surface,
 }: {
   flags: NavigationFlagState;
   items: ProductNavigationItem[];
+  pathname: string;
   surface: string;
 }) {
   return items
@@ -56,20 +64,25 @@ function NavigationLinks({
         item.enabled &&
         (!item.featureFlag || flags[item.featureFlag as NavigationFeatureFlag] === true),
     )
-    .map((item) => (
-      <Link
-        className={styles.navLink}
-        data-tv-focus-id={`${surface}-${item.key}`}
-        data-tv-focusable="true"
-        href={item.href}
-        key={item.key}
-      >
-        {item.label}
-      </Link>
-    ));
+    .map((item) => {
+      const active = itemIsActive(pathname, item.href);
+      return (
+        <Link
+          aria-current={active ? "page" : undefined}
+          className={`${styles.navLink} ${active ? styles.navLinkActive : ""}`}
+          data-tv-focus-id={`${surface}-${item.key}`}
+          data-tv-focusable="true"
+          href={item.href}
+          key={item.key}
+        >
+          {item.label}
+        </Link>
+      );
+    });
 }
 
 export function ViewerShell({ children }: ViewerShellProperties) {
+  const pathname = usePathname();
   const [flags, setFlags] = useState<NavigationFlagState>({});
   const [identity, setIdentity] = useState<AyinIdentity | null>(null);
   const [productControls, setProductControls] = useState<PublicProductControls | null>(null);
@@ -133,7 +146,12 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
         {productControls?.deviceVisibility.web !== false ? (
           <nav aria-label="Primary navigation" className={styles.desktopNavigation}>
-            <NavigationLinks flags={flags} items={navigation} surface="desktop" />
+            <NavigationLinks
+              flags={flags}
+              items={navigation}
+              pathname={pathname}
+              surface="desktop"
+            />
           </nav>
         ) : (
           <span />
@@ -185,7 +203,12 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
       {productControls?.deviceVisibility.mobile !== false ? (
         <nav aria-label="Mobile navigation" className={styles.mobileNavigation}>
-          <NavigationLinks flags={flags} items={navigation} surface="mobile" />
+          <NavigationLinks
+            flags={flags}
+            items={navigation}
+            pathname={pathname}
+            surface="mobile"
+          />
         </nav>
       ) : null}
     </TvFocusScope>
