@@ -108,9 +108,9 @@ export class AdminControlController {
 
   @Get("search")
   @RequireAdminRoles(...sharedStaffRoles)
-  search(@Query() raw: unknown) {
+  search(@Req() request: AdminAuthenticatedRequest, @Query() raw: unknown) {
     const query = this.parse(searchSchema, raw, "INVALID_GLOBAL_SEARCH");
-    return this.commandCenter.search(query.query);
+    return this.commandCenter.search(query.query, request.ayinAdmin.roles);
   }
 
   @Get("health")
