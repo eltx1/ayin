@@ -152,6 +152,18 @@ export class AdminCommandCenterService {
         region: this.mediaConfig.region,
         directUploadArchitecture: true,
       },
+      backgroundProcessing: {
+        queues: {
+          status: "NOT_CONFIGURED" as const,
+          reason:
+            "No general-purpose background queue is configured for AYIN V1. Current workflows remain synchronous or use their existing domain-specific execution path.",
+        },
+        workers: {
+          status: "NOT_CONFIGURED" as const,
+          reason:
+            "No standalone worker fleet is configured intentionally. This status is observational and does not change the existing direct-to-R2 media architecture.",
+        },
+      },
     };
   }
 
