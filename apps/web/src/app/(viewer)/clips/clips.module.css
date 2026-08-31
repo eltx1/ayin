@@ -1,100 +1,158 @@
 .page {
-  min-height: 100vh;
-  padding: 1rem;
+  min-height: 100dvh;
+  padding: 1rem var(--page-gutter) calc(1rem + var(--ayin-safe-bottom));
 }
+
 .header {
-  max-width: 42rem;
   margin: 0 auto 1rem;
+  max-width: 42rem;
 }
+
 .header h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  letter-spacing: -0.045em;
   margin: 0;
 }
+
 .feed {
-  height: calc(100vh - 8rem);
-  max-width: 34rem;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated), 0 0 3rem rgb(88 8 248 / 8%);
+  height: min(calc(100dvh - 9rem - var(--ayin-safe-bottom)), 880px);
   margin: 0 auto;
+  max-width: 34rem;
   overflow-y: auto;
-  scroll-snap-type: y mandatory;
   overscroll-behavior-y: contain;
-  border-radius: 1rem;
-  background: #050505;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
 }
+
+.feed::-webkit-scrollbar {
+  display: none;
+}
+
 .clip {
-  position: relative;
+  background: #000;
   height: 100%;
-  min-height: calc(100vh - 8rem);
+  min-height: 100%;
+  outline-offset: -3px;
+  overflow: hidden;
+  position: relative;
   scroll-snap-align: start;
   scroll-snap-stop: always;
-  background: #000;
-  outline-offset: -3px;
 }
+
 .clip:focus-visible {
-  outline: 3px solid currentColor;
+  outline: 3px solid var(--focus-ring);
 }
+
 .video {
-  width: 100%;
-  height: 100%;
-  min-height: calc(100vh - 8rem);
-  object-fit: contain;
   background: #000;
+  height: 100%;
+  min-height: 100%;
+  object-fit: contain;
+  width: 100%;
 }
+
 .overlay {
-  position: absolute;
-  inset: auto 0 0;
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
   align-items: end;
-  padding: 4rem 1rem 1rem;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+  background: linear-gradient(transparent 0%, rgb(0 0 0 / 20%) 30%, rgb(0 0 0 / 88%) 100%);
   color: white;
+  display: flex;
+  gap: 1rem;
+  inset: auto 0 0;
+  justify-content: space-between;
+  padding: 5rem 1.1rem max(1.1rem, var(--ayin-safe-bottom));
   pointer-events: none;
+  position: absolute;
 }
+
 .overlay a,
 .overlay button {
   color: inherit;
   pointer-events: auto;
 }
+
 .overlay h2 {
+  font-size: 1.12rem;
+  letter-spacing: -0.02em;
   margin: 0.35rem 0;
-  font-size: 1.1rem;
 }
+
 .overlay p {
+  color: rgb(255 255 255 / 78%);
   margin: 0;
   max-width: 24rem;
 }
+
 .actions {
   display: grid;
   gap: 0.65rem;
   justify-items: end;
 }
+
 .actions button {
-  border: 1px solid currentColor;
-  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+  background: rgb(5 3 12 / 54%);
+  border: 1px solid rgb(255 255 255 / 24%);
   border-radius: 999px;
-  padding: 0.45rem 0.7rem;
-}
-.adBoundary {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.7rem;
-  border-radius: 0.4rem;
-  background: rgba(0, 0, 0, 0.65);
   color: white;
+  cursor: pointer;
+  min-height: 42px;
+  min-width: 42px;
+  padding: 0.48rem 0.72rem;
 }
+
+.actions button:hover {
+  background: rgb(139 24 248 / 22%);
+  border-color: rgb(230 124 255 / 48%);
+}
+
+.adBoundary {
+  backdrop-filter: blur(10px);
+  background: rgb(3 2 8 / 68%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 999px;
+  color: white;
+  font-size: 0.68rem;
+  padding: 0.28rem 0.55rem;
+  position: absolute;
+  right: 0.75rem;
+  top: 0.75rem;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding-inline: 0;
+    padding-top: 0.5rem;
+  }
+
+  .header {
+    padding-inline: 1rem;
+  }
+
+  .feed {
+    border-left: 0;
+    border-radius: 0;
+    border-right: 0;
+    height: calc(100dvh - 10rem - var(--ayin-safe-bottom));
+    max-width: none;
+  }
+
+  .overlay {
+    padding-inline: 0.9rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .feed {
     scroll-behavior: auto;
   }
 }
+
 @media (min-width: 1000px) {
   .feed {
-    height: 78vh;
-  }
-  .clip,
-  .video {
-    min-height: 78vh;
+    height: min(78vh, 880px);
   }
 }
