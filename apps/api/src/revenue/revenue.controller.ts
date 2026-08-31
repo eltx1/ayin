@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 
-import { AdminGuard } from "../admin/admin.guard.js";
+import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
 import { RevenueService } from "./revenue.service.js";
@@ -62,6 +62,7 @@ export class CreatorRevenueController {
 
 @Controller("admin/revenue")
 @UseGuards(AuthGuard, AdminGuard)
+@RequireAdminRoles("FINANCE_MANAGER")
 export class AdminRevenueController {
   constructor(
     @Inject(RevenueService) private readonly revenue: RevenueService,
