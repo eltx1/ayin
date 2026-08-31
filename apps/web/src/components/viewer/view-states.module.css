@@ -3,61 +3,69 @@
   display: flex;
   flex-direction: column;
   margin: 0 auto;
-  max-width: 38rem;
+  max-width: 40rem;
   padding: clamp(4rem, 10vw, 8rem) var(--shell-gutter);
   text-align: center;
 }
 
 .stateMark {
-  background: radial-gradient(circle, var(--accent) 0 11%, transparent 12% 100%);
-  border: 1px solid rgb(255 255 255 / 16%);
+  background:
+    radial-gradient(circle, #fff 0 7%, var(--brand-magenta) 8% 13%, transparent 14%),
+    radial-gradient(circle, rgb(139 24 248 / 18%), transparent 66%);
+  border: 1px solid rgb(220 25 232 / 28%);
   border-radius: 50%;
-  box-shadow: inset 0 0 0 0.8rem rgb(99 209 204 / 6%);
-  height: 4rem;
-  width: 4rem;
+  box-shadow: 0 0 3rem rgb(88 8 248 / 18%);
+  height: 4.5rem;
+  width: 4.5rem;
 }
 
 .state h2 {
-  font-size: clamp(1.8rem, 4vw, 3rem);
-  letter-spacing: -0.04em;
-  margin: 1.2rem 0 0;
+  font-size: clamp(1.9rem, 4vw, 3.2rem);
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+  margin: 1.3rem 0 0;
 }
 
 .state p {
   color: var(--muted);
-  line-height: 1.6;
+  line-height: 1.65;
   margin: 0.8rem 0 0;
 }
 
 .action {
-  margin-top: 1.3rem;
+  margin-top: 1.4rem;
 }
 
 .action button,
 .action a {
-  background: var(--foreground);
-  border: 0;
+  align-items: center;
+  background: var(--brand-gradient);
+  border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 999px;
-  color: #0b0e16;
+  box-shadow: 0 12px 30px rgb(88 8 248 / 20%);
+  color: white;
   cursor: pointer;
-  display: inline-block;
+  display: inline-flex;
   font-weight: 820;
-  padding: 0.8rem 1rem;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0.75rem 1rem;
   text-decoration: none;
 }
 
 .errorMark {
   align-items: center;
-  background: rgb(203 92 92 / 14%);
-  border: 1px solid rgb(232 125 125 / 24%);
+  background: rgb(255 96 117 / 12%);
+  border: 1px solid rgb(255 96 117 / 26%);
   border-radius: 50%;
-  color: #ffb6b6;
+  box-shadow: 0 0 2.5rem rgb(255 96 117 / 10%);
+  color: #ffc0ca;
   display: flex;
   font-size: 1.4rem;
   font-weight: 900;
-  height: 4rem;
+  height: 4.5rem;
   justify-content: center;
-  width: 4rem;
+  width: 4.5rem;
 }
 
 .loading {
@@ -65,7 +73,9 @@
 }
 
 .loadingHeader {
-  background: #151c2a;
+  animation: state-shimmer 1.5s ease-in-out infinite;
+  background: linear-gradient(90deg, #0d0a17, #1b142d, #0d0a17);
+  background-size: 220% 100%;
   border-radius: 999px;
   height: 1.8rem;
   margin-bottom: 1.3rem;
@@ -75,5 +85,34 @@
 .loadingGrid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
+}
+
+@keyframes state-shimmer {
+  0%,
+  100% {
+    background-position: 0 0;
+  }
+
+  50% {
+    background-position: 100% 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .state {
+    padding-inline: 1rem;
+  }
+
+  .action,
+  .action button,
+  .action a {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadingHeader {
+    animation: none;
+  }
 }
