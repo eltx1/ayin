@@ -330,6 +330,33 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
     ).toMatchObject({ reason: "Finance access assignment" });
   });
 
+  it("serializes cross-account superadmin demotions and preserves a recovery principal", async () => {
+    const superadminA = await register("Superadmin A", "superadmin-a@example.com");
+    const superadminB = await register("Superadmin B", "superadmin-b@example.com");
+    await grant(superadminA.user.account.id, "SUPERADMIN");
+    await grant(superadminB.user.account.id, "SUPERADMIN");
+
+    const [removeB, removeA] = await Promise.all([
+      app.inject({
+        method: "PATCH",
+        url: `/admin/operations/staff/${superadminB.user.account.id}/roles`,
+        headers: { cookie: superadminA.cookie },
+        payload: { roles: ["OPERATIONS"], reason: "Concurrent demotion safety check A" },
+      }),
+      app.inject({
+        method: "PATCH",
+        url: `/admin/operations/staff/${superadminA.user.account.id}/roles`,
+        headers: { cookie: superadminB.cookie },
+        payload: { roles: ["OPERATIONS"], reason: "Concurrent demotion safety check B" },
+      }),
+    ]);
+
+    expect([removeB.statusCode, removeA.statusCode].filter((status) => status === 200)).toHaveLength(
+      1,
+    );
+    expect(await prisma.adminRoleAssignment.count({ where: { role: "SUPERADMIN" } })).toBe(1);
+  });
+
   it("runs creator support through an audited operations lifecycle", async () => {
     const creator = await register("Creator", "support-creator@example.com");
     const operations = await register("Support Ops", "support-ops@example.com");

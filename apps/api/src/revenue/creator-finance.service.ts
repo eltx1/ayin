@@ -109,39 +109,57 @@ export class CreatorFinanceService {
     const channel = await this.creatorChannel(accountId);
     if (!channel) throw new Error("CREATOR_CHANNEL_NOT_FOUND");
 
-    const existing = await this.finance.getProfile(channel.id);
-    let encrypted: string | null = null;
-    let mask: string | null = null;
-    if (input.destination) {
-      encrypted = encryptPayoutDestination(input.destination);
-      mask = maskPayoutDestination(input.destination);
-    } else if (!existing?.destinationEncrypted) {
-      throw new Error("PAYOUT_DESTINATION_REQUIRED");
-    }
+    const encrypted = input.destination ? encryptPayoutDestination(input.destination) : null;
+    const mask = input.destination ? maskPayoutDestination(input.destination) : null;
 
-    const saved = await this.finance.upsertProfile({
-      channelId: channel.id,
-      legalName: input.legalName,
-      preferredCurrency: input.preferredCurrency,
-      provider: input.provider,
-      destinationEncrypted: encrypted,
-      destinationMask: mask,
-      countryCode: input.countryCode ?? null,
-    });
+    const saved = await this.database.client.$transaction(async (tx) => {
+      const existing = await tx.creatorPayoutProfile.findUnique({
+        where: { channelId: channel.id },
+        select: { destinationEncrypted: true },
+      });
+      if (!encrypted && !existing?.destinationEncrypted) {
+        throw new Error("PAYOUT_DESTINATION_REQUIRED");
+      }
 
-    await this.database.client.adminAuditLog.create({
-      data: {
-        actorAccountId: accountId,
-        action: "creator.payout_profile_updated",
-        entityType: "CreatorPayoutProfile",
-        entityId: saved.id,
-        metadata: {
-          channelId: channel.id,
-          provider: saved.provider,
-          preferredCurrency: saved.preferredCurrency,
-          destinationConfigured: Boolean(saved.destinationEncrypted),
+      // Beneficiary details and their audit row are one atomic finance mutation. Any failure in
+      // either write rolls the complete profile update back.
+      const profile = await tx.creatorPayoutProfile.upsert({
+        where: { channelId: channel.id },
+        update: {
+          legalName: input.legalName,
+          preferredCurrency: input.preferredCurrency,
+          provider: input.provider,
+          ...(encrypted !== null
+            ? { destinationEncrypted: encrypted, destinationMask: mask }
+            : {}),
+          countryCode: input.countryCode ?? null,
         },
-      },
+        create: {
+          channelId: channel.id,
+          legalName: input.legalName,
+          preferredCurrency: input.preferredCurrency,
+          provider: input.provider,
+          destinationEncrypted: encrypted,
+          destinationMask: mask,
+          countryCode: input.countryCode ?? null,
+        },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          actorAccountId: accountId,
+          action: "creator.payout_profile_updated",
+          entityType: "CreatorPayoutProfile",
+          entityId: profile.id,
+          metadata: {
+            channelId: channel.id,
+            provider: profile.provider,
+            preferredCurrency: profile.preferredCurrency,
+            destinationConfigured: Boolean(profile.destinationEncrypted),
+          },
+        },
+      });
+      return profile;
     });
 
     return this.serializeProfile(saved);

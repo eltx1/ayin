@@ -111,6 +111,23 @@ export class AdminGovernanceService {
     }
     await this.database.client.account.findUniqueOrThrow({ where: { id: accountId } });
     return this.database.client.$transaction(async (tx) => {
+      // Serialize staff-role mutations so concurrent cross-account demotions cannot remove every
+      // superadmin. The transaction-scoped advisory lock is automatically released on commit/rollback.
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(1096379721, 1398034002)`;
+
+      // AdminGuard ran before the transaction. Revalidate after acquiring the lock so a queued
+      // request from a superadmin who was just demoted cannot commit another role mutation.
+      const actorStillSuperadmin = await tx.adminRoleAssignment.findFirst({
+        where: { accountId: actorAccountId, role: "SUPERADMIN" },
+        select: { accountId: true },
+      });
+      if (!actorStillSuperadmin) {
+        throw adminBadRequest(
+          "SUPERADMIN_ACCESS_CHANGED",
+          "Superadmin access changed before the staff-role update could be committed.",
+        );
+      }
+
       const before = await tx.adminRoleAssignment.findMany({
         where: { accountId },
         select: { role: true },
@@ -122,6 +139,17 @@ export class AdminGovernanceService {
           skipDuplicates: true,
         });
       }
+
+      const remainingSuperadmins = await tx.adminRoleAssignment.count({
+        where: { role: "SUPERADMIN" },
+      });
+      if (remainingSuperadmins < 1) {
+        throw adminBadRequest(
+          "LAST_SUPERADMIN_REMOVAL_BLOCKED",
+          "At least one superadmin must remain assigned.",
+        );
+      }
+
       await tx.account.update({
         where: { id: accountId },
         data: { authVersion: { increment: 1 } },
