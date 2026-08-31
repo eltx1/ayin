@@ -116,7 +116,7 @@ export class AdminCommandCenterService {
         id: payout.id,
         label: `${payout.currency} ${String(payout.amount)}`,
         detail: `${payout.channel.name} · ${payout.status}${payout.externalReference ? ` · ${payout.externalReference}` : ""}`,
-        href: `/admin/revenue?channel=${encodeURIComponent(payout.channel.handle)}`,
+        href: "/admin/revenue",
       })),
     ];
 

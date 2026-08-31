@@ -327,7 +327,7 @@ export class CreatorFinanceService {
     const membership = await this.database.client.channelMember.findFirst({
       where: {
         accountId,
-        role: { in: ["OWNER", "ADMIN", "EDITOR"] },
+        role: { in: ["OWNER", "ADMIN"] },
         channel: { status: { not: "REMOVED" } },
       },
       orderBy: { createdAt: "asc" },
