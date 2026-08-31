@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -14,25 +15,58 @@ import {
 
 import { AdminGuard } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { CreatorFinanceService } from "./creator-finance.service.js";
 import { RevenueService } from "./revenue.service.js";
 
 @Controller("creator/studio/revenue")
 @UseGuards(AuthGuard)
 export class CreatorRevenueController {
-  constructor(@Inject(RevenueService) private readonly revenue: RevenueService) {}
+  constructor(@Inject(CreatorFinanceService) private readonly finance: CreatorFinanceService) {}
 
   @Get()
   async overview(@Req() request: AuthenticatedRequest) {
-    const result = await this.revenue.creatorRevenue(request.ayinAuth.accountId);
+    const result = await this.finance.overview(request.ayinAuth.accountId);
     if (!result) throw new HttpException("Creator channel not found.", 404);
     return result;
+  }
+
+  @Get("payment-profile")
+  async paymentProfile(@Req() request: AuthenticatedRequest) {
+    const result = await this.finance.getProfile(request.ayinAuth.accountId);
+    if (result === null) return null;
+    return result;
+  }
+
+  @Put("payment-profile")
+  updatePaymentProfile(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.finance.updateProfile(request.ayinAuth.accountId, body);
+  }
+
+  @Post("payout-requests")
+  requestPayout(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.finance.requestPayout(request.ayinAuth.accountId, body);
+  }
+
+  @Get("disputes")
+  async disputes(@Req() request: AuthenticatedRequest) {
+    const result = await this.finance.listDisputes(request.ayinAuth.accountId);
+    if (!result) throw new HttpException("Creator channel not found.", 404);
+    return { items: result };
+  }
+
+  @Post("disputes")
+  createDispute(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    return this.finance.createDispute(request.ayinAuth.accountId, body);
   }
 }
 
 @Controller("admin/revenue")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminRevenueController {
-  constructor(@Inject(RevenueService) private readonly revenue: RevenueService) {}
+  constructor(
+    @Inject(RevenueService) private readonly revenue: RevenueService,
+    @Inject(CreatorFinanceService) private readonly finance: CreatorFinanceService,
+  ) {}
 
   @Get("settings")
   settings() {
@@ -100,5 +134,24 @@ export class AdminRevenueController {
     @Body() body: unknown,
   ) {
     return this.revenue.updatePayoutStatus(request.ayinAuth.accountId, payoutId, body);
+  }
+
+  @Get("finance-summary")
+  financeSummary() {
+    return this.finance.adminFinanceSummary();
+  }
+
+  @Get("disputes")
+  disputes(@Query("status") status?: string) {
+    return this.finance.adminDisputes(status);
+  }
+
+  @Patch("disputes/:disputeId")
+  updateDispute(
+    @Req() request: AuthenticatedRequest,
+    @Param("disputeId") disputeId: string,
+    @Body() body: unknown,
+  ) {
+    return this.finance.updateAdminDispute(request.ayinAuth.accountId, disputeId, body);
   }
 }
