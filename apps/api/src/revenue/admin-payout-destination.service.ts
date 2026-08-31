@@ -27,7 +27,6 @@ interface PayoutDestinationRow {
   failureReason: string | null;
   paymentProfileId: string | null;
   legalName: string | null;
-  profileProvider: string | null;
   destinationEncrypted: string | null;
   destinationMask: string | null;
   countryCode: string | null;
@@ -42,6 +41,7 @@ export class AdminPayoutDestinationService {
 
   async details(payoutId: string) {
     const row = await this.payoutRow(payoutId);
+    const snapshotAvailable = Boolean(row.destinationEncrypted && row.legalName);
     return {
       payoutId: row.payoutId,
       channel: {
@@ -58,20 +58,20 @@ export class AdminPayoutDestinationService {
       paidAt: row.paidAt,
       externalReference: row.externalReference,
       failureReason: row.failureReason,
+      beneficiarySnapshotAvailable: snapshotAvailable,
       paymentProfile: row.paymentProfileId
         ? {
             id: row.paymentProfileId,
             legalName: row.legalName,
-            provider: row.profileProvider,
+            provider: row.payoutProvider,
             destinationMask: row.destinationMask,
             countryCode: row.countryCode,
             hasDestination: Boolean(row.destinationEncrypted),
           }
         : null,
       destinationRevealAllowed:
-        Boolean(row.destinationEncrypted) &&
+        snapshotAvailable &&
         row.payoutProvider === "MANUAL" &&
-        row.profileProvider === "MANUAL" &&
         (row.payoutStatus === "PENDING" || row.payoutStatus === "PROCESSING"),
     };
   }
@@ -80,12 +80,15 @@ export class AdminPayoutDestinationService {
     const input = revealPayoutDestinationSchema.parse(raw);
     const row = await this.payoutRow(payoutId);
     if (!row.destinationEncrypted || !row.legalName) {
-      throw new Error("PAYOUT_DESTINATION_NOT_CONFIGURED");
+      // Never fall back to a creator's current mutable profile. Legacy payouts without an
+      // immutable snapshot require explicit finance remediation rather than a potentially
+      // redirected payment destination.
+      throw new Error("PAYOUT_BENEFICIARY_SNAPSHOT_NOT_CONFIGURED");
     }
     if (!new Set(["PENDING", "PROCESSING"]).has(row.payoutStatus)) {
       throw new Error("PAYOUT_DESTINATION_REVEAL_NOT_ALLOWED_FOR_STATUS");
     }
-    if (row.payoutProvider !== "MANUAL" || row.profileProvider !== "MANUAL") {
+    if (row.payoutProvider !== "MANUAL") {
       throw new Error("PAYOUT_DESTINATION_REVEAL_ONLY_FOR_MANUAL_PAYOUTS");
     }
 
@@ -103,6 +106,7 @@ export class AdminPayoutDestinationService {
           provider: row.payoutProvider,
           payoutStatus: row.payoutStatus,
           destinationMask: row.destinationMask,
+          source: "IMMUTABLE_PAYOUT_SNAPSHOT",
         },
       });
     });
@@ -137,16 +141,12 @@ export class AdminPayoutDestinationService {
         p."externalReference" AS "externalReference",
         p."failureReason" AS "failureReason",
         p."paymentProfileId" AS "paymentProfileId",
-        COALESCE(p."legalNameSnapshot", cpp."legalName") AS "legalName",
-        p."provider" AS "profileProvider",
-        COALESCE(p."destinationEncryptedSnapshot", cpp."destinationEncrypted") AS "destinationEncrypted",
-        COALESCE(p."destinationMaskSnapshot", cpp."destinationMask") AS "destinationMask",
-        COALESCE(p."countryCodeSnapshot", cpp."countryCode") AS "countryCode"
+        p."legalNameSnapshot" AS "legalName",
+        p."destinationEncryptedSnapshot" AS "destinationEncrypted",
+        p."destinationMaskSnapshot" AS "destinationMask",
+        p."countryCodeSnapshot" AS "countryCode"
       FROM "Payout" p
       JOIN "Channel" c ON c."id" = p."channelId"
-      LEFT JOIN "CreatorPayoutProfile" cpp
-        ON cpp."id" = p."paymentProfileId"
-        OR (p."paymentProfileId" IS NULL AND cpp."channelId" = p."channelId")
       WHERE p."id" = ${payoutId}::uuid
       LIMIT 1
     `;
