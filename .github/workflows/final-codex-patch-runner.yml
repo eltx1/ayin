@@ -1,0 +1,44 @@
+name: Final Codex patch runner
+
+on:
+  push:
+    branches:
+      - feature/brand-monetization-admin-control-center
+    paths:
+      - .github/workflows/final-codex-patch-runner.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/brand-monetization-admin-control-center
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply patch
+        run: python3 scripts/final_codex_security_patch.py
+      - name: Format changed files
+        run: pnpm exec prettier --write apps/api/src/revenue/creator-finance.crypto.ts apps/api/src/revenue/creator-finance.crypto.test.ts apps/api/src/revenue/revenue.service.ts apps/api/src/revenue/creator-finance.service.ts apps/api/src/revenue/creator-monetization-analytics.service.ts apps/api/src/admin/admin-governance.service.ts apps/api/test/payout-safety.integration.test.ts apps/api/test/admin-operations.integration.test.ts
+      - name: Focused unit test
+        run: pnpm --filter @ayin/api exec vitest run src/revenue/creator-finance.crypto.test.ts
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/revenue/creator-finance.crypto.ts apps/api/src/revenue/creator-finance.crypto.test.ts apps/api/src/revenue/revenue.service.ts apps/api/src/revenue/creator-finance.service.ts apps/api/src/revenue/creator-monetization-analytics.service.ts apps/api/src/admin/admin-governance.service.ts apps/api/test/payout-safety.integration.test.ts apps/api/test/admin-operations.integration.test.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: close final finance and export security gaps"
+          git push origin HEAD:feature/brand-monetization-admin-control-center
