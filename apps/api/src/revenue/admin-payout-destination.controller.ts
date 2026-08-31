@@ -1,4 +1,4 @@
-import { Body, Controller, Header, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Header, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
 
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -12,6 +12,12 @@ export class AdminPayoutDestinationController {
     @Inject(AdminPayoutDestinationService)
     private readonly destinations: AdminPayoutDestinationService,
   ) {}
+
+  @Get(":payoutId")
+  @Header("Cache-Control", "no-store, private")
+  details(@Param("payoutId") payoutId: string) {
+    return this.destinations.details(payoutId);
+  }
 
   @Post(":payoutId/destination")
   @Header("Cache-Control", "no-store, private")
