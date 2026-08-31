@@ -6,6 +6,7 @@ import styles from "./admin.module.css";
 
 const links = [
   ["Dashboard", "/admin"],
+  ["Operations", "/admin/operations"],
   ["Users", "/admin/users"],
   ["Channels", "/admin/channels"],
   ["Videos", "/admin/videos"],
