@@ -45,6 +45,14 @@ export class AdminGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
+
+    // SUPERADMIN is a hard security boundary. A broad ADMIN role may bypass scoped
+    // staff-role metadata for ordinary admin operations, but it must never satisfy
+    // an endpoint that explicitly requires SUPERADMIN.
+    if (requiredRoles?.includes("SUPERADMIN") && !roles.includes("SUPERADMIN")) {
+      throw adminForbidden("This operation requires a superadministrator.");
+    }
+
     const privileged = roles.some(isPrivilegedAdminRole);
     if (!privileged) {
       if (!requiredRoles?.length) {
