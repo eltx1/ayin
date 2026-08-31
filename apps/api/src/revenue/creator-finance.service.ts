@@ -129,9 +129,7 @@ export class CreatorFinanceService {
           legalName: input.legalName,
           preferredCurrency: input.preferredCurrency,
           provider: input.provider,
-          ...(encrypted !== null
-            ? { destinationEncrypted: encrypted, destinationMask: mask }
-            : {}),
+          ...(encrypted !== null ? { destinationEncrypted: encrypted, destinationMask: mask } : {}),
           countryCode: input.countryCode ?? null,
         },
         create: {

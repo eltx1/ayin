@@ -351,9 +351,9 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
       }),
     ]);
 
-    expect([removeB.statusCode, removeA.statusCode].filter((status) => status === 200)).toHaveLength(
-      1,
-    );
+    expect(
+      [removeB.statusCode, removeA.statusCode].filter((status) => status === 200),
+    ).toHaveLength(1);
     expect(await prisma.adminRoleAssignment.count({ where: { role: "SUPERADMIN" } })).toBe(1);
   });
 
