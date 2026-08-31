@@ -11,7 +11,7 @@ import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { unauthorized } from "../auth/auth.errors.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
 import { adminForbidden } from "./admin.errors.js";
-import type { AdminRole } from "./admin.roles.js";
+import { isPrivilegedAdminRole, type AdminRole } from "./admin.roles.js";
 
 const ADMIN_ROLES_METADATA = "ayin.admin.requiredRoles";
 
@@ -45,8 +45,14 @@ export class AdminGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (requiredRoles?.length && !requiredRoles.some((role) => roles.includes(role))) {
-      throw adminForbidden("This administrator role cannot perform that operation.");
+    const privileged = roles.some(isPrivilegedAdminRole);
+    if (!privileged) {
+      if (!requiredRoles?.length) {
+        throw adminForbidden("This staff role is not permitted on this admin operation.");
+      }
+      if (!requiredRoles.some((role) => roles.includes(role))) {
+        throw adminForbidden("This administrator role cannot perform that operation.");
+      }
     }
 
     (request as AdminAuthenticatedRequest).ayinAdmin = { roles };
