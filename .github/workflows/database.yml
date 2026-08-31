@@ -74,6 +74,9 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+      - name: Validate deployment script syntax
+        run: bash -n deploy/release.sh
+
       - name: Lint
         run: pnpm lint
 
