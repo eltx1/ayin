@@ -254,19 +254,15 @@ export class AdminGovernanceController {
         parsed.error.issues[0]?.message ?? "The support ticket update is invalid.",
       );
     }
-    return this.governance.updateSupportTicket(
-      request.ayinAuth.accountId,
-      this.uuid(ticketIdRaw),
-      {
-        reason: parsed.data.reason,
-        ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
-        ...(parsed.data.priority !== undefined ? { priority: parsed.data.priority } : {}),
-        ...(parsed.data.assignedToAccountId !== undefined
-          ? { assignedToAccountId: parsed.data.assignedToAccountId }
-          : {}),
-        ...(parsed.data.resolution !== undefined ? { resolution: parsed.data.resolution } : {}),
-      },
-    );
+    return this.governance.updateSupportTicket(request.ayinAuth.accountId, this.uuid(ticketIdRaw), {
+      reason: parsed.data.reason,
+      ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
+      ...(parsed.data.priority !== undefined ? { priority: parsed.data.priority } : {}),
+      ...(parsed.data.assignedToAccountId !== undefined
+        ? { assignedToAccountId: parsed.data.assignedToAccountId }
+        : {}),
+      ...(parsed.data.resolution !== undefined ? { resolution: parsed.data.resolution } : {}),
+    });
   }
 
   @Get("exports/:resource")
