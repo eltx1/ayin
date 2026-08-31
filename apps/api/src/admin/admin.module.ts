@@ -5,6 +5,7 @@ import { MediaModule } from "../media/media.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
+import { AdminCommandCenterService } from "./admin-command-center.service.js";
 import { AdminControlController } from "./admin-control.controller.js";
 import { AdminControlService } from "./admin-control.service.js";
 import { AdminController } from "./admin.controller.js";
@@ -30,6 +31,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminGuard,
     AdminSettingsService,
     AdminControlService,
+    AdminCommandCenterService,
     AdminProductService,
     ContentSeedingService,
   ],
@@ -38,6 +40,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminAuthorizationService,
     AdminGuard,
     AdminControlService,
+    AdminCommandCenterService,
     AdminProductService,
     ContentSeedingService,
   ],
