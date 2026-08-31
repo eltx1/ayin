@@ -7,10 +7,7 @@ import {
   type CreatorPayoutProfileRow,
   type RevenueDisputeStatus,
 } from "./creator-finance.repository.js";
-import {
-  PAYOUT_PROVIDER_ADAPTER,
-  type PayoutProviderAdapter,
-} from "./payout-provider.adapter.js";
+import { PAYOUT_PROVIDER_ADAPTER, type PayoutProviderAdapter } from "./payout-provider.adapter.js";
 import {
   creatorPayoutRequestSchema,
   payoutProfileSchema,
@@ -72,8 +69,7 @@ export class CreatorFinanceService {
     const progress =
       thresholdMicros <= 0n
         ? 100
-        : Number(((availableMicros > 0n ? availableMicros : 0n) * 10_000n) / thresholdMicros) /
-          100;
+        : Number(((availableMicros > 0n ? availableMicros : 0n) * 10_000n) / thresholdMicros) / 100;
 
     return {
       ...base,
@@ -91,8 +87,7 @@ export class CreatorFinanceService {
       recentLedger: ledger.items,
       providerConnection: {
         activeProvider: this.payoutProvider.kind,
-        manualPayoutEnabled:
-          this.payoutProvider.kind === "MANUAL" && this.payoutProvider.connected,
+        manualPayoutEnabled: this.payoutProvider.kind === "MANUAL" && this.payoutProvider.connected,
         externalProvidersConnected: false,
       },
     };

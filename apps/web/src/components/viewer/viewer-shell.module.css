@@ -126,7 +126,12 @@
 }
 
 .announcement {
-  background: linear-gradient(90deg, rgb(88 8 248 / 11%), rgb(220 25 232 / 11%), rgb(255 122 50 / 8%));
+  background: linear-gradient(
+    90deg,
+    rgb(88 8 248 / 11%),
+    rgb(220 25 232 / 11%),
+    rgb(255 122 50 / 8%)
+  );
   border-bottom: 1px solid rgb(220 25 232 / 20%);
   color: #f1d9ff;
   font-size: 0.9rem;

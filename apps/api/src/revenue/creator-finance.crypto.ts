@@ -29,7 +29,12 @@ export function encryptPayoutDestination(value: string): string {
   const cipher = createCipheriv(ALGORITHM, encryptionKey(), iv);
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return [VERSION, iv.toString("base64url"), tag.toString("base64url"), ciphertext.toString("base64url")].join(".");
+  return [
+    VERSION,
+    iv.toString("base64url"),
+    tag.toString("base64url"),
+    ciphertext.toString("base64url"),
+  ].join(".");
 }
 
 export function decryptPayoutDestination(payload: string): string {

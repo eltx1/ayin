@@ -94,7 +94,9 @@ export function StudioRevenue() {
       setMessage(success);
       await load();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The monetization change could not be saved.");
+      setMessage(
+        error instanceof Error ? error.message : "The monetization change could not be saved.",
+      );
     } finally {
       setBusy(false);
     }
@@ -112,13 +114,18 @@ export function StudioRevenue() {
           <span className={styles.eyebrow}>Creator Monetization</span>
           <h1>Revenue & payouts</h1>
           <p className={styles.muted}>
-            Earnings, payout readiness, payment profile, statements and revenue support in one place.
+            Earnings, payout readiness, payment profile, statements and revenue support in one
+            place.
           </p>
         </div>
         <span className={styles.statusPill}>Manual payout V1</span>
       </header>
 
-      {message ? <p className={styles.notice} role="status">{message}</p> : null}
+      {message ? (
+        <p className={styles.notice} role="status">
+          {message}
+        </p>
+      ) : null}
 
       <section aria-label="Revenue summary" className={styles.metrics}>
         {metrics.map(([label, value]) => (
@@ -133,7 +140,8 @@ export function StudioRevenue() {
         <section className={styles.panel}>
           <h2>Payout readiness</h2>
           <p className={styles.muted}>
-            Threshold: {money(overview.currency, overview.payoutThreshold)} · Current available balance: {money(overview.currency, overview.availableForPayout)}
+            Threshold: {money(overview.currency, overview.payoutThreshold)} · Current available
+            balance: {money(overview.currency, overview.availableForPayout)}
           </p>
           <div
             aria-label={`${overview.payoutProgressPercent.toFixed(0)}% of payout threshold`}
@@ -149,31 +157,65 @@ export function StudioRevenue() {
             />
           </div>
           <ul className={styles.list}>
-            <li><span>Payment profile</span><strong>{overview.payoutReadiness.profileReady ? "Ready" : "Action needed"}</strong></li>
-            <li><span>Threshold</span><strong>{overview.payoutReadiness.thresholdMet ? "Reached" : "Not reached"}</strong></li>
-            <li><span>Existing payout</span><strong>{overview.payoutReadiness.openPayout ? "In progress" : "None"}</strong></li>
-            <li><span>Provider</span><strong>Manual review</strong></li>
+            <li>
+              <span>Payment profile</span>
+              <strong>{overview.payoutReadiness.profileReady ? "Ready" : "Action needed"}</strong>
+            </li>
+            <li>
+              <span>Threshold</span>
+              <strong>{overview.payoutReadiness.thresholdMet ? "Reached" : "Not reached"}</strong>
+            </li>
+            <li>
+              <span>Existing payout</span>
+              <strong>{overview.payoutReadiness.openPayout ? "In progress" : "None"}</strong>
+            </li>
+            <li>
+              <span>Provider</span>
+              <strong>Manual review</strong>
+            </li>
           </ul>
           <button
             className={styles.primary}
             disabled={!overview.canRequestPayout || busy}
-            onClick={() => void act(() => requestCreatorPayout(preferredCurrency), "Payout request submitted for manual review.")}
+            onClick={() =>
+              void act(
+                () => requestCreatorPayout(preferredCurrency),
+                "Payout request submitted for manual review.",
+              )
+            }
             type="button"
           >
             Request payout
           </button>
           <p className={styles.muted}>
-            Bank, PayPal, Payoneer and Wise adapters are intentionally not shown as connected. AYIN V1 uses audited manual payout processing.
+            Bank, PayPal, Payoneer and Wise adapters are intentionally not shown as connected. AYIN
+            V1 uses audited manual payout processing.
           </p>
         </section>
 
         <section className={styles.panel}>
           <h2>Contract & revenue share</h2>
           <ul className={styles.list}>
-            <li><span>Effective creator share</span><strong>{(overview.contract.revenueShareBps / 100).toFixed(2)}%</strong></li>
-            <li><span>Source</span><strong>{overview.contract.source === "CHANNEL_OVERRIDE" ? "Channel contract" : "Platform default"}</strong></li>
-            <li><span>Effective from</span><strong>{date(overview.contract.effectiveFrom)}</strong></li>
-            <li><span>Currency</span><strong>{overview.currency}</strong></li>
+            <li>
+              <span>Effective creator share</span>
+              <strong>{(overview.contract.revenueShareBps / 100).toFixed(2)}%</strong>
+            </li>
+            <li>
+              <span>Source</span>
+              <strong>
+                {overview.contract.source === "CHANNEL_OVERRIDE"
+                  ? "Channel contract"
+                  : "Platform default"}
+              </strong>
+            </li>
+            <li>
+              <span>Effective from</span>
+              <strong>{date(overview.contract.effectiveFrom)}</strong>
+            </li>
+            <li>
+              <span>Currency</span>
+              <strong>{overview.currency}</strong>
+            </li>
           </ul>
         </section>
       </div>
@@ -183,10 +225,13 @@ export function StudioRevenue() {
           <div>
             <h2>Payment profile</h2>
             <p className={styles.muted}>
-              Destination details are encrypted at rest and only the masked value is returned after saving.
+              Destination details are encrypted at rest and only the masked value is returned after
+              saving.
             </p>
           </div>
-          {profile?.destinationMask ? <span className={styles.statusPill}>{profile.destinationMask}</span> : null}
+          {profile?.destinationMask ? (
+            <span className={styles.statusPill}>{profile.destinationMask}</span>
+          ) : null}
         </div>
         <form
           className={styles.formGrid}
@@ -207,15 +252,30 @@ export function StudioRevenue() {
         >
           <label>
             Legal beneficiary name
-            <input required maxLength={160} value={legalName} onChange={(event) => setLegalName(event.target.value)} />
+            <input
+              required
+              maxLength={160}
+              value={legalName}
+              onChange={(event) => setLegalName(event.target.value)}
+            />
           </label>
           <label>
             Preferred currency
-            <input required maxLength={3} value={preferredCurrency} onChange={(event) => setPreferredCurrency(event.target.value.toUpperCase())} />
+            <input
+              required
+              maxLength={3}
+              value={preferredCurrency}
+              onChange={(event) => setPreferredCurrency(event.target.value.toUpperCase())}
+            />
           </label>
           <label>
             Country / region code
-            <input maxLength={2} placeholder="US" value={countryCode} onChange={(event) => setCountryCode(event.target.value.toUpperCase())} />
+            <input
+              maxLength={2}
+              placeholder="US"
+              value={countryCode}
+              onChange={(event) => setCountryCode(event.target.value.toUpperCase())}
+            />
           </label>
           <label>
             Payment method
@@ -224,7 +284,9 @@ export function StudioRevenue() {
             </select>
           </label>
           <label style={{ gridColumn: "1 / -1" }}>
-            {profile?.hasDestination ? "Replace payout destination (leave blank to keep current)" : "Payout destination details"}
+            {profile?.hasDestination
+              ? "Replace payout destination (leave blank to keep current)"
+              : "Payout destination details"}
             <textarea
               required={!profile?.hasDestination}
               maxLength={1500}
@@ -234,8 +296,13 @@ export function StudioRevenue() {
             />
           </label>
           <div className={styles.actions} style={{ gridColumn: "1 / -1" }}>
-            <button className={styles.primary} disabled={busy} type="submit">Save payment profile</button>
-            <span className={styles.muted}>Identity: {profile?.identityStatus ?? "NOT_STARTED"} · Tax: {profile?.taxStatus ?? "NOT_PROVIDED"}</span>
+            <button className={styles.primary} disabled={busy} type="submit">
+              Save payment profile
+            </button>
+            <span className={styles.muted}>
+              Identity: {profile?.identityStatus ?? "NOT_STARTED"} · Tax:{" "}
+              {profile?.taxStatus ?? "NOT_PROVIDED"}
+            </span>
           </div>
         </form>
       </section>
@@ -245,7 +312,13 @@ export function StudioRevenue() {
           <h2>Revenue by month</h2>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Period</th><th>Estimated</th><th>Finalized</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Period</th>
+                  <th>Estimated</th>
+                  <th>Finalized</th>
+                </tr>
+              </thead>
               <tbody>
                 {overview.byPeriod.map((item) => (
                   <tr key={item.period}>
@@ -257,14 +330,22 @@ export function StudioRevenue() {
               </tbody>
             </table>
           </div>
-          {overview.byPeriod.length === 0 ? <p className={styles.muted}>No attributable revenue periods yet.</p> : null}
+          {overview.byPeriod.length === 0 ? (
+            <p className={styles.muted}>No attributable revenue periods yet.</p>
+          ) : null}
         </section>
 
         <section className={styles.panel}>
           <h2>Revenue by video</h2>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Video</th><th>Estimated</th><th>Finalized</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Video</th>
+                  <th>Estimated</th>
+                  <th>Finalized</th>
+                </tr>
+              </thead>
               <tbody>
                 {overview.byVideo.map((item) => (
                   <tr key={item.videoId}>
@@ -276,7 +357,9 @@ export function StudioRevenue() {
               </tbody>
             </table>
           </div>
-          {overview.byVideo.length === 0 ? <p className={styles.muted}>No video-level revenue attribution yet.</p> : null}
+          {overview.byVideo.length === 0 ? (
+            <p className={styles.muted}>No video-level revenue attribution yet.</p>
+          ) : null}
         </section>
       </div>
 
@@ -284,20 +367,31 @@ export function StudioRevenue() {
         <h2>Payout history</h2>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
-            <thead><tr><th>Requested</th><th>Amount</th><th>Status</th><th>Paid</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Requested</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Paid</th>
+              </tr>
+            </thead>
             <tbody>
               {overview.payouts.map((payout) => (
                 <tr key={payout.id}>
                   <td>{date(payout.requestedAt)}</td>
                   <td>{money(payout.currency, payout.amount)}</td>
-                  <td><span className={styles.statusPill}>{payout.status}</span></td>
+                  <td>
+                    <span className={styles.statusPill}>{payout.status}</span>
+                  </td>
                   <td>{date(payout.paidAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        {overview.payouts.length === 0 ? <p className={styles.muted}>No payouts requested yet.</p> : null}
+        {overview.payouts.length === 0 ? (
+          <p className={styles.muted}>No payouts requested yet.</p>
+        ) : null}
       </section>
 
       <section className={styles.panel} style={{ marginTop: 18 }}>
@@ -308,18 +402,22 @@ export function StudioRevenue() {
           onSubmit={(event) => {
             event.preventDefault();
             void act(
-              () => createCreatorRevenueDispute({
-                category: disputeCategory,
-                ...(disputePayoutId ? { payoutId: disputePayoutId } : {}),
-                message: disputeMessage,
-              }),
+              () =>
+                createCreatorRevenueDispute({
+                  category: disputeCategory,
+                  ...(disputePayoutId ? { payoutId: disputePayoutId } : {}),
+                  message: disputeMessage,
+                }),
               "Revenue dispute opened for review.",
             ).then(() => setDisputeMessage(""));
           }}
         >
           <label>
             Category
-            <select value={disputeCategory} onChange={(event) => setDisputeCategory(event.target.value as typeof disputeCategory)}>
+            <select
+              value={disputeCategory}
+              onChange={(event) => setDisputeCategory(event.target.value as typeof disputeCategory)}
+            >
               <option value="EARNINGS">Earnings</option>
               <option value="PAYOUT">Payout</option>
               <option value="OTHER">Other</option>
@@ -327,10 +425,16 @@ export function StudioRevenue() {
           </label>
           <label>
             Related payout (optional)
-            <select value={disputePayoutId} onChange={(event) => setDisputePayoutId(event.target.value)}>
+            <select
+              value={disputePayoutId}
+              onChange={(event) => setDisputePayoutId(event.target.value)}
+            >
               <option value="">No specific payout</option>
               {overview.payouts.map((payout) => (
-                <option value={payout.id} key={payout.id}>{date(payout.requestedAt)} · {money(payout.currency, payout.amount)} · {payout.status}</option>
+                <option value={payout.id} key={payout.id}>
+                  {date(payout.requestedAt)} · {money(payout.currency, payout.amount)} ·{" "}
+                  {payout.status}
+                </option>
               ))}
             </select>
           </label>
@@ -343,13 +447,29 @@ export function StudioRevenue() {
             onChange={(event) => setDisputeMessage(event.target.value)}
           />
           <div className={styles.actions} style={{ gridColumn: "1 / -1" }}>
-            <button className={styles.secondary} disabled={busy || disputeMessage.trim().length < 20} type="submit">Open dispute</button>
+            <button
+              className={styles.secondary}
+              disabled={busy || disputeMessage.trim().length < 20}
+              type="submit"
+            >
+              Open dispute
+            </button>
           </div>
         </form>
         <ul className={styles.list}>
           {disputes.map((dispute) => (
             <li key={dispute.id}>
-              <span><strong>{dispute.category}</strong><br /><span className={styles.muted}>{dispute.message}</span>{dispute.resolution ? <><br /><span>Resolution: {dispute.resolution}</span></> : null}</span>
+              <span>
+                <strong>{dispute.category}</strong>
+                <br />
+                <span className={styles.muted}>{dispute.message}</span>
+                {dispute.resolution ? (
+                  <>
+                    <br />
+                    <span>Resolution: {dispute.resolution}</span>
+                  </>
+                ) : null}
+              </span>
               <span className={styles.statusPill}>{dispute.status}</span>
             </li>
           ))}
@@ -362,12 +482,20 @@ export function StudioRevenue() {
         <ul className={styles.list}>
           {overview.recentLedger.map((entry) => (
             <li key={entry.id}>
-              <span>{entry.video?.title ?? entry.memo ?? entry.type}<br /><span className={styles.muted}>{new Date(entry.occurredAt).toLocaleString()} · {entry.state}</span></span>
+              <span>
+                {entry.video?.title ?? entry.memo ?? entry.type}
+                <br />
+                <span className={styles.muted}>
+                  {new Date(entry.occurredAt).toLocaleString()} · {entry.state}
+                </span>
+              </span>
               <strong>{money(entry.currency, entry.amount)}</strong>
             </li>
           ))}
         </ul>
-        {overview.recentLedger.length === 0 ? <p className={styles.muted}>No ledger activity yet.</p> : null}
+        {overview.recentLedger.length === 0 ? (
+          <p className={styles.muted}>No ledger activity yet.</p>
+        ) : null}
       </section>
     </div>
   );

@@ -1,8 +1,7 @@
 .shell {
   background:
     radial-gradient(circle at top left, rgb(88 8 248 / 14%), transparent 34rem),
-    radial-gradient(circle at 82% 12%, rgb(220 25 232 / 8%), transparent 30rem),
-    var(--background);
+    radial-gradient(circle at 82% 12%, rgb(220 25 232 / 8%), transparent 30rem), var(--background);
   color: var(--foreground);
   min-height: 100vh;
 }

@@ -63,8 +63,7 @@ body {
 body {
   background:
     radial-gradient(circle at 88% -8%, rgb(123 24 248 / 12%), transparent 30rem),
-    radial-gradient(circle at -4% 26%, rgb(220 25 232 / 7%), transparent 26rem),
-    var(--background);
+    radial-gradient(circle at -4% 26%, rgb(220 25 232 / 7%), transparent 26rem), var(--background);
   color: var(--foreground);
   font-family:
     Inter,

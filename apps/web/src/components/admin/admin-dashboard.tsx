@@ -112,7 +112,8 @@ export function AdminDashboard() {
           <span className={styles.eyebrow}>Control Center</span>
           <h1>AYIN Admin</h1>
           <p className={styles.muted}>
-            Search, operate, review revenue and observe platform health through protected, audited controls.
+            Search, operate, review revenue and observe platform health through protected, audited
+            controls.
           </p>
         </div>
         <span className={styles.statusPill}>Query-time operational view</span>
@@ -122,7 +123,9 @@ export function AdminDashboard() {
 
       <section className={styles.card}>
         <h2>Global search</h2>
-        <p className={styles.muted}>Find accounts, channels, videos and payout records from one protected search.</p>
+        <p className={styles.muted}>
+          Find accounts, channels, videos and payout records from one protected search.
+        </p>
         <form className={styles.toolbar} onSubmit={runSearch}>
           <input
             aria-label="Search AYIN administration"
@@ -131,14 +134,22 @@ export function AdminDashboard() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <button className={styles.button} disabled={searching || query.trim().length < 2} type="submit">
+          <button
+            className={styles.button}
+            disabled={searching || query.trim().length < 2}
+            type="submit"
+          >
             {searching ? "Searching…" : "Search"}
           </button>
         </form>
         {searchResults.length ? (
           <div className={styles.searchResults}>
             {searchResults.map((result) => (
-              <Link className={styles.searchResult} href={result.href} key={`${result.kind}-${result.id}`}>
+              <Link
+                className={styles.searchResult}
+                href={result.href}
+                key={`${result.kind}-${result.id}`}
+              >
                 <span>
                   <span className={styles.statusPill}>{result.kind}</span>{" "}
                   <strong>{result.label}</strong>
@@ -166,43 +177,81 @@ export function AdminDashboard() {
       <section className={styles.commandGrid}>
         <article className={styles.card}>
           <h2>Revenue operations</h2>
-          <p><strong>{finance.pendingPayouts}</strong> pending payouts</p>
-          <p><strong>{finance.processingPayouts}</strong> processing payouts</p>
-          <p><strong>{finance.openDisputes}</strong> open revenue disputes</p>
+          <p>
+            <strong>{finance.pendingPayouts}</strong> pending payouts
+          </p>
+          <p>
+            <strong>{finance.processingPayouts}</strong> processing payouts
+          </p>
+          <p>
+            <strong>{finance.openDisputes}</strong> open revenue disputes
+          </p>
           {finance.pendingValue.map((item) => (
-            <p key={item.currency}>{item.currency} {item.amount} pending/processing</p>
+            <p key={item.currency}>
+              {item.currency} {item.amount} pending/processing
+            </p>
           ))}
-          <p className={styles.muted}>Provider mode: audited manual payout. External providers are not represented as connected.</p>
-          <Link className={styles.button} href="/admin/revenue">Open Revenue Control Center</Link>
+          <p className={styles.muted}>
+            Provider mode: audited manual payout. External providers are not represented as
+            connected.
+          </p>
+          <Link className={styles.button} href="/admin/revenue">
+            Open Revenue Control Center
+          </Link>
         </article>
 
         <article className={styles.card}>
           <h2>System health</h2>
-          <p>API <strong>{health.api.status}</strong></p>
-          <p>Database <strong>{health.database.status}</strong></p>
-          <p>Media storage <strong>{health.mediaStorage.status}</strong></p>
-          <p>Storage mode <strong>{health.mediaStorage.mode.toUpperCase()}</strong></p>
+          <p>
+            API <strong>{health.api.status}</strong>
+          </p>
+          <p>
+            Database <strong>{health.database.status}</strong>
+          </p>
+          <p>
+            Media storage <strong>{health.mediaStorage.status}</strong>
+          </p>
+          <p>
+            Storage mode <strong>{health.mediaStorage.mode.toUpperCase()}</strong>
+          </p>
           <p className={styles.muted}>
-            Direct client-to-storage upload architecture remains enabled. This view observes existing R2 readiness only.
+            Direct client-to-storage upload architecture remains enabled. This view observes
+            existing R2 readiness only.
           </p>
         </article>
 
         <article className={styles.card}>
           <h2>Priority queues</h2>
-          <p><Link href="/admin/moderation">Moderation · {data.openReports} reports / {data.openCases} cases</Link></p>
-          <p><Link href="/admin/videos">Video operations</Link></p>
-          <p><Link href="/admin/tv">Creator TV operations</Link></p>
-          <p><Link href="/admin/product-controls">Home & product controls</Link></p>
-          <p><Link href="/admin/feature-flags">Feature flags</Link></p>
+          <p>
+            <Link href="/admin/moderation">
+              Moderation · {data.openReports} reports / {data.openCases} cases
+            </Link>
+          </p>
+          <p>
+            <Link href="/admin/videos">Video operations</Link>
+          </p>
+          <p>
+            <Link href="/admin/tv">Creator TV operations</Link>
+          </p>
+          <p>
+            <Link href="/admin/product-controls">Home & product controls</Link>
+          </p>
+          <p>
+            <Link href="/admin/feature-flags">Feature flags</Link>
+          </p>
         </article>
       </section>
 
       <section className={styles.card} style={{ marginTop: 18 }}>
         <h2>Platform analytics</h2>
-        <p className={styles.muted}>Query-time V1 metrics; intentionally not advertised as realtime.</p>
+        <p className={styles.muted}>
+          Query-time V1 metrics; intentionally not advertised as realtime.
+        </p>
         <div className={styles.commandGrid}>
           {analyticsMetrics.map(([label, value]) => (
-            <p key={label}>{label}: <strong>{value}</strong></p>
+            <p key={label}>
+              {label}: <strong>{value}</strong>
+            </p>
           ))}
         </div>
       </section>
