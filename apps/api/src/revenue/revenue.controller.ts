@@ -15,6 +15,7 @@ import {
 
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { AdminPayoutCreationService } from "./admin-payout-creation.service.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
 import { CreatorMonetizationAnalyticsService } from "./creator-monetization-analytics.service.js";
 import { CreatorMonetizationNotificationService } from "./creator-monetization-notification.service.js";
@@ -118,6 +119,8 @@ export class AdminRevenueController {
   constructor(
     @Inject(RevenueService) private readonly revenue: RevenueService,
     @Inject(CreatorFinanceService) private readonly finance: CreatorFinanceService,
+    @Inject(AdminPayoutCreationService)
+    private readonly adminPayoutCreation: AdminPayoutCreationService,
     @Inject(CreatorMonetizationNotificationService)
     private readonly notifications: CreatorMonetizationNotificationService,
   ) {}
@@ -183,7 +186,7 @@ export class AdminRevenueController {
 
   @Post("payouts")
   async createPayout(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
-    const payout = await this.revenue.createPayout(request.ayinAuth.accountId, body);
+    const payout = await this.adminPayoutCreation.create(request.ayinAuth.accountId, body);
     await this.notifications
       .notifyChannel({
         channelId: payout.channelId,
