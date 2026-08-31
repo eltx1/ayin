@@ -6,6 +6,7 @@ import { DatabaseModule } from "../database/database.module.js";
 import { CreatorFinanceRepository } from "./creator-finance.repository.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
 import { CreatorMonetizationAnalyticsService } from "./creator-monetization-analytics.service.js";
+import { CreatorMonetizationNotificationService } from "./creator-monetization-notification.service.js";
 import {
   ManualPayoutProviderAdapter,
   PAYOUT_PROVIDER_ADAPTER,
@@ -22,6 +23,7 @@ import { RevenueService } from "./revenue.service.js";
     CreatorFinanceRepository,
     CreatorFinanceService,
     CreatorMonetizationAnalyticsService,
+    CreatorMonetizationNotificationService,
     ManualPayoutProviderAdapter,
     {
       provide: PAYOUT_PROVIDER_ADAPTER,
@@ -29,6 +31,11 @@ import { RevenueService } from "./revenue.service.js";
       useFactory: (adapter: ManualPayoutProviderAdapter): PayoutProviderAdapter => adapter,
     },
   ],
-  exports: [RevenueService, CreatorFinanceService, CreatorMonetizationAnalyticsService],
+  exports: [
+    RevenueService,
+    CreatorFinanceService,
+    CreatorMonetizationAnalyticsService,
+    CreatorMonetizationNotificationService,
+  ],
 })
 export class RevenueModule {}
