@@ -1,7 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="AYIN placeholder mark">
-  <rect width="192" height="192" rx="48" fill="#070A12"/>
-  <circle cx="96" cy="96" r="59" fill="none" stroke="#E8C46A" stroke-width="8"/>
-  <ellipse cx="96" cy="96" rx="39" ry="25" fill="none" stroke="#63D1CC" stroke-width="7"/>
-  <circle cx="96" cy="96" r="10" fill="#E8C46A"/>
-  <circle cx="96" cy="96" r="4" fill="#F7F8FC"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="AYIN">
+  <defs>
+    <linearGradient id="ayin" x1="28" y1="150" x2="164" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4B16FF"/>
+      <stop offset="0.28" stop-color="#8D22FF"/>
+      <stop offset="0.52" stop-color="#EE19E8"/>
+      <stop offset="0.76" stop-color="#FF3457"/>
+      <stop offset="1" stop-color="#FFB13B"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="192" height="192" rx="44" fill="#03030A"/>
+  <path d="M34 151 82 48c6-13 22-19 35-12 5 3 9 7 12 12l31 66" fill="none" stroke="url(#ayin)" stroke-width="25" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M155 151 112 59" fill="none" stroke="url(#ayin)" stroke-width="25" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M79 94c0-8 9-13 16-9l26 16c7 4 7 14 0 18l-26 16c-7 4-16-1-16-9Z" fill="url(#ayin)" stroke="#FFB13B" stroke-opacity=".45" stroke-width="2" filter="url(#glow)"/>
 </svg>
