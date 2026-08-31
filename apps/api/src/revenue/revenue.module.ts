@@ -9,6 +9,7 @@ import { CreatorFinanceRepository } from "./creator-finance.repository.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
 import { CreatorMonetizationAnalyticsService } from "./creator-monetization-analytics.service.js";
 import { CreatorMonetizationNotificationService } from "./creator-monetization-notification.service.js";
+import { CreatorRevenueCurrencyViewService } from "./creator-revenue-currency-view.service.js";
 import {
   ManualPayoutProviderAdapter,
   PAYOUT_PROVIDER_ADAPTER,
@@ -26,6 +27,7 @@ import { RevenueService } from "./revenue.service.js";
     CreatorFinanceService,
     CreatorMonetizationAnalyticsService,
     CreatorMonetizationNotificationService,
+    CreatorRevenueCurrencyViewService,
     AdminPayoutDestinationService,
     ManualPayoutProviderAdapter,
     {
