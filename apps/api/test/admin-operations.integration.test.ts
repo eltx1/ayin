@@ -211,20 +211,96 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
     expect(adManagerTrust.statusCode).toBe(403);
   });
 
+  it("scopes global search result kinds to each staff role", async () => {
+    const target = await register("Scopeprobe Target", "scopeprobe-target@example.com");
+    const operations = await register("Search Operations", "search-operations@example.com");
+    const moderator = await register("Search Moderator", "search-moderator@example.com");
+    const finance = await register("Search Finance", "search-finance@example.com");
+    const ads = await register("Search Ads", "search-ads@example.com");
+    const admin = await register("Search Admin", "search-admin@example.com");
+    await grant(operations.user.account.id, "OPERATIONS");
+    await grant(moderator.user.account.id, "CONTENT_MODERATOR");
+    await grant(finance.user.account.id, "FINANCE_MANAGER");
+    await grant(ads.user.account.id, "AD_MANAGER");
+    await grant(admin.user.account.id, "ADMIN");
+
+    await prisma.channel.update({
+      where: { id: target.user.channel.id },
+      data: { name: "Scopeprobe Channel", handle: "scopeprobe-channel" },
+    });
+    await prisma.video.create({
+      data: {
+        channelId: target.user.channel.id,
+        slug: "scopeprobe-video",
+        title: "Scopeprobe Video",
+        status: "PUBLISHED",
+        visibility: "PUBLIC",
+        publishedAt: new Date(),
+      },
+    });
+    await prisma.payout.create({
+      data: {
+        channelId: target.user.channel.id,
+        amount: "42.000000",
+        currency: "USD",
+        status: "PENDING",
+        externalReference: "scopeprobe-payout",
+      },
+    });
+
+    const searchAs = async (cookie: string) => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/admin/control/search?query=scopeprobe",
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      return (response.json().items as Array<{ kind: string }>).map((item) => item.kind);
+    };
+
+    const operationKinds = await searchAs(operations.cookie);
+    expect(operationKinds).toEqual(expect.arrayContaining(["ACCOUNT", "CHANNEL", "VIDEO"]));
+    expect(operationKinds).not.toContain("PAYOUT");
+
+    const moderatorKinds = await searchAs(moderator.cookie);
+    expect(moderatorKinds.length).toBeGreaterThan(0);
+    expect(moderatorKinds.every((kind) => kind === "VIDEO")).toBe(true);
+
+    const financeKinds = await searchAs(finance.cookie);
+    expect(financeKinds.length).toBeGreaterThan(0);
+    expect(financeKinds.every((kind) => kind === "PAYOUT")).toBe(true);
+
+    const adKinds = await searchAs(ads.cookie);
+    expect(adKinds).toEqual([]);
+
+    const adminKinds = await searchAs(admin.cookie);
+    expect(adminKinds).toEqual(expect.arrayContaining(["ACCOUNT", "CHANNEL", "VIDEO", "PAYOUT"]));
+  });
+
   it("lets only superadmin change staff roles and revokes existing sessions", async () => {
     const superadmin = await register("Superadmin", "superadmin-role@example.com");
+    const admin = await register("Ordinary Admin", "ordinary-admin-role@example.com");
     const operations = await register("Operations", "role-editor@example.com");
     const target = await register("Target", "staff-target@example.com");
     await grant(superadmin.user.account.id, "SUPERADMIN");
+    await grant(admin.user.account.id, "ADMIN");
     await grant(operations.user.account.id, "OPERATIONS");
 
-    const forbidden = await app.inject({
+    const operationsForbidden = await app.inject({
       method: "PATCH",
       url: `/admin/operations/staff/${target.user.account.id}/roles`,
       headers: { cookie: operations.cookie },
       payload: { roles: ["FINANCE_MANAGER"], reason: "Finance access assignment" },
     });
-    expect(forbidden.statusCode).toBe(403);
+    expect(operationsForbidden.statusCode).toBe(403);
+
+    const adminForbidden = await app.inject({
+      method: "PATCH",
+      url: `/admin/operations/staff/${target.user.account.id}/roles`,
+      headers: { cookie: admin.cookie },
+      payload: { roles: ["SUPERADMIN"], reason: "Attempted privilege escalation" },
+    });
+    expect(adminForbidden.statusCode).toBe(403);
 
     const before = await prisma.account.findUniqueOrThrow({
       where: { id: target.user.account.id },
