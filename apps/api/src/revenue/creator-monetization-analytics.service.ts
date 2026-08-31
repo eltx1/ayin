@@ -79,15 +79,9 @@ export class CreatorMonetizationAnalyticsService {
     ]);
     const currency = profile?.preferredCurrency ?? latestCurrencyRows[0]?.currency ?? "USD";
 
-    const [
-      finalizedRows,
-      dailyRows,
-      sourceRows,
-      mixedCurrencyRows,
-      videoStarts30d,
-      adStarts30d,
-    ] = await Promise.all([
-      this.database.client.$queryRaw<FinalizedRow[]>`
+    const [finalizedRows, dailyRows, sourceRows, mixedCurrencyRows, videoStarts30d, adStarts30d] =
+      await Promise.all([
+        this.database.client.$queryRaw<FinalizedRow[]>`
         SELECT COALESCE(SUM("amount"), 0) AS "amount"
         FROM "EarningsLedgerEntry"
         WHERE "channelId" = ${channel.id}::uuid
@@ -95,7 +89,7 @@ export class CreatorMonetizationAnalyticsService {
           AND "state" IN ('FINAL', 'ADJUSTMENT')
           AND "occurredAt" >= ${from30d}
       `,
-      this.database.client.$queryRaw<DailyRevenueRow[]>`
+        this.database.client.$queryRaw<DailyRevenueRow[]>`
         SELECT
           TO_CHAR(DATE_TRUNC('day', COALESCE("periodStart", "occurredAt")), 'YYYY-MM-DD') AS "day",
           COALESCE(SUM(CASE WHEN "state" = 'ESTIMATED' THEN "amount" ELSE 0 END), 0) AS "estimated",
@@ -107,7 +101,7 @@ export class CreatorMonetizationAnalyticsService {
         GROUP BY DATE_TRUNC('day', COALESCE("periodStart", "occurredAt"))
         ORDER BY DATE_TRUNC('day', COALESCE("periodStart", "occurredAt")) DESC
       `,
-      this.database.client.$queryRaw<SourceRevenueRow[]>`
+        this.database.client.$queryRaw<SourceRevenueRow[]>`
         SELECT
           COALESCE(NULLIF(BTRIM("adSource"), ''), 'UNATTRIBUTED') AS "source",
           COALESCE(SUM(CASE WHEN "state" = 'ESTIMATED' THEN "amount" ELSE 0 END), 0) AS "estimated",
@@ -119,19 +113,19 @@ export class CreatorMonetizationAnalyticsService {
         GROUP BY COALESCE(NULLIF(BTRIM("adSource"), ''), 'UNATTRIBUTED')
         ORDER BY "finalized" DESC, "source" ASC
       `,
-      this.database.client.$queryRaw<MixedCurrencyRow[]>`
+        this.database.client.$queryRaw<MixedCurrencyRow[]>`
         SELECT COUNT(DISTINCT "currency") > 1 AS "mixedCurrency"
         FROM "EarningsLedgerEntry"
         WHERE "channelId" = ${channel.id}::uuid
           AND "occurredAt" >= ${from90d}
       `,
-      this.database.client.analyticsEvent.count({
-        where: { channelId: channel.id, eventName: "VIDEO_START", occurredAt: { gte: from30d } },
-      }),
-      this.database.client.analyticsEvent.count({
-        where: { channelId: channel.id, eventName: "AD_START", occurredAt: { gte: from30d } },
-      }),
-    ]);
+        this.database.client.analyticsEvent.count({
+          where: { channelId: channel.id, eventName: "VIDEO_START", occurredAt: { gte: from30d } },
+        }),
+        this.database.client.analyticsEvent.count({
+          where: { channelId: channel.id, eventName: "AD_START", occurredAt: { gte: from30d } },
+        }),
+      ]);
 
     const finalized30d = decimalToMicros(finalizedRows[0]?.amount);
     const mixedCurrency = mixedCurrencyRows[0]?.mixedCurrency ?? false;
