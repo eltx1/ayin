@@ -3,24 +3,36 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import type { CreatorFinanceService } from "./creator-finance.service.js";
 import { formatMoneyMicros, parseMoneyMicros } from "./money.js";
+import { RevenueService } from "./revenue.service.js";
 
 type CreatorRevenueOverview = NonNullable<Awaited<ReturnType<CreatorFinanceService["overview"]>>>;
 
 @Injectable()
 export class CreatorRevenueCurrencyViewService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(RevenueService) private readonly revenue: RevenueService,
+  ) {}
 
   async normalize(overview: CreatorRevenueOverview): Promise<CreatorRevenueOverview> {
     const currency = overview.paymentProfile?.preferredCurrency ?? overview.currency;
-    const entries = await this.database.client.earningsLedgerEntry.findMany({
-      where: { channelId: overview.channel.id, currency },
-      include: {
-        video: { select: { id: true, title: true, slug: true } },
-        payout: { select: { id: true, status: true } },
-      },
-      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
-      take: 5000,
-    });
+    const [entries, recentLedger] = await Promise.all([
+      this.database.client.earningsLedgerEntry.findMany({
+        where: { channelId: overview.channel.id, currency },
+        include: {
+          video: { select: { id: true, title: true, slug: true } },
+          payout: { select: { id: true, status: true } },
+        },
+        orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+        take: 5000,
+      }),
+      this.revenue.searchLedger({
+        channelId: overview.channel.id,
+        currency,
+        page: 1,
+        take: 10,
+      }),
+    ]);
 
     let estimated = 0n;
     let finalized = 0n;
@@ -111,16 +123,7 @@ export class CreatorRevenueCurrencyViewService {
           finalized: formatMoneyMicros(item.finalized),
         }))
         .sort((a, b) => b.period.localeCompare(a.period)),
-      recentLedger: entries.slice(0, 10).map((entry) => ({
-        id: entry.id,
-        state: entry.state,
-        type: entry.type,
-        amount: String(entry.amount),
-        currency: entry.currency,
-        memo: entry.memo,
-        occurredAt: entry.occurredAt,
-        video: entry.video ? { title: entry.video.title, slug: entry.video.slug } : null,
-      })),
+      recentLedger: recentLedger.items,
     };
   }
 }
