@@ -7,6 +7,30 @@ import { RevenueService } from "./revenue.service.js";
 
 type CreatorRevenueOverview = NonNullable<Awaited<ReturnType<CreatorFinanceService["overview"]>>>;
 
+interface RevenueTotalsRow {
+  estimated: unknown;
+  finalized: unknown;
+  available: unknown;
+  onHold: unknown;
+}
+
+interface RevenueVideoRow {
+  videoId: string;
+  title: string;
+  estimated: unknown;
+  finalized: unknown;
+}
+
+interface RevenuePeriodRow {
+  period: string;
+  estimated: unknown;
+  finalized: unknown;
+}
+
+function moneyMicros(value: unknown): bigint {
+  return parseMoneyMicros(String(value ?? "0"));
+}
+
 @Injectable()
 export class CreatorRevenueCurrencyViewService {
   constructor(
@@ -16,67 +40,68 @@ export class CreatorRevenueCurrencyViewService {
 
   async normalize(overview: CreatorRevenueOverview): Promise<CreatorRevenueOverview> {
     const currency = overview.paymentProfile?.preferredCurrency ?? overview.currency;
-    const [entries, recentLedger] = await Promise.all([
-      this.database.client.earningsLedgerEntry.findMany({
-        where: { channelId: overview.channel.id, currency },
-        include: {
-          video: { select: { id: true, title: true, slug: true } },
-          payout: { select: { id: true, status: true } },
-        },
-        orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
-        take: 5000,
-      }),
+    const channelId = overview.channel.id;
+    const [totalsRows, videoRows, periodRows, recentLedger] = await Promise.all([
+      this.database.client.$queryRaw<RevenueTotalsRow[]>`
+        SELECT
+          COALESCE(SUM(CASE WHEN e."state" = 'ESTIMATED' THEN e."amount" ELSE 0 END), 0) AS "estimated",
+          COALESCE(SUM(CASE WHEN e."state" IN ('FINAL', 'ADJUSTMENT') THEN e."amount" ELSE 0 END), 0) AS "finalized",
+          COALESCE(SUM(CASE
+            WHEN e."state" IN ('FINAL', 'ADJUSTMENT') AND e."payoutId" IS NULL THEN e."amount"
+            ELSE 0
+          END), 0) AS "available",
+          COALESCE(SUM(CASE
+            WHEN e."state" IN ('FINAL', 'ADJUSTMENT') AND p."status" IN ('PENDING', 'PROCESSING') THEN e."amount"
+            ELSE 0
+          END), 0) AS "onHold"
+        FROM "EarningsLedgerEntry" e
+        LEFT JOIN "Payout" p ON p."id" = e."payoutId"
+        WHERE e."channelId" = ${channelId}::uuid
+          AND e."currency" = ${currency}
+      `,
+      this.database.client.$queryRaw<RevenueVideoRow[]>`
+        SELECT
+          e."videoId" AS "videoId",
+          v."title" AS "title",
+          COALESCE(SUM(CASE WHEN e."state" = 'ESTIMATED' THEN e."amount" ELSE 0 END), 0) AS "estimated",
+          COALESCE(SUM(CASE WHEN e."state" IN ('FINAL', 'ADJUSTMENT') THEN e."amount" ELSE 0 END), 0) AS "finalized"
+        FROM "EarningsLedgerEntry" e
+        JOIN "Video" v ON v."id" = e."videoId"
+        WHERE e."channelId" = ${channelId}::uuid
+          AND e."currency" = ${currency}
+          AND e."videoId" IS NOT NULL
+        GROUP BY e."videoId", v."title"
+        ORDER BY "finalized" DESC, "estimated" DESC, e."videoId" ASC
+      `,
+      this.database.client.$queryRaw<RevenuePeriodRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('month', COALESCE(e."periodStart", e."occurredAt")), 'YYYY-MM') AS "period",
+          COALESCE(SUM(CASE WHEN e."state" = 'ESTIMATED' THEN e."amount" ELSE 0 END), 0) AS "estimated",
+          COALESCE(SUM(CASE WHEN e."state" IN ('FINAL', 'ADJUSTMENT') THEN e."amount" ELSE 0 END), 0) AS "finalized"
+        FROM "EarningsLedgerEntry" e
+        WHERE e."channelId" = ${channelId}::uuid
+          AND e."currency" = ${currency}
+        GROUP BY DATE_TRUNC('month', COALESCE(e."periodStart", e."occurredAt"))
+        ORDER BY DATE_TRUNC('month', COALESCE(e."periodStart", e."occurredAt")) DESC
+      `,
       this.revenue.searchLedger({
-        channelId: overview.channel.id,
+        channelId,
         currency,
         page: 1,
         take: 10,
       }),
     ]);
 
-    let estimated = 0n;
-    let finalized = 0n;
-    let available = 0n;
-    let onHold = 0n;
-    const byVideo = new Map<
-      string,
-      { videoId: string; title: string; estimated: bigint; finalized: bigint }
-    >();
-    const byPeriod = new Map<string, { period: string; estimated: bigint; finalized: bigint }>();
-
-    for (const entry of entries) {
-      const amount = parseMoneyMicros(String(entry.amount));
-      const isEstimated = entry.state === "ESTIMATED";
-      const isFinalized = entry.state === "FINAL" || entry.state === "ADJUSTMENT";
-      if (isEstimated) estimated += amount;
-      if (isFinalized) finalized += amount;
-      if (isFinalized && entry.payoutId === null) available += amount;
-      if (
-        isFinalized &&
-        entry.payout &&
-        (entry.payout.status === "PENDING" || entry.payout.status === "PROCESSING")
-      ) {
-        onHold += amount;
-      }
-
-      const period = (entry.periodStart ?? entry.occurredAt).toISOString().slice(0, 7);
-      const periodBucket = byPeriod.get(period) ?? { period, estimated: 0n, finalized: 0n };
-      if (isEstimated) periodBucket.estimated += amount;
-      if (isFinalized) periodBucket.finalized += amount;
-      byPeriod.set(period, periodBucket);
-
-      if (entry.videoId && entry.video) {
-        const videoBucket = byVideo.get(entry.videoId) ?? {
-          videoId: entry.videoId,
-          title: entry.video.title,
-          estimated: 0n,
-          finalized: 0n,
-        };
-        if (isEstimated) videoBucket.estimated += amount;
-        if (isFinalized) videoBucket.finalized += amount;
-        byVideo.set(entry.videoId, videoBucket);
-      }
-    }
+    const totals = totalsRows[0] ?? {
+      estimated: "0",
+      finalized: "0",
+      available: "0",
+      onHold: "0",
+    };
+    const estimated = moneyMicros(totals.estimated);
+    const finalized = moneyMicros(totals.finalized);
+    const available = moneyMicros(totals.available);
+    const onHold = moneyMicros(totals.onHold);
 
     const thresholdMicros = parseMoneyMicros(overview.payoutThreshold);
     const positiveAvailable = available > 0n ? available : 0n;
@@ -108,21 +133,17 @@ export class CreatorRevenueCurrencyViewService {
         payoutReadiness.thresholdMet &&
         !payoutReadiness.openPayout &&
         payoutReadiness.providerReady,
-      byVideo: [...byVideo.values()]
-        .map((item) => ({
-          videoId: item.videoId,
-          title: item.title,
-          estimated: formatMoneyMicros(item.estimated),
-          finalized: formatMoneyMicros(item.finalized),
-        }))
-        .sort((a, b) => Number(b.finalized) - Number(a.finalized)),
-      byPeriod: [...byPeriod.values()]
-        .map((item) => ({
-          period: item.period,
-          estimated: formatMoneyMicros(item.estimated),
-          finalized: formatMoneyMicros(item.finalized),
-        }))
-        .sort((a, b) => b.period.localeCompare(a.period)),
+      byVideo: videoRows.map((item) => ({
+        videoId: item.videoId,
+        title: item.title,
+        estimated: formatMoneyMicros(moneyMicros(item.estimated)),
+        finalized: formatMoneyMicros(moneyMicros(item.finalized)),
+      })),
+      byPeriod: periodRows.map((item) => ({
+        period: item.period,
+        estimated: formatMoneyMicros(moneyMicros(item.estimated)),
+        finalized: formatMoneyMicros(moneyMicros(item.finalized)),
+      })),
       recentLedger: recentLedger.items,
     };
   }
