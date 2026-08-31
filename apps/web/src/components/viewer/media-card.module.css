@@ -4,24 +4,36 @@
   min-width: 0;
   text-decoration: none;
   transform-origin: center;
-  transition:
-    transform 140ms ease,
-    filter 140ms ease;
 }
 
 .art {
   background:
-    radial-gradient(circle at 68% 26%, rgb(232 196 106 / 40%), transparent 16%),
-    linear-gradient(145deg, #20283a, #0c111c 62%);
-  border: 1px solid rgb(255 255 255 / 9%);
-  border-radius: 1rem;
-  box-shadow: 0 1rem 3rem rgb(0 0 0 / 22%);
+    radial-gradient(circle at 68% 26%, rgb(139 24 248 / 42%), transparent 18%),
+    linear-gradient(145deg, #171126, #090711 68%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-soft);
+  isolation: isolate;
   overflow: hidden;
   position: relative;
+  transition:
+    border-color var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+
+.art::after {
+  background: linear-gradient(180deg, transparent 48%, rgb(2 2 8 / 42%) 100%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
 }
 
 .artwork {
   object-fit: cover;
+  transition: transform 420ms var(--ease-out);
 }
 
 .poster .art {
@@ -29,7 +41,7 @@
 }
 
 .landscape {
-  width: min(72vw, 22rem);
+  width: min(78vw, 23rem);
 }
 
 .landscape .art {
@@ -38,30 +50,30 @@
 
 .art[data-tone="2"] {
   background:
-    radial-gradient(circle at 72% 30%, rgb(92 220 205 / 34%), transparent 18%),
-    linear-gradient(145deg, #15383b, #0a1218 68%);
+    radial-gradient(circle at 74% 28%, rgb(220 25 232 / 34%), transparent 20%),
+    linear-gradient(145deg, #25102f, #090711 68%);
 }
 
 .art[data-tone="3"] {
   background:
-    radial-gradient(circle at 30% 24%, rgb(161 116 225 / 38%), transparent 20%),
-    linear-gradient(145deg, #302348, #0f101b 65%);
+    radial-gradient(circle at 30% 24%, rgb(88 8 248 / 46%), transparent 22%),
+    linear-gradient(145deg, #211342, #080710 68%);
 }
 
 .art[data-tone="4"] {
   background:
-    radial-gradient(circle at 64% 70%, rgb(232 196 106 / 32%), transparent 23%),
-    linear-gradient(145deg, #3c2c21, #111015 68%);
+    radial-gradient(circle at 64% 70%, rgb(248 58 66 / 34%), transparent 24%),
+    linear-gradient(145deg, #35131a, #0b0710 68%);
 }
 
 .art[data-tone="5"] {
   background:
-    radial-gradient(circle at 36% 32%, rgb(82 144 222 / 34%), transparent 19%),
-    linear-gradient(145deg, #172d4c, #0c1019 68%);
+    radial-gradient(circle at 36% 32%, rgb(255 122 50 / 32%), transparent 22%),
+    linear-gradient(145deg, #352014, #090711 68%);
 }
 
 .signal {
-  border: 1px solid rgb(255 255 255 / 16%);
+  border: 1px solid rgb(230 124 255 / 25%);
   border-radius: 50%;
   height: 46%;
   left: 27%;
@@ -72,7 +84,7 @@
 
 .signal::before,
 .signal::after {
-  border: 1px solid rgb(255 255 255 / 10%);
+  border: 1px solid rgb(255 255 255 / 11%);
   border-radius: 50%;
   content: "";
   inset: 16%;
@@ -80,33 +92,38 @@
 }
 
 .signal::after {
-  background: rgb(232 196 106 / 78%);
+  background: var(--brand-gradient);
   border: 0;
-  box-shadow: 0 0 1.5rem rgb(99 209 204 / 45%);
-  inset: 43%;
+  box-shadow: 0 0 2rem rgb(220 25 232 / 42%);
+  inset: 42%;
 }
 
 .badge {
-  backdrop-filter: blur(8px);
-  background: rgb(5 7 13 / 62%);
-  border: 1px solid rgb(255 255 255 / 12%);
+  backdrop-filter: blur(12px) saturate(135%);
+  background: rgb(5 3 12 / 68%);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
-  font-size: 0.65rem;
-  font-weight: 800;
-  left: 0.7rem;
-  padding: 0.4rem 0.55rem;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 20%);
+  font-size: 0.64rem;
+  font-weight: 820;
+  left: 0.72rem;
+  letter-spacing: 0.02em;
+  padding: 0.42rem 0.58rem;
   position: absolute;
-  top: 0.7rem;
+  top: 0.72rem;
+  z-index: 2;
 }
 
 .copy {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.75rem 0.15rem 0;
+  gap: 0.26rem;
+  padding: 0.82rem 0.12rem 0;
 }
 
 .copy strong {
   font-size: 0.98rem;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -119,13 +136,31 @@
 }
 
 .kicker {
-  color: #8fe0da;
-  font-weight: 760;
+  background: var(--brand-gradient);
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
 }
 
-.card:hover {
-  filter: brightness(1.08);
-  transform: translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .card:hover .art {
+    border-color: rgb(220 25 232 / 27%);
+    box-shadow: 0 20px 48px rgb(0 0 0 / 34%), 0 0 2rem rgb(88 8 248 / 12%);
+    transform: translateY(-4px);
+  }
+
+  .card:hover .artwork {
+    transform: scale(1.025);
+  }
+
+  .card:hover .copy strong {
+    color: #fff;
+  }
+}
+
+.card:focus-visible .art {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 1px var(--focus-ring), var(--brand-glow);
 }
 
 .skeleton {
@@ -136,7 +171,7 @@
 .skeletonLine,
 .skeletonLineShort {
   animation: ayin-skeleton 1.4s ease-in-out infinite;
-  background: linear-gradient(90deg, #111725, #1b2434, #111725);
+  background: linear-gradient(90deg, #0d0a17, #1b142d, #0d0a17);
   background-size: 200% 100%;
 }
 
@@ -162,12 +197,24 @@
   }
 }
 
+@media (max-width: 560px) {
+  .landscape {
+    width: min(82vw, 21rem);
+  }
+
+  .art {
+    border-radius: var(--radius-sm);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .card {
+  .art,
+  .artwork {
     transition: none;
   }
 
-  .card:hover {
+  .card:hover .art,
+  .card:hover .artwork {
     transform: none;
   }
 
