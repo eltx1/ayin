@@ -8,6 +8,11 @@ import { AdminAuthorizationService } from "./admin-authorization.service.js";
 import { AdminCommandCenterService } from "./admin-command-center.service.js";
 import { AdminControlController } from "./admin-control.controller.js";
 import { AdminControlService } from "./admin-control.service.js";
+import {
+  AdminGovernanceController,
+  SupportTicketController,
+} from "./admin-governance.controller.js";
+import { AdminGovernanceService } from "./admin-governance.service.js";
 import { AdminController } from "./admin.controller.js";
 import { AdminGuard } from "./admin.guard.js";
 import { AdminProductController, PublicProductController } from "./admin-product.controller.js";
@@ -21,6 +26,8 @@ import { ContentSeedingService } from "./content-seeding.service.js";
   controllers: [
     AdminController,
     AdminControlController,
+    AdminGovernanceController,
+    SupportTicketController,
     AdminProductController,
     PublicProductController,
     ContentSeedingController,
@@ -32,6 +39,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminSettingsService,
     AdminControlService,
     AdminCommandCenterService,
+    AdminGovernanceService,
     AdminProductService,
     ContentSeedingService,
   ],
@@ -41,6 +49,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminGuard,
     AdminControlService,
     AdminCommandCenterService,
+    AdminGovernanceService,
     AdminProductService,
     ContentSeedingService,
   ],
