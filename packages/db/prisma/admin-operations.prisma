@@ -1,0 +1,18 @@
+model SupportTicket {
+  id                  String    @id @default(uuid()) @db.Uuid
+  createdByAccountId  String    @db.Uuid
+  assignedToAccountId String?   @db.Uuid
+  category            String    @db.VarChar(32)
+  subject             String    @db.VarChar(200)
+  description         String    @db.Text
+  priority            String    @default("NORMAL") @db.VarChar(16)
+  status              String    @default("OPEN") @db.VarChar(24)
+  resolution          String?   @db.Text
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  closedAt            DateTime?
+
+  @@index([status, priority, createdAt])
+  @@index([createdByAccountId, createdAt])
+  @@index([assignedToAccountId, status, updatedAt])
+}
