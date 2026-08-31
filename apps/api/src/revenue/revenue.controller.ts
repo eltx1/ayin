@@ -16,16 +16,35 @@ import {
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
+import { CreatorMonetizationAnalyticsService } from "./creator-monetization-analytics.service.js";
 import { RevenueService } from "./revenue.service.js";
 
 @Controller("creator/studio/revenue")
 @UseGuards(AuthGuard)
 export class CreatorRevenueController {
-  constructor(@Inject(CreatorFinanceService) private readonly finance: CreatorFinanceService) {}
+  constructor(
+    @Inject(CreatorFinanceService) private readonly finance: CreatorFinanceService,
+    @Inject(CreatorMonetizationAnalyticsService)
+    private readonly monetizationAnalytics: CreatorMonetizationAnalyticsService,
+  ) {}
 
   @Get()
   async overview(@Req() request: AuthenticatedRequest) {
     const result = await this.finance.overview(request.ayinAuth.accountId);
+    if (!result) throw new HttpException("Creator channel not found.", 404);
+    return result;
+  }
+
+  @Get("analytics")
+  async analytics(@Req() request: AuthenticatedRequest) {
+    const result = await this.monetizationAnalytics.analytics(request.ayinAuth.accountId);
+    if (!result) throw new HttpException("Creator channel not found.", 404);
+    return result;
+  }
+
+  @Get("statement")
+  async statement(@Req() request: AuthenticatedRequest) {
+    const result = await this.monetizationAnalytics.statement(request.ayinAuth.accountId);
     if (!result) throw new HttpException("Creator channel not found.", 404);
     return result;
   }
