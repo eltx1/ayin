@@ -1,0 +1,50 @@
+name: Final advisory lock compatibility fix
+
+on:
+  push:
+    branches:
+      - feature/brand-monetization-admin-control-center
+    paths:
+      - .github/workflows/final-advisory-lock-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/brand-monetization-admin-control-center
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply Prisma-compatible advisory lock
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("apps/api/src/admin/admin-governance.service.ts")
+          text = path.read_text()
+          old = '      await tx.$queryRaw`SELECT pg_advisory_xact_lock(1096379721, 1398034002)`;\n'
+          new = '''      await tx.$executeRawUnsafe(\n        "DO $$ BEGIN PERFORM pg_advisory_xact_lock(1096379721, 1398034002); END $$;",\n      );\n'''
+          if old not in text:
+              raise SystemExit("advisory lock anchor not found")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          pnpm exec prettier --write apps/api/src/admin/admin-governance.service.ts
+      - name: Commit compatibility fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/admin/admin-governance.service.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(admin): execute advisory lock without void rowset"
+          git push origin HEAD:feature/brand-monetization-admin-control-center
