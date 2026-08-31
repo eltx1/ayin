@@ -13,7 +13,11 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 
-import { AdminGuard, type AdminAuthenticatedRequest } from "../admin/admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+} from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { VideoAdService, adEventSchema } from "./video-ad.service.js";
 
@@ -78,6 +82,7 @@ export class VideoAdController {
 
 @Controller("admin/video-ads")
 @UseGuards(AuthGuard, AdminGuard)
+@RequireAdminRoles("AD_MANAGER")
 export class AdminVideoAdController {
   constructor(@Inject(VideoAdService) private readonly videoAds: VideoAdService) {}
 
