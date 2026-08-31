@@ -8,6 +8,10 @@ import {
   type RevenueDisputeStatus,
 } from "./creator-finance.repository.js";
 import {
+  PAYOUT_PROVIDER_ADAPTER,
+  type PayoutProviderAdapter,
+} from "./payout-provider.adapter.js";
+import {
   creatorPayoutRequestSchema,
   payoutProfileSchema,
   revenueDisputeCreateSchema,
@@ -38,6 +42,7 @@ export class CreatorFinanceService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CreatorFinanceRepository) private readonly finance: CreatorFinanceRepository,
     @Inject(RevenueService) private readonly revenue: RevenueService,
+    @Inject(PAYOUT_PROVIDER_ADAPTER) private readonly payoutProvider: PayoutProviderAdapter,
   ) {}
 
   async overview(accountId: string) {
@@ -59,28 +64,32 @@ export class CreatorFinanceService {
     );
     const profileReady = Boolean(profile?.legalName && profile.destinationEncrypted && profile.destinationMask);
     const thresholdMet = thresholdMicros <= 0n || availableMicros >= thresholdMicros;
+    const providerReady = Boolean(
+      profile && profile.provider === this.payoutProvider.kind && this.payoutProvider.connected,
+    );
     const progress =
       thresholdMicros <= 0n
         ? 100
-        : Number((availableMicros > 0n ? availableMicros : 0n) * 10_000n / thresholdMicros) / 100;
+        : Number(((availableMicros > 0n ? availableMicros : 0n) * 10_000n) / thresholdMicros) /
+          100;
 
     return {
       ...base,
       onHoldForPayout: microsToMoney(onHoldMicros > 0n ? onHoldMicros : 0n),
       payoutThreshold: microsToMoney(thresholdMicros),
       payoutProgressPercent: Math.min(100, Math.max(0, progress)),
-      canRequestPayout: profileReady && thresholdMet && !openPayout && profile?.provider === "MANUAL",
+      canRequestPayout: profileReady && thresholdMet && !openPayout && providerReady,
       payoutReadiness: {
         profileReady,
         thresholdMet,
         openPayout,
-        providerReady: profile?.provider === "MANUAL",
+        providerReady,
       },
       paymentProfile: this.serializeProfile(profile),
       recentLedger: ledger.items,
       providerConnection: {
-        activeProvider: "MANUAL",
-        manualPayoutEnabled: true,
+        activeProvider: this.payoutProvider.kind,
+        manualPayoutEnabled: this.payoutProvider.kind === "MANUAL" && this.payoutProvider.connected,
         externalProvidersConnected: false,
       },
     };
@@ -127,7 +136,7 @@ export class CreatorFinanceService {
           channelId: channel.id,
           provider: saved.provider,
           preferredCurrency: saved.preferredCurrency,
-          destinationMask: saved.destinationMask,
+          destinationConfigured: Boolean(saved.destinationEncrypted),
         },
       },
     });
@@ -143,7 +152,9 @@ export class CreatorFinanceService {
     if (!profile?.destinationEncrypted || !profile.destinationMask || !profile.legalName) {
       throw new Error("PAYOUT_PROFILE_INCOMPLETE");
     }
-    if (profile.provider !== "MANUAL") throw new Error("PAYOUT_PROVIDER_NOT_CONNECTED");
+    if (profile.provider !== this.payoutProvider.kind || !this.payoutProvider.connected) {
+      throw new Error("PAYOUT_PROVIDER_NOT_CONNECTED");
+    }
 
     const currency = input.currency ?? profile.preferredCurrency;
     const activePayout = await this.database.client.payout.count({
@@ -152,9 +163,18 @@ export class CreatorFinanceService {
     if (activePayout > 0) throw new Error("PAYOUT_ALREADY_IN_PROGRESS");
 
     const result = await this.revenue.createPayout(accountId, { channelId: channel.id, currency });
+    const handoff = await this.payoutProvider.createHandoff({
+      payoutId: result.payout.id,
+      channelId: channel.id,
+      amount: String(result.payout.amount),
+      currency,
+      destinationMask: profile.destinationMask,
+    });
+    if (!handoff.accepted) throw new Error("PAYOUT_PROVIDER_HANDOFF_REJECTED");
+
     await this.database.client.$executeRaw`
       UPDATE "Payout"
-      SET "provider" = 'MANUAL', "requestSource" = 'CREATOR', "paymentProfileId" = ${profile.id}::uuid
+      SET "provider" = ${this.payoutProvider.kind}, "requestSource" = 'CREATOR', "paymentProfileId" = ${profile.id}::uuid
       WHERE "id" = ${result.payout.id}::uuid
     `;
     await this.database.client.adminAuditLog.create({
@@ -166,7 +186,8 @@ export class CreatorFinanceService {
         metadata: {
           channelId: channel.id,
           currency,
-          provider: "MANUAL",
+          provider: handoff.provider,
+          providerMode: handoff.mode,
           paymentProfileId: profile.id,
         },
       },
@@ -175,9 +196,9 @@ export class CreatorFinanceService {
     return {
       ...result,
       requestSource: "CREATOR",
-      provider: "MANUAL",
+      provider: handoff.provider,
       destinationMask: profile.destinationMask,
-      paymentIntegration: "MANUAL_REVIEW",
+      paymentIntegration: handoff.mode,
     };
   }
 
@@ -211,7 +232,11 @@ export class CreatorFinanceService {
         action: "creator.revenue_dispute_created",
         entityType: "RevenueDispute",
         entityId: dispute.id,
-        metadata: { channelId: channel.id, category: dispute.category, payoutId: dispute.payoutId },
+        metadata: {
+          channelId: channel.id,
+          category: dispute.category,
+          ...(dispute.payoutId ? { payoutId: dispute.payoutId } : {}),
+        },
       },
     });
     return dispute;
@@ -240,7 +265,11 @@ export class CreatorFinanceService {
         entityType: "RevenueDispute",
         entityId: dispute.id,
         reason: input.reason,
-        metadata: { status: dispute.status, channelId: dispute.channelId, payoutId: dispute.payoutId },
+        metadata: {
+          status: dispute.status,
+          channelId: dispute.channelId,
+          ...(dispute.payoutId ? { payoutId: dispute.payoutId } : {}),
+        },
       },
     });
     return dispute;
