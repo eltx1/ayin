@@ -38,9 +38,9 @@ type Draft = {
   tvIncluded: boolean;
 };
 
-export function AdminVideos() {
+export function AdminVideos({ initialQuery = "" }: { initialQuery?: string }) {
   const [data, setData] = useState<Response | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const [status, setStatus] = useState("");
   const [visibility, setVisibility] = useState("");
   const [page, setPage] = useState(1);
