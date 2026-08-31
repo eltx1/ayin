@@ -1,30 +1,34 @@
 .page {
   margin: 0 auto;
-  max-width: 92rem;
-  padding: clamp(1.5rem, 4vw, 4rem);
+  max-width: 94rem;
+  padding: clamp(1.5rem, 4vw, 4rem) var(--page-gutter) calc(5rem + var(--ayin-safe-bottom));
 }
 
 .hero {
   background:
-    radial-gradient(circle at 86% 18%, rgb(99 209 204 / 13%), transparent 26rem),
-    linear-gradient(145deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 2%));
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 1.5rem;
-  padding: clamp(1.4rem, 4vw, 3rem);
+    radial-gradient(circle at 86% 18%, rgb(220 25 232 / 14%), transparent 27rem),
+    linear-gradient(145deg, rgb(139 24 248 / 7%), rgb(255 255 255 / 2.5%));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+  padding: clamp(1.4rem, 4vw, 3.2rem);
 }
 
 .eyebrow {
-  color: #e7c66f;
-  font-size: 0.76rem;
-  font-weight: 850;
+  background: var(--brand-gradient);
+  background-clip: text;
+  color: transparent;
+  font-size: 0.74rem;
+  font-weight: 880;
   letter-spacing: 0.16em;
   margin: 0 0 0.75rem;
   text-transform: uppercase;
 }
 
 .hero h1 {
-  font-size: clamp(2.2rem, 6vw, 4.8rem);
-  letter-spacing: -0.05em;
+  font-size: clamp(2.3rem, 6vw, 5rem);
+  letter-spacing: -0.055em;
+  line-height: 0.98;
   margin: 0;
   max-width: 58rem;
 }
@@ -41,17 +45,18 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.7rem;
-  margin-top: 1.2rem;
+  margin-top: 1.25rem;
 }
 
 .metaRow a,
 .metaRow span {
-  background: rgb(255 255 255 / 6%);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 750;
-  padding: 0.5rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 760;
+  padding: 0.5rem 0.75rem;
   text-decoration: none;
 }
 
@@ -60,7 +65,7 @@
 }
 
 .section {
-  margin-top: 2rem;
+  margin-top: clamp(2rem, 4vw, 3rem);
 }
 
 .sectionHeading {
@@ -72,6 +77,7 @@
 }
 
 .sectionHeading h2 {
+  letter-spacing: -0.03em;
   margin: 0;
 }
 
@@ -83,7 +89,7 @@
 
 .grid {
   display: grid;
-  gap: 1rem;
+  gap: clamp(0.95rem, 1.7vw, 1.35rem);
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
 }
 
@@ -94,35 +100,53 @@
 .thumbnail {
   aspect-ratio: 16 / 9;
   background:
-    radial-gradient(circle at 72% 25%, rgb(99 209 204 / 18%), transparent 30%),
-    linear-gradient(145deg, #1b2030, #0f121d);
+    radial-gradient(circle at 72% 25%, rgb(220 25 232 / 18%), transparent 30%),
+    linear-gradient(145deg, #181026, #090711);
   background-position: center;
   background-size: cover;
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 34px rgb(0 0 0 / 17%);
   overflow: hidden;
   position: relative;
 }
 
 .duration {
-  background: rgb(4 6 10 / 86%);
-  border-radius: 0.35rem;
-  bottom: 0.45rem;
+  background: rgb(3 2 8 / 84%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0.4rem;
+  bottom: 0.5rem;
   color: white;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 800;
-  padding: 0.25rem 0.4rem;
+  padding: 0.26rem 0.42rem;
   position: absolute;
-  right: 0.45rem;
+  right: 0.5rem;
 }
 
 .videoCard h3 {
   font-size: 1rem;
   line-height: 1.35;
-  margin: 0.7rem 0 0;
+  margin: 0.72rem 0 0;
 }
 
 .videoCard p {
   font-size: 0.8rem;
   margin: 0.35rem 0 0;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding-top: 1.3rem;
+  }
+
+  .hero {
+    border-radius: var(--radius-lg);
+  }
+
+  .sectionHeading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
 }
