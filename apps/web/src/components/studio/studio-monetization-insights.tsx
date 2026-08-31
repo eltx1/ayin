@@ -35,7 +35,9 @@ export function StudioMonetizationInsights() {
       setAnalytics(await getCreatorMonetizationAnalytics());
       setError("");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Monetization analytics could not be loaded.");
+      setError(
+        caught instanceof Error ? caught.message : "Monetization analytics could not be loaded.",
+      );
     }
   }, []);
 
@@ -81,7 +83,8 @@ export function StudioMonetizationInsights() {
           <span className={styles.eyebrow}>Monetization Analytics</span>
           <h2 id="monetization-insights-heading">Performance & statements</h2>
           <p className={styles.muted}>
-            Query-time creator revenue performance using attributable AYIN ledger and analytics data.
+            Query-time creator revenue performance using attributable AYIN ledger and analytics
+            data.
           </p>
         </div>
         <button
@@ -98,8 +101,8 @@ export function StudioMonetizationInsights() {
       {error ? <p className={styles.error}>{error}</p> : null}
       {analytics.mixedCurrency ? (
         <p className={styles.notice}>
-          Multiple currencies exist in the ledger. Metrics below use {analytics.currency} entries only
-          and do not perform synthetic FX conversion.
+          Multiple currencies exist in the ledger. Metrics below use {analytics.currency} entries
+          only and do not perform synthetic FX conversion.
         </p>
       ) : null}
 
@@ -115,7 +118,9 @@ export function StudioMonetizationInsights() {
       <div className={styles.grid}>
         <section className={styles.panel}>
           <h2>Daily revenue</h2>
-          <p className={styles.muted}>Recent attributable estimated and finalized creator earnings.</p>
+          <p className={styles.muted}>
+            Recent attributable estimated and finalized creator earnings.
+          </p>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
@@ -143,7 +148,9 @@ export function StudioMonetizationInsights() {
 
         <section className={styles.panel}>
           <h2>Revenue by ad source</h2>
-          <p className={styles.muted}>Only source labels present in trusted ledger records are shown.</p>
+          <p className={styles.muted}>
+            Only source labels present in trusted ledger records are shown.
+          </p>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>

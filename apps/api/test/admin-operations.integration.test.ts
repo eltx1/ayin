@@ -123,7 +123,9 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
     });
     expect(forbidden.statusCode).toBe(403);
 
-    const before = await prisma.account.findUniqueOrThrow({ where: { id: target.user.account.id } });
+    const before = await prisma.account.findUniqueOrThrow({
+      where: { id: target.user.account.id },
+    });
     const updated = await app.inject({
       method: "PATCH",
       url: `/admin/operations/staff/${target.user.account.id}/roles`,
