@@ -13,10 +13,10 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
-import { adminBadRequest } from "./admin.errors.js";
+import { adminBadRequest, adminForbidden } from "./admin.errors.js";
 import { AdminGovernanceService } from "./admin-governance.service.js";
 import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
-import { assignableAdminRoles } from "./admin.roles.js";
+import { assignableAdminRoles, isPrivilegedAdminRole } from "./admin.roles.js";
 
 const uuidSchema = z.string().uuid();
 const reasonSchema = z.string().trim().min(8).max(500);
@@ -267,11 +267,22 @@ export class AdminGovernanceController {
 
   @Get("exports/:resource")
   @RequireAdminRoles("OPERATIONS", "FINANCE_MANAGER")
-  export(@Param("resource") resourceRaw: string) {
+  export(@Req() request: AdminAuthenticatedRequest, @Param("resource") resourceRaw: string) {
     const parsed = exportResourceSchema.safeParse(resourceRaw);
     if (!parsed.success) {
       throw adminBadRequest("INVALID_EXPORT_RESOURCE", "The requested export is not available.");
     }
+
+    const privileged = request.ayinAdmin.roles.some(isPrivilegedAdminRole);
+    const permitted =
+      privileged ||
+      (parsed.data === "payouts"
+        ? request.ayinAdmin.roles.includes("FINANCE_MANAGER")
+        : request.ayinAdmin.roles.includes("OPERATIONS"));
+    if (!permitted) {
+      throw adminForbidden("This staff role cannot export the requested data resource.");
+    }
+
     return this.governance.exportCsv(parsed.data);
   }
 
