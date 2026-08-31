@@ -214,6 +214,14 @@ export function AdminDashboard() {
           <p>
             Storage mode <strong>{health.mediaStorage.mode.toUpperCase()}</strong>
           </p>
+          <p>
+            Queues <strong>{health.backgroundProcessing.queues.status}</strong>
+          </p>
+          <p className={styles.muted}>{health.backgroundProcessing.queues.reason}</p>
+          <p>
+            Workers <strong>{health.backgroundProcessing.workers.status}</strong>
+          </p>
+          <p className={styles.muted}>{health.backgroundProcessing.workers.reason}</p>
           <p className={styles.muted}>
             Direct client-to-storage upload architecture remains enabled. This view observes
             existing R2 readiness only.
