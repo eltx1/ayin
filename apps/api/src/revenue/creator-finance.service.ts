@@ -160,7 +160,7 @@ export class CreatorFinanceService {
       return profile;
     });
 
-    return this.serializeProfile(saved);
+    return this.serializeProfile(saved as CreatorPayoutProfileRow);
   }
 
   async requestPayout(accountId: string, raw: unknown) {
