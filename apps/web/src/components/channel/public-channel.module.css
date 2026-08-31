@@ -1,27 +1,31 @@
 .page {
-  --channel-accent: #63d1cc;
+  --channel-accent: var(--brand-magenta);
   margin: 0 auto;
   max-width: 112rem;
-  padding-bottom: 6rem;
+  padding-bottom: calc(6rem + var(--ayin-safe-bottom));
 }
 
 .banner {
   background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--channel-accent) 24%, #111525),
-      transparent 62%
-    ),
-    radial-gradient(circle at 78% 32%, rgb(143 121 217 / 34%), transparent 36%), #111521;
+    linear-gradient(135deg, color-mix(in srgb, var(--channel-accent) 26%, #0c0818), transparent 62%),
+    radial-gradient(circle at 78% 32%, rgb(139 24 248 / 34%), transparent 36%), #090711;
   background-position: center;
   background-size: cover;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
-  min-height: clamp(11rem, 27vw, 24rem);
+  border-bottom: 1px solid var(--border);
+  min-height: clamp(12rem, 28vw, 25rem);
+  overflow: hidden;
   position: relative;
 }
 
+.banner::before {
+  background: linear-gradient(110deg, rgb(255 255 255 / 5%), transparent 24%);
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
 .banner::after {
-  background: linear-gradient(180deg, transparent 36%, rgb(5 7 13 / 82%) 100%);
+  background: linear-gradient(180deg, transparent 30%, rgb(2 2 8 / 86%) 100%);
   content: "";
   inset: 0;
   position: absolute;
@@ -32,7 +36,7 @@
   display: grid;
   gap: 1.4rem;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  margin: clamp(-4.2rem, -5vw, -3rem) clamp(1rem, 4vw, 4.5rem) 0;
+  margin: clamp(-4.2rem, -5vw, -3rem) var(--page-gutter) 0;
   position: relative;
   z-index: 2;
 }
@@ -41,17 +45,13 @@
   align-items: center;
   aspect-ratio: 1;
   background:
-    radial-gradient(
-      circle at 35% 28%,
-      color-mix(in srgb, var(--channel-accent) 72%, white),
-      transparent 22%
-    ),
-    linear-gradient(145deg, color-mix(in srgb, var(--channel-accent) 42%, #151a2b), #111521);
+    radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--channel-accent) 74%, white), transparent 22%),
+    linear-gradient(145deg, color-mix(in srgb, var(--channel-accent) 42%, #171029), #090711);
   background-position: center;
   background-size: cover;
-  border: 4px solid #070a12;
-  border-radius: 28%;
-  box-shadow: 0 1.2rem 3rem rgb(0 0 0 / 36%);
+  border: 4px solid var(--background);
+  border-radius: 30%;
+  box-shadow: var(--shadow-elevated), 0 0 2.5rem color-mix(in srgb, var(--channel-accent) 14%, transparent);
   display: flex;
   font-size: clamp(1.5rem, 4vw, 3rem);
   font-weight: 900;
@@ -66,7 +66,8 @@
 
 .identityCopy h1 {
   font-size: clamp(2rem, 4.3vw, 4.2rem);
-  letter-spacing: -0.05em;
+  letter-spacing: -0.055em;
+  line-height: 1;
   margin: 0;
 }
 
@@ -78,7 +79,7 @@
 }
 
 .summary {
-  color: #c4cada;
+  color: var(--muted-strong);
   line-height: 1.65;
   margin: 0.8rem 0 0;
   max-width: 56rem;
@@ -93,17 +94,21 @@
 
 .subscribe,
 .editAction {
+  align-items: center;
   border-radius: 999px;
-  font-size: 0.9rem;
+  display: inline-flex;
+  font-size: 0.88rem;
   font-weight: 850;
-  min-height: 2.75rem;
-  padding: 0.72rem 1.05rem;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0.7rem 1.05rem;
 }
 
 .subscribe {
-  background: var(--foreground);
-  border: 0;
-  color: #090b11;
+  background: var(--brand-gradient);
+  border: 1px solid rgb(255 255 255 / 16%);
+  box-shadow: 0 12px 28px rgb(88 8 248 / 20%);
+  color: white;
 }
 
 .subscribe:disabled {
@@ -112,20 +117,29 @@
 }
 
 .editAction {
-  align-items: center;
-  background: rgb(255 255 255 / 8%);
-  border: 1px solid rgb(255 255 255 / 12%);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-strong);
   color: var(--foreground);
-  display: inline-flex;
   text-decoration: none;
+}
+
+.subscribe:hover:not(:disabled),
+.editAction:hover {
+  transform: translateY(-1px);
+}
+
+.editAction:hover {
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--channel-accent) 38%, var(--border));
 }
 
 .tabs {
   display: flex;
-  gap: 0.25rem;
-  margin: 1.8rem clamp(1rem, 4vw, 4.5rem) 0;
+  gap: 0.3rem;
+  margin: 1.8rem var(--page-gutter) 0;
   overflow-x: auto;
-  padding-bottom: 0.65rem;
+  padding: 0.35rem 0 0.75rem;
+  scroll-padding-inline: 0.5rem;
   scrollbar-width: none;
 }
 
@@ -134,24 +148,34 @@
 }
 
 .tab {
-  border-bottom: 2px solid transparent;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
   color: var(--muted);
   flex: 0 0 auto;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
   font-weight: 800;
-  padding: 0.8rem 0.95rem;
+  min-height: 42px;
+  padding: 0.7rem 0.95rem;
   text-decoration: none;
 }
 
+.tab:hover {
+  background: var(--surface-subtle);
+  color: white;
+}
+
 .activeTab {
-  border-bottom-color: var(--channel-accent);
+  background: color-mix(in srgb, var(--channel-accent) 11%, transparent);
+  border-color: color-mix(in srgb, var(--channel-accent) 28%, transparent);
   color: var(--foreground);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--channel-accent) 9%, transparent);
 }
 
 .content {
   display: grid;
-  gap: 2.4rem;
-  margin: 1rem clamp(1rem, 4vw, 4.5rem) 0;
+  gap: clamp(2rem, 4vw, 3rem);
+  margin: 1rem var(--page-gutter) 0;
 }
 
 .section {
@@ -161,12 +185,14 @@
 .sectionHeading {
   align-items: end;
   display: flex;
+  gap: 1rem;
   justify-content: space-between;
   margin-bottom: 1rem;
 }
 
 .sectionHeading h2 {
-  font-size: clamp(1.35rem, 2.3vw, 2rem);
+  font-size: clamp(1.4rem, 2.4vw, 2.15rem);
+  letter-spacing: -0.035em;
   margin: 0;
 }
 
@@ -177,11 +203,13 @@
 }
 
 .tvCard {
+  backdrop-filter: blur(12px);
   background:
-    linear-gradient(130deg, color-mix(in srgb, var(--channel-accent) 21%, #101521), #121522 62%),
-    #121522;
-  border: 1px solid rgb(255 255 255 / 9%);
-  border-radius: 1.3rem;
+    linear-gradient(130deg, color-mix(in srgb, var(--channel-accent) 17%, #0c0917), rgb(10 7 18 / 88%) 62%) padding-box,
+    linear-gradient(130deg, color-mix(in srgb, var(--channel-accent) 35%, transparent), rgb(255 255 255 / 7%)) border-box;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
   display: grid;
   gap: 1.2rem;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -190,14 +218,15 @@
 }
 
 .tvCard h3 {
-  font-size: clamp(1.4rem, 3vw, 2.35rem);
+  font-size: clamp(1.45rem, 3vw, 2.4rem);
+  letter-spacing: -0.035em;
   margin: 0.3rem 0;
 }
 
 .tvEyebrow,
 .status {
-  color: var(--channel-accent);
-  font-size: 0.76rem;
+  color: color-mix(in srgb, var(--channel-accent) 68%, white);
+  font-size: 0.74rem;
   font-weight: 900;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -205,55 +234,66 @@
 
 .status {
   align-self: center;
-  background: rgb(0 0 0 / 18%);
-  border: 1px solid color-mix(in srgb, var(--channel-accent) 32%, transparent);
+  background: color-mix(in srgb, var(--channel-accent) 9%, rgb(0 0 0 / 18%));
+  border: 1px solid color-mix(in srgb, var(--channel-accent) 30%, transparent);
   border-radius: 999px;
   padding: 0.6rem 0.8rem;
 }
 
 .videoGrid {
   display: grid;
-  gap: clamp(0.9rem, 1.6vw, 1.4rem);
+  gap: clamp(0.95rem, 1.7vw, 1.45rem);
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
 }
 
 .videoCard {
+  color: inherit;
   min-width: 0;
+  text-decoration: none;
 }
 
 .thumbnail {
   aspect-ratio: 16 / 9;
   background:
-    radial-gradient(
-      circle at 72% 24%,
-      color-mix(in srgb, var(--channel-accent) 30%, transparent),
-      transparent 28%
-    ),
-    linear-gradient(145deg, #1b2030, #0f121d);
+    radial-gradient(circle at 72% 24%, color-mix(in srgb, var(--channel-accent) 28%, transparent), transparent 30%),
+    linear-gradient(145deg, #171026, #090711);
   background-position: center;
   background-size: cover;
-  border: 1px solid rgb(255 255 255 / 7%);
-  border-radius: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
   overflow: hidden;
   position: relative;
+  transition:
+    border-color var(--duration-fast) ease,
+    box-shadow var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+}
+
+.videoCard:hover .thumbnail {
+  border-color: color-mix(in srgb, var(--channel-accent) 34%, transparent);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 28%);
+  transform: translateY(-2px);
 }
 
 .duration {
-  background: rgb(4 6 10 / 86%);
-  border-radius: 0.35rem;
-  bottom: 0.45rem;
+  backdrop-filter: blur(8px);
+  background: rgb(3 2 8 / 84%);
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0.4rem;
+  bottom: 0.5rem;
   color: white;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 800;
-  padding: 0.25rem 0.4rem;
+  padding: 0.26rem 0.42rem;
   position: absolute;
-  right: 0.45rem;
+  right: 0.5rem;
 }
 
 .videoCard h3 {
   font-size: 1rem;
   line-height: 1.35;
-  margin: 0.7rem 0 0;
+  margin: 0.72rem 0 0;
 }
 
 .meta {
@@ -264,16 +304,28 @@
 
 .playlistGrid {
   display: grid;
-  gap: 0.9rem;
+  gap: 0.95rem;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
 }
 
 .playlistCard,
 .about {
-  background: rgb(255 255 255 / 4%);
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 1rem;
+  background: linear-gradient(145deg, rgb(255 255 255 / 4%), rgb(139 24 248 / 2.5%));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 12%);
   padding: 1.2rem;
+}
+
+.playlistCard {
+  color: inherit;
+  text-decoration: none;
+}
+
+.playlistCard:hover {
+  background: rgb(139 24 248 / 5%);
+  border-color: color-mix(in srgb, var(--channel-accent) 36%, transparent);
+  transform: translateY(-2px);
 }
 
 .playlistCard h3,
@@ -288,7 +340,7 @@
 }
 
 .about {
-  max-width: 58rem;
+  max-width: 60rem;
 }
 
 .about p {
@@ -298,8 +350,8 @@
 
 .about dl {
   display: grid;
-  gap: 0.8rem;
-  grid-template-columns: max-content 1fr;
+  gap: 0.8rem 1.2rem;
+  grid-template-columns: max-content minmax(0, 1fr);
   margin: 1.5rem 0 0;
 }
 
@@ -325,6 +377,11 @@
   .actions {
     grid-column: 1 / -1;
     padding-bottom: 0;
+    width: 100%;
+  }
+
+  .actions > * {
+    flex: 1 1 auto;
   }
 
   .identityCopy h1 {
@@ -340,27 +397,39 @@
   }
 }
 
+@media (max-width: 480px) {
+  .identity {
+    gap: 0.85rem;
+    grid-template-columns: 5.4rem minmax(0, 1fr);
+  }
+
+  .avatar {
+    border-width: 3px;
+    width: 5.4rem;
+  }
+
+  .summary {
+    font-size: 0.92rem;
+  }
+
+  .sectionHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .about dl {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (min-width: 1500px) and (min-height: 800px) {
   .tab,
   .subscribe,
   .editAction {
-    font-size: 1.05rem;
+    font-size: 1.02rem;
   }
 
   .videoGrid {
     grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
   }
-}
-
-.playlistCard {
-  color: inherit;
-  text-decoration: none;
-  transition:
-    border-color 140ms ease,
-    transform 140ms ease;
-}
-
-.playlistCard:hover {
-  border-color: color-mix(in srgb, var(--channel-accent) 42%, transparent);
-  transform: translateY(-2px);
 }
