@@ -18,7 +18,9 @@
   background: #000;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-elevated), 0 0 3rem rgb(88 8 248 / 8%);
+  box-shadow:
+    var(--shadow-elevated),
+    0 0 3rem rgb(88 8 248 / 8%);
   height: min(calc(100dvh - 9rem - var(--ayin-safe-bottom)), 880px);
   margin: 0 auto;
   max-width: 34rem;

@@ -7,10 +7,13 @@
   backdrop-filter: blur(18px) saturate(140%);
   background:
     linear-gradient(rgb(7 5 16 / 76%), rgb(5 3 12 / 82%)) padding-box,
-    linear-gradient(145deg, rgb(139 24 248 / 45%), rgb(220 25 232 / 26%), rgb(255 255 255 / 10%)) border-box;
+    linear-gradient(145deg, rgb(139 24 248 / 45%), rgb(220 25 232 / 26%), rgb(255 255 255 / 10%))
+      border-box;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-soft), 0 0 2.5rem rgb(88 8 248 / 10%);
+  box-shadow:
+    var(--shadow-soft),
+    0 0 2.5rem rgb(88 8 248 / 10%);
   color: #fff;
   cursor: pointer;
   display: flex;

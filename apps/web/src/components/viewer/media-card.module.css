@@ -145,7 +145,9 @@
 @media (hover: hover) and (pointer: fine) {
   .card:hover .art {
     border-color: rgb(220 25 232 / 27%);
-    box-shadow: 0 20px 48px rgb(0 0 0 / 34%), 0 0 2rem rgb(88 8 248 / 12%);
+    box-shadow:
+      0 20px 48px rgb(0 0 0 / 34%),
+      0 0 2rem rgb(88 8 248 / 12%);
     transform: translateY(-4px);
   }
 
@@ -160,7 +162,9 @@
 
 .card:focus-visible .art {
   border-color: var(--focus-ring);
-  box-shadow: 0 0 0 1px var(--focus-ring), var(--brand-glow);
+  box-shadow:
+    0 0 0 1px var(--focus-ring),
+    var(--brand-glow);
 }
 
 .skeleton {

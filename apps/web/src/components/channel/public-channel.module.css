@@ -7,7 +7,11 @@
 
 .banner {
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--channel-accent) 26%, #0c0818), transparent 62%),
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--channel-accent) 26%, #0c0818),
+      transparent 62%
+    ),
     radial-gradient(circle at 78% 32%, rgb(139 24 248 / 34%), transparent 36%), #090711;
   background-position: center;
   background-size: cover;
@@ -45,13 +49,19 @@
   align-items: center;
   aspect-ratio: 1;
   background:
-    radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--channel-accent) 74%, white), transparent 22%),
+    radial-gradient(
+      circle at 35% 28%,
+      color-mix(in srgb, var(--channel-accent) 74%, white),
+      transparent 22%
+    ),
     linear-gradient(145deg, color-mix(in srgb, var(--channel-accent) 42%, #171029), #090711);
   background-position: center;
   background-size: cover;
   border: 4px solid var(--background);
   border-radius: 30%;
-  box-shadow: var(--shadow-elevated), 0 0 2.5rem color-mix(in srgb, var(--channel-accent) 14%, transparent);
+  box-shadow:
+    var(--shadow-elevated),
+    0 0 2.5rem color-mix(in srgb, var(--channel-accent) 14%, transparent);
   display: flex;
   font-size: clamp(1.5rem, 4vw, 3rem);
   font-weight: 900;
@@ -205,8 +215,18 @@
 .tvCard {
   backdrop-filter: blur(12px);
   background:
-    linear-gradient(130deg, color-mix(in srgb, var(--channel-accent) 17%, #0c0917), rgb(10 7 18 / 88%) 62%) padding-box,
-    linear-gradient(130deg, color-mix(in srgb, var(--channel-accent) 35%, transparent), rgb(255 255 255 / 7%)) border-box;
+    linear-gradient(
+        130deg,
+        color-mix(in srgb, var(--channel-accent) 17%, #0c0917),
+        rgb(10 7 18 / 88%) 62%
+      )
+      padding-box,
+    linear-gradient(
+        130deg,
+        color-mix(in srgb, var(--channel-accent) 35%, transparent),
+        rgb(255 255 255 / 7%)
+      )
+      border-box;
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
@@ -255,7 +275,11 @@
 .thumbnail {
   aspect-ratio: 16 / 9;
   background:
-    radial-gradient(circle at 72% 24%, color-mix(in srgb, var(--channel-accent) 28%, transparent), transparent 30%),
+    radial-gradient(
+      circle at 72% 24%,
+      color-mix(in srgb, var(--channel-accent) 28%, transparent),
+      transparent 30%
+    ),
     linear-gradient(145deg, #171026, #090711);
   background-position: center;
   background-size: cover;

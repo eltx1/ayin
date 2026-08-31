@@ -149,9 +149,26 @@
 .core {
   aspect-ratio: 1.2;
   background:
-    radial-gradient(circle at 48% 48%, rgb(255 255 255 / 96%) 0 1.4%, rgb(220 25 232 / 90%) 1.6% 3.2%, transparent 3.5%),
-    radial-gradient(ellipse at 50% 50%, rgb(139 24 248 / 42%) 0 18%, rgb(220 25 232 / 20%) 32%, transparent 62%),
-    conic-gradient(from 210deg, rgb(88 8 248 / 74%), rgb(220 25 232 / 54%), rgb(248 58 66 / 30%), rgb(255 122 50 / 22%), rgb(88 8 248 / 74%));
+    radial-gradient(
+      circle at 48% 48%,
+      rgb(255 255 255 / 96%) 0 1.4%,
+      rgb(220 25 232 / 90%) 1.6% 3.2%,
+      transparent 3.5%
+    ),
+    radial-gradient(
+      ellipse at 50% 50%,
+      rgb(139 24 248 / 42%) 0 18%,
+      rgb(220 25 232 / 20%) 32%,
+      transparent 62%
+    ),
+    conic-gradient(
+      from 210deg,
+      rgb(88 8 248 / 74%),
+      rgb(220 25 232 / 54%),
+      rgb(248 58 66 / 30%),
+      rgb(255 122 50 / 22%),
+      rgb(88 8 248 / 74%)
+    );
   border: 1px solid rgb(255 255 255 / 10%);
   border-radius: 46% 54% 50% 50% / 58% 42% 58% 42%;
   box-shadow:

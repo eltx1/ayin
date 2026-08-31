@@ -70,7 +70,9 @@
   background: rgb(8 5 18 / 96%);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-elevated), 0 0 2rem rgb(88 8 248 / 8%);
+  box-shadow:
+    var(--shadow-elevated),
+    0 0 2rem rgb(88 8 248 / 8%);
   inset: calc(100% + 0.5rem) 0 auto;
   list-style: none;
   margin: 0;

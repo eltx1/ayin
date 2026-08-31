@@ -203,12 +203,7 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
       {productControls?.deviceVisibility.mobile !== false ? (
         <nav aria-label="Mobile navigation" className={styles.mobileNavigation}>
-          <NavigationLinks
-            flags={flags}
-            items={navigation}
-            pathname={pathname}
-            surface="mobile"
-          />
+          <NavigationLinks flags={flags} items={navigation} pathname={pathname} surface="mobile" />
         </nav>
       ) : null}
     </TvFocusScope>

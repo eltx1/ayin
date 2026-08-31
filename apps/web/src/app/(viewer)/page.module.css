@@ -6,8 +6,12 @@
 
 .accountStrip {
   backdrop-filter: blur(12px);
-  background:
-    linear-gradient(90deg, rgb(88 8 248 / 7%), rgb(220 25 232 / 4%) 48%, rgb(255 255 255 / 1.5%));
+  background: linear-gradient(
+    90deg,
+    rgb(88 8 248 / 7%),
+    rgb(220 25 232 / 4%) 48%,
+    rgb(255 255 255 / 1.5%)
+  );
   border-block: 1px solid var(--border);
   margin-top: -1.2rem;
   padding: 1.25rem var(--shell-gutter);

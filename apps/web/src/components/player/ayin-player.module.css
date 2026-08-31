@@ -5,7 +5,9 @@
       border-box;
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-elevated), 0 0 3rem rgb(88 8 248 / 8%);
+  box-shadow:
+    var(--shadow-elevated),
+    0 0 3rem rgb(88 8 248 / 8%);
   display: grid;
   gap: 0.7rem;
   overflow: hidden;

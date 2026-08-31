@@ -8,9 +8,8 @@
   justify-content: center;
   min-height: 100dvh;
   overflow: hidden;
-  padding: max(5.5rem, calc(4.5rem + var(--ayin-safe-top)))
-    max(1rem, var(--ayin-safe-right)) max(2rem, var(--ayin-safe-bottom))
-    max(1rem, var(--ayin-safe-left));
+  padding: max(5.5rem, calc(4.5rem + var(--ayin-safe-top))) max(1rem, var(--ayin-safe-right))
+    max(2rem, var(--ayin-safe-bottom)) max(1rem, var(--ayin-safe-left));
   position: relative;
 }
 
@@ -59,7 +58,9 @@
       border-box;
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-floating), 0 0 4rem rgb(88 8 248 / 11%);
+  box-shadow:
+    var(--shadow-floating),
+    0 0 4rem rgb(88 8 248 / 11%);
   max-width: 30rem;
   padding: clamp(1.65rem, 5vw, 3rem);
   position: relative;

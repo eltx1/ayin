@@ -15,8 +15,7 @@
   gap: clamp(0.9rem, 2vw, 1.6rem);
   grid-template-columns: auto minmax(0, 1fr) auto;
   min-height: 5rem;
-  padding:
-    var(--ayin-safe-top) max(var(--shell-gutter), var(--ayin-safe-right)) 0
+  padding: var(--ayin-safe-top) max(var(--shell-gutter), var(--ayin-safe-right)) 0
     max(var(--shell-gutter), var(--ayin-safe-left));
   position: sticky;
   top: 0;

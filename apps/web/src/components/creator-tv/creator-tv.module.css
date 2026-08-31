@@ -1,6 +1,10 @@
 .page {
   background:
-    radial-gradient(circle at 12% 12%, color-mix(in srgb, var(--tv-accent) 22%, transparent), transparent 34%),
+    radial-gradient(
+      circle at 12% 12%,
+      color-mix(in srgb, var(--tv-accent) 22%, transparent),
+      transparent 34%
+    ),
     radial-gradient(circle at 88% 8%, rgb(139 24 248 / 12%), transparent 30rem), var(--background);
   color: var(--foreground);
   min-height: 100dvh;
@@ -30,7 +34,12 @@
 }
 
 .hero::after {
-  background: linear-gradient(110deg, rgb(4 3 11 / 84%) 0%, rgb(4 3 11 / 46%) 52%, transparent 100%);
+  background: linear-gradient(
+    110deg,
+    rgb(4 3 11 / 84%) 0%,
+    rgb(4 3 11 / 46%) 52%,
+    transparent 100%
+  );
   content: "";
   inset: 0;
   pointer-events: none;

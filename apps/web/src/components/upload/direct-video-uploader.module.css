@@ -2,10 +2,13 @@
   backdrop-filter: blur(16px);
   background:
     linear-gradient(rgb(14 10 27 / 90%), rgb(8 6 16 / 94%)) padding-box,
-    linear-gradient(145deg, rgb(139 24 248 / 38%), rgb(220 25 232 / 18%), rgb(255 255 255 / 7%)) border-box;
+    linear-gradient(145deg, rgb(139 24 248 / 38%), rgb(220 25 232 / 18%), rgb(255 255 255 / 7%))
+      border-box;
   border: 1px solid transparent;
   border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-elevated), 0 0 4rem rgb(88 8 248 / 9%);
+  box-shadow:
+    var(--shadow-elevated),
+    0 0 4rem rgb(88 8 248 / 9%);
   margin: 0 auto;
   padding: clamp(24px, 4vw, 44px);
   width: min(760px, 100%);
