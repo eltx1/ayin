@@ -53,40 +53,6 @@ cleanup_failed_release() {
 }
 trap cleanup_failed_release ERR
 
-echo "Creating release $release_id"
-git clone --filter=blob:none --no-checkout "$AYIN_REPO_URL" "$release_dir"
-git -C "$release_dir" fetch --depth=1 origin "$GIT_SHA"
-git -C "$release_dir" checkout --detach "$GIT_SHA"
-
-cd "$release_dir"
-corepack enable
-corepack prepare pnpm@11.24.0 --activate
-command -v pnpm >/dev/null 2>&1 || {
-  echo "error: pnpm was not activated by Corepack" >&2
-  exit 69
-}
-pnpm install --frozen-lockfile
-pnpm db:generate
-
-# Build the exact release before any production database mutation. The existing API environment
-# remains available to build-time validation without copying secrets into the release directory.
-set -a
-# shellcheck disable=SC1090
-source "$AYIN_API_ENV_FILE"
-set +a
-pnpm build
-
-# Only apply forward, backward-compatible migrations after the release candidate has built.
-pnpm db:migrate:deploy
-
-ln -sfn "$release_dir" "${AYIN_CURRENT_LINK}.next"
-mv -Tf "${AYIN_CURRENT_LINK}.next" "$AYIN_CURRENT_LINK"
-
-export AYIN_CURRENT_DIR="$AYIN_CURRENT_LINK"
-export AYIN_WEB_ENV_FILE AYIN_API_ENV_FILE
-pm2 startOrReload "$AYIN_CURRENT_LINK/deploy/ecosystem.config.cjs" --update-env
-pm2 save
-
 check_health() {
   local name="$1"
   local url="$2"
@@ -124,6 +90,20 @@ check_rollback_api_health() {
   return 1
 }
 
+activate_current_application() {
+  export AYIN_CURRENT_DIR="$AYIN_CURRENT_LINK"
+  export AYIN_WEB_ENV_FILE AYIN_API_ENV_FILE
+  if ! pm2 startOrReload "$AYIN_CURRENT_LINK/deploy/ecosystem.config.cjs" --update-env; then
+    echo "error: PM2 could not activate the current application release" >&2
+    return 1
+  fi
+  if ! pm2 save; then
+    echo "error: PM2 state could not be persisted" >&2
+    return 1
+  fi
+  return 0
+}
+
 rollback_application() {
   if [[ -z "$previous_release" || ! -d "$previous_release" ]]; then
     echo "error: no valid previous application release is available for automatic rollback" >&2
@@ -134,14 +114,8 @@ rollback_application() {
   ln -sfn "$previous_release" "${AYIN_CURRENT_LINK}.rollback"
   mv -Tf "${AYIN_CURRENT_LINK}.rollback" "$AYIN_CURRENT_LINK"
 
-  export AYIN_CURRENT_DIR="$AYIN_CURRENT_LINK"
-  export AYIN_WEB_ENV_FILE AYIN_API_ENV_FILE
-  if ! pm2 startOrReload "$AYIN_CURRENT_LINK/deploy/ecosystem.config.cjs" --update-env; then
-    echo "error: PM2 could not reload the previous application release" >&2
-    return 1
-  fi
-  if ! pm2 save; then
-    echo "error: PM2 state could not be persisted after rollback" >&2
+  if ! activate_current_application; then
+    echo "error: PM2 could not reactivate the previous application release" >&2
     return 1
   fi
 
@@ -154,14 +128,52 @@ rollback_application() {
   return 0
 }
 
-if ! check_health "web" "$AYIN_WEB_HEALTH_URL" || ! check_health "api readiness" "$AYIN_API_HEALTH_URL"; then
-  echo "Deployment health checks failed." >&2
+rollback_after_failure() {
+  local reason="$1"
+  echo "$reason" >&2
   if rollback_application; then
     echo "The previous application release has been restored automatically." >&2
   else
     echo "Automatic application rollback failed or was unavailable; operator intervention is required." >&2
   fi
   exit 70
+}
+
+echo "Creating release $release_id"
+git clone --filter=blob:none --no-checkout "$AYIN_REPO_URL" "$release_dir"
+git -C "$release_dir" fetch --depth=1 origin "$GIT_SHA"
+git -C "$release_dir" checkout --detach "$GIT_SHA"
+
+cd "$release_dir"
+corepack enable
+corepack prepare pnpm@11.24.0 --activate
+command -v pnpm >/dev/null 2>&1 || {
+  echo "error: pnpm was not activated by Corepack" >&2
+  exit 69
+}
+pnpm install --frozen-lockfile
+pnpm db:generate
+
+# Build the exact release before any production database mutation. The existing API environment
+# remains available to build-time validation without copying secrets into the release directory.
+set -a
+# shellcheck disable=SC1090
+source "$AYIN_API_ENV_FILE"
+set +a
+pnpm build
+
+# Only apply forward, backward-compatible migrations after the release candidate has built.
+pnpm db:migrate:deploy
+
+ln -sfn "$release_dir" "${AYIN_CURRENT_LINK}.next"
+mv -Tf "${AYIN_CURRENT_LINK}.next" "$AYIN_CURRENT_LINK"
+
+if ! activate_current_application; then
+  rollback_after_failure "Application activation failed after switching the release symlink."
+fi
+
+if ! check_health "web" "$AYIN_WEB_HEALTH_URL" || ! check_health "api readiness" "$AYIN_API_HEALTH_URL"; then
+  rollback_after_failure "Deployment health checks failed."
 fi
 
 trap - ERR
