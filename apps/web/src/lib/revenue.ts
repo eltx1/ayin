@@ -11,7 +11,7 @@ export interface CreatorPaymentProfile {
   destinationMask: string | null;
   countryCode: string | null;
   identityStatus: "NOT_STARTED" | "PENDING" | "VERIFIED" | "REJECTED";
-  taxStatus: "NOT_PROVIDED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION";
+  taxStatus: "NOT_PROVIDED" | "PENDING" | "VALID" | "REJECTED";
   hasDestination: boolean;
   createdAt: string;
   updatedAt: string;
@@ -82,6 +82,27 @@ export interface CreatorRevenueOverview {
   }>;
 }
 
+export interface CreatorMonetizationAnalytics {
+  channel: { id: string; name: string; handle: string };
+  currency: string;
+  mixedCurrency: boolean;
+  windowDays: number;
+  videoStarts: number;
+  monetizedAdStarts: number;
+  creatorRpm: string | null;
+  creatorCpm: string | null;
+  finalizedRevenue30d: string;
+  byDay: Array<{ day: string; estimated: string; finalized: string }>;
+  byAdSource: Array<{ source: string; estimated: string; finalized: string }>;
+  countryRevenueAttribution: {
+    available: false;
+    reason: string;
+    rows: Array<{ country: string; revenue: string }>;
+  };
+  estimatedPayoutDate: string | null;
+  payoutTimingReason: string;
+}
+
 export interface AdminRevenueSettings {
   defaultCreatorRevenueShareBps: number;
   payoutThresholdMicros: string;
@@ -109,6 +130,28 @@ async function revenueFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getCreatorRevenue() {
   return revenueFetch<CreatorRevenueOverview>("/creator/studio/revenue");
+}
+
+export function getCreatorMonetizationAnalytics() {
+  return revenueFetch<CreatorMonetizationAnalytics>("/creator/studio/revenue/analytics");
+}
+
+export async function downloadCreatorStatement() {
+  const payload = await revenueFetch<{
+    filename: string;
+    generatedAt: string;
+    channel: { id: string; name: string; handle: string };
+    format: "CSV";
+    content: string;
+  }>("/creator/studio/revenue/statement");
+  const blob = new Blob([payload.content], { type: "text/csv;charset=utf-8" });
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = payload.filename;
+  anchor.click();
+  URL.revokeObjectURL(href);
+  return payload;
 }
 
 export function getCreatorPaymentProfile() {
