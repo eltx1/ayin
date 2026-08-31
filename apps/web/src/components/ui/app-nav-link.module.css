@@ -1,0 +1,12 @@
+.active {
+  background: linear-gradient(90deg, rgb(139 24 248 / 16%), rgb(220 25 232 / 7%)) !important;
+  border-color: rgb(220 25 232 / 24%) !important;
+  box-shadow: inset 3px 0 0 rgb(220 25 232 / 72%), 0 8px 22px rgb(88 8 248 / 10%);
+  color: white !important;
+}
+
+@media (max-width: 900px) {
+  .active {
+    box-shadow: inset 0 -2px 0 rgb(220 25 232 / 72%), 0 8px 22px rgb(88 8 248 / 8%);
+  }
+}
