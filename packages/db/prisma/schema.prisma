@@ -322,6 +322,8 @@ model Account {
   assignedModerationCases ModerationCase[]           @relation("ModerationAssignee")
   contentSeedBatches      ContentSeedBatch[]
   communityPosts          CommunityPost[]
+  revenueDisputesCreated  RevenueDispute[] @relation("RevenueDisputeCreator")
+  revenueDisputesResolved RevenueDispute[] @relation("RevenueDisputeResolver")
 
   @@index([status, createdAt])
 }
@@ -384,6 +386,8 @@ model Channel {
   payouts            Payout[]
   contentSeedBatches ContentSeedBatch[]
   communityPosts     CommunityPost[]
+  payoutProfile      CreatorPayoutProfile?
+  revenueDisputes    RevenueDispute[]
 
   @@index([status, createdAt])
 }
@@ -971,6 +975,9 @@ model Payout {
   amount            Decimal      @db.Decimal(20, 6)
   currency          String       @db.Char(3)
   externalReference String?      @db.VarChar(255)
+  provider          String       @default("MANUAL") @db.VarChar(32)
+  requestSource     String       @default("ADMIN") @db.VarChar(16)
+  paymentProfileId  String?      @db.Uuid
   requestedAt       DateTime     @default(now())
   processedAt       DateTime?
   paidAt            DateTime?
@@ -978,11 +985,15 @@ model Payout {
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
-  channel       Channel               @relation(fields: [channelId], references: [id], onDelete: Restrict)
-  ledgerEntries EarningsLedgerEntry[]
+  channel        Channel               @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  paymentProfile CreatorPayoutProfile? @relation(fields: [paymentProfileId], references: [id], onDelete: SetNull)
+  ledgerEntries  EarningsLedgerEntry[]
+  disputes       RevenueDispute[]
 
   @@index([channelId, status, requestedAt])
   @@index([status, requestedAt])
+  @@index([provider, status, requestedAt])
+  @@index([paymentProfileId])
 }
 
 model ContentSeedBatch {

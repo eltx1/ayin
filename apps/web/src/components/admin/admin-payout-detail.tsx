@@ -69,7 +69,8 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
         if (active) setDetail(value);
       })
       .catch((error) => {
-        if (active) setMessage(error instanceof Error ? error.message : "Payout could not be loaded.");
+        if (active)
+          setMessage(error instanceof Error ? error.message : "Payout could not be loaded.");
       });
     return () => {
       active = false;

@@ -17,6 +17,9 @@ model CreatorPayoutProfile {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
+  channel Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  payouts Payout[]
+
   @@index([provider, updatedAt])
 }
 
@@ -33,6 +36,11 @@ model RevenueDispute {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   resolvedAt          DateTime?
+
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  payout     Payout?  @relation(fields: [payoutId], references: [id], onDelete: SetNull)
+  createdBy  Account  @relation("RevenueDisputeCreator", fields: [createdByAccountId], references: [id], onDelete: Restrict)
+  resolvedBy Account? @relation("RevenueDisputeResolver", fields: [resolvedByAccountId], references: [id], onDelete: SetNull)
 
   @@index([channelId, status, createdAt])
   @@index([status, createdAt])
