@@ -3,6 +3,8 @@ import { Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module.js";
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
+import { AdminPayoutDestinationController } from "./admin-payout-destination.controller.js";
+import { AdminPayoutDestinationService } from "./admin-payout-destination.service.js";
 import { CreatorFinanceRepository } from "./creator-finance.repository.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
 import { CreatorMonetizationAnalyticsService } from "./creator-monetization-analytics.service.js";
@@ -17,13 +19,14 @@ import { RevenueService } from "./revenue.service.js";
 
 @Module({
   imports: [DatabaseModule, AuthModule, AdminModule],
-  controllers: [CreatorRevenueController, AdminRevenueController],
+  controllers: [CreatorRevenueController, AdminRevenueController, AdminPayoutDestinationController],
   providers: [
     RevenueService,
     CreatorFinanceRepository,
     CreatorFinanceService,
     CreatorMonetizationAnalyticsService,
     CreatorMonetizationNotificationService,
+    AdminPayoutDestinationService,
     ManualPayoutProviderAdapter,
     {
       provide: PAYOUT_PROVIDER_ADAPTER,
