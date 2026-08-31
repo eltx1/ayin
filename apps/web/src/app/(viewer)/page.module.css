@@ -1,12 +1,25 @@
 .homeBody {
   display: grid;
-  gap: clamp(2.4rem, 5vw, 4.5rem);
+  gap: clamp(2.6rem, 5vw, 4.8rem);
   padding-bottom: clamp(4rem, 8vw, 7rem);
 }
 
 .accountStrip {
-  background: linear-gradient(90deg, rgb(255 255 255 / 4%), rgb(255 255 255 / 1%));
-  border-block: 1px solid rgb(255 255 255 / 7%);
+  backdrop-filter: blur(12px);
+  background:
+    linear-gradient(90deg, rgb(88 8 248 / 7%), rgb(220 25 232 / 4%) 48%, rgb(255 255 255 / 1.5%));
+  border-block: 1px solid var(--border);
   margin-top: -1.2rem;
-  padding: 1.2rem var(--shell-gutter);
+  padding: 1.25rem var(--shell-gutter);
+}
+
+@media (max-width: 560px) {
+  .homeBody {
+    gap: 2.1rem;
+  }
+
+  .accountStrip {
+    margin-top: -0.7rem;
+    padding-block: 1rem;
+  }
 }
