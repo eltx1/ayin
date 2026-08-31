@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -22,8 +23,14 @@ export default function StudioLayout({ children }: { children: ReactNode }) {
     <div className={styles.shell}>
       <div className={styles.frame}>
         <aside className={styles.sidebar}>
-          <Link className={styles.brand} href="/studio">
-            AYIN STUDIO
+          <Link aria-label="AYIN Creator Studio" className={styles.brand} href="/studio">
+            <span className={styles.brandLogo}>
+              <Image alt="" height={72} priority src="/brand/ayin-logo.png" width={72} />
+            </span>
+            <span>
+              <strong>AYIN</strong>
+              <small>Creator Studio</small>
+            </span>
           </Link>
           <nav aria-label="Creator Studio" className={styles.nav}>
             {navigation.map(([label, href]) => (
