@@ -19,6 +19,28 @@ export interface AdminAnalyticsMetrics {
   errors: number;
 }
 
+export interface AdminGlobalSearchResult {
+  kind: "ACCOUNT" | "CHANNEL" | "VIDEO" | "PAYOUT";
+  id: string;
+  label: string;
+  detail: string;
+  href: string;
+}
+
+export interface AdminSystemHealth {
+  checkedAt: string;
+  api: { status: "OK" };
+  database: { status: "OK" | "ERROR"; reason: string | null };
+  mediaStorage: {
+    status: "READY" | "TEST" | "DEVELOPMENT";
+    mode: "r2" | "development" | "e2e";
+    r2Configured: boolean;
+    bucketConfigured: boolean;
+    region: string;
+    directUploadArchitecture: true;
+  };
+}
+
 async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
@@ -36,6 +58,16 @@ export function getAdminDashboard() {
 
 export function getAdminAnalytics() {
   return adminFetch<AdminAnalyticsMetrics>("/admin/analytics");
+}
+
+export function searchAdmin(query: string) {
+  return adminFetch<{ query: string; items: AdminGlobalSearchResult[] }>(
+    `/admin/control/search?query=${encodeURIComponent(query)}`,
+  );
+}
+
+export function getAdminSystemHealth() {
+  return adminFetch<AdminSystemHealth>("/admin/control/health");
 }
 
 export function getAdminCollection<T>(
