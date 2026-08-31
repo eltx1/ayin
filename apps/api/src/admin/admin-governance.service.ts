@@ -113,7 +113,9 @@ export class AdminGovernanceService {
     return this.database.client.$transaction(async (tx) => {
       // Serialize staff-role mutations so concurrent cross-account demotions cannot remove every
       // superadmin. The transaction-scoped advisory lock is automatically released on commit/rollback.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(1096379721, 1398034002)`;
+      await tx.$executeRawUnsafe(
+        "DO $$ BEGIN PERFORM pg_advisory_xact_lock(1096379721, 1398034002); END $$;",
+      );
 
       // AdminGuard ran before the transaction. Revalidate after acquiring the lock so a queued
       // request from a superadmin who was just demoted cannot commit another role mutation.
