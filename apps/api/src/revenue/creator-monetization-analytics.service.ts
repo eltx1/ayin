@@ -2,8 +2,8 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 
-function decimalToMicros(value: string): bigint {
-  const normalized = value.trim();
+function decimalToMicros(value: unknown): bigint {
+  const normalized = String(value ?? "0").trim();
   const negative = normalized.startsWith("-");
   const unsigned = negative ? normalized.slice(1) : normalized;
   const [whole = "0", fraction = ""] = unsigned.split(".");
@@ -30,6 +30,30 @@ function csv(value: unknown): string {
   return `"${text.replaceAll('"', '""')}"`;
 }
 
+interface CurrencyRow {
+  currency: string;
+}
+
+interface MixedCurrencyRow {
+  mixedCurrency: boolean;
+}
+
+interface FinalizedRow {
+  amount: unknown;
+}
+
+interface DailyRevenueRow {
+  day: string;
+  estimated: unknown;
+  finalized: unknown;
+}
+
+interface SourceRevenueRow {
+  source: string;
+  estimated: unknown;
+  finalized: unknown;
+}
+
 @Injectable()
 export class CreatorMonetizationAnalyticsService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
@@ -40,20 +64,67 @@ export class CreatorMonetizationAnalyticsService {
     const from30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const from90d = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
 
-    const [entries, videoStarts30d, adStarts30d] = await Promise.all([
-      this.database.client.earningsLedgerEntry.findMany({
-        where: { channelId: channel.id, occurredAt: { gte: from90d } },
-        select: {
-          amount: true,
-          state: true,
-          currency: true,
-          adSource: true,
-          occurredAt: true,
-          periodStart: true,
-        },
-        orderBy: { occurredAt: "asc" },
-        take: 10_000,
+    const [profile, latestCurrencyRows] = await Promise.all([
+      this.database.client.creatorPayoutProfile.findUnique({
+        where: { channelId: channel.id },
+        select: { preferredCurrency: true },
       }),
+      this.database.client.$queryRaw<CurrencyRow[]>`
+        SELECT "currency"
+        FROM "EarningsLedgerEntry"
+        WHERE "channelId" = ${channel.id}::uuid
+        ORDER BY "occurredAt" DESC, "id" DESC
+        LIMIT 1
+      `,
+    ]);
+    const currency = profile?.preferredCurrency ?? latestCurrencyRows[0]?.currency ?? "USD";
+
+    const [
+      finalizedRows,
+      dailyRows,
+      sourceRows,
+      mixedCurrencyRows,
+      videoStarts30d,
+      adStarts30d,
+    ] = await Promise.all([
+      this.database.client.$queryRaw<FinalizedRow[]>`
+        SELECT COALESCE(SUM("amount"), 0) AS "amount"
+        FROM "EarningsLedgerEntry"
+        WHERE "channelId" = ${channel.id}::uuid
+          AND "currency" = ${currency}
+          AND "state" IN ('FINAL', 'ADJUSTMENT')
+          AND "occurredAt" >= ${from30d}
+      `,
+      this.database.client.$queryRaw<DailyRevenueRow[]>`
+        SELECT
+          TO_CHAR(DATE_TRUNC('day', COALESCE("periodStart", "occurredAt")), 'YYYY-MM-DD') AS "day",
+          COALESCE(SUM(CASE WHEN "state" = 'ESTIMATED' THEN "amount" ELSE 0 END), 0) AS "estimated",
+          COALESCE(SUM(CASE WHEN "state" IN ('FINAL', 'ADJUSTMENT') THEN "amount" ELSE 0 END), 0) AS "finalized"
+        FROM "EarningsLedgerEntry"
+        WHERE "channelId" = ${channel.id}::uuid
+          AND "currency" = ${currency}
+          AND "occurredAt" >= ${from90d}
+        GROUP BY DATE_TRUNC('day', COALESCE("periodStart", "occurredAt"))
+        ORDER BY DATE_TRUNC('day', COALESCE("periodStart", "occurredAt")) DESC
+      `,
+      this.database.client.$queryRaw<SourceRevenueRow[]>`
+        SELECT
+          COALESCE(NULLIF(BTRIM("adSource"), ''), 'UNATTRIBUTED') AS "source",
+          COALESCE(SUM(CASE WHEN "state" = 'ESTIMATED' THEN "amount" ELSE 0 END), 0) AS "estimated",
+          COALESCE(SUM(CASE WHEN "state" IN ('FINAL', 'ADJUSTMENT') THEN "amount" ELSE 0 END), 0) AS "finalized"
+        FROM "EarningsLedgerEntry"
+        WHERE "channelId" = ${channel.id}::uuid
+          AND "currency" = ${currency}
+          AND "occurredAt" >= ${from90d}
+        GROUP BY COALESCE(NULLIF(BTRIM("adSource"), ''), 'UNATTRIBUTED')
+        ORDER BY "finalized" DESC, "source" ASC
+      `,
+      this.database.client.$queryRaw<MixedCurrencyRow[]>`
+        SELECT COUNT(DISTINCT "currency") > 1 AS "mixedCurrency"
+        FROM "EarningsLedgerEntry"
+        WHERE "channelId" = ${channel.id}::uuid
+          AND "occurredAt" >= ${from90d}
+      `,
       this.database.client.analyticsEvent.count({
         where: { channelId: channel.id, eventName: "VIDEO_START", occurredAt: { gte: from30d } },
       }),
@@ -62,30 +133,8 @@ export class CreatorMonetizationAnalyticsService {
       }),
     ]);
 
-    const currency = entries[0]?.currency ?? "USD";
-    const mixedCurrency = entries.some((entry) => entry.currency !== currency);
-    const daily = new Map<string, { estimated: bigint; finalized: bigint }>();
-    const bySource = new Map<string, { estimated: bigint; finalized: bigint }>();
-    let finalized30d = 0n;
-
-    for (const entry of entries) {
-      if (entry.currency !== currency) continue;
-      const amount = decimalToMicros(String(entry.amount));
-      const finalized = entry.state !== "ESTIMATED";
-      const day = (entry.periodStart ?? entry.occurredAt).toISOString().slice(0, 10);
-      const dayBucket = daily.get(day) ?? { estimated: 0n, finalized: 0n };
-      if (finalized) dayBucket.finalized += amount;
-      else dayBucket.estimated += amount;
-      daily.set(day, dayBucket);
-
-      const source = entry.adSource?.trim() || "UNATTRIBUTED";
-      const sourceBucket = bySource.get(source) ?? { estimated: 0n, finalized: 0n };
-      if (finalized) sourceBucket.finalized += amount;
-      else sourceBucket.estimated += amount;
-      bySource.set(source, sourceBucket);
-
-      if (finalized && entry.occurredAt >= from30d) finalized30d += amount;
-    }
+    const finalized30d = decimalToMicros(finalizedRows[0]?.amount);
+    const mixedCurrency = mixedCurrencyRows[0]?.mixedCurrency ?? false;
 
     return {
       channel,
@@ -97,20 +146,16 @@ export class CreatorMonetizationAnalyticsService {
       creatorRpm: ratioPerThousand(finalized30d, videoStarts30d),
       creatorCpm: ratioPerThousand(finalized30d, adStarts30d),
       finalizedRevenue30d: microsToMoney(finalized30d),
-      byDay: [...daily.entries()]
-        .map(([day, value]) => ({
-          day,
-          estimated: microsToMoney(value.estimated),
-          finalized: microsToMoney(value.finalized),
-        }))
-        .sort((a, b) => b.day.localeCompare(a.day)),
-      byAdSource: [...bySource.entries()]
-        .map(([source, value]) => ({
-          source,
-          estimated: microsToMoney(value.estimated),
-          finalized: microsToMoney(value.finalized),
-        }))
-        .sort((a, b) => b.finalized.localeCompare(a.finalized)),
+      byDay: dailyRows.map((item) => ({
+        day: item.day,
+        estimated: microsToMoney(decimalToMicros(item.estimated)),
+        finalized: microsToMoney(decimalToMicros(item.finalized)),
+      })),
+      byAdSource: sourceRows.map((item) => ({
+        source: item.source,
+        estimated: microsToMoney(decimalToMicros(item.estimated)),
+        finalized: microsToMoney(decimalToMicros(item.finalized)),
+      })),
       countryRevenueAttribution: {
         available: false,
         reason:
@@ -130,7 +175,6 @@ export class CreatorMonetizationAnalyticsService {
       this.database.client.earningsLedgerEntry.findMany({
         where: { channelId: channel.id },
         orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
-        take: 10_000,
         select: {
           id: true,
           type: true,
@@ -151,7 +195,6 @@ export class CreatorMonetizationAnalyticsService {
       this.database.client.payout.findMany({
         where: { channelId: channel.id },
         orderBy: { requestedAt: "desc" },
-        take: 1_000,
         select: {
           id: true,
           status: true,
