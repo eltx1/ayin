@@ -1,35 +1,77 @@
 .shell {
-  min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgb(66 110 104 / 16%), transparent 34rem), var(--background);
+    radial-gradient(circle at top left, rgb(88 8 248 / 14%), transparent 34rem),
+    radial-gradient(circle at 82% 12%, rgb(220 25 232 / 8%), transparent 30rem),
+    var(--background);
   color: var(--foreground);
+  min-height: 100vh;
 }
 
 .frame {
   display: grid;
-  grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 268px) minmax(0, 1fr);
   min-height: 100vh;
 }
 
 .sidebar {
+  align-self: start;
+  backdrop-filter: blur(20px);
+  background: rgb(7 5 15 / 90%);
+  border-right: 1px solid var(--border);
+  min-height: 100vh;
+  padding: 26px 18px;
   position: sticky;
   top: 0;
-  align-self: start;
-  min-height: 100vh;
-  padding: 28px 18px;
-  border-right: 1px solid rgb(255 255 255 / 8%);
-  background: rgb(10 13 16 / 88%);
-  backdrop-filter: blur(18px);
 }
 
 .brand {
-  display: block;
-  margin: 0 10px 26px;
+  align-items: center;
   color: inherit;
+  display: flex;
+  gap: 11px;
+  margin: 0 8px 25px;
   text-decoration: none;
-  font-size: 1.15rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+}
+
+.brandLogo {
+  align-items: flex-start;
+  background: #000;
+  border: 1px solid var(--border-strong);
+  border-radius: 13px;
+  box-shadow: var(--brand-glow);
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  overflow: hidden;
+  width: 44px;
+}
+
+.brandLogo img {
+  height: 58px;
+  max-width: none;
+  object-fit: cover;
+  object-position: 50% 5%;
+  transform: translateY(-2px);
+  width: 58px;
+}
+
+.brand strong {
+  background: var(--brand-gradient);
+  background-clip: text;
+  color: transparent;
+  display: block;
+  font-size: 1.02rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.brand small {
+  color: var(--muted);
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  margin-top: 2px;
 }
 
 .nav {
@@ -38,26 +80,32 @@
 }
 
 .nav a {
-  padding: 11px 12px;
-  border-radius: 10px;
-  color: rgb(239 245 245 / 76%);
-  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--muted-strong);
   font-weight: 650;
+  padding: 11px 12px;
+  text-decoration: none;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .nav a:hover,
 .nav a:focus-visible {
+  background: rgb(139 24 248 / 11%);
+  border-color: rgb(220 25 232 / 18%);
   color: white;
-  background: rgb(255 255 255 / 8%);
   outline: none;
 }
 
 .back {
+  color: var(--muted);
   display: inline-block;
-  margin: 28px 10px 0;
-  color: rgb(239 245 245 / 65%);
-  text-decoration: none;
   font-size: 0.9rem;
+  margin: 28px 10px 0;
+  text-decoration: none;
 }
 
 .content {
@@ -66,17 +114,19 @@
 }
 
 .header {
-  display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  display: flex;
   gap: 20px;
+  justify-content: space-between;
   margin-bottom: 28px;
 }
 
 .eyebrow {
-  color: #7bd4c8;
+  background: var(--brand-gradient);
+  background-clip: text;
+  color: transparent;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 850;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
@@ -87,69 +137,84 @@
 }
 
 .muted {
-  color: rgb(239 245 245 / 62%);
+  color: var(--muted);
 }
 
 .primary,
 .secondary,
 .danger {
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 42px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 10px;
+  border-radius: 11px;
+  cursor: pointer;
+  display: inline-flex;
   font: inherit;
   font-weight: 750;
+  justify-content: center;
+  min-height: var(--control-height);
+  padding: 0 16px;
   text-decoration: none;
-  cursor: pointer;
 }
 
 .primary {
-  color: #06100e;
-  background: #7bd4c8;
+  background: var(--brand-gradient);
+  border: 1px solid rgb(255 255 255 / 14%);
+  box-shadow: 0 10px 28px rgb(139 24 248 / 18%);
+  color: white;
 }
 
 .secondary {
+  background: rgb(255 255 255 / 7%);
+  border: 1px solid var(--border-strong);
   color: white;
-  background: rgb(255 255 255 / 9%);
 }
 
 .danger {
-  color: #ffd5d5;
-  background: rgb(170 55 55 / 22%);
+  background: rgb(255 96 117 / 13%);
+  border: 1px solid rgb(255 96 117 / 25%);
+  color: #ffd8df;
 }
 
 .metrics {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 32px;
 }
 
 .metric,
 .panel,
 .card {
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 16px;
-  background: rgb(255 255 255 / 4%);
+  background: linear-gradient(145deg, rgb(255 255 255 / 4.5%), rgb(139 24 248 / 3%));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 36px rgb(0 0 0 / 13%);
 }
 
 .metric {
   padding: 18px;
+  position: relative;
+  overflow: hidden;
+}
+
+.metric::after {
+  background: var(--brand-gradient);
+  content: "";
+  height: 2px;
+  inset: auto 18px 0;
+  opacity: 0.58;
+  position: absolute;
 }
 
 .metric strong {
   display: block;
+  font-size: clamp(1.35rem, 2vw, 2rem);
   margin-top: 8px;
-  font-size: clamp(1.4rem, 2vw, 2rem);
 }
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .panel,
@@ -157,20 +222,25 @@
   padding: 20px;
 }
 
+.panel h2,
+.card h2 {
+  margin-top: 0;
+}
+
 .list {
   display: grid;
   gap: 10px;
+  list-style: none;
   margin: 16px 0 0;
   padding: 0;
-  list-style: none;
 }
 
 .list li {
+  border-top: 1px solid var(--border);
   display: flex;
-  justify-content: space-between;
   gap: 16px;
+  justify-content: space-between;
   padding: 12px 0;
-  border-top: 1px solid rgb(255 255 255 / 7%);
 }
 
 .filters,
@@ -184,14 +254,17 @@
 .filters select,
 .card input,
 .card textarea,
-.card select {
-  min-height: 42px;
-  padding: 9px 11px;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 9px;
+.card select,
+.panel input,
+.panel textarea,
+.panel select {
+  background: rgb(4 3 12 / 72%);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
   color: white;
-  background: rgb(4 8 10 / 65%);
   font: inherit;
+  min-height: var(--control-height);
+  padding: 9px 11px;
 }
 
 .filters input {
@@ -207,15 +280,15 @@
 
 .cardHeader {
   display: flex;
-  justify-content: space-between;
   gap: 16px;
+  justify-content: space-between;
   margin-bottom: 14px;
 }
 
 .formGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px;
   gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 180px;
 }
 
 .formGrid label {
@@ -237,25 +310,76 @@
 }
 
 .toggleRow label {
+  align-items: center;
   display: inline-flex;
   gap: 8px;
-  align-items: center;
 }
 
 .notice,
 .error {
+  border-radius: 10px;
   margin-top: 14px;
   padding: 12px 14px;
-  border-radius: 10px;
 }
 
 .notice {
-  background: rgb(65 145 118 / 18%);
+  background: rgb(104 216 165 / 12%);
+  border: 1px solid rgb(104 216 165 / 20%);
 }
 
 .error {
-  background: rgb(170 55 55 / 20%);
-  color: #ffd5d5;
+  background: rgb(255 96 117 / 13%);
+  border: 1px solid rgb(255 96 117 / 24%);
+  color: #ffd8df;
+}
+
+.progressTrack {
+  background: rgb(255 255 255 / 7%);
+  border-radius: 999px;
+  height: 9px;
+  overflow: hidden;
+}
+
+.progressBar {
+  background: var(--brand-gradient);
+  border-radius: inherit;
+  height: 100%;
+  min-width: 0;
+}
+
+.statusPill {
+  background: rgb(139 24 248 / 12%);
+  border: 1px solid rgb(220 25 232 / 18%);
+  border-radius: 999px;
+  color: #efdfff;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  border-collapse: collapse;
+  min-width: 620px;
+  width: 100%;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--border);
+  padding: 11px 10px;
+  text-align: left;
+}
+
+.table th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 960px) {
@@ -264,10 +388,10 @@
   }
 
   .sidebar {
-    position: static;
-    min-height: 0;
+    border-bottom: 1px solid var(--border);
     border-right: 0;
-    border-bottom: 1px solid rgb(255 255 255 / 8%);
+    min-height: 0;
+    position: static;
   }
 
   .nav {
