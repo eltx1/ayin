@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import { getAdminCollection, patchAdminResource, type AdminPagination } from "@/lib/admin-control";
+import {
+  getAdminCollection,
+  patchAdminResource,
+  revokeAccountSessions,
+  type AdminPagination,
+} from "@/lib/admin-control";
 
 type AdminUser = {
   id: string;
@@ -113,6 +118,22 @@ export function AdminUsers() {
     }
   }
 
+  async function revokeSessions(user: AdminUser) {
+    const reason = window.prompt(`Reason for revoking all active sessions for ${user.email}:`);
+    if (!reason || reason.trim().length < 8) return;
+    setBusyId(user.id);
+    setError(null);
+    setMessage(null);
+    try {
+      await revokeAccountSessions(user.id, reason.trim());
+      setMessage(`All existing sessions for ${user.email} were invalidated.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Sessions could not be revoked.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <>
       <header className={styles.header}>
@@ -120,7 +141,8 @@ export function AdminUsers() {
           <span className={styles.eyebrow}>Control Plane</span>
           <h1>Users & Accounts</h1>
           <p className={styles.muted}>
-            Search, inspect and suspend accounts with session invalidation and audit logging.
+            Search, inspect, suspend and revoke account sessions with server-side authorization and
+            audit logging.
           </p>
         </div>
       </header>
@@ -184,6 +206,14 @@ export function AdminUsers() {
                 type="button"
               >
                 Save basics
+              </button>
+              <button
+                className={styles.danger}
+                disabled={busyId === user.id}
+                onClick={() => void revokeSessions(user)}
+                type="button"
+              >
+                Revoke sessions
               </button>
               {user.status !== "CLOSED" ? (
                 <button
