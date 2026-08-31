@@ -35,7 +35,14 @@ interface SupportTicketRow {
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text = value instanceof Date ? value.toISOString() : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
+  const candidate = text.trimStart();
+  const numericLiteral = /^-?\d+(?:\.\d+)?$/.test(candidate);
+  const formulaLeading =
+    /^[\t\r\n]/.test(text) ||
+    /^[=+@]/.test(candidate) ||
+    (candidate.startsWith("-") && !numericLiteral);
+  const safeText = formulaLeading ? `'${text}` : text;
+  return `"${safeText.replaceAll('"', '""')}"`;
 }
 
 function toCsv(headers: string[], rows: unknown[][]): string {

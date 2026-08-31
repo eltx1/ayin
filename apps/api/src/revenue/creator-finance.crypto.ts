@@ -53,8 +53,9 @@ export function decryptPayoutDestination(payload: string): string {
 export function maskPayoutDestination(value: string): string {
   const normalized = value.trim().replace(/\s+/g, " ");
   if (!normalized) return "Not configured";
-  if (normalized.includes("@")) {
-    const [local = "", domain = ""] = normalized.split("@", 2);
+  const emailMatch = /^([^\s@]+)@([^\s@]+\.[^\s@]+)$/.exec(normalized);
+  if (emailMatch) {
+    const [, local = "", domain = ""] = emailMatch;
     const visible = local.slice(0, Math.min(2, local.length));
     return `${visible}${"•".repeat(Math.max(3, local.length - visible.length))}@${domain}`;
   }

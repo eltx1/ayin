@@ -211,6 +211,26 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
     expect(adManagerTrust.statusCode).toBe(403);
   });
 
+  it("neutralizes formula-leading cells in administrative CSV exports", async () => {
+    const operations = await register("CSV Operations", "csv-operations@example.com");
+    const target = await register("CSV Target", "csv-target@example.com");
+    await grant(operations.user.account.id, "OPERATIONS");
+    await prisma.account.update({
+      where: { id: target.user.account.id },
+      data: { displayName: '=HYPERLINK("https://example.invalid","click")' },
+    });
+
+    const exported = await app.inject({
+      method: "GET",
+      url: "/admin/operations/exports/users",
+      headers: { cookie: operations.cookie },
+    });
+    expect(exported.statusCode).toBe(200);
+    const content = exported.json().content as string;
+    expect(content).toContain('"\'=HYPERLINK(""https://example.invalid"",""click"")"');
+    expect(content).not.toContain('"=HYPERLINK(');
+  });
+
   it("scopes global search result kinds to each staff role", async () => {
     const target = await register("Scopeprobe Target", "scopeprobe-target@example.com");
     const operations = await register("Search Operations", "search-operations@example.com");

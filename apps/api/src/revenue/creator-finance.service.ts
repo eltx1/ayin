@@ -349,7 +349,7 @@ export class CreatorFinanceService {
         role: { in: ["OWNER", "ADMIN"] },
         channel: { status: { not: "REMOVED" } },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { channel: { select: { id: true, name: true, handle: true } } },
     });
     return membership?.channel ?? null;

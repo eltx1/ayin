@@ -39,5 +39,10 @@ describe("creator payout destination security", () => {
   it("returns masked display values instead of payout destinations", () => {
     expect(maskPayoutDestination("creator@example.com")).toBe("cr•••••@example.com");
     expect(maskPayoutDestination("GB12 AYIN 1234 5678 9012 34")).toBe("•••• 1234");
+
+    const freeForm = maskPayoutDestination("contact@example.com, account 00112233");
+    expect(freeForm).toBe("•••• 2233");
+    expect(freeForm).not.toContain("example.com");
+    expect(freeForm).not.toContain("00112233");
   });
 });

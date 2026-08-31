@@ -105,6 +105,106 @@ databaseDescribe("Creator payout safety", () => {
     });
   });
 
+  it("uses one authorized channel consistently when an older editor membership also exists", async () => {
+    const editorChannelOwner = await register(
+      "Editor Channel Owner",
+      "editor-channel-owner@example.com",
+    );
+    const creator = await register("Multi Channel Creator", "multi-channel-creator@example.com");
+
+    await prisma.channelMember.create({
+      data: {
+        channelId: editorChannelOwner.user.channel.id,
+        accountId: creator.user.account.id,
+        role: "EDITOR",
+        createdAt: new Date("2000-01-01T00:00:00.000Z"),
+      },
+    });
+    await prisma.earningsLedgerEntry.createMany({
+      data: [
+        {
+          channelId: editorChannelOwner.user.channel.id,
+          type: "AD_REVENUE",
+          state: "FINAL",
+          amount: "999.000000",
+          currency: "USD",
+        },
+        {
+          channelId: creator.user.channel.id,
+          type: "AD_REVENUE",
+          state: "FINAL",
+          amount: "125.000000",
+          currency: "USD",
+        },
+      ],
+    });
+
+    const profile = await app.inject({
+      method: "PUT",
+      url: "/creator/studio/revenue/payment-profile",
+      headers: { cookie: creator.cookie },
+      payload: {
+        legalName: "Multi Channel Creator",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destination: "bank account ending 4321",
+        countryCode: "US",
+      },
+    });
+    expect(profile.statusCode).toBe(200);
+    expect(profile.json().channelId).toBe(creator.user.channel.id);
+
+    const overview = await app.inject({
+      method: "GET",
+      url: "/creator/studio/revenue",
+      headers: { cookie: creator.cookie },
+    });
+    expect(overview.statusCode).toBe(200);
+    expect(overview.json()).toMatchObject({
+      channel: { id: creator.user.channel.id },
+      currency: "USD",
+      finalizedRevenue: "125.000000",
+      availableForPayout: "125.000000",
+      paymentProfile: { channelId: creator.user.channel.id },
+    });
+
+    const requested = await app.inject({
+      method: "POST",
+      url: "/creator/studio/revenue/payout-requests",
+      headers: { cookie: creator.cookie },
+      payload: { currency: "USD" },
+    });
+    expect(requested.statusCode).toBe(201);
+    expect(requested.json().payout.channelId).toBe(creator.user.channel.id);
+    expect(
+      await prisma.payout.count({ where: { channelId: editorChannelOwner.user.channel.id } }),
+    ).toBe(0);
+  });
+
+  it("neutralizes formula-leading creator statement cells", async () => {
+    const creator = await register("Statement Creator", "statement-formula@example.com");
+    await prisma.earningsLedgerEntry.create({
+      data: {
+        channelId: creator.user.channel.id,
+        type: "ADJUSTMENT",
+        state: "ADJUSTMENT",
+        amount: "1.000000",
+        currency: "USD",
+        memo: '=HYPERLINK("https://example.invalid","click")',
+      },
+    });
+
+    const statement = await app.inject({
+      method: "GET",
+      url: "/creator/studio/revenue/statement",
+      headers: { cookie: creator.cookie },
+    });
+    expect(statement.statusCode).toBe(200);
+    const content = statement.json().content as string;
+    expect(content).toContain('"\'=HYPERLINK(""https://example.invalid"",""click"")"');
+    expect(content).not.toContain('"=HYPERLINK(');
+  });
+
   it("atomically snapshots creator payouts, keeps the snapshot immutable and never exposes ciphertext", async () => {
     const creator = await register("Payout Creator", "payout-creator@example.com");
     const finance = await register("Finance", "payout-finance@example.com");

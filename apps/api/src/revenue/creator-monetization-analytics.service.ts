@@ -27,7 +27,14 @@ function ratioPerThousand(amountMicros: bigint, denominator: number): string | n
 function csv(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text = value instanceof Date ? value.toISOString() : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
+  const candidate = text.trimStart();
+  const numericLiteral = /^-?\d+(?:\.\d+)?$/.test(candidate);
+  const formulaLeading =
+    /^[\t\r\n]/.test(text) ||
+    /^[=+@]/.test(candidate) ||
+    (candidate.startsWith("-") && !numericLiteral);
+  const safeText = formulaLeading ? `'${text}` : text;
+  return `"${safeText.replaceAll('"', '""')}"`;
 }
 
 interface CurrencyRow {
@@ -279,7 +286,7 @@ export class CreatorMonetizationAnalyticsService {
         role: { in: ["OWNER", "ADMIN"] },
         channel: { status: { not: "REMOVED" } },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: { channel: { select: { id: true, name: true, handle: true } } },
     });
     return membership?.channel ?? null;
