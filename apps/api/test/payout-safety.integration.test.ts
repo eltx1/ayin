@@ -105,7 +105,7 @@ databaseDescribe("Creator payout safety", () => {
     });
   });
 
-  it("allows only finance staff to reveal an actionable manual payout destination and audits access", async () => {
+  it("atomically snapshots creator payouts, keeps the snapshot immutable and never exposes ciphertext", async () => {
     const creator = await register("Payout Creator", "payout-creator@example.com");
     const finance = await register("Finance", "payout-finance@example.com");
     const viewer = await register("Viewer", "payout-viewer@example.com");
@@ -144,7 +144,34 @@ databaseDescribe("Creator payout safety", () => {
       payload: { currency: "USD" },
     });
     expect(requested.statusCode).toBe(201);
+    expect(JSON.stringify(requested.json())).not.toContain("destinationEncryptedSnapshot");
     const payoutId = requested.json().payout.id as string;
+
+    const storedSnapshot = await prisma.payout.findUniqueOrThrow({ where: { id: payoutId } });
+    expect(storedSnapshot).toMatchObject({
+      requestSource: "CREATOR",
+      provider: "MANUAL",
+      legalNameSnapshot: "Payout Creator",
+    });
+    expect(storedSnapshot.paymentProfileId).not.toBeNull();
+    expect(storedSnapshot.destinationEncryptedSnapshot).not.toBeNull();
+    expect(storedSnapshot.destinationMaskSnapshot).not.toBeNull();
+
+    const creatorOverview = await app.inject({
+      method: "GET",
+      url: "/creator/studio/revenue",
+      headers: { cookie: creator.cookie },
+    });
+    expect(creatorOverview.statusCode).toBe(200);
+    expect(JSON.stringify(creatorOverview.json())).not.toContain("destinationEncryptedSnapshot");
+
+    const adminList = await app.inject({
+      method: "GET",
+      url: "/admin/revenue/payouts",
+      headers: { cookie: finance.cookie },
+    });
+    expect(adminList.statusCode).toBe(200);
+    expect(JSON.stringify(adminList.json())).not.toContain("destinationEncryptedSnapshot");
 
     const changedDestination = "Bank transfer: Other Bank / account 9988776655";
     const changedProfile = await app.inject({
@@ -185,6 +212,17 @@ databaseDescribe("Creator payout safety", () => {
       sensitive: true,
       cacheable: false,
     });
+    expect(revealed.json().destination).not.toBe(changedDestination);
+
+    const processing = await app.inject({
+      method: "PATCH",
+      url: `/admin/revenue/payouts/${payoutId}`,
+      headers: { cookie: finance.cookie },
+      payload: { status: "PROCESSING", reason: "Manual payout processing started" },
+    });
+    expect(processing.statusCode).toBe(200);
+    expect(JSON.stringify(processing.json())).not.toContain("destinationEncryptedSnapshot");
+
     expect(
       await prisma.adminAuditLog.findFirst({
         where: {
@@ -280,6 +318,61 @@ databaseDescribe("Creator payout safety", () => {
       sensitive: true,
     });
     expect(revealed.json().destination).not.toBe(changedDestination);
+  });
+
+  it("refuses to reveal a mutable live profile for an active legacy payout without a snapshot", async () => {
+    const creator = await register("Legacy Creator", "legacy-payout-creator@example.com");
+    const finance = await register("Legacy Finance", "legacy-payout-finance@example.com");
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: finance.user.account.id, role: "FINANCE_MANAGER" },
+    });
+
+    const liveDestination = "Bank transfer: Mutable Legacy Bank / account 555566667777";
+    const profile = await app.inject({
+      method: "PUT",
+      url: "/creator/studio/revenue/payment-profile",
+      headers: { cookie: creator.cookie },
+      payload: {
+        legalName: "Legacy Creator",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destination: liveDestination,
+        countryCode: "US",
+      },
+    });
+    expect(profile.statusCode).toBe(200);
+
+    const legacyPayout = await prisma.payout.create({
+      data: {
+        channelId: creator.user.channel.id,
+        amount: "15.000000",
+        currency: "USD",
+        status: "PENDING",
+        provider: "MANUAL",
+        requestSource: "ADMIN",
+      },
+    });
+
+    const details = await app.inject({
+      method: "GET",
+      url: `/admin/revenue/payouts/${legacyPayout.id}`,
+      headers: { cookie: finance.cookie },
+    });
+    expect(details.statusCode).toBe(200);
+    expect(details.json()).toMatchObject({
+      payoutId: legacyPayout.id,
+      beneficiarySnapshotAvailable: false,
+      destinationRevealAllowed: false,
+    });
+
+    const reveal = await app.inject({
+      method: "POST",
+      url: `/admin/revenue/payouts/${legacyPayout.id}/destination`,
+      headers: { cookie: finance.cookie },
+      payload: { reason: "Attempt to reveal legacy mutable profile" },
+    });
+    expect(reveal.statusCode).not.toBe(201);
+    expect(JSON.stringify(reveal.json())).not.toContain(liveDestination);
   });
 
   it("enforces one active payout per channel and currency at the database boundary", async () => {
