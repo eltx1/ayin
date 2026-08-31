@@ -9,23 +9,27 @@
   flex-direction: column;
   gap: 0.45rem;
   justify-content: center;
-  margin: 1.25rem auto;
+  margin: clamp(1rem, 2vw, 1.5rem) auto;
   max-width: 100%;
   min-height: 50px;
   overflow: hidden;
-  padding: 0.5rem;
+  padding: 0.55rem;
 }
 
 .label {
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  opacity: 0.55;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 720;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
   text-transform: uppercase;
 }
 
 .house {
+  border-radius: var(--radius-sm);
   display: block;
   max-width: 100%;
+  overflow: hidden;
   text-decoration: none;
 }
 
@@ -38,7 +42,7 @@
   max-height: 250px;
   max-width: 970px;
   min-height: 50px;
-  width: min(970px, 90vw);
+  width: min(970px, calc(100vw - (2 * var(--page-gutter))));
 }
 
 .gpt {
@@ -46,8 +50,19 @@
   justify-content: center;
   max-width: 100%;
   min-height: 1px;
+  overflow: hidden;
 }
 
 .hidden {
   display: none;
+}
+
+@media (max-width: 560px) {
+  .slot {
+    padding-inline: 0;
+  }
+
+  .houseCreative {
+    width: min(100%, calc(100vw - 1.5rem));
+  }
 }
