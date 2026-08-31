@@ -4,7 +4,8 @@ export function toSafePayoutView<
     destinationEncryptedSnapshot?: unknown;
   },
 >(payout: T) {
-  const { destinationEncryptedSnapshot: _redacted, ...safe } = payout;
+  const safe = { ...payout };
+  delete safe.destinationEncryptedSnapshot;
   return {
     ...safe,
     amount: String(payout.amount),
