@@ -39,10 +39,19 @@ export interface AdminSystemHealth {
     region: string;
     directUploadArchitecture: true;
   };
+  backgroundProcessing: {
+    queues: { status: "NOT_CONFIGURED"; reason: string };
+    workers: { status: "NOT_CONFIGURED"; reason: string };
+  };
 }
 
 export type AdminRole =
-  "SUPERADMIN" | "ADMIN" | "OPERATIONS" | "CONTENT_MODERATOR" | "AD_MANAGER" | "FINANCE_MANAGER";
+  | "SUPERADMIN"
+  | "ADMIN"
+  | "OPERATIONS"
+  | "CONTENT_MODERATOR"
+  | "AD_MANAGER"
+  | "FINANCE_MANAGER";
 
 export interface AdminStaffMember {
   id: string;
@@ -142,71 +151,48 @@ export function bulkAdminVideos(
   });
 }
 
-export function getAdminRoles() {
-  return adminFetch<{ roles: AdminRole[] }>("/admin/operations/roles");
+export function getAdminStaff() {
+  return adminFetch<{ items: AdminStaffMember[] }>("/admin/governance/staff");
 }
 
-export function getAdminStaff(query = "") {
-  const suffix = query.trim() ? `?query=${encodeURIComponent(query.trim())}` : "";
-  return adminFetch<{ items: AdminStaffMember[] }>(`/admin/operations/staff${suffix}`);
-}
-
-export function updateAdminStaffRoles(accountId: string, roles: AdminRole[], reason: string) {
-  return adminFetch<{ accountId: string; roles: AdminRole[]; sessionsRevoked: true }>(
-    `/admin/operations/staff/${encodeURIComponent(accountId)}/roles`,
-    { method: "PATCH", body: JSON.stringify({ roles, reason }) },
+export function setAdminStaffRoles(accountId: string, roles: AdminRole[], reason: string) {
+  return adminFetch<{ accountId: string; roles: AdminRole[] }>(
+    `/admin/governance/staff/${encodeURIComponent(accountId)}/roles`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ roles, reason }),
+    },
   );
 }
 
-export function getAdminAudit(params = new URLSearchParams()) {
+export function revokeAdminSessions(accountId: string, reason: string) {
+  return adminFetch<{ accountId: string; authVersion: number }>(
+    `/admin/governance/staff/${encodeURIComponent(accountId)}/sessions/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    },
+  );
+}
+
+export function getAdminAuditLog(params = new URLSearchParams()) {
   const suffix = params.size ? `?${params.toString()}` : "";
-  return adminFetch<{ items: AdminAuditItem[]; pagination: AdminPagination }>(
-    `/admin/operations/audit${suffix}`,
-  );
+  return adminFetch<{ items: AdminAuditItem[] }>(`/admin/governance/audit${suffix}`);
 }
 
-export function revokeAccountSessions(accountId: string, reason: string) {
-  return adminFetch<{ id: string; sessionsRevoked: true }>(
-    `/admin/operations/accounts/${encodeURIComponent(accountId)}/revoke-sessions`,
-    { method: "POST", body: JSON.stringify({ reason }) },
-  );
-}
-
-export function getCreatorCompliance(channelId: string) {
-  return adminFetch<{
-    channel: { id: string; name: string; handle: string };
-    profile: null | {
-      id: string;
-      legalName: string;
-      preferredCurrency: string;
-      provider: string;
-      destinationMask: string | null;
-      countryCode: string | null;
-      identityStatus: string;
-      taxStatus: string;
-      updatedAt: string;
-    };
-  }>(`/admin/operations/compliance/${encodeURIComponent(channelId)}`);
-}
-
-export function updateCreatorCompliance(
-  channelId: string,
-  input: { identityStatus?: string; taxStatus?: string; reason: string },
-) {
-  return adminFetch(`/admin/operations/compliance/${encodeURIComponent(channelId)}`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+export function downloadAdminAuditCsv(params = new URLSearchParams()) {
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return adminFetch<{ filename: string; content: string }>(`/admin/governance/audit/export${suffix}`);
 }
 
 export function getAdminSupportTickets(params = new URLSearchParams()) {
   const suffix = params.size ? `?${params.toString()}` : "";
-  return adminFetch<{ items: AdminSupportTicket[] }>(`/admin/operations/support${suffix}`);
+  return adminFetch<{ items: AdminSupportTicket[] }>(`/admin/governance/support${suffix}`);
 }
 
 export function updateAdminSupportTicket(
   ticketId: string,
-  input: {
+  body: {
     status?: AdminSupportTicket["status"];
     priority?: AdminSupportTicket["priority"];
     assignedToAccountId?: string | null;
@@ -214,23 +200,8 @@ export function updateAdminSupportTicket(
     reason: string;
   },
 ) {
-  return adminFetch(`/admin/operations/support/${encodeURIComponent(ticketId)}`, {
+  return adminFetch<AdminSupportTicket>(`/admin/governance/support/${encodeURIComponent(ticketId)}`, {
     method: "PATCH",
-    body: JSON.stringify(input),
+    body: JSON.stringify(body),
   });
-}
-
-export async function downloadAdminCsv(
-  resource: "users" | "channels" | "videos" | "payouts" | "audit",
-) {
-  const payload = await adminFetch<{ filename: string; content: string }>(
-    `/admin/operations/exports/${resource}`,
-  );
-  const blob = new Blob([payload.content], { type: "text/csv;charset=utf-8" });
-  const href = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = href;
-  anchor.download = payload.filename;
-  anchor.click();
-  URL.revokeObjectURL(href);
 }
