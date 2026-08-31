@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { MEDIA_STORAGE_CONFIG } from "../media/media-storage.adapter.js";
 import type { MediaStorageConfig } from "../media/media-storage.config.js";
+import { isPrivilegedAdminRole, type AdminRole } from "./admin.roles.js";
 
 export type AdminSearchResultKind = "ACCOUNT" | "CHANNEL" | "VIDEO" | "PAYOUT";
 
@@ -21,72 +22,87 @@ export class AdminCommandCenterService {
     @Inject(MEDIA_STORAGE_CONFIG) private readonly mediaConfig: MediaStorageConfig,
   ) {}
 
-  async search(rawQuery: string) {
+  async search(rawQuery: string, roles: AdminRole[]) {
     const query = rawQuery.trim();
     if (query.length < 2) return { query, items: [] as AdminSearchResult[] };
 
+    const privileged = roles.some(isPrivilegedAdminRole);
+    const canSearchAccounts = privileged || roles.includes("OPERATIONS");
+    const canSearchChannels = privileged || roles.includes("OPERATIONS");
+    const canSearchVideos =
+      privileged || roles.includes("OPERATIONS") || roles.includes("CONTENT_MODERATOR");
+    const canSearchPayouts = privileged || roles.includes("FINANCE_MANAGER");
+
     const [accounts, channels, videos, payouts] = await Promise.all([
-      this.database.client.account.findMany({
-        where: {
-          OR: [
-            { email: { contains: query, mode: "insensitive" } },
-            { displayName: { contains: query, mode: "insensitive" } },
-          ],
-        },
-        orderBy: { updatedAt: "desc" },
-        take: 6,
-        select: { id: true, email: true, displayName: true, status: true },
-      }),
-      this.database.client.channel.findMany({
-        where: {
-          status: { not: "REMOVED" },
-          OR: [
-            { name: { contains: query, mode: "insensitive" } },
-            { handle: { contains: query, mode: "insensitive" } },
-          ],
-        },
-        orderBy: { updatedAt: "desc" },
-        take: 6,
-        select: { id: true, name: true, handle: true, status: true },
-      }),
-      this.database.client.video.findMany({
-        where: {
-          status: { not: "REMOVED" },
-          OR: [
-            { title: { contains: query, mode: "insensitive" } },
-            { slug: { contains: query, mode: "insensitive" } },
-          ],
-        },
-        orderBy: { updatedAt: "desc" },
-        take: 6,
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          status: true,
-          channel: { select: { name: true, handle: true } },
-        },
-      }),
-      this.database.client.payout.findMany({
-        where: {
-          OR: [
-            ...(this.isUuid(query) ? [{ id: query }] : []),
-            { externalReference: { contains: query, mode: "insensitive" } },
-            { channel: { name: { contains: query, mode: "insensitive" } } },
-            { channel: { handle: { contains: query, mode: "insensitive" } } },
-          ],
-        },
-        orderBy: { requestedAt: "desc" },
-        take: 6,
-        select: {
-          id: true,
-          status: true,
-          amount: true,
-          currency: true,
-          externalReference: true,
-          channel: { select: { name: true, handle: true } },
-        },
-      }),
+      canSearchAccounts
+        ? this.database.client.account.findMany({
+            where: {
+              OR: [
+                { email: { contains: query, mode: "insensitive" } },
+                { displayName: { contains: query, mode: "insensitive" } },
+              ],
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 6,
+            select: { id: true, email: true, displayName: true, status: true },
+          })
+        : Promise.resolve([]),
+      canSearchChannels
+        ? this.database.client.channel.findMany({
+            where: {
+              status: { not: "REMOVED" },
+              OR: [
+                { name: { contains: query, mode: "insensitive" } },
+                { handle: { contains: query, mode: "insensitive" } },
+              ],
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 6,
+            select: { id: true, name: true, handle: true, status: true },
+          })
+        : Promise.resolve([]),
+      canSearchVideos
+        ? this.database.client.video.findMany({
+            where: {
+              status: { not: "REMOVED" },
+              OR: [
+                { title: { contains: query, mode: "insensitive" } },
+                { slug: { contains: query, mode: "insensitive" } },
+              ],
+            },
+            orderBy: { updatedAt: "desc" },
+            take: 6,
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              status: true,
+              channel: { select: { name: true, handle: true } },
+            },
+          })
+        : Promise.resolve([]),
+      canSearchPayouts
+        ? this.database.client.payout.findMany({
+            where: {
+              OR: [
+                ...(this.isUuid(query) ? [{ id: query }] : []),
+                { externalReference: { contains: query, mode: "insensitive" } },
+                { channel: { name: { contains: query, mode: "insensitive" } } },
+                { channel: { handle: { contains: query, mode: "insensitive" } } },
+              ],
+            },
+            orderBy: { requestedAt: "desc" },
+            take: 6,
+            select: {
+              id: true,
+              status: true,
+              amount: true,
+              currency: true,
+              externalReference: true,
+              channel: { select: { name: true, handle: true } },
+            },
+          })
+        : Promise.resolve([]),
     ]);
 
     const items: AdminSearchResult[] = [
