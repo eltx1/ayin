@@ -130,6 +130,87 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
     expect(adminHealth.json().mediaStorage.directUploadArchitecture).toBe(true);
   });
 
+  it("enforces least privilege across legacy admin controllers and resource exports", async () => {
+    const finance = await register("Scoped Finance", "scoped-finance@example.com");
+    const operations = await register("Scoped Operations", "scoped-operations@example.com");
+    const moderator = await register("Scoped Moderator", "scoped-moderator@example.com");
+    const ads = await register("Scoped Ads", "scoped-ads@example.com");
+    await grant(finance.user.account.id, "FINANCE_MANAGER");
+    await grant(operations.user.account.id, "OPERATIONS");
+    await grant(moderator.user.account.id, "CONTENT_MODERATOR");
+    await grant(ads.user.account.id, "AD_MANAGER");
+
+    const financePayoutExport = await app.inject({
+      method: "GET",
+      url: "/admin/operations/exports/payouts",
+      headers: { cookie: finance.cookie },
+    });
+    expect(financePayoutExport.statusCode).toBe(200);
+
+    const financeUsersExport = await app.inject({
+      method: "GET",
+      url: "/admin/operations/exports/users",
+      headers: { cookie: finance.cookie },
+    });
+    expect(financeUsersExport.statusCode).toBe(403);
+
+    const operationsUsersExport = await app.inject({
+      method: "GET",
+      url: "/admin/operations/exports/users",
+      headers: { cookie: operations.cookie },
+    });
+    expect(operationsUsersExport.statusCode).toBe(200);
+
+    const operationsPayoutExport = await app.inject({
+      method: "GET",
+      url: "/admin/operations/exports/payouts",
+      headers: { cookie: operations.cookie },
+    });
+    expect(operationsPayoutExport.statusCode).toBe(403);
+
+    const moderatorCommunity = await app.inject({
+      method: "GET",
+      url: "/admin/community/reports",
+      headers: { cookie: moderator.cookie },
+    });
+    expect(moderatorCommunity.statusCode).toBe(200);
+
+    const moderatorTrust = await app.inject({
+      method: "GET",
+      url: "/admin/trust/queue",
+      headers: { cookie: moderator.cookie },
+    });
+    expect(moderatorTrust.statusCode).toBe(200);
+
+    const moderatorPageAds = await app.inject({
+      method: "GET",
+      url: "/admin/page-ads/settings",
+      headers: { cookie: moderator.cookie },
+    });
+    expect(moderatorPageAds.statusCode).toBe(403);
+
+    const adManagerPageAds = await app.inject({
+      method: "GET",
+      url: "/admin/page-ads/settings",
+      headers: { cookie: ads.cookie },
+    });
+    expect(adManagerPageAds.statusCode).toBe(200);
+
+    const adManagerCommunity = await app.inject({
+      method: "GET",
+      url: "/admin/community/reports",
+      headers: { cookie: ads.cookie },
+    });
+    expect(adManagerCommunity.statusCode).toBe(403);
+
+    const adManagerTrust = await app.inject({
+      method: "GET",
+      url: "/admin/trust/queue",
+      headers: { cookie: ads.cookie },
+    });
+    expect(adManagerTrust.statusCode).toBe(403);
+  });
+
   it("lets only superadmin change staff roles and revokes existing sessions", async () => {
     const superadmin = await register("Superadmin", "superadmin-role@example.com");
     const operations = await register("Operations", "role-editor@example.com");
