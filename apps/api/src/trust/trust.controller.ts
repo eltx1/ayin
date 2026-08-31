@@ -10,7 +10,7 @@ import {
   Req,
   UseGuards,
 } from "@nestjs/common";
-import { AdminGuard } from "../admin/admin.guard.js";
+import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { TrustRateLimiter } from "./trust-rate-limiter.js";
 import { TrustService } from "./trust.service.js";
@@ -41,6 +41,7 @@ export class TrustController {
 
 @Controller("admin/trust")
 @UseGuards(AuthGuard, AdminGuard)
+@RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
 export class AdminTrustController {
   constructor(@Inject(TrustService) private readonly trust: TrustService) {}
   @Get("queue") queue() {
