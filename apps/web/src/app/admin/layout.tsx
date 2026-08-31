@@ -2,6 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { AppNavLink } from "@/components/ui/app-nav-link";
+
 import styles from "./admin.module.css";
 
 const links = [
@@ -36,9 +38,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </Link>
           <nav aria-label="AYIN administration" className={styles.nav}>
             {links.map(([label, href]) => (
-              <Link href={href} key={href}>
+              <AppNavLink href={href} key={href}>
                 {label}
-              </Link>
+              </AppNavLink>
             ))}
           </nav>
           <Link className={styles.back} href="/">
