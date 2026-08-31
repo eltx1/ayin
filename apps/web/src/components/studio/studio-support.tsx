@@ -9,6 +9,8 @@ import {
   type SupportTicket,
 } from "@/lib/support";
 
+import supportStyles from "./studio-support.module.css";
+
 const categories = [
   "GENERAL",
   "ACCOUNT",
@@ -85,7 +87,10 @@ export function StudioSupport() {
         <div className={styles.formGrid}>
           <label>
             Category
-            <select value={category} onChange={(event) => setCategory(event.target.value as typeof category)}>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value as typeof category)}
+            >
               {categories.map((value) => (
                 <option key={value}>{value}</option>
               ))}
@@ -106,7 +111,7 @@ export function StudioSupport() {
             Subject
             <input value={subject} onChange={(event) => setSubject(event.target.value)} />
           </label>
-          <label className={styles.fullField}>
+          <label className={supportStyles.fullField}>
             Details
             <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
           </label>
@@ -123,17 +128,18 @@ export function StudioSupport() {
 
       <section className={styles.panel}>
         <h2>My tickets</h2>
-        <div className={styles.ticketList}>
+        <div className={supportStyles.ticketList}>
           {tickets.map((ticket) => (
-            <article className={styles.ticket} key={ticket.id}>
+            <article className={supportStyles.ticket} key={ticket.id}>
               <div className={styles.cardHeader}>
                 <div>
                   <strong>{ticket.subject}</strong>
                   <p className={styles.muted}>
-                    {ticket.category} · {ticket.priority} · opened {new Date(ticket.createdAt).toLocaleDateString()}
+                    {ticket.category} · {ticket.priority} · opened{" "}
+                    {new Date(ticket.createdAt).toLocaleDateString()}
                   </p>
                 </div>
-                <span className={styles.statusBadge}>{ticket.status}</span>
+                <span className={supportStyles.statusBadge}>{ticket.status}</span>
               </div>
               <p>{ticket.description}</p>
               {ticket.resolution ? (
