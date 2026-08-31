@@ -50,7 +50,9 @@ export class AdminTrustController {
   @Get("settings") settings() {
     return this.trust.settings();
   }
-  @Put("settings") updateSettings(@Req() r: AuthenticatedRequest, @Body() b: unknown) {
+  @Put("settings")
+  @RequireAdminRoles("OPERATIONS")
+  updateSettings(@Req() r: AuthenticatedRequest, @Body() b: unknown) {
     return this.trust.updateSettings(r.ayinAuth.accountId, b);
   }
   @Post("actions") act(@Req() r: AuthenticatedRequest, @Body() b: unknown) {
