@@ -146,6 +146,21 @@ databaseDescribe("Creator payout safety", () => {
     expect(requested.statusCode).toBe(201);
     const payoutId = requested.json().payout.id as string;
 
+    const changedDestination = "Bank transfer: Other Bank / account 9988776655";
+    const changedProfile = await app.inject({
+      method: "PUT",
+      url: "/creator/studio/revenue/payment-profile",
+      headers: { cookie: creator.cookie },
+      payload: {
+        legalName: "Payout Creator",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destination: changedDestination,
+        countryCode: "US",
+      },
+    });
+    expect(changedProfile.statusCode).toBe(200);
+
     const forbidden = await app.inject({
       method: "POST",
       url: `/admin/revenue/payouts/${payoutId}/destination`,

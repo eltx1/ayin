@@ -137,11 +137,11 @@ export class AdminPayoutDestinationService {
         p."externalReference" AS "externalReference",
         p."failureReason" AS "failureReason",
         p."paymentProfileId" AS "paymentProfileId",
-        cpp."legalName" AS "legalName",
-        cpp."provider" AS "profileProvider",
-        cpp."destinationEncrypted" AS "destinationEncrypted",
-        cpp."destinationMask" AS "destinationMask",
-        cpp."countryCode" AS "countryCode"
+        COALESCE(p."legalNameSnapshot", cpp."legalName") AS "legalName",
+        p."provider" AS "profileProvider",
+        COALESCE(p."destinationEncryptedSnapshot", cpp."destinationEncrypted") AS "destinationEncrypted",
+        COALESCE(p."destinationMaskSnapshot", cpp."destinationMask") AS "destinationMask",
+        COALESCE(p."countryCodeSnapshot", cpp."countryCode") AS "countryCode"
       FROM "Payout" p
       JOIN "Channel" c ON c."id" = p."channelId"
       LEFT JOIN "CreatorPayoutProfile" cpp

@@ -7,6 +7,7 @@ import {
   downloadAdminCsv,
   getAdminAudit,
   getAdminRoles,
+  getAdminSession,
   getAdminStaff,
   getAdminSupportTickets,
   getCreatorCompliance,
@@ -30,7 +31,7 @@ const roleLabels: Record<AdminRole, string> = {
 };
 
 const identityOptions = ["NOT_STARTED", "PENDING", "VERIFIED", "REJECTED"] as const;
-const taxOptions = ["NOT_PROVIDED", "PENDING", "VALID", "REJECTED"] as const;
+const taxOptions = ["NOT_PROVIDED", "PENDING", "VERIFIED", "REQUIRES_ACTION"] as const;
 
 export function AdminOperations() {
   const [roles, setRoles] = useState<AdminRole[]>([]);
@@ -50,15 +51,37 @@ export function AdminOperations() {
   const load = useCallback(async () => {
     setMessage("");
     try {
+      const session = await getAdminSession();
+      const privileged = session.roles.some((role) => role === "SUPERADMIN" || role === "ADMIN");
+      const canOperate = privileged || session.roles.includes("OPERATIONS");
+      const canAudit =
+        privileged ||
+        session.roles.some((role) =>
+          ["OPERATIONS", "CONTENT_MODERATOR", "AD_MANAGER", "FINANCE_MANAGER"].includes(role),
+        );
+      const canSupport =
+        privileged ||
+        session.roles.some((role) =>
+          ["OPERATIONS", "CONTENT_MODERATOR", "FINANCE_MANAGER"].includes(role),
+        );
       const [roleData, staffData, auditData, ticketData] = await Promise.all([
-        getAdminRoles(),
-        getAdminStaff(staffQuery),
-        getAdminAudit(
-          auditQuery.trim()
-            ? new URLSearchParams({ query: auditQuery.trim(), take: "50" })
-            : undefined,
-        ),
-        getAdminSupportTickets(),
+        canOperate ? getAdminRoles() : Promise.resolve({ roles: [] as AdminRole[] }),
+        canOperate
+          ? getAdminStaff(staffQuery)
+          : Promise.resolve({ items: [] as AdminStaffMember[] }),
+        canAudit
+          ? getAdminAudit(
+              auditQuery.trim()
+                ? new URLSearchParams({ query: auditQuery.trim(), take: "50" })
+                : undefined,
+            )
+          : Promise.resolve({
+              items: [] as AdminAuditItem[],
+              pagination: { total: 0, page: 1, take: 50, pages: 1 },
+            }),
+        canSupport
+          ? getAdminSupportTickets()
+          : Promise.resolve({ items: [] as AdminSupportTicket[] }),
       ]);
       setRoles(roleData.roles);
       setStaff(staffData.items);

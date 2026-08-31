@@ -17,6 +17,21 @@ export type SupportTicketCategory =
   | "RIGHTS"
   | "OTHER";
 
+interface SupportTicketRow {
+  id: string;
+  createdByAccountId: string;
+  assignedToAccountId: string | null;
+  category: string;
+  subject: string;
+  description: string;
+  priority: string;
+  status: string;
+  resolution: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  closedAt: Date | null;
+}
+
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
   const text = value instanceof Date ? value.toISOString() : String(value);
@@ -296,14 +311,23 @@ export class AdminGovernanceService {
   }
 
   async supportTickets(input: { status?: SupportTicketStatus; priority?: SupportTicketPriority }) {
-    const items = await this.database.client.supportTicket.findMany({
-      where: {
-        ...(input.status ? { status: input.status } : {}),
-        ...(input.priority ? { priority: input.priority } : {}),
-      },
-      orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
-      take: 200,
-    });
+    const items = await this.database.client.$queryRaw<SupportTicketRow[]>`
+      SELECT *
+      FROM "SupportTicket"
+      WHERE (${input.status ?? null}::text IS NULL OR "status" = ${input.status ?? null})
+        AND (${input.priority ?? null}::text IS NULL OR "priority" = ${input.priority ?? null})
+      ORDER BY
+        CASE "priority"
+          WHEN 'URGENT' THEN 4
+          WHEN 'HIGH' THEN 3
+          WHEN 'NORMAL' THEN 2
+          WHEN 'LOW' THEN 1
+          ELSE 0
+        END DESC,
+        "updatedAt" DESC,
+        "id" DESC
+      LIMIT 200
+    `;
     const accountIds = [
       ...new Set(
         items.flatMap((item) =>

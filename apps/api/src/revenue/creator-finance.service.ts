@@ -161,6 +161,18 @@ export class CreatorFinanceService {
     if (activePayout > 0) throw new Error("PAYOUT_ALREADY_IN_PROGRESS");
 
     const payout = await this.revenue.createPayout(accountId, { channelId: channel.id, currency });
+    await this.database.client.payout.update({
+      where: { id: payout.id },
+      data: {
+        provider: this.payoutProvider.kind,
+        requestSource: "CREATOR",
+        paymentProfileId: profile.id,
+        destinationEncryptedSnapshot: profile.destinationEncrypted,
+        destinationMaskSnapshot: profile.destinationMask,
+        legalNameSnapshot: profile.legalName,
+        countryCodeSnapshot: profile.countryCode,
+      },
+    });
     const handoff = await this.payoutProvider.createHandoff({
       payoutId: payout.id,
       channelId: channel.id,
@@ -177,11 +189,6 @@ export class CreatorFinanceService {
       throw new Error("PAYOUT_PROVIDER_HANDOFF_REJECTED");
     }
 
-    await this.database.client.$executeRaw`
-      UPDATE "Payout"
-      SET "provider" = ${this.payoutProvider.kind}, "requestSource" = 'CREATOR', "paymentProfileId" = ${profile.id}::uuid
-      WHERE "id" = ${payout.id}::uuid
-    `;
     await this.database.client.adminAuditLog.create({
       data: {
         actorAccountId: accountId,

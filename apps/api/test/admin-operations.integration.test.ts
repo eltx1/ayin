@@ -74,6 +74,21 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
     });
     expect(financeSummary.statusCode).toBe(200);
 
+    const financeAnalytics = await app.inject({
+      method: "GET",
+      url: "/admin/analytics",
+      headers: { cookie: finance.cookie },
+    });
+    expect(financeAnalytics.statusCode).toBe(200);
+
+    const financeCleanup = await app.inject({
+      method: "POST",
+      url: "/admin/analytics/cleanup",
+      headers: { cookie: finance.cookie },
+      payload: { retentionDays: 400 },
+    });
+    expect(financeCleanup.statusCode).toBe(403);
+
     const financeOperations = await app.inject({
       method: "GET",
       url: "/admin/operations/roles",
@@ -87,6 +102,13 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
       headers: { cookie: operations.cookie },
     });
     expect(operationsRoles.statusCode).toBe(200);
+
+    const operationsAnalytics = await app.inject({
+      method: "GET",
+      url: "/admin/analytics",
+      headers: { cookie: operations.cookie },
+    });
+    expect(operationsAnalytics.statusCode).toBe(200);
 
     const operationsFinance = await app.inject({
       method: "GET",

@@ -7,6 +7,7 @@ import styles from "@/app/admin/admin.module.css";
 import {
   getAdminAnalytics,
   getAdminDashboard,
+  getAdminSession,
   getAdminSystemHealth,
   searchAdmin,
   type AdminAnalyticsMetrics,
@@ -40,13 +41,17 @@ export function AdminDashboard() {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      getAdminDashboard(),
-      getAdminAnalytics(),
-      getAdminSystemHealth(),
-      getAdminFinanceSummary(),
-    ])
-      .then(([body, nextAnalytics, nextHealth, nextFinance]) => {
+    void getAdminSession()
+      .then(async (session) => {
+        const canReadFinance = session.roles.some((role) =>
+          ["SUPERADMIN", "ADMIN", "FINANCE_MANAGER"].includes(role),
+        );
+        const [body, nextAnalytics, nextHealth, nextFinance] = await Promise.all([
+          getAdminDashboard(),
+          getAdminAnalytics(),
+          getAdminSystemHealth(),
+          canReadFinance ? getAdminFinanceSummary() : Promise.resolve(null),
+        ]);
         if (!active) return;
         setData(body as unknown as DashboardData);
         setAnalytics(nextAnalytics);
@@ -81,7 +86,7 @@ export function AdminDashboard() {
   }
 
   if (error && !data) return <p className={styles.error}>{error}</p>;
-  if (!data || !analytics || !health || !finance)
+  if (!data || !analytics || !health)
     return <p className={styles.muted}>Loading Admin Control Center…</p>;
 
   const metrics = [
@@ -177,27 +182,35 @@ export function AdminDashboard() {
       <section className={styles.commandGrid}>
         <article className={styles.card}>
           <h2>Revenue operations</h2>
-          <p>
-            <strong>{finance.pendingPayouts}</strong> pending payouts
-          </p>
-          <p>
-            <strong>{finance.processingPayouts}</strong> processing payouts
-          </p>
-          <p>
-            <strong>{finance.openDisputes}</strong> open revenue disputes
-          </p>
-          {finance.pendingValue.map((item) => (
-            <p key={item.currency}>
-              {item.currency} {item.amount} pending/processing
+          {finance ? (
+            <>
+              <p>
+                <strong>{finance.pendingPayouts}</strong> pending payouts
+              </p>
+              <p>
+                <strong>{finance.processingPayouts}</strong> processing payouts
+              </p>
+              <p>
+                <strong>{finance.openDisputes}</strong> open revenue disputes
+              </p>
+              {finance.pendingValue.map((item) => (
+                <p key={item.currency}>
+                  {item.currency} {item.amount} pending/processing
+                </p>
+              ))}
+              <p className={styles.muted}>
+                Provider mode: audited manual payout. External providers are not represented as
+                connected.
+              </p>
+              <Link className={styles.button} href="/admin/revenue">
+                Open Revenue Control Center
+              </Link>
+            </>
+          ) : (
+            <p className={styles.muted}>
+              Finance metrics are intentionally hidden for this scoped staff role.
             </p>
-          ))}
-          <p className={styles.muted}>
-            Provider mode: audited manual payout. External providers are not represented as
-            connected.
-          </p>
-          <Link className={styles.button} href="/admin/revenue">
-            Open Revenue Control Center
-          </Link>
+          )}
         </article>
 
         <article className={styles.card}>

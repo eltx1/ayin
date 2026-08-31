@@ -38,7 +38,7 @@ const auditQuerySchema = z.object({
 const complianceSchema = z
   .object({
     identityStatus: z.enum(["NOT_STARTED", "PENDING", "VERIFIED", "REJECTED"]).optional(),
-    taxStatus: z.enum(["NOT_PROVIDED", "PENDING", "VALID", "REJECTED"]).optional(),
+    taxStatus: z.enum(["NOT_PROVIDED", "PENDING", "VERIFIED", "REQUIRES_ACTION"]).optional(),
     reason: reasonSchema,
   })
   .strict()

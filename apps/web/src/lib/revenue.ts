@@ -11,7 +11,7 @@ export interface CreatorPaymentProfile {
   destinationMask: string | null;
   countryCode: string | null;
   identityStatus: "NOT_STARTED" | "PENDING" | "VERIFIED" | "REJECTED";
-  taxStatus: "NOT_PROVIDED" | "PENDING" | "VALID" | "REJECTED";
+  taxStatus: "NOT_PROVIDED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION";
   hasDestination: boolean;
   createdAt: string;
   updatedAt: string;

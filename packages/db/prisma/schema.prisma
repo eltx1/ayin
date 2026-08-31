@@ -977,8 +977,12 @@ model Payout {
   externalReference String?      @db.VarChar(255)
   provider          String       @default("MANUAL") @db.VarChar(32)
   requestSource     String       @default("ADMIN") @db.VarChar(16)
-  paymentProfileId  String?      @db.Uuid
-  requestedAt       DateTime     @default(now())
+  paymentProfileId             String?      @db.Uuid
+  destinationEncryptedSnapshot String?      @db.Text
+  destinationMaskSnapshot      String?      @db.VarChar(120)
+  legalNameSnapshot            String?      @db.VarChar(160)
+  countryCodeSnapshot          String?      @db.Char(2)
+  requestedAt                  DateTime     @default(now())
   processedAt       DateTime?
   paidAt            DateTime?
   failureReason     String?      @db.Text

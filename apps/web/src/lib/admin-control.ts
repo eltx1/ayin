@@ -48,6 +48,11 @@ export interface AdminSystemHealth {
 export type AdminRole =
   "SUPERADMIN" | "ADMIN" | "OPERATIONS" | "CONTENT_MODERATOR" | "AD_MANAGER" | "FINANCE_MANAGER";
 
+export interface AdminSession {
+  accountId: string;
+  roles: AdminRole[];
+}
+
 export interface AdminStaffMember {
   id: string;
   email: string;
@@ -96,6 +101,10 @@ async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as T;
+}
+
+export function getAdminSession() {
+  return adminFetch<AdminSession>("/admin/session");
 }
 
 export function getAdminDashboard() {
