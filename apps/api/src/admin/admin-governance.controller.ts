@@ -105,7 +105,12 @@ export class SupportTicketController {
         parsed.error.issues[0]?.message ?? "The support ticket is invalid.",
       );
     }
-    return this.governance.createSupportTicket(request.ayinAuth.accountId, parsed.data);
+    return this.governance.createSupportTicket(request.ayinAuth.accountId, {
+      category: parsed.data.category,
+      subject: parsed.data.subject,
+      description: parsed.data.description,
+      ...(parsed.data.priority !== undefined ? { priority: parsed.data.priority } : {}),
+    });
   }
 }
 
@@ -158,7 +163,13 @@ export class AdminGovernanceController {
     if (!parsed.success) {
       throw adminBadRequest("INVALID_AUDIT_FILTER", "The audit-log filter is invalid.");
     }
-    return this.governance.auditLog(parsed.data);
+    return this.governance.auditLog({
+      ...(parsed.data.page !== undefined ? { page: parsed.data.page } : {}),
+      ...(parsed.data.take !== undefined ? { take: parsed.data.take } : {}),
+      ...(parsed.data.query !== undefined ? { query: parsed.data.query } : {}),
+      ...(parsed.data.action !== undefined ? { action: parsed.data.action } : {}),
+      ...(parsed.data.entityType !== undefined ? { entityType: parsed.data.entityType } : {}),
+    });
   }
 
   @Post("accounts/:accountId/revoke-sessions")
@@ -202,7 +213,13 @@ export class AdminGovernanceController {
     return this.governance.updateCreatorCompliance(
       request.ayinAuth.accountId,
       this.uuid(channelIdRaw),
-      parsed.data,
+      {
+        reason: parsed.data.reason,
+        ...(parsed.data.identityStatus !== undefined
+          ? { identityStatus: parsed.data.identityStatus }
+          : {}),
+        ...(parsed.data.taxStatus !== undefined ? { taxStatus: parsed.data.taxStatus } : {}),
+      },
     );
   }
 
@@ -240,7 +257,15 @@ export class AdminGovernanceController {
     return this.governance.updateSupportTicket(
       request.ayinAuth.accountId,
       this.uuid(ticketIdRaw),
-      parsed.data,
+      {
+        reason: parsed.data.reason,
+        ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
+        ...(parsed.data.priority !== undefined ? { priority: parsed.data.priority } : {}),
+        ...(parsed.data.assignedToAccountId !== undefined
+          ? { assignedToAccountId: parsed.data.assignedToAccountId }
+          : {}),
+        ...(parsed.data.resolution !== undefined ? { resolution: parsed.data.resolution } : {}),
+      },
     );
   }
 
