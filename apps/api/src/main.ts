@@ -22,6 +22,7 @@ async function bootstrap(): Promise<void> {
   const environment = parseEnvironment(apiEnvironmentSchema, process.env);
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
 
+  app.enableShutdownHooks();
   app.enableCors({
     allowedHeaders: ["authorization", "content-type", "x-ayin-auth-transport"],
     credentials: true,
