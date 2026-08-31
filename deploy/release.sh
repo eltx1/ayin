@@ -19,7 +19,8 @@ AYIN_REPO_URL="${AYIN_REPO_URL:-git@github.com:eltx1/ayin.git}"
 AYIN_WEB_ENV_FILE="${AYIN_WEB_ENV_FILE:-/home/ayin/env/web.env}"
 AYIN_API_ENV_FILE="${AYIN_API_ENV_FILE:-/home/ayin/env/api.env}"
 AYIN_WEB_HEALTH_URL="${AYIN_WEB_HEALTH_URL:-http://127.0.0.1:3000/}"
-AYIN_API_HEALTH_URL="${AYIN_API_HEALTH_URL:-http://127.0.0.1:4000/health}"
+AYIN_API_HEALTH_URL="${AYIN_API_HEALTH_URL:-http://127.0.0.1:4000/ready}"
+AYIN_API_LIVENESS_URL="${AYIN_API_LIVENESS_URL:-http://127.0.0.1:4000/health}"
 AYIN_HEALTH_RETRIES="${AYIN_HEALTH_RETRIES:-12}"
 AYIN_HEALTH_DELAY_SECONDS="${AYIN_HEALTH_DELAY_SECONDS:-2}"
 
@@ -52,37 +53,6 @@ cleanup_failed_release() {
 }
 trap cleanup_failed_release ERR
 
-echo "Creating release $release_id"
-git clone --filter=blob:none --no-checkout "$AYIN_REPO_URL" "$release_dir"
-git -C "$release_dir" fetch --depth=1 origin "$GIT_SHA"
-git -C "$release_dir" checkout --detach "$GIT_SHA"
-
-cd "$release_dir"
-corepack enable
-corepack prepare pnpm@11.24.0 --activate
-command -v pnpm >/dev/null 2>&1 || {
-  echo "error: pnpm was not activated by Corepack" >&2
-  exit 69
-}
-pnpm install --frozen-lockfile
-pnpm db:generate
-
-# Prisma deploy uses DATABASE_URL from the API environment without copying secrets into the release.
-set -a
-# shellcheck disable=SC1090
-source "$AYIN_API_ENV_FILE"
-set +a
-pnpm db:migrate:deploy
-pnpm build
-
-ln -sfn "$release_dir" "${AYIN_CURRENT_LINK}.next"
-mv -Tf "${AYIN_CURRENT_LINK}.next" "$AYIN_CURRENT_LINK"
-
-export AYIN_CURRENT_DIR="$AYIN_CURRENT_LINK"
-export AYIN_WEB_ENV_FILE AYIN_API_ENV_FILE
-pm2 startOrReload "$AYIN_CURRENT_LINK/deploy/ecosystem.config.cjs" --update-env
-pm2 save
-
 check_health() {
   local name="$1"
   local url="$2"
@@ -98,14 +68,112 @@ check_health() {
   return 1
 }
 
-if ! check_health "web" "$AYIN_WEB_HEALTH_URL" || ! check_health "api" "$AYIN_API_HEALTH_URL"; then
-  echo "Deployment health checks failed." >&2
-  if [[ -n "$previous_release" ]]; then
-    echo "Previous release available for rollback: $previous_release" >&2
+check_rollback_api_health() {
+  local attempt
+  local status
+  for ((attempt = 1; attempt <= AYIN_HEALTH_RETRIES; attempt += 1)); do
+    status="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "$AYIN_API_HEALTH_URL" || true)"
+    if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+      echo "rollback api readiness check passed"
+      return 0
+    fi
+
+    # A release created before /ready existed may legitimately return 404. Only in that compatibility
+    # case may rollback fall back to process liveness. A 5xx readiness response never falls back.
+    if [[ "$status" == "404" ]] && curl --fail --silent --show-error --max-time 10 "$AYIN_API_LIVENESS_URL" >/dev/null; then
+      echo "rollback api liveness check passed because the previous release has no /ready endpoint"
+      return 0
+    fi
+    sleep "$AYIN_HEALTH_DELAY_SECONDS"
+  done
+  echo "error: rollback api health check failed" >&2
+  return 1
+}
+
+activate_current_application() {
+  export AYIN_CURRENT_DIR="$AYIN_CURRENT_LINK"
+  export AYIN_WEB_ENV_FILE AYIN_API_ENV_FILE
+  if ! pm2 startOrReload "$AYIN_CURRENT_LINK/deploy/ecosystem.config.cjs" --update-env; then
+    echo "error: PM2 could not activate the current application release" >&2
+    return 1
+  fi
+  if ! pm2 save; then
+    echo "error: PM2 state could not be persisted" >&2
+    return 1
+  fi
+  return 0
+}
+
+rollback_application() {
+  if [[ -z "$previous_release" || ! -d "$previous_release" ]]; then
+    echo "error: no valid previous application release is available for automatic rollback" >&2
+    return 1
+  fi
+
+  echo "Rolling application back to $previous_release" >&2
+  ln -sfn "$previous_release" "${AYIN_CURRENT_LINK}.rollback"
+  mv -Tf "${AYIN_CURRENT_LINK}.rollback" "$AYIN_CURRENT_LINK"
+
+  if ! activate_current_application; then
+    echo "error: PM2 could not reactivate the previous application release" >&2
+    return 1
+  fi
+
+  if ! check_health "rollback web" "$AYIN_WEB_HEALTH_URL" || ! check_rollback_api_health; then
+    echo "error: previous application release did not become healthy after rollback" >&2
+    return 1
+  fi
+
+  echo "Application rollback succeeded. Database migrations were intentionally not rolled back." >&2
+  return 0
+}
+
+rollback_after_failure() {
+  local reason="$1"
+  echo "$reason" >&2
+  if rollback_application; then
+    echo "The previous application release has been restored automatically." >&2
   else
-    echo "No previous release symlink was present." >&2
+    echo "Automatic application rollback failed or was unavailable; operator intervention is required." >&2
   fi
   exit 70
+}
+
+echo "Creating release $release_id"
+git clone --filter=blob:none --no-checkout "$AYIN_REPO_URL" "$release_dir"
+git -C "$release_dir" fetch --depth=1 origin "$GIT_SHA"
+git -C "$release_dir" checkout --detach "$GIT_SHA"
+
+cd "$release_dir"
+corepack enable
+corepack prepare pnpm@11.24.0 --activate
+command -v pnpm >/dev/null 2>&1 || {
+  echo "error: pnpm was not activated by Corepack" >&2
+  exit 69
+}
+pnpm install --frozen-lockfile
+pnpm db:generate
+
+# Build the exact release before any production database mutation. The existing API environment
+# remains available to build-time validation without copying secrets into the release directory.
+set -a
+# shellcheck disable=SC1090
+source "$AYIN_API_ENV_FILE"
+set +a
+pnpm build
+
+# Only apply forward, backward-compatible migrations after the release candidate has built.
+pnpm db:migrate:deploy
+
+ln -sfn "$release_dir" "${AYIN_CURRENT_LINK}.next"
+mv -Tf "${AYIN_CURRENT_LINK}.next" "$AYIN_CURRENT_LINK"
+
+if ! activate_current_application; then
+  rollback_after_failure "Application activation failed after switching the release symlink."
+fi
+
+if ! check_health "web" "$AYIN_WEB_HEALTH_URL" || ! check_health "api readiness" "$AYIN_API_HEALTH_URL"; then
+  rollback_after_failure "Deployment health checks failed."
 fi
 
 trap - ERR

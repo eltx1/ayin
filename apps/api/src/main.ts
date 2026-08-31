@@ -11,10 +11,19 @@ import {
   isAllowedCookieMutationOrigin,
 } from "./security/request-security.js";
 
+const payoutEncryptionKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => Buffer.from(value, "base64").length === 32, {
+    message: "PAYOUT_DATA_ENCRYPTION_KEY must be exactly 32 random bytes encoded as base64.",
+  });
+
 const apiEnvironmentSchema = z.object({
   API_HOST: z.string().min(1).default("127.0.0.1"),
   CORS_ORIGIN: z.url().default("http://localhost:3000"),
   DATABASE_URL: z.string().min(1),
+  PAYOUT_DATA_ENCRYPTION_KEY: payoutEncryptionKeySchema,
   PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
 });
 
@@ -22,6 +31,7 @@ async function bootstrap(): Promise<void> {
   const environment = parseEnvironment(apiEnvironmentSchema, process.env);
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
 
+  app.enableShutdownHooks();
   app.enableCors({
     allowedHeaders: ["authorization", "content-type", "x-ayin-auth-transport"],
     credentials: true,
