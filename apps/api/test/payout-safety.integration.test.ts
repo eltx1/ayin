@@ -196,6 +196,92 @@ databaseDescribe("Creator payout safety", () => {
     ).toMatchObject({ reason: "Executing approved manual payout" });
   });
 
+  it("snapshots the beneficiary for finance-created payouts and never follows later profile edits", async () => {
+    const creator = await register("Admin Payout Creator", "admin-payout-creator@example.com");
+    const finance = await register("Admin Payout Finance", "admin-payout-finance@example.com");
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: finance.user.account.id, role: "FINANCE_MANAGER" },
+    });
+    await prisma.earningsLedgerEntry.create({
+      data: {
+        channelId: creator.user.channel.id,
+        type: "AD_REVENUE",
+        state: "FINAL",
+        amount: "210.000000",
+        currency: "USD",
+      },
+    });
+
+    const originalDestination = "Bank transfer: Snapshot Bank / account 111122223333";
+    const profile = await app.inject({
+      method: "PUT",
+      url: "/creator/studio/revenue/payment-profile",
+      headers: { cookie: creator.cookie },
+      payload: {
+        legalName: "Admin Payout Creator",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destination: originalDestination,
+        countryCode: "US",
+      },
+    });
+    expect(profile.statusCode).toBe(200);
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/admin/revenue/payouts",
+      headers: { cookie: finance.cookie },
+      payload: { channelId: creator.user.channel.id, currency: "USD" },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().destinationEncryptedSnapshot).toBeUndefined();
+    expect(created.json()).toMatchObject({
+      channelId: creator.user.channel.id,
+      currency: "USD",
+      requestSource: "ADMIN",
+      provider: "MANUAL",
+      legalNameSnapshot: "Admin Payout Creator",
+    });
+    const payoutId = created.json().id as string;
+
+    const stored = await prisma.payout.findUniqueOrThrow({ where: { id: payoutId } });
+    expect(stored.requestSource).toBe("ADMIN");
+    expect(stored.paymentProfileId).not.toBeNull();
+    expect(stored.destinationEncryptedSnapshot).not.toBeNull();
+    expect(stored.destinationMaskSnapshot).not.toBeNull();
+    expect(stored.legalNameSnapshot).toBe("Admin Payout Creator");
+
+    const changedDestination = "Bank transfer: Redirected Bank / account 999988887777";
+    const changedProfile = await app.inject({
+      method: "PUT",
+      url: "/creator/studio/revenue/payment-profile",
+      headers: { cookie: creator.cookie },
+      payload: {
+        legalName: "Admin Payout Creator",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destination: changedDestination,
+        countryCode: "US",
+      },
+    });
+    expect(changedProfile.statusCode).toBe(200);
+
+    const revealed = await app.inject({
+      method: "POST",
+      url: `/admin/revenue/payouts/${payoutId}/destination`,
+      headers: { cookie: finance.cookie },
+      payload: { reason: "Executing snapshotted admin payout" },
+    });
+    expect(revealed.statusCode).toBe(201);
+    expect(revealed.json()).toMatchObject({
+      payoutId,
+      destination: originalDestination,
+      legalName: "Admin Payout Creator",
+      sensitive: true,
+    });
+    expect(revealed.json().destination).not.toBe(changedDestination);
+  });
+
   it("enforces one active payout per channel and currency at the database boundary", async () => {
     const creator = await register("Concurrent Creator", "concurrent-payout@example.com");
     await prisma.payout.create({
