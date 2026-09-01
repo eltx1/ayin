@@ -16,7 +16,7 @@ fi
 AYIN_ROOT="${AYIN_ROOT:-/home/ayin/htdocs}"
 AYIN_RELEASES_DIR="${AYIN_RELEASES_DIR:-$AYIN_ROOT/releases}"
 AYIN_CURRENT_LINK="${AYIN_CURRENT_LINK:-$AYIN_ROOT/current}"
-AYIN_REPO_URL="${AYIN_REPO_URL:-git@github.com:eltx1/ayin.git}"
+AYIN_REPO_URL="${AYIN_REPO_URL:-https://github.com/eltx1/ayin.git}"
 AYIN_WEB_ENV_FILE="${AYIN_WEB_ENV_FILE:-/home/ayin/env/web.env}"
 AYIN_API_ENV_FILE="${AYIN_API_ENV_FILE:-/home/ayin/env/api.env}"
 AYIN_WEB_HEALTH_URL="${AYIN_WEB_HEALTH_URL:-http://127.0.0.1:3000/}"
