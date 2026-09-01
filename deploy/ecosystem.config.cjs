@@ -3,12 +3,9 @@
 const path = require("node:path");
 const { loadEnvFile } = require("./env-file.cjs");
 
-const currentDir =
-  process.env.AYIN_CURRENT_DIR || "/home/ayin/htdocs/current";
-const webEnvFile =
-  process.env.AYIN_WEB_ENV_FILE || "/home/ayin/env/web.env";
-const apiEnvFile =
-  process.env.AYIN_API_ENV_FILE || "/home/ayin/env/api.env";
+const currentDir = process.env.AYIN_CURRENT_DIR || "/home/ayin/htdocs/current";
+const webEnvFile = process.env.AYIN_WEB_ENV_FILE || "/home/ayin/env/web.env";
+const apiEnvFile = process.env.AYIN_API_ENV_FILE || "/home/ayin/env/api.env";
 
 const webEnv = loadEnvFile(webEnvFile);
 const apiEnv = loadEnvFile(apiEnvFile);
@@ -19,8 +16,7 @@ module.exports = {
       name: "ayin-web",
       cwd: currentDir,
       script: "corepack",
-      args:
-        "pnpm --filter @ayin/web run start -- --hostname 127.0.0.1 --port 3000",
+      args: "pnpm --filter @ayin/web run start -- --hostname 127.0.0.1 --port 3000",
       interpreter: "none",
       env: {
         ...webEnv,

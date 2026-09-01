@@ -12,9 +12,9 @@ describe("media storage configuration", () => {
   });
 
   it("rejects production startup when R2 credentials are absent", () => {
-    expect(() =>
-      loadMediaStorageConfig({ APP_ENV: "production" } as NodeJS.ProcessEnv),
-    ).toThrow(/R2 configuration is required in production/);
+    expect(() => loadMediaStorageConfig({ APP_ENV: "production" } as NodeJS.ProcessEnv)).toThrow(
+      /R2 configuration is required in production/,
+    );
   });
 
   it("rejects partial R2 credentials", () => {
