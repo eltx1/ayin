@@ -400,12 +400,22 @@
 
   .actions {
     grid-column: 1 / -1;
-    padding-bottom: 0;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 0.25rem;
+    scroll-padding-inline: 0.25rem;
+    scrollbar-width: none;
     width: 100%;
   }
 
+  .actions::-webkit-scrollbar {
+    display: none;
+  }
+
   .actions > * {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
   }
 
   .identityCopy h1 {
