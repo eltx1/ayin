@@ -9,6 +9,7 @@ on:
       - "deploy/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/database.yml"
       - ".github/workflows/deploy.yml"
   pull_request:
@@ -19,6 +20,7 @@ on:
       - "deploy/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/database.yml"
       - ".github/workflows/deploy.yml"
 
@@ -64,6 +66,11 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@11.24.0 --activate
+
+      - name: Refresh lockfile for diagnostics
+        run: |
+          pnpm install --lockfile-only --no-frozen-lockfile
+          git diff -- pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
