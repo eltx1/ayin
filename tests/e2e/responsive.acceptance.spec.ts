@@ -19,17 +19,28 @@ function db<T>(command: string, payload: Record<string, unknown> = {}): T {
 async function expectNoDocumentOverflow(page: Page, route: string): Promise<void> {
   await page.goto(route, { waitUntil: "domcontentloaded" });
   await expect(page.locator("body")).toBeVisible();
-  await page.waitForTimeout(100);
 
-  const dimensions = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
+  await page.evaluate(async () => {
+    if ("fonts" in document) await document.fonts.ready;
+  });
+  await page.waitForLoadState("networkidle");
 
-  expect(
-    dimensions.scrollWidth,
-    `${route} should keep horizontal scrolling inside local rails/tables instead of the document`,
-  ).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+  // Assert the invariant across a short settled window instead of sampling the
+  // loading shell once. Client-side dashboards populate after hydration/API
+  // calls, so late rows/cards must not be allowed to introduce page overflow.
+  for (let sample = 0; sample < 5; sample += 1) {
+    const dimensions = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }));
+
+    expect(
+      dimensions.scrollWidth,
+      `${route} should keep horizontal scrolling inside local rails/tables instead of the document`,
+    ).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+
+    if (sample < 4) await page.waitForTimeout(150);
+  }
 }
 
 test.beforeAll(() => {
