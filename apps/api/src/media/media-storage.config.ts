@@ -66,6 +66,12 @@ export function loadMediaStorageConfig(
   }
 
   const hasR2 = configuredCount === credentialValues.length;
+  if (parsed.APP_ENV === "production" && !hasR2) {
+    throw new Error(
+      "R2 configuration is required in production. AYIN must not fall back to development media storage.",
+    );
+  }
+
   const uploadSessionSecret =
     parsed.UPLOAD_SESSION_SECRET ??
     (parsed.APP_ENV === "production"
