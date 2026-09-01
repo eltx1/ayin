@@ -4,11 +4,17 @@ import { loadMediaStorageConfig } from "./media-storage.config.js";
 import { R2SigV4 } from "./r2-sigv4.js";
 
 describe("media storage configuration", () => {
-  it("fails closed to the development adapter when R2 credentials are absent", () => {
+  it("fails closed to the development adapter when R2 credentials are absent outside production", () => {
     const config = loadMediaStorageConfig({ APP_ENV: "test" } as NodeJS.ProcessEnv);
 
     expect(config.mode).toBe("development");
     expect(config.endpoint).toBeNull();
+  });
+
+  it("rejects production startup when R2 credentials are absent", () => {
+    expect(() =>
+      loadMediaStorageConfig({ APP_ENV: "production" } as NodeJS.ProcessEnv),
+    ).toThrow(/R2 configuration is required in production/);
   });
 
   it("rejects partial R2 credentials", () => {
