@@ -54,6 +54,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate deployment tooling
+        run: |
+          set -euo pipefail
+          bash -n deploy/release.sh
+          node --check deploy/env-file.cjs
+          node --check deploy/run-with-env.cjs
+          node --check deploy/validate-production-env.cjs
+          node --check deploy/ecosystem.config.cjs
+
       - name: Run repository quality gates
         run: |
           pnpm format:check
