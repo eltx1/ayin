@@ -4,18 +4,42 @@
 
 .start {
   align-items: center;
-  backdrop-filter: blur(10px);
-  background: rgb(5 7 13 / 72%);
-  border: 1px solid rgb(255 255 255 / 18%);
-  border-radius: 1rem;
+  backdrop-filter: blur(18px) saturate(140%);
+  background:
+    linear-gradient(rgb(7 5 16 / 76%), rgb(5 3 12 / 82%)) padding-box,
+    linear-gradient(145deg, rgb(139 24 248 / 45%), rgb(220 25 232 / 26%), rgb(255 255 255 / 10%))
+      border-box;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  box-shadow:
+    var(--shadow-soft),
+    0 0 2.5rem rgb(88 8 248 / 10%);
   color: #fff;
+  cursor: pointer;
   display: flex;
   font-size: 1rem;
-  font-weight: 800;
+  font-weight: 820;
   inset: 1rem;
   justify-content: center;
   min-height: 5rem;
   padding: 1rem 1.5rem;
   position: absolute;
   z-index: 8;
+}
+
+.start:hover {
+  background:
+    linear-gradient(rgb(12 8 24 / 82%), rgb(7 5 16 / 88%)) padding-box,
+    var(--brand-gradient) border-box;
+  box-shadow: var(--shadow-elevated), var(--brand-glow);
+}
+
+@media (max-width: 520px) {
+  .start {
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    inset: 0.65rem;
+    min-height: 4.5rem;
+    padding-inline: 1rem;
+  }
 }

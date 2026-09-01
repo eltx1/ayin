@@ -2,6 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { AppNavLink } from "@/components/ui/app-nav-link";
+
 import styles from "./studio.module.css";
 
 const navigation = [
@@ -35,9 +37,9 @@ export default function StudioLayout({ children }: { children: ReactNode }) {
           </Link>
           <nav aria-label="Creator Studio" className={styles.nav}>
             {navigation.map(([label, href]) => (
-              <Link href={href} key={href}>
+              <AppNavLink href={href} key={href}>
                 {label}
-              </Link>
+              </AppNavLink>
             ))}
           </nav>
           <Link className={styles.back} href="/">

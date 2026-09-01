@@ -1,70 +1,88 @@
 .page {
-  min-height: 100vh;
-  padding: clamp(20px, 4vw, 56px);
   background:
     radial-gradient(
       circle at 12% 12%,
-      color-mix(in srgb, var(--tv-accent) 24%, transparent),
+      color-mix(in srgb, var(--tv-accent) 22%, transparent),
       transparent 34%
     ),
-    #07090d;
-  color: #f7f8fb;
+    radial-gradient(circle at 88% 8%, rgb(139 24 248 / 12%), transparent 30rem), var(--background);
+  color: var(--foreground);
+  min-height: 100dvh;
+  padding: clamp(18px, 4vw, 56px) var(--page-gutter) calc(64px + var(--ayin-safe-bottom));
 }
 
 .hero {
-  max-width: 1320px;
+  backdrop-filter: blur(16px);
+  background: rgb(11 8 22 / 86%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-elevated);
   margin: 0 auto 24px;
-  padding: clamp(22px, 4vw, 46px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 28px;
-  background: rgba(14, 17, 23, 0.88);
+  max-width: 1320px;
   overflow: hidden;
+  padding: clamp(22px, 4vw, 46px);
   position: relative;
 }
 
 .hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
   background: var(--tv-banner) center / cover no-repeat;
-  opacity: 0.18;
+  content: "";
+  inset: 0;
+  opacity: 0.2;
   pointer-events: none;
+  position: absolute;
+}
+
+.hero::after {
+  background: linear-gradient(
+    110deg,
+    rgb(4 3 11 / 84%) 0%,
+    rgb(4 3 11 / 46%) 52%,
+    transparent 100%
+  );
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
 }
 
 .heroInner {
-  position: relative;
-  display: flex;
   align-items: center;
+  display: flex;
   gap: 18px;
+  position: relative;
+  z-index: 1;
 }
 
 .avatar {
-  width: 76px;
-  height: 76px;
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  border-radius: 22px;
   background:
     var(--tv-avatar) center / cover no-repeat,
-    color-mix(in srgb, var(--tv-accent) 35%, #171a22);
-  font-weight: 800;
+    color-mix(in srgb, var(--tv-accent) 34%, #171029);
+  border: 1px solid color-mix(in srgb, var(--tv-accent) 26%, var(--border));
+  border-radius: 24px;
+  box-shadow: 0 14px 36px rgb(0 0 0 / 28%);
+  display: grid;
+  flex: 0 0 auto;
   font-size: 28px;
+  font-weight: 850;
+  height: 78px;
+  place-items: center;
+  width: 78px;
 }
 
 .eyebrow,
 .liveBadge {
-  display: inline-flex;
   align-items: center;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 850;
   gap: 7px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
 }
 
 .eyebrow {
-  color: color-mix(in srgb, var(--tv-accent) 78%, white);
+  color: color-mix(in srgb, var(--tv-accent) 72%, white);
 }
 
 .hero h1,
@@ -76,25 +94,29 @@
 }
 
 .hero h1 {
+  font-size: clamp(30px, 5vw, 54px);
+  letter-spacing: -0.045em;
+  line-height: 1;
   margin-top: 5px;
-  font-size: clamp(28px, 5vw, 52px);
 }
 
 .channelLink {
-  color: rgba(255, 255, 255, 0.68);
-  text-decoration: none;
+  color: var(--muted);
+  text-decoration-color: transparent;
+  text-underline-offset: 0.2rem;
 }
 
 .channelLink:hover {
   color: white;
+  text-decoration-color: color-mix(in srgb, var(--tv-accent) 45%, transparent);
 }
 
 .layout {
-  max-width: 1320px;
-  margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.8fr);
   gap: 22px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.8fr);
+  margin: 0 auto;
+  max-width: 1320px;
 }
 
 .playerCard,
@@ -103,9 +125,11 @@
 .offAir,
 .managerCard,
 .videoRow {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(14, 17, 23, 0.9);
-  border-radius: 24px;
+  backdrop-filter: blur(12px);
+  background: linear-gradient(145deg, rgb(255 255 255 / 4%), rgb(139 24 248 / 2.5%));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
 }
 
 .playerCard {
@@ -113,52 +137,56 @@
 }
 
 .video {
-  display: block;
-  width: 100%;
   aspect-ratio: 16 / 9;
   background: #000;
+  display: block;
+  width: 100%;
 }
 
 .nowCopy {
   padding: 20px 22px 24px;
 }
 
+.nowCopy h2 {
+  letter-spacing: -0.025em;
+}
+
 .liveBadge {
-  color: #ff6b72;
+  color: #ff7b89;
   margin-bottom: 8px;
 }
 
 .liveDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
   background: currentColor;
+  border-radius: 50%;
   box-shadow: 0 0 18px currentColor;
+  height: 8px;
+  width: 8px;
 }
 
 .meta,
 .muted,
 .limitation,
 .videoMeta {
-  color: rgba(255, 255, 255, 0.64);
+  color: var(--muted);
 }
 
 .meta,
 .muted,
 .videoMeta {
-  margin: 6px 0 0;
   font-size: 14px;
+  margin: 6px 0 0;
 }
 
 .limitation {
-  margin: 14px 0 0;
   font-size: 12px;
   line-height: 1.55;
+  margin: 14px 0 0;
 }
 
 .side {
-  display: grid;
   align-content: start;
+  display: grid;
   gap: 18px;
 }
 
@@ -170,24 +198,25 @@
 }
 
 .nextCard h3 {
-  margin: 14px 0 5px;
   font-size: 21px;
+  letter-spacing: -0.02em;
+  margin: 14px 0 5px;
 }
 
 .guideList {
+  display: grid;
+  gap: 0;
   list-style: none;
   margin: 16px 0 0;
   padding: 0;
-  display: grid;
-  gap: 10px;
 }
 
 .guideItem {
+  border-top: 1px solid var(--border);
   display: grid;
-  grid-template-columns: 76px 1fr;
   gap: 12px;
-  padding: 12px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  grid-template-columns: 76px 1fr;
+  padding: 13px 0;
 }
 
 .guideItem:first-child {
@@ -195,58 +224,62 @@
 }
 
 .guideTime {
-  color: color-mix(in srgb, var(--tv-accent) 80%, white);
-  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--tv-accent) 72%, white);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .guideTitle {
-  font-weight: 700;
+  font-weight: 720;
 }
 
 .offAir {
-  max-width: 900px;
+  background:
+    linear-gradient(rgb(5 4 11 / 78%), rgb(5 4 11 / 96%)),
+    var(--tv-banner) center / cover no-repeat;
   margin: 42px auto 0;
+  max-width: 900px;
   min-height: 360px;
-  display: grid;
   place-items: center;
   text-align: center;
-  background:
-    linear-gradient(rgba(8, 10, 14, 0.8), rgba(8, 10, 14, 0.96)),
-    var(--tv-banner) center / cover no-repeat;
 }
 
 .offAirMark {
-  width: 82px;
-  height: 82px;
-  margin: 0 auto 18px;
-  display: grid;
-  place-items: center;
+  background: color-mix(in srgb, var(--tv-accent) 24%, #171029);
+  border: 1px solid color-mix(in srgb, var(--tv-accent) 24%, var(--border));
   border-radius: 26px;
-  background: color-mix(in srgb, var(--tv-accent) 28%, #171a22);
+  display: grid;
   font-size: 32px;
   font-weight: 900;
+  height: 82px;
+  margin: 0 auto 18px;
+  place-items: center;
+  width: 82px;
 }
 
 .offAir h2 {
-  margin: 0 0 9px;
   font-size: clamp(26px, 4vw, 42px);
+  letter-spacing: -0.035em;
+  margin: 0 0 9px;
 }
 
 .offAir p {
-  max-width: 600px;
-  margin: 0 auto;
-  color: rgba(255, 255, 255, 0.68);
+  color: var(--muted);
   line-height: 1.65;
+  margin: 0 auto;
+  max-width: 600px;
 }
 
 .refreshButton,
 .saveButton,
 .backLink {
-  border: 0;
+  align-items: center;
   border-radius: 999px;
+  display: inline-flex;
   font: inherit;
-  font-weight: 800;
+  font-weight: 820;
+  justify-content: center;
+  min-height: var(--control-height);
   text-decoration: none;
 }
 
@@ -256,23 +289,24 @@
 }
 
 .refreshButton {
+  background: color-mix(in srgb, var(--tv-accent) 78%, var(--brand-purple));
+  border: 1px solid color-mix(in srgb, var(--tv-accent) 35%, white);
+  color: white;
   margin-top: 22px;
-  padding: 11px 18px;
-  background: var(--tv-accent);
-  color: #071012;
+  padding: 10px 18px;
 }
 
 .manager {
-  max-width: 1050px;
   margin: 0 auto;
-  padding: clamp(24px, 5vw, 58px) clamp(16px, 4vw, 40px);
+  max-width: 1080px;
+  padding: clamp(24px, 5vw, 58px) var(--page-gutter);
 }
 
 .managerHeader {
-  display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  display: flex;
   gap: 18px;
+  justify-content: space-between;
   margin-bottom: 20px;
 }
 
@@ -280,23 +314,35 @@
   margin: 7px 0 0;
 }
 
+.managerHeader h1 {
+  font-size: clamp(2rem, 4vw, 3.3rem);
+  letter-spacing: -0.04em;
+}
+
 .backLink {
-  padding: 10px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-strong);
   color: inherit;
+  padding: 9px 16px;
+}
+
+.backLink:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-brand);
 }
 
 .automationGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 16px;
 }
 
 .automationItem {
+  background: rgb(255 255 255 / 3.5%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.05);
 }
 
 .automationItem strong {
@@ -305,8 +351,8 @@
 }
 
 .automationItem span {
+  color: var(--muted);
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
 }
 
 .videoList {
@@ -316,56 +362,66 @@
 }
 
 .videoRow {
-  padding: 16px;
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto auto auto;
   align-items: end;
+  display: grid;
   gap: 12px;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  padding: 16px;
 }
 
 .videoRow label {
+  color: var(--muted);
   display: grid;
-  gap: 6px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.68);
+  gap: 6px;
 }
 
 .videoRow input[type="number"] {
-  width: 110px;
-  padding: 9px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: #0b0d12;
+  background: rgb(3 2 10 / 68%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
   color: white;
+  min-height: 42px;
+  padding: 9px 10px;
+  width: 110px;
+}
+
+.videoRow input[type="number"]:focus {
+  border-color: rgb(220 25 232 / 50%);
+  box-shadow: 0 0 0 3px rgb(139 24 248 / 10%);
+  outline: none;
 }
 
 .includeControl {
-  display: flex !important;
-  grid-auto-flow: column;
   align-items: center;
+  display: flex !important;
   gap: 8px !important;
-  padding-bottom: 10px;
+  grid-auto-flow: column;
+  min-height: 44px;
+  padding-bottom: 4px;
 }
 
 .saveButton {
-  padding: 10px 15px;
-  background: #f3f5f7;
-  color: #090b0f;
+  background: var(--brand-gradient);
+  border: 1px solid rgb(255 255 255 / 16%);
+  box-shadow: 0 10px 24px rgb(88 8 248 / 18%);
+  color: white;
+  padding: 9px 15px;
 }
 
 .saveButton:disabled {
-  opacity: 0.5;
   cursor: default;
+  opacity: 0.5;
 }
 
 .notice {
-  margin: 14px 0 0;
-  color: #9edfd8;
+  color: #bff3d8;
   font-size: 13px;
+  margin: 14px 0 0;
 }
 
 .error {
-  color: #ff9b9f;
+  color: #ffabb5;
 }
 
 @media (max-width: 850px) {
@@ -387,13 +443,37 @@
 }
 
 @media (max-width: 560px) {
+  .page {
+    padding-inline: max(14px, var(--ayin-safe-left));
+  }
+
+  .hero {
+    border-radius: var(--radius-lg);
+  }
+
   .heroInner,
   .managerHeader {
     align-items: flex-start;
     flex-direction: column;
   }
 
+  .avatar {
+    height: 66px;
+    width: 66px;
+  }
+
   .videoRow {
     grid-template-columns: 1fr;
+  }
+
+  .videoRow > div:first-child {
+    grid-column: auto;
+  }
+
+  .videoRow input[type="number"],
+  .saveButton,
+  .backLink,
+  .refreshButton {
+    width: 100%;
   }
 }
