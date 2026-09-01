@@ -42,7 +42,8 @@ const fallbackNavigation: ProductNavigationItem[] = navigationItems.map((item) =
   featureFlag: "featureFlag" in item ? item.featureFlag : null,
 }));
 
-function itemIsActive(pathname: string, href: string): boolean {
+function itemIsActive(pathname: string | null, href: string): boolean {
+  if (!pathname) return false;
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -55,7 +56,7 @@ function NavigationLinks({
 }: {
   flags: NavigationFlagState;
   items: ProductNavigationItem[];
-  pathname: string;
+  pathname: string | null;
   surface: string;
 }) {
   return items
