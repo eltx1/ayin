@@ -73,20 +73,17 @@ jobs:
 
       - name: Check formatting
         run: |
-          set +e
-          different="$(pnpm exec prettier --list-different .)"
-          status=$?
-          set -e
-          if [[ $status -ne 0 ]]; then
-            {
-              echo "### Prettier differences"
-              echo '```text'
-              printf '%s\n' "$different"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            printf '%s\n' "$different"
-            exit "$status"
-          fi
+          pnpm exec prettier --list-different . | tee /tmp/prettier-different.txt
+          test ! -s /tmp/prettier-different.txt
+
+      - name: Upload formatting diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prettier-differences
+          path: /tmp/prettier-different.txt
+          if-no-files-found: ignore
+          retention-days: 1
 
       - name: Validate deployment tooling
         run: |
