@@ -1,13 +1,6 @@
 name: AYIN Cloudflare production sync
 
 on:
-  workflow_run:
-    workflows:
-      - Production deployment
-    types:
-      - completed
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -19,16 +12,13 @@ concurrency:
 
 jobs:
   sync:
-    if: >-
-      ${{ vars.AYIN_CLOUDFLARE_SYNC_ENABLED == 'true' &&
-          (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
     env:
       AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
       AYIN_CLOUDFLARE_ZONE_ID: ${{ secrets.AYIN_CLOUDFLARE_ZONE_ID }}
-      AYIN_ORIGIN_IPV4: ${{ secrets.AYIN_ORIGIN_IPV4 }}
+      AYIN_ORIGIN_IPV4: 13.52.116.200
 
     steps:
       - name: Checkout AYIN production edge tooling
@@ -43,7 +33,7 @@ jobs:
           test -n "$AYIN_CLOUDFLARE_API_TOKEN"
           test -n "$AYIN_CLOUDFLARE_ZONE_ID"
           [[ "$AYIN_CLOUDFLARE_ZONE_ID" =~ ^[0-9a-fA-F]{32}$ ]]
-          [[ "$AYIN_ORIGIN_IPV4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]
+          [[ "$AYIN_ORIGIN_IPV4" == '13.52.116.200' ]]
           bash -n deploy/cloudflare/sync-production-edge.sh
 
       - name: Synchronize AYIN Cloudflare edge
