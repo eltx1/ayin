@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 027
 
 if [[ $# -ne 1 ]]; then
   echo "usage: $0 <git-sha>" >&2
@@ -23,8 +24,9 @@ AYIN_API_HEALTH_URL="${AYIN_API_HEALTH_URL:-http://127.0.0.1:4000/ready}"
 AYIN_API_LIVENESS_URL="${AYIN_API_LIVENESS_URL:-http://127.0.0.1:4000/health}"
 AYIN_HEALTH_RETRIES="${AYIN_HEALTH_RETRIES:-12}"
 AYIN_HEALTH_DELAY_SECONDS="${AYIN_HEALTH_DELAY_SECONDS:-2}"
+AYIN_DEPLOY_LOCK_FILE="${AYIN_DEPLOY_LOCK_FILE:-/home/ayin/.deploy.lock}"
 
-for required in git corepack pm2 curl; do
+for required in git node corepack pm2 curl flock; do
   command -v "$required" >/dev/null 2>&1 || {
     echo "error: required command '$required' is missing" >&2
     exit 69
@@ -39,6 +41,13 @@ for env_file in "$AYIN_WEB_ENV_FILE" "$AYIN_API_ENV_FILE"; do
 done
 
 mkdir -p "$AYIN_RELEASES_DIR"
+mkdir -p "$(dirname "$AYIN_DEPLOY_LOCK_FILE")"
+exec 9>"$AYIN_DEPLOY_LOCK_FILE"
+if ! flock -n 9; then
+  echo "error: another AYIN deployment is already running" >&2
+  exit 75
+fi
+
 release_id="$(date -u +%Y%m%dT%H%M%SZ)-${GIT_SHA:0:12}"
 release_dir="$AYIN_RELEASES_DIR/$release_id"
 previous_release=""
@@ -145,25 +154,33 @@ git -C "$release_dir" fetch --depth=1 origin "$GIT_SHA"
 git -C "$release_dir" checkout --detach "$GIT_SHA"
 
 cd "$release_dir"
+
+required_node_version="$(tr -d '[:space:]' < .nvmrc)"
+current_node_version="$(node --version | sed 's/^v//')"
+if [[ "$current_node_version" != "$required_node_version" ]]; then
+  echo "error: AYIN requires Node $required_node_version but server is running $current_node_version" >&2
+  exit 69
+fi
+
 corepack enable
 corepack prepare pnpm@11.24.0 --activate
 command -v pnpm >/dev/null 2>&1 || {
   echo "error: pnpm was not activated by Corepack" >&2
   exit 69
 }
+
+node deploy/validate-production-env.cjs "$AYIN_WEB_ENV_FILE" "$AYIN_API_ENV_FILE"
 pnpm install --frozen-lockfile
 pnpm db:generate
+pnpm packages:build
 
-# Build the exact release before any production database mutation. The existing API environment
-# remains available to build-time validation without copying secrets into the release directory.
-set -a
-# shellcheck disable=SC1090
-source "$AYIN_API_ENV_FILE"
-set +a
-pnpm build
+# Build API and Web with isolated environment files. In particular, this prevents API secrets from
+# entering the Next.js build environment while ensuring NEXT_PUBLIC_* values are embedded correctly.
+node deploy/run-with-env.cjs "$AYIN_API_ENV_FILE" corepack pnpm --filter @ayin/api run build
+node deploy/run-with-env.cjs "$AYIN_WEB_ENV_FILE" corepack pnpm --filter @ayin/web run build
 
-# Only apply forward, backward-compatible migrations after the release candidate has built.
-pnpm db:migrate:deploy
+# Apply forward-only migrations only after the exact release candidate has built successfully.
+node deploy/run-with-env.cjs "$AYIN_API_ENV_FILE" corepack pnpm db:migrate:deploy
 
 ln -sfn "$release_dir" "${AYIN_CURRENT_LINK}.next"
 mv -Tf "${AYIN_CURRENT_LINK}.next" "$AYIN_CURRENT_LINK"
