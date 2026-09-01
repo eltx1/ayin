@@ -1,16 +1,11 @@
 "use strict";
 
-const {
-  assertPrivateFilePermissions,
-  loadEnvFile,
-} = require("./env-file.cjs");
+const { assertPrivateFilePermissions, loadEnvFile } = require("./env-file.cjs");
 
 const [webEnvPath, apiEnvPath] = process.argv.slice(2);
 
 if (!webEnvPath || !apiEnvPath) {
-  console.error(
-    "usage: node deploy/validate-production-env.cjs <web.env> <api.env>",
-  );
+  console.error("usage: node deploy/validate-production-env.cjs <web.env> <api.env>");
   process.exit(64);
 }
 
@@ -46,9 +41,7 @@ function requireHttpsUrl(env, key, scope, originOnly = false) {
       fail(`${scope}: ${key} must use https://`);
     }
     if (originOnly && (url.pathname !== "/" || url.search || url.hash)) {
-      fail(
-        `${scope}: ${key} must be an origin without a path, query, or fragment`,
-      );
+      fail(`${scope}: ${key} must be an origin without a path, query, or fragment`);
     }
     return url;
   } catch {
@@ -102,18 +95,12 @@ try {
 }
 
 requireExact(webEnv, "NODE_ENV", "production", "web.env");
-const webApiUrl = requireHttpsUrl(
-  webEnv,
-  "NEXT_PUBLIC_API_BASE_URL",
-  "web.env",
-);
+const webApiUrl = requireHttpsUrl(webEnv, "NEXT_PUBLIC_API_BASE_URL", "web.env");
 requireHttpsUrl(webEnv, "NEXT_PUBLIC_MEDIA_BASE_URL", "web.env");
 
 for (const [key, value] of Object.entries(webEnv)) {
   if (value && /(?:SECRET|PASSWORD|TOKEN|PRIVATE_KEY|ACCESS_KEY)/i.test(key)) {
-    fail(
-      `web.env: ${key} looks secret and must not be exposed to the browser process`,
-    );
+    fail(`web.env: ${key} looks secret and must not be exposed to the browser process`);
   }
 }
 
@@ -129,19 +116,12 @@ requireBase64Bytes(apiEnv, "PAYOUT_DATA_ENCRYPTION_KEY", 32, "api.env");
 requireMinimumLength(apiEnv, "ANALYTICS_HASH_SALT", 32, "api.env");
 requireMinimumLength(apiEnv, "UPLOAD_SESSION_SECRET", 32, "api.env");
 
-for (const key of [
-  "R2_ACCOUNT_ID",
-  "R2_BUCKET",
-  "R2_ACCESS_KEY_ID",
-  "R2_SECRET_ACCESS_KEY",
-]) {
+for (const key of ["R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"]) {
   requireValue(apiEnv, key, "api.env");
 }
 
 if (corsOrigin && webOrigin && corsOrigin.origin !== webOrigin.origin) {
-  fail(
-    "api.env: CORS_ORIGIN and WEB_ORIGIN must match for cookie-session CSRF protection",
-  );
+  fail("api.env: CORS_ORIGIN and WEB_ORIGIN must match for cookie-session CSRF protection");
 }
 
 if (webApiUrl && !webApiUrl.pathname.endsWith("/")) {

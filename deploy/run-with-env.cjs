@@ -6,9 +6,7 @@ const { loadEnvFile } = require("./env-file.cjs");
 const [envFile, command, ...args] = process.argv.slice(2);
 
 if (!envFile || !command) {
-  console.error(
-    "usage: node deploy/run-with-env.cjs <env-file> <command> [args...]",
-  );
+  console.error("usage: node deploy/run-with-env.cjs <env-file> <command> [args...]");
   process.exit(64);
 }
 

@@ -6,12 +6,10 @@ function decodeValue(rawValue, source, lineNumber) {
   const value = rawValue.trim();
   if (!value) return "";
 
-  if (value.startsWith("\"") || value.startsWith("'")) {
+  if (value.startsWith('"') || value.startsWith("'")) {
     const quote = value[0];
     if (!value.endsWith(quote) || value.length < 2) {
-      throw new Error(
-        `${source}:${lineNumber}: unterminated quoted environment value`,
-      );
+      throw new Error(`${source}:${lineNumber}: unterminated quoted environment value`);
     }
 
     if (quote === "'") {
@@ -21,9 +19,7 @@ function decodeValue(rawValue, source, lineNumber) {
     try {
       return JSON.parse(value);
     } catch {
-      throw new Error(
-        `${source}:${lineNumber}: invalid double-quoted environment value`,
-      );
+      throw new Error(`${source}:${lineNumber}: invalid double-quoted environment value`);
     }
   }
 
@@ -39,9 +35,7 @@ function parseEnvText(text, source = "environment file") {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
 
-    const match = line.match(
-      /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/,
-    );
+    const match = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
     if (!match) {
       throw new Error(`${source}:${index + 1}: invalid environment assignment`);
     }
