@@ -1,0 +1,81 @@
+name: AYIN Cloudflare production sync
+
+on:
+  workflow_run:
+    workflows:
+      - Production deployment
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-cloudflare-production-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: >-
+      ${{ vars.AYIN_CLOUDFLARE_SYNC_ENABLED == 'true' &&
+          (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
+      AYIN_CLOUDFLARE_ZONE_ID: ${{ secrets.AYIN_CLOUDFLARE_ZONE_ID }}
+      AYIN_ORIGIN_IPV4: ${{ secrets.AYIN_ORIGIN_IPV4 }}
+
+    steps:
+      - name: Checkout AYIN production edge tooling
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Validate isolated Cloudflare configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AYIN_CLOUDFLARE_API_TOKEN"
+          test -n "$AYIN_CLOUDFLARE_ZONE_ID"
+          [[ "$AYIN_CLOUDFLARE_ZONE_ID" =~ ^[0-9a-fA-F]{32}$ ]]
+          [[ "$AYIN_ORIGIN_IPV4" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]
+          bash -n deploy/cloudflare/sync-production-edge.sh
+
+      - name: Synchronize AYIN Cloudflare edge
+        shell: bash
+        run: bash deploy/cloudflare/sync-production-edge.sh
+
+      - name: Verify public AYIN endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --max-time 20 https://ayin.stream/ >/dev/null
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --max-time 20 https://api.ayin.stream/health >/dev/null
+          curl --fail --silent --show-error --retry 6 --retry-delay 5 --max-time 20 https://api.ayin.stream/ready >/dev/null
+
+      - name: Record Cloudflare sync proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_dir="$RUNNER_TEMP/ayin-cloudflare-sync-proof"
+          install -d -m 700 "$proof_dir"
+          cat > "$proof_dir/cloudflare-sync-proof.env" <<EOF
+          schema_version=1
+          zone=ayin.stream
+          origin_ipv4=$AYIN_ORIGIN_IPV4
+          sync_run_id=$GITHUB_RUN_ID
+          sync_run_attempt=$GITHUB_RUN_ATTEMPT
+          EOF
+
+      - name: Upload Cloudflare sync proof
+        uses: actions/upload-artifact@v7
+        with:
+          name: ayin-cloudflare-production-sync-proof
+          path: ${{ runner.temp }}/ayin-cloudflare-sync-proof/cloudflare-sync-proof.env
+          retention-days: 90
+          if-no-files-found: error
