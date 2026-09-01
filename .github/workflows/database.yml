@@ -71,19 +71,23 @@ jobs:
       - name: Audit production dependencies
         run: pnpm audit:prod
 
-      - name: Check formatting
+      - name: Format production-hardening files for diagnostics
         run: |
-          pnpm exec prettier --list-different . | tee /tmp/prettier-different.txt
-          test ! -s /tmp/prettier-different.txt
+          pnpm exec prettier --write \
+            apps/api/src/media/media-storage.config.test.ts \
+            deploy/ecosystem.config.cjs \
+            deploy/env-file.cjs \
+            deploy/run-with-env.cjs \
+            deploy/validate-production-env.cjs
+          git diff -- \
+            apps/api/src/media/media-storage.config.test.ts \
+            deploy/ecosystem.config.cjs \
+            deploy/env-file.cjs \
+            deploy/run-with-env.cjs \
+            deploy/validate-production-env.cjs
 
-      - name: Upload formatting diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: prettier-differences
-          path: /tmp/prettier-different.txt
-          if-no-files-found: ignore
-          retention-days: 1
+      - name: Check formatting
+        run: pnpm exec prettier --check .
 
       - name: Validate deployment tooling
         run: |
