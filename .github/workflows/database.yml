@@ -12,6 +12,7 @@ on:
       - "pnpm-workspace.yaml"
       - ".github/workflows/database.yml"
       - ".github/workflows/deploy.yml"
+      - ".github/workflows/cloudflare-production.yml"
   pull_request:
     paths:
       - "apps/api/**"
@@ -23,6 +24,7 @@ on:
       - "pnpm-workspace.yaml"
       - ".github/workflows/database.yml"
       - ".github/workflows/deploy.yml"
+      - ".github/workflows/cloudflare-production.yml"
 
 permissions:
   contents: read
@@ -80,6 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n deploy/release.sh
+          bash -n deploy/cloudflare/sync-production-edge.sh
           node --check deploy/env-file.cjs
           node --check deploy/run-with-env.cjs
           node --check deploy/validate-production-env.cjs
