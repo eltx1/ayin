@@ -29,7 +29,18 @@ const apiEnvironmentSchema = z.object({
 
 async function bootstrap(): Promise<void> {
   const environment = parseEnvironment(apiEnvironmentSchema, process.env);
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter({
+      // AYIN is intentionally reachable only through the local CloudPanel/Nginx reverse proxy.
+      // Trust exactly that hop so request.ip reflects the real direct-origin client for auth limits.
+      // When Cloudflare proxying is enabled, normalize Cloudflare client IPs in Nginx rather than
+      // broadening this trust boundary to arbitrary forwarding headers.
+      trustProxy: "127.0.0.1",
+      // Media uploads are direct-to-R2. Keep ordinary API bodies deliberately small.
+      bodyLimit: 1024 * 1024,
+    }),
+  );
 
   app.enableShutdownHooks();
   app.enableCors({
