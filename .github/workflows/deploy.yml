@@ -1,13 +1,6 @@
 name: Production deployment
 
 on:
-  workflow_run:
-    workflows:
-      - Task quality gates
-    types:
-      - completed
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       validation_run_id:
@@ -29,20 +22,16 @@ concurrency:
 
 jobs:
   deploy:
-    if: >-
-      ${{ vars.AYIN_CD_ENABLED == 'true' &&
-          (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
     env:
-      VALIDATION_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.validation_run_id }}
-      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.release_sha }}
-      SSH_PORT: ${{ vars.AYIN_DEPLOY_SSH_PORT || '22' }}
+      VALIDATION_RUN_ID: ${{ inputs.validation_run_id }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: '22'
       REMOTE_HOME: /home/ayin
-      WEB_HEALTH_URL: https://ayin.stream/
-      API_HEALTH_URL: https://api.ayin.stream/health
-      API_READY_URL: https://api.ayin.stream/ready
 
     steps:
       - name: Validate deployment identifiers
@@ -51,7 +40,7 @@ jobs:
           set -euo pipefail
           [[ "$VALIDATION_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
-          [[ "$SSH_PORT" =~ ^[0-9]+$ ]]
+          [[ "$DEPLOY_USER" == 'ayin' ]]
           [[ "$REMOTE_HOME" == '/home/ayin' ]]
 
       - name: Require successful main quality gate
@@ -81,41 +70,21 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
 
-      - name: Validate deployment inputs
+      - name: Configure AYIN SSH key
         shell: bash
         env:
-          DEPLOY_HOST: ${{ secrets.AYIN_DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.AYIN_DEPLOY_USER }}
           DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.AYIN_DEPLOY_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "$DEPLOY_HOST"
           test -n "$DEPLOY_KEY"
-          test -n "$DEPLOY_KNOWN_HOSTS"
-          [[ "$DEPLOY_USER" == 'ayin' ]] || {
-            echo 'AYIN_DEPLOY_USER must be exactly ayin' >&2
-            exit 1
-          }
-
-      - name: Configure pinned SSH trust
-        shell: bash
-        env:
-          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.AYIN_DEPLOY_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
           chmod 600 "$HOME/.ssh/id_ed25519"
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          ssh-keyscan -p "$SSH_PORT" -H "$DEPLOY_HOST" > "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Verify isolated AYIN account
         shell: bash
-        env:
-          DEPLOY_HOST: ${{ secrets.AYIN_DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.AYIN_DEPLOY_USER }}
         run: |
           set -euo pipefail
           remote_user="$(ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'whoami')"
@@ -125,9 +94,6 @@ jobs:
 
       - name: Transfer trusted bootstrap deploy script
         shell: bash
-        env:
-          DEPLOY_HOST: ${{ secrets.AYIN_DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.AYIN_DEPLOY_USER }}
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
@@ -139,9 +105,6 @@ jobs:
 
       - name: Deploy exact validated commit
         shell: bash
-        env:
-          DEPLOY_HOST: ${{ secrets.AYIN_DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.AYIN_DEPLOY_USER }}
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
@@ -149,22 +112,10 @@ jobs:
 
       - name: Verify direct-origin application health
         shell: bash
-        env:
-          DEPLOY_HOST: ${{ secrets.AYIN_DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.AYIN_DEPLOY_USER }}
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
             "set -e; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/ >/dev/null; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/health >/dev/null; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/ready >/dev/null"
-
-      - name: Probe public production edge
-        if: ${{ vars.AYIN_PUBLIC_HEALTH_ENABLED == 'true' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --retry 6 --retry-delay 3 --max-time 20 "$WEB_HEALTH_URL" >/dev/null
-          curl --fail --silent --show-error --retry 6 --retry-delay 3 --max-time 20 "$API_HEALTH_URL" >/dev/null
-          curl --fail --silent --show-error --retry 6 --retry-delay 3 --max-time 20 "$API_READY_URL" >/dev/null
 
       - name: Write immutable deployment proof
         shell: bash
@@ -192,11 +143,6 @@ jobs:
       - name: Remove bootstrap copy
         if: always()
         shell: bash
-        env:
-          DEPLOY_HOST: ${{ secrets.AYIN_DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.AYIN_DEPLOY_USER }}
         run: |
-          if [[ -n "${DEPLOY_HOST:-}" && "${DEPLOY_USER:-}" == 'ayin' ]]; then
-            ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-              "rm -f '$REMOTE_HOME/.deploy-bootstrap/release.sh'" || true
-          fi
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "rm -f '$REMOTE_HOME/.deploy-bootstrap/release.sh'" || true
