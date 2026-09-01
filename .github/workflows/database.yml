@@ -9,6 +9,7 @@ on:
       - "deploy/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/database.yml"
       - ".github/workflows/deploy.yml"
   pull_request:
@@ -19,6 +20,7 @@ on:
       - "deploy/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
       - ".github/workflows/database.yml"
       - ".github/workflows/deploy.yml"
 
@@ -53,10 +55,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
 
@@ -72,18 +74,7 @@ jobs:
         run: pnpm audit:prod
 
       - name: Check formatting
-        run: |
-          pnpm exec prettier --list-different . | tee /tmp/prettier-different.txt
-          test ! -s /tmp/prettier-different.txt
-
-      - name: Upload formatting diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: prettier-differences
-          path: /tmp/prettier-different.txt
-          if-no-files-found: ignore
-          retention-days: 1
+        run: pnpm exec prettier --check .
 
       - name: Validate deployment tooling
         run: |

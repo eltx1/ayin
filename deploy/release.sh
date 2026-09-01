@@ -8,8 +8,8 @@ if [[ $# -ne 1 ]]; then
 fi
 
 GIT_SHA="$1"
-if [[ ! "$GIT_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
-  echo "error: git-sha must be a 7-40 character hexadecimal commit id" >&2
+if [[ ! "$GIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  echo "error: git-sha must be a full 40-character hexadecimal commit id" >&2
   exit 64
 fi
 
@@ -152,6 +152,12 @@ echo "Creating release $release_id"
 git clone --filter=blob:none --no-checkout "$AYIN_REPO_URL" "$release_dir"
 git -C "$release_dir" fetch --depth=1 origin "$GIT_SHA"
 git -C "$release_dir" checkout --detach "$GIT_SHA"
+
+resolved_sha="$(git -C "$release_dir" rev-parse HEAD)"
+if [[ "${resolved_sha,,}" != "${GIT_SHA,,}" ]]; then
+  echo "error: checked-out commit $resolved_sha does not match requested commit $GIT_SHA" >&2
+  exit 65
+fi
 
 cd "$release_dir"
 
