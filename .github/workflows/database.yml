@@ -74,8 +74,43 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
-      - name: Validate deployment script syntax
-        run: bash -n deploy/release.sh
+      - name: Validate deployment tooling
+        run: |
+          set -euo pipefail
+          bash -n deploy/release.sh
+          node --check deploy/env-file.cjs
+          node --check deploy/run-with-env.cjs
+          node --check deploy/validate-production-env.cjs
+          node --check deploy/ecosystem.config.cjs
+
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          cat > "$tmpdir/web.env" <<'EOF'
+          NODE_ENV=production
+          NEXT_PUBLIC_API_BASE_URL=https://api.ayin.stream
+          NEXT_PUBLIC_MEDIA_BASE_URL=https://media.ayin.stream
+          EOF
+          cat > "$tmpdir/api.env" <<'EOF'
+          NODE_ENV=production
+          APP_ENV=production
+          API_HOST=127.0.0.1
+          PORT=4000
+          CORS_ORIGIN=https://ayin.stream
+          WEB_ORIGIN=https://ayin.stream
+          DATABASE_URL=postgresql://ayin:ayin@db.internal:5432/ayin?schema=public
+          AUTH_TOKEN_SECRET=ci-production-auth-secret-more-than-32-characters
+          PAYOUT_DATA_ENCRYPTION_KEY=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=
+          ANALYTICS_HASH_SALT=ci-analytics-hash-salt-more-than-32-characters
+          R2_ACCOUNT_ID=test-account
+          R2_BUCKET=test-bucket
+          R2_ACCESS_KEY_ID=test-access-key
+          R2_SECRET_ACCESS_KEY=test-secret-key
+          UPLOAD_SESSION_SECRET=ci-upload-session-secret-more-than-32-characters
+          GAM_TEST_MODE=1
+          GAM_PRODUCTION_ENABLED=0
+          EOF
+          chmod 600 "$tmpdir/web.env" "$tmpdir/api.env"
+          node deploy/validate-production-env.cjs "$tmpdir/web.env" "$tmpdir/api.env"
 
       - name: Lint
         run: pnpm lint
