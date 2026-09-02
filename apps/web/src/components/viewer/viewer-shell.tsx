@@ -14,6 +14,7 @@ import {
   type NavigationFlagState,
 } from "@/lib/navigation";
 
+import footerStyles from "./viewer-footer.module.css";
 import styles from "./viewer-shell.module.css";
 
 interface ViewerShellProperties {
@@ -211,19 +212,21 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
       <div className={styles.content}>{children}</div>
 
-      <footer className={styles.footer}>
-        <div className={styles.footerIdentity}>
+      <footer className={footerStyles.footer}>
+        <div className={footerStyles.identity}>
           <strong>AYIN</strong>
           <span>A Horus Media product</span>
         </div>
-        <nav aria-label="Legal and policy" className={styles.footerLinks}>
+        <nav aria-label="Legal and policy" className={footerStyles.links}>
           {legalNavigation.map((item) => (
             <Link href={item.href} key={item.href}>
               {item.label}
             </Link>
           ))}
         </nav>
-        <p className={styles.footerCopyright}>© {new Date().getFullYear()} AYIN. All rights reserved.</p>
+        <p className={footerStyles.copyright}>
+          © {new Date().getFullYear()} AYIN. All rights reserved.
+        </p>
       </footer>
 
       {productControls?.deviceVisibility.mobile !== false ? (
