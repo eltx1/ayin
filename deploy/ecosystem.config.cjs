@@ -14,10 +14,10 @@ module.exports = {
   apps: [
     {
       name: "ayin-web",
-      cwd: currentDir,
-      script: "corepack",
-      args: "pnpm --filter @ayin/web run start -- --hostname 127.0.0.1 --port 3000",
-      interpreter: "none",
+      cwd: path.join(currentDir, "apps/web"),
+      script: path.join(currentDir, "apps/web/node_modules/next/dist/bin/next"),
+      args: "start --hostname 127.0.0.1 --port 3000",
+      interpreter: "node",
       env: {
         ...webEnv,
         NODE_ENV: "production",
