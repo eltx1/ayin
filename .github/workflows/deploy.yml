@@ -82,6 +82,24 @@ jobs:
               core.setFailed(`Release is not an approved successful main validation: ${failures.join(', ')}`);
             }
 
+      - name: Reject superseded automatic release
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const expectedSha = process.env.RELEASE_SHA;
+            const { data: branch } = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: 'main',
+            });
+
+            if (branch.commit.sha !== expectedSha) {
+              core.setFailed(
+                `Automatic release ${expectedSha} is superseded by current main ${branch.commit.sha}; refusing stale deployment.`,
+              );
+            }
+
       - name: Checkout trusted deployment tooling
         uses: actions/checkout@v7
         with:
