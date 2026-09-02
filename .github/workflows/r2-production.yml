@@ -1,0 +1,60 @@
+name: AYIN R2 production bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-r2-production-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
+      AYIN_R2_BUCKET_NAME: ayin-production-media
+
+    steps:
+      - name: Checkout AYIN R2 tooling
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Validate isolated R2 bootstrap configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AYIN_CLOUDFLARE_API_TOKEN"
+          [[ "$AYIN_R2_BUCKET_NAME" == 'ayin-production-media' ]]
+          bash -n deploy/cloudflare/bootstrap-r2-production.sh
+
+      - name: Provision AYIN R2 bucket and media domain
+        shell: bash
+        run: bash deploy/cloudflare/bootstrap-r2-production.sh
+
+      - name: Record R2 bootstrap proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_dir="$RUNNER_TEMP/ayin-r2-bootstrap-proof"
+          install -d -m 700 "$proof_dir"
+          cat > "$proof_dir/r2-bootstrap-proof.env" <<EOF
+          schema_version=1
+          bucket=$AYIN_R2_BUCKET_NAME
+          media_domain=media.ayin.stream
+          bootstrap_run_id=$GITHUB_RUN_ID
+          bootstrap_run_attempt=$GITHUB_RUN_ATTEMPT
+          EOF
+
+      - name: Upload R2 bootstrap proof
+        uses: actions/upload-artifact@v7
+        with:
+          name: ayin-r2-production-bootstrap-proof
+          path: ${{ runner.temp }}/ayin-r2-bootstrap-proof/r2-bootstrap-proof.env
+          retention-days: 90
+          if-no-files-found: error
