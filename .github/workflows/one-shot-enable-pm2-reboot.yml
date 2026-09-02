@@ -1,0 +1,85 @@
+name: One-shot enable AYIN PM2 reboot persistence
+
+on:
+  push:
+    paths:
+      - .github/workflows/one-shot-enable-pm2-reboot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  enable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+
+    steps:
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Install isolated AYIN user reboot restore entry
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          [[ "$(whoami)" == "ayin" ]]
+          [[ "$HOME" == "/home/ayin" ]]
+          [[ ! -w /home/horusapp ]]
+          command -v crontab >/dev/null
+          command -v pm2 >/dev/null
+          pm2_path="$(command -v pm2)"
+          [[ -x "$pm2_path" ]]
+          [[ -s /home/ayin/.pm2/dump.pm2 ]]
+
+          cron_state="$(systemctl is-active cron.service 2>/dev/null || true)"
+          [[ "$cron_state" == "active" ]] || {
+            echo "FAIL: cron.service is not active; refusing to install ineffective reboot entry" >&2
+            exit 1
+          }
+
+          marker='# AYIN PM2 reboot persistence managed by AYIN deployment'
+          entry="@reboot HOME=/home/ayin PM2_HOME=/home/ayin/.pm2 PATH=/usr/local/bin:/usr/bin:/bin $pm2_path resurrect >>/home/ayin/.pm2/reboot-resurrect.log 2>&1"
+          existing="$(crontab -l 2>/dev/null || true)"
+          cleaned="$(printf '%s\n' "$existing" | awk '
+            $0 == "# AYIN PM2 reboot persistence managed by AYIN deployment" {skip=1; next}
+            skip == 1 && $0 ~ /^@reboot .*PM2_HOME=\/home\/ayin\/\.pm2 .*pm2 resurrect/ {skip=0; next}
+            $0 ~ /^@reboot .*PM2_HOME=\/home\/ayin\/\.pm2 .*pm2 resurrect/ {next}
+            {skip=0; print}
+          ')"
+
+          tmp="$(mktemp)"
+          {
+            printf '%s\n' "$cleaned"
+            printf '%s\n' "$marker"
+            printf '%s\n' "$entry"
+          } | sed '/^[[:space:]]*$/N;/^\n$/D' > "$tmp"
+          crontab "$tmp"
+          rm -f "$tmp"
+
+          installed="$(crontab -l)"
+          count="$(grep -Ec '^@reboot .*PM2_HOME=/home/ayin/\.pm2 .*pm2 resurrect' <<<"$installed")"
+          [[ "$count" == "1" ]]
+          echo "PASS: AYIN PM2 reboot persistence installed exactly once in ayin user crontab"
+          echo "PASS: cron.service is active and PM2 dump exists"
+          REMOTE
