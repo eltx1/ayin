@@ -9,6 +9,11 @@ import {
 } from "./advertising-control.controller.js";
 import { AdvertisingControlService } from "./advertising-control.service.js";
 import {
+  AdminAuthorizedSellerFileController,
+  PublicAuthorizedSellerFileController,
+} from "./authorized-seller-file.controller.js";
+import { AuthorizedSellerFileService } from "./authorized-seller-file.service.js";
+import {
   AdminGamDiagnosticsController,
   GamClientConfigurationController,
 } from "./gam-production.controller.js";
@@ -33,14 +38,23 @@ import { VideoAdService } from "./video-ad.service.js";
     AdminAdvertisingControlController,
     GamClientConfigurationController,
     AdminGamDiagnosticsController,
+    PublicAuthorizedSellerFileController,
+    AdminAuthorizedSellerFileController,
   ],
   providers: [
     VideoAdService,
     PageAdService,
     AdvertisingControlService,
     GamProductionService,
+    AuthorizedSellerFileService,
     { provide: GAM_PRODUCTION_CONFIG, useFactory: createGamProductionConfig },
   ],
-  exports: [VideoAdService, PageAdService, AdvertisingControlService, GamProductionService],
+  exports: [
+    VideoAdService,
+    PageAdService,
+    AdvertisingControlService,
+    GamProductionService,
+    AuthorizedSellerFileService,
+  ],
 })
 export class AdsModule {}
