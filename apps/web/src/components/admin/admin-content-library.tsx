@@ -1,15 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
 import { apiBaseUrl, readApiError } from "@/lib/api";
-import {
-  type UploadSession,
-  uploadPreparedVideoDirectly,
-} from "@/lib/direct-video-upload";
+import { type UploadSession, uploadPreparedVideoDirectly } from "@/lib/direct-video-upload";
 
 type Channel = {
   id: string;
@@ -66,23 +62,24 @@ export function AdminContentLibrary() {
   const [publishImmediately, setPublishImmediately] = useState(true);
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [busyBatch, setBusyBatch] = useState<string | null>(null);
+  const [busyItem, setBusyItem] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [channelPayload, batchPayload] = await Promise.all([
-      adminApi<{ items: Channel[] }>("/admin/control/channels?page=1&take=100"),
+      adminApi<{ items: Channel[] }>("/admin/content-seeding/channels"),
       adminApi<SeedBatch[]>("/admin/content-seeding/batches?take=50"),
     ]);
-    setChannels(channelPayload.items.filter((channel) => channel.isPlatformOwned));
+    setChannels(channelPayload.items);
     setBatches(batchPayload);
   }, []);
 
   useEffect(() => {
     let active = true;
     void load().catch((caught) => {
-      if (active) setError(caught instanceof Error ? caught.message : "Content library could not be loaded.");
+      if (active)
+        setError(caught instanceof Error ? caught.message : "Content library could not be loaded.");
     });
     return () => {
       active = false;
@@ -93,17 +90,13 @@ export function AdminContentLibrary() {
     if (requestedChannelId) setChannelId(requestedChannelId);
   }, [requestedChannelId]);
 
-  const selectedChannel = useMemo(
-    () => channels.find((channel) => channel.id === channelId) ?? null,
-    [channelId, channels],
-  );
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setMessage(null);
+    const selectedChannel = channels.find((channel) => channel.id === channelId);
     if (!selectedChannel) {
-      setError("Choose an AYIN-owned channel. Mark a channel as platform-owned in Channels first.");
+      setError("Choose an AYIN-owned catalog channel.");
       return;
     }
     if (!file) {
@@ -158,7 +151,7 @@ export function AdminContentLibrary() {
       setMessage(
         publishImmediately
           ? `Published “${title.trim()}” to @${selectedChannel.handle}.`
-          : `Uploaded and verified “${title.trim()}”. It is ready for review before publishing.`,
+          : `Uploaded and verified “${title.trim()}”. It is ready for review.`,
       );
       setTitle("");
       setDescription("");
@@ -175,7 +168,7 @@ export function AdminContentLibrary() {
   }
 
   async function publish(item: SeedItem) {
-    setBusyBatch(item.id);
+    setBusyItem(item.id);
     setError(null);
     try {
       await adminApi(`/admin/content-seeding/items/${encodeURIComponent(item.id)}/publish`, {
@@ -186,13 +179,18 @@ export function AdminContentLibrary() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The item could not be published.");
     } finally {
-      setBusyBatch(null);
+      setBusyItem(null);
     }
   }
 
   async function rollback(batch: SeedBatch) {
-    if (!window.confirm(`Roll back unpublished batch “${batch.sourceLabel}”? Uploaded R2 objects in this batch will be removed.`)) return;
-    setBusyBatch(batch.id);
+    if (
+      !window.confirm(
+        `Roll back unpublished batch “${batch.sourceLabel}”? Its uploaded R2 objects will be removed.`,
+      )
+    )
+      return;
+    setBusyItem(batch.id);
     setError(null);
     try {
       await adminApi(`/admin/content-seeding/batches/${encodeURIComponent(batch.id)}/rollback`, {
@@ -203,7 +201,7 @@ export function AdminContentLibrary() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The batch could not be rolled back.");
     } finally {
-      setBusyBatch(null);
+      setBusyItem(null);
     }
   }
 
@@ -214,19 +212,15 @@ export function AdminContentLibrary() {
           <span className={styles.eyebrow}>Content Operations</span>
           <h1>AYIN Content Library</h1>
           <p className={styles.muted}>
-            Seed AYIN-owned channels with rights-tracked video, direct R2 upload, verification,
-            publishing and safe rollback.
+            Rights-tracked catalog ingestion with direct R2 upload, verification, publishing and safe rollback.
           </p>
         </div>
-        <Link className={styles.button} href="/admin/channels">
-          Manage platform channels
-        </Link>
       </header>
 
       <section className={styles.card} style={{ marginBottom: "1rem" }}>
         <strong>Rights gate</strong>
         <p className={styles.muted}>
-          Online availability is not permission. Record the exact source URL, rights statement,
+          Online availability is not permission. Save the exact source URL, rights statement,
           license, authorization or ownership evidence for every item. Prefer AYIN-owned, public
           domain, CC0 or explicitly licensed material.
         </p>
@@ -236,11 +230,11 @@ export function AdminContentLibrary() {
       {error ? <p className={styles.error}>{error}</p> : null}
 
       <section className={styles.card} style={{ marginBottom: "1.5rem" }}>
-        <h2>Add content</h2>
+        <h2>Add catalog content</h2>
         {channels.length === 0 ? (
           <p className={styles.muted}>
-            No AYIN-owned channels yet. Open Channels and enable “Platform-owned” on the channel
-            that will hold AYIN catalog content.
+            No AYIN-owned catalog channels are available. An Operations administrator must mark an
+            appropriate channel as platform-owned first.
           </p>
         ) : null}
         <form className={styles.form} onSubmit={submit}>
@@ -260,7 +254,7 @@ export function AdminContentLibrary() {
             <input
               required
               maxLength={200}
-              placeholder="e.g. Library of Congress public-domain batch"
+              placeholder="e.g. Library of Congress public-domain item"
               value={sourceLabel}
               onChange={(event) => setSourceLabel(event.target.value)}
             />
@@ -305,7 +299,7 @@ export function AdminContentLibrary() {
               required
               minLength={3}
               maxLength={10000}
-              placeholder="Exact source URL + rights statement/license + attribution requirements, if any."
+              placeholder="Exact source URL + rights statement/license + required attribution."
               value={sourceNotes}
               onChange={(event) => setSourceNotes(event.target.value)}
             />
@@ -347,7 +341,9 @@ export function AdminContentLibrary() {
       </header>
       <section className={styles.grid}>
         {batches.map((batch) => {
-          const containsPublished = batch.items.some((item) => item.status === "PUBLISHED" || item.video.status === "PUBLISHED");
+          const containsPublished = batch.items.some(
+            (item) => item.status === "PUBLISHED" || item.video.status === "PUBLISHED",
+          );
           return (
             <article className={styles.card} key={batch.id}>
               <div className={styles.cardHeader}>
@@ -359,7 +355,10 @@ export function AdminContentLibrary() {
                 </div>
               </div>
               {batch.items.map((item) => (
-                <div key={item.id} style={{ borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: ".8rem", marginTop: ".8rem" }}>
+                <div
+                  key={item.id}
+                  style={{ borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: ".8rem", marginTop: ".8rem" }}
+                >
                   <strong>{item.video.title}</strong>
                   <p className={styles.muted}>
                     {item.video.contentType} · {item.status} · rights: {item.rightsBasis}
@@ -371,7 +370,7 @@ export function AdminContentLibrary() {
                   {item.status === "READY" && item.video.status !== "PUBLISHED" ? (
                     <button
                       className={styles.button}
-                      disabled={busyBatch === item.id}
+                      disabled={busyItem === item.id}
                       type="button"
                       onClick={() => void publish(item)}
                     >
@@ -384,7 +383,7 @@ export function AdminContentLibrary() {
                 <div className={styles.actions}>
                   <button
                     className={styles.button}
-                    disabled={busyBatch === batch.id}
+                    disabled={busyItem === batch.id}
                     type="button"
                     onClick={() => void rollback(batch)}
                   >
