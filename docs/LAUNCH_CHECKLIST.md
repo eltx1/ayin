@@ -2,11 +2,13 @@
 
 Use this as a release gate. A box is checked only from evidence in the target environment; repository defaults do not count as production verification.
 
+The V1 zero-additional-service topology keeps Web/API/PostgreSQL on the existing EC2 host. Cloudflare R2 is the only required external storage service for creator media.
+
 ## DNS and domains
 
 - [ ] `ayin.stream` resolves through the intended Cloudflare zone to the CloudPanel web origin.
 - [ ] `api.ayin.stream` resolves to the API origin and is not accidentally cached as static content.
-- [ ] media/R2 custom domain resolves separately from AWS/CloudPanel.
+- [ ] `media.ayin.stream` resolves to R2 separately from AWS/CloudPanel.
 - [ ] HTTPS is valid end to end and HTTP redirects to HTTPS.
 
 ## CloudPanel and application health
@@ -14,22 +16,26 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] Web process is running under the documented PM2 configuration.
 - [ ] API process is running and `/health` returns success through the public reverse proxy.
 - [ ] Nginx forwards host/proto/client information as documented.
-- [ ] Restart and rollback procedure from `deploy/README.md` has been exercised in staging.
+- [ ] Restart and rollback procedure from `deploy/README.md` has been exercised before public launch.
 
 ## PostgreSQL
 
-- [ ] Production `DATABASE_URL` is stored outside git.
-- [ ] `pnpm db:migrate:deploy` succeeds against a staging copy before production migration.
-- [ ] Automated backups exist, retention is defined, and at least one restore test has succeeded.
-- [ ] Database access is network-restricted and uses a least-privilege application role where practical.
+- [ ] PostgreSQL 16+ is running on the existing AYIN EC2 application host.
+- [ ] PostgreSQL listens on `127.0.0.1:5432` only and never on `0.0.0.0`, `[::]` or a public/VPC-facing address.
+- [ ] EC2 Security Groups do not expose TCP/5432.
+- [ ] Dedicated database `ayin` and application role `ayin_app` are used; no Horus database/user is reused.
+- [ ] Production `DATABASE_URL` is stored outside git with mode `600`.
+- [ ] `pnpm db:migrate:deploy` succeeds before public acceptance.
+- [ ] Automated backups exist, an off-host recoverable copy is retained, and at least one restore test has succeeded.
 
 ## R2 and media delivery
 
-- [ ] R2 account, bucket and credentials are configured outside git.
-- [ ] Media custom domain serves byte-range requests required by progressive MP4 playback.
+- [ ] R2 account, bucket and least-privilege credentials are configured outside git.
+- [ ] `media.ayin.stream` serves byte-range requests required by progressive MP4 playback.
 - [ ] CORS permits only required upload/media origins and methods.
 - [ ] Abandoned multipart uploads/drafts have an operational cleanup policy.
 - [ ] Upload a real playback-ready MP4, publish it, seek it, and resume it on the target environment.
+- [ ] Creator video bytes never traverse or persist on EC2/EBS/Node/Nginx/PostgreSQL.
 
 ## Authentication and email
 
@@ -44,8 +50,7 @@ Use this as a release gate. A box is checked only from evidence in the target en
 - [ ] House/direct fallback works when external fill is unavailable.
 - [ ] `ads.txt` and `app-ads.txt` contain only seller/publisher identifiers actually supplied by the relevant account/partner.
 - [ ] Remove every placeholder before claiming an external seller relationship.
-- [ ] Supply the real Google Ad Manager network/ad-unit/seller data to the completed Task 36
-      integration boundary, then verify test line items, consent, fill, reporting and target devices.
+- [ ] Supply the real Google Ad Manager network/ad-unit/seller data to the completed Task 36 integration boundary, then verify test line items, consent, fill, reporting and target devices.
 
 ## Legal and policy
 
@@ -80,9 +85,9 @@ Use this as a release gate. A box is checked only from evidence in the target en
 
 ## Error monitoring
 
-- [ ] Production error monitoring/log aggregation is configured with secrets/PII redaction.
-- [ ] API process crashes/restarts generate an actionable alert.
-- [ ] Health-check failure and elevated 5xx rate have an alert owner.
+- [ ] Production error monitoring/logging is configured with secrets/PII redaction using existing infrastructure before adding a paid monitoring service.
+- [ ] API process crashes/restarts are detectable and have an operational owner.
+- [ ] Health-check failure and elevated 5xx rate have an operational response path.
 - [ ] R2/media delivery failures can be distinguished from API/web failures.
 
 ## Final acceptance
