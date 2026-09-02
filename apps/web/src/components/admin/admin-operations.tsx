@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
 import {
+  getAdminSupportAssignees,
+  searchAdminComplianceChannels,
+  type AdminComplianceChannel,
+  type AdminSupportAssignee,
+} from "@/lib/admin-operations-directory";
+import {
   downloadAdminCsv,
   getAdminAudit,
   getAdminRoles,
@@ -16,6 +22,7 @@ import {
   updateAdminSupportTicket,
   updateCreatorCompliance,
   type AdminAuditItem,
+  type AdminPagination,
   type AdminRole,
   type AdminSession,
   type AdminStaffMember,
@@ -45,13 +52,24 @@ export function AdminOperations() {
   const [session, setSession] = useState<AdminSession | null>(null);
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [staff, setStaff] = useState<AdminStaffMember[]>([]);
+  const [supportAssignees, setSupportAssignees] = useState<AdminSupportAssignee[]>([]);
   const [audit, setAudit] = useState<AdminAuditItem[]>([]);
+  const [auditPagination, setAuditPagination] = useState<AdminPagination>({
+    total: 0,
+    page: 1,
+    take: 50,
+    pages: 1,
+  });
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [staffQuery, setStaffQuery] = useState("");
   const [auditQuery, setAuditQuery] = useState("");
+  const [auditPage, setAuditPage] = useState(1);
+  const [supportStatus, setSupportStatus] = useState("");
+  const [supportPriority, setSupportPriority] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [channelId, setChannelId] = useState("");
+  const [complianceQuery, setComplianceQuery] = useState("");
+  const [complianceMatches, setComplianceMatches] = useState<AdminComplianceChannel[]>([]);
   const [compliance, setCompliance] = useState<Awaited<
     ReturnType<typeof getCreatorCompliance>
   > | null>(null);
@@ -95,30 +113,38 @@ export function AdminOperations() {
           ["OPERATIONS", "CONTENT_MODERATOR", "FINANCE_MANAGER"].includes(role),
         );
 
-      const [roleData, staffData, auditData, ticketData] = await Promise.all([
+      const auditParams = new URLSearchParams({ page: String(auditPage), take: "50" });
+      if (auditQuery.trim()) auditParams.set("query", auditQuery.trim());
+
+      const supportParams = new URLSearchParams();
+      if (supportStatus) supportParams.set("status", supportStatus);
+      if (supportPriority) supportParams.set("priority", supportPriority);
+
+      const [roleData, staffData, auditData, ticketData, assigneeData] = await Promise.all([
         nextCanOperate ? getAdminRoles() : Promise.resolve({ roles: [] as AdminRole[] }),
         nextCanOperate
           ? getAdminStaff(staffQuery)
           : Promise.resolve({ items: [] as AdminStaffMember[] }),
-        getAdminAudit(
-          auditQuery.trim()
-            ? new URLSearchParams({ query: auditQuery.trim(), take: "50" })
-            : undefined,
-        ),
+        getAdminAudit(auditParams),
         nextCanSupport
-          ? getAdminSupportTickets()
+          ? getAdminSupportTickets(supportParams)
           : Promise.resolve({ items: [] as AdminSupportTicket[] }),
+        nextCanSupport
+          ? getAdminSupportAssignees()
+          : Promise.resolve({ items: [] as AdminSupportAssignee[] }),
       ]);
 
       setSession(nextSession);
       setRoles(roleData.roles);
       setStaff(staffData.items);
       setAudit(auditData.items);
+      setAuditPagination(auditData.pagination);
       setTickets(ticketData.items);
+      setSupportAssignees(assigneeData.items);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Admin operations could not be loaded.");
     }
-  }, [auditQuery, staffQuery]);
+  }, [auditPage, auditQuery, staffQuery, supportPriority, supportStatus]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 250);
@@ -134,6 +160,38 @@ export function AdminOperations() {
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The admin operation failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function findCompliance() {
+    const query = complianceQuery.trim();
+    if (query.length < 2) {
+      setMessage("Enter at least two characters of a channel name or handle.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    setCompliance(null);
+    try {
+      const result = await searchAdminComplianceChannels(query);
+      setComplianceMatches(result.items);
+      if (!result.items.length) setMessage("No matching creator channels were found.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Compliance search failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openCompliance(channel: AdminComplianceChannel) {
+    setBusy(true);
+    setMessage("");
+    try {
+      setCompliance(await getCreatorCompliance(channel.id));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Compliance could not be loaded.");
     } finally {
       setBusy(false);
     }
@@ -179,6 +237,10 @@ export function AdminOperations() {
         <article className={styles.metric}>
           <span className={styles.muted}>Audit events loaded</span>
           <strong>{audit.length}</strong>
+        </article>
+        <article className={styles.metric}>
+          <span className={styles.muted}>Audit events total</span>
+          <strong>{auditPagination.total}</strong>
         </article>
         {exportResources.length ? (
           <article className={styles.metric}>
@@ -278,8 +340,8 @@ export function AdminOperations() {
             <div>
               <h2>Creator compliance</h2>
               <p className={styles.muted}>
-                Review a creator payout profile and update identity/tax workflow status. This does
-                not replace a future KYC or tax provider.
+                Search by channel name or handle, then review the payout profile and update
+                identity/tax workflow status. No internal UUID is required.
               </p>
             </div>
           </div>
@@ -287,29 +349,57 @@ export function AdminOperations() {
             className={styles.toolbar}
             onSubmit={(event) => {
               event.preventDefault();
-              if (!channelId.trim()) return;
-              setBusy(true);
-              setMessage("");
-              void getCreatorCompliance(channelId.trim())
-                .then(setCompliance)
-                .catch((error) =>
-                  setMessage(
-                    error instanceof Error ? error.message : "Compliance could not be loaded.",
-                  ),
-                )
-                .finally(() => setBusy(false));
+              void findCompliance();
             }}
           >
             <input
-              aria-label="Creator channel UUID"
-              placeholder="Channel UUID"
-              value={channelId}
-              onChange={(event) => setChannelId(event.target.value)}
+              aria-label="Search creator compliance channels"
+              minLength={2}
+              placeholder="Channel name or @handle"
+              value={complianceQuery}
+              onChange={(event) => setComplianceQuery(event.target.value)}
             />
-            <button className={styles.button} disabled={busy} type="submit">
-              Load profile
+            <button
+              className={styles.button}
+              disabled={busy || complianceQuery.trim().length < 2}
+              type="submit"
+            >
+              Search creators
             </button>
           </form>
+
+          {complianceMatches.length ? (
+            <div className={styles.grid}>
+              {complianceMatches.map((channel) => (
+                <article className={styles.cardInset} key={channel.id}>
+                  <div className={styles.cardHeader}>
+                    <div>
+                      <strong>{channel.name}</strong>
+                      <p className={styles.muted}>@{channel.handle}</p>
+                    </div>
+                    <span className={styles.statusBadge}>{channel.status}</span>
+                  </div>
+                  {channel.payoutProfile ? (
+                    <p className={styles.muted}>
+                      {channel.payoutProfile.legalName} · {channel.payoutProfile.preferredCurrency} ·
+                      identity {channel.payoutProfile.identityStatus} · tax {channel.payoutProfile.taxStatus}
+                    </p>
+                  ) : (
+                    <p className={styles.muted}>No payout profile yet.</p>
+                  )}
+                  <button
+                    className={styles.button}
+                    disabled={busy}
+                    type="button"
+                    onClick={() => void openCompliance(channel)}
+                  >
+                    Open compliance
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
           {compliance ? (
             <div className={styles.cardInset}>
               <p>
@@ -352,18 +442,38 @@ export function AdminOperations() {
             <div>
               <h2>Internal support queue</h2>
               <p className={styles.muted}>
-                Authenticated users can open tickets; authorized staff can triage and resolve them
-                here. Staff assignment is offered when the current role can inspect staff records.
+                Triage, assign and resolve authenticated-user tickets without requiring account IDs.
               </p>
             </div>
+          </div>
+          <div className={styles.toolbar}>
+            <select
+              aria-label="Filter support by status"
+              value={supportStatus}
+              onChange={(event) => setSupportStatus(event.target.value)}
+            >
+              <option value="">All statuses</option>
+              {['OPEN', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'].map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Filter support by priority"
+              value={supportPriority}
+              onChange={(event) => setSupportPriority(event.target.value)}
+            >
+              <option value="">All priorities</option>
+              {['LOW', 'NORMAL', 'HIGH', 'URGENT'].map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
           </div>
           <div className={styles.grid}>
             {tickets.map((ticket) => (
               <SupportTicketCard
+                assignees={supportAssignees}
                 busy={busy}
-                canAssign={canOperate}
                 key={ticket.id}
-                staff={staff}
                 ticket={ticket}
                 onSave={(input) =>
                   act(
@@ -373,7 +483,7 @@ export function AdminOperations() {
                 }
               />
             ))}
-            {!tickets.length ? <p className={styles.muted}>No support tickets yet.</p> : null}
+            {!tickets.length ? <p className={styles.muted}>No support tickets matched.</p> : null}
           </div>
         </section>
       ) : null}
@@ -383,8 +493,8 @@ export function AdminOperations() {
           <div>
             <h2>Audit log</h2>
             <p className={styles.muted}>
-              Security-sensitive and operational changes are searchable and attributable for every
-              authorized staff role.
+              Search and page through security-sensitive and operational changes attributable to
+              staff or system actions.
             </p>
           </div>
         </div>
@@ -392,6 +502,7 @@ export function AdminOperations() {
           className={styles.toolbar}
           onSubmit={(event) => {
             event.preventDefault();
+            setAuditPage(1);
             void load();
           }}
         >
@@ -399,7 +510,10 @@ export function AdminOperations() {
             aria-label="Search audit log"
             placeholder="Action, entity, ID or reason"
             value={auditQuery}
-            onChange={(event) => setAuditQuery(event.target.value)}
+            onChange={(event) => {
+              setAuditPage(1);
+              setAuditQuery(event.target.value);
+            }}
           />
           <button className={styles.button} type="submit">
             Search audit
@@ -423,6 +537,27 @@ export function AdminOperations() {
             </article>
           ))}
           {!audit.length ? <p className={styles.muted}>No matching audit events.</p> : null}
+        </div>
+        <div className={styles.pager}>
+          <button
+            className={styles.button}
+            disabled={auditPage <= 1}
+            type="button"
+            onClick={() => setAuditPage((current) => Math.max(1, current - 1))}
+          >
+            Previous
+          </button>
+          <span className={styles.muted}>
+            Page {auditPagination.page} of {auditPagination.pages} · {auditPagination.total} events
+          </span>
+          <button
+            className={styles.button}
+            disabled={auditPage >= auditPagination.pages}
+            type="button"
+            onClick={() => setAuditPage((current) => current + 1)}
+          >
+            Next
+          </button>
         </div>
       </section>
     </>
@@ -595,15 +730,13 @@ function ComplianceEditor({
 
 function SupportTicketCard({
   ticket,
-  staff,
+  assignees,
   busy,
-  canAssign,
   onSave,
 }: {
   ticket: AdminSupportTicket;
-  staff: AdminStaffMember[];
+  assignees: AdminSupportAssignee[];
   busy: boolean;
-  canAssign: boolean;
   onSave: (input: {
     status: AdminSupportTicket["status"];
     priority: AdminSupportTicket["priority"];
@@ -655,21 +788,17 @@ function SupportTicketCard({
         </label>
         <label>
           Assigned staff
-          {canAssign ? (
-            <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
-              <option value="">Unassigned</option>
-              {assignee && !staff.some((member) => member.id === assignee) ? (
-                <option value={assignee}>{assignee}</option>
-              ) : null}
-              {staff.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.displayName}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input disabled value={assignee || "Unassigned"} />
-          )}
+          <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
+            <option value="">Unassigned</option>
+            {assignee && !assignees.some((member) => member.id === assignee) ? (
+              <option value={assignee}>{ticket.assignedTo?.displayName ?? assignee}</option>
+            ) : null}
+            {assignees.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.displayName} · {member.roles.map((role) => roleLabels[role]).join(" / ")}
+              </option>
+            ))}
+          </select>
         </label>
         <label>
           Audit reason
@@ -692,7 +821,7 @@ function SupportTicketCard({
           void onSave({
             status,
             priority,
-            assignedToAccountId: canAssign ? assignee || null : ticket.assignedToAccountId,
+            assignedToAccountId: assignee || null,
             resolution: resolution.trim() || null,
             reason,
           })
