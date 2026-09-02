@@ -31,14 +31,14 @@ interface DashboardData {
 
 type FinanceSummary = Awaited<ReturnType<typeof getAdminFinanceSummary>>;
 
-type QuickAction = {
+type RoleAction = {
   label: string;
   detail: string;
   href: string;
   roles: AdminRole[] | "ALL";
 };
 
-const quickActions: QuickAction[] = [
+const quickActions: RoleAction[] = [
   {
     label: "Content Library",
     detail: "Seed rights-tracked AYIN catalog content",
@@ -52,15 +52,57 @@ const quickActions: QuickAction[] = [
     roles: ["OPERATIONS", "CONTENT_MODERATOR"],
   },
   {
+    label: "Moderation",
+    detail: "Review the moderation queue and content reports",
+    href: "/admin/moderation",
+    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+  },
+  {
+    label: "Videos",
+    detail: "Operate video state, comments and publication",
+    href: "/admin/videos",
+    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+  },
+  {
     label: "Channels",
     detail: "Creator state, platform ownership and contracts",
     href: "/admin/channels",
-    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+    roles: ["OPERATIONS"],
   },
   {
     label: "Users",
     detail: "Search accounts and control account state",
     href: "/admin/users",
+    roles: ["OPERATIONS"],
+  },
+  {
+    label: "Creator TV",
+    detail: "Operate channel TV state and availability",
+    href: "/admin/tv",
+    roles: ["OPERATIONS"],
+  },
+  {
+    label: "Product Controls",
+    detail: "Navigation, announcements and product surfaces",
+    href: "/admin/product-controls",
+    roles: ["OPERATIONS"],
+  },
+  {
+    label: "Feature Flags",
+    detail: "Control guarded feature rollout",
+    href: "/admin/feature-flags",
+    roles: ["OPERATIONS"],
+  },
+  {
+    label: "Operations",
+    detail: "Staff roles, audit, exports, compliance and support",
+    href: "/admin/operations",
+    roles: ["OPERATIONS"],
+  },
+  {
+    label: "Settings",
+    detail: "Manage protected platform configuration",
+    href: "/admin/settings",
     roles: ["OPERATIONS"],
   },
   {
@@ -70,26 +112,71 @@ const quickActions: QuickAction[] = [
     roles: ["AD_MANAGER"],
   },
   {
+    label: "Video Ads",
+    detail: "Operate video advertising controls",
+    href: "/admin/video-ads",
+    roles: ["AD_MANAGER"],
+  },
+  {
     label: "Revenue",
     detail: "Creator earnings, payouts and disputes",
     href: "/admin/revenue",
     roles: ["FINANCE_MANAGER"],
   },
+];
+
+const priorityActions: RoleAction[] = [
   {
-    label: "Operations",
-    detail: "Staff roles, audit, exports, compliance and support",
-    href: "/admin/operations",
+    label: "Trust & Safety",
+    detail: "Open reports, cases, takedowns and appeals",
+    href: "/admin/trust",
+    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+  },
+  {
+    label: "Content Library & rights",
+    detail: "Rights-tracked catalog publishing",
+    href: "/admin/content",
+    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+  },
+  {
+    label: "Video operations",
+    detail: "Publication and moderation state",
+    href: "/admin/videos",
+    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+  },
+  {
+    label: "Creator TV operations",
+    detail: "TV channel availability and state",
+    href: "/admin/tv",
     roles: ["OPERATIONS"],
   },
   {
-    label: "Product Controls",
-    detail: "Navigation, announcements and product surfaces",
+    label: "Home & product controls",
+    detail: "Merchandising and product surfaces",
     href: "/admin/product-controls",
     roles: ["OPERATIONS"],
   },
+  {
+    label: "Feature flags",
+    detail: "Guarded feature rollout",
+    href: "/admin/feature-flags",
+    roles: ["OPERATIONS"],
+  },
+  {
+    label: "Advertising operations",
+    detail: "Inventory, seller files and ad controls",
+    href: "/admin/advertising",
+    roles: ["AD_MANAGER"],
+  },
+  {
+    label: "Revenue operations",
+    detail: "Payouts and disputes",
+    href: "/admin/revenue",
+    roles: ["FINANCE_MANAGER"],
+  },
 ];
 
-function roleCanSee(action: QuickAction, roles: AdminRole[]): boolean {
+function roleCanSee(action: RoleAction, roles: AdminRole[]): boolean {
   if (roles.includes("SUPERADMIN") || roles.includes("ADMIN")) return true;
   if (action.roles === "ALL") return roles.length > 0;
   return action.roles.some((role) => roles.includes(role));
@@ -127,10 +214,11 @@ export function AdminDashboard() {
         setFinance(nextFinance);
       })
       .catch((caught) => {
-        if (active)
+        if (active) {
           setError(
             caught instanceof Error ? caught.message : "Admin dashboard could not be loaded.",
           );
+        }
       });
     return () => {
       active = false;
@@ -139,6 +227,10 @@ export function AdminDashboard() {
 
   const visibleQuickActions = useMemo(
     () => (session ? quickActions.filter((action) => roleCanSee(action, session.roles)) : []),
+    [session],
+  );
+  const visiblePriorityActions = useMemo(
+    () => (session ? priorityActions.filter((action) => roleCanSee(action, session.roles)) : []),
     [session],
   );
 
@@ -159,8 +251,9 @@ export function AdminDashboard() {
   }
 
   if (error && !data) return <p className={styles.error}>{error}</p>;
-  if (!data || !analytics || !health || !session)
+  if (!data || !analytics || !health || !session) {
     return <p className={styles.muted}>Loading Admin Control Center…</p>;
+  }
 
   const metrics = [
     ["Accounts", data.accounts],
@@ -220,7 +313,7 @@ export function AdminDashboard() {
       <section className={styles.card}>
         <h2>Global search</h2>
         <p className={styles.muted}>
-          Find accounts, channels, videos and payout records from one protected search.
+          Find records available to your current admin role from one protected search.
         </p>
         <form className={styles.toolbar} onSubmit={runSearch}>
           <input
@@ -334,26 +427,21 @@ export function AdminDashboard() {
 
         <article className={styles.card}>
           <h2>Priority queues</h2>
-          <p>
-            <Link href="/admin/trust">
-              Trust & Safety · {data.openReports} reports / {data.openCases} cases
-            </Link>
-          </p>
-          <p>
-            <Link href="/admin/content">Content Library & rights</Link>
-          </p>
-          <p>
-            <Link href="/admin/videos">Video operations</Link>
-          </p>
-          <p>
-            <Link href="/admin/tv">Creator TV operations</Link>
-          </p>
-          <p>
-            <Link href="/admin/product-controls">Home & product controls</Link>
-          </p>
-          <p>
-            <Link href="/admin/feature-flags">Feature flags</Link>
-          </p>
+          {visiblePriorityActions.map((action) => (
+            <p key={action.href}>
+              <Link href={action.href}>
+                <strong>{action.label}</strong>
+                {action.href === "/admin/trust"
+                  ? ` · ${data.openReports} reports / ${data.openCases} cases`
+                  : ""}
+                <br />
+                <span className={styles.muted}>{action.detail}</span>
+              </Link>
+            </p>
+          ))}
+          {visiblePriorityActions.length === 0 ? (
+            <p className={styles.muted}>No operational queues are assigned to this role.</p>
+          ) : null}
         </article>
       </section>
 
