@@ -1,0 +1,121 @@
+name: Audit live AYIN runtime after launch deployment
+
+on:
+  push:
+    paths:
+      - .github/workflows/post-deploy-runtime-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+      EXPECTED_RELEASE_SHA: ecfc6d672b2d06f8f71786b094d861723f4fb0f3
+
+    steps:
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Audit live AYIN runtime and persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "EXPECTED_RELEASE_SHA='$EXPECTED_RELEASE_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          fail() { echo "FAIL: $*" >&2; exit 1; }
+          pass() { echo "PASS: $*"; }
+
+          [[ "$(whoami)" == "ayin" ]] || fail "unexpected SSH identity"
+          [[ "$HOME" == "/home/ayin" ]] || fail "unexpected HOME"
+          [[ ! -w /home/horusapp ]] || fail "AYIN can write Horus home"
+          pass "AYIN/Horus account isolation"
+
+          current="$(readlink -f /home/ayin/htdocs/current)"
+          [[ -d "$current/.git" ]] || fail "current release is not a git checkout"
+          actual_sha="$(git -C "$current" rev-parse HEAD)"
+          [[ "$actual_sha" == "$EXPECTED_RELEASE_SHA" ]] || fail "current release SHA mismatch"
+          pass "current symlink points to exact deployed release $EXPECTED_RELEASE_SHA"
+
+          command -v pm2 >/dev/null || fail "pm2 unavailable"
+          pm2_json="$(pm2 jlist)"
+          node -e '
+            const rows = JSON.parse(process.argv[1]);
+            const needed = new Map([["ayin-web",3000],["ayin-api",4000]]);
+            for (const [name] of needed) {
+              const row = rows.find((x) => x.name === name);
+              if (!row || row.pm2_env?.status !== "online") process.exit(1);
+              if (row.pm2_env?.username && row.pm2_env.username !== "ayin") process.exit(1);
+            }
+          ' "$pm2_json" || fail "PM2 applications are not both online as ayin"
+          [[ -s /home/ayin/.pm2/dump.pm2 ]] || fail "PM2 saved process dump is missing"
+          pass "PM2 ayin-web/ayin-api online and saved"
+
+          ss -ltn > /tmp/ayin-listeners.$$ || fail "cannot inspect listeners"
+          listeners="$(cat /tmp/ayin-listeners.$$)"
+          rm -f /tmp/ayin-listeners.$$
+          grep -Eq '127\.0\.0\.1:3000([[:space:]]|$)' <<<"$listeners" || fail "web is not bound to loopback:3000"
+          grep -Eq '127\.0\.0\.1:4000([[:space:]]|$)' <<<"$listeners" || fail "api is not bound to loopback:4000"
+          grep -Eq '127\.0\.0\.1:5432([[:space:]]|$)' <<<"$listeners" || fail "postgres is not bound to loopback:5432"
+          ! grep -Eq '(^|[[:space:]])0\.0\.0\.0:(3000|4000|5432)([[:space:]]|$)' <<<"$listeners" || fail "AYIN private port exposed on IPv4 all interfaces"
+          ! grep -Eq '(^|[[:space:]])\[::\]:(3000|4000|5432)([[:space:]]|$)' <<<"$listeners" || fail "AYIN private port exposed on IPv6 all interfaces"
+          pass "web, API and PostgreSQL private listeners are loopback-only"
+
+          curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/ >/dev/null
+          curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/health >/dev/null
+          curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/ready >/dev/null
+          pass "direct-origin web/API health"
+
+          if systemctl list-unit-files --type=service 2>/dev/null | grep -q '^pm2-ayin\.service'; then
+            enabled="$(systemctl is-enabled pm2-ayin.service 2>/dev/null || true)"
+            active="$(systemctl is-active pm2-ayin.service 2>/dev/null || true)"
+            echo "PM2 startup service: enabled=$enabled active=$active"
+          else
+            echo "PM2 startup service: missing"
+          fi
+
+          leftovers=0
+          for key in /tmp/ayin-github-actions /tmp/ayin-github-actions.pub; do
+            if [[ -e "$key" ]]; then
+              echo "NEEDS_FIX: temporary deployment key artifact still exists at $key"
+              leftovers=1
+            fi
+          done
+          [[ "$leftovers" == "0" ]] && pass "no historical /tmp AYIN GitHub Actions key remnants"
+          REMOTE
+
+      - name: Audit public production HTTP surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          web="$(curl --silent --show-error --location --output /dev/null --write-out '%{http_code}' --max-time 20 https://ayin.stream/)"
+          health="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 https://api.ayin.stream/health)"
+          ready="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 https://api.ayin.stream/ready)"
+          media="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 https://media.ayin.stream/__ayin_post_deploy_missing_object__)"
+          echo "public statuses: web=$web health=$health ready=$ready media_missing=$media"
+          [[ "$web" == "200" ]]
+          [[ "$health" == "200" ]]
+          [[ "$ready" == "200" ]]
+          [[ "$media" =~ ^[1-5][0-9][0-9]$ ]]
+          echo "PASS: public AYIN web/API/media endpoints are reachable"
