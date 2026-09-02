@@ -75,13 +75,6 @@ jobs:
       - name: Audit production dependencies
         run: pnpm audit:prod
 
-      - name: Preview formatted deployment workflow
-        run: |
-          pnpm exec prettier --write .github/workflows/deploy.yml
-          echo "=== AYIN_PRETTIER_DEPLOY_BEGIN ==="
-          cat .github/workflows/deploy.yml
-          echo "=== AYIN_PRETTIER_DEPLOY_END ==="
-
       - name: Check formatting
         run: pnpm exec prettier --check .
 
