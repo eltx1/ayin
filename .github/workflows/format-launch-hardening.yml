@@ -1,0 +1,49 @@
+name: Format launch hardening
+
+on:
+  push:
+    branches:
+      - launch-hardening-20260902
+    paths:
+      - ".github/workflows/format-launch-hardening.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v7
+        with:
+          ref: launch-hardening-20260902
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply project formatting
+        run: pnpm exec prettier --write .
+
+      - name: Commit formatting only
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Format launch hardening changes"
+          git push origin HEAD:launch-hardening-20260902
