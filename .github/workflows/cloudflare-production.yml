@@ -17,7 +17,6 @@ jobs:
     environment: production
     env:
       AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
-      AYIN_CLOUDFLARE_ZONE_ID: ${{ secrets.AYIN_CLOUDFLARE_ZONE_ID }}
       AYIN_ORIGIN_IPV4: 13.52.116.200
 
     steps:
@@ -31,8 +30,6 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$AYIN_CLOUDFLARE_API_TOKEN"
-          test -n "$AYIN_CLOUDFLARE_ZONE_ID"
-          [[ "$AYIN_CLOUDFLARE_ZONE_ID" =~ ^[0-9a-fA-F]{32}$ ]]
           [[ "$AYIN_ORIGIN_IPV4" == '13.52.116.200' ]]
           bash -n deploy/cloudflare/sync-production-edge.sh
 
