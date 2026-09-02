@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
@@ -11,6 +12,7 @@ type ChannelItem = {
   name: string;
   description: string | null;
   status: "ACTIVE" | "HIDDEN" | "SUSPENDED" | "REMOVED";
+  isPlatformOwned: boolean;
   members: Array<{ account: { id: string; email: string; displayName: string; status: string } }>;
   creatorContracts: Array<{
     id: string;
@@ -27,6 +29,7 @@ type Draft = {
   status: string;
   contractStatus: string;
   revenueShareBps: string;
+  isPlatformOwned: boolean;
 };
 
 export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) {
@@ -62,6 +65,7 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
                 contract?.revenueShareBps === null || contract?.revenueShareBps === undefined
                   ? ""
                   : String(contract.revenueShareBps),
+              isPlatformOwned: channel.isPlatformOwned,
             },
           ];
         }),
@@ -115,6 +119,7 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
         status: draft.status,
         contractStatus: draft.contractStatus,
         revenueShareBps,
+        isPlatformOwned: draft.isPlatformOwned,
         reason: reason.trim(),
       });
       await load();
@@ -133,9 +138,13 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
           <span className={styles.eyebrow}>Control Plane</span>
           <h1>Channels & Creators</h1>
           <p className={styles.muted}>
-            Edit channel state and creator monetization contract with auditable changes.
+            Control channel state, platform ownership and creator monetization with auditable
+            changes.
           </p>
         </div>
+        <Link className={styles.button} href="/admin/content">
+          Open Content Library
+        </Link>
       </header>
       <div className={styles.toolbar}>
         <input
@@ -181,62 +190,94 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
                 <span>{channel.primaryTvChannel?.status ?? "No TV"}</span>
               </div>
               <div className={styles.form}>
-                <input
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [channel.id]: { ...draft, name: event.target.value },
-                    }))
-                  }
-                  value={draft.name}
-                />
-                <select
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [channel.id]: { ...draft, status: event.target.value },
-                    }))
-                  }
-                  value={draft.status}
-                >
-                  <option value="ACTIVE">Active</option>
-                  <option value="HIDDEN">Hidden</option>
-                  <option value="SUSPENDED">Suspended</option>
-                </select>
-                <textarea
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [channel.id]: { ...draft, description: event.target.value },
-                    }))
-                  }
-                  value={draft.description}
-                />
-                <select
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [channel.id]: { ...draft, contractStatus: event.target.value },
-                    }))
-                  }
-                  value={draft.contractStatus}
-                >
-                  <option value="PENDING">Monetization pending</option>
-                  <option value="ACTIVE">Monetization active</option>
-                  <option value="SUSPENDED">Monetization suspended</option>
-                  <option value="ENDED">Monetization ended</option>
-                </select>
-                <input
-                  inputMode="numeric"
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [channel.id]: { ...draft, revenueShareBps: event.target.value },
-                    }))
-                  }
-                  placeholder="Revenue share bps"
-                  value={draft.revenueShareBps}
-                />
+                <label>
+                  <span>Channel name</span>
+                  <input
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [channel.id]: { ...draft, name: event.target.value },
+                      }))
+                    }
+                    value={draft.name}
+                  />
+                </label>
+                <label>
+                  <span>Status</span>
+                  <select
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [channel.id]: { ...draft, status: event.target.value },
+                      }))
+                    }
+                    value={draft.status}
+                  >
+                    <option value="ACTIVE">Active</option>
+                    <option value="HIDDEN">Hidden</option>
+                    <option value="SUSPENDED">Suspended</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Description</span>
+                  <textarea
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [channel.id]: { ...draft, description: event.target.value },
+                      }))
+                    }
+                    value={draft.description}
+                  />
+                </label>
+                <label>
+                  <span>Creator monetization</span>
+                  <select
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [channel.id]: { ...draft, contractStatus: event.target.value },
+                      }))
+                    }
+                    value={draft.contractStatus}
+                  >
+                    <option value="PENDING">Monetization pending</option>
+                    <option value="ACTIVE">Monetization active</option>
+                    <option value="SUSPENDED">Monetization suspended</option>
+                    <option value="ENDED">Monetization ended</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Revenue share (basis points)</span>
+                  <input
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [channel.id]: { ...draft, revenueShareBps: event.target.value },
+                      }))
+                    }
+                    placeholder="e.g. 7000 = 70%"
+                    value={draft.revenueShareBps}
+                  />
+                </label>
+                <label style={{ display: "flex", gap: ".55rem", alignItems: "center" }}>
+                  <input
+                    checked={draft.isPlatformOwned}
+                    type="checkbox"
+                    onChange={(event) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [channel.id]: { ...draft, isPlatformOwned: event.target.checked },
+                      }))
+                    }
+                  />
+                  <span>AYIN platform-owned channel</span>
+                </label>
+                <p className={styles.muted}>
+                  Platform-owned channels are eligible for curated catalog seeding. Do not enable
+                  this for independent creator channels.
+                </p>
               </div>
               <div className={styles.actions}>
                 <button
@@ -247,6 +288,14 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
                 >
                   Save channel
                 </button>
+                {draft.isPlatformOwned ? (
+                  <Link
+                    className={styles.button}
+                    href={`/admin/content?channelId=${encodeURIComponent(channel.id)}`}
+                  >
+                    Seed content
+                  </Link>
+                ) : null}
               </div>
             </article>
           );

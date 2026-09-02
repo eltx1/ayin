@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpException,
@@ -92,9 +93,9 @@ export class AdminVideoAdController {
   }
 
   @Patch("settings")
-  async updateSettings(@Body() body: unknown) {
+  async updateSettings(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     try {
-      return await this.videoAds.updateSettings(body);
+      return await this.videoAds.updateSettings(request.ayinAuth.accountId, body);
     } catch {
       throw new HttpException(
         {
@@ -106,6 +107,11 @@ export class AdminVideoAdController {
         400,
       );
     }
+  }
+
+  @Get("overrides")
+  listOverrides() {
+    return this.videoAds.listOverrides();
   }
 
   @Patch("channels/:channelId")
@@ -128,6 +134,16 @@ export class AdminVideoAdController {
     }
   }
 
+  @Delete("channels/:channelId")
+  deleteChannelOverride(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("channelId") channelIdRaw: string,
+  ) {
+    return this.videoAds.deleteOverride(request.ayinAuth.accountId, {
+      channelId: this.id(channelIdRaw),
+    });
+  }
+
   @Patch("videos/:videoId")
   async updateVideoOverride(
     @Req() request: AdminAuthenticatedRequest,
@@ -146,6 +162,16 @@ export class AdminVideoAdController {
         400,
       );
     }
+  }
+
+  @Delete("videos/:videoId")
+  deleteVideoOverride(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("videoId") videoIdRaw: string,
+  ) {
+    return this.videoAds.deleteOverride(request.ayinAuth.accountId, {
+      videoId: this.id(videoIdRaw),
+    });
   }
 
   private id(value: string) {

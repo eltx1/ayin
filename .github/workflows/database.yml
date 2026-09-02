@@ -92,6 +92,7 @@ jobs:
           bash -n deploy/postgres/bootstrap-local-production.sh
           bash -n deploy/env/bootstrap-production-env.sh
           bash -n deploy/env/rotate-r2-credentials.sh
+          node --check deploy/admin/bootstrap-first-superadmin.mjs
           node --check deploy/env-file.cjs
           node --check deploy/run-with-env.cjs
           node --check deploy/validate-production-env.cjs

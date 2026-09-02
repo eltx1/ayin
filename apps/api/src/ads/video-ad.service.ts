@@ -2,6 +2,7 @@ import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 import { z } from "zod";
 
+import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { resolveVideoAdPolicy } from "./video-ad-policy.js";
 
@@ -70,7 +71,10 @@ export type VideoAdEventInput = z.infer<typeof adEventSchema>;
 
 @Injectable()
 export class VideoAdService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
+  ) {}
 
   async getSettings(): Promise<VideoAdSettings> {
     const row = await this.database.client.platformSetting.findUnique({
@@ -81,22 +85,72 @@ export class VideoAdService {
     return parsed.success ? parsed.data : defaultVideoAdSettings;
   }
 
-  async updateSettings(input: unknown): Promise<VideoAdSettings> {
+  async updateSettings(actorAccountId: string, input: unknown): Promise<VideoAdSettings> {
     const settings = videoAdSettingsSchema.parse(input);
     const value = settings as unknown as Prisma.InputJsonValue;
-    await this.database.client.platformSetting.upsert({
-      where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
-      update: { value, valueType: "JSON", schemaVersion: 1 },
-      create: {
-        namespace: "ADVERTISING",
-        key: "videoAdsV1",
-        valueType: "JSON",
-        value,
-        schemaVersion: 1,
-        description: "Task 19 typed in-player video advertising defaults.",
-      },
+    return this.database.client.$transaction(async (tx) => {
+      await tx.platformSetting.upsert({
+        where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
+        update: { value, valueType: "JSON", schemaVersion: 1 },
+        create: {
+          namespace: "ADVERTISING",
+          key: "videoAdsV1",
+          valueType: "JSON",
+          value,
+          schemaVersion: 1,
+          description: "Task 19 typed in-player video advertising defaults.",
+        },
+      });
+      await this.audit.recordInTransaction(tx, {
+        actorAccountId,
+        action: "VIDEO_AD_SETTINGS_UPDATED",
+        entityType: "PlatformSetting",
+        entityId: "ADVERTISING/videoAdsV1",
+        metadata: {
+          masterEnabled: settings.masterEnabled,
+          preRollEnabled: settings.preRollEnabled,
+          midRollEnabled: settings.midRollEnabled,
+          postRollEnabled: settings.postRollEnabled,
+          frequencyCapPerSession: settings.frequencyCapPerSession,
+        },
+      });
+      return settings;
     });
-    return settings;
+  }
+
+  async listOverrides() {
+    const rows = await this.database.client.videoAdOverride.findMany({
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    });
+    const channelIds = rows.flatMap((row) => (row.channelId ? [row.channelId] : []));
+    const videoIds = rows.flatMap((row) => (row.videoId ? [row.videoId] : []));
+    const [channels, videos] = await Promise.all([
+      channelIds.length
+        ? this.database.client.channel.findMany({
+            where: { id: { in: channelIds } },
+            select: { id: true, name: true, handle: true, status: true },
+          })
+        : Promise.resolve([]),
+      videoIds.length
+        ? this.database.client.video.findMany({
+            where: { id: { in: videoIds } },
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              status: true,
+              channel: { select: { id: true, name: true, handle: true } },
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+    const channelsById = new Map(channels.map((item) => [item.id, item]));
+    const videosById = new Map(videos.map((item) => [item.id, item]));
+    return rows.map((row) => ({
+      ...row,
+      channel: row.channelId ? (channelsById.get(row.channelId) ?? null) : null,
+      video: row.videoId ? (videosById.get(row.videoId) ?? null) : null,
+    }));
   }
 
   async getDecision(videoId: string, origin: string | null) {
@@ -152,20 +206,67 @@ export class VideoAdService {
       throw new Error("Exactly one video ad override target is required.");
     }
     const writeData = this.overrideWriteData(data, actorAccountId);
-    if (target.channelId) {
-      await this.database.client.channel.findUniqueOrThrow({ where: { id: target.channelId } });
-      return this.database.client.videoAdOverride.upsert({
-        where: { channelId: target.channelId },
-        update: writeData,
-        create: { channelId: target.channelId, ...writeData },
+    return this.database.client.$transaction(async (tx) => {
+      let row;
+      let entityType: "Channel" | "Video";
+      let entityId: string;
+      if (target.channelId) {
+        await tx.channel.findUniqueOrThrow({ where: { id: target.channelId } });
+        row = await tx.videoAdOverride.upsert({
+          where: { channelId: target.channelId },
+          update: writeData,
+          create: { channelId: target.channelId, ...writeData },
+        });
+        entityType = "Channel";
+        entityId = target.channelId;
+      } else {
+        const videoId = target.videoId as string;
+        await tx.video.findUniqueOrThrow({ where: { id: videoId } });
+        row = await tx.videoAdOverride.upsert({
+          where: { videoId },
+          update: writeData,
+          create: { videoId, ...writeData },
+        });
+        entityType = "Video";
+        entityId = videoId;
+      }
+      await this.audit.recordInTransaction(tx, {
+        actorAccountId,
+        action: "VIDEO_AD_OVERRIDE_UPDATED",
+        entityType,
+        entityId,
+        metadata: data,
       });
+      return row;
+    });
+  }
+
+  async deleteOverride(actorAccountId: string, target: { channelId?: string; videoId?: string }) {
+    if ((target.channelId ? 1 : 0) + (target.videoId ? 1 : 0) !== 1) {
+      throw new Error("Exactly one video ad override target is required.");
     }
-    const videoId = target.videoId as string;
-    await this.database.client.video.findUniqueOrThrow({ where: { id: videoId } });
-    return this.database.client.videoAdOverride.upsert({
-      where: { videoId },
-      update: writeData,
-      create: { videoId, ...writeData },
+    return this.database.client.$transaction(async (tx) => {
+      let result: { count: number };
+      let entityType: "Channel" | "Video";
+      let entityId: string;
+      if (target.channelId) {
+        result = await tx.videoAdOverride.deleteMany({ where: { channelId: target.channelId } });
+        entityType = "Channel";
+        entityId = target.channelId;
+      } else {
+        const videoId = target.videoId as string;
+        result = await tx.videoAdOverride.deleteMany({ where: { videoId } });
+        entityType = "Video";
+        entityId = videoId;
+      }
+      await this.audit.recordInTransaction(tx, {
+        actorAccountId,
+        action: "VIDEO_AD_OVERRIDE_REMOVED",
+        entityType,
+        entityId,
+        metadata: { deleted: result.count },
+      });
+      return { deleted: result.count > 0 };
     });
   }
 

@@ -120,6 +120,16 @@ export function AuthForm({ mode }: { mode: Mode }) {
             </p>
           ) : null}
 
+          {registering ? (
+            <p className={styles.switcher}>
+              By creating an account, you agree to the <Link href="/terms">Terms of Service</Link>,{" "}
+              <Link href="/creator-terms">Creator &amp; Content Rights Terms</Link> and{" "}
+              <Link href="/community-guidelines">Community Guidelines</Link>, and acknowledge the{" "}
+              <Link href="/privacy">Privacy Policy</Link> and{" "}
+              <Link href="/cookies">Cookie &amp; Advertising Notice</Link>.
+            </p>
+          ) : null}
+
           <button className={styles.primary} disabled={submitting} type="submit">
             {submitting ? "Please wait…" : registering ? "Create account" : "Sign in"}
           </button>

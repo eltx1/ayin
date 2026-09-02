@@ -1,0 +1,88 @@
+.page {
+  margin: 0 auto;
+  max-width: 900px;
+  padding: clamp(2rem, 5vw, 4.5rem) var(--page-gutter) clamp(5rem, 8vw, 7rem);
+}
+
+.header {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+}
+
+.eyebrow {
+  color: var(--muted-strong);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  margin: 0 0 0.65rem;
+  text-transform: uppercase;
+}
+
+.title {
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  letter-spacing: -0.045em;
+  line-height: 1;
+  margin: 0;
+}
+
+.updated {
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin: 0.9rem 0 0;
+}
+
+.intro {
+  color: var(--muted-strong);
+  font-size: clamp(1rem, 2vw, 1.12rem);
+  line-height: 1.75;
+  margin-top: 1.5rem;
+}
+
+.section {
+  margin-top: 2.2rem;
+}
+
+.section h2 {
+  font-size: clamp(1.22rem, 2.5vw, 1.55rem);
+  letter-spacing: -0.02em;
+  margin: 0 0 0.8rem;
+}
+
+.section h3 {
+  font-size: 1.04rem;
+  margin: 1.4rem 0 0.5rem;
+}
+
+.section p,
+.section li {
+  color: var(--muted-strong);
+  line-height: 1.75;
+}
+
+.section ul,
+.section ol {
+  padding-left: 1.3rem;
+}
+
+.section a,
+.notice a {
+  color: #d9a7ff;
+  text-underline-offset: 0.18rem;
+}
+
+.notice {
+  background: linear-gradient(135deg, rgb(139 24 248 / 10%), rgb(220 25 232 / 6%));
+  border: 1px solid var(--border-brand);
+  border-radius: 16px;
+  color: var(--muted-strong);
+  line-height: 1.65;
+  margin-top: 2rem;
+  padding: 1rem 1.1rem;
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding-inline: 1rem;
+  }
+}

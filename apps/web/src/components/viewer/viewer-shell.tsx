@@ -14,6 +14,7 @@ import {
   type NavigationFlagState,
 } from "@/lib/navigation";
 
+import footerStyles from "./viewer-footer.module.css";
 import styles from "./viewer-shell.module.css";
 
 interface ViewerShellProperties {
@@ -41,6 +42,15 @@ const fallbackNavigation: ProductNavigationItem[] = navigationItems.map((item) =
   enabled: true,
   featureFlag: "featureFlag" in item ? item.featureFlag : null,
 }));
+
+const legalNavigation = [
+  { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
+  { href: "/community-guidelines", label: "Community Guidelines" },
+  { href: "/copyright", label: "Copyright & Takedown" },
+  { href: "/creator-terms", label: "Creator Terms" },
+  { href: "/cookies", label: "Cookies & Advertising" },
+] as const;
 
 function itemIsActive(pathname: string | null, href: string): boolean {
   if (!pathname) return false;
@@ -201,6 +211,23 @@ export function ViewerShell({ children }: ViewerShellProperties) {
       ) : null}
 
       <div className={styles.content}>{children}</div>
+
+      <footer className={footerStyles.footer}>
+        <div className={footerStyles.identity}>
+          <strong>AYIN</strong>
+          <span>A Horus Media product</span>
+        </div>
+        <nav aria-label="Legal and policy" className={footerStyles.links}>
+          {legalNavigation.map((item) => (
+            <Link href={item.href} key={item.href}>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <p className={footerStyles.copyright}>
+          © {new Date().getFullYear()} AYIN. All rights reserved.
+        </p>
+      </footer>
 
       {productControls?.deviceVisibility.mobile !== false ? (
         <nav aria-label="Mobile navigation" className={styles.mobileNavigation}>

@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Param, Post, Query, Req, UseGuards } fro
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
+import { AdminControlService } from "./admin-control.service.js";
 import { adminBadRequest } from "./admin.errors.js";
 import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
@@ -31,7 +32,26 @@ const listSchema = z.object({ take: z.coerce.number().int().min(1).max(100).defa
 @UseGuards(AuthGuard, AdminGuard)
 @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
 export class ContentSeedingController {
-  constructor(@Inject(ContentSeedingService) private readonly seeding: ContentSeedingService) {}
+  constructor(
+    @Inject(ContentSeedingService) private readonly seeding: ContentSeedingService,
+    @Inject(AdminControlService) private readonly control: AdminControlService,
+  ) {}
+
+  @Get("channels")
+  async channels() {
+    const result = await this.control.channels({ page: 1, take: 100 });
+    return {
+      items: result.items
+        .filter((channel) => channel.isPlatformOwned && channel.status !== "REMOVED")
+        .map((channel) => ({
+          id: channel.id,
+          handle: channel.handle,
+          name: channel.name,
+          status: channel.status,
+          isPlatformOwned: channel.isPlatformOwned,
+        })),
+    };
+  }
 
   @Get("batches")
   list(@Query() query: unknown) {

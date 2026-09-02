@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
 import {
+  getAdminSupportAssignees,
+  searchAdminComplianceChannels,
+  type AdminComplianceChannel,
+  type AdminSupportAssignee,
+} from "@/lib/admin-operations-directory";
+import {
   downloadAdminCsv,
   getAdminAudit,
   getAdminRoles,
@@ -16,7 +22,9 @@ import {
   updateAdminSupportTicket,
   updateCreatorCompliance,
   type AdminAuditItem,
+  type AdminPagination,
   type AdminRole,
+  type AdminSession,
   type AdminStaffMember,
   type AdminSupportTicket,
 } from "@/lib/admin-control";
@@ -32,68 +40,112 @@ const roleLabels: Record<AdminRole, string> = {
 
 const identityOptions = ["NOT_STARTED", "PENDING", "VERIFIED", "REJECTED"] as const;
 const taxOptions = ["NOT_PROVIDED", "PENDING", "VERIFIED", "REQUIRES_ACTION"] as const;
+type ExportResource = "users" | "channels" | "videos" | "payouts" | "audit";
+
+function hasPrivilegedRole(session: AdminSession | null): boolean {
+  return Boolean(session?.roles.some((role) => role === "SUPERADMIN" || role === "ADMIN"));
+}
 
 export function AdminOperations() {
+  const [session, setSession] = useState<AdminSession | null>(null);
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [staff, setStaff] = useState<AdminStaffMember[]>([]);
+  const [supportAssignees, setSupportAssignees] = useState<AdminSupportAssignee[]>([]);
   const [audit, setAudit] = useState<AdminAuditItem[]>([]);
+  const [auditPagination, setAuditPagination] = useState<AdminPagination>({
+    total: 0,
+    page: 1,
+    take: 50,
+    pages: 1,
+  });
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [staffQuery, setStaffQuery] = useState("");
   const [auditQuery, setAuditQuery] = useState("");
+  const [auditPage, setAuditPage] = useState(1);
+  const [supportStatus, setSupportStatus] = useState("");
+  const [supportPriority, setSupportPriority] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [channelId, setChannelId] = useState("");
+  const [complianceQuery, setComplianceQuery] = useState("");
+  const [complianceMatches, setComplianceMatches] = useState<AdminComplianceChannel[]>([]);
   const [compliance, setCompliance] = useState<Awaited<
     ReturnType<typeof getCreatorCompliance>
   > | null>(null);
   const [complianceReason, setComplianceReason] = useState("");
 
+  const privileged = hasPrivilegedRole(session);
+  const canOperate = privileged || Boolean(session?.roles.includes("OPERATIONS"));
+  const canManageRoles = Boolean(session?.roles.includes("SUPERADMIN"));
+  const canSupport =
+    privileged ||
+    Boolean(
+      session?.roles.some((role) =>
+        ["OPERATIONS", "CONTENT_MODERATOR", "FINANCE_MANAGER"].includes(role),
+      ),
+    );
+  const canCompliance = privileged || Boolean(session?.roles.includes("FINANCE_MANAGER"));
+
+  const exportResources = useMemo<ExportResource[]>(() => {
+    if (!session) return [];
+    if (privileged) return ["users", "channels", "videos", "payouts", "audit"];
+
+    const resources: ExportResource[] = [];
+    if (session.roles.includes("OPERATIONS")) {
+      resources.push("users", "channels", "videos", "audit");
+    }
+    if (session.roles.includes("FINANCE_MANAGER")) resources.push("payouts");
+    return [...new Set(resources)];
+  }, [privileged, session]);
+
   const load = useCallback(async () => {
     setMessage("");
     try {
-      const session = await getAdminSession();
-      const privileged = session.roles.some((role) => role === "SUPERADMIN" || role === "ADMIN");
-      const canOperate = privileged || session.roles.includes("OPERATIONS");
-      const canAudit =
-        privileged ||
-        session.roles.some((role) =>
-          ["OPERATIONS", "CONTENT_MODERATOR", "AD_MANAGER", "FINANCE_MANAGER"].includes(role),
-        );
-      const canSupport =
-        privileged ||
-        session.roles.some((role) =>
+      const nextSession = await getAdminSession();
+      const nextPrivileged = nextSession.roles.some(
+        (role) => role === "SUPERADMIN" || role === "ADMIN",
+      );
+      const nextCanOperate = nextPrivileged || nextSession.roles.includes("OPERATIONS");
+      const nextCanSupport =
+        nextPrivileged ||
+        nextSession.roles.some((role) =>
           ["OPERATIONS", "CONTENT_MODERATOR", "FINANCE_MANAGER"].includes(role),
         );
-      const [roleData, staffData, auditData, ticketData] = await Promise.all([
-        canOperate ? getAdminRoles() : Promise.resolve({ roles: [] as AdminRole[] }),
-        canOperate
+
+      const auditParams = new URLSearchParams({ page: String(auditPage), take: "50" });
+      if (auditQuery.trim()) auditParams.set("query", auditQuery.trim());
+
+      const supportParams = new URLSearchParams();
+      if (supportStatus) supportParams.set("status", supportStatus);
+      if (supportPriority) supportParams.set("priority", supportPriority);
+
+      const [roleData, staffData, auditData, ticketData, assigneeData] = await Promise.all([
+        nextCanOperate ? getAdminRoles() : Promise.resolve({ roles: [] as AdminRole[] }),
+        nextCanOperate
           ? getAdminStaff(staffQuery)
           : Promise.resolve({ items: [] as AdminStaffMember[] }),
-        canAudit
-          ? getAdminAudit(
-              auditQuery.trim()
-                ? new URLSearchParams({ query: auditQuery.trim(), take: "50" })
-                : undefined,
-            )
-          : Promise.resolve({
-              items: [] as AdminAuditItem[],
-              pagination: { total: 0, page: 1, take: 50, pages: 1 },
-            }),
-        canSupport
-          ? getAdminSupportTickets()
+        getAdminAudit(auditParams),
+        nextCanSupport
+          ? getAdminSupportTickets(supportParams)
           : Promise.resolve({ items: [] as AdminSupportTicket[] }),
+        nextCanSupport
+          ? getAdminSupportAssignees()
+          : Promise.resolve({ items: [] as AdminSupportAssignee[] }),
       ]);
+
+      setSession(nextSession);
       setRoles(roleData.roles);
       setStaff(staffData.items);
       setAudit(auditData.items);
+      setAuditPagination(auditData.pagination);
       setTickets(ticketData.items);
+      setSupportAssignees(assigneeData.items);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Admin operations could not be loaded.");
     }
-  }, [auditQuery, staffQuery]);
+  }, [auditPage, auditQuery, staffQuery, supportPriority, supportStatus]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
+    const timer = window.setTimeout(() => void load(), 250);
     return () => window.clearTimeout(timer);
   }, [load]);
 
@@ -111,11 +163,45 @@ export function AdminOperations() {
     }
   }
 
+  async function findCompliance() {
+    const query = complianceQuery.trim();
+    if (query.length < 2) {
+      setMessage("Enter at least two characters of a channel name or handle.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    setCompliance(null);
+    try {
+      const result = await searchAdminComplianceChannels(query);
+      setComplianceMatches(result.items);
+      if (!result.items.length) setMessage("No matching creator channels were found.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Compliance search failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openCompliance(channel: AdminComplianceChannel) {
+    setBusy(true);
+    setMessage("");
+    try {
+      setCompliance(await getCreatorCompliance(channel.id));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Compliance could not be loaded.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const openTicketCount = useMemo(
     () =>
       tickets.filter((ticket) => ticket.status !== "RESOLVED" && ticket.status !== "CLOSED").length,
     [tickets],
   );
+
+  if (!session && !message) return <p className={styles.muted}>Loading governance controls…</p>;
 
   return (
     <>
@@ -124,40 +210,136 @@ export function AdminOperations() {
           <span className={styles.eyebrow}>Operations & governance</span>
           <h1>Admin Operations</h1>
           <p className={styles.muted}>
-            Staff RBAC, session revocation, audit history, internal support, compliance and safe CSV
-            exports. Sensitive payout destination data remains masked.
+            Audit, support, staff security, creator compliance and safe exports are exposed only
+            when your current staff role is authorized by the protected API.
           </p>
         </div>
+        {session ? <span className={styles.statusPill}>{session.roles.join(" · ")}</span> : null}
       </header>
 
       {message ? <p className={styles.notice}>{message}</p> : null}
 
       <section aria-label="Operations summary" className={styles.metrics}>
-        <article className={styles.metric}>
-          <span className={styles.muted}>Staff accounts</span>
-          <strong>{staff.length}</strong>
-        </article>
-        <article className={styles.metric}>
-          <span className={styles.muted}>Open support</span>
-          <strong>{openTicketCount}</strong>
-        </article>
+        {canOperate ? (
+          <article className={styles.metric}>
+            <span className={styles.muted}>Staff accounts</span>
+            <strong>{staff.length}</strong>
+          </article>
+        ) : null}
+        {canSupport ? (
+          <article className={styles.metric}>
+            <span className={styles.muted}>Open support</span>
+            <strong>{openTicketCount}</strong>
+          </article>
+        ) : null}
         <article className={styles.metric}>
           <span className={styles.muted}>Audit events loaded</span>
           <strong>{audit.length}</strong>
         </article>
         <article className={styles.metric}>
-          <span className={styles.muted}>Scoped roles</span>
-          <strong>{roles.length}</strong>
+          <span className={styles.muted}>Audit events total</span>
+          <strong>{auditPagination.total}</strong>
         </article>
+        {exportResources.length ? (
+          <article className={styles.metric}>
+            <span className={styles.muted}>Permitted exports</span>
+            <strong>{exportResources.length}</strong>
+          </article>
+        ) : null}
       </section>
 
-      <div className={styles.operationsGrid}>
+      {canOperate || exportResources.length ? (
+        <div className={styles.operationsGrid}>
+          {canOperate ? (
+            <section className={styles.card}>
+              <div className={styles.cardHeader}>
+                <div>
+                  <h2>Staff security & RBAC</h2>
+                  <p className={styles.muted}>
+                    Operations can inspect staff and revoke sessions. Only SUPERADMIN can change
+                    role assignments.
+                  </p>
+                </div>
+              </div>
+              <form
+                className={styles.toolbar}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void load();
+                }}
+              >
+                <input
+                  aria-label="Search staff"
+                  placeholder="Search name or email"
+                  value={staffQuery}
+                  onChange={(event) => setStaffQuery(event.target.value)}
+                />
+                <button className={styles.button} type="submit">
+                  Search
+                </button>
+              </form>
+              <div className={styles.grid}>
+                {staff.map((member) => (
+                  <StaffCard
+                    busy={busy}
+                    canManageRoles={canManageRoles}
+                    key={member.id}
+                    member={member}
+                    roles={roles}
+                    onSave={(nextRoles, reason) =>
+                      act(
+                        () => updateAdminStaffRoles(member.id, nextRoles, reason),
+                        `Roles updated for ${member.displayName}.`,
+                      )
+                    }
+                    onRevoke={(reason) =>
+                      act(
+                        () => revokeAccountSessions(member.id, reason),
+                        `Sessions revoked for ${member.displayName}.`,
+                      )
+                    }
+                  />
+                ))}
+                {!staff.length ? <p className={styles.muted}>No staff accounts matched.</p> : null}
+              </div>
+            </section>
+          ) : null}
+
+          {exportResources.length ? (
+            <section className={styles.card}>
+              <h2>Permitted exports</h2>
+              <p className={styles.muted}>
+                Only exports authorized for your current role are shown. Sensitive payout
+                destination data remains masked.
+              </p>
+              <div className={styles.actions}>
+                {exportResources.map((resource) => (
+                  <button
+                    className={styles.button}
+                    disabled={busy}
+                    key={resource}
+                    type="button"
+                    onClick={() =>
+                      void act(() => downloadAdminCsv(resource), `${resource} export generated.`)
+                    }
+                  >
+                    Export {resource}
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
+      {canCompliance ? (
         <section className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <h2>Staff RBAC</h2>
+              <h2>Creator compliance</h2>
               <p className={styles.muted}>
-                Role changes revoke existing sessions. SUPERADMIN is required to change assignments.
+                Search by channel name or handle, then review the payout profile and update
+                identity/tax workflow status. No internal UUID is required.
               </p>
             </div>
           </div>
@@ -165,173 +347,157 @@ export function AdminOperations() {
             className={styles.toolbar}
             onSubmit={(event) => {
               event.preventDefault();
-              void load();
+              void findCompliance();
             }}
           >
             <input
-              aria-label="Search staff"
-              placeholder="Search name or email"
-              value={staffQuery}
-              onChange={(event) => setStaffQuery(event.target.value)}
+              aria-label="Search creator compliance channels"
+              minLength={2}
+              placeholder="Channel name or @handle"
+              value={complianceQuery}
+              onChange={(event) => setComplianceQuery(event.target.value)}
             />
-            <button className={styles.button} type="submit">
-              Search
+            <button
+              className={styles.button}
+              disabled={busy || complianceQuery.trim().length < 2}
+              type="submit"
+            >
+              Search creators
             </button>
           </form>
-          <div className={styles.grid}>
-            {staff.map((member) => (
-              <StaffCard
-                busy={busy}
-                key={member.id}
-                member={member}
-                roles={roles}
-                onSave={(nextRoles, reason) =>
-                  act(
-                    () => updateAdminStaffRoles(member.id, nextRoles, reason),
-                    `Roles updated for ${member.displayName}.`,
-                  )
-                }
-                onRevoke={(reason) =>
-                  act(
-                    () => revokeAccountSessions(member.id, reason),
-                    `Sessions revoked for ${member.displayName}.`,
-                  )
-                }
-              />
-            ))}
-            {!staff.length ? <p className={styles.muted}>No staff accounts matched.</p> : null}
-          </div>
-        </section>
 
+          {complianceMatches.length ? (
+            <div className={styles.grid}>
+              {complianceMatches.map((channel) => (
+                <article className={styles.cardInset} key={channel.id}>
+                  <div className={styles.cardHeader}>
+                    <div>
+                      <strong>{channel.name}</strong>
+                      <p className={styles.muted}>@{channel.handle}</p>
+                    </div>
+                    <span className={styles.statusBadge}>{channel.status}</span>
+                  </div>
+                  {channel.payoutProfile ? (
+                    <p className={styles.muted}>
+                      {channel.payoutProfile.legalName} · {channel.payoutProfile.preferredCurrency}{" "}
+                      · identity {channel.payoutProfile.identityStatus} · tax{" "}
+                      {channel.payoutProfile.taxStatus}
+                    </p>
+                  ) : (
+                    <p className={styles.muted}>No payout profile yet.</p>
+                  )}
+                  <button
+                    className={styles.button}
+                    disabled={busy}
+                    type="button"
+                    onClick={() => void openCompliance(channel)}
+                  >
+                    Open compliance
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : null}
+
+          {compliance ? (
+            <div className={styles.cardInset}>
+              <p>
+                <strong>{compliance.channel.name}</strong> · @{compliance.channel.handle}
+              </p>
+              {compliance.profile ? (
+                <ComplianceEditor
+                  busy={busy}
+                  channelId={compliance.channel.id}
+                  profile={compliance.profile}
+                  reason={complianceReason}
+                  setReason={setComplianceReason}
+                  onSaved={(next) => {
+                    setCompliance((current) =>
+                      current?.profile
+                        ? {
+                            ...current,
+                            profile: {
+                              ...current.profile,
+                              ...(next as Partial<typeof current.profile>),
+                            },
+                          }
+                        : current,
+                    );
+                    setComplianceReason("");
+                  }}
+                  onAct={act}
+                />
+              ) : (
+                <p className={styles.muted}>The creator has not created a payout profile yet.</p>
+              )}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {canSupport ? (
         <section className={styles.card}>
-          <h2>Exports</h2>
-          <p className={styles.muted}>
-            Generate current CSV snapshots without direct database access.
-          </p>
-          <div className={styles.actions}>
-            {(["users", "channels", "videos", "payouts", "audit"] as const).map((resource) => (
-              <button
-                className={styles.button}
-                disabled={busy}
-                key={resource}
-                type="button"
-                onClick={() =>
-                  void act(() => downloadAdminCsv(resource), `${resource} export generated.`)
+          <div className={styles.cardHeader}>
+            <div>
+              <h2>Internal support queue</h2>
+              <p className={styles.muted}>
+                Triage, assign and resolve authenticated-user tickets without requiring account IDs.
+              </p>
+            </div>
+          </div>
+          <div className={styles.toolbar}>
+            <select
+              aria-label="Filter support by status"
+              value={supportStatus}
+              onChange={(event) => setSupportStatus(event.target.value)}
+            >
+              <option value="">All statuses</option>
+              {["OPEN", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Filter support by priority"
+              value={supportPriority}
+              onChange={(event) => setSupportPriority(event.target.value)}
+            >
+              <option value="">All priorities</option>
+              {["LOW", "NORMAL", "HIGH", "URGENT"].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.grid}>
+            {tickets.map((ticket) => (
+              <SupportTicketCard
+                assignees={supportAssignees}
+                busy={busy}
+                key={ticket.id}
+                ticket={ticket}
+                onSave={(input) =>
+                  act(
+                    () => updateAdminSupportTicket(ticket.id, input),
+                    `Support ticket ${ticket.id.slice(0, 8)} updated.`,
+                  )
                 }
-              >
-                Export {resource}
-              </button>
+              />
             ))}
+            {!tickets.length ? <p className={styles.muted}>No support tickets matched.</p> : null}
           </div>
         </section>
-      </div>
-
-      <section className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div>
-            <h2>Creator compliance</h2>
-            <p className={styles.muted}>
-              Review a creator payout profile and update identity/tax workflow status. This does not
-              replace a future KYC or tax provider.
-            </p>
-          </div>
-        </div>
-        <form
-          className={styles.toolbar}
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!channelId.trim()) return;
-            setBusy(true);
-            setMessage("");
-            void getCreatorCompliance(channelId.trim())
-              .then(setCompliance)
-              .catch((error) =>
-                setMessage(
-                  error instanceof Error ? error.message : "Compliance could not be loaded.",
-                ),
-              )
-              .finally(() => setBusy(false));
-          }}
-        >
-          <input
-            aria-label="Creator channel UUID"
-            placeholder="Channel UUID"
-            value={channelId}
-            onChange={(event) => setChannelId(event.target.value)}
-          />
-          <button className={styles.button} disabled={busy} type="submit">
-            Load profile
-          </button>
-        </form>
-        {compliance ? (
-          <div className={styles.cardInset}>
-            <p>
-              <strong>{compliance.channel.name}</strong> · @{compliance.channel.handle}
-            </p>
-            {compliance.profile ? (
-              <ComplianceEditor
-                busy={busy}
-                channelId={compliance.channel.id}
-                profile={compliance.profile}
-                reason={complianceReason}
-                setReason={setComplianceReason}
-                onSaved={(next) => {
-                  setCompliance((current) =>
-                    current?.profile
-                      ? {
-                          ...current,
-                          profile: {
-                            ...current.profile,
-                            ...(next as Partial<typeof current.profile>),
-                          },
-                        }
-                      : current,
-                  );
-                  setComplianceReason("");
-                }}
-                onAct={act}
-              />
-            ) : (
-              <p className={styles.muted}>The creator has not created a payout profile yet.</p>
-            )}
-          </div>
-        ) : null}
-      </section>
-
-      <section className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div>
-            <h2>Internal support queue</h2>
-            <p className={styles.muted}>
-              Authenticated users can open tickets; staff can triage, assign and resolve them here.
-            </p>
-          </div>
-        </div>
-        <div className={styles.grid}>
-          {tickets.map((ticket) => (
-            <SupportTicketCard
-              busy={busy}
-              key={ticket.id}
-              staff={staff}
-              ticket={ticket}
-              onSave={(input) =>
-                act(
-                  () => updateAdminSupportTicket(ticket.id, input),
-                  `Support ticket ${ticket.id.slice(0, 8)} updated.`,
-                )
-              }
-            />
-          ))}
-          {!tickets.length ? <p className={styles.muted}>No support tickets yet.</p> : null}
-        </div>
-      </section>
+      ) : null}
 
       <section className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
             <h2>Audit log</h2>
             <p className={styles.muted}>
-              Security-sensitive and operational changes are searchable and attributable.
+              Search and page through security-sensitive and operational changes attributable to
+              staff or system actions.
             </p>
           </div>
         </div>
@@ -339,6 +505,7 @@ export function AdminOperations() {
           className={styles.toolbar}
           onSubmit={(event) => {
             event.preventDefault();
+            setAuditPage(1);
             void load();
           }}
         >
@@ -346,7 +513,10 @@ export function AdminOperations() {
             aria-label="Search audit log"
             placeholder="Action, entity, ID or reason"
             value={auditQuery}
-            onChange={(event) => setAuditQuery(event.target.value)}
+            onChange={(event) => {
+              setAuditPage(1);
+              setAuditQuery(event.target.value);
+            }}
           />
           <button className={styles.button} type="submit">
             Search audit
@@ -371,6 +541,27 @@ export function AdminOperations() {
           ))}
           {!audit.length ? <p className={styles.muted}>No matching audit events.</p> : null}
         </div>
+        <div className={styles.pager}>
+          <button
+            className={styles.button}
+            disabled={auditPage <= 1}
+            type="button"
+            onClick={() => setAuditPage((current) => Math.max(1, current - 1))}
+          >
+            Previous
+          </button>
+          <span className={styles.muted}>
+            Page {auditPagination.page} of {auditPagination.pages} · {auditPagination.total} events
+          </span>
+          <button
+            className={styles.button}
+            disabled={auditPage >= auditPagination.pages}
+            type="button"
+            onClick={() => setAuditPage((current) => current + 1)}
+          >
+            Next
+          </button>
+        </div>
       </section>
     </>
   );
@@ -380,12 +571,14 @@ function StaffCard({
   member,
   roles,
   busy,
+  canManageRoles,
   onSave,
   onRevoke,
 }: {
   member: AdminStaffMember;
   roles: AdminRole[];
   busy: boolean;
+  canManageRoles: boolean;
   onSave: (roles: AdminRole[], reason: string) => Promise<unknown>;
   onRevoke: (reason: string) => Promise<unknown>;
 }) {
@@ -401,39 +594,49 @@ function StaffCard({
         </div>
         <span className={styles.statusBadge}>{member.status}</span>
       </div>
-      <div className={styles.roleGrid}>
-        {roles.map((role) => (
-          <label className={styles.check} key={role}>
-            <input
-              checked={selected.includes(role)}
-              type="checkbox"
-              onChange={(event) =>
-                setSelected((current) =>
-                  event.target.checked
-                    ? [...new Set([...current, role])]
-                    : current.filter((item) => item !== role),
-                )
-              }
-            />
-            {roleLabels[role]}
-          </label>
-        ))}
-      </div>
+
+      {canManageRoles ? (
+        <div className={styles.roleGrid}>
+          {roles.map((role) => (
+            <label className={styles.check} key={role}>
+              <input
+                checked={selected.includes(role)}
+                type="checkbox"
+                onChange={(event) =>
+                  setSelected((current) =>
+                    event.target.checked
+                      ? [...new Set([...current, role])]
+                      : current.filter((item) => item !== role),
+                  )
+                }
+              />
+              {roleLabels[role]}
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className={styles.muted}>
+          Roles: {member.roles.map((role) => roleLabels[role]).join(" · ") || "None"}
+        </p>
+      )}
+
       <input
-        aria-label={`Reason for changing ${member.displayName}`}
+        aria-label={`Reason for securing ${member.displayName}`}
         placeholder="Mandatory audit reason (8+ characters)"
         value={reason}
         onChange={(event) => setReason(event.target.value)}
       />
       <div className={styles.actions}>
-        <button
-          className={styles.button}
-          disabled={busy || reason.trim().length < 8}
-          type="button"
-          onClick={() => void onSave(selected, reason)}
-        >
-          Save roles
-        </button>
+        {canManageRoles ? (
+          <button
+            className={styles.button}
+            disabled={busy || reason.trim().length < 8}
+            type="button"
+            onClick={() => void onSave(selected, reason)}
+          >
+            Save roles
+          </button>
+        ) : null}
         <button
           className={styles.danger}
           disabled={busy || reason.trim().length < 8}
@@ -530,12 +733,12 @@ function ComplianceEditor({
 
 function SupportTicketCard({
   ticket,
-  staff,
+  assignees,
   busy,
   onSave,
 }: {
   ticket: AdminSupportTicket;
-  staff: AdminStaffMember[];
+  assignees: AdminSupportAssignee[];
   busy: boolean;
   onSave: (input: {
     status: AdminSupportTicket["status"];
@@ -590,9 +793,12 @@ function SupportTicketCard({
           Assigned staff
           <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
             <option value="">Unassigned</option>
-            {staff.map((member) => (
+            {assignee && !assignees.some((member) => member.id === assignee) ? (
+              <option value={assignee}>{ticket.assignedTo?.displayName ?? assignee}</option>
+            ) : null}
+            {assignees.map((member) => (
               <option key={member.id} value={member.id}>
-                {member.displayName}
+                {member.displayName} · {member.roles.map((role) => roleLabels[role]).join(" / ")}
               </option>
             ))}
           </select>
