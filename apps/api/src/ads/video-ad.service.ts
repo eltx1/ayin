@@ -246,11 +246,19 @@ export class VideoAdService {
       throw new Error("Exactly one video ad override target is required.");
     }
     return this.database.client.$transaction(async (tx) => {
-      const result = target.channelId
-        ? await tx.videoAdOverride.deleteMany({ where: { channelId: target.channelId } })
-        : await tx.videoAdOverride.deleteMany({ where: { videoId: target.videoId } });
-      const entityType = target.channelId ? "Channel" : "Video";
-      const entityId = target.channelId ?? (target.videoId as string);
+      let result: { count: number };
+      let entityType: "Channel" | "Video";
+      let entityId: string;
+      if (target.channelId) {
+        result = await tx.videoAdOverride.deleteMany({ where: { channelId: target.channelId } });
+        entityType = "Channel";
+        entityId = target.channelId;
+      } else {
+        const videoId = target.videoId as string;
+        result = await tx.videoAdOverride.deleteMany({ where: { videoId } });
+        entityType = "Video";
+        entityId = videoId;
+      }
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
         action: "VIDEO_AD_OVERRIDE_REMOVED",
