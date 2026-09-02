@@ -21,6 +21,21 @@ export interface AdminComplianceChannel {
   };
 }
 
+export interface AdminAdvertisingChannelTarget {
+  id: string;
+  name: string;
+  handle: string;
+  status: string;
+}
+
+export interface AdminAdvertisingVideoTarget {
+  id: string;
+  title: string;
+  slug: string;
+  status: string;
+  channel: { id: string; name: string; handle: string };
+}
+
 async function adminDirectoryFetch<T>(path: string): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     credentials: "include",
@@ -39,5 +54,14 @@ export function getAdminSupportAssignees() {
 export function searchAdminComplianceChannels(query: string) {
   return adminDirectoryFetch<{ items: AdminComplianceChannel[] }>(
     `/admin/operations/directory/compliance-channels?query=${encodeURIComponent(query.trim())}`,
+  );
+}
+
+export function searchAdminAdvertisingTargets(query: string) {
+  return adminDirectoryFetch<{
+    channels: AdminAdvertisingChannelTarget[];
+    videos: AdminAdvertisingVideoTarget[];
+  }>(
+    `/admin/operations/directory/advertising-targets?query=${encodeURIComponent(query.trim())}`,
   );
 }
