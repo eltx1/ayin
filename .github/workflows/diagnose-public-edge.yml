@@ -1,0 +1,41 @@
+name: Diagnose AYIN public edge
+
+on:
+  push:
+    paths:
+      - .github/workflows/diagnose-public-edge.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect public responses
+        shell: bash
+        run: |
+          set -euo pipefail
+          inspect() {
+            local label="$1"
+            local url="$2"
+            local ua="$3"
+            local headers body status
+            headers="$(mktemp)"
+            body="$(mktemp)"
+            status="$(curl --silent --show-error --location --max-time 20 --user-agent "$ua" --dump-header "$headers" --output "$body" --write-out '%{http_code}' "$url" || true)"
+            echo "=== $label ==="
+            echo "status=$status"
+            grep -Ei '^(HTTP/|server:|cf-ray:|cf-mitigated:|content-type:|location:|x-|permissions-policy:)' "$headers" || true
+            echo "body-preview:"
+            head -c 800 "$body" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g'
+            echo
+            rm -f "$headers" "$body"
+          }
+
+          inspect "web-curl" "https://ayin.stream/" "curl/8"
+          inspect "web-browser-ua" "https://ayin.stream/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36"
+          inspect "api-health" "https://api.ayin.stream/health" "Mozilla/5.0"
+          inspect "api-ready" "https://api.ayin.stream/ready" "Mozilla/5.0"
+          inspect "media-missing-object" "https://media.ayin.stream/__ayin_edge_verification_missing_object__" "Mozilla/5.0"
