@@ -1,22 +1,25 @@
 # AYIN production deployment on AWS + CloudPanel
 
-AYIN runs the application tier on AWS EC2 behind CloudPanel/Nginx. PostgreSQL should be an external production database such as AWS RDS. Creator media remains direct-to-Cloudflare R2 and must never be proxied, stored, transcoded, or streamed through the EC2 Node processes.
+AYIN V1 uses the existing AWS EC2 host as the application infrastructure. CloudPanel/Nginx, Next.js, NestJS, PM2 and PostgreSQL run on that host under AYIN-specific boundaries. Cloudflare R2 is the only required external storage service and the only home for creator media objects.
+
+This runbook intentionally preserves the zero-additional-service launch architecture from the Master Plan, `docs/ARCHITECTURE.md`, and ADR-008. AWS RDS, Cloudflare Stream, Workers, a separate cache service, transcoding, HLS/FAST infrastructure and other paid runtime services are not launch dependencies.
 
 ## Production topology
 
 - `https://ayin.stream` -> CloudPanel/Nginx -> Next.js web/PWA on `127.0.0.1:3000`.
 - `https://api.ayin.stream` -> CloudPanel/Nginx -> NestJS API on `127.0.0.1:4000`.
-- `https://media.ayin.stream` -> Cloudflare/R2 delivery layer, never the EC2 application host.
+- PostgreSQL -> local EC2 service on `127.0.0.1:5432`, never publicly exposed.
+- `https://media.ayin.stream` -> Cloudflare R2 delivery layer, never the EC2 application host.
+- Creator video bytes travel browser -> R2 directly and never pass through Node, Nginx, EBS or PostgreSQL.
 - Studio and Admin remain routes of the main web application (`/studio`, `/admin`).
-- PostgreSQL is reached privately by the API/migration tooling and must not be publicly exposed.
 
-The Node ports must remain bound to loopback. Only CloudPanel/Nginx should be able to reach ports 3000 and 4000.
+The Node and PostgreSQL ports must remain bound to loopback. Only CloudPanel/Nginx should reach ports 3000 and 4000; only local AYIN application/migration processes should reach PostgreSQL.
 
 ## Required server software
 
-The repository pins the runtime in `.nvmrc` and `package.json`. A production release refuses to proceed when the server Node version differs from `.nvmrc`.
+The repository pins the application runtime in `.nvmrc` and `package.json`. A production release refuses to proceed when the server Node version differs from `.nvmrc`.
 
-Install and verify:
+Verify:
 
 ```bash
 node -v
@@ -25,9 +28,16 @@ git --version
 pm2 -v
 curl --version
 flock --version
+psql --version
 ```
 
-PostgreSQL client tooling (`psql`) is strongly recommended for connectivity diagnostics even when the database runs on AWS RDS.
+For the zero-budget launch, PostgreSQL Server 16 or newer runs locally on the EC2 host. The repository contains an idempotent bootstrap at:
+
+```text
+deploy/postgres/bootstrap-local-production.sh
+```
+
+It installs the distribution PostgreSQL packages when needed, forces the server to `127.0.0.1:5432`, requires PostgreSQL 16+, creates database `ayin` and role `ayin_app`, generates a random database password without printing it, validates a real password-authenticated connection, and writes `/home/ayin/env/database.env` with mode `600`.
 
 ## Server filesystem
 
@@ -36,21 +46,21 @@ Use the dedicated AYIN account and keep releases separate from secrets:
 ```text
 /home/ayin/htdocs/releases/     immutable release directories
 /home/ayin/htdocs/current       symlink to the active release
+/home/ayin/env/database.env     local PostgreSQL connection generated on-server
 /home/ayin/env/web.env          public/build-time web settings
 /home/ayin/env/api.env          server-only production settings and secrets
 /home/ayin/.deploy.lock         deployment concurrency lock
 ```
 
-Create the directories before the first deployment and keep them owned by the AYIN deployment user.
-
 Environment files must be readable only by their owner:
 
 ```bash
+chmod 600 /home/ayin/env/database.env
 chmod 600 /home/ayin/env/web.env
 chmod 600 /home/ayin/env/api.env
 ```
 
-The production validator rejects broader group/other permissions.
+The production validator rejects broader group/other permissions for the files it consumes.
 
 ## Production environment files
 
@@ -71,7 +81,7 @@ NEXT_PUBLIC_API_BASE_URL=https://api.ayin.stream
 NEXT_PUBLIC_MEDIA_BASE_URL=https://media.ayin.stream
 ```
 
-`NEXT_PUBLIC_*` values are embedded into browser-accessible code during `next build`. Passwords, private keys, tokens, R2 credentials, and any other secrets are forbidden from `web.env`.
+`NEXT_PUBLIC_*` values are embedded into browser-accessible code during `next build`. Passwords, private keys, tokens, R2 credentials and all other secrets are forbidden from `web.env`.
 
 ### API environment
 
@@ -84,7 +94,7 @@ API_HOST=127.0.0.1
 PORT=4000
 CORS_ORIGIN=https://ayin.stream
 WEB_ORIGIN=https://ayin.stream
-DATABASE_URL=postgresql://...
+DATABASE_URL=postgresql://ayin_app:...@127.0.0.1:5432/ayin?schema=public
 AUTH_TOKEN_SECRET=...
 PAYOUT_DATA_ENCRYPTION_KEY=...
 ANALYTICS_HASH_SALT=...
@@ -102,9 +112,9 @@ openssl rand -hex 32
 openssl rand -base64 32
 ```
 
-`PAYOUT_DATA_ENCRYPTION_KEY` must decode to exactly 32 bytes. The auth, analytics, and upload-session secrets must be at least 32 characters and should be independently generated.
+`PAYOUT_DATA_ENCRYPTION_KEY` must decode to exactly 32 bytes. The auth, analytics and upload-session secrets must be at least 32 characters and should be independently generated.
 
-For AWS RDS, use an encrypted PostgreSQL connection such as `sslmode=require` in the production URL and keep the database Security Group restricted to the EC2 application Security Group.
+The local PostgreSQL URL intentionally does not use `sslmode=require`: the TCP connection never leaves loopback on the same host. PostgreSQL must not listen on the public interface and port `5432` must not be opened in the EC2 Security Group.
 
 ## R2 fail-closed production behavior
 
@@ -119,16 +129,17 @@ R2_ACCESS_KEY_ID
 R2_SECRET_ACCESS_KEY
 ```
 
-`UPLOAD_SESSION_SECRET` is also mandatory in production. R2 credentials must remain server-only and must never be copied to `web.env` or exposed as `NEXT_PUBLIC_*` values.
+`UPLOAD_SESSION_SECRET` is also mandatory in production. R2 credentials remain server-only and must never be copied to `web.env` or exposed as `NEXT_PUBLIC_*` values.
 
 Before public launch verify the live bucket configuration:
 
-- CORS permits only required AYIN origins/methods/headers.
+- CORS permits only required AYIN origins/methods/headers;
 - presigned URLs use short expirations;
 - credentials are least privilege;
 - abandoned/multipart objects have an appropriate lifecycle policy;
 - object completion validates expected metadata/size;
-- `media.ayin.stream` delivers directly from the media layer rather than EC2.
+- `media.ayin.stream` delivers directly from R2 rather than EC2;
+- HTTP range requests work for progressive MP4 playback.
 
 ## Production environment preflight
 
@@ -138,13 +149,13 @@ Every release automatically runs:
 node deploy/validate-production-env.cjs /home/ayin/env/web.env /home/ayin/env/api.env
 ```
 
-It validates file permissions, production modes, HTTPS origins, PostgreSQL URL shape, required secrets, payout-key length, complete R2 settings, and GAM safety settings. Deployment stops before package installation, build, or database migration if validation fails.
+It validates file permissions, production modes, HTTPS origins, PostgreSQL URL shape, required secrets, payout-key length, complete R2 settings and GAM safety settings. Deployment stops before package installation, build or database migration if validation fails.
 
 The parser reads env values literally instead of shell-sourcing them, so characters such as `$` and `#` in secrets are not expanded by the shell.
 
 ## CloudPanel / Nginx
 
-CloudPanel remains the source of truth for live vhosts and certificates. Create two reverse-proxy sites:
+CloudPanel remains the source of truth for live vhosts and certificates. The two application reverse proxies are:
 
 ```text
 ayin.stream      -> http://127.0.0.1:3000
@@ -156,9 +167,9 @@ Reference snippets live in:
 - `deploy/nginx/ayin.stream.conf.example`
 - `deploy/nginx/api.ayin.stream.conf.example`
 
-They preserve host and forwarding information, keep ordinary request bodies small, and hide unnecessary server metadata. Media uploads are direct-to-R2, so do not raise API body limits to accommodate video files.
+Media uploads are direct-to-R2, so do not raise API body limits to accommodate video files.
 
-The API trusts only the local Nginx hop for forwarded client addresses. When Cloudflare proxying is enabled later, configure CloudPanel/Nginx real-IP handling using Cloudflare's published proxy ranges before depending on application IP rate limiting. Do not make Fastify blindly trust arbitrary forwarding headers.
+The API trusts only the local Nginx hop for forwarded client addresses. When Cloudflare proxying is enabled, configure CloudPanel/Nginx real-IP handling using Cloudflare's published proxy ranges before depending on application IP rate limiting. Do not make Fastify blindly trust arbitrary forwarding headers.
 
 ## First deployment
 
@@ -168,22 +179,14 @@ The default repository URL is public HTTPS:
 https://github.com/eltx1/ayin.git
 ```
 
-This avoids requiring a GitHub deploy key for the current public repository. If the repository becomes private, set `AYIN_REPO_URL` to an authenticated private clone URL or install a dedicated least-privilege deploy key.
-
-Deploy an exact reviewed Git commit SHA:
-
-```bash
-/home/ayin/htdocs/current/deploy/release.sh <git-sha>
-```
-
-For a brand-new host with no `current` release yet, bootstrap a temporary checkout of the repository, create the environment files, and invoke that checkout's `deploy/release.sh` with the exact SHA. After success, `/home/ayin/htdocs/current` becomes the stable entry point for future releases.
+Deploy only an exact reviewed Git commit SHA. GitHub Actions bootstraps the trusted `deploy/release.sh` to a brand-new host, so the first deployment does not require an existing `/home/ayin/htdocs/current` symlink.
 
 ## What release.sh guarantees
 
 `deploy/release.sh` performs the following sequence:
 
 1. validates arguments and required server commands;
-2. takes an exclusive deployment lock so two releases cannot race;
+2. takes an exclusive AYIN deployment lock;
 3. clones and checks out the exact requested commit;
 4. verifies the server Node version exactly matches `.nvmrc`;
 5. activates the pinned pnpm version;
@@ -191,14 +194,14 @@ For a brand-new host with no `current` release yet, bootstrap a temporary checko
 7. installs the frozen lockfile and generates Prisma;
 8. builds shared packages;
 9. builds the API using only `api.env`;
-10. builds the Web app using only `web.env`;
+10. builds Web using only `web.env`;
 11. applies forward PostgreSQL migrations only after the release candidate built successfully;
 12. atomically switches `/home/ayin/htdocs/current`;
 13. starts/reloads PM2;
 14. checks web liveness and database-backed API readiness;
-15. automatically restores the previous application release if activation/health checks fail.
+15. restores the previous application release automatically if activation/health checks fail.
 
-Separating build environments prevents API secrets from leaking into the Next.js build while ensuring `NEXT_PUBLIC_API_BASE_URL` and the media origin are embedded correctly.
+Application rollback never automatically reverses database migrations.
 
 ## PM2 process isolation
 
@@ -214,7 +217,7 @@ API secrets therefore do not need to exist in the web process environment. After
 - `GET /health` checks API process liveness and intentionally does not require PostgreSQL.
 - `GET /ready` performs a minimal database-backed readiness check and returns `503` without exposing database details when PostgreSQL is unavailable.
 
-Production release acceptance uses `/ready`:
+Production release acceptance uses:
 
 ```bash
 curl --fail http://127.0.0.1:3000/
@@ -222,31 +225,26 @@ curl --fail http://127.0.0.1:4000/health
 curl --fail http://127.0.0.1:4000/ready
 ```
 
-Also verify listening addresses:
+Also verify listeners:
 
 ```bash
 ss -lntp
 ```
 
-Expected application listeners are `127.0.0.1:3000` and `127.0.0.1:4000`, never `0.0.0.0:3000` or `0.0.0.0:4000`.
-
-## Rollback and database migrations
-
-Application rollback does not mean database rollback. The release script can restore the previous application symlink and PM2 processes, but it intentionally never reverses PostgreSQL migrations automatically.
-
-Production migrations must therefore remain backward compatible with the immediately previous application release. Destructive or incompatible schema changes require an explicit multi-release migration plan.
+Expected application/database listeners are loopback-only. Ports `3000`, `4000` and `5432` must never be public listeners.
 
 ## PostgreSQL backup / recovery gate
 
-Do not treat production as ready until the database has a tested recovery path. At minimum:
+Local PostgreSQL is the zero-budget launch topology, but local-only backups are not sufficient recovery protection. Before production data is at risk:
 
 - define RPO and RTO;
-- enable automated backups and point-in-time recovery or an equivalent tested strategy;
-- keep backup storage isolated from the application host;
-- confirm a recoverable point before migrations carrying material data risk;
-- periodically restore into a separate environment and record actual recovery time.
+- automate logical backups and, when justified, WAL-based recovery;
+- keep at least one recoverable copy off the EC2/EBS host;
+- the already-approved Cloudflare R2 account may hold encrypted database backups under separate least-privilege credentials/prefix or bucket, avoiding a new runtime service;
+- verify a real restore into an isolated database before calling backup readiness complete;
+- capture a recoverable point before migrations carrying material data risk.
 
-A successful backup operation is not proof that recovery works. Restore testing is the acceptance criterion.
+A successful backup command is not proof that recovery works. Restore testing is the acceptance criterion.
 
 ## Google Ad Manager safety
 
@@ -257,23 +255,27 @@ GAM_TEST_MODE=1
 GAM_PRODUCTION_ENABLED=0
 ```
 
-until real production identifiers are available. The environment validator refuses a production GAM enablement when required network/ad-unit fields are blank or test mode is still enabled. Do not guess identifiers.
+until real production identifiers are available. The environment validator refuses production GAM enablement when required network/ad-unit fields are blank or test mode remains enabled. Do not guess identifiers.
 
 ## Cloudflare phase
 
-Cloudflare proxy/WAF is intentionally a later edge step, after origin deployment works directly. When enabling it:
+Cloudflare DNS/proxy/WAF is an edge layer around the existing EC2 application. It does not introduce Workers, Stream or another application runtime.
+
+When enabling it:
 
 - use Full (strict) TLS with a valid origin certificate path;
 - configure Cloudflare real-client-IP handling in Nginx;
-- add WAF/rate limits for auth, Admin, finance, and abuse-sensitive routes;
+- add WAF/rate limits for auth, Admin, finance and abuse-sensitive routes;
 - keep 3000/4000/5432 private;
 - preserve direct-to-R2 media delivery;
-- only after verification consider restricting the origin to Cloudflare proxy ranges.
+- `media.ayin.stream` belongs to R2 and must never be rewritten to the EC2 origin.
 
 ## CI/CD
 
-`.github/workflows/database.yml` validates deployment helper syntax and runs a production-env preflight fixture in addition to formatting, audit, lint, typecheck, tests, integration tests, migrations, and production builds.
+`.github/workflows/database.yml` validates deployment helpers, local-PostgreSQL bootstrap syntax and a production-env preflight fixture in addition to formatting, audit, lint, typecheck, tests, integration tests, migrations and production builds.
 
-`.github/workflows/deploy.yml` provides an optional manual exact-SHA production deployment. The deploy job remains inert unless repository variable `AYIN_CD_ENABLED=true` and the required SSH secrets are configured.
+`.github/workflows/deploy.yml` is intentionally manual for the first production deployment. It accepts only an exact SHA that is proven to have a successful `Task quality gates` run on `main`, uses the dedicated AYIN SSH key, verifies the pinned server fingerprint and refuses a deployment account that can write to `/home/horusapp`.
 
-Protect `main`, require successful quality checks, and deploy only reviewed exact commit SHAs.
+`.github/workflows/cloudflare-production.yml` is also manual initially. It is scoped to the `ayin.stream` zone and synchronizes only `ayin.stream` and `api.ayin.stream`; `media.ayin.stream` is intentionally excluded because R2 owns it.
+
+After the first controlled deployment, end-to-end verification and rollback test succeed, automation may be enabled without changing the application architecture.
