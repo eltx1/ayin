@@ -3,14 +3,36 @@ import { z } from "zod";
 const publisherId = /^pub-\d{16}$/;
 const networkCode = /^\d{1,20}$/;
 
+function emptyStringToUndefined(value: unknown) {
+  if (typeof value === "string" && value.trim() === "") {
+    return undefined;
+  }
+  return value;
+}
+
 const environmentSchema = z.object({
-  GAM_NETWORK_CODE: z.string().trim().regex(networkCode).optional(),
-  GAM_PUBLISHER_ID: z.string().trim().regex(publisherId).optional(),
-  GAM_VIDEO_AD_UNIT_PATH: z.string().trim().min(1).max(500).optional(),
-  GAM_DISPLAY_AD_UNIT_PREFIX: z.string().trim().min(1).max(500).optional(),
+  GAM_NETWORK_CODE: z.preprocess(
+    emptyStringToUndefined,
+    z.string().trim().regex(networkCode).optional(),
+  ),
+  GAM_PUBLISHER_ID: z.preprocess(
+    emptyStringToUndefined,
+    z.string().trim().regex(publisherId).optional(),
+  ),
+  GAM_VIDEO_AD_UNIT_PATH: z.preprocess(
+    emptyStringToUndefined,
+    z.string().trim().min(1).max(500).optional(),
+  ),
+  GAM_DISPLAY_AD_UNIT_PREFIX: z.preprocess(
+    emptyStringToUndefined,
+    z.string().trim().min(1).max(500).optional(),
+  ),
   GAM_TEST_MODE: z.enum(["0", "1"]).default("1"),
   GAM_PRODUCTION_ENABLED: z.enum(["0", "1"]).default("0"),
-  GAM_ADS_TXT_RELATIONSHIP: z.enum(["DIRECT", "RESELLER"]).optional(),
+  GAM_ADS_TXT_RELATIONSHIP: z.preprocess(
+    emptyStringToUndefined,
+    z.enum(["DIRECT", "RESELLER"]).optional(),
+  ),
 });
 
 export interface GamProductionConfig {
