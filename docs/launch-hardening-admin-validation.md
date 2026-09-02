@@ -16,4 +16,4 @@ This document records the control surfaces covered by the launch-hardening branc
 
 The hardening branch is not considered ready until the repository `Task quality gates` workflow succeeds for the exact branch head. The workflow validates dependency audit policy, Prettier formatting, deployment tooling, lint, TypeScript/Prisma generation, unit/schema tests, clean PostgreSQL migrations and integration tests, and production builds.
 
-React effect synchronization in the hardened Admin surfaces must also pass the repository's strict React Hooks lint rules without disabling those rules. Exact optional-property TypeScript checks must remain enabled for scoped advertising mutations.
+React effect synchronization in the hardened Admin surfaces must also pass the repository's strict React Hooks lint rules without disabling those rules. Exact optional-property TypeScript checks must remain enabled for scoped advertising mutations. Admin content query parsing stays on the server page so the production build does not require a client-side search-params bailout.
