@@ -30,7 +30,7 @@ jobs:
       RELEASE_SHA: ${{ inputs.release_sha }}
       DEPLOY_HOST: 13.52.116.200
       DEPLOY_USER: ayin
-      SSH_PORT: '22'
+      SSH_PORT: "22"
       REMOTE_HOME: /home/ayin
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
 
