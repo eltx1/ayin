@@ -29,8 +29,8 @@ jobs:
     timeout-minutes: 45
     environment: production
     env:
-      VALIDATION_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.validation_run_id || '33582889987' }}
-      RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || 'e63fe399f84e8d7e020e9b761787975a7b03147d' }}
+      VALIDATION_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.validation_run_id || '33583473075' }}
+      RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || 'ad4fd3ba492924331dc1cb5b2adc1ad10b163dd4' }}
       DEPLOY_HOST: 13.52.116.200
       DEPLOY_USER: ayin
       SSH_PORT: "22"
