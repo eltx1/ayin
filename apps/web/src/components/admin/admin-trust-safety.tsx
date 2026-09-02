@@ -88,12 +88,17 @@ export function AdminTrustSafety() {
 
   useEffect(() => {
     let active = true;
-    void load().catch((caught) => {
-      if (active)
-        setError(caught instanceof Error ? caught.message : "Trust & Safety could not be loaded.");
-    });
+    const timer = window.setTimeout(() => {
+      void load().catch((caught) => {
+        if (active)
+          setError(
+            caught instanceof Error ? caught.message : "Trust & Safety could not be loaded.",
+          );
+      });
+    }, 0);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [load]);
 

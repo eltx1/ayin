@@ -131,17 +131,20 @@ export function AdminVideoAds() {
 
   useEffect(() => {
     let active = true;
-    void load().catch((error) => {
-      if (active) {
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Video advertising controls could not be loaded.",
-        );
-      }
-    });
+    const timer = window.setTimeout(() => {
+      void load().catch((error) => {
+        if (active) {
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "Video advertising controls could not be loaded.",
+          );
+        }
+      });
+    }, 0);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [load]);
 
@@ -409,7 +412,10 @@ function ExistingOverride({
   onAct: (action: () => Promise<unknown>, success: string) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<OverrideDraft>(() => draftFrom(row));
-  useEffect(() => setDraft(draftFrom(row)), [row]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDraft(draftFrom(row)), 0);
+    return () => window.clearTimeout(timer);
+  }, [row]);
   const isChannel = Boolean(row.channelId);
   const targetId = row.channelId ?? (row.videoId as string);
   const label = isChannel

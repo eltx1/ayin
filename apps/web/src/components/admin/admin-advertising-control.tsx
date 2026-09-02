@@ -234,7 +234,8 @@ export function AdminAdvertisingControl() {
   }, []);
 
   useEffect(() => {
-    void load();
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   async function act(action: () => Promise<unknown>, success: string) {
@@ -947,7 +948,10 @@ function ExistingCampaign({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<CampaignDraft>(() => draftFromCampaign(campaign));
-  useEffect(() => setDraft(draftFromCampaign(campaign)), [campaign]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDraft(draftFromCampaign(campaign)), 0);
+    return () => window.clearTimeout(timer);
+  }, [campaign]);
   return (
     <article className={styles.cardInset}>
       <div className={styles.cardHeader}>
@@ -1408,25 +1412,28 @@ function CreativeCard({
       approvedReference: creative.direct?.approvedReference ?? null,
     },
   });
-  useEffect(
-    () =>
-      setDraft({
-        name: creative.name,
-        type: creative.type,
-        status: creative.status,
-        destinationUrl: creative.destinationUrl,
-        vastTagUrl: creative.vastTagUrl,
-        headline: creative.headline,
-        body: creative.body,
-        direct: {
-          assetUrl: creative.direct?.assetUrl ?? null,
-          width: creative.direct?.width ?? null,
-          height: creative.direct?.height ?? null,
-          approvedReference: creative.direct?.approvedReference ?? null,
-        },
-      }),
-    [creative],
-  );
+  useEffect(() => {
+    const timer = window.setTimeout(
+      () =>
+        setDraft({
+          name: creative.name,
+          type: creative.type,
+          status: creative.status,
+          destinationUrl: creative.destinationUrl,
+          vastTagUrl: creative.vastTagUrl,
+          headline: creative.headline,
+          body: creative.body,
+          direct: {
+            assetUrl: creative.direct?.assetUrl ?? null,
+            width: creative.direct?.width ?? null,
+            height: creative.direct?.height ?? null,
+            approvedReference: creative.direct?.approvedReference ?? null,
+          },
+        }),
+      0,
+    );
+    return () => window.clearTimeout(timer);
+  }, [creative]);
   const campaign = campaigns.find((item) => item.id === creative.campaignId);
   return (
     <article className={styles.cardInset}>

@@ -77,17 +77,24 @@ export function AdminContentLibrary() {
 
   useEffect(() => {
     let active = true;
-    void load().catch((caught) => {
-      if (active)
-        setError(caught instanceof Error ? caught.message : "Content library could not be loaded.");
-    });
+    const timer = window.setTimeout(() => {
+      void load().catch((caught) => {
+        if (active)
+          setError(
+            caught instanceof Error ? caught.message : "Content library could not be loaded.",
+          );
+      });
+    }, 0);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [load]);
 
   useEffect(() => {
-    if (requestedChannelId) setChannelId(requestedChannelId);
+    if (!requestedChannelId) return;
+    const timer = window.setTimeout(() => setChannelId(requestedChannelId), 0);
+    return () => window.clearTimeout(timer);
   }, [requestedChannelId]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
