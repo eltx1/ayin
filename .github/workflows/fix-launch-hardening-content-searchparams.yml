@@ -1,0 +1,65 @@
+name: One-shot content search params build fix
+
+on:
+  push:
+    branches:
+      - launch-hardening-20260902
+    paths:
+      - ".github/workflows/fix-launch-hardening-content-searchparams.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: launch-hardening-20260902
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Move content query parsing to server page
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          component = Path("apps/web/src/components/admin/admin-content-library.tsx")
+          text = component.read_text()
+          old_import = 'import { useSearchParams } from "next/navigation";\n'
+          if text.count(old_import) != 1:
+              raise SystemExit("Expected useSearchParams import exactly once")
+          text = text.replace(old_import, "", 1)
+
+          old_start = '''export function AdminContentLibrary() {\n  const searchParams = useSearchParams();\n  const requestedChannelId = searchParams.get("channelId") ?? "";'''
+          new_start = '''export function AdminContentLibrary({\n  requestedChannelId = "",\n}: {\n  requestedChannelId?: string;\n}) {'''
+          if text.count(old_start) != 1:
+              raise SystemExit("Expected AdminContentLibrary search-param block exactly once")
+          component.write_text(text.replace(old_start, new_start, 1))
+
+          page = Path("apps/web/src/app/admin/content/page.tsx")
+          page.write_text('''import { AdminContentLibrary } from "@/components/admin/admin-content-library";\n\nexport default async function AdminContentPage({\n  searchParams,\n}: {\n  searchParams: Promise<{ channelId?: string | string[] }>;\n}) {\n  const params = await searchParams;\n  const rawChannelId = params.channelId;\n  const requestedChannelId = Array.isArray(rawChannelId) ? rawChannelId[0] ?? "" : rawChannelId ?? "";\n  return <AdminContentLibrary requestedChannelId={requestedChannelId} />;\n}\n''')
+          PY
+          pnpm exec prettier --write \
+            apps/web/src/components/admin/admin-content-library.tsx \
+            apps/web/src/app/admin/content/page.tsx
+          rm .github/workflows/fix-launch-hardening-content-searchparams.yml
+      - name: Commit fix and remove this workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/web/src/components/admin/admin-content-library.tsx \
+            apps/web/src/app/admin/content/page.tsx \
+            .github/workflows/fix-launch-hardening-content-searchparams.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix Admin content search params production build"
+          git push origin HEAD:launch-hardening-20260902
