@@ -1,0 +1,222 @@
+name: Read-only AYIN production readiness preflight
+
+on:
+  push:
+    paths:
+      - .github/workflows/read-only-production-preflight.yml
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+      AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
+      EXPECTED_R2_ACCOUNT: fa824163dbb3aa26f9cfae2a799a809a
+      EXPECTED_R2_BUCKET: ayin-production-media
+      EXPECTED_ORIGIN_IPV4: 13.52.116.200
+
+    steps:
+      - name: Validate secret availability without printing values
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          test -n "$AYIN_CLOUDFLARE_API_TOKEN"
+          echo "PASS: required production automation secrets are available"
+
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          test -s "$candidate"
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          echo "PASS: pinned AYIN SSH host fingerprint verified"
+
+      - name: Validate AYIN server isolation, env, PostgreSQL and R2 credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          fail() { echo "FAIL: $*" >&2; exit 1; }
+          pass() { echo "PASS: $*"; }
+
+          [[ "$(whoami)" == "ayin" ]] || fail "SSH identity is not ayin"
+          [[ "$HOME" == "/home/ayin" ]] || fail "AYIN HOME is unexpected"
+          [[ ! -w /home/horusapp ]] || fail "AYIN account can write Horus home"
+          pass "AYIN SSH identity and Horus write isolation"
+
+          WEB_ENV=/home/ayin/env/web.env
+          API_ENV=/home/ayin/env/api.env
+          for file in "$WEB_ENV" "$API_ENV"; do
+            [[ -f "$file" ]] || fail "$file is missing"
+            [[ "$(stat -c '%U:%G' "$file")" == "ayin:ayin" ]] || fail "$file ownership is not ayin:ayin"
+            [[ "$(stat -c '%a' "$file")" == "600" ]] || fail "$file mode is not 600"
+          done
+          pass "production env files exist with strict ownership and permissions"
+
+          set -a
+          # shellcheck disable=SC1090
+          source "$API_ENV"
+          set +a
+
+          [[ "${NODE_ENV:-}" == "production" ]] || fail "NODE_ENV is not production"
+          [[ "${APP_ENV:-}" == "production" ]] || fail "APP_ENV is not production"
+          [[ "${API_HOST:-}" == "127.0.0.1" ]] || fail "API_HOST is not loopback"
+          [[ "${PORT:-}" == "4000" ]] || fail "API port is unexpected"
+          [[ "${CORS_ORIGIN:-}" == "https://ayin.stream" ]] || fail "CORS_ORIGIN is unexpected"
+          [[ "${WEB_ORIGIN:-}" == "https://ayin.stream" ]] || fail "WEB_ORIGIN is unexpected"
+          [[ -n "${AUTH_TOKEN_SECRET:-}" && ${#AUTH_TOKEN_SECRET} -ge 32 ]] || fail "AUTH token secret is invalid"
+          [[ -n "${PAYOUT_DATA_ENCRYPTION_KEY:-}" ]] || fail "payout encryption key is missing"
+          [[ -n "${ANALYTICS_HASH_SALT:-}" && ${#ANALYTICS_HASH_SALT} -ge 32 ]] || fail "analytics salt is invalid"
+          [[ -n "${UPLOAD_SESSION_SECRET:-}" && ${#UPLOAD_SESSION_SECRET} -ge 32 ]] || fail "upload session secret is invalid"
+          [[ "${R2_ACCOUNT_ID:-}" == "fa824163dbb3aa26f9cfae2a799a809a" ]] || fail "R2 account is unexpected"
+          [[ "${R2_BUCKET:-}" == "ayin-production-media" ]] || fail "R2 bucket is unexpected"
+          [[ -n "${R2_ACCESS_KEY_ID:-}" ]] || fail "R2 access key id is missing"
+          [[ -n "${R2_SECRET_ACCESS_KEY:-}" ]] || fail "R2 secret access key is missing"
+          [[ "${GAM_PRODUCTION_ENABLED:-0}" == "0" ]] || fail "GAM production must remain disabled"
+          pass "production environment structure"
+
+          command -v psql >/dev/null || fail "psql is missing"
+          command -v python3 >/dev/null || fail "python3 is missing"
+          PSQL_DATABASE_URL="$(python3 - "$DATABASE_URL" <<'PY'
+          import sys, urllib.parse
+          raw = sys.argv[1]
+          parts = urllib.parse.urlsplit(raw)
+          query = [(k, v) for k, v in urllib.parse.parse_qsl(parts.query, keep_blank_values=True) if k != 'schema']
+          print(urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(query), parts.fragment)))
+          PY
+          )"
+          DB_RESULT="$(psql "$PSQL_DATABASE_URL" -Atqc "select current_database() || ':' || current_user")" || fail "cannot connect to AYIN PostgreSQL"
+          [[ "$DB_RESULT" == "ayin:ayin_app" ]] || fail "PostgreSQL identity mismatch"
+          pass "local PostgreSQL connection as ayin_app on ayin"
+
+          python3 - <<'PY'
+          import datetime, hashlib, hmac, os, sys, urllib.error, urllib.parse, urllib.request
+          account = os.environ['R2_ACCOUNT_ID']
+          bucket = os.environ['R2_BUCKET']
+          access = os.environ['R2_ACCESS_KEY_ID']
+          secret = os.environ['R2_SECRET_ACCESS_KEY']
+          host = f'{account}.r2.cloudflarestorage.com'
+          canonical_uri = '/' + urllib.parse.quote(bucket, safe='-_.~')
+          canonical_query = 'list-type=2&max-keys=1'
+          now = datetime.datetime.now(datetime.timezone.utc)
+          amz_date = now.strftime('%Y%m%dT%H%M%SZ')
+          datestamp = now.strftime('%Y%m%d')
+          payload_hash = hashlib.sha256(b'').hexdigest()
+          canonical_headers = f'host:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n'
+          signed_headers = 'host;x-amz-content-sha256;x-amz-date'
+          canonical_request = '\n'.join(['GET', canonical_uri, canonical_query, canonical_headers, signed_headers, payload_hash])
+          credential_scope = f'{datestamp}/auto/s3/aws4_request'
+          string_to_sign = '\n'.join(['AWS4-HMAC-SHA256', amz_date, credential_scope, hashlib.sha256(canonical_request.encode()).hexdigest()])
+          def sign(key, msg): return hmac.new(key, msg.encode(), hashlib.sha256).digest()
+          k_date = sign(('AWS4' + secret).encode(), datestamp)
+          k_region = sign(k_date, 'auto')
+          k_service = sign(k_region, 's3')
+          k_signing = sign(k_service, 'aws4_request')
+          signature = hmac.new(k_signing, string_to_sign.encode(), hashlib.sha256).hexdigest()
+          authorization = f'AWS4-HMAC-SHA256 Credential={access}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}'
+          request = urllib.request.Request(
+              f'https://{host}{canonical_uri}?{canonical_query}',
+              method='GET',
+              headers={'Authorization': authorization, 'x-amz-content-sha256': payload_hash, 'x-amz-date': amz_date},
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  if response.status != 200: raise RuntimeError('unexpected R2 status')
+          except Exception as exc:
+              print(f'FAIL: R2 S3 authentication failed: {type(exc).__name__}', file=sys.stderr)
+              sys.exit(1)
+          print('PASS: R2 S3 credentials authenticate to the AYIN production bucket')
+          PY
+
+          MEDIA_HTTP="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --connect-timeout 10 --max-time 20 https://media.ayin.stream/__ayin_read_only_preflight_missing_object__ || true)"
+          [[ "$MEDIA_HTTP" =~ ^[1-5][0-9][0-9]$ ]] || fail "media.ayin.stream is not reachable over HTTPS"
+          pass "media.ayin.stream resolves and answers over HTTPS (HTTP $MEDIA_HTTP for deliberate missing object)"
+
+          unset DATABASE_URL PSQL_DATABASE_URL AUTH_TOKEN_SECRET PAYOUT_DATA_ENCRYPTION_KEY ANALYTICS_HASH_SALT UPLOAD_SESSION_SECRET R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
+          REMOTE
+
+      - name: Validate Cloudflare DNS, edge settings, R2 CORS and media custom domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          api='https://api.cloudflare.com/client/v4'
+          auth="Authorization: Bearer $AYIN_CLOUDFLARE_API_TOKEN"
+          call() {
+            local url="$1" output
+            output="$(mktemp)"
+            curl --fail-with-body --silent --show-error --header "$auth" "$url" > "$output"
+            jq -e '.success == true' "$output" >/dev/null
+            cat "$output"
+            rm -f "$output"
+          }
+
+          verify="$(call "$api/user/tokens/verify")"
+          jq -e '.result.status == "active"' <<<"$verify" >/dev/null
+          echo "PASS: Cloudflare production automation token is active"
+
+          zones="$(call "$api/zones?name=ayin.stream&status=active&per_page=50")"
+          zone_id="$(jq -r '.result[] | select(.name == "ayin.stream") | .id' <<<"$zones")"
+          account_id="$(jq -r '.result[] | select(.name == "ayin.stream") | .account.id' <<<"$zones")"
+          [[ "$account_id" == "$EXPECTED_R2_ACCOUNT" ]]
+          [[ "$zone_id" =~ ^[0-9a-fA-F]{32}$ ]]
+          echo "PASS: AYIN Cloudflare zone and account scope"
+
+          for name in ayin.stream api.ayin.stream; do
+            dns="$(call "$api/zones/$zone_id/dns_records?type=A&name=$name&per_page=20")"
+            jq -e --arg name "$name" --arg ip "$EXPECTED_ORIGIN_IPV4" '([.result[] | select(.name == $name and .content == $ip and .proxied == true)] | length) == 1' <<<"$dns" >/dev/null
+          done
+          echo "PASS: AYIN web/API DNS point only to the expected proxied origin"
+
+          ssl="$(call "$api/zones/$zone_id/settings/ssl")"
+          jq -e '.result.value == "strict"' <<<"$ssl" >/dev/null
+          https="$(call "$api/zones/$zone_id/settings/always_use_https")"
+          jq -e '.result.value == "on"' <<<"$https" >/dev/null
+          echo "PASS: Cloudflare SSL strict and Always Use HTTPS"
+
+          buckets="$(call "$api/accounts/$account_id/r2/buckets?name_contains=$EXPECTED_R2_BUCKET&per_page=100")"
+          jq -e --arg name "$EXPECTED_R2_BUCKET" '([.result.buckets[]? | select(.name == $name)] | length) == 1' <<<"$buckets" >/dev/null
+          echo "PASS: AYIN production R2 bucket exists"
+
+          cors="$(call "$api/accounts/$account_id/r2/buckets/$EXPECTED_R2_BUCKET/cors")"
+          jq -e 'any(.result.rules[]?; .id == "ayin-browser-media" and (.allowed.origins | index("https://ayin.stream") != null) and (.allowed.methods | index("PUT") != null) and (.allowed.methods | index("GET") != null) and (.exposeHeaders | index("ETag") != null))' <<<"$cors" >/dev/null
+          echo "PASS: AYIN R2 browser CORS supports direct upload/playback and exposes ETag"
+
+          domain="$(call "$api/accounts/$account_id/r2/buckets/$EXPECTED_R2_BUCKET/domains/custom/media.ayin.stream")"
+          jq -e --arg zone "$zone_id" '.result.domain == "media.ayin.stream" and .result.enabled == true and .result.zoneId == $zone' <<<"$domain" >/dev/null
+          ownership="$(jq -r '.result.status.ownership // "unknown"' <<<"$domain")"
+          ssl_state="$(jq -r '.result.status.ssl // "unknown"' <<<"$domain")"
+          echo "R2 custom domain state: ownership=$ownership ssl=$ssl_state"
+          [[ "$ownership" == "active" ]]
+          [[ "$ssl_state" == "active" ]]
+          echo "PASS: media.ayin.stream ownership and SSL are active"
+
+      - name: Record current public endpoint status without requiring app deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in https://ayin.stream/ https://api.ayin.stream/health https://api.ayin.stream/ready https://media.ayin.stream/__ayin_read_only_preflight_missing_object__; do
+            status="$(curl --silent --show-error --location --output /dev/null --write-out '%{http_code}' --connect-timeout 10 --max-time 20 "$url" || true)"
+            echo "$url -> $status"
+          done
