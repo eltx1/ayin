@@ -1,0 +1,79 @@
+name: Diagnose AYIN origin TLS installation
+
+on:
+  push:
+    paths:
+      - .github/workflows/diagnose-ayin-origin-tls.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+
+    steps:
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Inspect AYIN TLS metadata and available administration path
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "identity=$(whoami) home=$HOME"
+          if sudo -n true 2>/dev/null; then echo "passwordless_sudo=yes"; else echo "passwordless_sudo=no"; fi
+          if command -v clpctl >/dev/null 2>&1; then echo "clpctl=$(command -v clpctl)"; else echo "clpctl=missing"; fi
+          if command -v certbot >/dev/null 2>&1; then echo "certbot=$(command -v certbot)"; else echo "certbot=missing"; fi
+
+          for host in ayin.stream api.ayin.stream; do
+            echo "=== $host certificate ==="
+            echo | openssl s_client -connect 127.0.0.1:443 -servername "$host" 2>/dev/null \
+              | openssl x509 -noout -subject -issuer -dates -ext subjectAltName || true
+          done
+
+          echo "=== readable AYIN nginx references ==="
+          for path in /etc/nginx/sites-enabled/* /etc/nginx/sites-available/* /etc/nginx/conf.d/*; do
+            [[ -f "$path" && -r "$path" ]] || continue
+            if grep -qE '(^|[[:space:]])(ayin\.stream|api\.ayin\.stream)([[:space:];]|$)' "$path" 2>/dev/null; then
+              echo "config=$path"
+              grep -E 'server_name|ssl_certificate(_key)?[[:space:]]|listen[[:space:]].*443|proxy_pass' "$path" 2>/dev/null \
+                | sed -E 's#(ssl_certificate_key[[:space:]]+).*#\1<redacted-path>;#' || true
+            fi
+          done
+
+          echo "=== certificate path metadata only ==="
+          cert_paths="$(for path in /etc/nginx/sites-enabled/* /etc/nginx/sites-available/* /etc/nginx/conf.d/*; do
+            [[ -f "$path" && -r "$path" ]] || continue
+            grep -E '^[[:space:]]*ssl_certificate[[:space:]]+' "$path" 2>/dev/null \
+              | awk '{gsub(/;/, "", $2); print $2}'
+          done | sort -u)"
+          while IFS= read -r cert; do
+            [[ -n "$cert" ]] || continue
+            case "$cert" in
+              *ayin*|*api.ayin*) stat -Lc 'cert_path=%n owner=%U:%G mode=%a' "$cert" 2>/dev/null || true ;;
+            esac
+          done <<<"$cert_paths"
+          REMOTE
