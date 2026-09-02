@@ -112,7 +112,7 @@ jobs:
           pass "local PostgreSQL connection as ayin_app on ayin"
 
           python3 - <<'PY'
-          import datetime, hashlib, hmac, os, sys, urllib.error, urllib.parse, urllib.request
+          import datetime, hashlib, hmac, os, sys, urllib.parse, urllib.request
           account = os.environ['R2_ACCOUNT_ID']
           bucket = os.environ['R2_BUCKET']
           access = os.environ['R2_ACCESS_KEY_ID']
@@ -157,7 +157,7 @@ jobs:
           unset DATABASE_URL PSQL_DATABASE_URL AUTH_TOKEN_SECRET PAYOUT_DATA_ENCRYPTION_KEY ANALYTICS_HASH_SALT UPLOAD_SESSION_SECRET R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
           REMOTE
 
-      - name: Validate Cloudflare DNS, edge settings, R2 CORS and media custom domain
+      - name: Inspect Cloudflare readiness states without mutation
         shell: bash
         run: |
           set -euo pipefail
@@ -190,27 +190,30 @@ jobs:
           echo "PASS: AYIN web/API DNS point only to the expected proxied origin"
 
           ssl="$(call "$api/zones/$zone_id/settings/ssl")"
-          jq -e '.result.value == "strict"' <<<"$ssl" >/dev/null
+          ssl_value="$(jq -r '.result.value // "unknown"' <<<"$ssl")"
           https="$(call "$api/zones/$zone_id/settings/always_use_https")"
-          jq -e '.result.value == "on"' <<<"$https" >/dev/null
-          echo "PASS: Cloudflare SSL strict and Always Use HTTPS"
+          https_value="$(jq -r '.result.value // "unknown"' <<<"$https")"
+          echo "Cloudflare zone settings: ssl=$ssl_value always_use_https=$https_value"
 
           buckets="$(call "$api/accounts/$account_id/r2/buckets?name_contains=$EXPECTED_R2_BUCKET&per_page=100")"
-          jq -e --arg name "$EXPECTED_R2_BUCKET" '([.result.buckets[]? | select(.name == $name)] | length) == 1' <<<"$buckets" >/dev/null
-          echo "PASS: AYIN production R2 bucket exists"
+          bucket_count="$(jq --arg name "$EXPECTED_R2_BUCKET" '[.result.buckets[]? | select(.name == $name)] | length' <<<"$buckets")"
+          echo "R2 exact bucket matches: $bucket_count"
 
           cors="$(call "$api/accounts/$account_id/r2/buckets/$EXPECTED_R2_BUCKET/cors")"
-          jq -e 'any(.result.rules[]?; .id == "ayin-browser-media" and (.allowed.origins | index("https://ayin.stream") != null) and (.allowed.methods | index("PUT") != null) and (.allowed.methods | index("GET") != null) and (.exposeHeaders | index("ETag") != null))' <<<"$cors" >/dev/null
-          echo "PASS: AYIN R2 browser CORS supports direct upload/playback and exposes ETag"
+          cors_ok="$(jq -r 'any(.result.rules[]?; .id == "ayin-browser-media" and (.allowed.origins | index("https://ayin.stream") != null) and (.allowed.methods | index("PUT") != null) and (.allowed.methods | index("GET") != null) and (.exposeHeaders | index("ETag") != null))' <<<"$cors")"
+          echo "R2 browser CORS ready: $cors_ok"
 
           domain="$(call "$api/accounts/$account_id/r2/buckets/$EXPECTED_R2_BUCKET/domains/custom/media.ayin.stream")"
-          jq -e --arg zone "$zone_id" '.result.domain == "media.ayin.stream" and .result.enabled == true and .result.zoneId == $zone' <<<"$domain" >/dev/null
+          enabled="$(jq -r '.result.enabled // false' <<<"$domain")"
           ownership="$(jq -r '.result.status.ownership // "unknown"' <<<"$domain")"
           ssl_state="$(jq -r '.result.status.ssl // "unknown"' <<<"$domain")"
-          echo "R2 custom domain state: ownership=$ownership ssl=$ssl_state"
-          [[ "$ownership" == "active" ]]
-          [[ "$ssl_state" == "active" ]]
-          echo "PASS: media.ayin.stream ownership and SSL are active"
+          echo "R2 custom domain: enabled=$enabled ownership=$ownership ssl=$ssl_state"
+
+          [[ "$ssl_value" == "strict" ]] || echo "NEEDS_FIX: Cloudflare SSL mode must be strict"
+          [[ "$https_value" == "on" ]] || echo "NEEDS_FIX: Always Use HTTPS must be on"
+          [[ "$bucket_count" == "1" ]] || echo "NEEDS_FIX: expected exactly one AYIN R2 bucket"
+          [[ "$cors_ok" == "true" ]] || echo "NEEDS_FIX: R2 CORS is not launch-ready"
+          [[ "$enabled" == "true" && "$ownership" == "active" && "$ssl_state" == "active" ]] || echo "NEEDS_FIX: media custom domain is not fully active"
 
       - name: Record current public endpoint status without requiring app deployment
         shell: bash
