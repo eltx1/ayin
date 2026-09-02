@@ -2,6 +2,9 @@ name: AYIN Cloudflare production sync
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/cloudflare-production.yml"
 
 permissions:
   contents: read
@@ -18,12 +21,13 @@ jobs:
     env:
       AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
       AYIN_ORIGIN_IPV4: 13.52.116.200
+      AYIN_R2_BUCKET_NAME: ayin-production-media
 
     steps:
       - name: Checkout AYIN production edge tooling
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ github.sha }}
 
       - name: Validate isolated Cloudflare configuration
         shell: bash
@@ -31,35 +35,36 @@ jobs:
           set -euo pipefail
           test -n "$AYIN_CLOUDFLARE_API_TOKEN"
           [[ "$AYIN_ORIGIN_IPV4" == '13.52.116.200' ]]
+          [[ "$AYIN_R2_BUCKET_NAME" == 'ayin-production-media' ]]
           bash -n deploy/cloudflare/sync-production-edge.sh
+          bash -n deploy/cloudflare/bootstrap-r2-production.sh
 
-      - name: Synchronize AYIN Cloudflare edge
+      - name: Synchronize AYIN application edge
         shell: bash
         run: bash deploy/cloudflare/sync-production-edge.sh
 
-      - name: Verify public AYIN endpoints
+      - name: Bootstrap AYIN R2 media layer
         shell: bash
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --retry 6 --retry-delay 5 --max-time 20 https://ayin.stream/ >/dev/null
-          curl --fail --silent --show-error --retry 6 --retry-delay 5 --max-time 20 https://api.ayin.stream/health >/dev/null
-          curl --fail --silent --show-error --retry 6 --retry-delay 5 --max-time 20 https://api.ayin.stream/ready >/dev/null
+        run: bash deploy/cloudflare/bootstrap-r2-production.sh
 
-      - name: Record Cloudflare sync proof
+      - name: Record Cloudflare bootstrap proof
         shell: bash
         run: |
           set -euo pipefail
           proof_dir="$RUNNER_TEMP/ayin-cloudflare-sync-proof"
           install -d -m 700 "$proof_dir"
           cat > "$proof_dir/cloudflare-sync-proof.env" <<EOF
-          schema_version=1
+          schema_version=2
           zone=ayin.stream
+          media_domain=media.ayin.stream
+          r2_bucket=$AYIN_R2_BUCKET_NAME
           origin_ipv4=$AYIN_ORIGIN_IPV4
+          commit_sha=$GITHUB_SHA
           sync_run_id=$GITHUB_RUN_ID
           sync_run_attempt=$GITHUB_RUN_ATTEMPT
           EOF
 
-      - name: Upload Cloudflare sync proof
+      - name: Upload Cloudflare bootstrap proof
         uses: actions/upload-artifact@v7
         with:
           name: ayin-cloudflare-production-sync-proof
