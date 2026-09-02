@@ -1,0 +1,51 @@
+name: One-shot video ad type fix
+
+on:
+  push:
+    branches:
+      - launch-hardening-20260902
+    paths:
+      - ".github/workflows/fix-launch-hardening-video-ad-type.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: launch-hardening-20260902
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply exact optional property type fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("apps/api/src/ads/video-ad.service.ts")
+          text = p.read_text()
+          old = '''    return this.database.client.$transaction(async (tx) => {\n      const result = target.channelId\n        ? await tx.videoAdOverride.deleteMany({ where: { channelId: target.channelId } })\n        : await tx.videoAdOverride.deleteMany({ where: { videoId: target.videoId } });\n      const entityType = target.channelId ? "Channel" : "Video";\n      const entityId = target.channelId ?? (target.videoId as string);\n      await this.audit.recordInTransaction(tx, {\n        actorAccountId,\n        action: "VIDEO_AD_OVERRIDE_REMOVED",\n        entityType,\n        entityId,\n        metadata: { deleted: result.count },\n      });\n      return { deleted: result.count > 0 };\n    });'''
+          new = '''    return this.database.client.$transaction(async (tx) => {\n      let result: { count: number };\n      let entityType: "Channel" | "Video";\n      let entityId: string;\n      if (target.channelId) {\n        result = await tx.videoAdOverride.deleteMany({ where: { channelId: target.channelId } });\n        entityType = "Channel";\n        entityId = target.channelId;\n      } else {\n        const videoId = target.videoId as string;\n        result = await tx.videoAdOverride.deleteMany({ where: { videoId } });\n        entityType = "Video";\n        entityId = videoId;\n      }\n      await this.audit.recordInTransaction(tx, {\n        actorAccountId,\n        action: "VIDEO_AD_OVERRIDE_REMOVED",\n        entityType,\n        entityId,\n        metadata: { deleted: result.count },\n      });\n      return { deleted: result.count > 0 };\n    });'''
+          if text.count(old) != 1:
+              raise SystemExit("Expected deleteOverride block was not found exactly once")
+          p.write_text(text.replace(old, new, 1))
+          PY
+          pnpm exec prettier --write apps/api/src/ads/video-ad.service.ts
+          rm .github/workflows/fix-launch-hardening-video-ad-type.yml
+      - name: Commit fix and remove this workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/ads/video-ad.service.ts .github/workflows/fix-launch-hardening-video-ad-type.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Fix video ad override delete type narrowing"
+          git push origin HEAD:launch-hardening-20260902
