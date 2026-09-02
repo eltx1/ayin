@@ -1,0 +1,94 @@
+name: One-shot AYIN Cloudflare strict SSL fix
+
+on:
+  push:
+    paths:
+      - .github/workflows/one-shot-fix-cloudflare-strict.yml
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
+      EXPECTED_ORIGIN_IPV4: 13.52.116.200
+
+    steps:
+      - name: Verify AYIN origin TLS before tightening Cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 20 --resolve ayin.stream:443:$EXPECTED_ORIGIN_IPV4 https://ayin.stream/ >/dev/null
+          curl --fail --silent --show-error --max-time 20 --resolve api.ayin.stream:443:$EXPECTED_ORIGIN_IPV4 https://api.ayin.stream/health >/dev/null
+          echo "PASS: AYIN origin certificates validate directly for web and API"
+
+      - name: Change only AYIN zone SSL mode to strict with rollback guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AYIN_CLOUDFLARE_API_TOKEN"
+          api='https://api.cloudflare.com/client/v4'
+          auth="Authorization: Bearer $AYIN_CLOUDFLARE_API_TOKEN"
+          json='Content-Type: application/json'
+
+          get() {
+            local url="$1" out
+            out="$(mktemp)"
+            curl --fail-with-body --silent --show-error --header "$auth" "$url" > "$out"
+            jq -e '.success == true' "$out" >/dev/null
+            cat "$out"
+            rm -f "$out"
+          }
+          patch() {
+            local url="$1" payload="$2" out
+            out="$(mktemp)"
+            curl --fail-with-body --silent --show-error --request PATCH --header "$auth" --header "$json" --data "$payload" "$url" > "$out"
+            jq -e '.success == true' "$out" >/dev/null
+            cat "$out"
+            rm -f "$out"
+          }
+
+          zones="$(get "$api/zones?name=ayin.stream&status=active&per_page=50")"
+          zone_id="$(jq -r '.result[] | select(.name == "ayin.stream") | .id' <<<"$zones")"
+          [[ "$zone_id" =~ ^[0-9a-fA-F]{32}$ ]]
+
+          before="$(get "$api/zones/$zone_id/settings/ssl")"
+          previous="$(jq -r '.result.value' <<<"$before")"
+          [[ "$previous" == "full" || "$previous" == "strict" ]]
+          echo "AYIN SSL mode before change: $previous"
+
+          if [[ "$previous" != "strict" ]]; then
+            patch "$api/zones/$zone_id/settings/ssl" '{"value":"strict"}' >/dev/null
+          fi
+
+          after="$(get "$api/zones/$zone_id/settings/ssl")"
+          current="$(jq -r '.result.value' <<<"$after")"
+          [[ "$current" == "strict" ]]
+          echo "PASS: AYIN Cloudflare SSL mode is strict"
+
+          ok=0
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent --show-error --max-time 20 https://ayin.stream/ >/dev/null \
+              && curl --fail --silent --show-error --max-time 20 https://api.ayin.stream/health >/dev/null \
+              && curl --fail --silent --show-error --max-time 20 https://api.ayin.stream/ready >/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 3
+          done
+
+          if [[ "$ok" != "1" ]]; then
+            if [[ "$previous" != "strict" ]]; then
+              patch "$api/zones/$zone_id/settings/ssl" "{\"value\":\"$previous\"}" >/dev/null || true
+              echo "ROLLBACK: restored AYIN SSL mode to $previous" >&2
+            fi
+            exit 1
+          fi
+
+          media_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 https://media.ayin.stream/__ayin_strict_ssl_check_missing_object__ || true)"
+          [[ "$media_status" =~ ^[1-5][0-9][0-9]$ ]]
+          echo "PASS: AYIN web, API and media remain reachable after strict SSL"
