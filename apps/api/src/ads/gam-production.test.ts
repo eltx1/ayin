@@ -21,6 +21,27 @@ describe("Google Ad Manager production configuration", () => {
     expect(config.publisherId).toBeNull();
   });
 
+  it("treats blank production identifiers as unconfigured while production is disabled", () => {
+    const config = loadGamProductionConfig({
+      GAM_NETWORK_CODE: "",
+      GAM_PUBLISHER_ID: "",
+      GAM_VIDEO_AD_UNIT_PATH: "",
+      GAM_DISPLAY_AD_UNIT_PREFIX: "",
+      GAM_ADS_TXT_RELATIONSHIP: "",
+      GAM_TEST_MODE: "1",
+      GAM_PRODUCTION_ENABLED: "0",
+    });
+
+    expect(config.complete).toBe(false);
+    expect(config.productionEnabled).toBe(false);
+    expect(config.testMode).toBe(true);
+    expect(config.networkCode).toBeNull();
+    expect(config.publisherId).toBeNull();
+    expect(config.videoAdUnitPath).toBeNull();
+    expect(config.displayAdUnitPrefix).toBeNull();
+    expect(config.adsTxtRelationship).toBeNull();
+  });
+
   it("accepts a complete example-shaped configuration in test mode", () => {
     const config = loadGamProductionConfig(completeExample);
     expect(config.complete).toBe(true);
