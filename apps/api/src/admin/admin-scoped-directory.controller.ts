@@ -7,7 +7,7 @@ import { adminBadRequest } from "./admin.errors.js";
 import { AdminGuard, RequireAdminRoles } from "./admin.guard.js";
 import { assignableAdminRoles, type AdminRole } from "./admin.roles.js";
 
-const complianceSearchSchema = z.string().trim().min(2).max(200);
+const directorySearchSchema = z.string().trim().min(2).max(200);
 
 @Controller("admin/operations/directory")
 @UseGuards(AuthGuard, AdminGuard)
@@ -48,15 +48,7 @@ export class AdminScopedDirectoryController {
   @Get("compliance-channels")
   @RequireAdminRoles("FINANCE_MANAGER")
   async complianceChannels(@Query("query") queryRaw?: string) {
-    const parsed = complianceSearchSchema.safeParse(queryRaw ?? "");
-    if (!parsed.success) {
-      throw adminBadRequest(
-        "INVALID_COMPLIANCE_SEARCH",
-        "Enter at least two characters of a channel name or handle.",
-      );
-    }
-
-    const query = parsed.data;
+    const query = this.parseQuery(queryRaw, "INVALID_COMPLIANCE_SEARCH");
     const items = await this.database.client.channel.findMany({
       where: {
         status: { not: "REMOVED" },
@@ -84,5 +76,54 @@ export class AdminScopedDirectoryController {
     });
 
     return { items };
+  }
+
+  @Get("advertising-targets")
+  @RequireAdminRoles("AD_MANAGER")
+  async advertisingTargets(@Query("query") queryRaw?: string) {
+    const query = this.parseQuery(queryRaw, "INVALID_AD_TARGET_SEARCH");
+    const [channels, videos] = await Promise.all([
+      this.database.client.channel.findMany({
+        where: {
+          status: { not: "REMOVED" },
+          OR: [
+            { name: { contains: query, mode: "insensitive" } },
+            { handle: { contains: query, mode: "insensitive" } },
+          ],
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 12,
+        select: { id: true, name: true, handle: true, status: true },
+      }),
+      this.database.client.video.findMany({
+        where: {
+          status: { not: "REMOVED" },
+          OR: [
+            { title: { contains: query, mode: "insensitive" } },
+            { slug: { contains: query, mode: "insensitive" } },
+            { channel: { name: { contains: query, mode: "insensitive" } } },
+            { channel: { handle: { contains: query, mode: "insensitive" } } },
+          ],
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 12,
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          status: true,
+          channel: { select: { id: true, name: true, handle: true } },
+        },
+      }),
+    ]);
+    return { channels, videos };
+  }
+
+  private parseQuery(raw: string | undefined, code: string) {
+    const parsed = directorySearchSchema.safeParse(raw ?? "");
+    if (!parsed.success) {
+      throw adminBadRequest(code, "Enter at least two search characters.");
+    }
+    return parsed.data;
   }
 }
