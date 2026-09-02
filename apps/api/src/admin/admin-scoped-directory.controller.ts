@@ -78,6 +78,38 @@ export class AdminScopedDirectoryController {
     return { items };
   }
 
+  @Get("revenue-channels")
+  @RequireAdminRoles("FINANCE_MANAGER")
+  async revenueChannels(@Query("query") queryRaw?: string) {
+    const query = this.parseQuery(queryRaw, "INVALID_REVENUE_CHANNEL_SEARCH");
+    const items = await this.database.client.channel.findMany({
+      where: {
+        status: { not: "REMOVED" },
+        OR: [
+          { name: { contains: query, mode: "insensitive" } },
+          { handle: { contains: query, mode: "insensitive" } },
+        ],
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 25,
+      select: {
+        id: true,
+        name: true,
+        handle: true,
+        status: true,
+        payoutProfile: {
+          select: {
+            preferredCurrency: true,
+            identityStatus: true,
+            taxStatus: true,
+          },
+        },
+      },
+    });
+
+    return { items };
+  }
+
   @Get("advertising-targets")
   @RequireAdminRoles("AD_MANAGER")
   async advertisingTargets(@Query("query") queryRaw?: string) {
