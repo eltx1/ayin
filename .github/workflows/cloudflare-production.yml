@@ -2,9 +2,6 @@ name: AYIN Cloudflare production sync
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/cloudflare-production.yml"
 
 permissions:
   contents: read
@@ -27,7 +24,7 @@ jobs:
       - name: Checkout AYIN production edge tooling
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: main
 
       - name: Validate isolated Cloudflare configuration
         shell: bash
