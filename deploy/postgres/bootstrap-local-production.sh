@@ -15,9 +15,17 @@ fail() {
 
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || fail "run this script as root"
 id "$APP_OS_USER" >/dev/null 2>&1 || fail "required Linux user '$APP_OS_USER' does not exist"
-command -v apt-get >/dev/null 2>&1 || fail "this bootstrap currently supports Ubuntu/Debian hosts with apt-get"
-command -v openssl >/dev/null 2>&1 || fail "openssl is required"
-command -v systemctl >/dev/null 2>&1 || fail "systemd/systemctl is required"
+for required in apt-get openssl systemctl ss runuser; do
+  command -v "$required" >/dev/null 2>&1 || fail "required command '$required' is missing"
+done
+
+# If another service already owns TCP/5432 before PostgreSQL installation/activation, stop rather
+# than taking over that port. This protects unrelated applications sharing the EC2 host.
+if ss -ltn | awk '{print $4}' | grep -Eq '(^|:|\])5432$'; then
+  if ! command -v pg_isready >/dev/null 2>&1 || ! pg_isready -q >/dev/null 2>&1; then
+    fail "TCP/5432 is already in use by an unidentified service"
+  fi
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -35,6 +43,19 @@ if (( server_major < 16 )); then
 fi
 
 echo "PostgreSQL $server_major detected."
+
+# Protect a shared server from accidental takeover. On a fresh PostgreSQL installation the only
+# non-template database is 'postgres'. AYIN may also exist on safe re-runs. Any other user database
+# means an operator must review the server instead of this script changing cluster-wide settings.
+mapfile -t foreign_databases < <(
+  runuser -u postgres -- psql -Atqc \
+    "SELECT datname FROM pg_database WHERE datistemplate = false AND datname NOT IN ('postgres', '$DB_NAME') ORDER BY datname;"
+)
+if (( ${#foreign_databases[@]} > 0 )); then
+  printf 'error: existing non-AYIN PostgreSQL databases detected: %s\n' "${foreign_databases[*]}" >&2
+  printf 'Refusing to change cluster-wide listener settings on a potentially shared PostgreSQL instance.\n' >&2
+  exit 1
+fi
 
 # Fail closed to loopback. AYIN's V1 application and database share one EC2 host, so PostgreSQL
 # never needs a public or VPC-facing listener.
