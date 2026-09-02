@@ -102,7 +102,14 @@ check_rollback_api_health() {
 activate_current_application() {
   export AYIN_CURRENT_DIR="$AYIN_CURRENT_LINK"
   export AYIN_WEB_ENV_FILE AYIN_API_ENV_FILE
-  if ! pm2 startOrReload "$AYIN_CURRENT_LINK/deploy/ecosystem.config.cjs" --update-env; then
+
+  # PM2 startOrReload preserves the original script path/arguments for existing process IDs.
+  # Releases may legitimately change their launch definition, so recreate only AYIN's two
+  # isolated processes from the ecosystem file belonging to the active release.
+  pm2 delete ayin-web >/dev/null 2>&1 || true
+  pm2 delete ayin-api >/dev/null 2>&1 || true
+
+  if ! pm2 start "$AYIN_CURRENT_LINK/deploy/ecosystem.config.cjs"; then
     echo "error: PM2 could not activate the current application release" >&2
     return 1
   fi
