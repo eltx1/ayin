@@ -1,0 +1,73 @@
+name: One-shot launch hardening formatter
+
+on:
+  push:
+    branches:
+      - launch-hardening-20260902
+    paths:
+      - ".github/workflows/format-launch-hardening.yml"
+      - "apps/api/src/ads/video-ad.service.ts"
+      - "apps/web/src/components/admin/admin-advertising-control.tsx"
+      - "apps/web/src/components/admin/admin-operations.tsx"
+      - "apps/web/src/components/admin/admin-revenue-control-center.tsx"
+      - "apps/web/src/components/admin/admin-video-ads.tsx"
+      - "apps/web/src/lib/admin-advertising.ts"
+      - "apps/web/src/lib/admin-operations-directory.ts"
+      - "apps/web/src/lib/admin-revenue-operations.ts"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out hardening branch
+        uses: actions/checkout@v7
+        with:
+          ref: launch-hardening-20260902
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format changed hardening files
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/ads/video-ad.service.ts \
+            apps/web/src/components/admin/admin-advertising-control.tsx \
+            apps/web/src/components/admin/admin-operations.tsx \
+            apps/web/src/components/admin/admin-revenue-control-center.tsx \
+            apps/web/src/components/admin/admin-video-ads.tsx \
+            apps/web/src/lib/admin-advertising.ts \
+            apps/web/src/lib/admin-operations-directory.ts \
+            apps/web/src/lib/admin-revenue-operations.ts
+          rm .github/workflows/format-launch-hardening.yml
+
+      - name: Commit formatting and remove this workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/ads/video-ad.service.ts \
+            apps/web/src/components/admin/admin-advertising-control.tsx \
+            apps/web/src/components/admin/admin-operations.tsx \
+            apps/web/src/components/admin/admin-revenue-control-center.tsx \
+            apps/web/src/components/admin/admin-video-ads.tsx \
+            apps/web/src/lib/admin-advertising.ts \
+            apps/web/src/lib/admin-operations-directory.ts \
+            apps/web/src/lib/admin-revenue-operations.ts \
+            .github/workflows/format-launch-hardening.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Format AYIN launch hardening controls"
+          git push origin HEAD:launch-hardening-20260902
