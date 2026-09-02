@@ -7,6 +7,8 @@ ENV_DIR="/home/ayin/env"
 DATABASE_ENV="$ENV_DIR/database.env"
 WEB_ENV="$ENV_DIR/web.env"
 API_ENV="$ENV_DIR/api.env"
+R2_ACCOUNT_ID="fa824163dbb3aa26f9cfae2a799a809a"
+R2_BUCKET="ayin-production-media"
 
 fail() {
   echo "error: $*" >&2
@@ -43,9 +45,9 @@ read_required() {
   printf -v "$var_name" '%s' "$value"
 }
 
-printf 'Enter the Cloudflare R2 values for AYIN. Nothing is sent to GitHub or ChatGPT.\n'
-read_required 'R2 account ID: ' R2_ACCOUNT_ID
-read_required 'R2 bucket name: ' R2_BUCKET
+printf 'Enter the dedicated AYIN R2 object credentials. Nothing is sent to GitHub or ChatGPT.\n'
+printf 'R2 account: %s\n' "$R2_ACCOUNT_ID"
+printf 'R2 bucket: %s\n' "$R2_BUCKET"
 read_required 'R2 access key ID: ' R2_ACCESS_KEY_ID
 read_required 'R2 secret access key (hidden): ' R2_SECRET_ACCESS_KEY 1
 
@@ -100,7 +102,7 @@ chown "$APP_OS_USER:$APP_OS_USER" "$WEB_ENV" "$API_ENV"
 chmod 600 "$WEB_ENV" "$API_ENV"
 
 unset DATABASE_URL AUTH_TOKEN_SECRET PAYOUT_DATA_ENCRYPTION_KEY ANALYTICS_HASH_SALT \
-  UPLOAD_SESSION_SECRET R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
+  UPLOAD_SESSION_SECRET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
 
 printf '\nAYIN production environment files created successfully.\n'
 printf '%s\n' "$WEB_ENV" "$API_ENV"
