@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { openSync, readFileSync } from "node:fs";
+import { createReadStream, createWriteStream, readFileSync } from "node:fs";
 import { userInfo } from "node:os";
 import { createInterface } from "node:readline";
 
@@ -38,18 +38,17 @@ function maskedEmail(value) {
   return `${visible}***@${domain}`;
 }
 
-async function prompt(question, hidden = false) {
-  const input = openSync("/dev/tty", "r");
-  const output = openSync("/dev/tty", "w");
+async function prompt(question) {
+  const input = createReadStream("/dev/tty");
+  const output = createWriteStream("/dev/tty");
   const terminal = createInterface({ input, output, terminal: true });
-
-  if (hidden) terminal.stdoutMuted = true;
-  return await new Promise((resolve) => {
-    terminal.question(question, (answer) => {
-      terminal.close();
-      resolve(answer);
-    });
-  });
+  try {
+    return await new Promise((resolve) => terminal.question(question, resolve));
+  } finally {
+    terminal.close();
+    input.destroy();
+    output.end();
+  }
 }
 
 async function main() {
@@ -86,7 +85,9 @@ async function main() {
     }
 
     const email = normalizeEmail(await prompt("Existing AYIN account email to promote: "));
-    if (!email || !email.includes("@")) throw new Error("a valid existing AYIN account email is required");
+    if (!email || !email.includes("@")) {
+      throw new Error("a valid existing AYIN account email is required");
+    }
 
     const account = await prisma.account.findUnique({
       where: { email },
@@ -104,7 +105,9 @@ async function main() {
       },
     });
 
-    if (!account) throw new Error("no AYIN account exists with that email; register through ayin.stream first");
+    if (!account) {
+      throw new Error("no AYIN account exists with that email; register through ayin.stream first");
+    }
     if (account.status !== "ACTIVE") throw new Error("the target AYIN account is not ACTIVE");
     if (account.viewerProfiles.length !== 1 || account.channelMemberships.length !== 1) {
       throw new Error(
@@ -113,14 +116,20 @@ async function main() {
     }
 
     console.log(`Target: ${account.displayName} (${maskedEmail(account.email)})`);
-    const confirmation = (await prompt("Type PROMOTE to create the first production SUPERADMIN: ")).trim();
-    if (confirmation !== "PROMOTE") throw new Error("bootstrap cancelled; confirmation did not match");
+    const confirmation = (
+      await prompt("Type PROMOTE to create the first production SUPERADMIN: ")
+    ).trim();
+    if (confirmation !== "PROMOTE") {
+      throw new Error("bootstrap cancelled; confirmation did not match");
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(${advisoryLockId})`);
 
       const count = await tx.adminRoleAssignment.count({ where: { role: "SUPERADMIN" } });
-      if (count > 0) throw new Error("another SUPERADMIN was created before this transaction completed");
+      if (count > 0) {
+        throw new Error("another SUPERADMIN was created before this transaction completed");
+      }
 
       await tx.adminRoleAssignment.create({
         data: { accountId: account.id, role: "SUPERADMIN" },
