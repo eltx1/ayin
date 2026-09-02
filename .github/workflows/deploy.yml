@@ -32,6 +32,7 @@ jobs:
       DEPLOY_USER: ayin
       SSH_PORT: '22'
       REMOTE_HOME: /home/ayin
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
 
     steps:
       - name: Validate deployment identifiers
@@ -42,6 +43,7 @@ jobs:
           [[ "$RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
           [[ "$DEPLOY_USER" == 'ayin' ]]
           [[ "$REMOTE_HOME" == '/home/ayin' ]]
+          [[ "$PINNED_SSH_HOST_FINGERPRINT" == SHA256:* ]]
 
       - name: Require successful main quality gate
         uses: actions/github-script@v8
@@ -70,7 +72,7 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
 
-      - name: Configure AYIN SSH key
+      - name: Configure pinned AYIN SSH trust
         shell: bash
         env:
           DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
@@ -80,8 +82,21 @@ jobs:
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
           chmod 600 "$HOME/.ssh/id_ed25519"
-          ssh-keyscan -p "$SSH_PORT" -H "$DEPLOY_HOST" > "$HOME/.ssh/known_hosts"
+
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          test -s "$candidate"
+
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          if [[ "$actual_fingerprint" != "$PINNED_SSH_HOST_FINGERPRINT" ]]; then
+            echo "SSH host fingerprint mismatch. Expected $PINNED_SSH_HOST_FINGERPRINT, got $actual_fingerprint" >&2
+            rm -f "$candidate"
+            exit 1
+          fi
+
+          mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
+          echo "Pinned AYIN SSH host fingerprint verified."
 
       - name: Verify isolated AYIN account
         shell: bash
