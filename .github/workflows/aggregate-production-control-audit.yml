@@ -1,0 +1,105 @@
+name: Audit AYIN production control-plane aggregates
+
+on:
+  push:
+    paths:
+      - .github/workflows/aggregate-production-control-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+
+    steps:
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Read aggregate-only production control-plane state
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          [[ "$(whoami)" == "ayin" ]]
+          [[ "$HOME" == "/home/ayin" ]]
+          [[ ! -w /home/horusapp ]]
+
+          cd /home/ayin/htdocs/current
+          node --input-type=module <<'NODE'
+          import { createPrismaClient } from './packages/db/dist/index.js';
+          import { readFileSync } from 'node:fs';
+
+          function parseEnv(path) {
+            const out = new Map();
+            for (const raw of readFileSync(path, 'utf8').split(/\r?\n/u)) {
+              const line = raw.trim();
+              if (!line || line.startsWith('#')) continue;
+              const i = line.indexOf('=');
+              if (i > 0) out.set(line.slice(0, i).trim(), line.slice(i + 1));
+            }
+            return out;
+          }
+
+          const env = parseEnv('/home/ayin/env/api.env');
+          const databaseUrl = env.get('DATABASE_URL');
+          if (!databaseUrl) throw new Error('DATABASE_URL missing');
+          const url = new URL(databaseUrl);
+          if (url.hostname !== '127.0.0.1' || url.port !== '5432' || url.pathname !== '/ayin') {
+            throw new Error('Refusing non-local/non-AYIN database');
+          }
+
+          const prisma = createPrismaClient(databaseUrl);
+          try {
+            const [accounts, activeAccounts, adminAssignments, superadmins, registrationRow, provisioningRow, maintenanceRow] = await Promise.all([
+              prisma.account.count(),
+              prisma.account.count({ where: { status: 'ACTIVE' } }),
+              prisma.adminRoleAssignment.count(),
+              prisma.adminRoleAssignment.count({ where: { role: 'SUPERADMIN' } }),
+              prisma.platformSetting.findUnique({ where: { namespace_key: { namespace: 'PLATFORM', key: 'registrationEnabled' } }, select: { value: true } }),
+              prisma.platformSetting.findUnique({ where: { namespace_key: { namespace: 'CREATOR', key: 'automaticCreatorProvisioningEnabled' } }, select: { value: true } }),
+              prisma.platformSetting.findUnique({ where: { namespace_key: { namespace: 'PLATFORM', key: 'maintenanceMode' } }, select: { value: true } }),
+            ]);
+
+            const registrationEnabled = registrationRow?.value ?? true;
+            const automaticCreatorProvisioningEnabled = provisioningRow?.value ?? true;
+            const maintenanceMode = maintenanceRow?.value ?? false;
+
+            console.log(`accounts_total=${accounts}`);
+            console.log(`accounts_active=${activeAccounts}`);
+            console.log(`admin_role_assignments=${adminAssignments}`);
+            console.log(`superadmins=${superadmins}`);
+            console.log(`registration_enabled=${String(registrationEnabled)}`);
+            console.log(`automatic_creator_provisioning_enabled=${String(automaticCreatorProvisioningEnabled)}`);
+            console.log(`maintenance_mode=${String(maintenanceMode)}`);
+
+            if (registrationEnabled !== true) throw new Error('Registration is disabled');
+            if (automaticCreatorProvisioningEnabled !== true) throw new Error('Automatic creator provisioning is disabled');
+            if (maintenanceMode !== false) throw new Error('Maintenance mode is enabled');
+          } finally {
+            await prisma.$disconnect();
+          }
+          NODE
+          REMOTE
