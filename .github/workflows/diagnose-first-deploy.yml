@@ -34,29 +34,55 @@ jobs:
           mv "$HOME/.ssh/known_hosts.candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Inspect AYIN process startup without environment output
+      - name: Inspect AYIN startup without environment output
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" '
             set -e
+            current=/home/ayin/htdocs/current
             echo "=== PM2 status ==="
             pm2 status
-            echo "=== Listening ports 3000/4000 ==="
+            echo "=== PM2 web description ==="
+            pm2 describe ayin-web || true
+            echo "=== PM2 api description ==="
+            pm2 describe ayin-api || true
+            echo "=== Expected release files ==="
+            test -L "$current" && echo "current_symlink=present" || echo "current_symlink=missing"
+            test -f "$current/apps/api/dist/main.js" && echo "api_dist_main=present" || echo "api_dist_main=missing"
+            test -f "$current/apps/web/.next/BUILD_ID" && echo "web_build_id=present" || echo "web_build_id=missing"
+            command -v node || true
+            command -v corepack || true
+            command -v pnpm || true
+            echo "=== Listening ports before direct probes ==="
             ss -ltn | grep -E ":(3000|4000)[[:space:]]" || true
-            echo "=== AYIN web stderr (last 80 lines) ==="
-            if [ -f "$HOME/.pm2/logs/ayin-web-error.log" ]; then
-              tail -n 80 "$HOME/.pm2/logs/ayin-web-error.log" \
-                | sed -E "s#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED]#g; s#(SECRET|TOKEN|PASSWORD|ACCESS_KEY)[=:][^[:space:]]+#\1=[REDACTED]#g"
-            else
-              echo "no ayin-web error log"
-            fi
-            echo "=== AYIN web stdout (last 40 lines) ==="
-            if [ -f "$HOME/.pm2/logs/ayin-web-out.log" ]; then
-              tail -n 40 "$HOME/.pm2/logs/ayin-web-out.log"
-            else
-              echo "no ayin-web out log"
-            fi
-            echo "=== API health only ==="
-            curl --silent --show-error --output /dev/null --write-out "api_health=%{http_code}\n" --max-time 5 http://127.0.0.1:4000/health || true
+
+            sanitize() {
+              sed -E "s#(postgres(ql)?://)[^[:space:]]+#\1[REDACTED]#g; s#(SECRET|TOKEN|PASSWORD|ACCESS_KEY)[=:][^[:space:]]+#\1=[REDACTED]#g"
+            }
+
+            echo "=== Direct API probe ==="
+            api_log=$(mktemp)
+            timeout 8s node "$current/deploy/run-with-env.cjs" /home/ayin/env/api.env node "$current/apps/api/dist/main.js" >"$api_log" 2>&1 &
+            api_pid=$!
+            sleep 3
+            api_code=$(curl --silent --output /dev/null --write-out "%{http_code}" --max-time 3 http://127.0.0.1:4000/health || true)
+            echo "direct_api_health=$api_code"
+            if [[ "$api_code" != "200" ]]; then tail -n 60 "$api_log" | sanitize; fi
+            kill "$api_pid" 2>/dev/null || true
+            wait "$api_pid" 2>/dev/null || true
+            rm -f "$api_log"
+
+            echo "=== Direct web probe ==="
+            web_log=$(mktemp)
+            cd "$current"
+            timeout 8s node deploy/run-with-env.cjs /home/ayin/env/web.env corepack pnpm --filter @ayin/web run start -- --hostname 127.0.0.1 --port 3000 >"$web_log" 2>&1 &
+            web_pid=$!
+            sleep 3
+            web_code=$(curl --silent --output /dev/null --write-out "%{http_code}" --max-time 3 http://127.0.0.1:3000/ || true)
+            echo "direct_web_health=$web_code"
+            if [[ "$web_code" != "200" ]]; then tail -n 60 "$web_log" | sanitize; fi
+            kill "$web_pid" 2>/dev/null || true
+            wait "$web_pid" 2>/dev/null || true
+            rm -f "$web_log"
           '
