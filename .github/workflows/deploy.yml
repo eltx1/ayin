@@ -11,9 +11,11 @@ on:
         description: Exact 40-character commit SHA validated by that run
         required: true
         type: string
-  push:
-    paths:
-      - ".github/workflows/deploy.yml"
+  workflow_run:
+    workflows:
+      - Task quality gates
+    types:
+      - completed
 
 permissions:
   contents: read
@@ -25,12 +27,21 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.event == 'push'
+        )
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: production
     env:
-      VALIDATION_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.validation_run_id || '33583473075' }}
-      RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.release_sha || 'ad4fd3ba492924331dc1cb5b2adc1ad10b163dd4' }}
+      VALIDATION_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.validation_run_id }}
+      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.release_sha }}
       DEPLOY_HOST: 13.52.116.200
       DEPLOY_USER: ayin
       SSH_PORT: "22"
@@ -63,6 +74,7 @@ jobs:
             const failures = [];
             if (data.name !== 'Task quality gates') failures.push(`workflow=${data.name}`);
             if (data.conclusion !== 'success') failures.push(`conclusion=${data.conclusion}`);
+            if (data.event !== 'push') failures.push(`event=${data.event}`);
             if (data.head_branch !== 'main') failures.push(`branch=${data.head_branch}`);
             if (data.head_sha !== expectedSha) failures.push(`sha=${data.head_sha}`);
 
