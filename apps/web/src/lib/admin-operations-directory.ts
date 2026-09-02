@@ -21,6 +21,18 @@ export interface AdminComplianceChannel {
   };
 }
 
+export interface AdminRevenueChannelTarget {
+  id: string;
+  name: string;
+  handle: string;
+  status: string;
+  payoutProfile: null | {
+    preferredCurrency: string;
+    identityStatus: string;
+    taxStatus: string;
+  };
+}
+
 export interface AdminAdvertisingChannelTarget {
   id: string;
   name: string;
@@ -54,6 +66,12 @@ export function getAdminSupportAssignees() {
 export function searchAdminComplianceChannels(query: string) {
   return adminDirectoryFetch<{ items: AdminComplianceChannel[] }>(
     `/admin/operations/directory/compliance-channels?query=${encodeURIComponent(query.trim())}`,
+  );
+}
+
+export function searchAdminRevenueChannels(query: string) {
+  return adminDirectoryFetch<{ items: AdminRevenueChannelTarget[] }>(
+    `/admin/operations/directory/revenue-channels?query=${encodeURIComponent(query.trim())}`,
   );
 }
 
