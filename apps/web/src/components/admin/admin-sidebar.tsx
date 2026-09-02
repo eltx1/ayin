@@ -16,7 +16,7 @@ interface AdminNavigationItem {
 
 const navigation: AdminNavigationItem[] = [
   { label: "Dashboard", href: "/admin", roles: "ALL" },
-  { label: "Operations", href: "/admin/operations", roles: ["OPERATIONS"] },
+  { label: "Operations & Audit", href: "/admin/operations", roles: "ALL" },
   { label: "Users", href: "/admin/users", roles: ["OPERATIONS"] },
   { label: "Channels", href: "/admin/channels", roles: ["OPERATIONS"] },
   { label: "Content Library", href: "/admin/content", roles: ["OPERATIONS", "CONTENT_MODERATOR"] },
