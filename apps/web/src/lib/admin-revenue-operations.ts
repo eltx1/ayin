@@ -45,10 +45,13 @@ export function getAdminChannelContracts(channelId: string) {
 }
 
 export function importAdminRevenue(input: AdminRevenueImportInput) {
-  return request<{ created: number; duplicates: number; requested: number }>("/admin/revenue/imports", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  return request<{ created: number; duplicates: number; requested: number }>(
+    "/admin/revenue/imports",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export function createAdminPayout(channelId: string, currency: string) {

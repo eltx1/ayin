@@ -43,9 +43,7 @@ const taxOptions = ["NOT_PROVIDED", "PENDING", "VERIFIED", "REQUIRES_ACTION"] as
 type ExportResource = "users" | "channels" | "videos" | "payouts" | "audit";
 
 function hasPrivilegedRole(session: AdminSession | null): boolean {
-  return Boolean(
-    session?.roles.some((role) => role === "SUPERADMIN" || role === "ADMIN"),
-  );
+  return Boolean(session?.roles.some((role) => role === "SUPERADMIN" || role === "ADMIN"));
 }
 
 export function AdminOperations() {
@@ -381,8 +379,9 @@ export function AdminOperations() {
                   </div>
                   {channel.payoutProfile ? (
                     <p className={styles.muted}>
-                      {channel.payoutProfile.legalName} · {channel.payoutProfile.preferredCurrency} ·
-                      identity {channel.payoutProfile.identityStatus} · tax {channel.payoutProfile.taxStatus}
+                      {channel.payoutProfile.legalName} · {channel.payoutProfile.preferredCurrency}{" "}
+                      · identity {channel.payoutProfile.identityStatus} · tax{" "}
+                      {channel.payoutProfile.taxStatus}
                     </p>
                   ) : (
                     <p className={styles.muted}>No payout profile yet.</p>
@@ -453,8 +452,10 @@ export function AdminOperations() {
               onChange={(event) => setSupportStatus(event.target.value)}
             >
               <option value="">All statuses</option>
-              {['OPEN', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'].map((value) => (
-                <option key={value} value={value}>{value}</option>
+              {["OPEN", "IN_PROGRESS", "WAITING", "RESOLVED", "CLOSED"].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
               ))}
             </select>
             <select
@@ -463,8 +464,10 @@ export function AdminOperations() {
               onChange={(event) => setSupportPriority(event.target.value)}
             >
               <option value="">All priorities</option>
-              {['LOW', 'NORMAL', 'HIGH', 'URGENT'].map((value) => (
-                <option key={value} value={value}>{value}</option>
+              {["LOW", "NORMAL", "HIGH", "URGENT"].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
               ))}
             </select>
           </div>

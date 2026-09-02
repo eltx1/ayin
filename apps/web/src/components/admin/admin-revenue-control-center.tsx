@@ -217,28 +217,25 @@ export function AdminRevenueControlCenter() {
       setMessage("Choose a valid revenue period start and end.");
       return;
     }
-    await act(
-      async () => {
-        const result = await importAdminRevenue({
-          source: importDraft.source.trim(),
-          entries: [
-            {
-              idempotencyKey: importDraft.idempotencyKey,
-              channelId: selectedChannel.id,
-              periodStart,
-              periodEnd,
-              grossAmount: importDraft.grossAmount.trim(),
-              currency: importDraft.currency.trim().toUpperCase(),
-              state: importDraft.state,
-              adSource: importDraft.adSource.trim() || null,
-              memo: importDraft.memo.trim() || null,
-            },
-          ],
-        });
-        if (result.created === 1) setImportDraft(emptyImport());
-      },
-      "Revenue import processed with idempotency protection.",
-    );
+    await act(async () => {
+      const result = await importAdminRevenue({
+        source: importDraft.source.trim(),
+        entries: [
+          {
+            idempotencyKey: importDraft.idempotencyKey,
+            channelId: selectedChannel.id,
+            periodStart,
+            periodEnd,
+            grossAmount: importDraft.grossAmount.trim(),
+            currency: importDraft.currency.trim().toUpperCase(),
+            state: importDraft.state,
+            adSource: importDraft.adSource.trim() || null,
+            memo: importDraft.memo.trim() || null,
+          },
+        ],
+      });
+      if (result.created === 1) setImportDraft(emptyImport());
+    }, "Revenue import processed with idempotency protection.");
   }
 
   return (
@@ -249,7 +246,8 @@ export function AdminRevenueControlCenter() {
           <h1>Revenue Control Center</h1>
           <p className={styles.muted}>
             Full finance operations for creator contracts, imports, append-only ledger adjustments,
-            payouts and revenue disputes. Creator selection is name-based; internal UUIDs stay hidden.
+            payouts and revenue disputes. Creator selection is name-based; internal UUIDs stay
+            hidden.
           </p>
         </div>
         <span className={styles.statusPill}>Manual payout V1</span>
@@ -285,7 +283,8 @@ export function AdminRevenueControlCenter() {
       <section className={styles.card}>
         <h2>Creator channel</h2>
         <p className={styles.muted}>
-          Search once and use the selected creator across contracts, adjustments, imports and payouts.
+          Search once and use the selected creator across contracts, adjustments, imports and
+          payouts.
         </p>
         <div className={styles.toolbar}>
           <input
@@ -335,12 +334,14 @@ export function AdminRevenueControlCenter() {
           <strong>{selectedLabel}</strong>
           {selectedChannel ? (
             <p className={styles.muted}>
-              Identity {selectedChannel.payoutProfile?.identityStatus ?? "NOT_STARTED"} · Tax {" "}
-              {selectedChannel.payoutProfile?.taxStatus ?? "NOT_PROVIDED"} · Preferred currency {" "}
+              Identity {selectedChannel.payoutProfile?.identityStatus ?? "NOT_STARTED"} · Tax{" "}
+              {selectedChannel.payoutProfile?.taxStatus ?? "NOT_PROVIDED"} · Preferred currency{" "}
               {selectedChannel.payoutProfile?.preferredCurrency ?? "not set"}
             </p>
           ) : (
-            <p className={styles.muted}>Select a creator before running channel-specific finance actions.</p>
+            <p className={styles.muted}>
+              Select a creator before running channel-specific finance actions.
+            </p>
           )}
         </div>
       </section>
@@ -562,7 +563,9 @@ export function AdminRevenueControlCenter() {
             <input
               type="datetime-local"
               value={importDraft.periodStart}
-              onChange={(event) => setImportDraft({ ...importDraft, periodStart: event.target.value })}
+              onChange={(event) =>
+                setImportDraft({ ...importDraft, periodStart: event.target.value })
+              }
             />
           </label>
           <label>
@@ -570,7 +573,9 @@ export function AdminRevenueControlCenter() {
             <input
               type="datetime-local"
               value={importDraft.periodEnd}
-              onChange={(event) => setImportDraft({ ...importDraft, periodEnd: event.target.value })}
+              onChange={(event) =>
+                setImportDraft({ ...importDraft, periodEnd: event.target.value })
+              }
             />
           </label>
           <label>
@@ -578,7 +583,9 @@ export function AdminRevenueControlCenter() {
             <input
               placeholder="100.000000"
               value={importDraft.grossAmount}
-              onChange={(event) => setImportDraft({ ...importDraft, grossAmount: event.target.value })}
+              onChange={(event) =>
+                setImportDraft({ ...importDraft, grossAmount: event.target.value })
+              }
             />
           </label>
           <label>
@@ -827,7 +834,9 @@ export function AdminRevenueControlCenter() {
         <div className={styles.cardHeader}>
           <div>
             <h2>Creator revenue disputes</h2>
-            <p className={styles.muted}>Review earnings and payout cases with an auditable resolution.</p>
+            <p className={styles.muted}>
+              Review earnings and payout cases with an auditable resolution.
+            </p>
           </div>
           <select
             aria-label="Revenue dispute status"
@@ -872,7 +881,9 @@ export function AdminRevenueControlCenter() {
                       minLength={8}
                       placeholder="Mandatory audit reason"
                       value={action.reason}
-                      onChange={(event) => setDisputeField(dispute.id, "reason", event.target.value)}
+                      onChange={(event) =>
+                        setDisputeField(dispute.id, "reason", event.target.value)
+                      }
                     />
                     <div className={styles.actions}>
                       {dispute.status === "OPEN" ? (

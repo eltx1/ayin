@@ -79,7 +79,5 @@ export function searchAdminAdvertisingTargets(query: string) {
   return adminDirectoryFetch<{
     channels: AdminAdvertisingChannelTarget[];
     videos: AdminAdvertisingVideoTarget[];
-  }>(
-    `/admin/operations/directory/advertising-targets?query=${encodeURIComponent(query.trim())}`,
-  );
+  }>(`/admin/operations/directory/advertising-targets?query=${encodeURIComponent(query.trim())}`);
 }

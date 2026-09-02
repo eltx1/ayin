@@ -241,10 +241,7 @@ export class VideoAdService {
     });
   }
 
-  async deleteOverride(
-    actorAccountId: string,
-    target: { channelId?: string; videoId?: string },
-  ) {
+  async deleteOverride(actorAccountId: string, target: { channelId?: string; videoId?: string }) {
     if ((target.channelId ? 1 : 0) + (target.videoId ? 1 : 0) !== 1) {
       throw new Error("Exactly one video ad override target is required.");
     }

@@ -34,7 +34,9 @@ export interface Campaign {
   advertiser: { name: string };
   direct: null | {
     priority: number;
-    pricing: { model: "CPM"; cpm: string; fixedPrice: null } | { model: "FIXED"; cpm: null; fixedPrice: string };
+    pricing:
+      | { model: "CPM"; cpm: string; fixedPrice: null }
+      | { model: "FIXED"; cpm: null; fixedPrice: string };
     impressionGoal: number | null;
     frequencyCap: number;
     pacing: "EVEN" | "ASAP";

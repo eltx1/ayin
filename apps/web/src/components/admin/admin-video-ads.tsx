@@ -134,7 +134,9 @@ export function AdminVideoAds() {
     void load().catch((error) => {
       if (active) {
         setMessage(
-          error instanceof Error ? error.message : "Video advertising controls could not be loaded.",
+          error instanceof Error
+            ? error.message
+            : "Video advertising controls could not be loaded.",
         );
       }
     });
@@ -177,7 +179,8 @@ export function AdminVideoAds() {
       const result = await searchAdminAdvertisingTargets(query);
       setChannelMatches(result.channels);
       setVideoMatches(result.videos);
-      if (!result.channels.length && !result.videos.length) setMessage("No matching channels or videos.");
+      if (!result.channels.length && !result.videos.length)
+        setMessage("No matching channels or videos.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Target search failed.");
     } finally {
@@ -303,7 +306,12 @@ export function AdminVideoAds() {
           If no external VAST is configured, AYIN serves its house VAST only when a house creative
           URL exists. Otherwise content plays without an ad.
         </p>
-        <button className={styles.button} disabled={busy} type="button" onClick={() => void saveSettings()}>
+        <button
+          className={styles.button}
+          disabled={busy}
+          type="button"
+          onClick={() => void saveSettings()}
+        >
           {busy ? "Saving…" : "Save global video ad policy"}
         </button>
       </section>
@@ -377,8 +385,8 @@ export function AdminVideoAds() {
       <section className={styles.card}>
         <h2>Existing overrides</h2>
         <p className={styles.muted}>
-          “Inherit” means the global player policy decides that field. Reset removes the override row
-          completely.
+          “Inherit” means the global player policy decides that field. Reset removes the override
+          row completely.
         </p>
         <div className={styles.grid}>
           {overrides.map((row) => (
@@ -432,7 +440,8 @@ function ExistingOverride({
           type="button"
           onClick={() =>
             void onAct(
-              () => request(path, { method: "PATCH", body: JSON.stringify(overridePayload(draft)) }),
+              () =>
+                request(path, { method: "PATCH", body: JSON.stringify(overridePayload(draft)) }),
               `Video ad override updated for ${label}.`,
             )
           }
@@ -543,7 +552,11 @@ function Toggle({
 }) {
   return (
     <label className={styles.check}>
-      <input checked={checked} type="checkbox" onChange={(event) => onChange(event.target.checked)} />
+      <input
+        checked={checked}
+        type="checkbox"
+        onChange={(event) => onChange(event.target.checked)}
+      />
       {label}
     </label>
   );
