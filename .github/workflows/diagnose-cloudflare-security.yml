@@ -1,0 +1,48 @@
+name: Diagnose AYIN Cloudflare security
+
+on:
+  push:
+    paths:
+      - .github/workflows/diagnose-cloudflare-security.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    env:
+      CF_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Inspect AYIN-only Cloudflare challenge sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          api=https://api.cloudflare.com/client/v4
+          auth="Authorization: Bearer $CF_TOKEN"
+          zone_resp="$(curl --fail --silent --show-error -H "$auth" "$api/zones?name=ayin.stream&status=active")"
+          zone_id="$(jq -r '.result[] | select(.name=="ayin.stream") | .id' <<<"$zone_resp")"
+          test -n "$zone_id"
+
+          echo '=== zone security settings ==='
+          for setting in security_level browser_check challenge_ttl; do
+            resp="$(curl --fail --silent --show-error -H "$auth" "$api/zones/$zone_id/settings/$setting" || true)"
+            if [[ -n "$resp" ]]; then
+              jq -c --arg s "$setting" '{setting:$s,success:.success,value:(.result.value // null),errors:.errors}' <<<"$resp" || true
+            fi
+          done
+
+          echo '=== zone rulesets summary ==='
+          rulesets="$(curl --fail --silent --show-error -H "$auth" "$api/zones/$zone_id/rulesets" || true)"
+          if [[ -n "$rulesets" ]]; then
+            jq -c '.result[]? | {id,name,kind,phase}' <<<"$rulesets" || true
+            for id in $(jq -r '.result[]? | select(.phase=="http_request_firewall_custom" or .phase=="http_request_firewall_managed" or .phase=="http_request_sbfm") | .id' <<<"$rulesets"); do
+              echo "--- ruleset $id ---"
+              detail="$(curl --fail --silent --show-error -H "$auth" "$api/zones/$zone_id/rulesets/$id" || true)"
+              if [[ -n "$detail" ]]; then
+                jq -c '.result.rules[]? | {id,action,enabled,description,expression}' <<<"$detail" || true
+              fi
+            done
+          fi
