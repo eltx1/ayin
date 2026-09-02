@@ -22,9 +22,9 @@ describe("validateAuthorizedSellerText", () => {
   });
 
   it("rejects placeholder records", () => {
-    expect(() =>
-      validateAuthorizedSellerText("example.com, YOUR_PUBLISHER_ID, DIRECT"),
-    ).toThrow(/placeholder/iu);
+    expect(() => validateAuthorizedSellerText("example.com, YOUR_PUBLISHER_ID, DIRECT")).toThrow(
+      /placeholder/iu,
+    );
   });
 
   it("rejects invalid seller relationships", () => {

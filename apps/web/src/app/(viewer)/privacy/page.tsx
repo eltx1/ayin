@@ -4,7 +4,8 @@ import { LegalNotice, LegalPage, LegalSection } from "@/components/legal/legal-p
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "How AYIN collects, uses, stores and protects information across viewing, creator, advertising and community features.",
+  description:
+    "How AYIN collects, uses, stores and protects information across viewing, creator, advertising and community features.",
 };
 
 export default function PrivacyPolicyPage() {
@@ -23,14 +24,38 @@ export default function PrivacyPolicyPage() {
       <LegalSection title="1. Information we collect">
         <p>Depending on how you use AYIN, we may process:</p>
         <ul>
-          <li>Account information such as email address, display name, account status and authentication records.</li>
-          <li>Viewer and creator information such as profiles, channels, playlists, subscriptions and creator settings.</li>
-          <li>Content and media metadata, including titles, descriptions, rights declarations, file size, media type and storage object identifiers.</li>
-          <li>Community activity such as comments, reactions, reports, support requests and moderation history.</li>
-          <li>Viewing and product activity such as watch progress, watch history, searches, feature interactions and recommendation feedback.</li>
-          <li>Technical information such as device class, browser information, approximate network information, security events and service logs.</li>
-          <li>Advertising and monetization events when those features are enabled, such as ad requests, impressions, clicks, campaign identifiers and creator revenue records.</li>
-          <li>Creator payout or compliance information when a creator voluntarily enters those workflows. Sensitive payout destinations are designed to be stored encrypted.</li>
+          <li>
+            Account information such as email address, display name, account status and
+            authentication records.
+          </li>
+          <li>
+            Viewer and creator information such as profiles, channels, playlists, subscriptions and
+            creator settings.
+          </li>
+          <li>
+            Content and media metadata, including titles, descriptions, rights declarations, file
+            size, media type and storage object identifiers.
+          </li>
+          <li>
+            Community activity such as comments, reactions, reports, support requests and moderation
+            history.
+          </li>
+          <li>
+            Viewing and product activity such as watch progress, watch history, searches, feature
+            interactions and recommendation feedback.
+          </li>
+          <li>
+            Technical information such as device class, browser information, approximate network
+            information, security events and service logs.
+          </li>
+          <li>
+            Advertising and monetization events when those features are enabled, such as ad
+            requests, impressions, clicks, campaign identifiers and creator revenue records.
+          </li>
+          <li>
+            Creator payout or compliance information when a creator voluntarily enters those
+            workflows. Sensitive payout destinations are designed to be stored encrypted.
+          </li>
         </ul>
       </LegalSection>
 
@@ -41,9 +66,17 @@ export default function PrivacyPolicyPage() {
           <li>remember viewing progress and personalize relevant discovery features;</li>
           <li>operate comments, community posts, notifications, moderation and user support;</li>
           <li>prevent fraud, abuse, unauthorized access and violations of AYIN policies;</li>
-          <li>measure reliability, product performance, content performance and creator analytics;</li>
-          <li>operate advertising, revenue attribution and payout records when those systems are enabled;</li>
-          <li>comply with legal obligations, enforce agreements and protect users, AYIN and third parties.</li>
+          <li>
+            measure reliability, product performance, content performance and creator analytics;
+          </li>
+          <li>
+            operate advertising, revenue attribution and payout records when those systems are
+            enabled;
+          </li>
+          <li>
+            comply with legal obligations, enforce agreements and protect users, AYIN and third
+            parties.
+          </li>
         </ul>
       </LegalSection>
 
@@ -65,12 +98,15 @@ export default function PrivacyPolicyPage() {
         <p>
           AYIN is designed to support Google Ad Manager, Google Publisher Tag and Google IMA. If
           Google advertising is enabled, Google and other approved advertising technology providers
-          may use cookies, web beacons, IP addresses or other identifiers to deliver, limit,
-          measure and report advertising.
+          may use cookies, web beacons, IP addresses or other identifiers to deliver, limit, measure
+          and report advertising.
         </p>
         <p>
           You can read how Google uses information from sites and apps that use its services at{" "}
-          <a href="https://policies.google.com/technologies/partner-sites">Google&apos;s partner-sites privacy information</a>.
+          <a href="https://policies.google.com/technologies/partner-sites">
+            Google&apos;s partner-sites privacy information
+          </a>
+          .
         </p>
         <p>
           AYIN will not use Google personalized advertising based on information that Google
@@ -82,9 +118,9 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection title="5. Media storage and service providers">
         <p>
-          Creator media is designed to upload directly from the user&apos;s browser to Cloudflare R2.
-          AYIN&apos;s application database stores media metadata and object references rather than
-          duplicate copies of creator video bytes. AYIN also uses infrastructure and service
+          Creator media is designed to upload directly from the user&apos;s browser to Cloudflare
+          R2. AYIN&apos;s application database stores media metadata and object references rather
+          than duplicate copies of creator video bytes. AYIN also uses infrastructure and service
           providers necessary to host, secure, deliver and operate the platform. Providers may
           process information only for the services they supply and subject to their applicable
           terms and safeguards.
@@ -94,10 +130,19 @@ export default function PrivacyPolicyPage() {
       <LegalSection title="6. Data sharing">
         <p>We may share information only as reasonably necessary with:</p>
         <ul>
-          <li>infrastructure, security, storage, email, analytics and advertising providers used to operate AYIN;</li>
+          <li>
+            infrastructure, security, storage, email, analytics and advertising providers used to
+            operate AYIN;
+          </li>
           <li>payment or compliance providers if and when creator payments are activated;</li>
-          <li>law enforcement, regulators or other parties when required by law or necessary to protect rights and safety;</li>
-          <li>a successor or transaction participant if AYIN or relevant business assets are reorganized, financed, acquired or transferred.</li>
+          <li>
+            law enforcement, regulators or other parties when required by law or necessary to
+            protect rights and safety;
+          </li>
+          <li>
+            a successor or transaction participant if AYIN or relevant business assets are
+            reorganized, financed, acquired or transferred.
+          </li>
         </ul>
         <p>We do not sell account passwords or private creator media.</p>
       </LegalSection>

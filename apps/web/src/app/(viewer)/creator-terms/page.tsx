@@ -22,18 +22,22 @@ export default function CreatorTermsPage() {
       <LegalSection title="1. You keep ownership">
         <p>
           AYIN does not take ownership of content merely because you upload it. You keep the rights
-          you hold, subject to the operational license granted in AYIN&apos;s Terms of Service and any
-          separate agreement you intentionally enter into with AYIN or another rights holder.
+          you hold, subject to the operational license granted in AYIN&apos;s Terms of Service and
+          any separate agreement you intentionally enter into with AYIN or another rights holder.
         </p>
       </LegalSection>
 
       <LegalSection title="2. You must have a valid rights basis">
-        <p>For each publication, you must be able to rely on at least one legitimate basis, such as:</p>
+        <p>
+          For each publication, you must be able to rely on at least one legitimate basis, such as:
+        </p>
         <ul>
           <li>you created and own the relevant rights;</li>
           <li>you received a license that covers the intended AYIN use;</li>
           <li>you received authorization from the relevant rights holder;</li>
-          <li>the specific work is genuinely in the public domain in the territory and use at issue;</li>
+          <li>
+            the specific work is genuinely in the public domain in the territory and use at issue;
+          </li>
           <li>another lawful basis applies and you can explain it if challenged.</li>
         </ul>
         <p>
@@ -106,9 +110,9 @@ export default function CreatorTermsPage() {
         <p>
           Eligible published content may appear in the creator&apos;s Uploads playlist, Creator TV,
           recommendations, search, Clips feeds or other AYIN discovery surfaces according to the
-          creator&apos;s settings and platform controls. AYIN may technically format metadata, generate
-          application views or adapt delivery as needed to operate compatible devices, without
-          changing ownership of the underlying content.
+          creator&apos;s settings and platform controls. AYIN may technically format metadata,
+          generate application views or adapt delivery as needed to operate compatible devices,
+          without changing ownership of the underlying content.
         </p>
       </LegalSection>
 
@@ -121,7 +125,8 @@ export default function CreatorTermsPage() {
 
       <LegalNotice>
         When in doubt about a third-party work, do not upload it merely because it can be downloaded
-        from the internet. Verify the specific item&apos;s rights statement and preserve the evidence.
+        from the internet. Verify the specific item&apos;s rights statement and preserve the
+        evidence.
       </LegalNotice>
     </LegalPage>
   );

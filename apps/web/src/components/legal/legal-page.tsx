@@ -26,13 +26,7 @@ export function LegalPage({
   );
 }
 
-export function LegalSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+export function LegalSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className={styles.section}>
       <h2>{title}</h2>

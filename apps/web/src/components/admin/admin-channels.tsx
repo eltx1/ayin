@@ -138,7 +138,8 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
           <span className={styles.eyebrow}>Control Plane</span>
           <h1>Channels & Creators</h1>
           <p className={styles.muted}>
-            Control channel state, platform ownership and creator monetization with auditable changes.
+            Control channel state, platform ownership and creator monetization with auditable
+            changes.
           </p>
         </div>
         <Link className={styles.button} href="/admin/content">
@@ -288,7 +289,10 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
                   Save channel
                 </button>
                 {draft.isPlatformOwned ? (
-                  <Link className={styles.button} href={`/admin/content?channelId=${encodeURIComponent(channel.id)}`}>
+                  <Link
+                    className={styles.button}
+                    href={`/admin/content?channelId=${encodeURIComponent(channel.id)}`}
+                  >
                     Seed content
                   </Link>
                 ) : null}

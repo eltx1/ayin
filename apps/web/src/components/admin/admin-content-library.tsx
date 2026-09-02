@@ -212,7 +212,8 @@ export function AdminContentLibrary() {
           <span className={styles.eyebrow}>Content Operations</span>
           <h1>AYIN Content Library</h1>
           <p className={styles.muted}>
-            Rights-tracked catalog ingestion with direct R2 upload, verification, publishing and safe rollback.
+            Rights-tracked catalog ingestion with direct R2 upload, verification, publishing and
+            safe rollback.
           </p>
         </div>
       </header>
@@ -240,7 +241,11 @@ export function AdminContentLibrary() {
         <form className={styles.form} onSubmit={submit}>
           <label>
             <span>AYIN-owned channel</span>
-            <select required value={channelId} onChange={(event) => setChannelId(event.target.value)}>
+            <select
+              required
+              value={channelId}
+              onChange={(event) => setChannelId(event.target.value)}
+            >
               <option value="">Choose channel</option>
               {channels.map((channel) => (
                 <option key={channel.id} value={channel.id}>
@@ -261,11 +266,20 @@ export function AdminContentLibrary() {
           </label>
           <label>
             <span>Title</span>
-            <input required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} />
+            <input
+              required
+              maxLength={200}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+            />
           </label>
           <label>
             <span>Description</span>
-            <textarea maxLength={20000} value={description} onChange={(event) => setDescription(event.target.value)} />
+            <textarea
+              maxLength={20000}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
           </label>
           <label>
             <span>Content type</span>
@@ -328,7 +342,11 @@ export function AdminContentLibrary() {
             </div>
           ) : null}
           <button className={styles.button} disabled={busy || channels.length === 0} type="submit">
-            {busy ? "Uploading…" : publishImmediately ? "Upload, verify & publish" : "Upload & verify"}
+            {busy
+              ? "Uploading…"
+              : publishImmediately
+                ? "Upload, verify & publish"
+                : "Upload & verify"}
           </button>
         </form>
       </section>
@@ -350,14 +368,19 @@ export function AdminContentLibrary() {
                 <div>
                   <strong>{batch.sourceLabel}</strong>
                   <p className={styles.muted}>
-                    @{batch.channel.handle} · {new Date(batch.createdAt).toLocaleString()} · {batch.status}
+                    @{batch.channel.handle} · {new Date(batch.createdAt).toLocaleString()} ·{" "}
+                    {batch.status}
                   </p>
                 </div>
               </div>
               {batch.items.map((item) => (
                 <div
                   key={item.id}
-                  style={{ borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: ".8rem", marginTop: ".8rem" }}
+                  style={{
+                    borderTop: "1px solid rgba(255,255,255,.08)",
+                    paddingTop: ".8rem",
+                    marginTop: ".8rem",
+                  }}
                 >
                   <strong>{item.video.title}</strong>
                   <p className={styles.muted}>

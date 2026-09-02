@@ -30,9 +30,9 @@ export default function CookiesPage() {
       <LegalSection title="2. First-party product analytics">
         <p>
           AYIN may record first-party events such as page views, playback progress, searches,
-          uploads, social interactions, Creator TV activity and advertising events. AYIN&apos;s analytics
-          design uses bounded event collection and pseudonymous identifiers where appropriate to
-          understand product reliability and performance.
+          uploads, social interactions, Creator TV activity and advertising events. AYIN&apos;s
+          analytics design uses bounded event collection and pseudonymous identifiers where
+          appropriate to understand product reliability and performance.
         </p>
       </LegalSection>
 
@@ -41,8 +41,8 @@ export default function CookiesPage() {
           AYIN is designed to support Google Ad Manager, Google Publisher Tag and Google IMA as well
           as AYIN-operated house or direct advertising. When third-party advertising is activated,
           approved providers may use cookies, IP addresses, device or advertising identifiers and
-          similar technologies for ad delivery, frequency control, fraud prevention, measurement
-          and reporting, subject to applicable consent requirements.
+          similar technologies for ad delivery, frequency control, fraud prevention, measurement and
+          reporting, subject to applicable consent requirements.
         </p>
       </LegalSection>
 
@@ -72,7 +72,8 @@ export default function CookiesPage() {
           its own policies. Learn more at{" "}
           <a href="https://policies.google.com/technologies/partner-sites">
             How Google uses information from sites or apps that use its services
-          </a>.
+          </a>
+          .
         </p>
       </LegalSection>
 

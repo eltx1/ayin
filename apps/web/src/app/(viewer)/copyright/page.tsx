@@ -14,8 +14,8 @@ export default function CopyrightPolicyPage() {
       intro={
         <p>
           AYIN respects copyright and expects creators to upload only material they own or are
-          authorized to use. This policy explains how rights holders can report alleged
-          infringement and how creators can respond when content is removed or restricted.
+          authorized to use. This policy explains how rights holders can report alleged infringement
+          and how creators can respond when content is removed or restricted.
         </p>
       }
     >
@@ -36,15 +36,21 @@ export default function CopyrightPolicyPage() {
           <li>the AYIN URL, video, channel or other material to be reviewed;</li>
           <li>the reporting party&apos;s name and reliable contact information;</li>
           <li>the basis for the reporting party&apos;s authority to act for the rights holder;</li>
-          <li>a good-faith statement that the disputed use is not authorized by the rights holder, its agent or applicable law;</li>
-          <li>a statement that the information in the notice is accurate and, where applicable law requires it, made under penalty of perjury;</li>
+          <li>
+            a good-faith statement that the disputed use is not authorized by the rights holder, its
+            agent or applicable law;
+          </li>
+          <li>
+            a statement that the information in the notice is accurate and, where applicable law
+            requires it, made under penalty of perjury;
+          </li>
           <li>a physical or electronic signature where legally required.</li>
         </ul>
         <p>
           Send legal copyright notices to{" "}
           <a href="mailto:mohamed@horusmedia.net">mohamed@horusmedia.net</a>. Signed-in users may
-          also use AYIN&apos;s reporting tools where available. Please provide direct AYIN URLs rather
-          than search terms or screenshots alone.
+          also use AYIN&apos;s reporting tools where available. Please provide direct AYIN URLs
+          rather than search terms or screenshots alone.
         </p>
       </LegalSection>
 
@@ -59,12 +65,12 @@ export default function CopyrightPolicyPage() {
 
       <LegalSection title="4. Counter-notices and disputes">
         <p>
-          If you believe material was removed or disabled because of a mistake or
-          misidentification, you may respond with the information required by the applicable legal
-          process. A counter-notice should clearly identify the removed material, explain the basis
-          for your claim, provide reliable contact information and include any declarations,
-          jurisdictional consent or signature required by law. AYIN may forward a valid
-          counter-notice to the original claimant when legally appropriate.
+          If you believe material was removed or disabled because of a mistake or misidentification,
+          you may respond with the information required by the applicable legal process. A
+          counter-notice should clearly identify the removed material, explain the basis for your
+          claim, provide reliable contact information and include any declarations, jurisdictional
+          consent or signature required by law. AYIN may forward a valid counter-notice to the
+          original claimant when legally appropriate.
         </p>
       </LegalSection>
 
@@ -72,9 +78,9 @@ export default function CopyrightPolicyPage() {
         <p>
           AYIN may issue warnings, strikes, restrictions or account/channel suspension for repeated
           or serious copyright infringement. We may consider the number, reliability and outcome of
-          notices; counter-notices; retractions; court orders; the user&apos;s history; and other relevant
-          circumstances. Abuse of the copyright process, including knowingly false notices or
-          counter-notices, may also result in action.
+          notices; counter-notices; retractions; court orders; the user&apos;s history; and other
+          relevant circumstances. Abuse of the copyright process, including knowingly false notices
+          or counter-notices, may also result in action.
         </p>
       </LegalSection>
 

@@ -39,14 +39,54 @@ type QuickAction = {
 };
 
 const quickActions: QuickAction[] = [
-  { label: "Content Library", detail: "Seed rights-tracked AYIN catalog content", href: "/admin/content", roles: ["OPERATIONS", "CONTENT_MODERATOR"] },
-  { label: "Trust & Safety", detail: "Review reports, takedowns, cases and appeals", href: "/admin/trust", roles: ["OPERATIONS", "CONTENT_MODERATOR"] },
-  { label: "Channels", detail: "Creator state, platform ownership and contracts", href: "/admin/channels", roles: ["OPERATIONS", "CONTENT_MODERATOR"] },
-  { label: "Users", detail: "Search accounts and control account state", href: "/admin/users", roles: ["OPERATIONS"] },
-  { label: "Advertising", detail: "Inventory, campaigns, GAM and seller files", href: "/admin/advertising", roles: ["AD_MANAGER"] },
-  { label: "Revenue", detail: "Creator earnings, payouts and disputes", href: "/admin/revenue", roles: ["FINANCE_MANAGER"] },
-  { label: "Operations", detail: "Staff roles, audit, exports, compliance and support", href: "/admin/operations", roles: ["OPERATIONS"] },
-  { label: "Product Controls", detail: "Navigation, announcements and product surfaces", href: "/admin/product-controls", roles: ["OPERATIONS"] },
+  {
+    label: "Content Library",
+    detail: "Seed rights-tracked AYIN catalog content",
+    href: "/admin/content",
+    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+  },
+  {
+    label: "Trust & Safety",
+    detail: "Review reports, takedowns, cases and appeals",
+    href: "/admin/trust",
+    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+  },
+  {
+    label: "Channels",
+    detail: "Creator state, platform ownership and contracts",
+    href: "/admin/channels",
+    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
+  },
+  {
+    label: "Users",
+    detail: "Search accounts and control account state",
+    href: "/admin/users",
+    roles: ["OPERATIONS"],
+  },
+  {
+    label: "Advertising",
+    detail: "Inventory, campaigns, GAM and seller files",
+    href: "/admin/advertising",
+    roles: ["AD_MANAGER"],
+  },
+  {
+    label: "Revenue",
+    detail: "Creator earnings, payouts and disputes",
+    href: "/admin/revenue",
+    roles: ["FINANCE_MANAGER"],
+  },
+  {
+    label: "Operations",
+    detail: "Staff roles, audit, exports, compliance and support",
+    href: "/admin/operations",
+    roles: ["OPERATIONS"],
+  },
+  {
+    label: "Product Controls",
+    detail: "Navigation, announcements and product surfaces",
+    href: "/admin/product-controls",
+    roles: ["OPERATIONS"],
+  },
 ];
 
 function roleCanSee(action: QuickAction, roles: AdminRole[]): boolean {
@@ -163,7 +203,9 @@ export function AdminDashboard() {
 
       <section className={styles.card} style={{ marginBottom: 18 }}>
         <h2>Quick actions</h2>
-        <p className={styles.muted}>Only control surfaces permitted for your current admin role are shown.</p>
+        <p className={styles.muted}>
+          Only control surfaces permitted for your current admin role are shown.
+        </p>
         <div className={styles.commandGrid}>
           {visibleQuickActions.map((action) => (
             <Link className={styles.card} href={action.href} key={action.href}>
@@ -233,54 +275,98 @@ export function AdminDashboard() {
           <h2>Revenue operations</h2>
           {finance ? (
             <>
-              <p><strong>{finance.pendingPayouts}</strong> pending payouts</p>
-              <p><strong>{finance.processingPayouts}</strong> processing payouts</p>
-              <p><strong>{finance.openDisputes}</strong> open revenue disputes</p>
+              <p>
+                <strong>{finance.pendingPayouts}</strong> pending payouts
+              </p>
+              <p>
+                <strong>{finance.processingPayouts}</strong> processing payouts
+              </p>
+              <p>
+                <strong>{finance.openDisputes}</strong> open revenue disputes
+              </p>
               {finance.pendingValue.map((item) => (
-                <p key={item.currency}>{item.currency} {item.amount} pending/processing</p>
+                <p key={item.currency}>
+                  {item.currency} {item.amount} pending/processing
+                </p>
               ))}
               <p className={styles.muted}>
-                Provider mode: audited manual payout. External providers are not represented as connected.
+                Provider mode: audited manual payout. External providers are not represented as
+                connected.
               </p>
-              <Link className={styles.button} href="/admin/revenue">Open Revenue Control Center</Link>
+              <Link className={styles.button} href="/admin/revenue">
+                Open Revenue Control Center
+              </Link>
             </>
           ) : (
-            <p className={styles.muted}>Finance metrics are intentionally hidden for this scoped staff role.</p>
+            <p className={styles.muted}>
+              Finance metrics are intentionally hidden for this scoped staff role.
+            </p>
           )}
         </article>
 
         <article className={styles.card}>
           <h2>System health</h2>
-          <p>API <strong>{health.api.status}</strong></p>
-          <p>Database <strong>{health.database.status}</strong></p>
-          <p>Media storage <strong>{health.mediaStorage.status}</strong></p>
-          <p>Storage mode <strong>{health.mediaStorage.mode.toUpperCase()}</strong></p>
-          <p>Queues <strong>{health.backgroundProcessing.queues.status}</strong></p>
+          <p>
+            API <strong>{health.api.status}</strong>
+          </p>
+          <p>
+            Database <strong>{health.database.status}</strong>
+          </p>
+          <p>
+            Media storage <strong>{health.mediaStorage.status}</strong>
+          </p>
+          <p>
+            Storage mode <strong>{health.mediaStorage.mode.toUpperCase()}</strong>
+          </p>
+          <p>
+            Queues <strong>{health.backgroundProcessing.queues.status}</strong>
+          </p>
           <p className={styles.muted}>{health.backgroundProcessing.queues.reason}</p>
-          <p>Workers <strong>{health.backgroundProcessing.workers.status}</strong></p>
+          <p>
+            Workers <strong>{health.backgroundProcessing.workers.status}</strong>
+          </p>
           <p className={styles.muted}>{health.backgroundProcessing.workers.reason}</p>
           <p className={styles.muted}>
-            Direct client-to-storage upload architecture remains enabled. This view observes existing R2 readiness only.
+            Direct client-to-storage upload architecture remains enabled. This view observes
+            existing R2 readiness only.
           </p>
         </article>
 
         <article className={styles.card}>
           <h2>Priority queues</h2>
-          <p><Link href="/admin/trust">Trust & Safety · {data.openReports} reports / {data.openCases} cases</Link></p>
-          <p><Link href="/admin/content">Content Library & rights</Link></p>
-          <p><Link href="/admin/videos">Video operations</Link></p>
-          <p><Link href="/admin/tv">Creator TV operations</Link></p>
-          <p><Link href="/admin/product-controls">Home & product controls</Link></p>
-          <p><Link href="/admin/feature-flags">Feature flags</Link></p>
+          <p>
+            <Link href="/admin/trust">
+              Trust & Safety · {data.openReports} reports / {data.openCases} cases
+            </Link>
+          </p>
+          <p>
+            <Link href="/admin/content">Content Library & rights</Link>
+          </p>
+          <p>
+            <Link href="/admin/videos">Video operations</Link>
+          </p>
+          <p>
+            <Link href="/admin/tv">Creator TV operations</Link>
+          </p>
+          <p>
+            <Link href="/admin/product-controls">Home & product controls</Link>
+          </p>
+          <p>
+            <Link href="/admin/feature-flags">Feature flags</Link>
+          </p>
         </article>
       </section>
 
       <section className={styles.card} style={{ marginTop: 18 }}>
         <h2>Platform analytics</h2>
-        <p className={styles.muted}>Query-time V1 metrics; intentionally not advertised as realtime.</p>
+        <p className={styles.muted}>
+          Query-time V1 metrics; intentionally not advertised as realtime.
+        </p>
         <div className={styles.commandGrid}>
           {analyticsMetrics.map(([label, value]) => (
-            <p key={label}>{label}: <strong>{value}</strong></p>
+            <p key={label}>
+              {label}: <strong>{value}</strong>
+            </p>
           ))}
         </div>
       </section>

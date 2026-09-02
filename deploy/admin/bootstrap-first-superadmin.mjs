@@ -53,7 +53,9 @@ async function prompt(question) {
 
 async function main() {
   if (userInfo().username !== "ayin" || process.env.HOME !== expectedHome) {
-    throw new Error("run this bootstrap only as the dedicated 'ayin' Linux user with HOME=/home/ayin");
+    throw new Error(
+      "run this bootstrap only as the dedicated 'ayin' Linux user with HOME=/home/ayin",
+    );
   }
 
   const env = parseEnvFile(apiEnvPath);

@@ -49,9 +49,9 @@ export default function TermsPage() {
           By uploading or publishing content, you grant AYIN a worldwide, non-exclusive,
           royalty-free license to host, store, reproduce, transmit, display, perform, format,
           technically adapt and distribute that content solely as reasonably necessary to operate,
-          promote and improve AYIN and the creator&apos;s use of the service. This license ends when the
-          content is deleted from active service, subject to reasonable backup, legal, moderation
-          and technical retention.
+          promote and improve AYIN and the creator&apos;s use of the service. This license ends when
+          the content is deleted from active service, subject to reasonable backup, legal,
+          moderation and technical retention.
         </p>
       </LegalSection>
 
@@ -61,8 +61,13 @@ export default function TermsPage() {
           <li>infringes copyright, trademark, privacy, publicity or other rights;</li>
           <li>is unlawful, fraudulent, malicious or designed to facilitate serious wrongdoing;</li>
           <li>contains sexual exploitation of minors or other illegal exploitative material;</li>
-          <li>contains prohibited hateful, violent, harassing or deceptive conduct under AYIN&apos;s Community Guidelines;</li>
-          <li>contains malware, credential theft, spam or attempts to compromise AYIN or other users;</li>
+          <li>
+            contains prohibited hateful, violent, harassing or deceptive conduct under AYIN&apos;s
+            Community Guidelines;
+          </li>
+          <li>
+            contains malware, credential theft, spam or attempts to compromise AYIN or other users;
+          </li>
           <li>falsely claims ownership, licensing, sponsorship or endorsement.</li>
         </ul>
       </LegalSection>
@@ -99,8 +104,8 @@ export default function TermsPage() {
         <p>
           AYIN may display house, direct or third-party advertising around or within eligible
           content. Creator monetization is not automatic. Eligibility, revenue share, ad inventory,
-          estimated earnings, final earnings, adjustments, payout thresholds, compliance and
-          payment methods may be governed by separate creator terms or contracts.
+          estimated earnings, final earnings, adjustments, payout thresholds, compliance and payment
+          methods may be governed by separate creator terms or contracts.
         </p>
         <p>
           Estimated analytics or revenue are not a promise of payment. AYIN may correct invalid,
@@ -111,9 +116,10 @@ export default function TermsPage() {
 
       <LegalSection title="9. Copyright notices and takedowns">
         <p>
-          Rights holders may submit notices under AYIN&apos;s Copyright & Takedown Policy. Users must not
-          knowingly submit false notices or counter-notices. AYIN may retain notices and related
-          records as needed for legal compliance, repeat-infringer enforcement and dispute handling.
+          Rights holders may submit notices under AYIN&apos;s Copyright & Takedown Policy. Users
+          must not knowingly submit false notices or counter-notices. AYIN may retain notices and
+          related records as needed for legal compliance, repeat-infringer enforcement and dispute
+          handling.
         </p>
       </LegalSection>
 

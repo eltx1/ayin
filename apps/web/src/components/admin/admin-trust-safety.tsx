@@ -46,7 +46,12 @@ type Appeal = {
     videoId?: string | null;
   };
 };
-type Queue = { reports: Report[]; cases: ModerationCase[]; takedowns: Takedown[]; appeals: Appeal[] };
+type Queue = {
+  reports: Report[];
+  cases: ModerationCase[];
+  takedowns: Takedown[];
+  appeals: Appeal[];
+};
 type TrustSettings = { blockedTerms: string[]; newCreatorsRequireReview: boolean };
 
 async function trustApi<T>(path: string, init?: RequestInit): Promise<T> {
@@ -84,7 +89,8 @@ export function AdminTrustSafety() {
   useEffect(() => {
     let active = true;
     void load().catch((caught) => {
-      if (active) setError(caught instanceof Error ? caught.message : "Trust & Safety could not be loaded.");
+      if (active)
+        setError(caught instanceof Error ? caught.message : "Trust & Safety could not be loaded.");
     });
     return () => {
       active = false;
@@ -93,9 +99,7 @@ export function AdminTrustSafety() {
 
   const canManageSettings = useMemo(
     () =>
-      Boolean(
-        session?.roles.some((role) => ["SUPERADMIN", "ADMIN", "OPERATIONS"].includes(role)),
-      ),
+      Boolean(session?.roles.some((role) => ["SUPERADMIN", "ADMIN", "OPERATIONS"].includes(role))),
     [session],
   );
 
@@ -212,7 +216,8 @@ export function AdminTrustSafety() {
           <span className={styles.eyebrow}>Safety Operations</span>
           <h1>Trust & Safety</h1>
           <p className={styles.muted}>
-            Reports, moderation cases, copyright takedowns, appeals, creator trust and audited enforcement.
+            Reports, moderation cases, copyright takedowns, appeals, creator trust and audited
+            enforcement.
           </p>
         </div>
         <div>
@@ -249,7 +254,8 @@ export function AdminTrustSafety() {
       <section className={styles.card} style={{ marginBottom: "1.5rem" }}>
         <h2>Enforcement action</h2>
         <p className={styles.muted}>
-          Use resource IDs from the queues below. Every action is written to the moderation action ledger and Admin Audit Log.
+          Use resource IDs from the queues below. Every action is written to the moderation action
+          ledger and Admin Audit Log.
         </p>
         <form className={styles.form} onSubmit={(event) => void moderationAction(event)}>
           <label>
@@ -267,7 +273,13 @@ export function AdminTrustSafety() {
           <input name="targetAccountId" placeholder="Account UUID when required" />
           <input name="channelId" placeholder="Channel UUID when required" />
           <input name="videoId" placeholder="Video UUID when required" />
-          <textarea name="reason" required minLength={10} maxLength={4000} placeholder="Detailed enforcement reason" />
+          <textarea
+            name="reason"
+            required
+            minLength={10}
+            maxLength={4000}
+            placeholder="Detailed enforcement reason"
+          />
           <button className={styles.button} disabled={busy === "action"} type="submit">
             Record enforcement action
           </button>
@@ -294,12 +306,19 @@ export function AdminTrustSafety() {
         </form>
       </section>
 
-      <header className={styles.header}><div><span className={styles.eyebrow}>Queue</span><h2>Reports</h2></div></header>
+      <header className={styles.header}>
+        <div>
+          <span className={styles.eyebrow}>Queue</span>
+          <h2>Reports</h2>
+        </div>
+      </header>
       <section className={styles.grid} style={{ marginBottom: "1.5rem" }}>
         {queue?.reports.map((item) => (
           <article className={styles.card} key={item.id}>
             <strong>{item.reason}</strong>
-            <p className={styles.muted}>{item.status} · {item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</p>
+            <p className={styles.muted}>
+              {item.status} · {item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}
+            </p>
             <p>{item.details || "No additional details."}</p>
             <p className={styles.muted}>Report: {item.id}</p>
             {item.videoId ? <p className={styles.muted}>Video: {item.videoId}</p> : null}
@@ -309,55 +328,152 @@ export function AdminTrustSafety() {
         {queue?.reports.length === 0 ? <p className={styles.muted}>No open reports.</p> : null}
       </section>
 
-      <header className={styles.header}><div><span className={styles.eyebrow}>Investigations</span><h2>Moderation cases</h2></div></header>
+      <header className={styles.header}>
+        <div>
+          <span className={styles.eyebrow}>Investigations</span>
+          <h2>Moderation cases</h2>
+        </div>
+      </header>
       <section className={styles.grid} style={{ marginBottom: "1.5rem" }}>
         {queue?.cases.map((item) => (
           <article className={styles.card} key={item.id}>
             <strong>Case {item.id}</strong>
-            <p className={styles.muted}>{item.status} · {item.reports.length} linked reports</p>
+            <p className={styles.muted}>
+              {item.status} · {item.reports.length} linked reports
+            </p>
             {item.resolution ? <p>{item.resolution}</p> : null}
             <div className={styles.actions}>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideCase(item, "REVIEWING")} type="button">Review</button>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideCase(item, "ACTIONED")} type="button">Actioned</button>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideCase(item, "DISMISSED")} type="button">Dismiss</button>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideCase(item, "CLOSED")} type="button">Close</button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideCase(item, "REVIEWING")}
+                type="button"
+              >
+                Review
+              </button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideCase(item, "ACTIONED")}
+                type="button"
+              >
+                Actioned
+              </button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideCase(item, "DISMISSED")}
+                type="button"
+              >
+                Dismiss
+              </button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideCase(item, "CLOSED")}
+                type="button"
+              >
+                Close
+              </button>
             </div>
           </article>
         ))}
-        {queue?.cases.length === 0 ? <p className={styles.muted}>No open moderation cases.</p> : null}
+        {queue?.cases.length === 0 ? (
+          <p className={styles.muted}>No open moderation cases.</p>
+        ) : null}
       </section>
 
-      <header className={styles.header}><div><span className={styles.eyebrow}>Copyright</span><h2>Takedown requests</h2></div></header>
+      <header className={styles.header}>
+        <div>
+          <span className={styles.eyebrow}>Copyright</span>
+          <h2>Takedown requests</h2>
+        </div>
+      </header>
       <section className={styles.grid} style={{ marginBottom: "1.5rem" }}>
         {queue?.takedowns.map((item) => (
           <article className={styles.card} key={item.id}>
             <strong>{item.claimantName}</strong>
-            <p className={styles.muted}>{item.contactEmail} · {item.status}</p>
-            <p><strong>Rights basis:</strong> {item.rightsBasis}</p>
+            <p className={styles.muted}>
+              {item.contactEmail} · {item.status}
+            </p>
+            <p>
+              <strong>Rights basis:</strong> {item.rightsBasis}
+            </p>
             <p style={{ whiteSpace: "pre-wrap" }}>{item.details}</p>
             {item.videoId ? <p className={styles.muted}>Video: {item.videoId}</p> : null}
             <div className={styles.actions}>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideTakedown(item, "REVIEWING")} type="button">Review</button>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideTakedown(item, "ACTIONED")} type="button">Actioned</button>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideTakedown(item, "DISMISSED")} type="button">Dismiss</button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideTakedown(item, "REVIEWING")}
+                type="button"
+              >
+                Review
+              </button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideTakedown(item, "ACTIONED")}
+                type="button"
+              >
+                Actioned
+              </button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideTakedown(item, "DISMISSED")}
+                type="button"
+              >
+                Dismiss
+              </button>
             </div>
           </article>
         ))}
-        {queue?.takedowns.length === 0 ? <p className={styles.muted}>No open takedown requests.</p> : null}
+        {queue?.takedowns.length === 0 ? (
+          <p className={styles.muted}>No open takedown requests.</p>
+        ) : null}
       </section>
 
-      <header className={styles.header}><div><span className={styles.eyebrow}>Due process</span><h2>Appeals</h2></div></header>
+      <header className={styles.header}>
+        <div>
+          <span className={styles.eyebrow}>Due process</span>
+          <h2>Appeals</h2>
+        </div>
+      </header>
       <section className={styles.grid} style={{ marginBottom: "1.5rem" }}>
         {queue?.appeals.map((item) => (
           <article className={styles.card} key={item.id}>
             <strong>{item.action.kind}</strong>
-            <p className={styles.muted}>Appeal {item.id} · {item.status}</p>
+            <p className={styles.muted}>
+              Appeal {item.id} · {item.status}
+            </p>
             <p>{item.message}</p>
             <p className={styles.muted}>Original reason: {item.action.reason}</p>
             <div className={styles.actions}>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideAppeal(item, "REVIEWING")} type="button">Review</button>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideAppeal(item, "UPHELD")} type="button">Uphold</button>
-              <button className={styles.button} disabled={busy === item.id} onClick={() => void decideAppeal(item, "OVERTURNED")} type="button">Overturn</button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideAppeal(item, "REVIEWING")}
+                type="button"
+              >
+                Review
+              </button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideAppeal(item, "UPHELD")}
+                type="button"
+              >
+                Uphold
+              </button>
+              <button
+                className={styles.button}
+                disabled={busy === item.id}
+                onClick={() => void decideAppeal(item, "OVERTURNED")}
+                type="button"
+              >
+                Overturn
+              </button>
             </div>
           </article>
         ))}
@@ -368,26 +484,37 @@ export function AdminTrustSafety() {
         <section className={styles.card}>
           <h2>Safety defaults</h2>
           <p className={styles.muted}>
-            Operational settings are restricted to Operations, Admin and Super Admin. Keep blocked terms targeted; do not use this as broad censorship.
+            Operational settings are restricted to Operations, Admin and Super Admin. Keep blocked
+            terms targeted; do not use this as broad censorship.
           </p>
           <form className={styles.form} onSubmit={(event) => void saveSettings(event)}>
             <label>
               <span>Blocked terms — one per line</span>
-              <textarea disabled={!canManageSettings} value={blockedTermsText} onChange={(event) => setBlockedTermsText(event.target.value)} />
+              <textarea
+                disabled={!canManageSettings}
+                value={blockedTermsText}
+                onChange={(event) => setBlockedTermsText(event.target.value)}
+              />
             </label>
             <label style={{ display: "flex", gap: ".55rem", alignItems: "center" }}>
               <input
                 checked={settings.newCreatorsRequireReview}
                 disabled={!canManageSettings}
                 type="checkbox"
-                onChange={(event) => setSettings({ ...settings, newCreatorsRequireReview: event.target.checked })}
+                onChange={(event) =>
+                  setSettings({ ...settings, newCreatorsRequireReview: event.target.checked })
+                }
               />
               <span>New creators require review</span>
             </label>
             {canManageSettings ? (
-              <button className={styles.button} disabled={busy === "settings"} type="submit">Save safety defaults</button>
+              <button className={styles.button} disabled={busy === "settings"} type="submit">
+                Save safety defaults
+              </button>
             ) : (
-              <p className={styles.muted}>Your role can operate the queue but cannot change global safety defaults.</p>
+              <p className={styles.muted}>
+                Your role can operate the queue but cannot change global safety defaults.
+              </p>
             )}
           </form>
         </section>

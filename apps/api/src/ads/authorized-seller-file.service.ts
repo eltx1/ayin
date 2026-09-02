@@ -13,7 +13,8 @@ const domainPattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+
 const sellerIdPattern = /^[^\s,]{1,160}$/u;
 const certificationIdPattern = /^[a-z0-9_-]{1,160}$/iu;
 const variableNamePattern = /^[A-Z][A-Z0-9_]{0,63}$/u;
-const forbiddenPlaceholderPattern = /(?:<[^>]+>|REPLACE[_ -]?ME|YOUR[_ -]?(?:ID|PUBLISHER|SELLER)|example\.com|placeholder)/iu;
+const forbiddenPlaceholderPattern =
+  /(?:<[^>]+>|REPLACE[_ -]?ME|YOUR[_ -]?(?:ID|PUBLISHER|SELLER)|example\.com|placeholder)/iu;
 
 const storageKey: Record<AuthorizedSellerFileKind, string> = {
   ads: "adsTxtManualContent",
@@ -126,7 +127,12 @@ export class AuthorizedSellerFileService {
     const sections: string[] = [];
     if (manualText.trim()) sections.push(manualText.trim());
     if (additions.length > 0) {
-      sections.push(["# Automatically generated from AYIN's configured Google seller account", ...additions].join("\n"));
+      sections.push(
+        [
+          "# Automatically generated from AYIN's configured Google seller account",
+          ...additions,
+        ].join("\n"),
+      );
     }
     return sections.length > 0 ? `${sections.join("\n\n")}\n` : "";
   }

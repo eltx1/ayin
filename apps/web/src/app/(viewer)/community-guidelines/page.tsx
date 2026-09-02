@@ -15,7 +15,8 @@ export default function CommunityGuidelinesPage() {
         <p>
           AYIN is built for creators and viewers to publish, discover and discuss video responsibly.
           These Guidelines apply to uploaded media, thumbnails, titles, descriptions, comments,
-          community posts, profiles, channels, live-related surfaces and other user-generated content.
+          community posts, profiles, channels, live-related surfaces and other user-generated
+          content.
         </p>
       }
     >
@@ -49,8 +50,8 @@ export default function CommunityGuidelinesPage() {
       <LegalSection title="4. Copyright, ownership and impersonation">
         <p>
           Upload only material you own or are authorized to use. Do not remove required attribution,
-          falsely label copyrighted material as public domain, impersonate a creator or organization,
-          or imply sponsorship or endorsement that does not exist.
+          falsely label copyrighted material as public domain, impersonate a creator or
+          organization, or imply sponsorship or endorsement that does not exist.
         </p>
       </LegalSection>
 
@@ -64,9 +65,10 @@ export default function CommunityGuidelinesPage() {
 
       <LegalSection title="6. Misleading and harmful deception">
         <p>
-          Do not materially misrepresent the identity, source, rights status or purpose of content in
-          a way likely to cause significant harm. Clearly distinguish parody, satire, reenactments or
-          materially altered media when context is necessary to avoid harmful deception.
+          Do not materially misrepresent the identity, source, rights status or purpose of content
+          in a way likely to cause significant harm. Clearly distinguish parody, satire,
+          reenactments or materially altered media when context is necessary to avoid harmful
+          deception.
         </p>
       </LegalSection>
 
@@ -82,8 +84,8 @@ export default function CommunityGuidelinesPage() {
       <LegalSection title="8. Reporting and enforcement">
         <p>
           Users may report content through available AYIN reporting tools. AYIN may dismiss reports,
-          limit features, hide or remove content, issue warnings or strikes, suspend accounts or take
-          other proportionate action. Abuse of reporting tools may itself lead to enforcement.
+          limit features, hide or remove content, issue warnings or strikes, suspend accounts or
+          take other proportionate action. Abuse of reporting tools may itself lead to enforcement.
           Decisions may consider severity, context, intent, recurrence, risk and legal obligations.
         </p>
       </LegalSection>
@@ -91,8 +93,8 @@ export default function CommunityGuidelinesPage() {
       <LegalSection title="9. Appeals and repeat violations">
         <p>
           Where an appeal path is available, provide accurate context and rights information. Repeat
-          or severe violations may result in stronger action, including account or channel suspension.
-          Creating or using another account to evade enforcement is prohibited.
+          or severe violations may result in stronger action, including account or channel
+          suspension. Creating or using another account to evade enforcement is prohibited.
         </p>
       </LegalSection>
 

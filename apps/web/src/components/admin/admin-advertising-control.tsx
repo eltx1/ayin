@@ -138,9 +138,9 @@ export function AdminAdvertisingControl() {
       <section>
         <h2>Authorized sellers · ads.txt / app-ads.txt</h2>
         <p>
-          Manage SSP/exchange rows and IAB directives here. AYIN validates syntax and rejects obvious
-          placeholders before publishing. Google seller rows are generated automatically only from
-          real GAM configuration and are shown read-only below.
+          Manage SSP/exchange rows and IAB directives here. AYIN validates syntax and rejects
+          obvious placeholders before publishing. Google seller rows are generated automatically
+          only from real GAM configuration and are shown read-only below.
         </p>
         <p>
           Public web file: <a href="/ads.txt">https://ayin.stream/ads.txt</a>
@@ -338,7 +338,9 @@ function SellerEditor({
           spellCheck={false}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder={"OWNERDOMAIN=ayin.stream\n# Add only seller rows supplied by your real SSP/exchange"}
+          placeholder={
+            "OWNERDOMAIN=ayin.stream\n# Add only seller rows supplied by your real SSP/exchange"
+          }
           style={{ fontFamily: "monospace", minHeight: "10rem", width: "100%" }}
         />
       </label>
@@ -348,7 +350,9 @@ function SellerEditor({
       <div>
         <strong>Automatic GAM rows</strong>
         <pre style={{ overflowX: "auto", whiteSpace: "pre-wrap" }}>
-          {automaticRows.length > 0 ? automaticRows.join("\n") : "None — GAM seller data is not configured yet."}
+          {automaticRows.length > 0
+            ? automaticRows.join("\n")
+            : "None — GAM seller data is not configured yet."}
         </pre>
       </div>
       <details>
