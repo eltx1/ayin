@@ -14,6 +14,7 @@ on:
       - ".github/workflows/database.yml"
       - ".github/workflows/deploy.yml"
       - ".github/workflows/cloudflare-production.yml"
+      - ".github/workflows/r2-production.yml"
   pull_request:
     paths:
       - "apps/api/**"
@@ -27,6 +28,7 @@ on:
       - ".github/workflows/database.yml"
       - ".github/workflows/deploy.yml"
       - ".github/workflows/cloudflare-production.yml"
+      - ".github/workflows/r2-production.yml"
 
 permissions:
   contents: read
@@ -85,6 +87,7 @@ jobs:
           set -euo pipefail
           bash -n deploy/release.sh
           bash -n deploy/cloudflare/sync-production-edge.sh
+          bash -n deploy/cloudflare/bootstrap-r2-production.sh
           bash -n deploy/postgres/bootstrap-local-production.sh
           bash -n deploy/env/bootstrap-production-env.sh
           node --check deploy/env-file.cjs
