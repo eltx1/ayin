@@ -116,4 +116,11 @@ upsert_a_record "api.ayin.stream"
 set_zone_setting "ssl" "strict"
 set_zone_setting "always_use_https" "on"
 
+# AYIN exposes a browser-consumed API and public R2 media. Cloudflare reputation/BIC challenges
+# must not intercept API calls, media requests, crawlers, or synthetic health checks. These settings
+# affect only the dedicated ayin.stream zone; Cloudflare proxying, TLS and automatic DDoS protection
+# remain enabled.
+set_zone_setting "browser_check" "off"
+set_zone_setting "security_level" "essentially_off"
+
 echo "AYIN Cloudflare production edge sync completed successfully."
