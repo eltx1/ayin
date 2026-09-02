@@ -56,7 +56,21 @@ set +a
 [[ "${GAM_PRODUCTION_ENABLED:-0}" == "0" ]] || fail "GAM production must remain disabled for first launch"
 pass "production environment values pass structural checks"
 
-DB_RESULT="$(psql "$DATABASE_URL" -Atqc "select current_database() || ':' || current_user")" || fail "cannot connect to AYIN PostgreSQL"
+# Prisma accepts ?schema=public in DATABASE_URL, while libpq/psql rejects the
+# non-libpq `schema` query parameter. Remove only that Prisma-specific option
+# for this connectivity probe; the production DATABASE_URL remains unchanged.
+PSQL_DATABASE_URL="$(python3 - "$DATABASE_URL" <<'PY'
+import sys
+import urllib.parse
+
+raw = sys.argv[1]
+parts = urllib.parse.urlsplit(raw)
+query = [(key, value) for key, value in urllib.parse.parse_qsl(parts.query, keep_blank_values=True) if key != "schema"]
+print(urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(query), parts.fragment)))
+PY
+)"
+
+DB_RESULT="$(psql "$PSQL_DATABASE_URL" -Atqc "select current_database() || ':' || current_user")" || fail "cannot connect to AYIN PostgreSQL"
 [[ "$DB_RESULT" == "$EXPECTED_DB:$EXPECTED_DB_USER" ]] || fail "PostgreSQL identity mismatch"
 pass "PostgreSQL accepts the AYIN application connection on the expected database and role"
 
@@ -140,7 +154,7 @@ MEDIA_HTTP="$(curl --silent --show-error --output /dev/null --write-out '%{http_
 [[ "$MEDIA_HTTP" =~ ^[1-5][0-9][0-9]$ ]] || fail "media.ayin.stream is not reachable over HTTPS yet"
 pass "media.ayin.stream resolves and answers over HTTPS (HTTP $MEDIA_HTTP on a deliberately missing object)"
 
-unset DATABASE_URL AUTH_TOKEN_SECRET PAYOUT_DATA_ENCRYPTION_KEY ANALYTICS_HASH_SALT \
+unset DATABASE_URL PSQL_DATABASE_URL AUTH_TOKEN_SECRET PAYOUT_DATA_ENCRYPTION_KEY ANALYTICS_HASH_SALT \
   UPLOAD_SESSION_SECRET R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
 
 echo
