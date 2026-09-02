@@ -83,6 +83,7 @@ jobs:
           set -euo pipefail
           bash -n deploy/release.sh
           bash -n deploy/cloudflare/sync-production-edge.sh
+          bash -n deploy/postgres/bootstrap-local-production.sh
           node --check deploy/env-file.cjs
           node --check deploy/run-with-env.cjs
           node --check deploy/validate-production-env.cjs
@@ -102,7 +103,7 @@ jobs:
           PORT=4000
           CORS_ORIGIN=https://ayin.stream
           WEB_ORIGIN=https://ayin.stream
-          DATABASE_URL=postgresql://ayin:ayin@db.internal:5432/ayin?schema=public
+          DATABASE_URL=postgresql://ayin_app:ci-password@127.0.0.1:5432/ayin?schema=public
           AUTH_TOKEN_SECRET=ci-production-auth-secret-more-than-32-characters
           PAYOUT_DATA_ENCRYPTION_KEY=MTIzNDU2Nzg5MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTI=
           ANALYTICS_HASH_SALT=ci-analytics-hash-salt-more-than-32-characters
