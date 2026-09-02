@@ -34,15 +34,22 @@ jobs:
             fi
           done
 
-          echo '=== zone rulesets summary ==='
-          rulesets="$(curl --fail --silent --show-error -H "$auth" "$api/zones/$zone_id/rulesets" || true)"
-          if [[ -n "$rulesets" ]]; then
-            jq -c '.result[]? | {id,name,kind,phase}' <<<"$rulesets" || true
-            for id in $(jq -r '.result[]? | select(.phase=="http_request_firewall_custom" or .phase=="http_request_firewall_managed" or .phase=="http_request_sbfm") | .id' <<<"$rulesets"); do
-              echo "--- ruleset $id ---"
-              detail="$(curl --fail --silent --show-error -H "$auth" "$api/zones/$zone_id/rulesets/$id" || true)"
-              if [[ -n "$detail" ]]; then
-                jq -c '.result.rules[]? | {id,action,enabled,description,expression}' <<<"$detail" || true
-              fi
-            done
+          echo '=== bot management ==='
+          bot_file="$(mktemp)"
+          bot_http="$(curl --silent --show-error -H "$auth" -o "$bot_file" -w '%{http_code}' "$api/zones/$zone_id/bot_management" || true)"
+          echo "bot_management_http=$bot_http"
+          if jq -e . "$bot_file" >/dev/null 2>&1; then
+            jq -c '{success,result,errors,messages}' "$bot_file"
           fi
+          rm -f "$bot_file"
+
+          echo '=== zone rulesets summary ==='
+          rules_file="$(mktemp)"
+          rules_http="$(curl --silent --show-error -H "$auth" -o "$rules_file" -w '%{http_code}' "$api/zones/$zone_id/rulesets" || true)"
+          echo "rulesets_http=$rules_http"
+          if [[ "$rules_http" == "200" ]] && jq -e . "$rules_file" >/dev/null 2>&1; then
+            jq -c '.result[]? | {id,name,kind,phase}' "$rules_file" || true
+          elif jq -e . "$rules_file" >/dev/null 2>&1; then
+            jq -c '{success,errors,messages}' "$rules_file" || true
+          fi
+          rm -f "$rules_file"
