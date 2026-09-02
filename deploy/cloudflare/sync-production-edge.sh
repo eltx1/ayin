@@ -3,13 +3,13 @@ set -euo pipefail
 umask 077
 
 : "${AYIN_CLOUDFLARE_API_TOKEN:?AYIN_CLOUDFLARE_API_TOKEN is required}"
-: "${AYIN_CLOUDFLARE_ZONE_ID:?AYIN_CLOUDFLARE_ZONE_ID is required}"
 : "${AYIN_ORIGIN_IPV4:?AYIN_ORIGIN_IPV4 is required}"
 
 API_ROOT="https://api.cloudflare.com/client/v4"
 ZONE_NAME="ayin.stream"
 AUTH_HEADER="Authorization: Bearer ${AYIN_CLOUDFLARE_API_TOKEN}"
 CONTENT_HEADER="Content-Type: application/json"
+AYIN_CLOUDFLARE_ZONE_ID=""
 
 api_call() {
   local method="$1"
@@ -51,12 +51,18 @@ verify_token() {
   }
 }
 
-verify_zone() {
-  local response zone_name
-  response="$(api_call GET "$API_ROOT/zones/$AYIN_CLOUDFLARE_ZONE_ID")"
-  zone_name="$(jq -r '.result.name // empty' <<<"$response")"
-  [[ "$zone_name" == "$ZONE_NAME" ]] || {
-    echo "error: zone id belongs to '$zone_name', expected '$ZONE_NAME'" >&2
+discover_zone() {
+  local response count
+  response="$(api_call GET "$API_ROOT/zones?name=$ZONE_NAME&status=active&per_page=50")"
+  count="$(jq --arg name "$ZONE_NAME" '[.result[] | select(.name == $name)] | length' <<<"$response")"
+  [[ "$count" == "1" ]] || {
+    echo "error: expected exactly one active Cloudflare zone named '$ZONE_NAME', found $count" >&2
+    exit 1
+  }
+
+  AYIN_CLOUDFLARE_ZONE_ID="$(jq -r --arg name "$ZONE_NAME" '.result[] | select(.name == $name) | .id' <<<"$response")"
+  [[ "$AYIN_CLOUDFLARE_ZONE_ID" =~ ^[0-9a-fA-F]{32}$ ]] || {
+    echo "error: Cloudflare returned an invalid zone id for '$ZONE_NAME'" >&2
     exit 1
   }
 }
@@ -94,8 +100,13 @@ set_zone_setting() {
   echo "Cloudflare setting synchronized: $setting=$value"
 }
 
+command -v jq >/dev/null || {
+  echo "error: jq is required" >&2
+  exit 1
+}
+
 verify_token
-verify_zone
+discover_zone
 
 # AYIN application origins only. media.ayin.stream is intentionally NOT touched here because
 # it belongs to the Cloudflare R2 delivery layer and must never point at the EC2 application host.
