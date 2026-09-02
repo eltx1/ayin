@@ -84,6 +84,7 @@ jobs:
           bash -n deploy/release.sh
           bash -n deploy/cloudflare/sync-production-edge.sh
           bash -n deploy/postgres/bootstrap-local-production.sh
+          bash -n deploy/env/bootstrap-production-env.sh
           node --check deploy/env-file.cjs
           node --check deploy/run-with-env.cjs
           node --check deploy/validate-production-env.cjs
