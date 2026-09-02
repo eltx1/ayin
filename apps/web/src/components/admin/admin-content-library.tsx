@@ -1,6 +1,5 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
@@ -45,9 +44,7 @@ async function adminApi<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function AdminContentLibrary() {
-  const searchParams = useSearchParams();
-  const requestedChannelId = searchParams.get("channelId") ?? "";
+export function AdminContentLibrary({ requestedChannelId = "" }: { requestedChannelId?: string }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [batches, setBatches] = useState<SeedBatch[]>([]);
   const [channelId, setChannelId] = useState(requestedChannelId);
