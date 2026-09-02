@@ -19,6 +19,13 @@ type Overview = {
   placements: Placement[];
   eventCounters: Record<string, number>;
 };
+type SellerFile = {
+  kind: "ads" | "app-ads";
+  manualText: string;
+  automaticRows: string[];
+  finalText: string;
+};
+type SellerFiles = { ads: SellerFile; appAds: SellerFile };
 
 async function api(path: string, init?: RequestInit) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -34,6 +41,9 @@ export function AdminAdvertisingControl() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [sellerFiles, setSellerFiles] = useState<SellerFiles | null>(null);
+  const [adsText, setAdsText] = useState("");
+  const [appAdsText, setAppAdsText] = useState("");
   const [advertiserName, setAdvertiserName] = useState("");
   const [campaignName, setCampaignName] = useState("");
   const [selectedAdvertiser, setSelectedAdvertiser] = useState("");
@@ -41,14 +51,19 @@ export function AdminAdvertisingControl() {
 
   const load = useCallback(async () => {
     try {
-      const [nextOverview, nextAdvertisers, nextCampaigns] = await Promise.all([
+      const [nextOverview, nextAdvertisers, nextCampaigns, nextSellerFiles] = await Promise.all([
         api("/admin/advertising/overview"),
         api("/admin/advertising/advertisers"),
         api("/admin/advertising/campaigns"),
+        api("/admin/advertising/authorized-sellers"),
       ]);
       setOverview(nextOverview as Overview);
       setAdvertisers(nextAdvertisers as Advertiser[]);
       setCampaigns(nextCampaigns as Campaign[]);
+      const files = nextSellerFiles as SellerFiles;
+      setSellerFiles(files);
+      setAdsText(files.ads.manualText);
+      setAppAdsText(files.appAds.manualText);
     } catch {
       setMessage("Advertising control center could not be loaded.");
     }
@@ -71,12 +86,34 @@ export function AdminAdvertisingControl() {
     }
   };
 
+  const saveSellerFile = async (kind: "ads" | "app-ads", text: string) => {
+    setMessage("");
+    try {
+      await api(`/admin/advertising/authorized-sellers/${kind}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          text,
+          reason: "Authorized seller file edited in Admin Advertising Control Center",
+        }),
+      });
+      await load();
+      setMessage(`${kind}.txt saved and published at the AYIN root domain.`);
+    } catch {
+      setMessage(
+        `${kind}.txt was not saved. Check seller fields, DIRECT/RESELLER values, directives and placeholders.`,
+      );
+    }
+  };
+
   return (
     <div style={{ display: "grid", gap: "1.5rem" }}>
       <header>
         <p>AYIN advertising</p>
         <h1>Advertising Control Center</h1>
-        <p>Unified inventory, direct campaigns, event counters and emergency controls.</p>
+        <p>
+          Unified inventory, direct campaigns, authorized seller files, event counters and emergency
+          controls.
+        </p>
         <Link href="/admin/video-ads">Open in-player video defaults and overrides →</Link>
       </header>
 
@@ -96,6 +133,39 @@ export function AdminAdvertisingControl() {
         >
           {overview?.emergencyKillSwitch ? "Restore advertising" : "Kill all advertising"}
         </button>
+      </section>
+
+      <section>
+        <h2>Authorized sellers · ads.txt / app-ads.txt</h2>
+        <p>
+          Manage SSP/exchange rows and IAB directives here. AYIN validates syntax and rejects obvious
+          placeholders before publishing. Google seller rows are generated automatically only from
+          real GAM configuration and are shown read-only below.
+        </p>
+        <p>
+          Public web file: <a href="/ads.txt">https://ayin.stream/ads.txt</a>
+          {" · "}
+          Public app/CTV file: <a href="/app-ads.txt">https://ayin.stream/app-ads.txt</a>
+        </p>
+
+        <div style={{ display: "grid", gap: "1.5rem", marginTop: "1rem" }}>
+          <SellerEditor
+            label="Web ads.txt"
+            value={adsText}
+            automaticRows={sellerFiles?.ads.automaticRows ?? []}
+            finalText={sellerFiles?.ads.finalText ?? ""}
+            onChange={setAdsText}
+            onSave={() => void saveSellerFile("ads", adsText)}
+          />
+          <SellerEditor
+            label="Apps / CTV app-ads.txt"
+            value={appAdsText}
+            automaticRows={sellerFiles?.appAds.automaticRows ?? []}
+            finalText={sellerFiles?.appAds.finalText ?? ""}
+            onChange={setAppAdsText}
+            onSave={() => void saveSellerFile("app-ads", appAdsText)}
+          />
+        </div>
       </section>
 
       <section>
@@ -239,6 +309,54 @@ export function AdminAdvertisingControl() {
           avoids inventing production asset references.
         </p>
       </section>
+    </div>
+  );
+}
+
+function SellerEditor({
+  label,
+  value,
+  automaticRows,
+  finalText,
+  onChange,
+  onSave,
+}: {
+  label: string;
+  value: string;
+  automaticRows: string[];
+  finalText: string;
+  onChange: (value: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <div style={{ display: "grid", gap: "0.65rem" }}>
+      <h3 style={{ margin: 0 }}>{label}</h3>
+      <label style={{ display: "grid", gap: "0.4rem" }}>
+        <span>Manual seller rows / IAB directives</span>
+        <textarea
+          rows={8}
+          spellCheck={false}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={"OWNERDOMAIN=ayin.stream\n# Add only seller rows supplied by your real SSP/exchange"}
+          style={{ fontFamily: "monospace", minHeight: "10rem", width: "100%" }}
+        />
+      </label>
+      <button type="button" onClick={onSave} style={{ justifySelf: "start" }}>
+        Validate & publish
+      </button>
+      <div>
+        <strong>Automatic GAM rows</strong>
+        <pre style={{ overflowX: "auto", whiteSpace: "pre-wrap" }}>
+          {automaticRows.length > 0 ? automaticRows.join("\n") : "None — GAM seller data is not configured yet."}
+        </pre>
+      </div>
+      <details>
+        <summary>Published-file preview</summary>
+        <pre style={{ overflowX: "auto", whiteSpace: "pre-wrap" }}>
+          {finalText || "(empty file — no seller relationship is being claimed)"}
+        </pre>
+      </details>
     </div>
   );
 }
