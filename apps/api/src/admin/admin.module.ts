@@ -13,11 +13,12 @@ import {
   SupportTicketController,
 } from "./admin-governance.controller.js";
 import { AdminGovernanceService } from "./admin-governance.service.js";
-import { AdminController } from "./admin.controller.js";
-import { AdminGuard } from "./admin.guard.js";
 import { AdminProductController, PublicProductController } from "./admin-product.controller.js";
 import { AdminProductService } from "./admin-product.service.js";
+import { AdminScopedDirectoryController } from "./admin-scoped-directory.controller.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
+import { AdminController } from "./admin.controller.js";
+import { AdminGuard } from "./admin.guard.js";
 import { ContentSeedingController } from "./content-seeding.controller.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
 
@@ -27,6 +28,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminController,
     AdminControlController,
     AdminGovernanceController,
+    AdminScopedDirectoryController,
     SupportTicketController,
     AdminProductController,
     PublicProductController,
