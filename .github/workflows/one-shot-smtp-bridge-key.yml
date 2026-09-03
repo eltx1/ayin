@@ -1,4 +1,4 @@
-name: One-shot prepare encrypted SMTP bridge
+name: One-shot install encrypted SMTP bridge
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  prepare:
+  install:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
@@ -36,20 +36,111 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Create server-local one-time bridge key
+      - name: Decrypt and atomically install SMTP runtime configuration
         run: |
           set -euo pipefail
           ssh -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          echo "AYIN_REMOTE_HOSTNAME=$(hostname)"
+          [[ "$(whoami)" == "ayin" ]]
+          [[ "$HOME" == "/home/ayin" ]]
+          [[ "$(hostname)" == "ip-172-31-4-110" ]]
+
           private=/tmp/ayin-smtp-bridge-private.pem
           public=/tmp/ayin-smtp-bridge-public.pem
-          encrypted=/tmp/ayin-smtp-bridge.enc
-          rm -f "$private" "$public" "$encrypted"
-          umask 077
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$private" >/dev/null 2>&1
-          chmod 600 "$private"
-          openssl pkey -in "$private" -pubout -out "$public"
-          chmod 644 "$public"
-          echo "AYIN_SMTP_BRIDGE_PUBLIC_KEY_READY=YES"
+          encrypted_key=/tmp/ayin-smtp-bridge.key.enc
+          encrypted_payload=/tmp/ayin-smtp-bridge.payload.enc
+          passfile="$(mktemp)"
+          plain="$(mktemp)"
+          chmod 600 "$passfile" "$plain"
+          trap 'rm -f "$passfile" "$plain" "$private" "$public" "$encrypted_key" "$encrypted_payload"' EXIT
+
+          test -r "$private"
+          test -r "$encrypted_key"
+          test -r "$encrypted_payload"
+
+          openssl pkeyutl -decrypt -inkey "$private" \
+            -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            -in "$encrypted_key" -out "$passfile"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in "$encrypted_payload" -out "$plain" -pass file:"$passfile"
+          test -s "$plain"
+
+          SMTP_PAYLOAD_FILE="$plain" node --input-type=module <<'NODE'
+          import { chmodSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+
+          const envPath = '/home/ayin/env/api.env';
+          const payloadPath = process.env.SMTP_PAYLOAD_FILE;
+          if (!payloadPath) throw new Error('SMTP bridge payload path is missing');
+
+          const allowed = new Set([
+            'MAIL_HOST',
+            'MAIL_PORT',
+            'MAIL_USERNAME',
+            'MAIL_PASSWORD',
+            'MAIL_FROM_ADDRESS',
+          ]);
+          const values = new Map();
+          for (const rawLine of readFileSync(payloadPath, 'utf8').split(/\r?\n/u)) {
+            if (!rawLine) continue;
+            const separator = rawLine.indexOf('=');
+            if (separator <= 0) throw new Error('Malformed encrypted SMTP payload');
+            const key = rawLine.slice(0, separator);
+            const value = rawLine.slice(separator + 1);
+            if (!allowed.has(key) || values.has(key) || !value || /[\r\n]/u.test(value)) {
+              throw new Error('Invalid encrypted SMTP payload');
+            }
+            values.set(key, value);
+          }
+          if (values.size !== allowed.size) throw new Error('Incomplete encrypted SMTP payload');
+
+          const port = Number(values.get('MAIL_PORT'));
+          if (!Number.isInteger(port) || (port !== 465 && port !== 587)) {
+            throw new Error('Unsupported SMTP port in encrypted payload');
+          }
+          const host = values.get('MAIL_HOST');
+          if (!host || host.length > 255) throw new Error('Invalid SMTP host in encrypted payload');
+
+          const managed = new Set([
+            ...allowed,
+            'MAIL_SCHEME',
+            'MAIL_EHLO_DOMAIN',
+            'MAIL_FROM_NAME',
+            'MAIL_TIMEOUT_MS',
+          ]);
+          const current = readFileSync(envPath, 'utf8');
+          const preserved = current
+            .split(/\r?\n/u)
+            .filter((line) => {
+              const separator = line.indexOf('=');
+              return separator <= 0 || !managed.has(line.slice(0, separator));
+            })
+            .join('\n')
+            .replace(/\n+$/u, '');
+
+          const additions = [
+            `MAIL_SCHEME=${port === 465 ? 'smtps' : 'starttls'}`,
+            `MAIL_HOST=${values.get('MAIL_HOST')}`,
+            `MAIL_PORT=${values.get('MAIL_PORT')}`,
+            `MAIL_USERNAME=${values.get('MAIL_USERNAME')}`,
+            `MAIL_PASSWORD=${values.get('MAIL_PASSWORD')}`,
+            'MAIL_EHLO_DOMAIN=ayin.stream',
+            `MAIL_FROM_ADDRESS=${values.get('MAIL_FROM_ADDRESS')}`,
+            'MAIL_FROM_NAME=AYIN',
+            'MAIL_TIMEOUT_MS=15000',
+          ];
+
+          const tempPath = `${envPath}.smtp-${process.pid}.tmp`;
+          writeFileSync(tempPath, `${preserved}\n${additions.join('\n')}\n`, { mode: 0o600 });
+          chmodSync(tempPath, 0o600);
+          renameSync(tempPath, envPath);
+          NODE
+
+          test "$(stat -c '%a' /home/ayin/env/api.env)" = "600"
+          for key in MAIL_SCHEME MAIL_HOST MAIL_PORT MAIL_USERNAME MAIL_PASSWORD MAIL_EHLO_DOMAIN MAIL_FROM_ADDRESS MAIL_FROM_NAME MAIL_TIMEOUT_MS; do
+            grep -q "^${key}=" /home/ayin/env/api.env
+          done
+
+          rm -f "$passfile" "$plain" "$private" "$public" "$encrypted_key" "$encrypted_payload"
+          trap - EXIT
+          echo "AYIN_SMTP_ENV_INSTALLED=YES"
           REMOTE
