@@ -16,6 +16,19 @@ import {
   UploadSessionTokenService,
 } from "./upload-session-token.service.js";
 
+const SUPPORTED_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/quicktime"]);
+
+type SupportedVideoMimeType = "video/mp4" | "video/quicktime";
+
+function normalizeVideoMimeType(value: string): SupportedVideoMimeType | null {
+  const mimeType = value.toLowerCase().split(";", 1)[0]?.trim() ?? "";
+  return SUPPORTED_VIDEO_MIME_TYPES.has(mimeType) ? (mimeType as SupportedVideoMimeType) : null;
+}
+
+function sourceExtension(mimeType: SupportedVideoMimeType): "mp4" | "mov" {
+  return mimeType === "video/quicktime" ? "mov" : "mp4";
+}
+
 export class MediaUploadError extends Error {
   constructor(
     readonly code: string,
@@ -49,10 +62,11 @@ export class MediaUploadService {
     options: { adminOverride?: boolean } = {},
   ) {
     this.ensureStorageAvailable();
-    if (input.mimeType !== "video/mp4") {
+    const mimeType = normalizeVideoMimeType(input.mimeType);
+    if (!mimeType) {
       throw new MediaUploadError(
         "UNSUPPORTED_VIDEO_TYPE",
-        "Choose an MP4 file. AYIN V1 accepts playback-ready MP4 video only.",
+        "Choose an MP4 or iPhone MOV video. Other source formats need transcoding before upload.",
       );
     }
     if (!Number.isSafeInteger(input.sizeBytes) || input.sizeBytes <= 0) {
@@ -93,14 +107,14 @@ export class MediaUploadService {
     }
 
     const assetId = randomUUID();
-    const objectKey = `channels/${input.channelId}/media/${assetId}/source.mp4`;
+    const objectKey = `channels/${input.channelId}/media/${assetId}/source.${sourceExtension(mimeType)}`;
     const mode = input.sizeBytes >= this.config.multipartThresholdBytes ? "multipart" : "single";
     const expiresAtMs = Date.now() + this.config.uploadUrlTtlSeconds * 1000;
     let uploadId: string | null = null;
 
     if (mode === "multipart") {
       uploadId = (
-        await this.storage.createMultipartUpload({ key: objectKey, contentType: input.mimeType })
+        await this.storage.createMultipartUpload({ key: objectKey, contentType: mimeType })
       ).uploadId;
     }
 
@@ -112,7 +126,7 @@ export class MediaUploadService {
           kind: "SOURCE_VIDEO",
           status: "PENDING",
           r2ObjectKey: objectKey,
-          mimeType: input.mimeType,
+          mimeType,
           sizeBytes: BigInt(input.sizeBytes),
         },
       });
@@ -134,7 +148,7 @@ export class MediaUploadService {
       objectKey,
       uploadId,
       mode,
-      mimeType: "video/mp4",
+      mimeType,
       sizeBytes: input.sizeBytes,
       partSizeBytes: this.config.partSizeBytes,
       expiresAtMs,
@@ -145,7 +159,7 @@ export class MediaUploadService {
       try {
         const authorization = await this.storage.authorizeSinglePut({
           key: objectKey,
-          contentType: input.mimeType,
+          contentType: mimeType,
           expiresInSeconds: this.config.uploadUrlTtlSeconds,
         });
         return {
@@ -158,7 +172,7 @@ export class MediaUploadService {
           upload: {
             url: authorization.url,
             method: "PUT" as const,
-            headers: { "content-type": input.mimeType },
+            headers: { "content-type": mimeType },
           },
         };
       } catch (error) {
@@ -241,7 +255,7 @@ export class MediaUploadService {
     } else if (!(await this.objectMatchesSession(session))) {
       throw new MediaUploadError(
         "UPLOAD_SIZE_OR_TYPE_MISMATCH",
-        "The uploaded video does not match the selected MP4. Please retry the upload.",
+        "The uploaded video does not match the selected source file. Please retry the upload.",
       );
     }
 
@@ -306,9 +320,12 @@ export class MediaUploadService {
   private async objectMatchesSession(session: UploadSessionPayload): Promise<boolean> {
     try {
       const object = await this.storage.headObject(session.objectKey);
+      const objectMimeType = object.contentType
+        ? object.contentType.toLowerCase().split(";", 1)[0]?.trim()
+        : null;
       return (
         object.sizeBytes === session.sizeBytes &&
-        (!object.contentType || object.contentType.toLowerCase().startsWith("video/mp4"))
+        (!objectMimeType || objectMimeType === session.mimeType.toLowerCase())
       );
     } catch {
       return false;
