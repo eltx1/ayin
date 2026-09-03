@@ -215,8 +215,8 @@ export function QuickUpload() {
         <p className={styles.eyebrow}>Quick Create</p>
         <h1 id="quick-upload-title">Choose video. Upload. Publish.</h1>
         <p>
-          Pick a playback-ready MP4 and AYIN immediately creates a draft, checks it locally, and
-          uploads the video straight to Cloudflare R2.
+          Pick an MP4 or a video recorded on iPhone as MOV. AYIN checks the source locally and
+          uploads it straight to Cloudflare R2 without routing the video through the AYIN server.
         </p>
       </div>
 
@@ -232,16 +232,16 @@ export function QuickUpload() {
         </select>
       </label>
       <p className={styles.hint}>
-        Clips use the same direct MP4 upload and rights rules. Keep Clips within the platform
-        duration limit; no music license is implied.
+        MP4 is the broadest playback format. iPhone MOV is accepted as an original source when your
+        browser can read it; validate MOV playback on Android and TV before broad publishing.
       </p>
 
       <label className={styles.picker}>
-        <strong>{file ? file.name : "Choose your MP4"}</strong>
-        <span>No Studio setup required.</span>
+        <strong>{file ? file.name : "Choose an MP4 or iPhone MOV"}</strong>
+        <span>Pick from Files or your mobile video library. No Studio setup required.</span>
         <input
           type="file"
-          accept="video/mp4,.mp4"
+          accept="video/mp4,video/quicktime,.mp4,.mov"
           disabled={!identity || busy || published}
           onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
         />
