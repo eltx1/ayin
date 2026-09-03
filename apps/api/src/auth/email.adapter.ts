@@ -218,7 +218,7 @@ function buildResetMessage(config: SmtpConfiguration, message: PasswordResetEmai
     "<p>If you did not request this, you can ignore this email.</p>",
     "</div></body></html>",
   ].join("");
-  const fromHeader = fromName ? `"${fromName.replaceAll('"', "'')}" ` : "";
+  const fromHeader = fromName ? `${fromName} ` : "";
 
   return [
     `Date: ${new Date().toUTCString()}`,
