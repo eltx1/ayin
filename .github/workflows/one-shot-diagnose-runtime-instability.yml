@@ -1,0 +1,139 @@
+name: One-shot diagnose AYIN runtime instability and bootstrap lock
+
+on:
+  push:
+    paths:
+      - .github/workflows/one-shot-diagnose-runtime-instability.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+
+    steps:
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Read-only forensic snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          echo '=== IDENTITY ==='
+          printf 'user=%s home=%s\n' "$(whoami)" "$HOME"
+          [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
+
+          echo '=== BOOT / UPTIME ==='
+          date -u '+utc_now=%Y-%m-%dT%H:%M:%SZ'
+          uptime || true
+          uptime -s 2>/dev/null || true
+          who -b 2>/dev/null || true
+          last -x -n 20 2>/dev/null | sed -n '1,20p' || true
+
+          echo '=== MEMORY / DISK ==='
+          free -h || true
+          df -h / /home 2>/dev/null || df -h / || true
+          df -i / /home 2>/dev/null || df -i / || true
+
+          echo '=== TOP PROCESSES ==='
+          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,args --sort=-%cpu | head -25 || true
+
+          echo '=== BOOTSTRAP PROCESSES ==='
+          pgrep -a -f 'bootstrap-first-superadmin|deploy/admin/bootstrap' || echo 'none'
+
+          echo '=== PM2 SUMMARY ==='
+          if command -v pm2 >/dev/null 2>&1; then
+            pm2 jlist 2>/dev/null | node -e '
+              let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
+                try {
+                  const rows=JSON.parse(s);
+                  for (const r of rows) {
+                    if (!String(r.name||"").startsWith("ayin-")) continue;
+                    const e=r.pm2_env||{};
+                    const m=r.monit||{};
+                    console.log(JSON.stringify({name:r.name,status:e.status,pid:r.pid,restarts:e.restart_time,unstable_restarts:e.unstable_restarts,created_at:e.created_at,pm_uptime:e.pm_uptime,cpu:m.cpu,memory_bytes:m.memory}));
+                  }
+                } catch (err) { console.error("pm2_summary_parse_failed"); process.exitCode=1; }
+              });
+            ' || true
+          else
+            echo 'pm2 unavailable'
+          fi
+
+          echo '=== AYIN CRON PERSISTENCE ==='
+          crontab -l 2>/dev/null | grep -E 'AYIN|ayin|PM2_HOME|pm2|@reboot' || echo 'no AYIN/PM2 cron lines'
+
+          echo '=== SYSTEM TIMERS (NAMES ONLY) ==='
+          systemctl list-timers --all --no-pager --no-legend 2>/dev/null | awk '{print $1,$2,$3,$4,$5,$6}' | head -80 || true
+
+          echo '=== FAILED UNITS ==='
+          systemctl --failed --no-pager 2>/dev/null || true
+          printf 'postgresql_active='; systemctl is-active postgresql 2>/dev/null || true
+          printf 'cron_active='; systemctl is-active cron 2>/dev/null || true
+
+          echo '=== KERNEL OOM / CRASH SIGNALS (CURRENT BOOT) ==='
+          journalctl -k -b --no-pager 2>/dev/null | grep -Ei 'oom|out of memory|killed process|segfault|kernel panic|I/O error|ext4.*error' | tail -100 || true
+
+          echo '=== POSTGRESQL LOCK / ACTIVITY DIAGNOSTIC ==='
+          API_ENV=/home/ayin/env/api.env
+          if [[ ! -r "$API_ENV" ]]; then
+            echo 'api.env unreadable'
+            exit 1
+          fi
+          DATABASE_URL="$(grep '^DATABASE_URL=' "$API_ENV" | head -1 | cut -d= -f2-)"
+          DATABASE_URL="${DATABASE_URL%\"}"; DATABASE_URL="${DATABASE_URL#\"}"
+          DATABASE_URL="${DATABASE_URL%\'}"; DATABASE_URL="${DATABASE_URL#\'}"
+          if [[ -z "$DATABASE_URL" ]]; then
+            echo 'DATABASE_URL missing'
+            exit 1
+          fi
+          PSQL_DATABASE_URL="$(python3 - "$DATABASE_URL" <<'PY'
+import sys, urllib.parse
+raw=sys.argv[1]
+p=urllib.parse.urlsplit(raw)
+q=[(k,v) for k,v in urllib.parse.parse_qsl(p.query, keep_blank_values=True) if k != 'schema']
+print(urllib.parse.urlunsplit((p.scheme,p.netloc,p.path,urllib.parse.urlencode(q),p.fragment)))
+PY
+          )"
+          unset DATABASE_URL
+          export PGOPTIONS='-c statement_timeout=5000 -c lock_timeout=2000'
+
+          echo '-- identity --'
+          psql "$PSQL_DATABASE_URL" -X -v ON_ERROR_STOP=1 -Atqc "select current_database() || ':' || current_user" || true
+
+          echo '-- advisory locks --'
+          psql "$PSQL_DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT l.pid,l.granted,a.usename,a.state,a.wait_event_type,a.wait_event,clock_timestamp()-a.query_start AS query_age,left(regexp_replace(coalesce(a.query,''),E'[\\n\\r\\t ]+',' ','g'),180) AS query FROM pg_locks l LEFT JOIN pg_stat_activity a ON a.pid=l.pid WHERE l.locktype='advisory' ORDER BY l.granted DESC,l.pid;" || true
+
+          echo '-- AYIN database activity and blockers --'
+          psql "$PSQL_DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT pid,usename,application_name,state,wait_event_type,wait_event,clock_timestamp()-xact_start AS xact_age,clock_timestamp()-query_start AS query_age,pg_blocking_pids(pid) AS blocked_by,left(regexp_replace(coalesce(query,''),E'[\\n\\r\\t ]+',' ','g'),180) AS query FROM pg_stat_activity WHERE datname=current_database() ORDER BY xact_start NULLS LAST,query_start NULLS LAST;" || true
+
+          echo '-- bootstrap advisory key holders/waiters --'
+          psql "$PSQL_DATABASE_URL" -X -v ON_ERROR_STOP=1 -P pager=off -c "SELECT l.pid,l.granted,a.state,a.wait_event_type,a.wait_event,pg_blocking_pids(l.pid) AS blocked_by,clock_timestamp()-a.xact_start AS xact_age,left(regexp_replace(coalesce(a.query,''),E'[\\n\\r\\t ]+',' ','g'),180) AS query FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid WHERE l.locktype='advisory' AND l.classid=0 AND l.objid=86192026 ORDER BY l.granted DESC,l.pid;" || true
+
+          unset PSQL_DATABASE_URL PGOPTIONS
+          echo '=== END READ-ONLY SNAPSHOT ==='
+          REMOTE
