@@ -1,4 +1,4 @@
-name: One-shot AYIN runtime and PostgreSQL forensic snapshot
+name: One-shot AYIN runtime and host pressure forensic snapshot
 
 on:
   push:
@@ -40,26 +40,88 @@ jobs:
           test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
-          sleep 15
 
-      - name: Check noninteractive sudo capability only
+      - name: Capture read-only host and AYIN evidence
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -u
           [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
-          echo '=== SUDO CHECK (NO CHANGES) ==='
-          if sudo -n true 2>/dev/null; then
-            echo 'SUDO_NONINTERACTIVE=YES'
-            sudo -n -l 2>/dev/null | sed -n '1,80p' || true
-          else
-            echo 'SUDO_NONINTERACTIVE=NO'
-          fi
-          echo '=== CURRENT PRESSURE ==='
+
+          echo '=== IDENTITY / RELEASE ==='
+          date -u '+utc_now=%Y-%m-%dT%H:%M:%SZ'
+          whoami
+          printf 'home=%s\n' "$HOME"
+          readlink -f /home/ayin/htdocs/current 2>/dev/null || true
+          if [[ -r /home/ayin/htdocs/current/REVISION ]]; then cat /home/ayin/htdocs/current/REVISION; fi
+
+          echo '=== LOAD / MEMORY / PRESSURE ==='
           uptime || true
           free -h || true
-          systemctl show php8.3-fpm -p MemoryCurrent -p MemoryPeak --no-pager 2>/dev/null || true
-          systemctl show mariadb -p NRestarts -p MemoryCurrent -p MemoryPeak --no-pager 2>/dev/null || true
+          echo '-- cpu pressure --'; cat /proc/pressure/cpu 2>/dev/null || true
+          echo '-- memory pressure --'; cat /proc/pressure/memory 2>/dev/null || true
+          echo '-- io pressure --'; cat /proc/pressure/io 2>/dev/null || true
+          echo '-- vmstat 2s x 15 --'
+          vmstat 2 15 2>/dev/null || true
+
+          echo '=== TOP PROCESSES BY CPU ==='
+          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,comm,args --sort=-%cpu | head -35 || true
+          echo '=== TOP PROCESSES BY RSS ==='
+          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,comm,args --sort=-rss | head -35 || true
+          echo '=== PROCESS COUNTS BY USER ==='
+          ps -eo user= | sort | uniq -c | sort -nr | head -30 || true
+
+          echo '=== RELEVANT SERVICE MEMORY ==='
+          systemctl show php8.3-fpm -p ActiveState -p MemoryCurrent -p MemoryPeak -p NRestarts --no-pager 2>/dev/null || true
+          systemctl show mariadb -p ActiveState -p MemoryCurrent -p MemoryPeak -p MemorySwapCurrent -p NRestarts --no-pager 2>/dev/null || true
+          systemctl show postgresql -p ActiveState -p MemoryCurrent -p MemoryPeak -p NRestarts --no-pager 2>/dev/null || true
+          systemctl show nginx -p ActiveState -p MemoryCurrent -p MemoryPeak -p NRestarts --no-pager 2>/dev/null || true
+
+          echo '=== PM2 AYIN ==='
+          pm2 ls 2>/dev/null || true
+          for name in ayin-web ayin-api; do
+            pid="$(pm2 pid "$name" 2>/dev/null | head -1 || true)"
+            if [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$pid" -gt 0 ]]; then
+              echo "-- $name pid=$pid --"
+              ps -p "$pid" -o pid,ppid,user,stat,%cpu,%mem,rss,vsz,etime,nlwp,comm,args || true
+              grep -E '^(VmPeak|VmSize|VmRSS|VmSwap|Threads|voluntary_ctxt_switches|nonvoluntary_ctxt_switches):' "/proc/$pid/status" 2>/dev/null || true
+            fi
+          done
+
+          echo '=== AYIN LOCAL LATENCY ==='
+          for i in $(seq 1 8); do
+            printf 'web[%s] ' "$i"
+            curl -sS -o /dev/null --max-time 8 -w 'code=%{http_code} connect=%{time_connect} start=%{time_starttransfer} total=%{time_total}\n' http://127.0.0.1:3000/ || true
+            printf 'api[%s] ' "$i"
+            curl -sS -o /dev/null --max-time 8 -w 'code=%{http_code} connect=%{time_connect} start=%{time_starttransfer} total=%{time_total}\n' http://127.0.0.1:4000/health || true
+            sleep 2
+          done
+
+          echo '=== NETWORK SUMMARY ==='
+          ss -s 2>/dev/null || true
+          printf 'connections_to_3000='; ss -Htan 2>/dev/null | awk '$4 ~ /:3000$/ || $5 ~ /:3000$/ {n++} END{print n+0}'
+          printf 'connections_to_4000='; ss -Htan 2>/dev/null | awk '$4 ~ /:4000$/ || $5 ~ /:4000$/ {n++} END{print n+0}'
+          printf 'connections_to_5432='; ss -Htan 2>/dev/null | awk '$4 ~ /:5432$/ || $5 ~ /:5432$/ {n++} END{print n+0}'
+
+          echo '=== AYIN ERROR LOG TAILS ==='
+          for f in "$HOME"/.pm2/logs/ayin-api-error.log "$HOME"/.pm2/logs/ayin-web-error.log; do
+            if [[ -r "$f" ]]; then echo "-- $f --"; tail -100 "$f"; fi
+          done
+
+          echo '=== DEPLOYED CODE HIGH-RISK CONSTRUCT SCAN (SOURCE ONLY) ==='
+          release="$(readlink -f /home/ayin/htdocs/current 2>/dev/null || true)"
+          if [[ -n "$release" && -d "$release" ]]; then
+            grep -RInE --exclude-dir=node_modules --exclude-dir=.next --exclude='*.map' \
+              'setInterval\(|setTimeout\(|while[[:space:]]*\(|for[[:space:]]*\(;;|Promise\.all\(|recursive|retry|poll' \
+              "$release/apps" "$release/packages" 2>/dev/null | head -300 || true
+          fi
+
+          echo '=== SECOND PROCESS SNAPSHOT ==='
+          sleep 10
+          date -u '+utc_now=%Y-%m-%dT%H:%M:%SZ'
+          uptime || true
+          free -h || true
+          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,comm,args --sort=-%cpu | head -35 || true
+          echo '=== END FORENSIC SNAPSHOT ==='
           REMOTE
-          # sudo capability trigger
