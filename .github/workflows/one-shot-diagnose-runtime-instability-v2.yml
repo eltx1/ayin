@@ -20,7 +20,7 @@ jobs:
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
 
     steps:
-      - name: Configure pinned SSH trust
+      - name: Configure pinned SSH trust with reachability diagnostics
         shell: bash
         env:
           DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
@@ -30,17 +30,27 @@ jobs:
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
           chmod 600 "$HOME/.ssh/id_ed25519"
-          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$HOME/.ssh/known_hosts.candidate"
-          actual="$(ssh-keygen -lf "$HOME/.ssh/known_hosts.candidate" -E sha256 | awk 'NR==1{print $2}')"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          : > "$candidate"
+          for attempt in 1 2 3; do
+            echo "SSH reachability attempt $attempt"
+            if timeout 8s ssh-keyscan -T 5 -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate" 2>"$HOME/.ssh/keyscan.err" && [[ -s "$candidate" ]]; then
+              break
+            fi
+            cat "$HOME/.ssh/keyscan.err" || true
+            sleep 3
+          done
+          test -s "$candidate"
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR==1{print $2}')"
           test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
-          mv "$HOME/.ssh/known_hosts.candidate" "$HOME/.ssh/known_hosts"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Capture read-only runtime snapshot
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -u
           echo '=== IDENTITY / UPTIME ==='
           echo "user=$(whoami) home=$HOME"
@@ -100,4 +110,4 @@ jobs:
           unset PSQL_DATABASE_URL PGOPTIONS
           echo '=== END SNAPSHOT ==='
           REMOTE
-          # diagnostic trigger 2026-09-03
+          # retry trigger 2
