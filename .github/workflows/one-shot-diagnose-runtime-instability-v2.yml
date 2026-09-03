@@ -34,23 +34,25 @@ jobs:
           : > "$candidate"
           for attempt in 1 2 3; do
             echo "SSH reachability attempt $attempt"
-            if timeout 8s ssh-keyscan -T 5 -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate" 2>"$HOME/.ssh/keyscan.err" && [[ -s "$candidate" ]]; then
+            if timeout 10s ssh-keyscan -T 7 -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate" 2>"$HOME/.ssh/keyscan.err" && [[ -s "$candidate" ]]; then
               break
             fi
             cat "$HOME/.ssh/keyscan.err" || true
-            sleep 3
+            sleep 5
           done
           test -s "$candidate"
           actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR==1{print $2}')"
           test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
+          echo 'Pinned host key verified; cooling down before authenticated SSH.'
+          sleep 15
 
       - name: Capture read-only runtime snapshot
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -u
           echo '=== IDENTITY / UPTIME ==='
           echo "user=$(whoami) home=$HOME"
@@ -110,4 +112,4 @@ jobs:
           unset PSQL_DATABASE_URL PGOPTIONS
           echo '=== END SNAPSHOT ==='
           REMOTE
-          # retry trigger 2
+          # retry trigger 3 delayed handshake
