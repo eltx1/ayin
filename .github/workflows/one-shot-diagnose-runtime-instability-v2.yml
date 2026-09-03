@@ -100,3 +100,4 @@ jobs:
           unset PSQL_DATABASE_URL PGOPTIONS
           echo '=== END SNAPSHOT ==='
           REMOTE
+          # diagnostic trigger 2026-09-03
