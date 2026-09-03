@@ -50,13 +50,15 @@ export default function ForgotPasswordPage() {
         <p className={styles.eyebrow}>Account recovery</p>
         <h1>Reset your password</h1>
         <p className={styles.intro}>
-          Enter your AYIN email address. If an active account exists, we&apos;ll send a secure reset link.
+          Enter your AYIN email address. If an active account exists, we&apos;ll send a secure reset
+          link.
         </p>
 
         {sent ? (
           <>
             <p className={styles.intro} role="status">
-              Check your inbox. If an AYIN account exists for that address, a password reset link has been sent.
+              Check your inbox. If an AYIN account exists for that address, a password reset link
+              has been sent.
             </p>
             <p className={styles.switcher}>
               <Link href="/login">Back to sign in</Link>
