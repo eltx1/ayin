@@ -1,4 +1,4 @@
-name: One-shot AYIN first SUPERADMIN bootstrap
+name: One-shot AYIN first SUPERADMIN bootstrap via PTY
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Run official one-time production bootstrap
+      - name: Run official bootstrap interactively through PTY
         shell: bash
         run: |
           set -euo pipefail
@@ -77,11 +77,85 @@ jobs:
           NODE
           )"
           test -n "$TARGET_EMAIL"
-          printf '%s\nPROMOTE\n' "$TARGET_EMAIL" | timeout 45s script -qec 'node deploy/admin/bootstrap-first-superadmin.mjs' /dev/null
+          export TARGET_EMAIL
+
+          python3 <<'PY'
+          import os, pty, select, signal, sys, termios, time
+
+          email = os.environ['TARGET_EMAIL']
+          child_pid, master_fd = pty.fork()
+          if child_pid == 0:
+              os.execvp('node', ['node', 'deploy/admin/bootstrap-first-superadmin.mjs'])
+
+          attrs = termios.tcgetattr(master_fd)
+          attrs[3] &= ~termios.ECHO
+          termios.tcsetattr(master_fd, termios.TCSANOW, attrs)
+
+          email_prompt = 'Existing AYIN account email to promote: '
+          promote_prompt = 'Type PROMOTE to create the first production SUPERADMIN: '
+          buffer = ''
+          sent_email = False
+          sent_promote = False
+          deadline = time.monotonic() + 45
+          exit_code = None
+
+          try:
+              while time.monotonic() < deadline:
+                  waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
+                  if waited_pid == child_pid:
+                      exit_code = os.waitstatus_to_exitcode(status)
+                      break
+
+                  ready, _, _ = select.select([master_fd], [], [], 1)
+                  if not ready:
+                      continue
+                  try:
+                      data = os.read(master_fd, 4096)
+                  except OSError:
+                      data = b''
+                  if not data:
+                      continue
+
+                  text = data.decode('utf-8', errors='replace')
+                  sys.stdout.write(text.replace(email, '<redacted-email>'))
+                  sys.stdout.flush()
+                  buffer = (buffer + text)[-12000:]
+
+                  if (not sent_email) and email_prompt in buffer:
+                      os.write(master_fd, (email + '\n').encode())
+                      sent_email = True
+                      buffer = ''
+                      continue
+
+                  if sent_email and (not sent_promote) and promote_prompt in buffer:
+                      os.write(master_fd, b'PROMOTE\n')
+                      sent_promote = True
+                      buffer = ''
+                      continue
+
+              if exit_code is None:
+                  os.kill(child_pid, signal.SIGTERM)
+                  try:
+                      _, status = os.waitpid(child_pid, 0)
+                      exit_code = os.waitstatus_to_exitcode(status)
+                  except ChildProcessError:
+                      exit_code = 1
+                  print('\nBOOTSTRAP_PTY_TIMEOUT')
+
+              if not sent_email or not sent_promote:
+                  print(f'PROMPT_STATE sent_email={sent_email} sent_promote={sent_promote}')
+                  sys.exit(2)
+              sys.exit(exit_code)
+          finally:
+              try:
+                  os.close(master_fd)
+              except OSError:
+                  pass
+          PY
           unset TARGET_EMAIL
           REMOTE
 
-      - name: Verify SUPERADMIN exists after bootstrap
+      - name: Verify exactly one SUPERADMIN exists
         shell: bash
         run: |
           set -euo pipefail
@@ -100,9 +174,14 @@ jobs:
           }
           const prisma = createPrismaClient(values.get('DATABASE_URL'));
           try {
-            const count = await prisma.adminRoleAssignment.count({ where: { role: 'SUPERADMIN' } });
-            console.log(`SUPERADMIN_COUNT=${count}`);
-            if (count !== 1) process.exit(1);
+            const roles = await prisma.adminRoleAssignment.findMany({ where: { role: 'SUPERADMIN' }, select: { accountId: true } });
+            console.log(`SUPERADMIN_COUNT=${roles.length}`);
+            if (roles.length !== 1) process.exit(1);
+            const account = await prisma.account.findUnique({ where: { id: roles[0].accountId }, select: { email: true, displayName: true, status: true } });
+            if (!account) process.exit(1);
+            const [local, domain] = account.email.split('@');
+            const masked = local && domain ? `${local.slice(0,2)}***@${domain}` : '***';
+            console.log(`SUPERADMIN_ACCOUNT=${account.displayName}|${masked}|${account.status}`);
           } finally {
             await prisma.$disconnect();
           }
