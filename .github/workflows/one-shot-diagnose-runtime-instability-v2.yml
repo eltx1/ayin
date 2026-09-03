@@ -93,10 +93,12 @@ jobs:
 
           email_prompt = 'Existing AYIN account email to promote: '
           promote_prompt = 'Type PROMOTE to create the first production SUPERADMIN: '
+          success_text = 'AYIN first production SUPERADMIN created successfully.'
           buffer = ''
           sent_email = False
           sent_promote = False
-          deadline = time.monotonic() + 45
+          saw_success = False
+          deadline = time.monotonic() + 240
           exit_code = None
 
           try:
@@ -117,9 +119,10 @@ jobs:
                       continue
 
                   text = data.decode('utf-8', errors='replace')
-                  sys.stdout.write(text.replace(email, '<redacted-email>'))
+                  safe_text = text.replace(email, '<redacted-email>')
+                  sys.stdout.write(safe_text)
                   sys.stdout.flush()
-                  buffer = (buffer + text)[-12000:]
+                  buffer = (buffer + text)[-16000:]
 
                   if (not sent_email) and email_prompt in buffer:
                       os.write(master_fd, (email + '\n').encode())
@@ -133,6 +136,9 @@ jobs:
                       buffer = ''
                       continue
 
+                  if success_text in buffer:
+                      saw_success = True
+
               if exit_code is None:
                   os.kill(child_pid, signal.SIGTERM)
                   try:
@@ -142,8 +148,8 @@ jobs:
                       exit_code = 1
                   print('\nBOOTSTRAP_PTY_TIMEOUT')
 
+              print(f'PROMPT_STATE sent_email={sent_email} sent_promote={sent_promote} saw_success={saw_success}')
               if not sent_email or not sent_promote:
-                  print(f'PROMPT_STATE sent_email={sent_email} sent_promote={sent_promote}')
                   sys.exit(2)
               sys.exit(exit_code)
           finally:
