@@ -1,4 +1,4 @@
-name: One-shot AYIN live bootstrap state check
+name: One-shot AYIN first SUPERADMIN bootstrap staged input
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: production
@@ -18,6 +18,7 @@ jobs:
       DEPLOY_USER: ayin
       SSH_PORT: "22"
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+      TARGET_EMAIL_SHA256: 4e31aa118ea6ee92b09e8047819b43710d24ecb62ca30004881f869277bf0e9a
 
     steps:
       - name: Configure pinned SSH trust
@@ -41,19 +42,91 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Inspect live bootstrap state read-only
+      - name: Stop only the stale bootstrap process from this session
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          mapfile -t pids < <(pgrep -f '^node deploy/admin/bootstrap-first-superadmin\.mjs$' || true)
+          if (( ${#pids[@]} > 1 )); then
+            echo "Refusing: multiple bootstrap processes found"
+            exit 1
+          fi
+          if (( ${#pids[@]} == 1 )); then
+            pid="${pids[0]}"
+            user="$(ps -p "$pid" -o user= | xargs)"
+            cmd="$(ps -p "$pid" -o args=)"
+            test "$user" = "ayin"
+            test "$cmd" = "node deploy/admin/bootstrap-first-superadmin.mjs"
+            echo "Stopping stale bootstrap PID $pid"
+            kill -TERM "$pid"
+            for _ in $(seq 1 20); do
+              if ! kill -0 "$pid" 2>/dev/null; then break; fi
+              sleep 0.25
+            done
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "Stale bootstrap did not exit after TERM; stopping exact verified PID"
+              kill -KILL "$pid"
+            fi
+          else
+            echo "No stale bootstrap process found"
+          fi
+          REMOTE
+
+      - name: Run official bootstrap with staged TTY input
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "TARGET_EMAIL_SHA256='$TARGET_EMAIL_SHA256' bash -s" <<'REMOTE'
+          set -euo pipefail
+          [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
+          cd /home/ayin/htdocs/current
+          test "$(git rev-parse HEAD)" = "ecfc6d672b2d06f8f71786b094d861723f4fb0f3"
+
+          TARGET_EMAIL="$(node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { createPrismaClient } from './packages/db/dist/index.js';
+          const values = new Map();
+          for (const rawLine of readFileSync('/home/ayin/env/api.env','utf8').split(/\r?\n/u)) {
+            const line = rawLine.trim();
+            if (!line || line.startsWith('#')) continue;
+            const i = line.indexOf('=');
+            if (i > 0) values.set(line.slice(0,i).trim(), line.slice(i+1));
+          }
+          const databaseUrl = values.get('DATABASE_URL');
+          if (!databaseUrl) throw new Error('DATABASE_URL missing');
+          const prisma = createPrismaClient(databaseUrl);
+          try {
+            const existing = await prisma.adminRoleAssignment.count({ where: { role: 'SUPERADMIN' } });
+            if (existing !== 0) throw new Error('SUPERADMIN already exists before bootstrap');
+            const accounts = await prisma.account.findMany({ select: { email: true } });
+            const target = accounts.find((a) => createHash('sha256').update(a.email.toLowerCase()).digest('hex') === process.env.TARGET_EMAIL_SHA256);
+            if (!target) throw new Error('target account not found');
+            process.stdout.write(target.email.toLowerCase());
+          } finally {
+            await prisma.$disconnect();
+          }
+          NODE
+          )"
+          test -n "$TARGET_EMAIL"
+
+          {
+            printf '%s\n' "$TARGET_EMAIL"
+            sleep 8
+            printf 'PROMOTE\n'
+          } | timeout 120s script -qec 'stty -echo; node deploy/admin/bootstrap-first-superadmin.mjs' /dev/null
+          unset TARGET_EMAIL
+          REMOTE
+
+      - name: Verify exactly one SUPERADMIN exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           cd /home/ayin/htdocs/current
-          echo '=== PROCESS ==='
-          pgrep -a -f 'bootstrap-first-superadmin|deploy/admin/bootstrap' || echo 'NO_BOOTSTRAP_PROCESS'
-          echo '=== LOAD ==='
-          uptime || true
-          free -h || true
-          echo '=== DB STATE ==='
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           import { createPrismaClient } from './packages/db/dist/index.js';
@@ -68,15 +141,12 @@ jobs:
           try {
             const roles = await prisma.adminRoleAssignment.findMany({ where: { role: 'SUPERADMIN' }, select: { accountId: true } });
             console.log(`SUPERADMIN_COUNT=${roles.length}`);
-            if (roles.length === 1) {
-              const account = await prisma.account.findUnique({ where: { id: roles[0].accountId }, select: { email: true, displayName: true, status: true } });
-              if (account) {
-                const [local,domain] = account.email.split('@');
-                console.log(`SUPERADMIN_ACCOUNT=${account.displayName}|${local.slice(0,2)}***@${domain}|${account.status}`);
-              }
-            }
-            const sessions = await prisma.$queryRawUnsafe(`SELECT pid,state,wait_event_type,wait_event,pg_blocking_pids(pid) AS blocked_by,left(regexp_replace(coalesce(query,''),E'[\\n\\r\\t ]+',' ','g'),180) AS query FROM pg_stat_activity WHERE datname=current_database() ORDER BY query_start NULLS LAST`);
-            for (const s of sessions) console.log(JSON.stringify(s));
+            if (roles.length !== 1) process.exit(1);
+            const account = await prisma.account.findUnique({ where: { id: roles[0].accountId }, select: { email: true, displayName: true, status: true } });
+            if (!account) process.exit(1);
+            const [local, domain] = account.email.split('@');
+            const masked = local && domain ? `${local.slice(0,2)}***@${domain}` : '***';
+            console.log(`SUPERADMIN_ACCOUNT=${account.displayName}|${masked}|${account.status}`);
           } finally {
             await prisma.$disconnect();
           }
