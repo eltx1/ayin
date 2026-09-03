@@ -114,6 +114,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
             />
           </label>
 
+          {!registering ? (
+            <p className={styles.switcher}>
+              <Link href="/forgot-password">Forgot your password?</Link>
+            </p>
+          ) : null}
+
           {error ? (
             <p className={styles.error} role="alert">
               {error}
