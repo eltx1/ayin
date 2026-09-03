@@ -42,64 +42,52 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           sleep 15
 
-      - name: Capture focused shared-host pressure snapshot
+      - name: Inspect service limits and restart evidence read-only
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -u
           [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
-          echo '=== CAPACITY ==='
+          echo '=== CURRENT LOAD ==='
           date -u '+utc_now=%Y-%m-%dT%H:%M:%SZ'
-          printf 'vcpus='; nproc || true
           uptime || true
           free -h || true
-          cat /proc/loadavg || true
 
-          echo '=== PSI PRESSURE ==='
-          for f in /proc/pressure/cpu /proc/pressure/memory /proc/pressure/io; do echo "-- $f"; cat "$f" 2>/dev/null || true; done
+          echo '=== MARIADB SYSTEMD METADATA ==='
+          systemctl show mariadb -p ActiveState -p SubState -p NRestarts -p Restart -p RestartUSec -p MemoryCurrent -p MemoryPeak -p MemorySwapCurrent -p OOMPolicy -p Result -p ExecMainCode -p ExecMainStatus -p ExecMainStartTimestamp --no-pager 2>/dev/null || true
+          echo '--- mariadb status tail ---'
+          systemctl status mariadb --no-pager -l 2>&1 | tail -35 || true
+          echo '--- mariadb journal last 20m (if readable) ---'
+          journalctl -u mariadb --since '20 minutes ago' --no-pager -n 120 2>&1 | tail -120 || true
+          echo '--- mysql error log metadata/tail if readable ---'
+          ls -l /var/log/mysql 2>&1 || true
+          for f in /var/log/mysql/error.log /var/log/mysql/mariadb.log; do if [[ -r "$f" ]]; then echo "-- $f"; tail -80 "$f"; fi; done
 
-          echo '=== VMSTAT 1s x5 ==='
-          vmstat 1 5 || true
-
-          echo '=== TOP SNAPSHOT ==='
-          COLUMNS=220 top -b -n 1 | head -35 || true
-
-          echo '=== PROCESS STATES ==='
-          echo '-- D state (uninterruptible I/O) --'
-          ps -eo stat,pid,ppid,user,%cpu,%mem,rss,etime,args | awk '$1 ~ /^D/ {print}' | head -80 || true
-          echo '-- R state --'
-          ps -eo stat,pid,ppid,user,%cpu,%mem,rss,etime,args | awk '$1 ~ /^R/ {print}' | head -80 || true
-
-          echo '=== PER-USER PROCESS/RSS AGGREGATE ==='
-          ps -eo user=,rss= | awk '{c[$1]++; r[$1]+=$2} END {for (u in c) printf "%s processes=%d rss_mb=%.1f\n",u,c[u],r[u]/1024}' | sort -k3 -nr || true
-
-          echo '=== PHP-FPM POOL COUNTS ==='
-          ps -eo user=,args= | awk '/php-fpm: pool/ {key=$1" | "$0; sub(/^[^|]*\| /,"",key); c[key]++} END {for (k in c) print c[k],k}' | sort -nr | head -40 || true
-
-          echo '=== TOP RSS PROCESSES ==='
-          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,args --sort=-rss | head -35 || true
-
-          echo '=== CONNECTION SUMMARY ==='
-          ss -s 2>/dev/null || true
-          printf 'established='; ss -Htan state established 2>/dev/null | wc -l || true
-          printf 'syn_recv='; ss -Htan state syn-recv 2>/dev/null | wc -l || true
-
-          echo '=== SERVICE START/RESTART METADATA ==='
-          for svc in mariadb mysql nginx postgresql cron; do
-            if systemctl status "$svc" >/dev/null 2>&1; then
-              echo "-- $svc"
-              systemctl show "$svc" -p ActiveState -p SubState -p NRestarts -p ExecMainStartTimestamp -p ActiveEnterTimestamp --no-pager 2>/dev/null || true
+          echo '=== PHP-FPM POOL LIMITS FOR VISIBLE SITE USERS ==='
+          for f in /etc/php/*/fpm/pool.d/*.conf; do
+            [[ -r "$f" ]] || continue
+            if grep -Eq '(^|[[:space:]])(lordai|aleph1)([[:space:]]|$)|lordai\.net|aleph1\.online' "$f"; then
+              echo "-- $f"
+              grep -E '^\[|^user[[:space:]]*=|^group[[:space:]]*=|^listen[[:space:]]*=|^pm[[:space:]]*=|^pm\.max_children[[:space:]]*=|^pm\.start_servers[[:space:]]*=|^pm\.min_spare_servers[[:space:]]*=|^pm\.max_spare_servers[[:space:]]*=|^pm\.process_idle_timeout[[:space:]]*=|^pm\.max_requests[[:space:]]*=' "$f" || true
             fi
           done
+
+          echo '=== PHP-FPM SERVICE MEMORY ==='
           for svc in $(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '/php.*fpm/{print $1}'); do
-            echo "-- $svc"
-            systemctl show "$svc" -p ActiveState -p SubState -p NRestarts -p ExecMainStartTimestamp -p ActiveEnterTimestamp --no-pager 2>/dev/null || true
+            printf '%s ' "$svc"
+            systemctl show "$svc" -p MemoryCurrent -p MemoryPeak -p NRestarts --value --no-pager 2>/dev/null | paste -sd ' ' - || true
           done
 
-          echo '=== AYIN CONTROL ==='
-          pm2 ls 2>/dev/null || true
-          pgrep -a -f 'stress-ng|(^|/)stress( |$)|autocannon|(^|/)k6( |$)|(^|/)wrk( |$)|(^|/)ab( |$)|siege|bootstrap-first-superadmin' || echo 'no known stress/bootstrap process'
+          echo '=== VARNISH CONFIG ==='
+          ps -eo pid,user,rss,args | grep '[v]arnishd' || true
+          systemctl show varnish -p ActiveState -p NRestarts -p MemoryCurrent -p MemoryPeak -p ExecStart --no-pager 2>/dev/null || true
+
+          echo '=== MYSQL/MARIADB MEMORY SETTINGS (NO CREDENTIALS) ==='
+          grep -RhsE '^[[:space:]]*(innodb_buffer_pool_size|max_connections|table_open_cache|tmp_table_size|max_heap_table_size|performance_schema|key_buffer_size)[[:space:]]*=' /etc/mysql 2>/dev/null | sed -n '1,80p' || true
+
+          echo '=== NGINX METADATA ==='
+          systemctl show nginx -p ActiveState -p NRestarts -p MemoryCurrent -p MemoryPeak -p Result -p ExecMainStatus -p ExecMainStartTimestamp --no-pager 2>/dev/null || true
           echo '=== END ==='
           REMOTE
-          # focused pressure trigger
+          # service-limit evidence trigger
