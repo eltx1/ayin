@@ -1,4 +1,4 @@
-name: One-shot AYIN SUPERADMIN status check
+name: One-shot AYIN first SUPERADMIN bootstrap
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
@@ -18,6 +18,7 @@ jobs:
       DEPLOY_USER: ayin
       SSH_PORT: "22"
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+      TARGET_EMAIL_SHA256: 4e31aa118ea6ee92b09e8047819b43710d24ecb62ca30004881f869277bf0e9a
 
     steps:
       - name: Configure pinned SSH trust
@@ -41,18 +42,20 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Read current SUPERADMIN assignments only
+      - name: Run official one-time production bootstrap
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "TARGET_EMAIL_SHA256='$TARGET_EMAIL_SHA256' bash -s" <<'REMOTE'
           set -euo pipefail
           [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
           cd /home/ayin/htdocs/current
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          import { createPrismaClient } from './packages/db/dist/index.js';
+          test "$(git rev-parse HEAD)" = "ecfc6d672b2d06f8f71786b094d861723f4fb0f3"
 
+          TARGET_EMAIL="$(node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import { createPrismaClient } from './packages/db/dist/index.js';
           const values = new Map();
           for (const rawLine of readFileSync('/home/ayin/env/api.env','utf8').split(/\r?\n/u)) {
             const line = rawLine.trim();
@@ -64,25 +67,42 @@ jobs:
           if (!databaseUrl) throw new Error('DATABASE_URL missing');
           const prisma = createPrismaClient(databaseUrl);
           try {
-            const roles = await prisma.adminRoleAssignment.findMany({
-              where: { role: 'SUPERADMIN' },
-              select: { accountId: true, createdAt: true },
-              orderBy: { createdAt: 'asc' },
-            });
-            console.log(`SUPERADMIN_COUNT=${roles.length}`);
-            for (const role of roles) {
-              const account = await prisma.account.findUnique({
-                where: { id: role.accountId },
-                select: { email: true, displayName: true, status: true },
-              });
-              if (!account) {
-                console.log('SUPERADMIN_ACCOUNT=missing');
-                continue;
-              }
-              const [local, domain] = account.email.split('@');
-              const masked = local && domain ? `${local.slice(0,2)}***@${domain}` : '***';
-              console.log(`SUPERADMIN_ACCOUNT=${account.displayName}|${masked}|${account.status}|${role.createdAt.toISOString()}`);
-            }
+            const accounts = await prisma.account.findMany({ select: { email: true } });
+            const target = accounts.find((a) => createHash('sha256').update(a.email.toLowerCase()).digest('hex') === process.env.TARGET_EMAIL_SHA256);
+            if (!target) throw new Error('target account not found');
+            process.stdout.write(target.email.toLowerCase());
+          } finally {
+            await prisma.$disconnect();
+          }
+          NODE
+          )"
+          test -n "$TARGET_EMAIL"
+          printf '%s\nPROMOTE\n' "$TARGET_EMAIL" | timeout 45s script -qec 'node deploy/admin/bootstrap-first-superadmin.mjs' /dev/null
+          unset TARGET_EMAIL
+          REMOTE
+
+      - name: Verify SUPERADMIN exists after bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /home/ayin/htdocs/current
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { createPrismaClient } from './packages/db/dist/index.js';
+          const values = new Map();
+          for (const rawLine of readFileSync('/home/ayin/env/api.env','utf8').split(/\r?\n/u)) {
+            const line = rawLine.trim();
+            if (!line || line.startsWith('#')) continue;
+            const i = line.indexOf('=');
+            if (i > 0) values.set(line.slice(0,i).trim(), line.slice(i+1));
+          }
+          const prisma = createPrismaClient(values.get('DATABASE_URL'));
+          try {
+            const count = await prisma.adminRoleAssignment.count({ where: { role: 'SUPERADMIN' } });
+            console.log(`SUPERADMIN_COUNT=${count}`);
+            if (count !== 1) process.exit(1);
           } finally {
             await prisma.$disconnect();
           }
