@@ -222,11 +222,11 @@ function buildResetMessage(config: SmtpConfiguration, message: PasswordResetEmai
   return [
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: <${randomUUID()}@ayin.stream>`,
-    `From: ${fromName ? `\"${fromName.replaceAll('"', "'")}\" ` : ""}<${fromAddress}>`,
+    `From: ${fromName ? `"${fromName.replaceAll('"', "'')}" ` : ""}<${fromAddress}>`,
     `To: <${recipient}>`,
     "Subject: Reset your AYIN password",
     "MIME-Version: 1.0",
-    `Content-Type: multipart/alternative; boundary=\"${boundary}\"`,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
     "",
     `--${boundary}`,
     'Content-Type: text/plain; charset="UTF-8"',
