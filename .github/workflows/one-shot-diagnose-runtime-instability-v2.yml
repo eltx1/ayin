@@ -1,4 +1,4 @@
-name: One-shot shared-host pool and request pressure forensic snapshot
+name: One-shot AYIN SUPERADMIN status check
 
 on:
   push:
@@ -41,82 +41,50 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Inspect pool sizing and request pressure read-only
+      - name: Read current SUPERADMIN assignments only
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
-          set -u
+          set -euo pipefail
           [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
+          cd /home/ayin/htdocs/current
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { createPrismaClient } from './packages/db/dist/index.js';
 
-          echo '=== CURRENT PRESSURE ==='
-          date -u '+utc_now=%Y-%m-%dT%H:%M:%SZ'
-          uptime || true
-          free -h || true
-          echo '-- pressure --'
-          cat /proc/pressure/cpu 2>/dev/null || true
-          cat /proc/pressure/memory 2>/dev/null || true
-          cat /proc/pressure/io 2>/dev/null || true
-
-          echo '=== PHP-FPM MASTER / CHILD COUNTS ==='
-          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,args | awk '/php-fpm: pool/ && $0 !~ /awk/ {print}' | head -120 || true
-          echo '-- pool counts --'
-          ps -eo user=,args= | awk '/php-fpm: pool/ {key=$1"|"$0; sub(/^.*php-fpm: pool /,"",key); counts[key]++} END{for(k in counts) print counts[k],k}' | sort -nr | head -30 || true
-          echo '-- rss by php user (KiB) --'
-          ps -eo user=,rss=,args= | awk '/php-fpm: pool/ {sum[$1]+=$2; n[$1]++} END{for(u in sum) printf "%s workers=%d rss_kib=%d\n",u,n[u],sum[u]}' | sort -k3 -nr || true
-
-          echo '=== PHP-FPM POOL CONFIG (NON-SECRET DIRECTIVES ONLY) ==='
-          for f in /etc/php/*/fpm/pool.d/*.conf; do
-            [[ -r "$f" ]] || continue
-            if grep -Eqi 'lordai|aleph1|secretmagic|horus|ayin' "$f"; then
-              echo "-- $f --"
-              grep -E '^\[[^]]+\]|^[[:space:]]*(user|group|listen|pm|pm\.max_children|pm\.start_servers|pm\.min_spare_servers|pm\.max_spare_servers|pm\.process_idle_timeout|pm\.max_requests|request_terminate_timeout|request_slowlog_timeout|slowlog)[[:space:]]*=' "$f" 2>/dev/null || true
-            fi
-          done
-
-          echo '=== MARIADB MEMORY/CONNECTION DIRECTIVES (NO CREDS) ==='
-          grep -RhsE '^[[:space:]]*(innodb_buffer_pool_size|max_connections|thread_cache_size|table_open_cache|tmp_table_size|max_heap_table_size|performance_schema|key_buffer_size)[[:space:]]*=' /etc/mysql 2>/dev/null | head -80 || true
-          systemctl show mariadb -p NRestarts -p MemoryCurrent -p MemoryPeak -p MemorySwapCurrent -p ExecMainStartTimestamp --no-pager 2>/dev/null || true
-
-          echo '=== LORD-AI ACCESS LOG DISCOVERY ==='
-          for base in /home/lordai/logs /home/lordai/htdocs /var/log/nginx; do
-            [[ -d "$base" ]] || continue
-            find "$base" -maxdepth 3 -type f \( -iname '*access*.log' -o -iname '*error*.log' \) -readable 2>/dev/null | head -40
-          done
-
-          echo '=== AGGREGATED RECENT HTTP PATHS IF READABLE ==='
-          found=0
-          while IFS= read -r f; do
-            [[ -r "$f" ]] || continue
-            case "$f" in
-              *access*.log)
-                found=1
-                echo "-- $f (last 5000: status / path aggregate) --"
-                tail -5000 "$f" 2>/dev/null | awk '
-                  match($0,/"[A-Z]+ ([^ ?"]+)/,m) {path=m[1]}
-                  match($0,/" [0-9][0-9][0-9] /,s) {code=substr(s[0],3,3)}
-                  path!="" {p[path]++; if(code!="") c[code]++}
-                  END {
-                    print "TOP_PATHS";
-                    for(k in p) print p[k],k;
-                    print "STATUS_COUNTS";
-                    for(k in c) print c[k],k;
-                  }' | sort -nr | head -35 || true
-                ;;
-            esac
-          done < <(for base in /home/lordai/logs /home/lordai/htdocs /var/log/nginx; do [[ -d "$base" ]] && find "$base" -maxdepth 3 -type f -iname '*access*.log' -readable 2>/dev/null; done | head -10)
-          [[ "$found" -eq 1 ]] || echo 'NO_READABLE_ACCESS_LOGS_FROM_AYIN_USER'
-
-          echo '=== LONGEST / HEAVIEST PHP CHILDREN ==='
-          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,args --sort=-rss | awk '/php-fpm: pool/ && $0 !~ /awk/' | head -60 || true
-
-          echo '=== AYIN CONTROL ==='
-          pm2 ls 2>/dev/null || true
-          for name in ayin-web ayin-api; do
-            pid="$(pm2 pid "$name" 2>/dev/null | head -1 || true)"
-            if [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$pid" -gt 0 ]]; then
-              ps -p "$pid" -o pid,user,stat,%cpu,%mem,rss,etime,comm,args || true
-            fi
-          done
-          echo '=== END ==='
+          const values = new Map();
+          for (const rawLine of readFileSync('/home/ayin/env/api.env','utf8').split(/\r?\n/u)) {
+            const line = rawLine.trim();
+            if (!line || line.startsWith('#')) continue;
+            const i = line.indexOf('=');
+            if (i > 0) values.set(line.slice(0,i).trim(), line.slice(i+1));
+          }
+          const databaseUrl = values.get('DATABASE_URL');
+          if (!databaseUrl) throw new Error('DATABASE_URL missing');
+          const prisma = createPrismaClient(databaseUrl);
+          try {
+            const roles = await prisma.adminRoleAssignment.findMany({
+              where: { role: 'SUPERADMIN' },
+              select: { accountId: true, createdAt: true },
+              orderBy: { createdAt: 'asc' },
+            });
+            console.log(`SUPERADMIN_COUNT=${roles.length}`);
+            for (const role of roles) {
+              const account = await prisma.account.findUnique({
+                where: { id: role.accountId },
+                select: { email: true, displayName: true, status: true },
+              });
+              if (!account) {
+                console.log('SUPERADMIN_ACCOUNT=missing');
+                continue;
+              }
+              const [local, domain] = account.email.split('@');
+              const masked = local && domain ? `${local.slice(0,2)}***@${domain}` : '***';
+              console.log(`SUPERADMIN_ACCOUNT=${account.displayName}|${masked}|${account.status}|${role.createdAt.toISOString()}`);
+            }
+          } finally {
+            await prisma.$disconnect();
+          }
+          NODE
           REMOTE
