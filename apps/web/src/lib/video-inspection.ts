@@ -3,15 +3,34 @@ export type VideoInspectionResult =
   | { status: "unknown"; message: string; durationSeconds: number | null }
   | { status: "incompatible"; message: string; durationSeconds: number | null };
 
+export type SupportedVideoContainer = "mp4" | "mov";
+
+export function detectVideoContainer(file: Pick<File, "type" | "name">): SupportedVideoContainer | null {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  if (type === "video/mp4" || name.endsWith(".mp4")) return "mp4";
+  if (type === "video/quicktime" || name.endsWith(".mov")) return "mov";
+  return null;
+}
+
 export function isMp4File(file: Pick<File, "type" | "name">): boolean {
-  return file.type.toLowerCase() === "video/mp4" || file.name.toLowerCase().endsWith(".mp4");
+  return detectVideoContainer(file) === "mp4";
+}
+
+export function isSupportedVideoFile(file: Pick<File, "type" | "name">): boolean {
+  return detectVideoContainer(file) !== null;
+}
+
+export function videoMimeTypeForUpload(file: Pick<File, "type" | "name">): "video/mp4" | "video/quicktime" {
+  return detectVideoContainer(file) === "mov" ? "video/quicktime" : "video/mp4";
 }
 
 export async function inspectVideoFile(file: File): Promise<VideoInspectionResult> {
-  if (!isMp4File(file)) {
+  const container = detectVideoContainer(file);
+  if (!container) {
     return {
       status: "incompatible",
-      message: "Choose an MP4 file. AYIN V1 uses playback-ready MP4 video.",
+      message: "Choose an MP4 or iPhone MOV video. Other source formats need transcoding before upload.",
       durationSeconds: null,
     };
   }
@@ -20,19 +39,32 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
   if (!metadata.readable) {
     return {
       status: "incompatible",
-      message: "This MP4 could not be opened by your browser. Try another playback-ready file.",
+      message:
+        container === "mov"
+          ? "This MOV could not be opened by your browser. Try another iPhone video or an MP4 export."
+          : "This MP4 could not be opened by your browser. Try another playback-ready file.",
       durationSeconds: null,
     };
   }
 
-  const capability = document
-    .createElement("video")
-    .canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
+  const video = document.createElement("video");
+  if (container === "mov") {
+    const quickTimeCapability = video.canPlayType("video/quicktime");
+    return {
+      status: "unknown",
+      message:
+        quickTimeCapability || metadata.readable
+          ? "iPhone MOV opened successfully and can be uploaded. AYIN keeps the original source, so verify playback on Android/TV before broad publishing."
+          : "AYIN can upload this MOV source, but this browser cannot confirm cross-device playback compatibility.",
+      durationSeconds: metadata.durationSeconds,
+    };
+  }
+
+  const capability = video.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
   if (capability === "probably") {
     return {
       status: "compatible",
-      message:
-        "MP4 looks ready for AYIN playback. Exact stream codecs may still require validation.",
+      message: "MP4 looks ready for AYIN playback. Exact stream codecs may still require validation.",
       durationSeconds: metadata.durationSeconds,
     };
   }
