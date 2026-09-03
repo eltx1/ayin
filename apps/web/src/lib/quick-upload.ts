@@ -1,5 +1,6 @@
 import { apiBaseUrl, readApiError } from "@/lib/api";
 import type { UploadSession } from "@/lib/direct-video-upload";
+import { videoMimeTypeForUpload } from "@/lib/video-inspection";
 
 export type VideoForm = "LONG_FORM" | "CLIP";
 
@@ -37,7 +38,7 @@ export async function createQuickDraft(input: {
     channelId: input.channelId,
     title: input.title,
     sizeBytes: input.file.size,
-    mimeType: "video/mp4",
+    mimeType: videoMimeTypeForUpload(input.file),
     durationMs: input.durationMs,
     videoForm: input.videoForm ?? "LONG_FORM",
   });
