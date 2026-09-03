@@ -8,7 +8,7 @@ import { AuthRateLimiter } from "./auth-rate-limiter.js";
 import { AuthService } from "./auth.service.js";
 import { AuthTokenService } from "./auth-token.service.js";
 import { CreatorProvisioningService } from "./creator-provisioning.service.js";
-import { EMAIL_ADAPTER, UnconfiguredEmailAdapter } from "./email.adapter.js";
+import { EMAIL_ADAPTER, SmtpEmailAdapter } from "./email.adapter.js";
 import { PasswordService } from "./password.service.js";
 
 @Module({
@@ -22,8 +22,8 @@ import { PasswordService } from "./password.service.js";
     AuthTokenService,
     CreatorProvisioningService,
     PasswordService,
-    UnconfiguredEmailAdapter,
-    { provide: EMAIL_ADAPTER, useExisting: UnconfiguredEmailAdapter },
+    SmtpEmailAdapter,
+    { provide: EMAIL_ADAPTER, useExisting: SmtpEmailAdapter },
   ],
   exports: [AuthGuard, AuthService, CreatorProvisioningService],
 })
