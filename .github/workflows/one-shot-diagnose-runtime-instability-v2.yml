@@ -42,52 +42,24 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           sleep 15
 
-      - name: Inspect service limits and restart evidence read-only
+      - name: Check noninteractive sudo capability only
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -u
           [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
-          echo '=== CURRENT LOAD ==='
-          date -u '+utc_now=%Y-%m-%dT%H:%M:%SZ'
+          echo '=== SUDO CHECK (NO CHANGES) ==='
+          if sudo -n true 2>/dev/null; then
+            echo 'SUDO_NONINTERACTIVE=YES'
+            sudo -n -l 2>/dev/null | sed -n '1,80p' || true
+          else
+            echo 'SUDO_NONINTERACTIVE=NO'
+          fi
+          echo '=== CURRENT PRESSURE ==='
           uptime || true
           free -h || true
-
-          echo '=== MARIADB SYSTEMD METADATA ==='
-          systemctl show mariadb -p ActiveState -p SubState -p NRestarts -p Restart -p RestartUSec -p MemoryCurrent -p MemoryPeak -p MemorySwapCurrent -p OOMPolicy -p Result -p ExecMainCode -p ExecMainStatus -p ExecMainStartTimestamp --no-pager 2>/dev/null || true
-          echo '--- mariadb status tail ---'
-          systemctl status mariadb --no-pager -l 2>&1 | tail -35 || true
-          echo '--- mariadb journal last 20m (if readable) ---'
-          journalctl -u mariadb --since '20 minutes ago' --no-pager -n 120 2>&1 | tail -120 || true
-          echo '--- mysql error log metadata/tail if readable ---'
-          ls -l /var/log/mysql 2>&1 || true
-          for f in /var/log/mysql/error.log /var/log/mysql/mariadb.log; do if [[ -r "$f" ]]; then echo "-- $f"; tail -80 "$f"; fi; done
-
-          echo '=== PHP-FPM POOL LIMITS FOR VISIBLE SITE USERS ==='
-          for f in /etc/php/*/fpm/pool.d/*.conf; do
-            [[ -r "$f" ]] || continue
-            if grep -Eq '(^|[[:space:]])(lordai|aleph1)([[:space:]]|$)|lordai\.net|aleph1\.online' "$f"; then
-              echo "-- $f"
-              grep -E '^\[|^user[[:space:]]*=|^group[[:space:]]*=|^listen[[:space:]]*=|^pm[[:space:]]*=|^pm\.max_children[[:space:]]*=|^pm\.start_servers[[:space:]]*=|^pm\.min_spare_servers[[:space:]]*=|^pm\.max_spare_servers[[:space:]]*=|^pm\.process_idle_timeout[[:space:]]*=|^pm\.max_requests[[:space:]]*=' "$f" || true
-            fi
-          done
-
-          echo '=== PHP-FPM SERVICE MEMORY ==='
-          for svc in $(systemctl list-units --type=service --all --no-legend 2>/dev/null | awk '/php.*fpm/{print $1}'); do
-            printf '%s ' "$svc"
-            systemctl show "$svc" -p MemoryCurrent -p MemoryPeak -p NRestarts --value --no-pager 2>/dev/null | paste -sd ' ' - || true
-          done
-
-          echo '=== VARNISH CONFIG ==='
-          ps -eo pid,user,rss,args | grep '[v]arnishd' || true
-          systemctl show varnish -p ActiveState -p NRestarts -p MemoryCurrent -p MemoryPeak -p ExecStart --no-pager 2>/dev/null || true
-
-          echo '=== MYSQL/MARIADB MEMORY SETTINGS (NO CREDENTIALS) ==='
-          grep -RhsE '^[[:space:]]*(innodb_buffer_pool_size|max_connections|table_open_cache|tmp_table_size|max_heap_table_size|performance_schema|key_buffer_size)[[:space:]]*=' /etc/mysql 2>/dev/null | sed -n '1,80p' || true
-
-          echo '=== NGINX METADATA ==='
-          systemctl show nginx -p ActiveState -p NRestarts -p MemoryCurrent -p MemoryPeak -p Result -p ExecMainStatus -p ExecMainStartTimestamp --no-pager 2>/dev/null || true
-          echo '=== END ==='
+          systemctl show php8.3-fpm -p MemoryCurrent -p MemoryPeak --no-pager 2>/dev/null || true
+          systemctl show mariadb -p NRestarts -p MemoryCurrent -p MemoryPeak --no-pager 2>/dev/null || true
           REMOTE
-          # service-limit evidence trigger
+          # sudo capability trigger
