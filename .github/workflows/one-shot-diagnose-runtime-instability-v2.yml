@@ -1,4 +1,4 @@
-name: One-shot AYIN first SUPERADMIN bootstrap via PTY
+name: One-shot AYIN live bootstrap state check
 
 on:
   push:
@@ -9,16 +9,15 @@ permissions:
   contents: read
 
 jobs:
-  bootstrap:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     environment: production
     env:
       DEPLOY_HOST: 13.52.116.200
       DEPLOY_USER: ayin
       SSH_PORT: "22"
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
-      TARGET_EMAIL_SHA256: 4e31aa118ea6ee92b09e8047819b43710d24ecb62ca30004881f869277bf0e9a
 
     steps:
       - name: Configure pinned SSH trust
@@ -42,132 +41,19 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Run official bootstrap interactively through PTY
+      - name: Inspect live bootstrap state read-only
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" "TARGET_EMAIL_SHA256='$TARGET_EMAIL_SHA256' bash -s" <<'REMOTE'
-          set -euo pipefail
-          [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
-          cd /home/ayin/htdocs/current
-          test "$(git rev-parse HEAD)" = "ecfc6d672b2d06f8f71786b094d861723f4fb0f3"
-
-          TARGET_EMAIL="$(node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          import { createHash } from 'node:crypto';
-          import { createPrismaClient } from './packages/db/dist/index.js';
-          const values = new Map();
-          for (const rawLine of readFileSync('/home/ayin/env/api.env','utf8').split(/\r?\n/u)) {
-            const line = rawLine.trim();
-            if (!line || line.startsWith('#')) continue;
-            const i = line.indexOf('=');
-            if (i > 0) values.set(line.slice(0,i).trim(), line.slice(i+1));
-          }
-          const databaseUrl = values.get('DATABASE_URL');
-          if (!databaseUrl) throw new Error('DATABASE_URL missing');
-          const prisma = createPrismaClient(databaseUrl);
-          try {
-            const accounts = await prisma.account.findMany({ select: { email: true } });
-            const target = accounts.find((a) => createHash('sha256').update(a.email.toLowerCase()).digest('hex') === process.env.TARGET_EMAIL_SHA256);
-            if (!target) throw new Error('target account not found');
-            process.stdout.write(target.email.toLowerCase());
-          } finally {
-            await prisma.$disconnect();
-          }
-          NODE
-          )"
-          test -n "$TARGET_EMAIL"
-          export TARGET_EMAIL
-
-          python3 <<'PY'
-          import os, pty, select, signal, sys, termios, time
-
-          email = os.environ['TARGET_EMAIL']
-          child_pid, master_fd = pty.fork()
-          if child_pid == 0:
-              os.execvp('node', ['node', 'deploy/admin/bootstrap-first-superadmin.mjs'])
-
-          attrs = termios.tcgetattr(master_fd)
-          attrs[3] &= ~termios.ECHO
-          termios.tcsetattr(master_fd, termios.TCSANOW, attrs)
-
-          email_prompt = 'Existing AYIN account email to promote: '
-          promote_prompt = 'Type PROMOTE to create the first production SUPERADMIN: '
-          success_text = 'AYIN first production SUPERADMIN created successfully.'
-          buffer = ''
-          sent_email = False
-          sent_promote = False
-          saw_success = False
-          deadline = time.monotonic() + 240
-          exit_code = None
-
-          try:
-              while time.monotonic() < deadline:
-                  waited_pid, status = os.waitpid(child_pid, os.WNOHANG)
-                  if waited_pid == child_pid:
-                      exit_code = os.waitstatus_to_exitcode(status)
-                      break
-
-                  ready, _, _ = select.select([master_fd], [], [], 1)
-                  if not ready:
-                      continue
-                  try:
-                      data = os.read(master_fd, 4096)
-                  except OSError:
-                      data = b''
-                  if not data:
-                      continue
-
-                  text = data.decode('utf-8', errors='replace')
-                  safe_text = text.replace(email, '<redacted-email>')
-                  sys.stdout.write(safe_text)
-                  sys.stdout.flush()
-                  buffer = (buffer + text)[-16000:]
-
-                  if (not sent_email) and email_prompt in buffer:
-                      os.write(master_fd, (email + '\n').encode())
-                      sent_email = True
-                      buffer = ''
-                      continue
-
-                  if sent_email and (not sent_promote) and promote_prompt in buffer:
-                      os.write(master_fd, b'PROMOTE\n')
-                      sent_promote = True
-                      buffer = ''
-                      continue
-
-                  if success_text in buffer:
-                      saw_success = True
-
-              if exit_code is None:
-                  os.kill(child_pid, signal.SIGTERM)
-                  try:
-                      _, status = os.waitpid(child_pid, 0)
-                      exit_code = os.waitstatus_to_exitcode(status)
-                  except ChildProcessError:
-                      exit_code = 1
-                  print('\nBOOTSTRAP_PTY_TIMEOUT')
-
-              print(f'PROMPT_STATE sent_email={sent_email} sent_promote={sent_promote} saw_success={saw_success}')
-              if not sent_email or not sent_promote:
-                  sys.exit(2)
-              sys.exit(exit_code)
-          finally:
-              try:
-                  os.close(master_fd)
-              except OSError:
-                  pass
-          PY
-          unset TARGET_EMAIL
-          REMOTE
-
-      - name: Verify exactly one SUPERADMIN exists
-        shell: bash
-        run: |
-          set -euo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes -o ConnectTimeout=25 -o ConnectionAttempts=3 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           cd /home/ayin/htdocs/current
+          echo '=== PROCESS ==='
+          pgrep -a -f 'bootstrap-first-superadmin|deploy/admin/bootstrap' || echo 'NO_BOOTSTRAP_PROCESS'
+          echo '=== LOAD ==='
+          uptime || true
+          free -h || true
+          echo '=== DB STATE ==='
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           import { createPrismaClient } from './packages/db/dist/index.js';
@@ -182,12 +68,15 @@ jobs:
           try {
             const roles = await prisma.adminRoleAssignment.findMany({ where: { role: 'SUPERADMIN' }, select: { accountId: true } });
             console.log(`SUPERADMIN_COUNT=${roles.length}`);
-            if (roles.length !== 1) process.exit(1);
-            const account = await prisma.account.findUnique({ where: { id: roles[0].accountId }, select: { email: true, displayName: true, status: true } });
-            if (!account) process.exit(1);
-            const [local, domain] = account.email.split('@');
-            const masked = local && domain ? `${local.slice(0,2)}***@${domain}` : '***';
-            console.log(`SUPERADMIN_ACCOUNT=${account.displayName}|${masked}|${account.status}`);
+            if (roles.length === 1) {
+              const account = await prisma.account.findUnique({ where: { id: roles[0].accountId }, select: { email: true, displayName: true, status: true } });
+              if (account) {
+                const [local,domain] = account.email.split('@');
+                console.log(`SUPERADMIN_ACCOUNT=${account.displayName}|${local.slice(0,2)}***@${domain}|${account.status}`);
+              }
+            }
+            const sessions = await prisma.$queryRawUnsafe(`SELECT pid,state,wait_event_type,wait_event,pg_blocking_pids(pid) AS blocked_by,left(regexp_replace(coalesce(query,''),E'[\\n\\r\\t ]+',' ','g'),180) AS query FROM pg_stat_activity WHERE datname=current_database() ORDER BY query_start NULLS LAST`);
+            for (const s of sessions) console.log(JSON.stringify(s));
           } finally {
             await prisma.$disconnect();
           }
