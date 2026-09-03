@@ -1,4 +1,4 @@
-name: One-shot AYIN runtime and host pressure forensic snapshot
+name: One-shot shared-host pool and request pressure forensic snapshot
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Capture read-only host and AYIN evidence
+      - name: Inspect pool sizing and request pressure read-only
         shell: bash
         run: |
           set -euo pipefail
@@ -49,79 +49,74 @@ jobs:
           set -u
           [[ "$(whoami)" == "ayin" && "$HOME" == "/home/ayin" ]] || exit 1
 
-          echo '=== IDENTITY / RELEASE ==='
+          echo '=== CURRENT PRESSURE ==='
           date -u '+utc_now=%Y-%m-%dT%H:%M:%SZ'
-          whoami
-          printf 'home=%s\n' "$HOME"
-          readlink -f /home/ayin/htdocs/current 2>/dev/null || true
-          if [[ -r /home/ayin/htdocs/current/REVISION ]]; then cat /home/ayin/htdocs/current/REVISION; fi
-
-          echo '=== LOAD / MEMORY / PRESSURE ==='
           uptime || true
           free -h || true
-          echo '-- cpu pressure --'; cat /proc/pressure/cpu 2>/dev/null || true
-          echo '-- memory pressure --'; cat /proc/pressure/memory 2>/dev/null || true
-          echo '-- io pressure --'; cat /proc/pressure/io 2>/dev/null || true
-          echo '-- vmstat 2s x 15 --'
-          vmstat 2 15 2>/dev/null || true
+          echo '-- pressure --'
+          cat /proc/pressure/cpu 2>/dev/null || true
+          cat /proc/pressure/memory 2>/dev/null || true
+          cat /proc/pressure/io 2>/dev/null || true
 
-          echo '=== TOP PROCESSES BY CPU ==='
-          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,comm,args --sort=-%cpu | head -35 || true
-          echo '=== TOP PROCESSES BY RSS ==='
-          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,comm,args --sort=-rss | head -35 || true
-          echo '=== PROCESS COUNTS BY USER ==='
-          ps -eo user= | sort | uniq -c | sort -nr | head -30 || true
+          echo '=== PHP-FPM MASTER / CHILD COUNTS ==='
+          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,args | awk '/php-fpm: pool/ && $0 !~ /awk/ {print}' | head -120 || true
+          echo '-- pool counts --'
+          ps -eo user=,args= | awk '/php-fpm: pool/ {key=$1"|"$0; sub(/^.*php-fpm: pool /,"",key); counts[key]++} END{for(k in counts) print counts[k],k}' | sort -nr | head -30 || true
+          echo '-- rss by php user (KiB) --'
+          ps -eo user=,rss=,args= | awk '/php-fpm: pool/ {sum[$1]+=$2; n[$1]++} END{for(u in sum) printf "%s workers=%d rss_kib=%d\n",u,n[u],sum[u]}' | sort -k3 -nr || true
 
-          echo '=== RELEVANT SERVICE MEMORY ==='
-          systemctl show php8.3-fpm -p ActiveState -p MemoryCurrent -p MemoryPeak -p NRestarts --no-pager 2>/dev/null || true
-          systemctl show mariadb -p ActiveState -p MemoryCurrent -p MemoryPeak -p MemorySwapCurrent -p NRestarts --no-pager 2>/dev/null || true
-          systemctl show postgresql -p ActiveState -p MemoryCurrent -p MemoryPeak -p NRestarts --no-pager 2>/dev/null || true
-          systemctl show nginx -p ActiveState -p MemoryCurrent -p MemoryPeak -p NRestarts --no-pager 2>/dev/null || true
+          echo '=== PHP-FPM POOL CONFIG (NON-SECRET DIRECTIVES ONLY) ==='
+          for f in /etc/php/*/fpm/pool.d/*.conf; do
+            [[ -r "$f" ]] || continue
+            if grep -Eqi 'lordai|aleph1|secretmagic|horus|ayin' "$f"; then
+              echo "-- $f --"
+              grep -E '^\[[^]]+\]|^[[:space:]]*(user|group|listen|pm|pm\.max_children|pm\.start_servers|pm\.min_spare_servers|pm\.max_spare_servers|pm\.process_idle_timeout|pm\.max_requests|request_terminate_timeout|request_slowlog_timeout|slowlog)[[:space:]]*=' "$f" 2>/dev/null || true
+            fi
+          done
 
-          echo '=== PM2 AYIN ==='
+          echo '=== MARIADB MEMORY/CONNECTION DIRECTIVES (NO CREDS) ==='
+          grep -RhsE '^[[:space:]]*(innodb_buffer_pool_size|max_connections|thread_cache_size|table_open_cache|tmp_table_size|max_heap_table_size|performance_schema|key_buffer_size)[[:space:]]*=' /etc/mysql 2>/dev/null | head -80 || true
+          systemctl show mariadb -p NRestarts -p MemoryCurrent -p MemoryPeak -p MemorySwapCurrent -p ExecMainStartTimestamp --no-pager 2>/dev/null || true
+
+          echo '=== LORD-AI ACCESS LOG DISCOVERY ==='
+          for base in /home/lordai/logs /home/lordai/htdocs /var/log/nginx; do
+            [[ -d "$base" ]] || continue
+            find "$base" -maxdepth 3 -type f \( -iname '*access*.log' -o -iname '*error*.log' \) -readable 2>/dev/null | head -40
+          done
+
+          echo '=== AGGREGATED RECENT HTTP PATHS IF READABLE ==='
+          found=0
+          while IFS= read -r f; do
+            [[ -r "$f" ]] || continue
+            case "$f" in
+              *access*.log)
+                found=1
+                echo "-- $f (last 5000: status / path aggregate) --"
+                tail -5000 "$f" 2>/dev/null | awk '
+                  match($0,/"[A-Z]+ ([^ ?"]+)/,m) {path=m[1]}
+                  match($0,/" [0-9][0-9][0-9] /,s) {code=substr(s[0],3,3)}
+                  path!="" {p[path]++; if(code!="") c[code]++}
+                  END {
+                    print "TOP_PATHS";
+                    for(k in p) print p[k],k;
+                    print "STATUS_COUNTS";
+                    for(k in c) print c[k],k;
+                  }' | sort -nr | head -35 || true
+                ;;
+            esac
+          done < <(for base in /home/lordai/logs /home/lordai/htdocs /var/log/nginx; do [[ -d "$base" ]] && find "$base" -maxdepth 3 -type f -iname '*access*.log' -readable 2>/dev/null; done | head -10)
+          [[ "$found" -eq 1 ]] || echo 'NO_READABLE_ACCESS_LOGS_FROM_AYIN_USER'
+
+          echo '=== LONGEST / HEAVIEST PHP CHILDREN ==='
+          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,args --sort=-rss | awk '/php-fpm: pool/ && $0 !~ /awk/' | head -60 || true
+
+          echo '=== AYIN CONTROL ==='
           pm2 ls 2>/dev/null || true
           for name in ayin-web ayin-api; do
             pid="$(pm2 pid "$name" 2>/dev/null | head -1 || true)"
             if [[ "$pid" =~ ^[0-9]+$ ]] && [[ "$pid" -gt 0 ]]; then
-              echo "-- $name pid=$pid --"
-              ps -p "$pid" -o pid,ppid,user,stat,%cpu,%mem,rss,vsz,etime,nlwp,comm,args || true
-              grep -E '^(VmPeak|VmSize|VmRSS|VmSwap|Threads|voluntary_ctxt_switches|nonvoluntary_ctxt_switches):' "/proc/$pid/status" 2>/dev/null || true
+              ps -p "$pid" -o pid,user,stat,%cpu,%mem,rss,etime,comm,args || true
             fi
           done
-
-          echo '=== AYIN LOCAL LATENCY ==='
-          for i in $(seq 1 8); do
-            printf 'web[%s] ' "$i"
-            curl -sS -o /dev/null --max-time 8 -w 'code=%{http_code} connect=%{time_connect} start=%{time_starttransfer} total=%{time_total}\n' http://127.0.0.1:3000/ || true
-            printf 'api[%s] ' "$i"
-            curl -sS -o /dev/null --max-time 8 -w 'code=%{http_code} connect=%{time_connect} start=%{time_starttransfer} total=%{time_total}\n' http://127.0.0.1:4000/health || true
-            sleep 2
-          done
-
-          echo '=== NETWORK SUMMARY ==='
-          ss -s 2>/dev/null || true
-          printf 'connections_to_3000='; ss -Htan 2>/dev/null | awk '$4 ~ /:3000$/ || $5 ~ /:3000$/ {n++} END{print n+0}'
-          printf 'connections_to_4000='; ss -Htan 2>/dev/null | awk '$4 ~ /:4000$/ || $5 ~ /:4000$/ {n++} END{print n+0}'
-          printf 'connections_to_5432='; ss -Htan 2>/dev/null | awk '$4 ~ /:5432$/ || $5 ~ /:5432$/ {n++} END{print n+0}'
-
-          echo '=== AYIN ERROR LOG TAILS ==='
-          for f in "$HOME"/.pm2/logs/ayin-api-error.log "$HOME"/.pm2/logs/ayin-web-error.log; do
-            if [[ -r "$f" ]]; then echo "-- $f --"; tail -100 "$f"; fi
-          done
-
-          echo '=== DEPLOYED CODE HIGH-RISK CONSTRUCT SCAN (SOURCE ONLY) ==='
-          release="$(readlink -f /home/ayin/htdocs/current 2>/dev/null || true)"
-          if [[ -n "$release" && -d "$release" ]]; then
-            grep -RInE --exclude-dir=node_modules --exclude-dir=.next --exclude='*.map' \
-              'setInterval\(|setTimeout\(|while[[:space:]]*\(|for[[:space:]]*\(;;|Promise\.all\(|recursive|retry|poll' \
-              "$release/apps" "$release/packages" 2>/dev/null | head -300 || true
-          fi
-
-          echo '=== SECOND PROCESS SNAPSHOT ==='
-          sleep 10
-          date -u '+utc_now=%Y-%m-%dT%H:%M:%SZ'
-          uptime || true
-          free -h || true
-          ps -eo pid,ppid,user,stat,%cpu,%mem,rss,etime,comm,args --sort=-%cpu | head -35 || true
-          echo '=== END FORENSIC SNAPSHOT ==='
+          echo '=== END ==='
           REMOTE
