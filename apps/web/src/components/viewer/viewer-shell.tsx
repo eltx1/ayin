@@ -29,6 +29,8 @@ interface ProductNavigationItem {
   featureFlag: string | null;
 }
 
+type MobileIconName = "home" | "search" | "create" | "videos" | "channel" | "bell" | "menu";
+
 interface PublicProductControls {
   navigation: ProductNavigationItem[];
   announcement: { enabled: boolean; text: string; href: string | null };
@@ -92,11 +94,95 @@ function NavigationLinks({
     });
 }
 
+function MobileIcon({ name }: { name: MobileIconName }) {
+  if (name === "home") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M3.5 10.6 12 3.8l8.5 6.8v8.7a.9.9 0 0 1-.9.9h-5.1v-6.1h-5v6.1H4.4a.9.9 0 0 1-.9-.9z" />
+      </svg>
+    );
+  }
+  if (name === "search") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <circle cx="10.8" cy="10.8" r="6.2" />
+        <path d="m15.5 15.5 4.8 4.8" />
+      </svg>
+    );
+  }
+  if (name === "create") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    );
+  }
+  if (name === "videos") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <rect x="3.5" y="5" width="17" height="14" rx="2.2" />
+        <path d="m10 9 5 3-5 3z" />
+      </svg>
+    );
+  }
+  if (name === "channel") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="3.2" />
+        <path d="M5.2 20c.6-4 3-6 6.8-6s6.2 2 6.8 6" />
+      </svg>
+    );
+  }
+  if (name === "bell") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M6.2 16.8h11.6l-1.3-2.1V10a4.5 4.5 0 0 0-9 0v4.7z" />
+        <path d="M10 19.2a2.2 2.2 0 0 0 4 0" />
+      </svg>
+    );
+  }
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </svg>
+  );
+}
+
+function MobileTab({
+  href,
+  icon,
+  label,
+  pathname,
+  primary = false,
+}: {
+  href: string;
+  icon: MobileIconName;
+  label: string;
+  pathname: string | null;
+  primary?: boolean;
+}) {
+  const active = itemIsActive(pathname, href);
+  return (
+    <Link
+      aria-current={active ? "page" : undefined}
+      aria-label={label}
+      className={`${styles.mobileTab} ${active ? styles.mobileTabActive : ""} ${primary ? styles.mobileTabPrimary : ""}`}
+      href={href}
+    >
+      <span className={styles.mobileTabIcon}>
+        <MobileIcon name={icon} />
+      </span>
+      <span>{label}</span>
+    </Link>
+  );
+}
+
 export function ViewerShell({ children }: ViewerShellProperties) {
   const pathname = usePathname();
   const [flags, setFlags] = useState<NavigationFlagState>({});
   const [identity, setIdentity] = useState<AyinIdentity | null>(null);
   const [productControls, setProductControls] = useState<PublicProductControls | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -136,8 +222,15 @@ export function ViewerShell({ children }: ViewerShellProperties) {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   const navigation = productControls?.navigation ?? fallbackNavigation;
   const announcement = productControls?.announcement;
+  const createHref = identity ? "/upload" : "/register";
+  const videosHref = identity ? "/studio/content" : "/login";
+  const channelHref = identity ? `/c/${identity.channel.handle}` : "/login";
 
   return (
     <TvFocusScope className={styles.shell}>
@@ -193,12 +286,72 @@ export function ViewerShell({ children }: ViewerShellProperties) {
             className={styles.joinAction}
             data-tv-focus-id={identity ? "create-upload" : "join-ayin"}
             data-tv-focusable="true"
-            href={identity ? "/upload" : "/register"}
+            href={createHref}
           >
             {identity ? "Create / Upload" : "Join AYIN"}
           </Link>
         </div>
+
+        <div className={styles.mobileHeaderActions}>
+          {identity ? (
+            <Link className={styles.mobileIconButton} href="/notifications" aria-label="Notifications">
+              <MobileIcon name="bell" />
+            </Link>
+          ) : null}
+          <button
+            aria-controls="ayin-mobile-menu"
+            aria-expanded={mobileMenuOpen}
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            className={styles.mobileIconButton}
+            type="button"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            <MobileIcon name="menu" />
+          </button>
+        </div>
       </header>
+
+      {mobileMenuOpen ? (
+        <aside className={styles.mobileMenuPanel} id="ayin-mobile-menu">
+          <div className={styles.mobileMenuHeader}>
+            <div>
+              <strong>{identity ? identity.account.displayName : "Explore AYIN"}</strong>
+              <span>{identity ? `@${identity.channel.handle}` : "Watch, create and discover"}</span>
+            </div>
+            <button type="button" onClick={() => setMobileMenuOpen(false)}>
+              Close
+            </button>
+          </div>
+
+          {identity ? (
+            <nav aria-label="Account and creator navigation" className={styles.mobileAccountGrid}>
+              <Link href="/my-ayin">My AYIN</Link>
+              <Link href="/studio">Creator Studio</Link>
+              <Link href="/studio/content">My videos</Link>
+              <Link href={`/c/${identity.channel.handle}`}>My channel</Link>
+              <Link href="/channel/playlists">Playlists</Link>
+              <Link href="/channel/tv">Creator TV</Link>
+              <Link href="/notifications">Notifications</Link>
+              <Link href="/channel/edit">Channel settings</Link>
+            </nav>
+          ) : (
+            <nav aria-label="Account navigation" className={styles.mobileAccountGrid}>
+              <Link href="/login">Sign in</Link>
+              <Link href="/register">Create account</Link>
+            </nav>
+          )}
+
+          <div className={styles.mobileMenuDivider} />
+          <nav aria-label="Browse AYIN" className={styles.mobileProductNavigation}>
+            <NavigationLinks
+              flags={flags}
+              items={navigation}
+              pathname={pathname}
+              surface="mobile-menu"
+            />
+          </nav>
+        </aside>
+      ) : null}
 
       {announcement?.enabled && announcement.text ? (
         <div className={styles.announcement} role="status">
@@ -231,7 +384,11 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
       {productControls?.deviceVisibility.mobile !== false ? (
         <nav aria-label="Mobile navigation" className={styles.mobileNavigation}>
-          <NavigationLinks flags={flags} items={navigation} pathname={pathname} surface="mobile" />
+          <MobileTab href="/" icon="home" label="Home" pathname={pathname} />
+          <MobileTab href="/search" icon="search" label="Search" pathname={pathname} />
+          <MobileTab href={createHref} icon="create" label="Create" pathname={pathname} primary />
+          <MobileTab href={videosHref} icon="videos" label="Videos" pathname={pathname} />
+          <MobileTab href={channelHref} icon="channel" label="Channel" pathname={pathname} />
         </nav>
       ) : null}
     </TvFocusScope>
