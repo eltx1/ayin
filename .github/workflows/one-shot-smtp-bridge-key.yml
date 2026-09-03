@@ -1,0 +1,55 @@
+name: One-shot prepare encrypted SMTP bridge
+
+on:
+  push:
+    branches:
+      - smtp-password-recovery-20260904
+    paths:
+      - .github/workflows/one-shot-smtp-bridge-key.yml
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+    steps:
+      - name: Configure pinned AYIN SSH trust
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -T 7 -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate" 2>/dev/null
+          actual="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR==1{print $2}')"
+          test "$actual" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Create server-local one-time bridge key
+        run: |
+          set -euo pipefail
+          ssh -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "AYIN_REMOTE_HOSTNAME=$(hostname)"
+          private=/tmp/ayin-smtp-bridge-private.pem
+          public=/tmp/ayin-smtp-bridge-public.pem
+          encrypted=/tmp/ayin-smtp-bridge.enc
+          rm -f "$private" "$public" "$encrypted"
+          umask 077
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$private" >/dev/null 2>&1
+          chmod 600 "$private"
+          openssl pkey -in "$private" -pubout -out "$public"
+          chmod 644 "$public"
+          echo "AYIN_SMTP_BRIDGE_PUBLIC_KEY_READY=YES"
+          REMOTE
