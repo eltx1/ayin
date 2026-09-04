@@ -199,9 +199,23 @@ export class MediaProcessingExecutorService {
 }
 
 function sourceExtension(mimeType: string): string {
-  if (mimeType === "video/quicktime") return ".mov";
-  if (mimeType === "video/mp4") return ".mp4";
-  return ".source";
+  const extensions: Record<string, string> = {
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "video/x-matroska": ".mkv",
+    "video/webm": ".webm",
+    "video/x-msvideo": ".avi",
+    "video/mpeg": ".mpeg",
+    "video/mp2t": ".m2ts",
+    "video/3gpp": ".3gp",
+    "video/3gpp2": ".3g2",
+    "video/x-m4v": ".m4v",
+    "video/x-ms-wmv": ".wmv",
+    "video/x-flv": ".flv",
+    "video/ogg": ".ogv",
+    "application/mxf": ".mxf",
+  };
+  return extensions[mimeType] ?? ".source";
 }
 
 function isVerifiedCanonical(
