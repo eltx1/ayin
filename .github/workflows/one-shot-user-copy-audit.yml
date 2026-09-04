@@ -1,0 +1,34 @@
+name: One-shot user-facing copy audit
+
+on:
+  push:
+    branches:
+      - mobile-ux-iphone-upload-20260904
+
+permissions:
+  contents: read
+
+jobs:
+  audit-copy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Scan viewer and creator surfaces for internal implementation language
+        shell: bash
+        run: |
+          set +e
+          rg -n -i \
+            'Cloudflare|\bR2\b|adapter|schema|UUID|deterministic|fallback|\bV1\b|\bV2\b|internal|direct[- ]to|playback-ready|implementation' \
+            'apps/web/src/app/(viewer)' \
+            apps/web/src/components/upload \
+            apps/web/src/components/channel \
+            apps/web/src/components/creator-tv \
+            apps/web/src/components/account \
+            apps/web/src/components/studio \
+            apps/web/src/components/player \
+            > /tmp/user-copy-audit.txt
+          status=$?
+          echo '--- USER COPY AUDIT MATCHES ---'
+          cat /tmp/user-copy-audit.txt || true
+          echo '--- END USER COPY AUDIT MATCHES ---'
+          if [ "$status" -gt 1 ]; then exit "$status"; fi
