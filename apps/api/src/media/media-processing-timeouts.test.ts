@@ -7,6 +7,8 @@ describe("media processing timeouts", () => {
     expect(resolveMediaProcessingTimeouts({})).toEqual({
       ffprobeMs: 120_000,
       ffmpegMs: 21_600_000,
+      r2MetadataMs: 60_000,
+      r2TransferMs: 21_600_000,
     });
   });
 
@@ -15,8 +17,15 @@ describe("media processing timeouts", () => {
       resolveMediaProcessingTimeouts({
         MEDIA_PROCESSING_FFPROBE_TIMEOUT_SECONDS: "45",
         MEDIA_PROCESSING_FFMPEG_TIMEOUT_SECONDS: "3600",
+        MEDIA_PROCESSING_R2_METADATA_TIMEOUT_SECONDS: "30",
+        MEDIA_PROCESSING_R2_TRANSFER_TIMEOUT_SECONDS: "7200",
       }),
-    ).toEqual({ ffprobeMs: 45_000, ffmpegMs: 3_600_000 });
+    ).toEqual({
+      ffprobeMs: 45_000,
+      ffmpegMs: 3_600_000,
+      r2MetadataMs: 30_000,
+      r2TransferMs: 7_200_000,
+    });
   });
 
   it("rejects malformed or unsafe timeout overrides", () => {
@@ -29,5 +38,11 @@ describe("media processing timeouts", () => {
     expect(() =>
       resolveMediaProcessingTimeouts({ MEDIA_PROCESSING_FFMPEG_TIMEOUT_SECONDS: "86401" }),
     ).toThrow(/MEDIA_PROCESSING_FFMPEG_TIMEOUT_SECONDS/);
+    expect(() =>
+      resolveMediaProcessingTimeouts({ MEDIA_PROCESSING_R2_METADATA_TIMEOUT_SECONDS: "5" }),
+    ).toThrow(/MEDIA_PROCESSING_R2_METADATA_TIMEOUT_SECONDS/);
+    expect(() =>
+      resolveMediaProcessingTimeouts({ MEDIA_PROCESSING_R2_TRANSFER_TIMEOUT_SECONDS: "299" }),
+    ).toThrow(/MEDIA_PROCESSING_R2_TRANSFER_TIMEOUT_SECONDS/);
   });
 });
