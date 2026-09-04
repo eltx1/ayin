@@ -10,6 +10,7 @@ import { PlatformSettingsService } from "../platform-config/platform-settings.se
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
+import { resolveMediaProcessingTimeouts } from "./media-processing-timeouts.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -25,6 +26,8 @@ export class MediaProcessingExecutorService {
   private readonly workRoot: string;
   private readonly ffmpegPath: string;
   private readonly ffprobePath: string;
+  private readonly ffprobeTimeoutMs: number;
+  private readonly ffmpegTimeoutMs: number;
 
   constructor(
     @Inject(MediaProcessingQueueService) private readonly queue: MediaProcessingQueueService,
@@ -39,6 +42,9 @@ export class MediaProcessingExecutorService {
     }
     this.ffmpegPath = process.env.FFMPEG_PATH?.trim() || "ffmpeg";
     this.ffprobePath = process.env.FFPROBE_PATH?.trim() || "ffprobe";
+    const timeouts = resolveMediaProcessingTimeouts();
+    this.ffprobeTimeoutMs = timeouts.ffprobeMs;
+    this.ffmpegTimeoutMs = timeouts.ffmpegMs;
   }
 
   async process(job: MediaProcessingJob, workerId: string): Promise<void> {
@@ -90,6 +96,7 @@ export class MediaProcessingExecutorService {
           maxHeight: maxHeight as number,
           crf: crf as number,
           preset: preset as string,
+          timeoutMs: this.ffmpegTimeoutMs,
         });
         canonicalMetadata = await this.probe(outputPath);
         if (!canonicalMetadata.width || !canonicalMetadata.height) {
@@ -143,19 +150,33 @@ export class MediaProcessingExecutorService {
   }
 
   private async probe(filePath: string): Promise<ProbeMetadata> {
-    const { stdout } = await execFileAsync(
-      this.ffprobePath,
-      [
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration:stream=codec_type,width,height",
-        "-of",
-        "json",
-        filePath,
-      ],
-      { maxBuffer: 2 * 1024 * 1024 },
-    );
+    let stdout: string;
+    try {
+      ({ stdout } = await execFileAsync(
+        this.ffprobePath,
+        [
+          "-v",
+          "error",
+          "-show_entries",
+          "format=duration:stream=codec_type,width,height",
+          "-of",
+          "json",
+          filePath,
+        ],
+        {
+          maxBuffer: 2 * 1024 * 1024,
+          timeout: this.ffprobeTimeoutMs,
+          killSignal: "SIGKILL",
+        },
+      ));
+    } catch (error) {
+      if (wasKilledByTimeout(error)) {
+        throw new Error(
+          `FFprobe timed out after ${Math.ceil(this.ffprobeTimeoutMs / 1000)} seconds.`,
+        );
+      }
+      throw error;
+    }
     const parsed = JSON.parse(stdout) as {
       format?: { duration?: string };
       streams?: Array<{ codec_type?: string; width?: number; height?: number }>;
@@ -228,6 +249,7 @@ function isVerifiedCanonical(
 
 function classifyProcessingError(error: unknown): string {
   const message = errorMessage(error).toLowerCase();
+  if (message.includes("timed out")) return "MEDIA_PROCESSING_TIMEOUT";
   if (message.includes("ffmpeg") || message.includes("ffprobe")) return "FFMPEG_PROCESSING_FAILED";
   if (message.includes("r2")) return "R2_PROCESSING_FAILED";
   if (message.includes("video stream")) return "INVALID_VIDEO_SOURCE";
@@ -238,6 +260,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function wasKilledByTimeout(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const processError = error as { killed?: boolean; signal?: string };
+  return processError.killed === true || processError.signal === "SIGKILL";
+}
+
 async function runFfmpeg(input: {
   executable: string;
   inputPath: string;
@@ -246,10 +274,12 @@ async function runFfmpeg(input: {
   maxHeight: number;
   crf: number;
   preset: string;
+  timeoutMs: number;
 }): Promise<void> {
   const scaleFilter = `scale=-2:min(${input.maxHeight}\\,ih)`;
   const args = [
     "-hide_banner",
+    "-nostdin",
     "-loglevel",
     "warning",
     "-y",
@@ -287,13 +317,28 @@ async function runFfmpeg(input: {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(input.executable, args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, input.timeoutMs);
+    timeout.unref();
+
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       stderr = `${stderr}${chunk}`.slice(-16_384);
     });
-    child.once("error", reject);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
     child.once("exit", (code, signal) => {
-      if (code === 0) {
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(
+          new Error(`FFmpeg timed out after ${Math.ceil(input.timeoutMs / 1000)} seconds.`),
+        );
+      } else if (code === 0) {
         resolve();
       } else {
         reject(
