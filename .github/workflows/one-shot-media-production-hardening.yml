@@ -1,0 +1,134 @@
+name: One-shot media production hardening
+
+on:
+  push:
+    paths:
+      - ".github/workflows/one-shot-media-production-hardening.yml"
+      - "scripts/apply-media-production-hardening.py"
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ayin_test
+          POSTGRES_PASSWORD: ayin
+          POSTGRES_USER: ayin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      AUTH_TOKEN_SECRET: media-hardening-auth-secret-with-more-than-32-characters
+      UPLOAD_SESSION_SECRET: media-hardening-upload-secret-with-more-than-32-characters
+      CORS_ORIGIN: http://localhost:3000
+      WEB_ORIGIN: http://localhost:3000
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: media-production-hardening-20260905
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply hardening patch
+        run: python3 scripts/apply-media-production-hardening.py
+
+      - name: Format source
+        run: pnpm exec prettier --write .
+
+      - name: Verify formatting
+        run: pnpm exec prettier --check .
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
+      - name: Generate Prisma client and migrate clean database
+        run: |
+          pnpm db:generate
+          pnpm db:migrate:deploy
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit and schema tests
+        run: pnpm test
+
+      - name: Integration tests
+        run: pnpm test:integration
+
+      - name: FFmpeg compatibility smoke test
+        run: |
+          set -euo pipefail
+          command -v ffmpeg
+          command -v ffprobe
+          ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libx264
+          rm -rf /tmp/ayin-ffmpeg-smoke
+          mkdir -p /tmp/ayin-ffmpeg-smoke
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i testsrc=size=640x360:rate=24:duration=2 \
+            -f lavfi -i sine=frequency=880:duration=2 \
+            -c:v libvpx-vp9 -b:v 350k -c:a libopus \
+            /tmp/ayin-ffmpeg-smoke/source.webm
+          ffmpeg -hide_banner -loglevel error -y \
+            -i /tmp/ayin-ffmpeg-smoke/source.webm \
+            -map 0:v:0 -map '0:a:0?' -map_metadata -1 \
+            -vf 'scale=-2:min(1080\,ih)' \
+            -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -threads 1 \
+            -c:a aac -b:a 128k -ac 2 -movflags +faststart \
+            /tmp/ayin-ffmpeg-smoke/canonical.mp4
+          ffprobe -v error -select_streams v:0 \
+            -show_entries stream=codec_name,pix_fmt -of default=nw=1 \
+            /tmp/ayin-ffmpeg-smoke/canonical.mp4 | grep -q 'codec_name=h264'
+          ffprobe -v error -select_streams v:0 \
+            -show_entries stream=pix_fmt -of default=nw=1 \
+            /tmp/ayin-ffmpeg-smoke/canonical.mp4 | grep -q 'pix_fmt=yuv420p'
+          ffprobe -v error -select_streams a:0 \
+            -show_entries stream=codec_name -of default=nw=1 \
+            /tmp/ayin-ffmpeg-smoke/canonical.mp4 | grep -q 'codec_name=aac'
+          test -s /tmp/ayin-ffmpeg-smoke/canonical.mp4
+          rm -rf /tmp/ayin-ffmpeg-smoke
+
+      - name: Production build
+        run: pnpm build
+
+      - name: Validate deployment tooling
+        run: pnpm deploy:validate
+
+      - name: Remove one-shot tooling
+        run: |
+          rm -f scripts/apply-media-production-hardening.py
+          rm -f .github/workflows/one-shot-media-production-hardening.yml
+
+      - name: Commit validated hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Harden media formats, FFmpeg runtime and admin operations"
+          git push origin HEAD:media-production-hardening-20260905
