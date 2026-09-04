@@ -222,10 +222,6 @@ export function ViewerShell({ children }: ViewerShellProperties) {
     return () => controller.abort();
   }, []);
 
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
-
   const navigation = productControls?.navigation ?? fallbackNavigation;
   const announcement = productControls?.announcement;
   const createHref = identity ? "/upload" : "/register";
@@ -324,7 +320,15 @@ export function ViewerShell({ children }: ViewerShellProperties) {
       </header>
 
       {mobileMenuOpen ? (
-        <aside className={styles.mobileMenuPanel} id="ayin-mobile-menu">
+        <aside
+          className={styles.mobileMenuPanel}
+          id="ayin-mobile-menu"
+          onClick={(event) => {
+            if (event.target instanceof Element && event.target.closest("a")) {
+              setMobileMenuOpen(false);
+            }
+          }}
+        >
           <div className={styles.mobileMenuHeader}>
             <div>
               <strong>{identity ? identity.account.displayName : "Explore AYIN"}</strong>
