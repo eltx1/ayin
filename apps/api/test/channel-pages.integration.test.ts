@@ -116,6 +116,43 @@ databaseDescribe("Task 08 public creator channels", () => {
         publishedAt: new Date(),
       },
     });
+    await prisma.mediaAsset.create({
+      data: {
+        id: randomUUID(),
+        channelId,
+        videoId: publicVideoId,
+        kind: "SOURCE_VIDEO",
+        status: "VALIDATED",
+        r2ObjectKey: `channels/${channelId}/media/${publicVideoId}/canonical.mp4`,
+        mimeType: "video/mp4",
+        sizeBytes: 1024n,
+      },
+    });
+
+    const rawVideoId = randomUUID();
+    await prisma.video.create({
+      data: {
+        id: rawVideoId,
+        channelId,
+        slug: `raw-${rawVideoId.slice(0, 8)}`,
+        title: "Still Processing",
+        status: "PUBLISHED",
+        visibility: "PUBLIC",
+        publishedAt: new Date(),
+      },
+    });
+    await prisma.mediaAsset.create({
+      data: {
+        id: randomUUID(),
+        channelId,
+        videoId: rawVideoId,
+        kind: "SOURCE_VIDEO",
+        status: "UPLOADED",
+        r2ObjectKey: `channels/${channelId}/media/${rawVideoId}/raw.mov`,
+        mimeType: "video/quicktime",
+        sizeBytes: 1024n,
+      },
+    });
     await prisma.video.create({
       data: {
         id: randomUUID(),
@@ -147,6 +184,9 @@ databaseDescribe("Task 08 public creator channels", () => {
     expect(body.channel.handle).toBe(owner.user.channel.handle);
     expect(body.videos).toHaveLength(1);
     expect(body.videos[0].title).toBe("Visible Worldwide");
+    expect(body.videos.some((video: { title: string }) => video.title === "Still Processing")).toBe(
+      false,
+    );
     expect(body.playlists.some((playlist: { name: string }) => playlist.name === "Uploads")).toBe(
       true,
     );
