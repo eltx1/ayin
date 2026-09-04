@@ -21,6 +21,7 @@ describe("video source detection", () => {
     const source = { name: "clip.webm", type: "video/webm" };
     expect(detectVideoContainer(source)).toBeNull();
     expect(isSupportedVideoFile(source)).toBe(false);
+    expect(() => videoMimeTypeForUpload(source)).toThrow(/Unsupported video source/u);
   });
 
   it("preserves the correct upload MIME for each supported source", () => {
