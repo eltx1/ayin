@@ -21,8 +21,13 @@ export function isSupportedVideoFile(file: Pick<File, "type" | "name">): boolean
   return detectVideoContainer(file) !== null;
 }
 
-export function videoMimeTypeForUpload(file: Pick<File, "type" | "name">): "video/mp4" | "video/quicktime" {
-  return detectVideoContainer(file) === "mov" ? "video/quicktime" : "video/mp4";
+export function videoMimeTypeForUpload(
+  file: Pick<File, "type" | "name">,
+): "video/mp4" | "video/quicktime" {
+  const container = detectVideoContainer(file);
+  if (container === "mp4") return "video/mp4";
+  if (container === "mov") return "video/quicktime";
+  throw new Error("Unsupported video source. Choose an MP4 or iPhone MOV video.");
 }
 
 export async function inspectVideoFile(file: File): Promise<VideoInspectionResult> {
@@ -49,13 +54,10 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
 
   const video = document.createElement("video");
   if (container === "mov") {
-    const quickTimeCapability = video.canPlayType("video/quicktime");
     return {
       status: "unknown",
       message:
-        quickTimeCapability || metadata.readable
-          ? "iPhone MOV opened successfully and can be uploaded. AYIN keeps the original source, so verify playback on Android/TV before broad publishing."
-          : "AYIN can upload this MOV source, but this browser cannot confirm cross-device playback compatibility.",
+        "iPhone MOV opened successfully and can be uploaded. AYIN keeps the original source, so verify playback on Android/TV before broad publishing.",
       durationSeconds: metadata.durationSeconds,
     };
   }
