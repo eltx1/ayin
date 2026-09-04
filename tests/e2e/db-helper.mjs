@@ -31,6 +31,7 @@ try {
       };
       break;
     }
+    // E2E has no long-running FFmpeg worker, so mirror the tested worker finalization state.
     case "mark-media-ready": {
       const job = await prisma.mediaProcessingJob.findFirstOrThrow({
         where: { videoId: payload.videoId },
