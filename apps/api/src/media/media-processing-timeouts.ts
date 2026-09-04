@@ -1,10 +1,14 @@
 export interface MediaProcessingTimeouts {
   ffprobeMs: number;
   ffmpegMs: number;
+  r2MetadataMs: number;
+  r2TransferMs: number;
 }
 
 const DEFAULT_FFPROBE_TIMEOUT_SECONDS = 120;
 const DEFAULT_FFMPEG_TIMEOUT_SECONDS = 6 * 60 * 60;
+const DEFAULT_R2_METADATA_TIMEOUT_SECONDS = 60;
+const DEFAULT_R2_TRANSFER_TIMEOUT_SECONDS = 6 * 60 * 60;
 
 export function resolveMediaProcessingTimeouts(
   env: NodeJS.ProcessEnv = process.env,
@@ -24,6 +28,22 @@ export function resolveMediaProcessingTimeouts(
         "MEDIA_PROCESSING_FFMPEG_TIMEOUT_SECONDS",
         DEFAULT_FFMPEG_TIMEOUT_SECONDS,
         60,
+        24 * 60 * 60,
+      ) * 1000,
+    r2MetadataMs:
+      parseTimeoutSeconds(
+        env.MEDIA_PROCESSING_R2_METADATA_TIMEOUT_SECONDS,
+        "MEDIA_PROCESSING_R2_METADATA_TIMEOUT_SECONDS",
+        DEFAULT_R2_METADATA_TIMEOUT_SECONDS,
+        10,
+        600,
+      ) * 1000,
+    r2TransferMs:
+      parseTimeoutSeconds(
+        env.MEDIA_PROCESSING_R2_TRANSFER_TIMEOUT_SECONDS,
+        "MEDIA_PROCESSING_R2_TRANSFER_TIMEOUT_SECONDS",
+        DEFAULT_R2_TRANSFER_TIMEOUT_SECONDS,
+        300,
         24 * 60 * 60,
       ) * 1000,
   };
