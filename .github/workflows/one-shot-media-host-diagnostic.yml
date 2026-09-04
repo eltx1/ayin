@@ -1,0 +1,72 @@
+name: One-shot media host diagnostic
+
+on:
+  push:
+    branches:
+      - media-processing-diagnostic-20260904
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Configure pinned SSH host key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -p 22 13.52.116.200 > /tmp/ayin-known-hosts
+          actual=$(ssh-keygen -lf /tmp/ayin-known-hosts -E sha256 | awk 'NR==1 {print $2}')
+          test "$actual" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
+          mv /tmp/ayin-known-hosts ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Install deployment SSH key
+        shell: bash
+        env:
+          AYIN_DEPLOY_SSH_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$AYIN_DEPLOY_SSH_KEY"
+          printf '%s\n' "$AYIN_DEPLOY_SSH_KEY" > ~/.ssh/ayin_deploy
+          chmod 600 ~/.ssh/ayin_deploy
+      - name: Inspect media-processing capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/ayin_deploy -o BatchMode=yes -o StrictHostKeyChecking=yes ayin@13.52.116.200 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          echo "USER=$(whoami)"
+          echo "HOME=$HOME"
+          echo "CPU_COUNT=$(getconf _NPROCESSORS_ONLN)"
+          echo "--- MEMORY ---"
+          free -h
+          echo "--- ROOT DISK ---"
+          df -h /
+          echo "--- AYIN HOME DISK ---"
+          df -h /home/ayin
+          echo "--- FFMPEG ---"
+          if command -v ffmpeg >/dev/null 2>&1; then
+            command -v ffmpeg
+            ffmpeg -version | head -n 3
+          else
+            echo 'FFMPEG=missing'
+          fi
+          echo "--- FFPROBE ---"
+          if command -v ffprobe >/dev/null 2>&1; then
+            command -v ffprobe
+            ffprobe -version | head -n 2
+          else
+            echo 'FFPROBE=missing'
+          fi
+          echo "--- PM2 ---"
+          if command -v pm2 >/dev/null 2>&1; then
+            pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const p of JSON.parse(s)){console.log(`${p.name}|status=${p.pm2_env?.status}|pid=${p.pid}|memory=${p.monit?.memory}|cpu=${p.monit?.cpu}`)}})'
+          else
+            echo 'PM2=missing'
+          fi
+          echo "--- LOAD ---"
+          uptime
+          REMOTE
