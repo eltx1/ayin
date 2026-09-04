@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import {
   MEDIA_STORAGE_ADAPTER,
   MEDIA_STORAGE_CONFIG,
@@ -54,6 +55,8 @@ export class MediaUploadService {
     @Inject(MEDIA_STORAGE_ADAPTER) private readonly storage: MediaStorageAdapter,
     @Inject(MEDIA_STORAGE_CONFIG) private readonly config: MediaStorageConfig,
     @Inject(UploadSessionTokenService) private readonly tokens: UploadSessionTokenService,
+    @Inject(MediaProcessingLifecycleService)
+    private readonly processingLifecycle: MediaProcessingLifecycleService,
   ) {}
 
   async createSession(
@@ -231,6 +234,7 @@ export class MediaUploadService {
       select: { status: true },
     });
     if (existing?.status === "UPLOADED") {
+      await this.processingLifecycle.enqueueUploadedAsset(session.assetId);
       return { assetId: session.assetId, status: "UPLOADED" };
     }
 
@@ -263,6 +267,7 @@ export class MediaUploadService {
       where: { id: session.assetId },
       data: { status: "UPLOADED" },
     });
+    await this.processingLifecycle.enqueueUploadedAsset(session.assetId);
     return { assetId: session.assetId, status: "UPLOADED" };
   }
 
