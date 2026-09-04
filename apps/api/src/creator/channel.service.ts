@@ -470,6 +470,14 @@ export class ChannelService {
           status: "PUBLISHED" as const,
           visibility: "PUBLIC" as const,
           removedAt: null,
+          mediaAssets: {
+            some: {
+              kind: "SOURCE_VIDEO" as const,
+              status: "VALIDATED" as const,
+              removedAt: null,
+              mimeType: "video/mp4",
+            },
+          },
         },
         orderBy: [{ publishedAt: "desc" as const }, { createdAt: "desc" as const }],
         take: 24,
