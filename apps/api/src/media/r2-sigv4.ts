@@ -114,6 +114,7 @@ export class R2SigV4 {
     query?: Array<[string, string]>;
     body?: string;
     contentType?: string;
+    signal?: AbortSignal;
   }): Promise<Response> {
     const now = new Date();
     const amzDate = formatAmzDate(now);
@@ -156,6 +157,9 @@ export class R2SigV4 {
     const request: RequestInit = { method: input.method, headers };
     if (input.method === "POST") {
       request.body = body;
+    }
+    if (input.signal) {
+      request.signal = input.signal;
     }
     const response = await fetch(url, request);
     if (!response.ok) {
