@@ -1,6 +1,7 @@
-import { createWriteStream, createReadStream } from "node:fs";
-import { pipeline } from "node:stream/promises";
+import { createReadStream, createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
 import { Inject, Injectable } from "@nestjs/common";
 
@@ -25,7 +26,7 @@ export class MediaProcessingStorageService {
     this.assertR2();
     const response = await new R2SigV4(this.config).request({ method: "GET", key });
     if (!response.body) throw new Error("R2 returned an empty response body for the media source.");
-    const readable = Readable.fromWeb(response.body as import("node:stream/web").ReadableStream);
+    const readable = Readable.fromWeb(response.body as WebReadableStream);
     await pipeline(readable, createWriteStream(destinationPath, { flags: "wx" }));
   }
 
