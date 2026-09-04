@@ -335,9 +335,7 @@ async function runFfmpeg(input: {
     child.once("exit", (code, signal) => {
       clearTimeout(timeout);
       if (timedOut) {
-        reject(
-          new Error(`FFmpeg timed out after ${Math.ceil(input.timeoutMs / 1000)} seconds.`),
-        );
+        reject(new Error(`FFmpeg timed out after ${Math.ceil(input.timeoutMs / 1000)} seconds.`));
       } else if (code === 0) {
         resolve();
       } else {

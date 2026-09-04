@@ -44,11 +44,7 @@ function parseTimeoutSeconds(
     );
   }
   const seconds = Number(value);
-  if (
-    !Number.isSafeInteger(seconds) ||
-    seconds < minimumSeconds ||
-    seconds > maximumSeconds
-  ) {
+  if (!Number.isSafeInteger(seconds) || seconds < minimumSeconds || seconds > maximumSeconds) {
     throw new Error(
       `${name} must be an integer number of seconds between ${minimumSeconds} and ${maximumSeconds}.`,
     );
