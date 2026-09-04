@@ -11,6 +11,7 @@ import {
   type MediaStorageAdapter,
 } from "./media-storage.adapter.js";
 import { loadMediaStorageConfig, type MediaStorageConfig } from "./media-storage.config.js";
+import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 import { MediaUploadController } from "./media-upload.controller.js";
 import { MediaUploadService } from "./media-upload.service.js";
 import { R2MediaStorageAdapter } from "./r2-media-storage.adapter.js";
@@ -34,7 +35,13 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     UploadSessionTokenService,
     UploadRateLimiter,
     MediaUploadService,
+    MediaProcessingQueueService,
   ],
-  exports: [MEDIA_STORAGE_ADAPTER, MEDIA_STORAGE_CONFIG, MediaUploadService],
+  exports: [
+    MEDIA_STORAGE_ADAPTER,
+    MEDIA_STORAGE_CONFIG,
+    MediaUploadService,
+    MediaProcessingQueueService,
+  ],
 })
 export class MediaModule {}
