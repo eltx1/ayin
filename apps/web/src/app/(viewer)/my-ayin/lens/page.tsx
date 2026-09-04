@@ -9,7 +9,7 @@ export default function AyinLensPage() {
         <h1>AYIN Lens</h1>
         <p>
           See why AYIN is recommending each item, dismiss suggestions, and reset the signals used by
-          the V1 explainable ranking system.
+          the recommendation signals used for your experience.
         </p>
       </header>
       <AyinLensClient />
