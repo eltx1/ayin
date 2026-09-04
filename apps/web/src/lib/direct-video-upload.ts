@@ -84,9 +84,7 @@ export async function uploadPreparedVideoDirectly(input: {
       }),
     );
     if (!etag) {
-      throw new Error(
-        "R2 uploaded a part but did not expose its ETag. Check the bucket CORS ExposeHeaders setting.",
-      );
+      throw new Error("One upload part could not be verified. Please retry the upload.");
     }
     completedParts.set(partNumber, { partNumber, etag });
     completedBytes += blob.size;
@@ -138,12 +136,12 @@ function uploadBlob(
         onProgress(event.loaded);
       }
     };
-    request.onerror = () => reject(new Error("The direct R2 upload was interrupted."));
+    request.onerror = () => reject(new Error("The upload was interrupted. Please retry."));
     request.onload = () => {
       if (request.status >= 200 && request.status < 300) {
         resolve(request.getResponseHeader("etag"));
       } else {
-        reject(new Error("R2 rejected this upload part. Please retry."));
+        reject(new Error("This upload part could not be saved. Please retry."));
       }
     };
     request.send(blob);

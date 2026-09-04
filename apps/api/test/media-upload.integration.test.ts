@@ -132,13 +132,46 @@ databaseDescribe("direct creator media upload", () => {
     expect(body.mode).toBe("multipart");
   });
 
+  it("accepts common processing source formats and preserves their source extension", async () => {
+    const owner = await register("Format Owner", "format-owner@example.com");
+    const formats = [
+      ["video/quicktime", "mov"],
+      ["video/x-matroska", "mkv"],
+      ["video/webm", "webm"],
+      ["video/x-msvideo", "avi"],
+      ["video/mpeg", "mpeg"],
+      ["video/mp2t", "m2ts"],
+      ["video/3gpp", "3gp"],
+      ["video/x-m4v", "m4v"],
+      ["video/x-ms-wmv", "wmv"],
+      ["video/x-flv", "flv"],
+      ["video/ogg", "ogv"],
+      ["application/mxf", "mxf"],
+    ] as const;
+
+    for (const [mimeType, extension] of formats) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/media/uploads/sessions",
+        headers: { cookie: owner.cookie },
+        payload: { channelId: owner.user.channel.id, sizeBytes: 1024, mimeType },
+      });
+      expect(response.statusCode).toBe(201);
+      expect(response.json().objectKey).toMatch(new RegExp(`source\\.${extension}$`, "u"));
+    }
+  });
+
   it("rejects invalid type and oversize files with friendly errors", async () => {
     const owner = await register("Validation Owner", "validation-owner@example.com");
     const invalidType = await app.inject({
       method: "POST",
       url: "/media/uploads/sessions",
       headers: { cookie: owner.cookie },
-      payload: { channelId: owner.user.channel.id, sizeBytes: 1024, mimeType: "video/webm" },
+      payload: {
+        channelId: owner.user.channel.id,
+        sizeBytes: 1024,
+        mimeType: "application/octet-stream",
+      },
     });
     expect(invalidType.statusCode).toBe(400);
     expect(invalidType.json().error.code).toBe("UNSUPPORTED_VIDEO_TYPE");
