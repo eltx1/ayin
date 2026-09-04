@@ -61,9 +61,10 @@ databaseDescribe("Task 09 playlist product", () => {
     channelId: string,
     title: string,
     visibility: "PUBLIC" | "UNLISTED" | "PRIVATE" = "PUBLIC",
+    assetStatus: "UPLOADED" | "VALIDATED" = "VALIDATED",
   ) {
     const id = randomUUID();
-    return prisma.video.create({
+    const video = await prisma.video.create({
       data: {
         id,
         channelId,
@@ -74,6 +75,19 @@ databaseDescribe("Task 09 playlist product", () => {
         publishedAt: new Date(),
       },
     });
+    await prisma.mediaAsset.create({
+      data: {
+        id: randomUUID(),
+        channelId,
+        videoId: id,
+        kind: "SOURCE_VIDEO",
+        status: assetStatus,
+        r2ObjectKey: `channels/${channelId}/media/${id}/${assetStatus.toLowerCase()}.mp4`,
+        mimeType: "video/mp4",
+        sizeBytes: 1024n,
+      },
+    });
+    return video;
   }
 
   async function createPlaylist(
@@ -287,8 +301,14 @@ databaseDescribe("Task 09 playlist product", () => {
     );
     const publicVideo = await publishedVideo(owner.user.channel.id, "Public Video", "PUBLIC");
     const privateVideo = await publishedVideo(owner.user.channel.id, "Private Video", "PRIVATE");
+    const rawVideo = await publishedVideo(
+      owner.user.channel.id,
+      "Still Processing",
+      "PUBLIC",
+      "UPLOADED",
+    );
 
-    for (const video of [publicVideo, privateVideo]) {
+    for (const video of [publicVideo, privateVideo, rawVideo]) {
       const added = await app.inject({
         method: "POST",
         url: `/creator/playlists/${publicPlaylist.id}/items`,
@@ -327,6 +347,11 @@ databaseDescribe("Task 09 playlist product", () => {
       publicPage
         .json()
         .items.some((item: { video: { title: string } }) => item.video.title === "Private Video"),
+    ).toBe(false);
+    expect(
+      publicPage
+        .json()
+        .items.some((item: { video: { title: string } }) => item.video.title === "Still Processing"),
     ).toBe(false);
 
     const unlistedPage = await app.inject({
