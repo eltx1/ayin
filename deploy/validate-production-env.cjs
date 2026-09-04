@@ -57,6 +57,19 @@ function requireMinimumLength(env, key, minimum, scope) {
   }
 }
 
+function requireOptionalIntegerRange(env, key, minimum, maximum, scope) {
+  const raw = env[key]?.trim();
+  if (!raw) return;
+  if (!/^\d+$/.test(raw)) {
+    fail(`${scope}: ${key} must be an integer between ${minimum} and ${maximum}`);
+    return;
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    fail(`${scope}: ${key} must be an integer between ${minimum} and ${maximum}`);
+  }
+}
+
 function requirePostgresUrl(env, key, scope) {
   const value = requireValue(env, key, scope);
   if (value === null) return;
@@ -115,6 +128,14 @@ requireMinimumLength(apiEnv, "AUTH_TOKEN_SECRET", 32, "api.env");
 requireBase64Bytes(apiEnv, "PAYOUT_DATA_ENCRYPTION_KEY", 32, "api.env");
 requireMinimumLength(apiEnv, "ANALYTICS_HASH_SALT", 32, "api.env");
 requireMinimumLength(apiEnv, "UPLOAD_SESSION_SECRET", 32, "api.env");
+requireOptionalIntegerRange(apiEnv, "MEDIA_PROCESSING_FFPROBE_TIMEOUT_SECONDS", 10, 600, "api.env");
+requireOptionalIntegerRange(
+  apiEnv,
+  "MEDIA_PROCESSING_FFMPEG_TIMEOUT_SECONDS",
+  60,
+  86_400,
+  "api.env",
+);
 
 for (const key of ["R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"]) {
   requireValue(apiEnv, key, "api.env");
