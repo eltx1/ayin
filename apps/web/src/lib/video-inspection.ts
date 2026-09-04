@@ -156,9 +156,7 @@ export function isSupportedVideoFile(file: Pick<File, "type" | "name">): boolean
   return sourceFormatFor(file) !== null;
 }
 
-export function videoMimeTypeForUpload(
-  file: Pick<File, "type" | "name">,
-): UploadVideoMimeType {
+export function videoMimeTypeForUpload(file: Pick<File, "type" | "name">): UploadVideoMimeType {
   const format = sourceFormatFor(file);
   if (!format) throw new Error("This video format is not supported yet.");
   return format.mimeType;
@@ -169,7 +167,8 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
   if (!container) {
     return {
       status: "incompatible",
-      message: "This video format is not supported yet. Choose a common phone or camera video file.",
+      message:
+        "This video format is not supported yet. Choose a common phone or camera video file.",
       durationSeconds: null,
     };
   }
@@ -186,7 +185,8 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
   if (container !== "mp4") {
     return {
       status: "unknown",
-      message: "Video opened successfully. AYIN will prepare it for reliable playback after upload.",
+      message:
+        "Video opened successfully. AYIN will prepare it for reliable playback after upload.",
       durationSeconds: metadata.durationSeconds,
     };
   }
