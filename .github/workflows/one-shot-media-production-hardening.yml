@@ -55,6 +55,34 @@ jobs:
       - name: Apply hardening patch
         run: python3 scripts/apply-media-production-hardening.py
 
+      - name: Make initial admin refresh event-driven
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("apps/web/src/components/admin/admin-media-processing.tsx")
+          text = path.read_text()
+          old = '''  useEffect(() => {
+            void load();
+            const timer = window.setInterval(() => void load(), 5000);
+            return () => window.clearInterval(timer);
+          }, [load]);'''
+          new = '''  useEffect(() => {
+            const initial = window.setTimeout(() => void load(), 0);
+            const timer = window.setInterval(() => void load(), 5000);
+            return () => {
+              window.clearTimeout(initial);
+              window.clearInterval(timer);
+            };
+          }, [load]);'''
+          if old not in text:
+              compact_old = old.replace("            ", "    ")
+              if compact_old in text:
+                  old = compact_old
+              else:
+                  raise SystemExit("admin media effect anchor missing")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Format source
         run: pnpm exec prettier --write .
 
