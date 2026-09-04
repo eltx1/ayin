@@ -57,6 +57,27 @@ jobs:
       - name: Apply integration patch
         run: python3 scripts/apply-media-pipeline-integration.py
 
+      - name: Fix exact optional processing signal
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("apps/web/src/lib/quick-upload.ts")
+          text = path.read_text()
+          old = '''  const response = await fetch(`${apiBaseUrl}/creator/videos/${videoId}/processing`, {
+            credentials: "include",
+            cache: "no-store",
+            signal,
+          });'''
+          new = '''  const response = await fetch(`${apiBaseUrl}/creator/videos/${videoId}/processing`, {
+            credentials: "include",
+            cache: "no-store",
+            ...(signal ? { signal } : {}),
+          });'''
+          if old not in text:
+              raise SystemExit("processing signal patch anchor missing")
+          path.write_text(text.replace(old, new, 1))
+          PY
+
       - name: Format integrated source
         run: pnpm exec prettier --write .
 
@@ -100,5 +121,3 @@ jobs:
           fi
           git commit -m "feat: integrate canonical media processing pipeline"
           git push origin HEAD:ec2-ffmpeg-media-pipeline-20260904
-
-# retry after converting Node file streams to Web ReadableStream for fetch
