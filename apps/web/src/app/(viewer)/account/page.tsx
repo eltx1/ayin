@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { AccountOverview } from "@/components/account/account-overview";
-import { StudioRevenue } from "@/components/studio/studio-revenue";
+import { AccountRevenue } from "@/components/account/account-revenue";
 
 import styles from "./account.module.css";
 
@@ -15,9 +15,7 @@ export default function AccountPage() {
       <header className={styles.hero}>
         <span className={styles.eyebrow}>Your AYIN</span>
         <h1>Account</h1>
-        <p>
-          Your channel, videos, analytics, earnings and payouts in one place.
-        </p>
+        <p>Your channel, videos, analytics, earnings and payouts in one place.</p>
       </header>
 
       <AccountOverview />
@@ -26,7 +24,7 @@ export default function AccountPage() {
         <h2>Earnings & payouts</h2>
         <p>Track your balance, payment readiness and payout history.</p>
       </div>
-      <StudioRevenue />
+      <AccountRevenue />
     </main>
   );
 }
