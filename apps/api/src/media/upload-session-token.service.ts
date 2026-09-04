@@ -14,7 +14,7 @@ const payloadSchema = z.object({
   objectKey: z.string().min(1).max(1024),
   uploadId: z.string().min(1).nullable(),
   mode: z.enum(["single", "multipart"]),
-  mimeType: z.literal("video/mp4"),
+  mimeType: z.enum(["video/mp4", "video/quicktime"]),
   sizeBytes: z.number().int().positive(),
   partSizeBytes: z.number().int().positive(),
   expiresAtMs: z.number().int().positive(),
