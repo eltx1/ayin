@@ -2,6 +2,7 @@
 set -euo pipefail
 umask 027
 
+# Keep the verified runtime outside release directories so successful media jobs never depend on an old release.
 AYIN_BIN_DIR="${AYIN_BIN_DIR:-/home/ayin/bin}"
 FFMPEG_VERSION="6.0.1"
 FFMPEG_URL="https://www.johnvansickle.com/ffmpeg/old-releases/ffmpeg-6.0.1-amd64-static.tar.xz"
