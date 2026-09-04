@@ -1,4 +1,4 @@
-name: Install production FFmpeg runtime
+name: Activate production FFmpeg runtime
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  install:
+  activate:
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -35,38 +35,23 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Install verified FFmpeg and restart media worker
+      - name: Activate verified runtime and smoke test
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
           set -euo pipefail
-          asset='ffmpeg-n8.1-latest-linux64-gpl-8.1.tar.xz'
-          base='https://github.com/BtbN/FFmpeg-Builds/releases/latest/download'
-          work="$(mktemp -d /tmp/ayin-ffmpeg-install.XXXXXX)"
-          trap 'rm -rf "$work"' EXIT
-          cd "$work"
+          ffmpeg=/home/ayin/bin/ffmpeg
+          ffprobe=/home/ayin/bin/ffprobe
+          test -x "$ffmpeg"
+          test -x "$ffprobe"
+          "$ffmpeg" -version | sed -n '1p'
+          "$ffprobe" -version | sed -n '1p'
 
-          curl --fail --location --retry 3 --retry-delay 2 -o "$asset" "$base/$asset"
-          curl --fail --location --retry 3 --retry-delay 2 -o checksums.sha256 "$base/checksums.sha256"
-          grep -E "[[:space:]*]${asset}$" checksums.sha256 > expected.sha256
-          test -s expected.sha256
-          sha256sum -c expected.sha256
-
-          mkdir extracted
-          tar -xJf "$asset" -C extracted
-          ffmpeg_src="$(find extracted -type f -path '*/bin/ffmpeg' -print -quit)"
-          ffprobe_src="$(find extracted -type f -path '*/bin/ffprobe' -print -quit)"
-          test -n "$ffmpeg_src"
-          test -n "$ffprobe_src"
-
-          install -d -m 755 /home/ayin/bin
-          install -m 755 "$ffmpeg_src" /home/ayin/bin/ffmpeg
-          install -m 755 "$ffprobe_src" /home/ayin/bin/ffprobe
-
-          /home/ayin/bin/ffmpeg -version | head -n 1
-          /home/ayin/bin/ffprobe -version | head -n 1
-          /home/ayin/bin/ffmpeg -hide_banner -encoders 2>/dev/null | grep -q 'libx264'
+          encoders="$(mktemp /tmp/ayin-encoders.XXXXXX)"
+          "$ffmpeg" -hide_banner -encoders > "$encoders" 2>/dev/null
+          grep -q 'libx264' "$encoders"
+          rm -f "$encoders"
 
           env_file=/home/ayin/env/api.env
           test -f "$env_file"
@@ -76,13 +61,13 @@ jobs:
           chmod 600 "$env_tmp"
           mv "$env_tmp" "$env_file"
 
-          pm2 restart ayin-media-worker --update-env
+          pm2 restart ayin-media-worker --update-env >/dev/null
           sleep 3
           pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const p=JSON.parse(s).find(x=>x.name==="ayin-media-worker");if(!p||p.pm2_env?.status!=="online")process.exit(1);console.log(JSON.stringify({name:p.name,status:p.pm2_env.status,restarts:p.pm2_env.restart_time,pid:p.pid}))})'
 
           smoke="$(mktemp -d /tmp/ayin-ffmpeg-smoke.XXXXXX)"
-          trap 'rm -rf "$work" "$smoke"' EXIT
-          /home/ayin/bin/ffmpeg -hide_banner -loglevel error -y \
+          trap 'rm -rf "$smoke"' EXIT
+          "$ffmpeg" -hide_banner -loglevel error -y \
             -f lavfi -i 'testsrc=size=320x180:rate=24' \
             -f lavfi -i 'sine=frequency=1000:sample_rate=44100' \
             -t 1 -map 0:v:0 -map 1:a:0 \
@@ -90,6 +75,9 @@ jobs:
             -c:a aac -b:a 96k -ac 2 -movflags +faststart \
             "$smoke/canonical.mp4"
           test -s "$smoke/canonical.mp4"
-          /home/ayin/bin/ffprobe -v error -show_entries format=duration:stream=codec_name,codec_type,width,height -of json "$smoke/canonical.mp4"
+          "$ffprobe" -v error -show_entries format=duration:stream=codec_name,codec_type,width,height -of json "$smoke/canonical.mp4"
+
+          grep -q '^FFMPEG_PATH=/home/ayin/bin/ffmpeg$' "$env_file"
+          grep -q '^FFPROBE_PATH=/home/ayin/bin/ffprobe$' "$env_file"
           echo 'AYIN_FFMPEG_RUNTIME_READY=1'
           REMOTE
