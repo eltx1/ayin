@@ -274,6 +274,14 @@ export function ViewerShell({ children }: ViewerShellProperties) {
               </Link>
               <Link
                 className={styles.channelAction}
+                data-tv-focus-id="account"
+                data-tv-focusable="true"
+                href="/account"
+              >
+                Account
+              </Link>
+              <Link
+                className={styles.channelAction}
                 data-tv-focus-id="my-channel"
                 data-tv-focusable="true"
                 href={`/c/${identity.channel.handle}`}
@@ -325,10 +333,13 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
           {identity ? (
             <nav aria-label="Account and creator navigation" className={styles.mobileAccountGrid}>
+              <Link href="/account">Account</Link>
               <Link href="/my-ayin">My AYIN</Link>
               <Link href="/studio">Creator Studio</Link>
               <Link href="/studio/content">My videos</Link>
               <Link href={`/c/${identity.channel.handle}`}>My channel</Link>
+              <Link href="/studio/analytics">Analytics</Link>
+              <Link href="/studio/monetization">Earnings & payouts</Link>
               <Link href="/channel/playlists">Playlists</Link>
               <Link href="/channel/tv">Creator TV</Link>
               <Link href="/notifications">Notifications</Link>
