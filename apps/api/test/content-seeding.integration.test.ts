@@ -119,6 +119,54 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     });
     expect(complete.statusCode).toBe(201);
 
+    const waiting = await app.inject({
+      method: "POST",
+      url: `/admin/content-seeding/items/${item.id}/confirm-upload`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(waiting.statusCode).toBe(400);
+    expect(waiting.json().error.code).toBe("SEED_VIDEO_PROCESSING");
+
+    const job = await prisma.mediaProcessingJob.findFirstOrThrow({
+      where: { videoId: item.video.id },
+      orderBy: { generation: "desc" },
+    });
+    const source = await prisma.mediaAsset.findFirstOrThrow({
+      where: { videoId: item.video.id, kind: "SOURCE_VIDEO", status: "UPLOADED" },
+    });
+    const canonical = await prisma.mediaAsset.create({
+      data: {
+        videoId: item.video.id,
+        channelId: owner.user.channel.id,
+        kind: "SOURCE_VIDEO",
+        status: "VALIDATED",
+        r2ObjectKey: job.outputR2ObjectKey,
+        mimeType: "video/mp4",
+        sizeBytes: 2048n,
+        durationMs: 60_000,
+        width: 1280,
+        height: 720,
+      },
+    });
+    await prisma.$transaction([
+      prisma.mediaAsset.update({
+        where: { id: source.id },
+        data: { status: "REMOVED", removedAt: new Date() },
+      }),
+      prisma.mediaProcessingJob.update({
+        where: { id: job.id },
+        data: {
+          finalAssetId: canonical.id,
+          status: "READY",
+          stage: "READY",
+          progressPercent: 100,
+          completedAt: new Date(),
+        },
+      }),
+      prisma.video.update({ where: { id: item.video.id }, data: { status: "DRAFT" } }),
+      prisma.contentSeedItem.update({ where: { id: item.id }, data: { status: "READY" } }),
+    ]);
+
     const confirm = await app.inject({
       method: "POST",
       url: `/admin/content-seeding/items/${item.id}/confirm-upload`,

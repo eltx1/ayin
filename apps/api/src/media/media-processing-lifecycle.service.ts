@@ -178,6 +178,10 @@ export class MediaProcessingLifecycleService {
           ...(job.video.status === "VALIDATING" ? { status: "DRAFT" as const } : {}),
         },
       });
+      await tx.contentSeedItem.updateMany({
+        where: { videoId: job.videoId, status: "UPLOADING" },
+        data: { status: "READY", error: null },
+      });
       return { job: ready, asset: canonicalAsset };
     });
   }

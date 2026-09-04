@@ -155,7 +155,7 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
         channelId,
         videoId: id,
         kind: "SOURCE_VIDEO",
-        status: "UPLOADED",
+        status: "VALIDATED",
         r2ObjectKey: `channels/${channelId}/media/${id}/source.mp4`,
         mimeType: "video/mp4",
         sizeBytes: 1024n,

@@ -18,6 +18,30 @@ export interface QuickDraftResponse {
   uploadSession: UploadSession;
 }
 
+export interface QuickProcessingStatus {
+  videoId: string;
+  ready: boolean;
+  videoStatus: string;
+  processing: null | {
+    generation: number;
+    status:
+      | "INGESTING"
+      | "QUEUED"
+      | "PROCESSING"
+      | "UPLOADING"
+      | "VERIFYING"
+      | "READY"
+      | "FAILED"
+      | "CANCELLED";
+    stage: string | null;
+    progressPercent: number;
+    errorCode: string | null;
+    errorMessage: string | null;
+    attempt: number;
+    completedAt: string | null;
+  };
+}
+
 export interface QuickVideoDetails {
   title?: string;
   description?: string | null;
@@ -44,8 +68,21 @@ export async function createQuickDraft(input: {
   });
 }
 
-export async function confirmQuickUpload(videoId: string): Promise<void> {
-  await apiJson(`/creator/videos/${videoId}/upload-complete`, "POST", {});
+export async function confirmQuickUpload(videoId: string): Promise<{ status: string }> {
+  return apiJson(`/creator/videos/${videoId}/upload-complete`, "POST", {});
+}
+
+export async function getQuickProcessingStatus(
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<QuickProcessingStatus> {
+  const response = await fetch(`${apiBaseUrl}/creator/videos/${videoId}/processing`, {
+    credentials: "include",
+    cache: "no-store",
+    ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) throw new Error(await readApiError(response));
+  return (await response.json()) as QuickProcessingStatus;
 }
 
 export async function saveQuickVideoDetails(

@@ -17,7 +17,8 @@ export class MediaProcessingWorkerService {
 
   constructor(
     @Inject(MediaProcessingQueueService) private readonly queue: MediaProcessingQueueService,
-    @Inject(MediaProcessingExecutorService) private readonly executor: MediaProcessingExecutorService,
+    @Inject(MediaProcessingExecutorService)
+    private readonly executor: MediaProcessingExecutorService,
   ) {}
 
   async run(): Promise<void> {

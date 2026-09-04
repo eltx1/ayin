@@ -56,16 +56,17 @@ export class AdminMediaProcessingController {
   }
 
   @Post("jobs/:jobId/retry")
-  async retryFailed(
-    @Req() request: AdminAuthenticatedRequest,
-    @Param("jobId") jobIdRaw: string,
-  ) {
+  async retryFailed(@Req() request: AdminAuthenticatedRequest, @Param("jobId") jobIdRaw: string) {
     const jobId = this.uuid(jobIdRaw, "INVALID_MEDIA_JOB_ID");
     return this.database.client.$transaction(async (tx) => {
       const job = await tx.mediaProcessingJob.findUnique({ where: { id: jobId } });
-      if (!job) throw adminBadRequest("MEDIA_JOB_NOT_FOUND", "This media processing job was not found.");
+      if (!job)
+        throw adminBadRequest("MEDIA_JOB_NOT_FOUND", "This media processing job was not found.");
       if (job.status !== "FAILED") {
-        throw adminBadRequest("MEDIA_JOB_NOT_FAILED", "Only a failed media processing job can be retried.");
+        throw adminBadRequest(
+          "MEDIA_JOB_NOT_FAILED",
+          "Only a failed media processing job can be retried.",
+        );
       }
       const retried = await tx.mediaProcessingJob.update({
         where: { id: job.id },
@@ -96,10 +97,7 @@ export class AdminMediaProcessingController {
   }
 
   @Post("videos/:videoId/reprocess")
-  async reprocess(
-    @Req() request: AdminAuthenticatedRequest,
-    @Param("videoId") videoIdRaw: string,
-  ) {
+  async reprocess(@Req() request: AdminAuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
     const videoId = this.uuid(videoIdRaw, "INVALID_VIDEO_ID");
     return this.database.client.$transaction(async (tx) => {
       const latest = await tx.mediaProcessingJob.findFirst({

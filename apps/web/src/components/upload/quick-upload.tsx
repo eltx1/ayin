@@ -13,6 +13,7 @@ import {
 import {
   confirmQuickUpload,
   createQuickDraft,
+  getQuickProcessingStatus,
   publishQuickVideo,
   saveQuickVideoDetails,
   uploadQuickThumbnail,
@@ -39,6 +40,8 @@ export function QuickUpload() {
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadComplete, setUploadComplete] = useState(false);
+  const [processingReady, setProcessingReady] = useState(false);
+  const [processingLabel, setProcessingLabel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [thumbnailChoices, setThumbnailChoices] = useState<LocalThumbnailChoice[]>([]);
@@ -84,6 +87,8 @@ export function QuickUpload() {
     setVideoId(null);
     setProgress(0);
     setUploadComplete(false);
+    setProcessingReady(false);
+    setProcessingLabel(null);
     setRightsConfirmed(false);
     setPublished(false);
     setMessage(null);
@@ -124,14 +129,18 @@ export function QuickUpload() {
         file: selected,
         onProgress: setProgress,
       });
-      await confirmQuickUpload(draft.video.id);
+      const confirmation = await confirmQuickUpload(draft.video.id);
+      setProcessingReady(confirmation.status === "DRAFT");
+      setProcessingLabel(confirmation.status === "DRAFT" ? "Ready" : "Queued");
       trackAnalyticsEvent("UPLOAD_COMPLETE", {
         channelId: identity.channel.id,
         videoId: draft.video.id,
       });
       setUploadComplete(true);
       setMessage(
-        "Upload complete. Confirm your publishing rights, then publish when you're ready.",
+        confirmation.status === "DRAFT"
+          ? "Upload and processing complete. Confirm your publishing rights, then publish when you're ready."
+          : "Upload complete. AYIN is preparing a reliable playback version in the background.",
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "This upload could not be completed.");
@@ -139,6 +148,54 @@ export function QuickUpload() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!videoId || !uploadComplete || processingReady || published) return;
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let active = true;
+
+    const poll = async () => {
+      try {
+        const status = await getQuickProcessingStatus(videoId, controller.signal);
+        if (!active) return;
+        const processing = status.processing;
+        setProcessingReady(status.ready);
+        setProcessingLabel(
+          status.ready
+            ? "Ready"
+            : processing?.status === "FAILED"
+              ? "Failed"
+              : (processing?.stage?.replaceAll("_", " ") ?? processing?.status ?? "Queued"),
+        );
+        if (status.ready) {
+          setMessage("Processing complete. This video is ready to publish.");
+          return;
+        }
+        if (processing?.status === "FAILED") {
+          setMessage(
+            processing.errorMessage ||
+              "AYIN could not prepare this video for playback. It remains saved in Studio.",
+          );
+          return;
+        }
+        timeout = setTimeout(() => void poll(), 2000);
+      } catch (error) {
+        if (!active || controller.signal.aborted) return;
+        setMessage(
+          error instanceof Error ? error.message : "Processing status is temporarily unavailable.",
+        );
+        timeout = setTimeout(() => void poll(), 4000);
+      }
+    };
+
+    void poll();
+    return () => {
+      active = false;
+      controller.abort();
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [processingReady, published, uploadComplete, videoId]);
 
   async function saveDetails() {
     if (!videoId) return;
@@ -174,7 +231,8 @@ export function QuickUpload() {
   }
 
   async function publish() {
-    if (!videoId || !uploadComplete || !rightsConfirmed || !title.trim()) return;
+    if (!videoId || !uploadComplete || !processingReady || !rightsConfirmed || !title.trim())
+      return;
     setBusy(true);
     setMessage(null);
     try {
@@ -265,8 +323,14 @@ export function QuickUpload() {
 
           <div className={styles.progressBlock}>
             <div className={styles.progressText}>
-              <strong>{uploadComplete ? "Upload complete" : "Uploading video"}</strong>
-              <span>{progress}%</span>
+              <strong>
+                {uploadComplete
+                  ? processingReady
+                    ? "Ready to publish"
+                    : "Processing video"
+                  : "Uploading video"}
+              </strong>
+              <span>{uploadComplete ? (processingLabel ?? "Queued") : `${progress}%`}</span>
             </div>
             <progress max={100} value={progress} aria-label="Upload progress" />
           </div>
@@ -377,7 +441,14 @@ export function QuickUpload() {
           <button
             className={styles.publish}
             type="button"
-            disabled={!uploadComplete || !rightsConfirmed || !title.trim() || busy || published}
+            disabled={
+              !uploadComplete ||
+              !processingReady ||
+              !rightsConfirmed ||
+              !title.trim() ||
+              busy ||
+              published
+            }
             onClick={() => void publish()}
           >
             {published ? "Published" : busy && uploadComplete ? "Publishing…" : "Publish"}

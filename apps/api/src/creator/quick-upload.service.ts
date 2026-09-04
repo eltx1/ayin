@@ -334,6 +334,14 @@ export class QuickUploadService {
       );
       if (!canonicalReady) {
         const processing = video.mediaProcessingJobs[0];
+        const uploadedSource = video.mediaAssets.some((asset) => asset.status === "UPLOADED");
+        if (!uploadedSource && !processing) {
+          throw new QuickUploadError(
+            "UPLOAD_NOT_COMPLETE",
+            "The video is still uploading. Processing starts automatically after the upload reaches 100%.",
+            409,
+          );
+        }
         if (processing?.status === "FAILED") {
           throw new QuickUploadError(
             "VIDEO_PROCESSING_FAILED",

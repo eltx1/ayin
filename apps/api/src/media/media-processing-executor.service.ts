@@ -65,7 +65,8 @@ export class MediaProcessingExecutorService {
         await this.storage.downloadToFile(job.outputR2ObjectKey, outputPath);
         canonicalMetadata = await this.probe(outputPath);
       } else {
-        if (!job.inputR2ObjectKey) throw new Error("The processing job has no input R2 object key.");
+        if (!job.inputR2ObjectKey)
+          throw new Error("The processing job has no input R2 object key.");
         await this.requireOwnedStage(job.id, workerId, "PROCESSING", "DOWNLOADING_SOURCE", 5);
         await this.storage.downloadToFile(job.inputR2ObjectKey, inputPath);
 
