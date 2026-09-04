@@ -9,7 +9,11 @@ import { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";
 const quickLinks = [
   ["My videos", "/studio/content", "Manage uploads, visibility and publishing."],
   ["Analytics", "/studio/analytics", "See audience and video performance."],
-  ["Earnings & payouts", "/studio/monetization", "Review earnings, payout readiness and payment history."],
+  [
+    "Earnings & payouts",
+    "/studio/monetization",
+    "Review earnings, payout readiness and payment history.",
+  ],
   ["My library", "/my-ayin", "Continue watching and revisit saved activity."],
   ["Notifications", "/notifications", "See updates about your channel and account."],
   ["Channel settings", "/channel/edit", "Update your public channel details."],

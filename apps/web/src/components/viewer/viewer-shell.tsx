@@ -302,7 +302,11 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
         <div className={styles.mobileHeaderActions}>
           {identity ? (
-            <Link className={styles.mobileIconButton} href="/notifications" aria-label="Notifications">
+            <Link
+              className={styles.mobileIconButton}
+              href="/notifications"
+              aria-label="Notifications"
+            >
               <MobileIcon name="bell" />
             </Link>
           ) : null}

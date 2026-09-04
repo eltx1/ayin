@@ -5,7 +5,9 @@ export type VideoInspectionResult =
 
 export type SupportedVideoContainer = "mp4" | "mov";
 
-export function detectVideoContainer(file: Pick<File, "type" | "name">): SupportedVideoContainer | null {
+export function detectVideoContainer(
+  file: Pick<File, "type" | "name">,
+): SupportedVideoContainer | null {
   const type = file.type.toLowerCase();
   const name = file.name.toLowerCase();
   if (type === "video/mp4" || name.endsWith(".mp4")) return "mp4";
@@ -35,7 +37,8 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
   if (!container) {
     return {
       status: "incompatible",
-      message: "Choose an MP4 or iPhone MOV video. Other source formats need transcoding before upload.",
+      message:
+        "Choose an MP4 or iPhone MOV video. Other source formats need transcoding before upload.",
       durationSeconds: null,
     };
   }
@@ -66,7 +69,8 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
   if (capability === "probably") {
     return {
       status: "compatible",
-      message: "MP4 looks ready for AYIN playback. Exact stream codecs may still require validation.",
+      message:
+        "MP4 looks ready for AYIN playback. Exact stream codecs may still require validation.",
       durationSeconds: metadata.durationSeconds,
     };
   }

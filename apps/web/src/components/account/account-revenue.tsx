@@ -176,11 +176,15 @@ export function AccountRevenue() {
           <ul className={styles.list}>
             <li>
               <span>Payment details</span>
-              <strong>{overview.payoutReadiness.profileReady ? "Ready" : "Complete details"}</strong>
+              <strong>
+                {overview.payoutReadiness.profileReady ? "Ready" : "Complete details"}
+              </strong>
             </li>
             <li>
               <span>Minimum payout</span>
-              <strong>{overview.payoutReadiness.thresholdMet ? "Reached" : "Not reached yet"}</strong>
+              <strong>
+                {overview.payoutReadiness.thresholdMet ? "Reached" : "Not reached yet"}
+              </strong>
             </li>
             <li>
               <span>Current request</span>
@@ -228,12 +232,9 @@ export function AccountRevenue() {
             className={styles.secondary}
             disabled={busy}
             onClick={() =>
-              void act(
-                async () => {
-                  await downloadCreatorStatement();
-                },
-                "Your earnings statement is ready.",
-              )
+              void act(async () => {
+                await downloadCreatorStatement();
+              }, "Your earnings statement is ready.")
             }
             type="button"
           >
@@ -342,7 +343,8 @@ export function AccountRevenue() {
               Save payment details
             </button>
             <span className={styles.muted}>
-              Identity: {profileState(profile?.identityStatus)} · Tax: {profileState(profile?.taxStatus)}
+              Identity: {profileState(profile?.identityStatus)} · Tax:{" "}
+              {profileState(profile?.taxStatus)}
             </span>
           </div>
         </form>

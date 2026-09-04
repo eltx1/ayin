@@ -130,7 +130,9 @@ export function QuickUpload() {
         videoId: draft.video.id,
       });
       setUploadComplete(true);
-      setMessage("Upload complete. Confirm your publishing rights, then publish when you're ready.");
+      setMessage(
+        "Upload complete. Confirm your publishing rights, then publish when you're ready.",
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "This upload could not be completed.");
     } finally {
@@ -336,7 +338,9 @@ export function QuickUpload() {
                     ))}
                   </div>
                 ) : (
-                  <p className={styles.hint}>Thumbnail suggestions appear when they are available.</p>
+                  <p className={styles.hint}>
+                    Thumbnail suggestions appear when they are available.
+                  </p>
                 )}
                 <label className={styles.customThumbnail}>
                   <span>
