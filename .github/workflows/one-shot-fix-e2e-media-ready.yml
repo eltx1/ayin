@@ -1,0 +1,52 @@
+name: One-shot fix E2E media readiness
+
+on:
+  push:
+    paths:
+      - ".github/workflows/one-shot-fix-e2e-media-ready.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ec2-ffmpeg-media-pipeline-20260904
+          fetch-depth: 0
+
+      - name: Patch E2E canonical media readiness
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          helper = Path("tests/e2e/db-helper.mjs")
+          text = helper.read_text()
+          anchor = '''    case "upload-association": {\n'''
+          case = '''    case "mark-media-ready": {\n      const job = await prisma.mediaProcessingJob.findFirstOrThrow({\n        where: { videoId: payload.videoId },\n        orderBy: { generation: "desc" },\n      });\n      const source = await prisma.mediaAsset.findFirstOrThrow({\n        where: {\n          videoId: payload.videoId,\n          kind: "SOURCE_VIDEO",\n          status: "UPLOADED",\n          removedAt: null,\n        },\n      });\n      const canonical = await prisma.mediaAsset.create({\n        data: {\n          videoId: payload.videoId,\n          channelId: source.channelId,\n          kind: "SOURCE_VIDEO",\n          status: "VALIDATED",\n          r2ObjectKey: job.outputR2ObjectKey,\n          mimeType: "video/mp4",\n          sizeBytes: 2048n,\n          durationMs: 120_000,\n          width: 1280,\n          height: 720,\n        },\n      });\n      await prisma.$transaction([\n        prisma.mediaAsset.update({\n          where: { id: source.id },\n          data: { status: "REMOVED", removedAt: new Date() },\n        }),\n        prisma.mediaProcessingJob.update({\n          where: { id: job.id },\n          data: {\n            finalAssetId: canonical.id,\n            status: "READY",\n            stage: "READY",\n            progressPercent: 100,\n            outputSizeBytes: 2048n,\n            completedAt: new Date(),\n          },\n        }),\n        prisma.video.update({\n          where: { id: payload.videoId },\n          data: { status: "DRAFT", durationMs: 120_000 },\n        }),\n      ]);\n      result = { ok: true };\n      break;\n    }\n'''
+          if 'case "mark-media-ready"' not in text:
+              if anchor not in text:
+                  raise SystemExit("db-helper anchor missing")
+              text = text.replace(anchor, case + anchor, 1)
+              helper.write_text(text)
+
+          spec = Path("tests/e2e/v1.acceptance.spec.ts")
+          text = spec.read_text()
+          old = '''  expect(\n    (await api.post(`/creator/videos/${draft.video.id}/upload-complete`, { data: {} })).ok(),\n  ).toBeTruthy();\n  const publish = await api.post(`/creator/videos/${draft.video.id}/publish`, {\n'''
+          new = '''  expect(\n    (await api.post(`/creator/videos/${draft.video.id}/upload-complete`, { data: {} })).ok(),\n  ).toBeTruthy();\n  db("mark-media-ready", { videoId: draft.video.id });\n  const publish = await api.post(`/creator/videos/${draft.video.id}/publish`, {\n'''
+          if 'db("mark-media-ready", { videoId: draft.video.id });' not in text:
+              if old not in text:
+                  raise SystemExit("E2E publish anchor missing")
+              spec.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm -f .github/workflows/one-shot-fix-e2e-media-ready.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "test: simulate canonical media readiness in E2E"
+          git push origin HEAD:ec2-ffmpeg-media-pipeline-20260904
