@@ -123,7 +123,6 @@ jobs:
           set -euo pipefail
           command -v ffmpeg
           command -v ffprobe
-          ffmpeg -hide_banner -encoders 2>/dev/null | grep libx264 >/dev/null
           rm -rf /tmp/ayin-ffmpeg-smoke
           mkdir -p /tmp/ayin-ffmpeg-smoke
           ffmpeg -hide_banner -loglevel error -y \
@@ -138,15 +137,9 @@ jobs:
             -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -threads 1 \
             -c:a aac -b:a 128k -ac 2 -movflags +faststart \
             /tmp/ayin-ffmpeg-smoke/canonical.mp4
-          ffprobe -v error -select_streams v:0 \
-            -show_entries stream=codec_name,pix_fmt -of default=nw=1 \
-            /tmp/ayin-ffmpeg-smoke/canonical.mp4 | grep 'codec_name=h264' >/dev/null
-          ffprobe -v error -select_streams v:0 \
-            -show_entries stream=pix_fmt -of default=nw=1 \
-            /tmp/ayin-ffmpeg-smoke/canonical.mp4 | grep 'pix_fmt=yuv420p' >/dev/null
-          ffprobe -v error -select_streams a:0 \
-            -show_entries stream=codec_name -of default=nw=1 \
-            /tmp/ayin-ffmpeg-smoke/canonical.mp4 | grep 'codec_name=aac' >/dev/null
+          test "$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 /tmp/ayin-ffmpeg-smoke/canonical.mp4)" = "h264"
+          test "$(ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt -of csv=p=0 /tmp/ayin-ffmpeg-smoke/canonical.mp4)" = "yuv420p"
+          test "$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 /tmp/ayin-ffmpeg-smoke/canonical.mp4)" = "aac"
           test -s /tmp/ayin-ffmpeg-smoke/canonical.mp4
           rm -rf /tmp/ayin-ffmpeg-smoke
 
