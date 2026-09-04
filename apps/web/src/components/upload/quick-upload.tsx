@@ -289,7 +289,7 @@ export function QuickUpload() {
         </select>
       </label>
       <p className={styles.hint}>
-        Choose an MP4 or MOV video. AYIN will check the file before the upload starts.
+        Choose a video from your phone, camera, or computer. AYIN supports common video formats.
       </p>
 
       <label className={styles.picker}>
@@ -297,7 +297,7 @@ export function QuickUpload() {
         <span>Pick a video from your files or mobile library.</span>
         <input
           type="file"
-          accept="video/mp4,video/quicktime,.mp4,.mov"
+          accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.mpeg,.mpg,.mts,.m2ts,.ts,.3gp,.3g2,.m4v,.wmv,.flv,.ogv,.mxf"
           disabled={!identity || busy || published}
           onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
         />
