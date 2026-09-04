@@ -43,7 +43,7 @@ export function DirectVideoUploader() {
         onProgress: setProgress,
       });
       setUploaded(true);
-      setMessage("Upload complete. Your video is ready for the next step.");
+      setMessage("Upload complete. AYIN is preparing your video for reliable playback.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The upload could not be completed.");
     } finally {
@@ -56,13 +56,13 @@ export function DirectVideoUploader() {
       <p className={styles.eyebrow}>Video upload</p>
       <h1 id="direct-upload-title">Choose a video</h1>
       <p className={styles.copy}>
-        Choose a supported video from your device. AYIN will check it before the upload starts.
+        Choose a video from your phone, camera, or computer. AYIN supports common video formats.
       </p>
       <label className={styles.picker}>
         <span>{file ? file.name : "Choose video"}</span>
         <input
           type="file"
-          accept="video/mp4,video/quicktime,.mp4,.mov"
+          accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.mpeg,.mpg,.mts,.m2ts,.ts,.3gp,.3g2,.m4v,.wmv,.flv,.ogv,.mxf"
           disabled={busy}
           onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
         />
