@@ -37,10 +37,11 @@ export class MediaProcessingStorageService {
       contentType,
       expiresInSeconds: Math.max(300, this.config.uploadUrlTtlSeconds),
     });
+    const uploadBody = Readable.toWeb(createReadStream(filePath)) as unknown as BodyInit;
     const response = await fetch(authorization.url, {
       method: "PUT",
       headers: { "content-type": contentType },
-      body: createReadStream(filePath),
+      body: uploadBody,
       duplex: "half",
     } as RequestInit & { duplex: "half" });
     if (!response.ok) {
