@@ -23,7 +23,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Apply queue patch
-        run: node scripts/apply-media-processing-queue-phase1.mjs
+        run: python3 scripts/apply-media-processing-queue-phase1.py
 
       - name: Format generated files
         run: npx --yes prettier@3.9.6 --write packages/db/prisma/schema.prisma apps/api/src/platform-config/platform-settings.catalog.ts apps/api/src/media/media.module.ts apps/api/src/media/media-processing-queue.service.ts apps/api/test/media-processing-queue.integration.test.ts packages/db/prisma/migrations/20260904023000_media_processing_queue/migration.sql
