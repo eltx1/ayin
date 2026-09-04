@@ -67,24 +67,61 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
   };
   db("grant-admin", { accountId: identity.user.account.id });
 
-  await test.step("phone layout has no page overflow and exposes app-ready mobile navigation", async () => {
+  await test.step("phone layout keeps core viewer, creator and admin surfaces app-ready", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
 
     for (const route of [
       "/",
       "/movies",
       "/search",
+      "/upload",
+      "/my-ayin",
+      "/notifications",
       `/c/${identity.user.channel.handle}`,
+      "/channel/edit",
+      "/channel/playlists",
+      "/channel/tv",
       "/studio",
       "/studio/content",
+      "/studio/analytics",
+      "/studio/comments",
+      "/studio/community",
+      "/studio/live",
+      "/studio/monetization",
+      "/studio/playlists",
+      "/studio/trust",
+      "/studio/tv",
       "/admin",
       "/admin/users",
+      "/admin/channels",
+      "/admin/content",
+      "/admin/moderation",
+      "/admin/operations",
+      "/admin/product-controls",
+      "/admin/revenue",
+      "/admin/settings",
+      "/admin/trust",
+      "/admin/tv",
+      "/admin/video-ads",
+      "/admin/videos",
     ]) {
       await expectNoDocumentOverflow(page, route);
     }
 
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
+    await page.goto("/", { waitUntil: "networkidle" });
+    const mobileNavigation = page.getByRole("navigation", { name: "Mobile navigation" });
+    await expect(mobileNavigation).toBeVisible();
+    for (const label of ["Home", "Search", "Create", "Videos", "Channel"]) {
+      await expect(mobileNavigation.getByRole("link", { name: label })).toBeVisible();
+    }
+
+    await expect(page.getByRole("link", { name: "Notifications" })).toBeVisible();
+    await page.getByRole("button", { name: "Open menu" }).click();
+    const creatorMenu = page.getByRole("navigation", { name: "Account and creator navigation" });
+    await expect(creatorMenu).toBeVisible();
+    await expect(creatorMenu.getByRole("link", { name: "My videos" })).toBeVisible();
+    await expect(creatorMenu.getByRole("link", { name: "My channel" })).toBeVisible();
+    await expect(creatorMenu.getByRole("link", { name: "Creator Studio" })).toBeVisible();
 
     await page.goto("/studio", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("navigation", { name: "Creator Studio" })).toBeVisible();
@@ -103,19 +140,28 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
 
   await test.step("tablet layout preserves the same document-width invariant", async () => {
     await page.setViewportSize({ width: 768, height: 1024 });
-    for (const route of ["/", "/search", "/studio/analytics", "/admin/revenue"]) {
+    for (const route of [
+      "/",
+      "/search",
+      "/upload",
+      "/studio/analytics",
+      "/studio/monetization",
+      "/admin/revenue",
+      "/admin/operations",
+    ]) {
       await expectNoDocumentOverflow(page, route);
     }
   });
 
   await test.step("desktop keeps the full navigation model without horizontal document overflow", async () => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    for (const route of ["/", "/search", "/studio", "/admin"]) {
+    for (const route of ["/", "/search", "/upload", "/studio", "/admin", "/admin/revenue"]) {
       await expectNoDocumentOverflow(page, route);
     }
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "Open menu" })).toBeHidden();
   });
 });
