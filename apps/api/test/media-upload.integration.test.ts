@@ -138,7 +138,7 @@ databaseDescribe("direct creator media upload", () => {
       method: "POST",
       url: "/media/uploads/sessions",
       headers: { cookie: owner.cookie },
-      payload: { channelId: owner.user.channel.id, sizeBytes: 1024, mimeType: "video/quicktime" },
+      payload: { channelId: owner.user.channel.id, sizeBytes: 1024, mimeType: "video/webm" },
     });
     expect(invalidType.statusCode).toBe(400);
     expect(invalidType.json().error.code).toBe("UNSUPPORTED_VIDEO_TYPE");
