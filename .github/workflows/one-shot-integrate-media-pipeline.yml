@@ -61,21 +61,18 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           path = Path("apps/web/src/lib/quick-upload.ts")
           text = path.read_text()
-          old = '''  const response = await fetch(`${apiBaseUrl}/creator/videos/${videoId}/processing`, {
-            credentials: "include",
-            cache: "no-store",
-            signal,
-          });'''
-          new = '''  const response = await fetch(`${apiBaseUrl}/creator/videos/${videoId}/processing`, {
-            credentials: "include",
-            cache: "no-store",
-            ...(signal ? { signal } : {}),
-          });'''
-          if old not in text:
-              raise SystemExit("processing signal patch anchor missing")
-          path.write_text(text.replace(old, new, 1))
+          text, count = re.subn(
+              r"(?m)^(\s*)signal,\s*$",
+              r"\1...(signal ? { signal } : {}),",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f"expected one processing signal line, patched {count}")
+          path.write_text(text)
           PY
 
       - name: Format integrated source
