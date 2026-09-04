@@ -58,15 +58,15 @@ jobs:
       - name: Make initial admin refresh event-driven
         run: |
           python3 - <<'PY'
+          import re
           from pathlib import Path
           path = Path("apps/web/src/components/admin/admin-media-processing.tsx")
           text = path.read_text()
-          old = '''  useEffect(() => {
-            void load();
-            const timer = window.setInterval(() => void load(), 5000);
-            return () => window.clearInterval(timer);
-          }, [load]);'''
-          new = '''  useEffect(() => {
+          pattern = re.compile(
+              r'useEffect\(\(\) => \{\s*void load\(\);\s*const timer = window\.setInterval\(\(\) => void load\(\), 5000\);\s*return \(\) => window\.clearInterval\(timer\);\s*\}, \[load\]\);',
+              re.MULTILINE,
+          )
+          replacement = '''useEffect(() => {
             const initial = window.setTimeout(() => void load(), 0);
             const timer = window.setInterval(() => void load(), 5000);
             return () => {
@@ -74,13 +74,10 @@ jobs:
               window.clearInterval(timer);
             };
           }, [load]);'''
-          if old not in text:
-              compact_old = old.replace("            ", "    ")
-              if compact_old in text:
-                  old = compact_old
-              else:
-                  raise SystemExit("admin media effect anchor missing")
-          path.write_text(text.replace(old, new, 1))
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"admin media effect replacement count={count}")
+          path.write_text(text)
           PY
 
       - name: Format source
