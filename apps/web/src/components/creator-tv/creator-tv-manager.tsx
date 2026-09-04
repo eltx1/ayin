@@ -112,11 +112,11 @@ export function CreatorTvManager() {
     <main className={styles.manager}>
       <header className={styles.managerHeader}>
         <div>
-          <span className={styles.eyebrow}>Automatic Creator TV</span>
+          <span className={styles.eyebrow}>Creator TV</span>
           <h1>{data.tv.name}</h1>
           <p className={styles.muted}>
-            New eligible public MP4 uploads enter rotation automatically. These controls are
-            optional.
+            Your eligible public videos can join your channel rotation automatically. Use these
+            controls only when you want to fine-tune what plays.
           </p>
         </div>
         <Link className={styles.backLink} href={`/c/${encodeURIComponent(data.channel.handle)}/tv`}>
@@ -128,25 +128,23 @@ export function CreatorTvManager() {
         <h2>Automatic programming</h2>
         <div className={styles.automationGrid}>
           <div className={styles.automationItem}>
-            <strong>Platform</strong>
+            <strong>Creator TV</strong>
+            <span>{data.automation.platformEnabled ? "Available" : "Temporarily paused"}</span>
+          </div>
+          <div className={styles.automationItem}>
+            <strong>Your channel</strong>
             <span>
-              {data.automation.platformEnabled ? "Automatic TV enabled" : "Paused by AYIN"}
+              {data.automation.channelScheduleEnabled ? "Rotation active" : "Rotation paused"}
             </span>
           </div>
           <div className={styles.automationItem}>
-            <strong>Channel</strong>
-            <span>
-              {data.automation.channelScheduleEnabled ? "Schedule active" : "Schedule paused"}
-            </span>
-          </div>
-          <div className={styles.automationItem}>
-            <strong>Guide</strong>
-            <span>{data.automation.guideWindowMinutes} minute rolling window</span>
+            <strong>Upcoming guide</strong>
+            <span>{data.automation.guideWindowMinutes} minutes</span>
           </div>
         </div>
         <p className={styles.muted}>
-          Higher priority plays first. Order is an optional tie-breaker; leave it blank to use the
-          deterministic AYIN fallback order.
+          Give important videos a higher priority. Use Order only when you want two videos with the
+          same priority to play in a specific sequence.
         </p>
       </section>
 
@@ -154,15 +152,14 @@ export function CreatorTvManager() {
         <div className={styles.managerHeader}>
           <div>
             <h2 id="tv-library-heading">TV library</h2>
-            <p className={styles.muted}>{data.videos.length} eligible published MP4 videos</p>
+            <p className={styles.muted}>{data.videos.length} eligible published videos</p>
           </div>
         </div>
 
         {data.videos.length === 0 ? (
           <div className={styles.managerCard}>
             <p className={styles.muted}>
-              Publish a public MP4 and it will appear here automatically. No manual TV scheduling is
-              required.
+              Publish a public video and it will appear here when it is ready for Creator TV.
             </p>
           </div>
         ) : (
@@ -177,10 +174,7 @@ export function CreatorTvManager() {
                 <article className={styles.videoRow} key={video.id}>
                   <div>
                     <strong>{video.title}</strong>
-                    <p className={styles.videoMeta}>
-                      {formatDuration(video.effectiveDurationMs)} ·{" "}
-                      {video.durationMs ? "measured duration" : "guide fallback duration"}
-                    </p>
+                    <p className={styles.videoMeta}>{formatDuration(video.effectiveDurationMs)}</p>
                   </div>
                   <label className={styles.includeControl}>
                     <input
