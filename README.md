@@ -8,9 +8,13 @@ The target product combines premium Netflix-style viewing, a frictionless YouTub
 
 The repository-side scope of the complete Tasks 00–38 roadmap is implemented on `main`.
 AYIN includes the Web/PWA viewer product, Creator Studio, Admin control plane, direct-to-R2
-media workflows, Creator TV, advertising and revenue foundations, analytics, moderation,
-Clips, community posts, recommendations, provider-neutral live/FAST boundaries, and thin
-Android/Tizen/webOS shells.
+creator uploads, queued FFmpeg media processing, Creator TV, advertising and revenue foundations,
+analytics, moderation, Clips, community posts, recommendations, provider-neutral live/FAST
+boundaries, and thin Android/Tizen/webOS shells.
+
+Post-roadmap production hardening now accepts common mobile/camera source containers and normalizes
+video through the isolated AYIN media worker to validated canonical MP4 playback media stored in R2.
+Publishing and public discovery/playback remain gated on successful canonical-media validation.
 
 Production provider activation and store release checks that require real credentials,
 infrastructure, Google Ad Manager account data, signing identities, or physical target devices
@@ -24,9 +28,9 @@ remain explicit launch gates rather than simulated repository completion. See
 - Web/PWA is the source of truth.
 - Every registered user automatically receives a viewer profile, creator channel, Uploads playlist and Creator TV.
 - Creator upload flow is intentionally minimal.
-- V1 accepts playback-ready MP4.
-- Cloudflare R2 is the only video media storage layer.
-- AWS EC2 + CloudPanel host application services; video files are not stored on AWS.
+- V1 accepts common mobile/camera video source containers and normalizes them to validated canonical MP4 playback media.
+- Creator source uploads go directly to Cloudflare R2; the AYIN EC2 media worker performs queued FFmpeg/ffprobe processing and writes validated playback media back to R2.
+- Cloudflare R2 remains the video media storage layer; application services run on AWS EC2 + CloudPanel.
 - Advertising is designed from day one for both in-player video inventory and outside-player placements.
 - Google IMA / Google Ad Manager readiness is a core requirement.
 - Admin is designed as a comprehensive platform control plane.
