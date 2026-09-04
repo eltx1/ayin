@@ -136,6 +136,20 @@ requireOptionalIntegerRange(
   86_400,
   "api.env",
 );
+requireOptionalIntegerRange(
+  apiEnv,
+  "MEDIA_PROCESSING_R2_METADATA_TIMEOUT_SECONDS",
+  10,
+  600,
+  "api.env",
+);
+requireOptionalIntegerRange(
+  apiEnv,
+  "MEDIA_PROCESSING_R2_TRANSFER_TIMEOUT_SECONDS",
+  300,
+  86_400,
+  "api.env",
+);
 
 for (const key of ["R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"]) {
   requireValue(apiEnv, key, "api.env");
