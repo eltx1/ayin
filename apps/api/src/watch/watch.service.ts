@@ -3,7 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 
-const playableStates = ["UPLOADED", "VALIDATED"] as const;
+const playableStates = ["VALIDATED"] as const;
 
 export class WatchError extends Error {
   constructor(

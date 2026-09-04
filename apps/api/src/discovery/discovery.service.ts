@@ -3,7 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 
-const playableAssetStates = ["UPLOADED", "VALIDATED"] as const;
+const playableAssetStates = ["VALIDATED"] as const;
 const firstPageSize = 8;
 const maxPageSize = 24;
 

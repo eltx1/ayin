@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpException,
   Inject,
   Param,
@@ -72,6 +73,15 @@ export class QuickUploadController {
   async confirmUpload(@Req() request: AuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
     const videoId = this.videoId(videoIdRaw);
     return this.run(() => this.quickUpload.confirmUpload(request.ayinAuth.accountId, videoId));
+  }
+
+  @Get(":videoId/processing")
+  async processingStatus(
+    @Req() request: AuthenticatedRequest,
+    @Param("videoId") videoIdRaw: string,
+  ) {
+    const videoId = this.videoId(videoIdRaw);
+    return this.run(() => this.quickUpload.processingStatus(request.ayinAuth.accountId, videoId));
   }
 
   @Patch(":videoId")

@@ -60,7 +60,7 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
     return {
       status: "unknown",
       message:
-        "iPhone MOV opened successfully and can be uploaded. AYIN keeps the original source, so verify playback on Android/TV before broad publishing.",
+        "iPhone MOV opened successfully. AYIN will prepare an H.264/AAC MP4 after upload for reliable web, Android and TV playback.",
       durationSeconds: metadata.durationSeconds,
     };
   }
@@ -78,7 +78,7 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
   return {
     status: "unknown",
     message:
-      "Your browser cannot confirm the exact H.264/AAC profile. You can continue; AYIN will keep the original MP4 without transcoding.",
+      "Your browser cannot confirm the exact codec profile. You can continue; AYIN will prepare a canonical H.264/AAC MP4 after upload.",
     durationSeconds: metadata.durationSeconds,
   };
 }
