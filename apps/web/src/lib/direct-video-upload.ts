@@ -1,4 +1,5 @@
 import { apiBaseUrl, readApiError } from "@/lib/api";
+import { videoMimeTypeForUpload } from "@/lib/video-inspection";
 
 export interface MultipartUploadSession {
   assetId: string;
@@ -103,7 +104,7 @@ async function createSession(channelId: string, file: File): Promise<UploadSessi
   return apiJson<UploadSession>("/media/uploads/sessions", {
     channelId,
     sizeBytes: file.size,
-    mimeType: "video/mp4",
+    mimeType: videoMimeTypeForUpload(file),
   });
 }
 
