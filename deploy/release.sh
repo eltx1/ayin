@@ -77,6 +77,21 @@ check_health() {
   return 1
 }
 
+check_media_worker() {
+  local attempt
+  local pid
+  for ((attempt = 1; attempt <= AYIN_HEALTH_RETRIES; attempt += 1)); do
+    pid="$(pm2 pid ayin-media-worker 2>/dev/null | tr -d '[:space:]' || true)"
+    if [[ "$pid" =~ ^[1-9][0-9]*$ ]]; then
+      echo "media worker process check passed"
+      return 0
+    fi
+    sleep "$AYIN_HEALTH_DELAY_SECONDS"
+  done
+  echo "error: ayin-media-worker is not running" >&2
+  return 1
+}
+
 check_rollback_api_health() {
   local attempt
   local status
@@ -103,11 +118,10 @@ activate_current_application() {
   export AYIN_CURRENT_DIR="$AYIN_CURRENT_LINK"
   export AYIN_WEB_ENV_FILE AYIN_API_ENV_FILE
 
-  # PM2 startOrReload preserves the original script path/arguments for existing process IDs.
-  # Releases may legitimately change their launch definition, so recreate only AYIN's two
-  # isolated processes from the ecosystem file belonging to the active release.
+  # Recreate every AYIN process so a release can safely change its script path or arguments.
   pm2 delete ayin-web >/dev/null 2>&1 || true
   pm2 delete ayin-api >/dev/null 2>&1 || true
+  pm2 delete ayin-media-worker >/dev/null 2>&1 || true
 
   if ! pm2 start "$AYIN_CURRENT_LINK/deploy/ecosystem.config.cjs"; then
     echo "error: PM2 could not activate the current application release" >&2
@@ -182,6 +196,9 @@ command -v pnpm >/dev/null 2>&1 || {
   exit 69
 }
 
+# The media worker uses a pinned checksum-verified runtime under /home/ayin/bin.
+bash deploy/ensure-ffmpeg-runtime.sh
+
 node deploy/validate-production-env.cjs "$AYIN_WEB_ENV_FILE" "$AYIN_API_ENV_FILE"
 pnpm install --frozen-lockfile
 pnpm db:generate
@@ -202,7 +219,7 @@ if ! activate_current_application; then
   rollback_after_failure "Application activation failed after switching the release symlink."
 fi
 
-if ! check_health "web" "$AYIN_WEB_HEALTH_URL" || ! check_health "api readiness" "$AYIN_API_HEALTH_URL"; then
+if ! check_health "web" "$AYIN_WEB_HEALTH_URL" || ! check_health "api readiness" "$AYIN_API_HEALTH_URL" || ! check_media_worker; then
   rollback_after_failure "Deployment health checks failed."
 fi
 
