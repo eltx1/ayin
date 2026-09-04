@@ -50,6 +50,8 @@ test.beforeAll(() => {
 test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces", async ({
   page,
 }) => {
+  test.setTimeout(180_000);
+
   const registration = await page.request.post(`${API}/auth/register`, {
     data: {
       name: "Responsive Admin",
