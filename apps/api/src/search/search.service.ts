@@ -12,7 +12,7 @@ const publicVideoWhere = {
   mediaAssets: {
     some: {
       kind: "SOURCE_VIDEO",
-      status: { in: ["UPLOADED", "VALIDATED"] },
+      status: "VALIDATED",
       removedAt: null,
       mimeType: "video/mp4",
     },
