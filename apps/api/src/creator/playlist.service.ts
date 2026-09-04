@@ -458,6 +458,14 @@ export class PlaylistService {
               status: "PUBLISHED",
               visibility: "PUBLIC",
               removedAt: null,
+              mediaAssets: {
+                some: {
+                  kind: "SOURCE_VIDEO",
+                  status: "VALIDATED",
+                  removedAt: null,
+                  mimeType: "video/mp4",
+                },
+              },
             },
           },
           orderBy: { position: "asc" },
