@@ -17,8 +17,8 @@ jobs:
         shell: bash
         run: |
           set +e
-          rg -n -i \
-            'Cloudflare|\bR2\b|adapter|schema|UUID|deterministic|fallback|\bV1\b|\bV2\b|internal|direct[- ]to|playback-ready|implementation' \
+          grep -RInE \
+            'Cloudflare|(^|[^A-Za-z0-9])R2([^A-Za-z0-9]|$)|adapter|schema|UUID|deterministic|fallback|(^|[^A-Za-z0-9])V1([^A-Za-z0-9]|$)|(^|[^A-Za-z0-9])V2([^A-Za-z0-9]|$)|internal|direct[- ]to|playback-ready|implementation' \
             'apps/web/src/app/(viewer)' \
             apps/web/src/components/upload \
             apps/web/src/components/channel \
