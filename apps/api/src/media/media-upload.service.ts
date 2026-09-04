@@ -17,17 +17,62 @@ import {
   UploadSessionTokenService,
 } from "./upload-session-token.service.js";
 
-const SUPPORTED_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/quicktime"]);
+const SUPPORTED_VIDEO_MIME_TYPES = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/x-matroska",
+  "video/webm",
+  "video/x-msvideo",
+  "video/mpeg",
+  "video/mp2t",
+  "video/3gpp",
+  "video/3gpp2",
+  "video/x-m4v",
+  "video/x-ms-wmv",
+  "video/x-flv",
+  "video/ogg",
+  "application/mxf",
+]);
 
-type SupportedVideoMimeType = "video/mp4" | "video/quicktime";
+type SupportedVideoMimeType =
+  | "video/mp4"
+  | "video/quicktime"
+  | "video/x-matroska"
+  | "video/webm"
+  | "video/x-msvideo"
+  | "video/mpeg"
+  | "video/mp2t"
+  | "video/3gpp"
+  | "video/3gpp2"
+  | "video/x-m4v"
+  | "video/x-ms-wmv"
+  | "video/x-flv"
+  | "video/ogg"
+  | "application/mxf";
 
 function normalizeVideoMimeType(value: string): SupportedVideoMimeType | null {
   const mimeType = value.toLowerCase().split(";", 1)[0]?.trim() ?? "";
   return SUPPORTED_VIDEO_MIME_TYPES.has(mimeType) ? (mimeType as SupportedVideoMimeType) : null;
 }
 
-function sourceExtension(mimeType: SupportedVideoMimeType): "mp4" | "mov" {
-  return mimeType === "video/quicktime" ? "mov" : "mp4";
+function sourceExtension(mimeType: SupportedVideoMimeType): string {
+  const extensions: Record<SupportedVideoMimeType, string> = {
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/x-matroska": "mkv",
+    "video/webm": "webm",
+    "video/x-msvideo": "avi",
+    "video/mpeg": "mpeg",
+    "video/mp2t": "m2ts",
+    "video/3gpp": "3gp",
+    "video/3gpp2": "3g2",
+    "video/x-m4v": "m4v",
+    "video/x-ms-wmv": "wmv",
+    "video/x-flv": "flv",
+    "video/ogg": "ogv",
+    "application/mxf": "mxf",
+  };
+  return extensions[mimeType];
 }
 
 export class MediaUploadError extends Error {
@@ -69,7 +114,7 @@ export class MediaUploadService {
     if (!mimeType) {
       throw new MediaUploadError(
         "UNSUPPORTED_VIDEO_TYPE",
-        "Choose an MP4 or iPhone MOV video. Other source formats need transcoding before upload.",
+        "Choose a supported video file from your phone, camera, or computer.",
       );
     }
     if (!Number.isSafeInteger(input.sizeBytes) || input.sizeBytes <= 0) {
