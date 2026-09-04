@@ -351,7 +351,9 @@ databaseDescribe("Task 09 playlist product", () => {
     expect(
       publicPage
         .json()
-        .items.some((item: { video: { title: string } }) => item.video.title === "Still Processing"),
+        .items.some(
+          (item: { video: { title: string } }) => item.video.title === "Still Processing",
+        ),
     ).toBe(false);
 
     const unlistedPage = await app.inject({
