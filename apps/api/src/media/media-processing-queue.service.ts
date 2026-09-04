@@ -42,7 +42,7 @@ export class MediaProcessingQueueService {
       throw new Error("A valid media worker identifier is required.");
 
     return this.database.client.$transaction(async (tx) => {
-      await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock($1)", QUEUE_ADVISORY_LOCK);
+      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", QUEUE_ADVISORY_LOCK);
       const capacity = await this.capacityInTransaction(tx);
       const now = new Date();
       await this.recoverStaleInTransaction(tx, now, capacity.retryLimit);
@@ -99,7 +99,7 @@ export class MediaProcessingQueueService {
     errorMessage: string;
   }) {
     return this.database.client.$transaction(async (tx) => {
-      await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock($1)", QUEUE_ADVISORY_LOCK);
+      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", QUEUE_ADVISORY_LOCK);
       const retryLimit = (
         await this.settings.getResolvedInTransaction(tx, "mediaProcessingRetryLimit")
       ).value as number;
