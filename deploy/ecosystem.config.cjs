@@ -64,6 +64,8 @@ module.exports = {
         NODE_ENV: "production",
         APP_ENV: "production",
         MEDIA_PROCESSING_WORKDIR: apiEnv.MEDIA_PROCESSING_WORKDIR || "/tmp/ayin-media-processing",
+        FFMPEG_PATH: apiEnv.FFMPEG_PATH || "/home/ayin/bin/ffmpeg",
+        FFPROBE_PATH: apiEnv.FFPROBE_PATH || "/home/ayin/bin/ffprobe",
       },
       exec_mode: "fork",
       instances: 1,
