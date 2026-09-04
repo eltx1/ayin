@@ -31,6 +31,58 @@ try {
       };
       break;
     }
+    // E2E has no long-running FFmpeg worker, so mirror the tested worker finalization state.
+    case "mark-media-ready": {
+      const job = await prisma.mediaProcessingJob.findFirstOrThrow({
+        where: { videoId: payload.videoId },
+        orderBy: { generation: "desc" },
+      });
+      const source = await prisma.mediaAsset.findFirstOrThrow({
+        where: {
+          videoId: payload.videoId,
+          kind: "SOURCE_VIDEO",
+          status: "UPLOADED",
+          removedAt: null,
+        },
+      });
+      const canonical = await prisma.mediaAsset.create({
+        data: {
+          videoId: payload.videoId,
+          channelId: source.channelId,
+          kind: "SOURCE_VIDEO",
+          status: "VALIDATED",
+          r2ObjectKey: job.outputR2ObjectKey,
+          mimeType: "video/mp4",
+          sizeBytes: 2048n,
+          durationMs: 120_000,
+          width: 1280,
+          height: 720,
+        },
+      });
+      await prisma.$transaction([
+        prisma.mediaAsset.update({
+          where: { id: source.id },
+          data: { status: "REMOVED", removedAt: new Date() },
+        }),
+        prisma.mediaProcessingJob.update({
+          where: { id: job.id },
+          data: {
+            finalAssetId: canonical.id,
+            status: "READY",
+            stage: "READY",
+            progressPercent: 100,
+            outputSizeBytes: 2048n,
+            completedAt: new Date(),
+          },
+        }),
+        prisma.video.update({
+          where: { id: payload.videoId },
+          data: { status: "DRAFT", durationMs: 120_000 },
+        }),
+      ]);
+      result = { ok: true };
+      break;
+    }
     case "upload-association": {
       const uploads = await prisma.playlist.findUniqueOrThrow({
         where: { channelId_systemKey: { channelId: payload.channelId, systemKey: "UPLOADS" } },

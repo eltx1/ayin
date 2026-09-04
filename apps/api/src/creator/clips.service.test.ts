@@ -18,7 +18,7 @@ describe("ClipsService", () => {
     expect(database.client.video.findMany).not.toHaveBeenCalled();
   });
 
-  it("queries only published public Clip rows", async () => {
+  it("queries only published public Clip rows with canonical playable sources", async () => {
     const findMany = vi.fn(async () => []);
     const database = { client: { video: { findMany } } };
     const settings = { get: vi.fn(async (key: string) => (key === "clipsAdFrequency" ? 6 : true)) };
@@ -30,6 +30,26 @@ describe("ClipsService", () => {
           videoForm: "CLIP",
           status: "PUBLISHED",
           visibility: "PUBLIC",
+          mediaAssets: {
+            some: expect.objectContaining({
+              kind: "SOURCE_VIDEO",
+              status: "VALIDATED",
+              mimeType: "video/mp4",
+            }),
+          },
+        }),
+        select: expect.objectContaining({
+          mediaAssets: expect.objectContaining({
+            where: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({
+                  kind: "SOURCE_VIDEO",
+                  status: "VALIDATED",
+                  mimeType: "video/mp4",
+                }),
+              ]),
+            }),
+          }),
         }),
       }),
     );

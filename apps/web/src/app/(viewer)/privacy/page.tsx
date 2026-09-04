@@ -118,12 +118,9 @@ export default function PrivacyPolicyPage() {
 
       <LegalSection title="5. Media storage and service providers">
         <p>
-          Creator media is designed to upload directly from the user&apos;s browser to Cloudflare
-          R2. AYIN&apos;s application database stores media metadata and object references rather
-          than duplicate copies of creator video bytes. AYIN also uses infrastructure and service
-          providers necessary to host, secure, deliver and operate the platform. Providers may
-          process information only for the services they supply and subject to their applicable
-          terms and safeguards.
+          AYIN uses trusted service providers to store, process, secure and deliver creator media
+          and to operate the platform. These providers may process information only for the services
+          they supply and subject to their applicable terms and safeguards.
         </p>
       </LegalSection>
 

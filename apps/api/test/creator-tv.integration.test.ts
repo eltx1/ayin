@@ -104,7 +104,11 @@ databaseDescribe("Task 10 Creator TV V1", () => {
     channelId: string,
     title: string,
     durationMs: number | null,
-    options: { visibility?: "PUBLIC" | "PRIVATE"; mimeType?: string } = {},
+    options: {
+      visibility?: "PUBLIC" | "PRIVATE";
+      mimeType?: string;
+      assetStatus?: "UPLOADED" | "VALIDATED";
+    } = {},
   ) {
     const id = randomUUID();
     const publishedAt = new Date(Date.now() - 60_000);
@@ -126,7 +130,7 @@ databaseDescribe("Task 10 Creator TV V1", () => {
         channelId,
         videoId: id,
         kind: "SOURCE_VIDEO",
-        status: "UPLOADED",
+        status: options.assetStatus ?? "VALIDATED",
         r2ObjectKey: `channels/${channelId}/media/${id}/source.mp4`,
         mimeType: options.mimeType ?? "video/mp4",
         sizeBytes: 1024n,
@@ -170,6 +174,9 @@ databaseDescribe("Task 10 Creator TV V1", () => {
     await publishMp4(owner.user.channel.id, "Private Program", 60_000, { visibility: "PRIVATE" });
     await publishMp4(owner.user.channel.id, "Wrong Container", 60_000, {
       mimeType: "video/webm",
+    });
+    await publishMp4(owner.user.channel.id, "Still Processing", 60_000, {
+      assetStatus: "UPLOADED",
     });
 
     const secondResponse = await app.inject({

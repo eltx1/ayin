@@ -103,9 +103,12 @@ export function AyinLensClient() {
     <section className={styles.panel} aria-live="polite">
       <div className={styles.toolbar}>
         <div>
-          <strong>{data?.mode === "HEURISTIC_V1" ? "Personalized V1" : "Safe fallback"}</strong>
+          <strong>
+            {data?.mode === "HEURISTIC_V1" ? "Personalized for you" : "General recommendations"}
+          </strong>
           <p>
-            AYIN uses explainable weighted signals here; this is not presented as machine learning.
+            AYIN uses your viewing and preference signals to explain why these recommendations
+            appear.
           </p>
         </div>
         <button type="button" onClick={() => void reset()} disabled={!data}>

@@ -43,7 +43,7 @@ export function DirectVideoUploader() {
         onProgress: setProgress,
       });
       setUploaded(true);
-      setMessage("Upload complete. Your original MP4 is safely stored in AYIN R2 storage.");
+      setMessage("Upload complete. Your video is ready for the next step.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The upload could not be completed.");
     } finally {
@@ -53,17 +53,16 @@ export function DirectVideoUploader() {
 
   return (
     <section className={styles.card} aria-labelledby="direct-upload-title">
-      <p className={styles.eyebrow}>Direct to R2</p>
-      <h1 id="direct-upload-title">Choose a playback-ready MP4</h1>
+      <p className={styles.eyebrow}>Video upload</p>
+      <h1 id="direct-upload-title">Choose a video</h1>
       <p className={styles.copy}>
-        AYIN sends the video straight from your browser to Cloudflare R2. The API never receives the
-        video bytes.
+        Choose a supported video from your device. AYIN will check it before the upload starts.
       </p>
       <label className={styles.picker}>
-        <span>{file ? file.name : "Choose MP4"}</span>
+        <span>{file ? file.name : "Choose video"}</span>
         <input
           type="file"
-          accept="video/mp4,.mp4"
+          accept="video/mp4,video/quicktime,.mp4,.mov"
           disabled={busy}
           onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
         />

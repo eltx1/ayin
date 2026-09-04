@@ -17,7 +17,7 @@ const playableVideoWhere = {
   mediaAssets: {
     some: {
       kind: "SOURCE_VIDEO" as const,
-      status: { in: ["UPLOADED" as const, "VALIDATED" as const] },
+      status: "VALIDATED" as const,
       removedAt: null,
       mimeType: "video/mp4",
     },

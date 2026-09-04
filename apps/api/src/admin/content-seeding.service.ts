@@ -179,19 +179,35 @@ export class ContentSeedingService {
 
   async confirmUpload(itemId: string) {
     const item = await this.item(itemId);
-    const source = await this.database.client.mediaAsset.findFirst({
-      where: {
-        videoId: item.videoId,
-        kind: "SOURCE_VIDEO",
-        status: { in: ["UPLOADED", "VALIDATED"] },
-        removedAt: null,
-      },
-      select: { id: true },
-    });
+    const [source, processing] = await Promise.all([
+      this.database.client.mediaAsset.findFirst({
+        where: {
+          videoId: item.videoId,
+          kind: "SOURCE_VIDEO",
+          status: "VALIDATED",
+          mimeType: "video/mp4",
+          removedAt: null,
+        },
+        select: { id: true },
+      }),
+      this.database.client.mediaProcessingJob.findFirst({
+        where: { videoId: item.videoId },
+        orderBy: { generation: "desc" },
+        select: { status: true },
+      }),
+    ]);
     if (!source) {
+      if (processing?.status === "FAILED") {
+        throw adminBadRequest(
+          "SEED_PROCESSING_FAILED",
+          "AYIN could not prepare this catalog video for playback. Retry it from Media Processing.",
+        );
+      }
       throw adminBadRequest(
-        "SEED_UPLOAD_NOT_COMPLETE",
-        "The MP4 upload has not completed successfully.",
+        processing ? "SEED_VIDEO_PROCESSING" : "SEED_UPLOAD_NOT_COMPLETE",
+        processing
+          ? "AYIN is still preparing this catalog video for reliable playback."
+          : "The video upload has not completed successfully.",
       );
     }
     await this.database.client.$transaction([
@@ -213,13 +229,17 @@ export class ContentSeedingService {
       where: {
         videoId: item.videoId,
         kind: "SOURCE_VIDEO",
-        status: { in: ["UPLOADED", "VALIDATED"] },
+        status: "VALIDATED",
+        mimeType: "video/mp4",
         removedAt: null,
       },
       select: { id: true },
     });
     if (!source) {
-      throw adminBadRequest("SEED_UPLOAD_REQUIRED", "Upload and verify an MP4 before publishing.");
+      throw adminBadRequest(
+        "SEED_PLAYBACK_NOT_READY",
+        "Wait for Media Processing to reach Ready before publishing this catalog video.",
+      );
     }
 
     return this.database.client.$transaction(async (tx) => {

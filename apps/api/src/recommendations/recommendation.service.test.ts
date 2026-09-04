@@ -46,6 +46,19 @@ describe("RecommendationService", () => {
     const result = await service.getHomeRecommendations("31111111-1111-4111-8111-111111111111");
     expect(result.mode).toBe("SAFE_FALLBACK");
     expect(result.items[0]?.reason.code).toBe("SAFE_FALLBACK");
+    expect(database.client.video.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          mediaAssets: {
+            some: expect.objectContaining({
+              kind: "SOURCE_VIDEO",
+              status: "VALIDATED",
+              mimeType: "video/mp4",
+            }),
+          },
+        }),
+      }),
+    );
   });
 
   it("excludes videos marked not interested", async () => {

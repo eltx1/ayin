@@ -13,6 +13,7 @@ import {
 import {
   confirmQuickUpload,
   createQuickDraft,
+  getQuickProcessingStatus,
   publishQuickVideo,
   saveQuickVideoDetails,
   uploadQuickThumbnail,
@@ -39,6 +40,8 @@ export function QuickUpload() {
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadComplete, setUploadComplete] = useState(false);
+  const [processingReady, setProcessingReady] = useState(false);
+  const [processingLabel, setProcessingLabel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [thumbnailChoices, setThumbnailChoices] = useState<LocalThumbnailChoice[]>([]);
@@ -84,6 +87,8 @@ export function QuickUpload() {
     setVideoId(null);
     setProgress(0);
     setUploadComplete(false);
+    setProcessingReady(false);
+    setProcessingLabel(null);
     setRightsConfirmed(false);
     setPublished(false);
     setMessage(null);
@@ -110,7 +115,7 @@ export function QuickUpload() {
       setVideoId(draft.video.id);
       setVisibility(draft.video.visibility);
       setCommentsEnabled(draft.video.commentsEnabled);
-      setMessage("Draft created. Uploading directly to AYIN R2…");
+      setMessage("Your video is uploading…");
 
       void captureLocalThumbnailChoices(selected).then((choices) => {
         setThumbnailChoices((current) => {
@@ -124,13 +129,19 @@ export function QuickUpload() {
         file: selected,
         onProgress: setProgress,
       });
-      await confirmQuickUpload(draft.video.id);
+      const confirmation = await confirmQuickUpload(draft.video.id);
+      setProcessingReady(confirmation.status === "DRAFT");
+      setProcessingLabel(confirmation.status === "DRAFT" ? "Ready" : "Queued");
       trackAnalyticsEvent("UPLOAD_COMPLETE", {
         channelId: identity.channel.id,
         videoId: draft.video.id,
       });
       setUploadComplete(true);
-      setMessage("Upload complete. Add the rights confirmation and publish when ready.");
+      setMessage(
+        confirmation.status === "DRAFT"
+          ? "Upload and processing complete. Confirm your publishing rights, then publish when you're ready."
+          : "Upload complete. AYIN is preparing a reliable playback version in the background.",
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "This upload could not be completed.");
     } finally {
@@ -138,13 +149,61 @@ export function QuickUpload() {
     }
   }
 
+  useEffect(() => {
+    if (!videoId || !uploadComplete || processingReady || published) return;
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let active = true;
+
+    const poll = async () => {
+      try {
+        const status = await getQuickProcessingStatus(videoId, controller.signal);
+        if (!active) return;
+        const processing = status.processing;
+        setProcessingReady(status.ready);
+        setProcessingLabel(
+          status.ready
+            ? "Ready"
+            : processing?.status === "FAILED"
+              ? "Failed"
+              : (processing?.stage?.replaceAll("_", " ") ?? processing?.status ?? "Queued"),
+        );
+        if (status.ready) {
+          setMessage("Processing complete. This video is ready to publish.");
+          return;
+        }
+        if (processing?.status === "FAILED") {
+          setMessage(
+            processing.errorMessage ||
+              "AYIN could not prepare this video for playback. It remains saved in Studio.",
+          );
+          return;
+        }
+        timeout = setTimeout(() => void poll(), 2000);
+      } catch (error) {
+        if (!active || controller.signal.aborted) return;
+        setMessage(
+          error instanceof Error ? error.message : "Processing status is temporarily unavailable.",
+        );
+        timeout = setTimeout(() => void poll(), 4000);
+      }
+    };
+
+    void poll();
+    return () => {
+      active = false;
+      controller.abort();
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [processingReady, published, uploadComplete, videoId]);
+
   async function saveDetails() {
     if (!videoId) return;
     try {
       await saveQuickVideoDetails(videoId, detailsPayload());
-      setMessage("Draft details saved.");
+      setMessage("Video details saved.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The draft details could not be saved.");
+      setMessage(error instanceof Error ? error.message : "The video details could not be saved.");
     }
   }
 
@@ -172,7 +231,8 @@ export function QuickUpload() {
   }
 
   async function publish() {
-    if (!videoId || !uploadComplete || !rightsConfirmed || !title.trim()) return;
+    if (!videoId || !uploadComplete || !processingReady || !rightsConfirmed || !title.trim())
+      return;
     setBusy(true);
     setMessage(null);
     try {
@@ -189,7 +249,7 @@ export function QuickUpload() {
       setMessage(
         result.video.status === "SCHEDULED"
           ? "Video scheduled. You can edit its details later."
-          : "Published. The video is now in Uploads and eligible for Creator TV when enabled.",
+          : "Published. Your video is now available on your channel.",
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The video could not be published.");
@@ -214,10 +274,7 @@ export function QuickUpload() {
       <div className={styles.heading}>
         <p className={styles.eyebrow}>Quick Create</p>
         <h1 id="quick-upload-title">Choose video. Upload. Publish.</h1>
-        <p>
-          Pick a playback-ready MP4 and AYIN immediately creates a draft, checks it locally, and
-          uploads the video straight to Cloudflare R2.
-        </p>
+        <p>Choose a video from your device. AYIN checks it and gets it ready for publishing.</p>
       </div>
 
       <label>
@@ -232,16 +289,15 @@ export function QuickUpload() {
         </select>
       </label>
       <p className={styles.hint}>
-        Clips use the same direct MP4 upload and rights rules. Keep Clips within the platform
-        duration limit; no music license is implied.
+        Choose an MP4 or MOV video. AYIN will check the file before the upload starts.
       </p>
 
       <label className={styles.picker}>
-        <strong>{file ? file.name : "Choose your MP4"}</strong>
-        <span>No Studio setup required.</span>
+        <strong>{file ? file.name : "Choose a video"}</strong>
+        <span>Pick a video from your files or mobile library.</span>
         <input
           type="file"
-          accept="video/mp4,.mp4"
+          accept="video/mp4,video/quicktime,.mp4,.mov"
           disabled={!identity || busy || published}
           onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
         />
@@ -267,14 +323,20 @@ export function QuickUpload() {
 
           <div className={styles.progressBlock}>
             <div className={styles.progressText}>
-              <strong>{uploadComplete ? "Upload complete" : "Uploading directly to R2"}</strong>
-              <span>{progress}%</span>
+              <strong>
+                {uploadComplete
+                  ? processingReady
+                    ? "Ready to publish"
+                    : "Processing video"
+                  : "Uploading video"}
+              </strong>
+              <span>{uploadComplete ? (processingLabel ?? "Queued") : `${progress}%`}</span>
             </div>
             <progress max={100} value={progress} aria-label="Upload progress" />
           </div>
 
           <details className={styles.advanced}>
-            <summary>Advanced settings</summary>
+            <summary>More settings</summary>
             <div className={styles.advancedGrid}>
               <label className={styles.fullWidth}>
                 <span>Description</span>
@@ -341,7 +403,7 @@ export function QuickUpload() {
                   </div>
                 ) : (
                   <p className={styles.hint}>
-                    Local frame choices appear when your browser can capture them safely.
+                    Thumbnail suggestions appear when they are available.
                   </p>
                 )}
                 <label className={styles.customThumbnail}>
@@ -359,9 +421,7 @@ export function QuickUpload() {
               </div>
 
               <p className={`${styles.hint} ${styles.fullWidth}`}>
-                Tags/category, language, captions, chapters, maturity, geo restrictions and ad-break
-                preferences stay out of the simple flow until their dedicated schema capabilities
-                are available. They never block publishing.
+                Additional creator options will appear here as they become available.
               </p>
             </div>
           </details>
@@ -381,7 +441,14 @@ export function QuickUpload() {
           <button
             className={styles.publish}
             type="button"
-            disabled={!uploadComplete || !rightsConfirmed || !title.trim() || busy || published}
+            disabled={
+              !uploadComplete ||
+              !processingReady ||
+              !rightsConfirmed ||
+              !title.trim() ||
+              busy ||
+              published
+            }
             onClick={() => void publish()}
           >
             {published ? "Published" : busy && uploadComplete ? "Publishing…" : "Publish"}

@@ -163,29 +163,99 @@ export class QuickUploadService {
 
   async confirmUpload(accountId: string, videoId: string) {
     const video = await this.ownedVideo(accountId, videoId);
-    const source = await this.database.client.mediaAsset.findFirst({
-      where: {
-        videoId,
-        channelId: video.channelId,
-        kind: "SOURCE_VIDEO",
-        status: { in: ["UPLOADED", "VALIDATED"] },
-        removedAt: null,
-      },
-      select: { id: true },
-    });
-    if (!source) {
+    const [source, canonical, processing] = await Promise.all([
+      this.database.client.mediaAsset.findFirst({
+        where: {
+          videoId,
+          channelId: video.channelId,
+          kind: "SOURCE_VIDEO",
+          status: "UPLOADED",
+          removedAt: null,
+        },
+        select: { id: true },
+      }),
+      this.database.client.mediaAsset.findFirst({
+        where: {
+          videoId,
+          channelId: video.channelId,
+          kind: "SOURCE_VIDEO",
+          status: "VALIDATED",
+          removedAt: null,
+          mimeType: "video/mp4",
+        },
+        select: { id: true },
+      }),
+      this.database.client.mediaProcessingJob.findFirst({
+        where: { videoId },
+        orderBy: { generation: "desc" },
+        select: { status: true, stage: true, progressPercent: true, errorCode: true },
+      }),
+    ]);
+    if (!source && !canonical) {
       throw new QuickUploadError(
         "UPLOAD_NOT_COMPLETE",
-        "The video is still uploading. Publishing will be available when it reaches 100%.",
+        "The video is still uploading. Processing starts automatically after the upload reaches 100%.",
         409,
       );
     }
+    if (!canonical) {
+      return {
+        videoId,
+        status: "VALIDATING" as const,
+        processing: processing ?? {
+          status: "QUEUED" as const,
+          stage: "QUEUED",
+          progressPercent: 0,
+          errorCode: null,
+        },
+      };
+    }
     const updated = await this.database.client.video.update({
       where: { id: videoId },
-      data: video.status === "UPLOADING" ? { status: "DRAFT" } : {},
+      data: {
+        status:
+          video.status === "UPLOADING" || video.status === "VALIDATING" ? "DRAFT" : video.status,
+      },
       select: { id: true, status: true },
     });
-    return { videoId: updated.id, status: updated.status };
+    return { videoId: updated.id, status: updated.status, processing };
+  }
+
+  async processingStatus(accountId: string, videoId: string) {
+    const video = await this.ownedVideo(accountId, videoId);
+    const [canonical, processing] = await Promise.all([
+      this.database.client.mediaAsset.findFirst({
+        where: {
+          videoId,
+          channelId: video.channelId,
+          kind: "SOURCE_VIDEO",
+          status: "VALIDATED",
+          removedAt: null,
+          mimeType: "video/mp4",
+        },
+        select: { id: true },
+      }),
+      this.database.client.mediaProcessingJob.findFirst({
+        where: { videoId },
+        orderBy: { generation: "desc" },
+        select: {
+          generation: true,
+          status: true,
+          stage: true,
+          progressPercent: true,
+          errorCode: true,
+          errorMessage: true,
+          attempt: true,
+          completedAt: true,
+        },
+      }),
+    ]);
+    return {
+      videoId,
+      ready: Boolean(canonical),
+      videoStatus: video.status,
+      processing,
+    };
   }
 
   async updateDetails(accountId: string, videoId: string, input: DraftDetailsInput) {
@@ -236,7 +306,12 @@ export class QuickUploadService {
           },
           mediaAssets: {
             where: { kind: "SOURCE_VIDEO", removedAt: null },
-            select: { id: true, status: true },
+            select: { id: true, status: true, mimeType: true },
+          },
+          mediaProcessingJobs: {
+            orderBy: { generation: "desc" },
+            take: 1,
+            select: { status: true, errorCode: true },
           },
         },
       });
@@ -254,14 +329,29 @@ export class QuickUploadService {
           403,
         );
       }
-      if (
-        !video.mediaAssets.some(
-          (asset) => asset.status === "UPLOADED" || asset.status === "VALIDATED",
-        )
-      ) {
+      const canonicalReady = video.mediaAssets.some(
+        (asset) => asset.status === "VALIDATED" && asset.mimeType === "video/mp4",
+      );
+      if (!canonicalReady) {
+        const processing = video.mediaProcessingJobs[0];
+        const uploadedSource = video.mediaAssets.some((asset) => asset.status === "UPLOADED");
+        if (!uploadedSource && !processing) {
+          throw new QuickUploadError(
+            "UPLOAD_NOT_COMPLETE",
+            "The video is still uploading. Processing starts automatically after the upload reaches 100%.",
+            409,
+          );
+        }
+        if (processing?.status === "FAILED") {
+          throw new QuickUploadError(
+            "VIDEO_PROCESSING_FAILED",
+            "AYIN could not prepare this video for playback. It is saved in Studio for review or retry.",
+            409,
+          );
+        }
         throw new QuickUploadError(
-          "UPLOAD_NOT_COMPLETE",
-          "The video is still uploading. Publishing will be available when it reaches 100%.",
+          "VIDEO_PROCESSING",
+          "AYIN is preparing this video for reliable playback. Publishing will be available when processing reaches Ready.",
           409,
         );
       }

@@ -80,6 +80,7 @@ async function publishThroughDirectUpload(
   expect(
     (await api.post(`/creator/videos/${draft.video.id}/upload-complete`, { data: {} })).ok(),
   ).toBeTruthy();
+  db("mark-media-ready", { videoId: draft.video.id });
   const publish = await api.post(`/creator/videos/${draft.video.id}/publish`, {
     data: { rightsConfirmed: true, title },
   });

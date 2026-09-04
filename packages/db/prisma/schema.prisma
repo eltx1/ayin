@@ -85,6 +85,17 @@ enum MediaAssetStatus {
   REMOVED
 }
 
+enum MediaProcessingJobStatus {
+  INGESTING
+  QUEUED
+  PROCESSING
+  UPLOADING
+  VERIFYING
+  READY
+  FAILED
+  CANCELLED
+}
+
 enum PlaylistSystemKey {
   UPLOADS
 }
@@ -442,6 +453,7 @@ model Video {
 
   channel                Channel                    @relation(fields: [channelId], references: [id], onDelete: Restrict)
   mediaAssets            MediaAsset[]
+  mediaProcessingJobs     MediaProcessingJob[]
   playlistItems          PlaylistItem[]
   tvScheduleItems        TvScheduleItem[]
   tvPreferences          CreatorTvVideoPreference[]
@@ -486,9 +498,46 @@ model MediaAsset {
   channel       Channel?       @relation(fields: [channelId], references: [id], onDelete: Cascade)
   creatives     Creative[]
   communityPost CommunityPost? @relation("CommunityImageAsset")
+  processingJob MediaProcessingJob? @relation("MediaProcessingFinalAsset")
 
   @@index([videoId, kind, status])
   @@index([channelId, kind])
+}
+
+model MediaProcessingJob {
+  id                String                   @id @default(uuid()) @db.Uuid
+  videoId           String                   @db.Uuid
+  finalAssetId      String?                  @unique @db.Uuid
+  generation        Int                      @default(1)
+  status            MediaProcessingJobStatus @default(INGESTING)
+  sourceMimeType    String                   @db.VarChar(255)
+  sourceSizeBytes   BigInt
+  stagingKey        String                   @unique @db.VarChar(1024)
+  inputR2ObjectKey  String?                  @db.VarChar(1024)
+  outputR2ObjectKey String                   @unique @db.VarChar(1024)
+  outputSizeBytes   BigInt?
+  attempt           Int                      @default(0)
+  priority          Int                      @default(0)
+  progressPercent   Int                      @default(0)
+  stage             String?                  @db.VarChar(64)
+  leaseOwner        String?                  @db.VarChar(255)
+  leaseExpiresAt    DateTime?
+  heartbeatAt       DateTime?
+  errorCode         String?                  @db.VarChar(128)
+  errorMessage      String?                  @db.Text
+  queuedAt          DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  video      Video       @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  finalAsset MediaAsset? @relation("MediaProcessingFinalAsset", fields: [finalAssetId], references: [id], onDelete: SetNull)
+
+  @@unique([videoId, generation])
+  @@index([status, priority, queuedAt])
+  @@index([leaseExpiresAt])
+  @@index([videoId, status])
 }
 
 model Playlist {

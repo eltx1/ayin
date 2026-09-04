@@ -477,7 +477,7 @@ export class CreatorTvService {
         mediaAssets: {
           some: {
             kind: "SOURCE_VIDEO",
-            status: { in: ["UPLOADED", "VALIDATED"] },
+            status: "VALIDATED",
             removedAt: null,
             mimeType: MP4_MIME_TYPE,
           },
@@ -494,9 +494,11 @@ export class CreatorTvService {
         createdAt: true,
         mediaAssets: {
           where: {
-            kind: { in: ["SOURCE_VIDEO", "THUMBNAIL"] },
-            status: { in: ["UPLOADED", "VALIDATED"] },
             removedAt: null,
+            OR: [
+              { kind: "SOURCE_VIDEO", status: "VALIDATED", mimeType: MP4_MIME_TYPE },
+              { kind: "THUMBNAIL", status: { in: ["UPLOADED", "VALIDATED"] } },
+            ],
           },
           orderBy: { createdAt: "desc" },
           select: {
@@ -570,7 +572,7 @@ export class CreatorTvService {
         mediaAssets: {
           some: {
             kind: "SOURCE_VIDEO",
-            status: { in: ["UPLOADED", "VALIDATED"] },
+            status: "VALIDATED",
             removedAt: null,
             mimeType: MP4_MIME_TYPE,
           },
@@ -608,9 +610,11 @@ export class CreatorTvService {
             publishedAt: true,
             mediaAssets: {
               where: {
-                kind: { in: ["SOURCE_VIDEO", "THUMBNAIL"] },
-                status: { in: ["UPLOADED", "VALIDATED"] },
                 removedAt: null,
+                OR: [
+                  { kind: "SOURCE_VIDEO", status: "VALIDATED", mimeType: MP4_MIME_TYPE },
+                  { kind: "THUMBNAIL", status: { in: ["UPLOADED", "VALIDATED"] } },
+                ],
               },
               orderBy: { createdAt: "desc" },
               select: {

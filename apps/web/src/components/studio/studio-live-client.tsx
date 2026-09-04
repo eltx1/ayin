@@ -86,20 +86,22 @@ export function StudioLiveClient() {
       return;
     }
     setOneTimeKey(payload.streamKey ?? null);
-    setMessage("Copy the stream key now. AYIN stores only its hash.");
+    setMessage("Copy the stream key now and keep it private. It will only be shown once.");
     await refresh();
   }
 
   return (
     <section>
       <p>
-        Provider: <strong>{data?.provider.key ?? "checking"}</strong> —{" "}
-        {data?.provider.configured ? "configured" : "not configured"}
+        <strong>Live streaming</strong>{" "}
+        {data?.provider.configured
+          ? "is ready for your channel."
+          : "is not available yet for this channel."}
       </p>
       {!data?.provider.configured ? (
         <p>
-          R2 is VOD storage and is not used as a live transcoder. Provisioning stays disabled until
-          a real provider is configured.
+          Live session creation will become available when live streaming is enabled for your
+          channel.
         </p>
       ) : null}
       <form className={styles.card} onSubmit={create}>

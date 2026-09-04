@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { SearchService } from "./search.service.js";
 
@@ -30,6 +30,37 @@ describe("SearchService", () => {
     expect(result.query).toBe("A Film");
     expect(result.items.map((item) => item.type)).toEqual(["VIDEO", "CHANNEL"]);
     expect(result.items[0]?.href).toBe("/watch/a-film");
+  });
+
+  it("requires a validated MP4 source for public video search candidates", async () => {
+    const findMany = vi.fn(async () => []);
+    const service = new SearchService({
+      client: {
+        video: { findMany },
+        channel: { findMany: vi.fn(async () => []) },
+        playlist: { findMany: vi.fn(async () => []) },
+        creatorTvChannel: { findMany: vi.fn(async () => []) },
+      },
+    } as never);
+
+    await service.search("film");
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              mediaAssets: {
+                some: expect.objectContaining({
+                  kind: "SOURCE_VIDEO",
+                  status: "VALIDATED",
+                  mimeType: "video/mp4",
+                }),
+              },
+            }),
+          ]),
+        }),
+      }),
+    );
   });
 
   it("rejects undersized queries and malformed cursors", async () => {

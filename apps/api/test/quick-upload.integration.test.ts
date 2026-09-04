@@ -122,10 +122,56 @@ databaseDescribe("creator quick upload and publish", () => {
     expect(completed.statusCode).toBe(201);
   }
 
+  async function markReady(videoId: string) {
+    const job = await prisma.mediaProcessingJob.findFirstOrThrow({
+      where: { videoId },
+      orderBy: { generation: "desc" },
+    });
+    const source = await prisma.mediaAsset.findFirstOrThrow({
+      where: { videoId, kind: "SOURCE_VIDEO", status: "UPLOADED", removedAt: null },
+    });
+    const canonical = await prisma.mediaAsset.create({
+      data: {
+        videoId,
+        channelId: source.channelId,
+        kind: "SOURCE_VIDEO",
+        status: "VALIDATED",
+        r2ObjectKey: job.outputR2ObjectKey,
+        mimeType: "video/mp4",
+        sizeBytes: 2048n,
+        durationMs: 120_000,
+        width: 1280,
+        height: 720,
+      },
+    });
+    await prisma.$transaction([
+      prisma.mediaAsset.update({
+        where: { id: source.id },
+        data: { status: "REMOVED", removedAt: new Date() },
+      }),
+      prisma.mediaProcessingJob.update({
+        where: { id: job.id },
+        data: {
+          finalAssetId: canonical.id,
+          status: "READY",
+          stage: "READY",
+          progressPercent: 100,
+          outputSizeBytes: 2048n,
+          completedAt: new Date(),
+        },
+      }),
+      prisma.video.update({
+        where: { id: videoId },
+        data: { status: "DRAFT", durationMs: 120_000 },
+      }),
+    ]);
+  }
+
   it("publishes the happy path with a durable rights declaration", async () => {
     const owner = await register("Quick Owner", "quick-owner@example.com");
     const draft = await createDraft(owner.cookie, owner.user.channel.id, "My First Upload");
     await completeUpload(owner.cookie, draft);
+    await markReady(draft.video.id);
 
     const publish = await app.inject({
       method: "POST",
@@ -158,6 +204,33 @@ databaseDescribe("creator quick upload and publish", () => {
     });
     expect(publish.statusCode).toBe(409);
     expect(publish.json().error.code).toBe("UPLOAD_NOT_COMPLETE");
+  });
+
+  it("blocks publishing while canonical processing is still queued", async () => {
+    const owner = await register("Processing Owner", "processing-owner@example.com");
+    const draft = await createDraft(owner.cookie, owner.user.channel.id);
+    await completeUpload(owner.cookie, draft);
+
+    const status = await app.inject({
+      method: "GET",
+      url: `/creator/videos/${draft.video.id}/processing`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      ready: false,
+      videoStatus: "VALIDATING",
+      processing: { status: "QUEUED" },
+    });
+
+    const publish = await app.inject({
+      method: "POST",
+      url: `/creator/videos/${draft.video.id}/publish`,
+      headers: { cookie: owner.cookie },
+      payload: { rightsConfirmed: true },
+    });
+    expect(publish.statusCode).toBe(409);
+    expect(publish.json().error.code).toBe("VIDEO_PROCESSING");
   });
 
   it("requires explicit rights confirmation", async () => {
@@ -193,6 +266,7 @@ databaseDescribe("creator quick upload and publish", () => {
     const owner = await register("Association Owner", "association-owner@example.com");
     const draft = await createDraft(owner.cookie, owner.user.channel.id);
     await completeUpload(owner.cookie, draft);
+    await markReady(draft.video.id);
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const publish = await app.inject({

@@ -37,8 +37,9 @@ export class ClipsService {
         mediaAssets: {
           some: {
             kind: "SOURCE_VIDEO",
-            status: { in: ["UPLOADED", "VALIDATED"] },
+            status: "VALIDATED",
             removedAt: null,
+            mimeType: "video/mp4",
           },
         },
       },
@@ -55,9 +56,11 @@ export class ClipsService {
         channel: { select: { id: true, handle: true, name: true } },
         mediaAssets: {
           where: {
-            kind: { in: ["SOURCE_VIDEO", "THUMBNAIL"] },
-            status: { in: ["UPLOADED", "VALIDATED"] },
             removedAt: null,
+            OR: [
+              { kind: "SOURCE_VIDEO", status: "VALIDATED", mimeType: "video/mp4" },
+              { kind: "THUMBNAIL", status: { in: ["UPLOADED", "VALIDATED"] } },
+            ],
           },
           orderBy: { createdAt: "desc" },
           select: { kind: true, r2ObjectKey: true },

@@ -3,15 +3,42 @@ export type VideoInspectionResult =
   | { status: "unknown"; message: string; durationSeconds: number | null }
   | { status: "incompatible"; message: string; durationSeconds: number | null };
 
+export type SupportedVideoContainer = "mp4" | "mov";
+
+export function detectVideoContainer(
+  file: Pick<File, "type" | "name">,
+): SupportedVideoContainer | null {
+  const type = file.type.toLowerCase();
+  const name = file.name.toLowerCase();
+  if (type === "video/mp4" || name.endsWith(".mp4")) return "mp4";
+  if (type === "video/quicktime" || name.endsWith(".mov")) return "mov";
+  return null;
+}
+
 export function isMp4File(file: Pick<File, "type" | "name">): boolean {
-  return file.type.toLowerCase() === "video/mp4" || file.name.toLowerCase().endsWith(".mp4");
+  return detectVideoContainer(file) === "mp4";
+}
+
+export function isSupportedVideoFile(file: Pick<File, "type" | "name">): boolean {
+  return detectVideoContainer(file) !== null;
+}
+
+export function videoMimeTypeForUpload(
+  file: Pick<File, "type" | "name">,
+): "video/mp4" | "video/quicktime" {
+  const container = detectVideoContainer(file);
+  if (container === "mp4") return "video/mp4";
+  if (container === "mov") return "video/quicktime";
+  throw new Error("Unsupported video source. Choose an MP4 or iPhone MOV video.");
 }
 
 export async function inspectVideoFile(file: File): Promise<VideoInspectionResult> {
-  if (!isMp4File(file)) {
+  const container = detectVideoContainer(file);
+  if (!container) {
     return {
       status: "incompatible",
-      message: "Choose an MP4 file. AYIN V1 uses playback-ready MP4 video.",
+      message:
+        "Choose an MP4 or iPhone MOV video. Other source formats need transcoding before upload.",
       durationSeconds: null,
     };
   }
@@ -20,14 +47,25 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
   if (!metadata.readable) {
     return {
       status: "incompatible",
-      message: "This MP4 could not be opened by your browser. Try another playback-ready file.",
+      message:
+        container === "mov"
+          ? "This MOV could not be opened by your browser. Try another iPhone video or an MP4 export."
+          : "This MP4 could not be opened by your browser. Try another playback-ready file.",
       durationSeconds: null,
     };
   }
 
-  const capability = document
-    .createElement("video")
-    .canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
+  const video = document.createElement("video");
+  if (container === "mov") {
+    return {
+      status: "unknown",
+      message:
+        "iPhone MOV opened successfully. AYIN will prepare an H.264/AAC MP4 after upload for reliable web, Android and TV playback.",
+      durationSeconds: metadata.durationSeconds,
+    };
+  }
+
+  const capability = video.canPlayType('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
   if (capability === "probably") {
     return {
       status: "compatible",
@@ -40,7 +78,7 @@ export async function inspectVideoFile(file: File): Promise<VideoInspectionResul
   return {
     status: "unknown",
     message:
-      "Your browser cannot confirm the exact H.264/AAC profile. You can continue; AYIN will keep the original MP4 without transcoding.",
+      "Your browser cannot confirm the exact codec profile. You can continue; AYIN will prepare a canonical H.264/AAC MP4 after upload.",
     durationSeconds: metadata.durationSeconds,
   };
 }
