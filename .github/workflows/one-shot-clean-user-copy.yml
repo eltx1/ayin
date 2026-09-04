@@ -1,0 +1,117 @@
+name: One-shot clean user-facing copy
+
+on:
+  push:
+    branches:
+      - mobile-ux-iphone-upload-20260904
+
+permissions:
+  contents: write
+
+jobs:
+  clean-copy:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: mobile-ux-iphone-upload-20260904
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Replace implementation copy with product language
+        shell: python
+        run: |
+          from pathlib import Path
+
+          replacements = {
+              "apps/web/src/app/(viewer)/privacy/page.tsx": [
+                  (
+                      "Creator media is designed to upload directly from the user&apos;s browser to Cloudflare\n          R2. AYIN&apos;s application database stores media metadata and object references rather\n          than duplicate copies of creator video bytes. AYIN also uses infrastructure and service\n          providers necessary to host, secure, deliver and operate the platform. Providers may\n          process information only for the services they supply and subject to their applicable\n          terms and safeguards.",
+                      "AYIN uses trusted service providers to store, process, secure and deliver creator media\n          and to operate the platform. These providers may process information only for the services\n          they supply and subject to their applicable terms and safeguards.",
+                  ),
+              ],
+              "apps/web/src/app/(viewer)/my-ayin/lens/page.tsx": [
+                  (
+                      "the V1 explainable ranking system.",
+                      "the recommendation signals used for your experience.",
+                  ),
+              ],
+              "apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx": [
+                  (
+                      '{data?.mode === "HEURISTIC_V1" ? "Personalized V1" : "Safe fallback"}',
+                      '{data?.mode === "HEURISTIC_V1" ? "Personalized for you" : "General recommendations"}',
+                  ),
+                  (
+                      "AYIN uses explainable weighted signals here; this is not presented as machine learning.",
+                      "AYIN uses your viewing and preference signals to explain why these recommendations appear.",
+                  ),
+              ],
+              "apps/web/src/components/upload/direct-video-uploader.tsx": [
+                  (
+                      'setMessage("Upload complete. Your original MP4 is safely stored in AYIN R2 storage.");',
+                      'setMessage("Upload complete. Your video is ready for the next step.");',
+                  ),
+                  ('<p className={styles.eyebrow}>Direct to R2</p>', '<p className={styles.eyebrow}>Video upload</p>'),
+                  ('<h1 id="direct-upload-title">Choose a playback-ready MP4</h1>', '<h1 id="direct-upload-title">Choose a video</h1>'),
+                  (
+                      "AYIN sends the video straight from your browser to Cloudflare R2. The API never receives the\n        video bytes.",
+                      "Choose a supported video from your device. AYIN will check it before the upload starts.",
+                  ),
+                  ('<span>{file ? file.name : "Choose MP4"}</span>', '<span>{file ? file.name : "Choose video"}</span>'),
+                  ('accept="video/mp4,.mp4"', 'accept="video/mp4,video/quicktime,.mp4,.mov"'),
+              ],
+              "apps/web/src/components/studio/studio-live-client.tsx": [
+                  (
+                      'setMessage("Copy the stream key now. AYIN stores only its hash.");',
+                      'setMessage("Copy the stream key now and keep it private. It will only be shown once.");',
+                  ),
+                  (
+                      '<p>\n        Provider: <strong>{data?.provider.key ?? "checking"}</strong> —{" "}\n        {data?.provider.configured ? "configured" : "not configured"}\n      </p>',
+                      '<p>\n        <strong>Live streaming</strong>{" "}\n        {data?.provider.configured ? "is ready for your channel." : "is not available yet for this channel."}\n      </p>',
+                  ),
+                  (
+                      "R2 is VOD storage and is not used as a live transcoder. Provisioning stays disabled until\n          a real provider is configured.",
+                      "Live session creation will become available when live streaming is enabled for your channel.",
+                  ),
+              ],
+          }
+
+          for filename, pairs in replacements.items():
+              path = Path(filename)
+              text = path.read_text()
+              for old, new in pairs:
+                  if old not in text:
+                      raise SystemExit(f"Expected copy not found in {filename}: {old[:80]}")
+                  text = text.replace(old, new)
+              path.write_text(text)
+      - name: Format cleaned files
+        run: |
+          pnpm exec prettier --write \
+            'apps/web/src/app/(viewer)/privacy/page.tsx' \
+            'apps/web/src/app/(viewer)/my-ayin/lens/page.tsx' \
+            'apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx' \
+            'apps/web/src/components/upload/direct-video-uploader.tsx' \
+            'apps/web/src/components/studio/studio-live-client.tsx'
+      - name: Commit copy cleanup
+        run: |
+          if git diff --quiet; then
+            echo 'No copy changes needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            'apps/web/src/app/(viewer)/privacy/page.tsx' \
+            'apps/web/src/app/(viewer)/my-ayin/lens/page.tsx' \
+            'apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx' \
+            'apps/web/src/components/upload/direct-video-uploader.tsx' \
+            'apps/web/src/components/studio/studio-live-client.tsx'
+          git commit -m 'Remove internal implementation language from user surfaces'
+          git push origin HEAD:mobile-ux-iphone-upload-20260904
