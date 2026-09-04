@@ -19,8 +19,7 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           ssh-keyscan -p 22 13.52.116.200 > /tmp/ayin-known-hosts
-          actual=$(ssh-keygen -lf /tmp/ayin-known-hosts -E sha256 | awk 'NR==1 {print $2}')
-          test "$actual" = 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
+          ssh-keygen -lf /tmp/ayin-known-hosts -E sha256 | awk '{print $2}' | grep -Fx 'SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y'
           mv /tmp/ayin-known-hosts ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
       - name: Install deployment SSH key
