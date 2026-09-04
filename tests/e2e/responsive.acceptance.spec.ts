@@ -133,7 +133,9 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
     }
 
     await page.goto("/upload", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Choose video. Upload. Publish." })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Choose video. Upload. Publish." }),
+    ).toBeVisible();
     await expect(page.getByText(/Cloudflare R2/i)).toHaveCount(0);
     await expect(page.getByText(/direct-to-R2/i)).toHaveCount(0);
 
