@@ -2,7 +2,7 @@
 
 Use this as a release gate. A box is checked only from evidence in the target environment; repository defaults do not count as production verification.
 
-The V1 zero-additional-service topology keeps Web/API/PostgreSQL on the existing EC2 host. Cloudflare R2 is the only required external storage service for creator media.
+The V1 zero-additional-service topology keeps Web/API/PostgreSQL and the isolated media-processing worker on the existing EC2 host. Cloudflare R2 remains the external video media storage layer.
 
 ## DNS and domains
 
@@ -15,6 +15,7 @@ The V1 zero-additional-service topology keeps Web/API/PostgreSQL on the existing
 
 - [ ] Web process is running under the documented PM2 configuration.
 - [ ] API process is running and `/health` returns success through the public reverse proxy.
+- [ ] `ayin-media-worker` is running under PM2 with the pinned FFmpeg/ffprobe runtime available and healthy.
 - [ ] Nginx forwards host/proto/client information as documented.
 - [ ] Restart and rollback procedure from `deploy/README.md` has been exercised before public launch.
 
@@ -34,8 +35,10 @@ The V1 zero-additional-service topology keeps Web/API/PostgreSQL on the existing
 - [ ] `media.ayin.stream` serves byte-range requests required by progressive MP4 playback.
 - [ ] CORS permits only required upload/media origins and methods.
 - [ ] Abandoned multipart uploads/drafts have an operational cleanup policy.
-- [ ] Upload a real playback-ready MP4, publish it, seek it, and resume it on the target environment.
-- [ ] Creator video bytes never traverse or persist on EC2/EBS/Node/Nginx/PostgreSQL.
+- [ ] Upload a real iPhone/QuickTime MOV source directly to R2, observe queued processing complete, publish the resulting validated canonical MP4, seek it, and resume it on the target environment.
+- [ ] Repeat the processing smoke with at least one additional common mobile/camera source container supported by the upload flow.
+- [ ] Raw/source media is never exposed through public discovery/playback before canonical-media validation succeeds.
+- [ ] Creator upload bytes bypass the public Web/API/Nginx upload path; EC2 media-worker processing is isolated and final playback media remains stored in R2 rather than as durable application-host video storage.
 
 ## Authentication and email
 
@@ -87,17 +90,18 @@ The V1 zero-additional-service topology keeps Web/API/PostgreSQL on the existing
 
 - [ ] Production error monitoring/logging is configured with secrets/PII redaction using existing infrastructure before adding a paid monitoring service.
 - [ ] API process crashes/restarts are detectable and have an operational owner.
+- [ ] Media-worker crashes, queue stalls and repeated processing failures are detectable and have an operational response path.
 - [ ] Health-check failure and elevated 5xx rate have an operational response path.
-- [ ] R2/media delivery failures can be distinguished from API/web failures.
+- [ ] R2/media delivery failures can be distinguished from API/web/media-processing failures.
 
 ## Final acceptance
 
 - [ ] Run `pnpm test:e2e` against the release candidate with the isolated E2E storage adapter only in `APP_ENV=test`, or against an explicitly safe R2 test environment.
 - [ ] Register -> automatic profile/channel/Uploads/TV verified.
-- [ ] Direct upload -> publish -> channel/Uploads/Creator TV verified.
+- [ ] Direct source upload -> processing -> validated canonical media -> publish -> channel/Uploads/Creator TV verified.
 - [ ] Watch -> progress -> resume verified.
 - [ ] Subscribe/like/comment verified.
-- [ ] Admin user/channel/video controls and homepage merchandising verified.
+- [ ] Admin user/channel/video/media-processing controls and homepage merchandising verified.
 - [ ] Video-ad failure does not block content and display no-fill collapses.
 - [ ] Revenue contract smoke and moderation/suspension smoke pass.
 
