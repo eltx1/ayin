@@ -1,0 +1,123 @@
+name: Media runtime diagnostics
+
+on:
+  push:
+    branches:
+      - diag-media-ffmpeg-20260905
+    paths:
+      - .github/workflows/media-runtime-diagnostics.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+
+    steps:
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          test -s "$candidate"
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual_fingerprint" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Inspect production media worker and recent failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          echo '=== PM2 media worker ==='
+          pm2 jlist | node -e '
+            let data="";
+            process.stdin.on("data", c => data += c);
+            process.stdin.on("end", () => {
+              const app = JSON.parse(data).find(x => x.name === "ayin-media-worker");
+              if (!app) { console.log("worker=missing"); process.exit(0); }
+              console.log(JSON.stringify({
+                name: app.name,
+                status: app.pm2_env?.status,
+                pid: app.pid,
+                restarts: app.pm2_env?.restart_time,
+                unstableRestarts: app.pm2_env?.unstable_restarts,
+                memory: app.monit?.memory,
+                cpu: app.monit?.cpu,
+              }));
+            });
+          '
+
+          echo '=== FFmpeg runtime ==='
+          /home/ayin/bin/ffmpeg -hide_banner -version | head -n 1
+          /home/ayin/bin/ffprobe -hide_banner -version | head -n 1
+          /home/ayin/bin/ffmpeg -hide_banner -encoders 2>/dev/null | grep -m1 'libx264' || true
+          ls -l /home/ayin/bin/ffmpeg /home/ayin/bin/ffprobe
+
+          echo '=== Host capacity ==='
+          free -h
+          df -h / /tmp /home | awk 'NR==1 || !seen[$1]++'
+
+          echo '=== Recent media-processing rows ==='
+          DATABASE_URL="$(node -e '
+            const { loadEnvFile } = require("/home/ayin/htdocs/current/deploy/env-file.cjs");
+            const value = loadEnvFile("/home/ayin/env/api.env").DATABASE_URL;
+            if (!value) process.exit(2);
+            process.stdout.write(value);
+          ')"
+          psql "$DATABASE_URL" -X -A -F $'\t' -P pager=off -c '
+            SELECT
+              "id",
+              "videoId",
+              "status",
+              "stage",
+              "attempt",
+              "errorCode",
+              left(coalesce("errorMessage", '\''\''), 3500) AS "errorMessage",
+              "sourceMimeType",
+              "sourceSizeBytes",
+              "createdAt",
+              "updatedAt"
+            FROM "MediaProcessingJob"
+            ORDER BY "createdAt" DESC
+            LIMIT 12;
+          '
+          unset DATABASE_URL
+
+          echo '=== Recent media worker log errors ==='
+          {
+            tail -n 500 "$HOME/.pm2/logs/ayin-media-worker-error.log" 2>/dev/null || true
+            tail -n 500 "$HOME/.pm2/logs/ayin-media-worker-out.log" 2>/dev/null || true
+          } | grep -Ei 'media processing job|ffmpeg|ffprobe|failed|error|signal|killed|invalid|encoder|decoder|moov|height|width' | tail -n 220 || true
+
+          echo '=== FFmpeg odd-dimension regression probe ==='
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          set +e
+          /home/ayin/bin/ffmpeg -hide_banner -nostdin -loglevel warning -y \
+            -f lavfi -i 'testsrc=size=641x481:rate=1' -t 1 \
+            -vf 'scale=-2:min(1080\,ih)' \
+            -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -threads 1 \
+            -an -movflags +faststart "$probe_dir/odd.mp4" 2>&1
+          odd_rc=$?
+          set -e
+          echo "odd_dimension_probe_exit=$odd_rc"
+          REMOTE
