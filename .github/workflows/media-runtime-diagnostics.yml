@@ -76,6 +76,12 @@ jobs:
           free -h
           df -h / /tmp /home | awk 'NR==1 || !seen[$1]++'
 
+          echo '=== Recent media worker log errors ==='
+          {
+            tail -n 700 "$HOME/.pm2/logs/ayin-media-worker-error.log" 2>/dev/null || true
+            tail -n 700 "$HOME/.pm2/logs/ayin-media-worker-out.log" 2>/dev/null || true
+          } | grep -Ei 'media processing job|ffmpeg|ffprobe|failed|error|signal|killed|invalid|encoder|decoder|moov|height|width|filter|scale' | tail -n 260 || true
+
           echo '=== Recent media-processing rows ==='
           DATABASE_URL="$(node -e '
             const { loadEnvFile } = require("/home/ayin/htdocs/current/deploy/env-file.cjs");
@@ -83,7 +89,13 @@ jobs:
             if (!value) process.exit(2);
             process.stdout.write(value);
           ')"
-          psql "$DATABASE_URL" -X -A -F $'\t' -P pager=off -c '
+          PSQL_URL="$(DATABASE_URL="$DATABASE_URL" node -e '
+            const u = new URL(process.env.DATABASE_URL);
+            u.searchParams.delete("schema");
+            process.stdout.write(u.toString());
+          ')"
+          set +e
+          psql "$PSQL_URL" -X -A -F $'\t' -P pager=off -c '
             SELECT
               "id",
               "videoId",
@@ -100,13 +112,10 @@ jobs:
             ORDER BY "createdAt" DESC
             LIMIT 12;
           '
-          unset DATABASE_URL
-
-          echo '=== Recent media worker log errors ==='
-          {
-            tail -n 500 "$HOME/.pm2/logs/ayin-media-worker-error.log" 2>/dev/null || true
-            tail -n 500 "$HOME/.pm2/logs/ayin-media-worker-out.log" 2>/dev/null || true
-          } | grep -Ei 'media processing job|ffmpeg|ffprobe|failed|error|signal|killed|invalid|encoder|decoder|moov|height|width' | tail -n 220 || true
+          psql_rc=$?
+          set -e
+          echo "psql_query_exit=$psql_rc"
+          unset DATABASE_URL PSQL_URL
 
           echo '=== FFmpeg odd-dimension regression probe ==='
           probe_dir="$(mktemp -d)"
