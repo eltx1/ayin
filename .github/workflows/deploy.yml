@@ -165,6 +165,13 @@ jobs:
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
             "set -e; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/ >/dev/null; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/health >/dev/null; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/ready >/dev/null"
 
+      - name: Recover media jobs affected by the historical R2 upload bug
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -e; cd '$REMOTE_HOME/htdocs/current'; node deploy/run-with-env.cjs '$REMOTE_HOME/env/api.env' node deploy/media/requeue-missing-content-length.mjs"
+
       - name: Write immutable deployment proof
         shell: bash
         run: |
