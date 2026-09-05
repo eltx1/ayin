@@ -155,7 +155,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+          # Next.js/TypeScript can be quiet for several minutes on the production host.
+          # SSH-level keepalives prevent intermediary idle timeouts from killing a healthy build.
+          ssh -o BatchMode=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=20 \
+            -o TCPKeepAlive=yes \
+            -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
             "'$REMOTE_HOME/.deploy-bootstrap/release.sh' '$RELEASE_SHA'"
 
       - name: Verify direct-origin application health
