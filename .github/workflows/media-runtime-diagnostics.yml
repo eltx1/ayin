@@ -1,4 +1,4 @@
-name: Media runtime diagnostics
+name: Media recovery verification
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production
@@ -20,6 +20,8 @@ jobs:
       DEPLOY_USER: ayin
       SSH_PORT: "22"
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+      TARGET_JOB_ID: 59dd542e-04b0-462e-82c9-98f511b5a7c5
+      EXPECTED_RELEASE_SHA: 26314f6770b8117af67b5de178a6513a6c229a61
 
     steps:
       - name: Configure pinned AYIN SSH trust
@@ -40,12 +42,24 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Inspect production media worker and recent failures
+      - name: Verify production release and recovered media job
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          ssh -o BatchMode=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=10 \
+            -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "TARGET_JOB_ID='$TARGET_JOB_ID' EXPECTED_RELEASE_SHA='$EXPECTED_RELEASE_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
+
+          echo '=== Current production release ==='
+          current_dir="$(readlink -f /home/ayin/htdocs/current)"
+          current_sha="$(git -C "$current_dir" rev-parse HEAD)"
+          echo "current_release=$current_dir"
+          echo "current_sha=$current_sha"
+          echo "expected_sha=$EXPECTED_RELEASE_SHA"
+          test "$current_sha" = "$EXPECTED_RELEASE_SHA"
 
           echo '=== PM2 media worker ==='
           pm2 jlist | node -e '
@@ -53,36 +67,20 @@ jobs:
             process.stdin.on("data", c => data += c);
             process.stdin.on("end", () => {
               const app = JSON.parse(data).find(x => x.name === "ayin-media-worker");
-              if (!app) { console.log("worker=missing"); process.exit(0); }
+              if (!app) { console.log("worker=missing"); process.exit(2); }
               console.log(JSON.stringify({
                 name: app.name,
                 status: app.pm2_env?.status,
                 pid: app.pid,
                 restarts: app.pm2_env?.restart_time,
-                unstableRestarts: app.pm2_env?.unstable_restarts,
+                uptimeMs: app.pm2_env?.pm_uptime ? Date.now() - app.pm2_env.pm_uptime : null,
                 memory: app.monit?.memory,
-                cpu: app.monit?.cpu,
+                cpu: app.monit?.cpu
               }));
+              if (app.pm2_env?.status !== "online") process.exit(3);
             });
           '
 
-          echo '=== FFmpeg runtime ==='
-          /home/ayin/bin/ffmpeg -hide_banner -version | head -n 1
-          /home/ayin/bin/ffprobe -hide_banner -version | head -n 1
-          /home/ayin/bin/ffmpeg -hide_banner -encoders 2>/dev/null | grep -m1 'libx264' || true
-          ls -l /home/ayin/bin/ffmpeg /home/ayin/bin/ffprobe
-
-          echo '=== Host capacity ==='
-          free -h
-          df -h / /tmp /home | awk 'NR==1 || !seen[$1]++'
-
-          echo '=== Recent media worker log errors ==='
-          {
-            tail -n 700 "$HOME/.pm2/logs/ayin-media-worker-error.log" 2>/dev/null || true
-            tail -n 700 "$HOME/.pm2/logs/ayin-media-worker-out.log" 2>/dev/null || true
-          } | grep -Ei 'media processing job|ffmpeg|ffprobe|failed|error|signal|killed|invalid|encoder|decoder|moov|height|width|filter|scale' | tail -n 260 || true
-
-          echo '=== Recent media-processing rows ==='
           DATABASE_URL="$(node -e '
             const { loadEnvFile } = require("/home/ayin/htdocs/current/deploy/env-file.cjs");
             const value = loadEnvFile("/home/ayin/env/api.env").DATABASE_URL;
@@ -94,39 +92,45 @@ jobs:
             u.searchParams.delete("schema");
             process.stdout.write(u.toString());
           ')"
-          set +e
-          psql "$PSQL_URL" -X -A -F $'\t' -P pager=off -c '
+
+          echo '=== Target media-processing job ==='
+          psql "$PSQL_URL" -X -A -F $'\t' -P pager=off -v job_id="$TARGET_JOB_ID" -c '
             SELECT
               "id",
               "videoId",
               "status",
               "stage",
               "attempt",
-              "errorCode",
-              left("errorMessage", 3500) AS "errorMessage",
-              "sourceMimeType",
-              "sourceSizeBytes",
-              "createdAt",
+              "progressPercent",
+              COALESCE("errorCode", '''') AS "errorCode",
+              COALESCE(left("errorMessage", 2000), '''') AS "errorMessage",
+              COALESCE("finalAssetId"::text, '''') AS "finalAssetId",
+              COALESCE("outputSizeBytes"::text, '''') AS "outputSizeBytes",
+              COALESCE("startedAt"::text, '''') AS "startedAt",
+              COALESCE("completedAt"::text, '''') AS "completedAt",
               "updatedAt"
             FROM "MediaProcessingJob"
-            ORDER BY "createdAt" DESC
-            LIMIT 12;
+            WHERE "id" = :'"'"'job_id'"'"';
           '
-          psql_rc=$?
-          set -e
-          echo "psql_query_exit=$psql_rc"
+
+          row_count="$(psql "$PSQL_URL" -X -A -t -P pager=off -v job_id="$TARGET_JOB_ID" -c 'SELECT count(*) FROM "MediaProcessingJob" WHERE "id" = :'"'"'job_id'"'"';' | tr -d '[:space:]')"
+          test "$row_count" = "1"
+
+          status="$(psql "$PSQL_URL" -X -A -t -P pager=off -v job_id="$TARGET_JOB_ID" -c 'SELECT "status" FROM "MediaProcessingJob" WHERE "id" = :'"'"'job_id'"'"';' | tr -d '[:space:]')"
+          stage="$(psql "$PSQL_URL" -X -A -t -P pager=off -v job_id="$TARGET_JOB_ID" -c 'SELECT "stage" FROM "MediaProcessingJob" WHERE "id" = :'"'"'job_id'"'"';' | tr -d '\r')"
+          echo "verified_status=$status"
+          echo "verified_stage=$stage"
+
+          echo '=== Worker log lines for target job ==='
+          {
+            tail -n 3000 "$HOME/.pm2/logs/ayin-media-worker-error.log" 2>/dev/null || true
+            tail -n 3000 "$HOME/.pm2/logs/ayin-media-worker-out.log" 2>/dev/null || true
+          } | grep -F "$TARGET_JOB_ID" | tail -n 100 || true
+
           unset DATABASE_URL PSQL_URL
 
-          echo '=== FFmpeg odd-dimension regression probe ==='
-          probe_dir="$(mktemp -d)"
-          trap 'rm -rf "$probe_dir"' EXIT
-          set +e
-          /home/ayin/bin/ffmpeg -hide_banner -nostdin -loglevel warning -y \
-            -f lavfi -i 'testsrc=size=641x481:rate=1' -t 1 \
-            -vf 'scale=-2:min(1080\,ih)' \
-            -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -threads 1 \
-            -an -movflags +faststart "$probe_dir/odd.mp4" 2>&1
-          odd_rc=$?
-          set -e
-          echo "odd_dimension_probe_exit=$odd_rc"
+          if [[ "$status" == "FAILED" ]]; then
+            echo 'Target job is still FAILED after recovery.' >&2
+            exit 20
+          fi
           REMOTE
