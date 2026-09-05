@@ -1,4 +1,5 @@
 import { createReadStream, createWriteStream } from "node:fs";
+import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
@@ -44,6 +45,11 @@ export class MediaProcessingStorageService {
 
   async uploadFile(key: string, filePath: string, contentType = "video/mp4"): Promise<void> {
     this.assertR2();
+    const fileMetadata = await stat(filePath);
+    if (!fileMetadata.isFile() || fileMetadata.size <= 0) {
+      throw new Error("The canonical media file is empty or unreadable before R2 upload.");
+    }
+
     const authorization = await this.storage.authorizeSinglePut({
       key,
       contentType,
@@ -56,7 +62,10 @@ export class MediaProcessingStorageService {
         const uploadBody = Readable.toWeb(source) as unknown as BodyInit;
         const response = await fetch(authorization.url, {
           method: "PUT",
-          headers: { "content-type": contentType },
+          headers: {
+            "content-type": contentType,
+            "content-length": String(fileMetadata.size),
+          },
           body: uploadBody,
           duplex: "half",
           signal,
