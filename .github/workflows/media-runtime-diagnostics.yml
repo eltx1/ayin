@@ -94,30 +94,30 @@ jobs:
           ')"
 
           echo '=== Target media-processing job ==='
-          psql "$PSQL_URL" -X -A -F $'\t' -P pager=off -v job_id="$TARGET_JOB_ID" -c '
+          psql "$PSQL_URL" -X -A -F $'\t' -P pager=off -c "
             SELECT
-              "id",
-              "videoId",
-              "status",
-              "stage",
-              "attempt",
-              "progressPercent",
-              COALESCE("errorCode", '''') AS "errorCode",
-              COALESCE(left("errorMessage", 2000), '''') AS "errorMessage",
-              COALESCE("finalAssetId"::text, '''') AS "finalAssetId",
-              COALESCE("outputSizeBytes"::text, '''') AS "outputSizeBytes",
-              COALESCE("startedAt"::text, '''') AS "startedAt",
-              COALESCE("completedAt"::text, '''') AS "completedAt",
-              "updatedAt"
-            FROM "MediaProcessingJob"
-            WHERE "id" = :'"'"'job_id'"'"';
-          '
+              \"id\",
+              \"videoId\",
+              \"status\",
+              \"stage\",
+              \"attempt\",
+              \"progressPercent\",
+              \"errorCode\",
+              left(\"errorMessage\", 2000) AS \"errorMessage\",
+              \"finalAssetId\",
+              \"outputSizeBytes\",
+              \"startedAt\",
+              \"completedAt\",
+              \"updatedAt\"
+            FROM \"MediaProcessingJob\"
+            WHERE \"id\" = '$TARGET_JOB_ID';
+          "
 
-          row_count="$(psql "$PSQL_URL" -X -A -t -P pager=off -v job_id="$TARGET_JOB_ID" -c 'SELECT count(*) FROM "MediaProcessingJob" WHERE "id" = :'"'"'job_id'"'"';' | tr -d '[:space:]')"
+          row_count="$(psql "$PSQL_URL" -X -A -t -P pager=off -c "SELECT count(*) FROM \"MediaProcessingJob\" WHERE \"id\" = '$TARGET_JOB_ID';" | tr -d '[:space:]')"
           test "$row_count" = "1"
 
-          status="$(psql "$PSQL_URL" -X -A -t -P pager=off -v job_id="$TARGET_JOB_ID" -c 'SELECT "status" FROM "MediaProcessingJob" WHERE "id" = :'"'"'job_id'"'"';' | tr -d '[:space:]')"
-          stage="$(psql "$PSQL_URL" -X -A -t -P pager=off -v job_id="$TARGET_JOB_ID" -c 'SELECT "stage" FROM "MediaProcessingJob" WHERE "id" = :'"'"'job_id'"'"';' | tr -d '\r')"
+          status="$(psql "$PSQL_URL" -X -A -t -P pager=off -c "SELECT \"status\" FROM \"MediaProcessingJob\" WHERE \"id\" = '$TARGET_JOB_ID';" | tr -d '[:space:]')"
+          stage="$(psql "$PSQL_URL" -X -A -t -P pager=off -c "SELECT \"stage\" FROM \"MediaProcessingJob\" WHERE \"id\" = '$TARGET_JOB_ID';" | tr -d '\r')"
           echo "verified_status=$status"
           echo "verified_stage=$stage"
 
