@@ -1,4 +1,4 @@
-name: Media recovery verification
+name: FFmpeg even-dimension production verification
 
 on:
   push:
@@ -20,8 +20,7 @@ jobs:
       DEPLOY_USER: ayin
       SSH_PORT: "22"
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
-      TARGET_JOB_ID: 59dd542e-04b0-462e-82c9-98f511b5a7c5
-      EXPECTED_RELEASE_SHA: 26314f6770b8117af67b5de178a6513a6c229a61
+      EXPECTED_RELEASE_SHA: d84bea79779c64b33a42afd7f7fe97129783fb98
 
     steps:
       - name: Configure pinned AYIN SSH trust
@@ -42,7 +41,7 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Verify production release and recovered media job
+      - name: Verify deployed code and odd-dimension FFmpeg probe
         shell: bash
         run: |
           set -euo pipefail
@@ -50,10 +49,9 @@ jobs:
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=10 \
             -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "TARGET_JOB_ID='$TARGET_JOB_ID' EXPECTED_RELEASE_SHA='$EXPECTED_RELEASE_SHA' bash -s" <<'REMOTE'
+            "EXPECTED_RELEASE_SHA='$EXPECTED_RELEASE_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
 
-          echo '=== Current production release ==='
           current_dir="$(readlink -f /home/ayin/htdocs/current)"
           current_sha="$(git -C "$current_dir" rev-parse HEAD)"
           echo "current_release=$current_dir"
@@ -61,76 +59,41 @@ jobs:
           echo "expected_sha=$EXPECTED_RELEASE_SHA"
           test "$current_sha" = "$EXPECTED_RELEASE_SHA"
 
+          echo '=== Deployed FFmpeg scale expression ==='
+          grep -F 'trunc(min(' "$current_dir/apps/api/src/media/media-processing-executor.service.ts"
+
           echo '=== PM2 media worker ==='
-          pm2 jlist | node -e '
+          worker_status="$(pm2 jlist | node -e '
             let data="";
             process.stdin.on("data", c => data += c);
             process.stdin.on("end", () => {
               const app = JSON.parse(data).find(x => x.name === "ayin-media-worker");
-              if (!app) { console.log("worker=missing"); process.exit(2); }
-              console.log(JSON.stringify({
-                name: app.name,
-                status: app.pm2_env?.status,
-                pid: app.pid,
-                restarts: app.pm2_env?.restart_time,
-                uptimeMs: app.pm2_env?.pm_uptime ? Date.now() - app.pm2_env.pm_uptime : null,
-                memory: app.monit?.memory,
-                cpu: app.monit?.cpu
-              }));
-              if (app.pm2_env?.status !== "online") process.exit(3);
+              if (!app) process.exit(2);
+              console.log(app.pm2_env?.status || "unknown");
             });
-          '
-
-          DATABASE_URL="$(node -e '
-            const { loadEnvFile } = require("/home/ayin/htdocs/current/deploy/env-file.cjs");
-            const value = loadEnvFile("/home/ayin/env/api.env").DATABASE_URL;
-            if (!value) process.exit(2);
-            process.stdout.write(value);
           ')"
-          PSQL_URL="$(DATABASE_URL="$DATABASE_URL" node -e '
-            const u = new URL(process.env.DATABASE_URL);
-            u.searchParams.delete("schema");
-            process.stdout.write(u.toString());
-          ')"
+          echo "worker_status=$worker_status"
+          test "$worker_status" = "online"
 
-          echo '=== Target media-processing job ==='
-          psql "$PSQL_URL" -X -A -F $'\t' -P pager=off -c "
-            SELECT
-              \"id\",
-              \"videoId\",
-              \"status\",
-              \"stage\",
-              \"attempt\",
-              \"progressPercent\",
-              \"errorCode\",
-              left(\"errorMessage\", 2000) AS \"errorMessage\",
-              \"finalAssetId\",
-              \"outputSizeBytes\",
-              \"startedAt\",
-              \"completedAt\",
-              \"updatedAt\"
-            FROM \"MediaProcessingJob\"
-            WHERE \"id\" = '$TARGET_JOB_ID';
-          "
+          echo '=== Synthetic 641x481 regression probe ==='
+          probe_dir="$(mktemp -d)"
+          trap 'rm -rf "$probe_dir"' EXIT
+          output="$probe_dir/odd-fixed.mp4"
 
-          row_count="$(psql "$PSQL_URL" -X -A -t -P pager=off -c "SELECT count(*) FROM \"MediaProcessingJob\" WHERE \"id\" = '$TARGET_JOB_ID';" | tr -d '[:space:]')"
-          test "$row_count" = "1"
+          /home/ayin/bin/ffmpeg -hide_banner -nostdin -loglevel warning -y \
+            -f lavfi -i 'testsrc=size=641x481:rate=1' -t 1 \
+            -vf 'scale=-2:trunc(min(1080\,ih)/2)*2' \
+            -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -threads 1 \
+            -an -movflags +faststart "$output"
 
-          status="$(psql "$PSQL_URL" -X -A -t -P pager=off -c "SELECT \"status\" FROM \"MediaProcessingJob\" WHERE \"id\" = '$TARGET_JOB_ID';" | tr -d '[:space:]')"
-          stage="$(psql "$PSQL_URL" -X -A -t -P pager=off -c "SELECT \"stage\" FROM \"MediaProcessingJob\" WHERE \"id\" = '$TARGET_JOB_ID';" | tr -d '\r')"
-          echo "verified_status=$status"
-          echo "verified_stage=$stage"
-
-          echo '=== Worker log lines for target job ==='
-          {
-            tail -n 3000 "$HOME/.pm2/logs/ayin-media-worker-error.log" 2>/dev/null || true
-            tail -n 3000 "$HOME/.pm2/logs/ayin-media-worker-out.log" 2>/dev/null || true
-          } | grep -F "$TARGET_JOB_ID" | tail -n 100 || true
-
-          unset DATABASE_URL PSQL_URL
-
-          if [[ "$status" == "FAILED" ]]; then
-            echo 'Target job is still FAILED after recovery.' >&2
-            exit 20
-          fi
+          dimensions="$(/home/ayin/bin/ffprobe -v error -select_streams v:0 \
+            -show_entries stream=width,height -of csv=p=0:s=x "$output")"
+          echo "probe_dimensions=$dimensions"
+          width="${dimensions%x*}"
+          height="${dimensions#*x}"
+          test "$width" -gt 0
+          test "$height" -gt 0
+          test $((width % 2)) -eq 0
+          test $((height % 2)) -eq 0
+          echo 'odd_dimension_probe=PASS'
           REMOTE
