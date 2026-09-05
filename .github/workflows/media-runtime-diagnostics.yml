@@ -103,7 +103,7 @@ jobs:
               "stage",
               "attempt",
               "errorCode",
-              left(coalesce("errorMessage", '\''\''), 3500) AS "errorMessage",
+              left("errorMessage", 3500) AS "errorMessage",
               "sourceMimeType",
               "sourceSizeBytes",
               "createdAt",
