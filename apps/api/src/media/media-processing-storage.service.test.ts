@@ -13,9 +13,9 @@ const temporaryDirectories: string[] = [];
 afterEach(async () => {
   vi.unstubAllGlobals();
   await Promise.all(
-    temporaryDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true }),
-    ),
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
@@ -86,9 +86,7 @@ describe("MediaProcessingStorageService", () => {
   });
 });
 
-function createR2Adapter(
-  authorizeSinglePut: ReturnType<typeof vi.fn>,
-): MediaStorageAdapter {
+function createR2Adapter(authorizeSinglePut: ReturnType<typeof vi.fn>): MediaStorageAdapter {
   return {
     kind: "r2",
     available: true,
