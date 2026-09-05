@@ -1,0 +1,154 @@
+name: Retry fixed media job
+
+on:
+  push:
+    branches:
+      - diag-media-ffmpeg-20260905
+    paths:
+      - .github/workflows/retry-fixed-media-job.yml
+
+permissions:
+  contents: read
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+      EXPECTED_RELEASE: fa115f7329f6a7c9a71afd991cb1c925eb87d953
+      JOB_ID: 59dd542e-04b0-462e-82c9-98f511b5a7c5
+
+    steps:
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          test -s "$candidate"
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual_fingerprint" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Requeue only the affected failed job and verify recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "EXPECTED_RELEASE='$EXPECTED_RELEASE' JOB_ID='$JOB_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          echo '=== Validate deployed release ==='
+          current_dir="$(readlink -f /home/ayin/htdocs/current)"
+          echo "current_dir=$current_dir"
+          actual_release="$(git -C "$current_dir" rev-parse HEAD)"
+          echo "actual_release=$actual_release"
+          test "$actual_release" = "$EXPECTED_RELEASE"
+
+          worker_status="$(pm2 jlist | node -e '
+            let data="";
+            process.stdin.on("data", c => data += c);
+            process.stdin.on("end", () => {
+              const app = JSON.parse(data).find(x => x.name === "ayin-media-worker");
+              process.stdout.write(app?.pm2_env?.status ?? "missing");
+            });
+          ')"
+          echo "worker_status=$worker_status"
+          test "$worker_status" = "online"
+
+          DATABASE_URL="$(node -e '
+            const { loadEnvFile } = require("/home/ayin/htdocs/current/deploy/env-file.cjs");
+            const value = loadEnvFile("/home/ayin/env/api.env").DATABASE_URL;
+            if (!value) process.exit(2);
+            process.stdout.write(value);
+          ')"
+          PSQL_URL="$(DATABASE_URL="$DATABASE_URL" node -e '
+            const u = new URL(process.env.DATABASE_URL);
+            u.searchParams.delete("schema");
+            process.stdout.write(u.toString());
+          ')"
+          unset DATABASE_URL
+
+          echo '=== Before retry ==='
+          psql "$PSQL_URL" -X -A -F $'\t' -P pager=off -v job_id="$JOB_ID" -c '
+            SELECT "id", "videoId", "status", "stage", "attempt", "errorCode", left("errorMessage", 600), "updatedAt"
+            FROM "MediaProcessingJob"
+            WHERE "id" = :'\''job_id'\'';
+          '
+
+          echo '=== Atomic guarded retry ==='
+          changed="$(psql "$PSQL_URL" -X -A -t -P pager=off -v job_id="$JOB_ID" -c '
+            WITH changed AS (
+              UPDATE "MediaProcessingJob"
+              SET
+                "status" = '\''QUEUED'\'',
+                "stage" = '\''ADMIN_RETRY_QUEUED'\'',
+                "progressPercent" = 0,
+                "attempt" = 0,
+                "queuedAt" = NOW(),
+                "startedAt" = NULL,
+                "completedAt" = NULL,
+                "leaseOwner" = NULL,
+                "leaseExpiresAt" = NULL,
+                "heartbeatAt" = NULL,
+                "errorCode" = NULL,
+                "errorMessage" = NULL,
+                "updatedAt" = NOW()
+              WHERE "id" = :'\''job_id'\''
+                AND "status" = '\''FAILED'\''
+                AND "errorCode" = '\''R2_PROCESSING_FAILED'\''
+                AND "errorMessage" LIKE '\''%MissingContentLength%'
+              RETURNING 1
+            )
+            SELECT count(*) FROM changed;
+          ' | tr -d '[:space:]')"
+          echo "rows_requeued=$changed"
+          test "$changed" = "1"
+
+          echo '=== Poll processing state ==='
+          final_status=""
+          for i in $(seq 1 45); do
+            row="$(psql "$PSQL_URL" -X -A -t -F $'\t' -P pager=off -v job_id="$JOB_ID" -c '
+              SELECT "status", "stage", "attempt", "progressPercent", coalesce("errorCode", '\''\''), left(coalesce("errorMessage", '\''\''), 800)
+              FROM "MediaProcessingJob"
+              WHERE "id" = :'\''job_id'\'';
+            ')"
+            echo "poll[$i]=$row"
+            final_status="$(printf '%s' "$row" | cut -f1)"
+            if [ "$final_status" = "READY" ] || [ "$final_status" = "FAILED" ] || [ "$final_status" = "CANCELLED" ]; then
+              break
+            fi
+            sleep 4
+          done
+
+          echo '=== Final job and video state ==='
+          psql "$PSQL_URL" -X -A -F $'\t' -P pager=off -v job_id="$JOB_ID" -c '
+            SELECT j."id", j."status", j."stage", j."attempt", j."progressPercent", j."errorCode", left(j."errorMessage", 800), j."completedAt", j."updatedAt",
+                   v."id" AS "videoId", v."status" AS "videoStatus", v."playbackObjectKey"
+            FROM "MediaProcessingJob" j
+            JOIN "Video" v ON v."id" = j."videoId"
+            WHERE j."id" = :'\''job_id'\'';
+          '
+
+          if [ "$final_status" != "READY" ]; then
+            echo '=== Recent worker errors ==='
+            {
+              tail -n 350 "$HOME/.pm2/logs/ayin-media-worker-error.log" 2>/dev/null || true
+              tail -n 350 "$HOME/.pm2/logs/ayin-media-worker-out.log" 2>/dev/null || true
+            } | tail -n 350
+            echo "Expected READY, got $final_status" >&2
+            exit 1
+          fi
+          REMOTE
