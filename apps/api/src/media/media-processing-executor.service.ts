@@ -276,7 +276,7 @@ async function runFfmpeg(input: {
   preset: string;
   timeoutMs: number;
 }): Promise<void> {
-  const scaleFilter = `scale=-2:min(${input.maxHeight}\\,ih)`;
+  const scaleFilter = `scale=-2:trunc(min(${input.maxHeight}\\,ih)/2)*2`;
   const args = [
     "-hide_banner",
     "-nostdin",
