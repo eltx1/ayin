@@ -1,0 +1,29 @@
+name: Format media test probe
+
+on:
+  push:
+    branches:
+      - diag-format-media-fix
+    paths:
+      - .github/workflows/format-media-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          pnpm exec prettier --write apps/api/src/media/media-processing-storage.service.test.ts
+          echo '===FORMATTED_FILE_BEGIN==='
+          cat apps/api/src/media/media-processing-storage.service.test.ts
+          echo '===FORMATTED_FILE_END==='
