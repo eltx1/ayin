@@ -20,7 +20,11 @@ import {
   type VideoForm,
 } from "@/lib/quick-upload";
 import { titleFromFilename } from "@/lib/title-from-filename";
-import { inspectVideoFile, type VideoInspectionResult } from "@/lib/video-inspection";
+import {
+  inspectVideoFile,
+  isSupportedVideoFile,
+  type VideoInspectionResult,
+} from "@/lib/video-inspection";
 
 import styles from "./quick-upload.module.css";
 
@@ -166,9 +170,7 @@ export function QuickUpload() {
     event.preventDefault();
     setDragActive(false);
     if (!identity || busy || published) return;
-    const selected = Array.from(event.dataTransfer.files).find((candidate) =>
-      candidate.type.startsWith("video/"),
-    );
+    const selected = Array.from(event.dataTransfer.files).find(isSupportedVideoFile);
     if (!selected) {
       setMessage("Drop one supported video file to start an upload.");
       return;
