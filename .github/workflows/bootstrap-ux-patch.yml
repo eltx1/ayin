@@ -1,0 +1,35 @@
+name: Bootstrap UX reliability patch
+on:
+  push:
+    branches:
+      - fix/upload-reliability-publish-player
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/upload-reliability-publish-player
+      - name: Execute stored patch
+        shell: python
+        run: |
+          from pathlib import Path
+          workflow = Path('.github/workflows/apply-ux-reliability-fixes.yml').read_text()
+          marker = '      - name: Apply upload, publish and player UX fixes\n        shell: python\n        run: |\n'
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index('\n      - name: Format changed files', start)
+          block = workflow[start:end]
+          code = '\n'.join(line[10:] if line.startswith('          ') else line for line in block.splitlines())
+          exec(compile(code, '<ux-patch>', 'exec'))
+      - name: Format changed files
+        run: pnpm exec prettier --write apps/web/src/components/upload/quick-upload.tsx apps/web/src/components/upload/quick-upload.module.css apps/web/src/app/'(viewer)'/watch/'[slug]'/page.tsx apps/web/src/app/'(viewer)'/watch/'[slug]'/page.module.css apps/web/src/components/player/ad-enabled-ayin-player.tsx apps/web/src/components/player/ad-enabled-ayin-player.module.css apps/web/src/components/player/ayin-player.tsx
+      - name: Commit patch and remove one-shot workflows
+        run: |
+          rm -f .github/workflows/apply-ux-reliability-fixes.yml .github/workflows/bootstrap-ux-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Improve upload completion and playback UX"
+          git push origin HEAD:fix/upload-reliability-publish-player
