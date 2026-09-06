@@ -15,6 +15,7 @@
 .stage {
   aspect-ratio: 16 / 9;
   background: #000;
+  grid-area: 1 / 1;
   outline: none;
   overflow: hidden;
   position: relative;
@@ -60,14 +61,13 @@
 }
 
 .controls {
+  align-self: end;
   background: linear-gradient(180deg, transparent, rgb(0 0 0 / 82%) 45%, rgb(0 0 0 / 94%));
-  bottom: 0;
   display: grid;
   gap: 0.5rem;
-  left: 0;
+  grid-area: 1 / 1;
   padding: 3rem clamp(0.7rem, 2vw, 1.15rem) 0.75rem;
-  position: absolute;
-  right: 0;
+  position: relative;
   transition:
     opacity 0.22s ease,
     transform 0.22s ease;
