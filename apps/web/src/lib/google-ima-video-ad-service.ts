@@ -1,4 +1,9 @@
-import type { VideoAdCallbacks, VideoAdService, VideoAdSlot } from "./video-ads";
+import type {
+  VideoAdCallbacks,
+  VideoAdPlaybackIntent,
+  VideoAdService,
+  VideoAdSlot,
+} from "./video-ads";
 
 const IMA_SDK_URL = "https://imasdk.googleapis.com/js/sdkloader/ima3.js";
 
@@ -113,7 +118,12 @@ export class GoogleImaVideoAdService implements VideoAdService {
     this.initialized = true;
   }
 
-  async play(_slot: VideoAdSlot, tagUrl: string, callbacks: VideoAdCallbacks): Promise<void> {
+  async play(
+    _slot: VideoAdSlot,
+    tagUrl: string,
+    callbacks: VideoAdCallbacks,
+    playbackIntent?: VideoAdPlaybackIntent,
+  ): Promise<void> {
     const ima = this.ima;
     const loader = this.adsLoader;
     const content = this.contentVideo;
@@ -186,8 +196,8 @@ export class GoogleImaVideoAdService implements VideoAdService {
       request.linearAdSlotHeight = Math.max(container.clientHeight, 360);
       request.nonLinearAdSlotWidth = Math.max(container.clientWidth, 640);
       request.nonLinearAdSlotHeight = 150;
-      request.setAdWillAutoPlay(false);
-      request.setAdWillPlayMuted(content.muted);
+      request.setAdWillAutoPlay(playbackIntent?.autoPlay ?? false);
+      request.setAdWillPlayMuted(playbackIntent?.muted ?? content.muted);
       loader.requestAds(request);
     });
   }
