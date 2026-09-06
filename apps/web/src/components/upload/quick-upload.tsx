@@ -317,8 +317,8 @@ export function QuickUpload() {
           </div>
           <h1 id="quick-upload-title">Bring your next video to AYIN.</h1>
           <p className={styles.heroLead}>
-            Choose the experience, add your file, and publish from one focused workspace. AYIN checks
-            compatibility and prepares reliable playback automatically.
+            Choose the experience, add your file, and publish from one focused workspace. AYIN
+            checks compatibility and prepares reliable playback automatically.
           </p>
         </div>
 
@@ -363,7 +363,9 @@ export function QuickUpload() {
                 <small>Full videos, episodes, tutorials and long-form stories.</small>
               </span>
               <span className={styles.typeMeta}>Landscape + flexible</span>
-              <span className={styles.typeCheck} aria-hidden="true">✓</span>
+              <span className={styles.typeCheck} aria-hidden="true">
+                ✓
+              </span>
             </button>
 
             <button
@@ -382,7 +384,9 @@ export function QuickUpload() {
                 <small>Fast, vertical-first videos built for the Clips feed.</small>
               </span>
               <span className={styles.typeMeta}>Vertical-first</span>
-              <span className={styles.typeCheck} aria-hidden="true">✓</span>
+              <span className={styles.typeCheck} aria-hidden="true">
+                ✓
+              </span>
             </button>
           </div>
         </section>
@@ -419,7 +423,13 @@ export function QuickUpload() {
             </span>
 
             <span className={styles.pickerCopy}>
-              <strong>{file ? file.name : dragActive ? "Drop your video here" : "Select a video to upload"}</strong>
+              <strong>
+                {file
+                  ? file.name
+                  : dragActive
+                    ? "Drop your video here"
+                    : "Select a video to upload"}
+              </strong>
               <span>
                 {file
                   ? `${formatFileSize(file.size)} · ${formatLabel}`
@@ -433,7 +443,9 @@ export function QuickUpload() {
               {busy ? "Checking…" : file ? "Choose another" : "Browse video"}
             </span>
 
-            <span className={styles.pickerMeta}>MP4, MOV, MKV, WebM and other common video formats</span>
+            <span className={styles.pickerMeta}>
+              MP4, MOV, MKV, WebM and other common video formats
+            </span>
           </label>
 
           {inspection ? (
@@ -444,12 +456,17 @@ export function QuickUpload() {
         </section>
 
         {videoId ? (
-          <section className={`${styles.stepCard} ${styles.editor}`} aria-labelledby="details-heading">
+          <section
+            className={`${styles.stepCard} ${styles.editor}`}
+            aria-labelledby="details-heading"
+          >
             <div className={styles.stepHeading}>
               <div>
                 <span className={styles.stepNumber}>03</span>
                 <h2 id="details-heading">Finish your video</h2>
-                <p>Review the essentials while AYIN completes the upload and playback preparation.</p>
+                <p>
+                  Review the essentials while AYIN completes the upload and playback preparation.
+                </p>
               </div>
               <span
                 className={`${styles.statusPill} ${processingReady ? styles.statusReady : ""} ${published ? styles.statusPublished : ""}`}
@@ -506,7 +523,9 @@ export function QuickUpload() {
                   <strong>Publishing settings</strong>
                   <small>Description, visibility, schedule, comments and thumbnail</small>
                 </span>
-                <span className={styles.summaryChevron} aria-hidden="true">⌄</span>
+                <span className={styles.summaryChevron} aria-hidden="true">
+                  ⌄
+                </span>
               </summary>
               <div className={styles.advancedGrid}>
                 <label className={styles.fullWidth}>
@@ -622,7 +641,13 @@ export function QuickUpload() {
                 }
                 onClick={() => void publish()}
               >
-                <span>{published ? "Published" : busy && uploadComplete ? "Publishing…" : "Publish video"}</span>
+                <span>
+                  {published
+                    ? "Published"
+                    : busy && uploadComplete
+                      ? "Publishing…"
+                      : "Publish video"}
+                </span>
                 {!published ? <span aria-hidden="true">→</span> : null}
               </button>
             </div>
