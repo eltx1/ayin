@@ -55,13 +55,7 @@ jobs:
           echo '=== PM2 ==='
           pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const p of JSON.parse(s)){if(["ayin-web","ayin-api","ayin-media-worker"].includes(p.name))console.log(`${p.name} status=${p.pm2_env?.status} restarts=${p.pm2_env?.restart_time}`)}})'
 
-          echo '=== upload-related API evidence ==='
-          find /home/ayin/.pm2/logs -maxdepth 1 -type f -name 'ayin-api*.log' -print0 | xargs -0 -r cat | tail -n 5000 | grep -Eai 'upload|multipart|r2|storage|media|timeout|abort|error|411|408|429|5[0-9][0-9]' | tail -n 700 | sed -E 's#https://[^ ]+#<redacted-url>#g' || true
-
-          echo '=== media worker evidence ==='
-          find /home/ayin/.pm2/logs -maxdepth 1 -type f -name 'ayin-media-worker*.log' -print0 | xargs -0 -r cat | tail -n 3500 | grep -Eai 'processing|job|failed|error|timeout|r2|ffmpeg' | tail -n 450 | sed -E 's#https://[^ ]+#<redacted-url>#g' || true
-
-          echo '=== database records in local 03:35-04:05 / UTC 00:35-01:05 ==='
+          echo '=== database records in local 03:35-04:10 / UTC 00:35-01:10 ==='
           cd "$current_dir"
           cat >/tmp/ayin-upload-diag.sql <<'SQL'
           SELECT v.id, v.slug, v.title, v.status, v."createdAt", v."updatedAt",
@@ -70,9 +64,9 @@ jobs:
           FROM "Video" v
           LEFT JOIN "MediaAsset" a ON a."videoId" = v.id AND a.kind = 'SOURCE_VIDEO'
           LEFT JOIN "MediaProcessingJob" j ON j."videoId" = v.id
-          WHERE v."createdAt" BETWEEN TIMESTAMPTZ '2026-09-06 00:35:00+00' AND TIMESTAMPTZ '2026-09-06 01:05:00+00'
+          WHERE v."createdAt" BETWEEN TIMESTAMPTZ '2026-09-06 00:35:00+00' AND TIMESTAMPTZ '2026-09-06 01:10:00+00'
           ORDER BY v."createdAt" ASC, j.generation ASC;
           SQL
-          node deploy/run-with-env.cjs /home/ayin/env/api.env bash -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -f /tmp/ayin-upload-diag.sql'
+          node deploy/run-with-env.cjs /home/ayin/env/api.env bash -lc 'DB_URL="${DATABASE_URL%%\?*}"; psql "$DB_URL" -v ON_ERROR_STOP=1 -P pager=off -f /tmp/ayin-upload-diag.sql'
           rm -f /tmp/ayin-upload-diag.sql
           REMOTE
