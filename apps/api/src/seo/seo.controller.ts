@@ -1,11 +1,11 @@
-import { Controller, Get, Inject, Param, Query } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Inject, Param, Query } from "@nestjs/common";
 import { z } from "zod";
 
 import { SeoService, type SeoSitemapKind } from "./seo.service.js";
 
 const sitemapQuerySchema = z
   .object({
-    cursor: z.string().uuid().optional(),
+    offset: z.coerce.number().int().min(0).max(1_000_000_000).default(0),
     limit: z.coerce.number().int().min(1).max(5_000).default(1_000),
   })
   .strict();
@@ -34,9 +34,16 @@ export class SeoController {
   @Get("sitemap/:kind")
   listSitemap(@Param("kind") kindRaw: string, @Query() query: unknown) {
     if (!sitemapKinds.has(kindRaw as SeoSitemapKind)) {
-      throw new Error("Unsupported SEO sitemap kind.");
+      throw new BadRequestException("Unsupported SEO sitemap kind.");
     }
-    const parsed = sitemapQuerySchema.parse(query);
-    return this.seo.listSitemap(kindRaw as SeoSitemapKind, parsed.cursor, parsed.limit);
+    const parsed = sitemapQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      throw new BadRequestException("Invalid SEO sitemap pagination.");
+    }
+    return this.seo.listSitemap(
+      kindRaw as SeoSitemapKind,
+      parsed.data.offset,
+      parsed.data.limit,
+    );
   }
 }
