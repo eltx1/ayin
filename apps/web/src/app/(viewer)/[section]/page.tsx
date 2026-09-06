@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { EmptyState } from "@/components/viewer/view-states";
+import { metadataRobots } from "@/lib/seo";
 
 import styles from "./page.module.css";
 
@@ -40,7 +42,22 @@ const sectionCopy = {
   },
 } as const;
 
-export default async function SectionPage({ params }: { params: Promise<{ section: string }> }) {
+interface SectionPageProperties {
+  params: Promise<{ section: string }>;
+}
+
+export async function generateMetadata({ params }: SectionPageProperties): Promise<Metadata> {
+  const { section } = await params;
+  const copy = sectionCopy[section as keyof typeof sectionCopy];
+  if (!copy) return { robots: metadataRobots(false) };
+  return {
+    title: copy.title,
+    description: copy.description,
+    robots: metadataRobots(false),
+  };
+}
+
+export default async function SectionPage({ params }: SectionPageProperties) {
   const { section } = await params;
   const copy = sectionCopy[section as keyof typeof sectionCopy];
   if (!copy) {
