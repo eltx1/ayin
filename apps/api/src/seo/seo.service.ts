@@ -123,7 +123,13 @@ export class SeoService {
             kind: { in: ["CHANNEL_AVATAR", "CHANNEL_BANNER"] },
           },
           orderBy: { createdAt: "desc" },
-          select: { kind: true, r2ObjectKey: true, mimeType: true, width: true, height: true },
+          select: {
+            kind: true,
+            r2ObjectKey: true,
+            mimeType: true,
+            width: true,
+            height: true,
+          },
         },
         _count: {
           select: {
@@ -208,10 +214,19 @@ export class SeoService {
                 durationMs: true,
                 publishedAt: true,
                 mediaAssets: {
-                  where: { kind: "THUMBNAIL", status: "VALIDATED", removedAt: null },
+                  where: {
+                    kind: "THUMBNAIL",
+                    status: "VALIDATED",
+                    removedAt: null,
+                  },
                   orderBy: { createdAt: "desc" },
                   take: 1,
-                  select: { r2ObjectKey: true, mimeType: true, width: true, height: true },
+                  select: {
+                    r2ObjectKey: true,
+                    mimeType: true,
+                    width: true,
+                    height: true,
+                  },
                 },
               },
             },
@@ -272,7 +287,12 @@ export class SeoService {
         mediaAssets: {
           where: { removedAt: null, status: "VALIDATED" },
           orderBy: { createdAt: "desc" },
-          select: { kind: true, mimeType: true, r2ObjectKey: true, durationMs: true },
+          select: {
+            kind: true,
+            mimeType: true,
+            r2ObjectKey: true,
+            durationMs: true,
+          },
         },
       },
     });
@@ -367,7 +387,11 @@ export class SeoService {
             video: {
               select: {
                 mediaAssets: {
-                  where: { kind: "THUMBNAIL", status: "VALIDATED", removedAt: null },
+                  where: {
+                    kind: "THUMBNAIL",
+                    status: "VALIDATED",
+                    removedAt: null,
+                  },
                   orderBy: { createdAt: "desc" },
                   take: 1,
                   select: { r2ObjectKey: true },
