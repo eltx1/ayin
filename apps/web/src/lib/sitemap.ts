@@ -1,10 +1,13 @@
 import { apiBaseUrl } from "@/lib/api";
 import { absoluteUrl, AYIN_DEFAULT_IMAGE, mediaSeoUrl, seoDescription } from "@/lib/seo";
 
-export const SITEMAP_SHARD_SIZE = 45_000;
-const API_PAGE_SIZE = 5_000;
-
 export type SitemapKind = "videos" | "channels" | "playlists";
+
+const SITEMAP_SHARD_SIZES: Record<SitemapKind, number> = {
+  videos: 2_000,
+  channels: 5_000,
+  playlists: 5_000,
+};
 
 export interface SitemapCounts {
   videos: number;
@@ -14,7 +17,6 @@ export interface SitemapCounts {
 
 interface SitemapPage<T> {
   items: T[];
-  nextCursor: string | null;
 }
 
 interface SitemapVideoItem {
@@ -57,25 +59,20 @@ export async function getSitemapCounts(): Promise<SitemapCounts> {
   return (await response.json()) as SitemapCounts;
 }
 
+export function getSitemapShardSize(kind: SitemapKind): number {
+  return SITEMAP_SHARD_SIZES[kind];
+}
+
+export function getSitemapShardCount(kind: SitemapKind, total: number): number {
+  if (!Number.isFinite(total) || total <= 0) return 0;
+  return Math.ceil(total / getSitemapShardSize(kind));
+}
+
 export async function getSitemapShard(kind: SitemapKind, shard: number): Promise<string> {
   if (!Number.isInteger(shard) || shard < 0) throw new Error("Invalid sitemap shard.");
-  const start = shard * SITEMAP_SHARD_SIZE;
-  const end = start + SITEMAP_SHARD_SIZE;
-  let cursor: string | undefined;
-  let seen = 0;
-  const entries: string[] = [];
-
-  do {
-    const page = await fetchSitemapPage(kind, cursor);
-    for (const item of page.items) {
-      if (seen >= start && seen < end) entries.push(renderEntry(kind, item));
-      seen += 1;
-      if (seen >= end) break;
-    }
-    cursor = page.nextCursor ?? undefined;
-    if (seen >= end) break;
-  } while (cursor);
-
+  const shardSize = getSitemapShardSize(kind);
+  const page = await fetchSitemapPage(kind, shard * shardSize, shardSize);
+  const entries = page.items.map((item) => renderEntry(kind, item));
   const namespaces =
     kind === "videos"
       ? ' xmlns:video="http://www.google.com/schemas/sitemap-video/1.1" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"'
@@ -101,9 +98,8 @@ export function xmlEscape(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
-async function fetchSitemapPage(kind: SitemapKind, cursor?: string) {
-  const query = new URLSearchParams({ limit: String(API_PAGE_SIZE) });
-  if (cursor) query.set("cursor", cursor);
+async function fetchSitemapPage(kind: SitemapKind, offset: number, limit: number) {
+  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   const response = await fetch(`${apiBaseUrl}/public/seo/sitemap/${kind}?${query.toString()}`, {
     next: { revalidate: 900 },
   });
@@ -129,7 +125,7 @@ function renderVideoEntry(item: SitemapVideoItem): string {
   const description = seoDescription(
     item.description,
     `Watch ${item.title} from ${item.channel.name} on AYIN.`,
-    2_000,
+    1_000,
   );
   const duration = item.durationMs ? Math.max(1, Math.round(item.durationMs / 1000)) : null;
   const videoXml = contentUrl
