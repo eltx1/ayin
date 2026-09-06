@@ -7,6 +7,7 @@ import type { MediaProcessingJob } from "@ayin/db";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { MediaAutoThumbnailService } from "./media-auto-thumbnail.service.js";
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
@@ -34,6 +35,7 @@ export class MediaProcessingExecutorService {
     @Inject(MediaProcessingLifecycleService)
     private readonly lifecycle: MediaProcessingLifecycleService,
     @Inject(MediaProcessingStorageService) private readonly storage: MediaProcessingStorageService,
+    @Inject(MediaAutoThumbnailService) private readonly thumbnails: MediaAutoThumbnailService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
   ) {
     this.workRoot = process.env.MEDIA_PROCESSING_WORKDIR?.trim() || "/tmp/ayin-media-processing";
@@ -111,6 +113,28 @@ export class MediaProcessingExecutorService {
       const verified = await this.storage.headObject(job.outputR2ObjectKey);
       if (!isVerifiedCanonical(verified)) {
         throw new Error("The canonical R2 object failed size or content-type verification.");
+      }
+
+      await this.requireOwnedStage(
+        job.id,
+        workerId,
+        "VERIFYING",
+        "GENERATING_AUTO_THUMBNAIL",
+        94,
+      );
+      try {
+        const thumbnail = await this.thumbnails.ensureForCanonical({
+          videoId: job.videoId,
+          canonicalPath: outputPath,
+          durationMs: canonicalMetadata.durationMs,
+        });
+        if (thumbnail.created) {
+          this.logger.log(`Generated automatic thumbnail for video ${job.videoId}.`);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Automatic thumbnail generation skipped for video ${job.videoId}: ${errorMessage(error)}`,
+        );
       }
 
       if (
