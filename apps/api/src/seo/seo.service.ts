@@ -23,6 +23,8 @@ const publicPlaylistVideoWhere = {
   video: playableVideoWhere,
 };
 
+const completedImageStatuses = ["UPLOADED", "VALIDATED"] as const;
+
 @Injectable()
 export class SeoService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
@@ -45,10 +47,11 @@ export class SeoService {
           select: { id: true, handle: true, name: true, status: true, removedAt: true },
         },
         mediaAssets: {
-          where: { removedAt: null, status: "VALIDATED" },
+          where: { removedAt: null, status: { in: [...completedImageStatuses] } },
           orderBy: { createdAt: "desc" },
           select: {
             kind: true,
+            status: true,
             mimeType: true,
             r2ObjectKey: true,
             durationMs: true,
@@ -60,7 +63,10 @@ export class SeoService {
     });
 
     const source = video?.mediaAssets.find(
-      (asset) => asset.kind === "SOURCE_VIDEO" && asset.mimeType === "video/mp4",
+      (asset) =>
+        asset.kind === "SOURCE_VIDEO" &&
+        asset.status === "VALIDATED" &&
+        asset.mimeType === "video/mp4",
     );
     if (
       !video ||
@@ -119,7 +125,7 @@ export class SeoService {
         mediaAssets: {
           where: {
             removedAt: null,
-            status: "VALIDATED",
+            status: { in: [...completedImageStatuses] },
             kind: { in: ["CHANNEL_AVATAR", "CHANNEL_BANNER"] },
           },
           orderBy: { createdAt: "desc" },
@@ -216,7 +222,7 @@ export class SeoService {
                 mediaAssets: {
                   where: {
                     kind: "THUMBNAIL",
-                    status: "VALIDATED",
+                    status: { in: [...completedImageStatuses] },
                     removedAt: null,
                   },
                   orderBy: { createdAt: "desc" },
@@ -263,18 +269,18 @@ export class SeoService {
     };
   }
 
-  async listSitemap(kind: SeoSitemapKind, cursor: string | undefined, limit: number) {
-    if (kind === "videos") return this.listVideos(cursor, limit);
-    if (kind === "channels") return this.listChannels(cursor, limit);
-    return this.listPlaylists(cursor, limit);
+  async listSitemap(kind: SeoSitemapKind, offset: number, limit: number) {
+    if (kind === "videos") return this.listVideos(offset, limit);
+    if (kind === "channels") return this.listChannels(offset, limit);
+    return this.listPlaylists(offset, limit);
   }
 
-  private async listVideos(cursor: string | undefined, limit: number) {
+  private async listVideos(offset: number, limit: number) {
     const videos = await this.database.client.video.findMany({
       where: playableVideoWhere,
       orderBy: { id: "asc" },
+      skip: offset,
       take: limit,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true,
         slug: true,
@@ -285,10 +291,11 @@ export class SeoService {
         updatedAt: true,
         channel: { select: { handle: true, name: true } },
         mediaAssets: {
-          where: { removedAt: null, status: "VALIDATED" },
+          where: { removedAt: null, status: { in: [...completedImageStatuses] } },
           orderBy: { createdAt: "desc" },
           select: {
             kind: true,
+            status: true,
             mimeType: true,
             r2ObjectKey: true,
             durationMs: true,
@@ -300,7 +307,10 @@ export class SeoService {
     return {
       items: videos.map((video) => {
         const source = video.mediaAssets.find(
-          (asset) => asset.kind === "SOURCE_VIDEO" && asset.mimeType === "video/mp4",
+          (asset) =>
+            asset.kind === "SOURCE_VIDEO" &&
+            asset.status === "VALIDATED" &&
+            asset.mimeType === "video/mp4",
         );
         const thumbnail = video.mediaAssets.find((asset) => asset.kind === "THUMBNAIL");
         return {
@@ -316,16 +326,15 @@ export class SeoService {
           sourceObjectKey: source?.r2ObjectKey ?? null,
         };
       }),
-      nextCursor: videos.length === limit ? (videos.at(-1)?.id ?? null) : null,
     };
   }
 
-  private async listChannels(cursor: string | undefined, limit: number) {
+  private async listChannels(offset: number, limit: number) {
     const channels = await this.database.client.channel.findMany({
       where: { status: "ACTIVE", removedAt: null },
       orderBy: { id: "asc" },
+      skip: offset,
       take: limit,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true,
         handle: true,
@@ -335,7 +344,7 @@ export class SeoService {
         mediaAssets: {
           where: {
             removedAt: null,
-            status: "VALIDATED",
+            status: { in: [...completedImageStatuses] },
             kind: { in: ["CHANNEL_AVATAR", "CHANNEL_BANNER"] },
           },
           orderBy: { createdAt: "desc" },
@@ -356,11 +365,10 @@ export class SeoService {
           channel.mediaAssets.find((asset) => asset.kind === "CHANNEL_AVATAR")?.r2ObjectKey ??
           null,
       })),
-      nextCursor: channels.length === limit ? (channels.at(-1)?.id ?? null) : null,
     };
   }
 
-  private async listPlaylists(cursor: string | undefined, limit: number) {
+  private async listPlaylists(offset: number, limit: number) {
     const playlists = await this.database.client.playlist.findMany({
       where: {
         visibility: "PUBLIC",
@@ -370,8 +378,8 @@ export class SeoService {
         items: { some: publicPlaylistVideoWhere },
       },
       orderBy: { id: "asc" },
+      skip: offset,
       take: limit,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true,
         slug: true,
@@ -389,7 +397,7 @@ export class SeoService {
                 mediaAssets: {
                   where: {
                     kind: "THUMBNAIL",
-                    status: "VALIDATED",
+                    status: { in: [...completedImageStatuses] },
                     removedAt: null,
                   },
                   orderBy: { createdAt: "desc" },
@@ -413,7 +421,6 @@ export class SeoService {
         channel: playlist.channel,
         imageObjectKey: playlist.items[0]?.video.mediaAssets[0]?.r2ObjectKey ?? null,
       })),
-      nextCursor: playlists.length === limit ? (playlists.at(-1)?.id ?? null) : null,
     };
   }
 }
