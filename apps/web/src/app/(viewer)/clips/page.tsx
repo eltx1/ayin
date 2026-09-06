@@ -1,6 +1,24 @@
+import type { Metadata } from "next";
+
+import { absoluteUrl, metadataRobots } from "@/lib/seo";
+
 import { apiBaseUrl } from "../../../lib/api";
 import { ClipsFeed, type ClipItem } from "./clips-feed";
 import styles from "./clips.module.css";
+
+export const metadata: Metadata = {
+  title: "Clips",
+  description: "Watch short videos and vertical clips from AYIN creators.",
+  alternates: { canonical: absoluteUrl("/clips") },
+  robots: metadataRobots(true),
+  openGraph: {
+    type: "website",
+    siteName: "AYIN",
+    title: "AYIN Clips",
+    description: "Watch short videos and vertical clips from AYIN creators.",
+    url: absoluteUrl("/clips"),
+  },
+};
 
 interface ClipsResponse {
   enabled: boolean;
