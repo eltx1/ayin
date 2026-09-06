@@ -316,7 +316,7 @@ export class SeoService {
           sourceObjectKey: source?.r2ObjectKey ?? null,
         };
       }),
-      nextCursor: videos.length === limit ? videos.at(-1)?.id ?? null : null,
+      nextCursor: videos.length === limit ? (videos.at(-1)?.id ?? null) : null,
     };
   }
 
@@ -356,7 +356,7 @@ export class SeoService {
           channel.mediaAssets.find((asset) => asset.kind === "CHANNEL_AVATAR")?.r2ObjectKey ??
           null,
       })),
-      nextCursor: channels.length === limit ? channels.at(-1)?.id ?? null : null,
+      nextCursor: channels.length === limit ? (channels.at(-1)?.id ?? null) : null,
     };
   }
 
@@ -413,7 +413,7 @@ export class SeoService {
         channel: playlist.channel,
         imageObjectKey: playlist.items[0]?.video.mediaAssets[0]?.r2ObjectKey ?? null,
       })),
-      nextCursor: playlists.length === limit ? playlists.at(-1)?.id ?? null : null,
+      nextCursor: playlists.length === limit ? (playlists.at(-1)?.id ?? null) : null,
     };
   }
 }
