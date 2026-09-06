@@ -288,6 +288,12 @@ export function AyinPlayer({
   }, [captionsEnabled]);
 
   function onStageKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("button,input,select,textarea,a")
+    ) {
+      return;
+    }
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const key = event.key.toLowerCase();
     if (key === " " || key === "k" || key === "enter") {
