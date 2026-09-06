@@ -79,6 +79,11 @@ jobs:
       - name: Audit production dependencies
         run: pnpm audit:prod
 
+      - name: Diagnose exact Prettier output
+        run: |
+          pnpm exec prettier --write apps/web/src/components/player/ad-enabled-ayin-player.tsx
+          git diff -- apps/web/src/components/player/ad-enabled-ayin-player.tsx
+
       - name: Check formatting
         run: pnpm exec prettier --check .
 
