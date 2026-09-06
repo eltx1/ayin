@@ -40,10 +40,6 @@ export class SeoController {
     if (!parsed.success) {
       throw new BadRequestException("Invalid SEO sitemap pagination.");
     }
-    return this.seo.listSitemap(
-      kindRaw as SeoSitemapKind,
-      parsed.data.offset,
-      parsed.data.limit,
-    );
+    return this.seo.listSitemap(kindRaw as SeoSitemapKind, parsed.data.offset, parsed.data.limit);
   }
 }
