@@ -1,4 +1,4 @@
-name: FFmpeg even-dimension production verification
+name: Upload stall production verification
 
 on:
   push:
@@ -20,7 +20,6 @@ jobs:
       DEPLOY_USER: ayin
       SSH_PORT: "22"
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
-      EXPECTED_RELEASE_SHA: d84bea79779c64b33a42afd7f7fe97129783fb98
 
     steps:
       - name: Configure pinned AYIN SSH trust
@@ -41,59 +40,39 @@ jobs:
           mv "$candidate" "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
-      - name: Verify deployed code and odd-dimension FFmpeg probe
+      - name: Inspect incident evidence
         shell: bash
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=10 \
-            -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "EXPECTED_RELEASE_SHA='$EXPECTED_RELEASE_SHA' bash -s" <<'REMOTE'
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=10 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-
+          echo '=== production release ==='
+          date -u '+utc=%Y-%m-%dT%H:%M:%SZ'
           current_dir="$(readlink -f /home/ayin/htdocs/current)"
-          current_sha="$(git -C "$current_dir" rev-parse HEAD)"
           echo "current_release=$current_dir"
-          echo "current_sha=$current_sha"
-          echo "expected_sha=$EXPECTED_RELEASE_SHA"
-          test "$current_sha" = "$EXPECTED_RELEASE_SHA"
+          echo "current_sha=$(git -C "$current_dir" rev-parse HEAD)"
 
-          echo '=== Deployed FFmpeg scale expression ==='
-          grep -F 'trunc(min(' "$current_dir/apps/api/src/media/media-processing-executor.service.ts"
+          echo '=== PM2 ==='
+          pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const p of JSON.parse(s)){if(["ayin-web","ayin-api","ayin-media-worker"].includes(p.name))console.log(`${p.name} status=${p.pm2_env?.status} restarts=${p.pm2_env?.restart_time}`)}})'
 
-          echo '=== PM2 media worker ==='
-          worker_status="$(pm2 jlist | node -e '
-            let data="";
-            process.stdin.on("data", c => data += c);
-            process.stdin.on("end", () => {
-              const app = JSON.parse(data).find(x => x.name === "ayin-media-worker");
-              if (!app) process.exit(2);
-              console.log(app.pm2_env?.status || "unknown");
-            });
-          ')"
-          echo "worker_status=$worker_status"
-          test "$worker_status" = "online"
+          echo '=== upload-related API evidence ==='
+          find /home/ayin/.pm2/logs -maxdepth 1 -type f -name 'ayin-api*.log' -print0 | xargs -0 -r cat | tail -n 5000 | grep -Eai 'upload|multipart|r2|storage|media|timeout|abort|error|411|408|429|5[0-9][0-9]' | tail -n 700 | sed -E 's#https://[^ ]+#<redacted-url>#g' || true
 
-          echo '=== Synthetic 641x481 regression probe ==='
-          probe_dir="$(mktemp -d)"
-          trap 'rm -rf "$probe_dir"' EXIT
-          output="$probe_dir/odd-fixed.mp4"
+          echo '=== media worker evidence ==='
+          find /home/ayin/.pm2/logs -maxdepth 1 -type f -name 'ayin-media-worker*.log' -print0 | xargs -0 -r cat | tail -n 3500 | grep -Eai 'processing|job|failed|error|timeout|r2|ffmpeg' | tail -n 450 | sed -E 's#https://[^ ]+#<redacted-url>#g' || true
 
-          /home/ayin/bin/ffmpeg -hide_banner -nostdin -loglevel warning -y \
-            -f lavfi -i 'testsrc=size=641x481:rate=1' -t 1 \
-            -vf 'scale=-2:trunc(min(1080\,ih)/2)*2' \
-            -c:v libx264 -preset veryfast -crf 23 -pix_fmt yuv420p -threads 1 \
-            -an -movflags +faststart "$output"
-
-          dimensions="$(/home/ayin/bin/ffprobe -v error -select_streams v:0 \
-            -show_entries stream=width,height -of csv=p=0:s=x "$output")"
-          echo "probe_dimensions=$dimensions"
-          width="${dimensions%x*}"
-          height="${dimensions#*x}"
-          test "$width" -gt 0
-          test "$height" -gt 0
-          test $((width % 2)) -eq 0
-          test $((height % 2)) -eq 0
-          echo 'odd_dimension_probe=PASS'
+          echo '=== database records in local 03:35-04:05 / UTC 00:35-01:05 ==='
+          cd "$current_dir"
+          cat >/tmp/ayin-upload-diag.sql <<'SQL'
+          SELECT v.id, v.slug, v.title, v.status, v."createdAt", v."updatedAt",
+                 a.id AS source_asset_id, a.status AS asset_status, a."sizeBytes", a."createdAt" AS asset_created,
+                 j.id AS job_id, j.status AS job_status, j.stage, j.attempt, j."progressPercent", j."errorCode", j."createdAt" AS job_created, j."updatedAt" AS job_updated
+          FROM "Video" v
+          LEFT JOIN "MediaAsset" a ON a."videoId" = v.id AND a.kind = 'SOURCE_VIDEO'
+          LEFT JOIN "MediaProcessingJob" j ON j."videoId" = v.id
+          WHERE v."createdAt" BETWEEN TIMESTAMPTZ '2026-09-06 00:35:00+00' AND TIMESTAMPTZ '2026-09-06 01:05:00+00'
+          ORDER BY v."createdAt" ASC, j.generation ASC;
+          SQL
+          node deploy/run-with-env.cjs /home/ayin/env/api.env bash -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -f /tmp/ayin-upload-diag.sql'
+          rm -f /tmp/ayin-upload-diag.sql
           REMOTE
