@@ -6,6 +6,11 @@
   padding: clamp(0.8rem, 2vw, 1.5rem) var(--page-gutter) calc(5rem + var(--ayin-safe-bottom));
 }
 
+.playerFrame {
+  justify-self: center;
+  width: min(100%, calc((100dvh - 10rem) * 16 / 9));
+}
+
 .details {
   align-items: flex-start;
   display: flex;
@@ -135,6 +140,10 @@
 @media (max-width: 760px) {
   .page {
     padding-top: 0.65rem;
+  }
+
+  .playerFrame {
+    width: 100%;
   }
 
   .details {
