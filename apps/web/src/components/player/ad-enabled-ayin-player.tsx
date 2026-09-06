@@ -19,9 +19,11 @@ import styles from "./ad-enabled-ayin-player.module.css";
 
 export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const [decision, setDecision] = useState<VideoAdDecision | null>(null);
+  const [decisionLoaded, setDecisionLoaded] = useState(false);
   const [adContainer, setAdContainer] = useState<HTMLDivElement | null>(null);
   const [contentVideo, setContentVideo] = useState<HTMLVideoElement | null>(null);
   const [activated, setActivated] = useState(false);
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [adActive, setAdActive] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const serviceRef = useRef<GoogleImaVideoAdService | null>(null);
@@ -31,9 +33,15 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetchVideoAdDecision(props.videoId, controller.signal).then((result) => {
-      if (!controller.signal.aborted && result.enabled) setDecision(result);
-    });
+    void fetchVideoAdDecision(props.videoId, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setDecision(result.enabled ? result : null);
+        setDecisionLoaded(true);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setDecisionLoaded(true);
+      });
     return () => controller.abort();
   }, [props.videoId]);
 
@@ -59,6 +67,26 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
     [decision, props.videoId],
   );
 
+  const attemptContentPlayback = useCallback(async () => {
+    if (!contentVideo) return false;
+    try {
+      await contentVideo.play();
+      setAutoplayBlocked(false);
+      return true;
+    } catch {
+      // Browsers commonly permit muted autoplay before a user gesture.
+      contentVideo.muted = true;
+      try {
+        await contentVideo.play();
+        setAutoplayBlocked(false);
+        return true;
+      } catch {
+        setAutoplayBlocked(true);
+        return false;
+      }
+    }
+  }, [contentVideo]);
+
   const playAd = useCallback(
     async (slot: VideoAdSlot) => {
       if (!decision || !adContainer || !contentVideo) return false;
@@ -79,29 +107,43 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
           onContentResume: () => {
             setAdActive(false);
             setStatus(null);
-            if (slot !== "POST_ROLL") void contentVideo.play().catch(() => undefined);
+            if (slot !== "POST_ROLL") void attemptContentPlayback();
           },
         });
         return true;
       } catch {
         setAdActive(false);
         setStatus(null);
-        if (slot !== "POST_ROLL") void contentVideo.play().catch(() => undefined);
+        if (slot !== "POST_ROLL") void attemptContentPlayback();
         return false;
       }
     },
-    [adContainer, contentVideo, decision, emit],
+    [adContainer, attemptContentPlayback, contentVideo, decision, emit],
   );
 
-  async function activatePlayback() {
+  const activatePlayback = useCallback(async () => {
     if (!contentVideo || !adContainer) return;
     setActivated(true);
+    setAutoplayBlocked(false);
     if (decision?.preRollEnabled) {
       const served = await playAd("PRE_ROLL");
       if (served) return;
     }
-    void contentVideo.play().catch(() => undefined);
-  }
+    await attemptContentPlayback();
+  }, [adContainer, attemptContentPlayback, contentVideo, decision, playAd]);
+
+  useEffect(() => {
+    if (
+      !decisionLoaded ||
+      !contentVideo ||
+      !adContainer ||
+      activated ||
+      props.autoPlay !== true
+    ) {
+      return;
+    }
+    void activatePlayback();
+  }, [activatePlayback, activated, adContainer, contentVideo, decisionLoaded, props.autoPlay]);
 
   useEffect(() => {
     if (!decision || !contentVideo || !activated) return;
@@ -147,16 +189,22 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
     <div className={styles.wrap}>
       <AyinPlayer
         {...props}
+        autoPlay={false}
         adMode={{ active: adActive, controlsLocked: adActive, label: status ?? "Advertisement" }}
         onAdContainerReady={handleAdContainerReady}
       />
-      {adEligible && !activated ? (
+      {autoplayBlocked || (adEligible && !activated && props.autoPlay !== true) ? (
         <button
+          aria-label="Play video"
           className={styles.start}
           data-tv-focusable="true"
           onClick={() => void activatePlayback()}
+          type="button"
         >
-          Start playback
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M8 5.5v13l10-6.5z" />
+          </svg>
+          <span>{autoplayBlocked ? "Tap to play" : "Play video"}</span>
         </button>
       ) : null}
     </div>
