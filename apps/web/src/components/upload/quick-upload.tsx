@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useRouter } from "next/navigation";
 
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";
@@ -31,6 +32,7 @@ import styles from "./quick-upload.module.css";
 type Visibility = "PUBLIC" | "UNLISTED" | "PRIVATE";
 
 export function QuickUpload() {
+  const router = useRouter();
   const [identity, setIdentity] = useState<AyinIdentity | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<VideoInspectionResult | null>(null);
@@ -41,7 +43,6 @@ export function QuickUpload() {
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const [videoForm, setVideoForm] = useState<VideoForm>("LONG_FORM");
   const [scheduledPublishAt, setScheduledPublishAt] = useState("");
-  const [rightsConfirmed, setRightsConfirmed] = useState(false);
   const [progress, setProgress] = useState(0);
   const [uploadComplete, setUploadComplete] = useState(false);
   const [processingReady, setProcessingReady] = useState(false);
@@ -94,7 +95,6 @@ export function QuickUpload() {
     setUploadComplete(false);
     setProcessingReady(false);
     setProcessingLabel(null);
-    setRightsConfirmed(false);
     setPublished(false);
     setMessage(null);
     if (!selected || !identity) return;
@@ -133,6 +133,7 @@ export function QuickUpload() {
         session: draft.uploadSession,
         file: selected,
         onProgress: setProgress,
+        onStatus: (status) => setMessage(status.message),
       });
       const confirmation = await confirmQuickUpload(draft.video.id);
       setProcessingReady(confirmation.status === "DRAFT");
@@ -144,7 +145,7 @@ export function QuickUpload() {
       setUploadComplete(true);
       setMessage(
         confirmation.status === "DRAFT"
-          ? "Upload and processing complete. Confirm your publishing rights, then publish when you're ready."
+          ? "Upload and processing complete. Your video is ready to publish."
           : "Upload complete. AYIN is preparing a reliable playback version in the background.",
       );
     } catch (error) {
@@ -260,14 +261,13 @@ export function QuickUpload() {
   }
 
   async function publish() {
-    if (!videoId || !uploadComplete || !processingReady || !rightsConfirmed || !title.trim())
-      return;
+    if (!videoId || !uploadComplete || !processingReady || !title.trim()) return;
     setBusy(true);
     setMessage(null);
     try {
       const result = await publishQuickVideo(videoId, {
         ...detailsPayload(),
-        rightsConfirmed,
+        rightsConfirmed: true,
       });
       trackAnalyticsEvent("PUBLISH", {
         ...(identity ? { channelId: identity.channel.id } : {}),
@@ -275,11 +275,19 @@ export function QuickUpload() {
         metadata: { scheduled: result.video.status === "SCHEDULED" },
       });
       setPublished(true);
-      setMessage(
-        result.video.status === "SCHEDULED"
-          ? "Video scheduled. You can edit its details later."
-          : "Published. Your video is now available on your channel.",
-      );
+
+      if (result.video.status === "SCHEDULED" || visibility === "PRIVATE") {
+        setMessage(
+          result.video.status === "SCHEDULED"
+            ? "Video scheduled. Opening your Studio content…"
+            : "Published privately. Opening your Studio content…",
+        );
+        router.push("/studio/content");
+        return;
+      }
+
+      setMessage("Published. Opening your video…");
+      router.push(`/watch/${encodeURIComponent(result.video.slug)}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "The video could not be published.");
     } finally {
@@ -618,29 +626,15 @@ export function QuickUpload() {
             </details>
 
             <div className={styles.publishDock}>
-              <label className={styles.rights}>
-                <input
-                  type="checkbox"
-                  checked={rightsConfirmed}
-                  onChange={(event) => setRightsConfirmed(event.target.checked)}
-                />
-                <span>
-                  I confirm that I own or have the rights and permissions required to publish this
-                  video on AYIN.
-                </span>
-              </label>
+              <p className={styles.publishConsent}>
+                By publishing, you confirm that you own this video or have all rights and
+                permissions required to publish it on AYIN.
+              </p>
 
               <button
                 className={styles.publish}
                 type="button"
-                disabled={
-                  !uploadComplete ||
-                  !processingReady ||
-                  !rightsConfirmed ||
-                  !title.trim() ||
-                  busy ||
-                  published
-                }
+                disabled={!uploadComplete || !processingReady || !title.trim() || busy || published}
                 onClick={() => void publish()}
               >
                 <span>

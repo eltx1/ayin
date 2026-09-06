@@ -133,13 +133,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   }, [adContainer, attemptContentPlayback, contentVideo, decision, playAd]);
 
   useEffect(() => {
-    if (
-      !decisionLoaded ||
-      !contentVideo ||
-      !adContainer ||
-      activated ||
-      props.autoPlay !== true
-    ) {
+    if (!decisionLoaded || !contentVideo || !adContainer || activated || props.autoPlay !== true) {
       return;
     }
     void activatePlayback();
