@@ -14,8 +14,6 @@ export default function robots(): MetadataRoute.Robots {
           "/account/",
           "/channel/",
           "/upload",
-          "/my-ayin",
-          "/search",
           "/login",
           "/register",
           "/forgot-password",
