@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import { absoluteUrl, isoDuration, seoDescription, serializeJsonLd } from "./seo";
 
 describe("SEO helpers", () => {
-  it("builds absolute AYIN URLs without duplicate slashes", () => {
+  it("builds canonical AYIN URLs while preserving already absolute URLs", () => {
     expect(absoluteUrl("/watch/example")).toMatch(/^https?:\/\/[^/]+\/watch\/example$/);
+    expect(absoluteUrl("https://media.example/video.mp4")).toBe(
+      "https://media.example/video.mp4",
+    );
   });
 
   it("derives concise descriptions without asking creators for extra SEO fields", () => {
