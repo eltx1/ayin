@@ -560,7 +560,7 @@ export class QuickUploadService {
         where: {
           videoId,
           kind: "THUMBNAIL",
-          status: "UPLOADED",
+          status: { in: ["UPLOADED", "VALIDATED"] },
           id: { not: assetId },
           removedAt: null,
         },
