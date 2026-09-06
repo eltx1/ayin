@@ -44,7 +44,7 @@ export class MediaAutoThumbnailService {
           where: {
             kind: "THUMBNAIL",
             removedAt: null,
-            status: { in: ["PENDING", "UPLOADED", "VALIDATED"] },
+            status: { in: ["UPLOADED", "VALIDATED"] },
           },
           orderBy: { createdAt: "desc" },
           take: 1,
@@ -79,7 +79,7 @@ export class MediaAutoThumbnailService {
         videoId: input.videoId,
         kind: "THUMBNAIL",
         removedAt: null,
-        status: { in: ["PENDING", "UPLOADED", "VALIDATED"] },
+        status: { in: ["UPLOADED", "VALIDATED"] },
         r2ObjectKey: { not: objectKey },
       },
       select: { id: true, r2ObjectKey: true },
