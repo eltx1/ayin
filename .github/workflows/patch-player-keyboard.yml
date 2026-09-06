@@ -38,6 +38,7 @@ jobs:
           path.write_text(text.replace(old, new, 1))
       - name: Commit patch and remove temporary workflow
         run: |
+          # This one-shot workflow removes itself after applying the accessibility fix.
           rm -f .github/workflows/patch-player-keyboard.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
