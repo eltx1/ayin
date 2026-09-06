@@ -50,7 +50,9 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         const enabledDecision = result.enabled ? result : null;
         setDecision(enabledDecision);
         setDecisionLoaded(true);
-        setImaGestureRequired(Boolean(enabledDecision?.preRollEnabled && mobileImaRequiresGesture()));
+        setImaGestureRequired(
+          Boolean(enabledDecision?.preRollEnabled && mobileImaRequiresGesture()),
+        );
 
         if (enabledDecision?.preRollEnabled) {
           const service = serviceRef.current ?? new GoogleImaVideoAdService();
