@@ -4,12 +4,13 @@ import { xmlEscape, xmlResponse } from "@/lib/sitemap";
 const publicRoutes = [
   "/",
   "/clips",
-  "/live",
   "/community",
   "/community-guidelines",
   "/copyright",
   "/creator-terms",
   "/cookies",
+  "/privacy",
+  "/terms",
 ] as const;
 
 export function GET() {
