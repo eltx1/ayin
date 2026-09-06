@@ -260,9 +260,13 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
         }),
       });
     });
-    await page.route("https://imasdk.googleapis.com/**", (route) => route.abort());
+    let imaRequested = false;
+    await page.route("https://imasdk.googleapis.com/**", async (route) => {
+      imaRequested = true;
+      await route.abort();
+    });
     await page.goto(`/watch/${video.slug}`);
-    await page.getByRole("button", { name: "Start playback" }).click();
+    await expect.poll(() => imaRequested).toBe(true);
     await expect(page.locator("video")).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Start playback" })).toHaveCount(0);
   });
