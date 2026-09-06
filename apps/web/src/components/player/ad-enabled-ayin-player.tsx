@@ -247,8 +247,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         adMode={{ active: adActive, controlsLocked: adActive, label: status ?? "Advertisement" }}
         onAdContainerReady={handleAdContainerReady}
       />
-      {autoplayBlocked ||
-      (adEligible && !activated && (props.autoPlay !== true || gestureGate)) ? (
+      {autoplayBlocked || (adEligible && !activated && (props.autoPlay !== true || gestureGate)) ? (
         <button
           aria-label="Play video"
           className={styles.start}
