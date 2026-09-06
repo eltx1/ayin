@@ -1,0 +1,85 @@
+name: Upload stall production diagnostics
+
+on:
+  push:
+    branches:
+      - diag/upload-stall-20260906
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Configure pinned production SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: 13.52.116.200
+          SSH_PORT: '22'
+          PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          test "$actual_fingerprint" = "$PINNED_SSH_HOST_FINGERPRINT"
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Inspect upload window and recent media records
+        shell: bash
+        env:
+          DEPLOY_HOST: 13.52.116.200
+          DEPLOY_USER: ayin
+          SSH_PORT: '22'
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=5 -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== host / release ==='
+          date -u '+utc=%Y-%m-%dT%H:%M:%SZ'
+          readlink -f /home/ayin/htdocs/current
+
+          echo '=== pm2 status ==='
+          pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const p of JSON.parse(s)){if(["ayin-web","ayin-api","ayin-media-worker"].includes(p.name)) console.log(`${p.name} status=${p.pm2_env.status} restarts=${p.pm2_env.restart_time} pid=${p.pid}`)}})'
+
+          echo '=== API log evidence around upload / multipart / storage ==='
+          for f in /home/ayin/.pm2/logs/ayin-api-*.log /home/ayin/.pm2/logs/ayin-api*.log; do
+            [ -f "$f" ] || continue
+            tail -n 2500 "$f" | grep -Eai 'upload|multipart|r2|storage|media|error|timeout|abort|411|429|5[0-9][0-9]' | tail -n 500 || true
+          done | sed -E 's#https://[^ ]+#<redacted-url>#g; s#([?&](X-Amz-[^=& ]+|token|signature|credential)=[^& ]+)#<redacted-query>#gi'
+
+          echo '=== web log evidence around client/API failures ==='
+          for f in /home/ayin/.pm2/logs/ayin-web-*.log /home/ayin/.pm2/logs/ayin-web*.log; do
+            [ -f "$f" ] || continue
+            tail -n 1800 "$f" | grep -Eai 'upload|error|timeout|abort|failed' | tail -n 250 || true
+          done | sed -E 's#https://[^ ]+#<redacted-url>#g'
+
+          echo '=== media worker recent failures ==='
+          for f in /home/ayin/.pm2/logs/ayin-media-worker-*.log /home/ayin/.pm2/logs/ayin-media-worker*.log; do
+            [ -f "$f" ] || continue
+            tail -n 1800 "$f" | grep -Eai 'failed|error|timeout|r2|ffmpeg|processing|job' | tail -n 300 || true
+          done | sed -E 's#https://[^ ]+#<redacted-url>#g'
+
+          echo '=== DB videos/assets/jobs created in the incident window ==='
+          cd /home/ayin/htdocs/current
+          cat >/tmp/ayin-upload-diag.sql <<'SQL'
+          SELECT v.id, v.slug, v.title, v.status, v."createdAt", v."updatedAt",
+                 a.id AS source_asset_id, a.status AS asset_status, a."sizeBytes", a."createdAt" AS asset_created,
+                 j.id AS job_id, j.status AS job_status, j.stage, j.attempt, j."progressPercent", j."errorCode", j."createdAt" AS job_created, j."updatedAt" AS job_updated
+          FROM "Video" v
+          LEFT JOIN "MediaAsset" a ON a."videoId" = v.id AND a.kind = 'SOURCE_VIDEO'
+          LEFT JOIN "MediaProcessingJob" j ON j."videoId" = v.id
+          WHERE v."createdAt" BETWEEN TIMESTAMPTZ '2026-09-06 00:35:00+00' AND TIMESTAMPTZ '2026-09-06 01:05:00+00'
+          ORDER BY v."createdAt" ASC, j.generation ASC;
+          SQL
+          node deploy/run-with-env.cjs /home/ayin/env/api.env bash -lc 'psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -P pager=off -f /tmp/ayin-upload-diag.sql'
+          rm -f /tmp/ayin-upload-diag.sql
+          REMOTE
