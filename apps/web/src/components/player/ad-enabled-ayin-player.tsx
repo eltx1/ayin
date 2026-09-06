@@ -12,10 +12,19 @@ import {
   recordVideoAdEvent,
   type VideoAdDecision,
   type VideoAdEventType,
+  type VideoAdPlaybackIntent,
   type VideoAdSlot,
 } from "@/lib/video-ads";
 
 import styles from "./ad-enabled-ayin-player.module.css";
+
+function mobileImaRequiresGesture(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
 
 export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const [decision, setDecision] = useState<VideoAdDecision | null>(null);
@@ -23,6 +32,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const [targetsReady, setTargetsReady] = useState(false);
   const [activated, setActivated] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [imaGestureRequired, setImaGestureRequired] = useState(false);
   const [adActive, setAdActive] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const serviceRef = useRef<GoogleImaVideoAdService | null>(null);
@@ -37,8 +47,18 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
     void fetchVideoAdDecision(props.videoId, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
-        setDecision(result.enabled ? result : null);
+        const enabledDecision = result.enabled ? result : null;
+        setDecision(enabledDecision);
         setDecisionLoaded(true);
+        setImaGestureRequired(Boolean(enabledDecision?.preRollEnabled && mobileImaRequiresGesture()));
+
+        if (enabledDecision?.preRollEnabled) {
+          const service = serviceRef.current ?? new GoogleImaVideoAdService();
+          serviceRef.current = service;
+          // Load the SDK before a possible mobile tap so AdDisplayContainer.initialize()
+          // can stay in the direct user-gesture stack as required by Google IMA.
+          void service.preload().catch(() => undefined);
+        }
       })
       .catch(() => {
         if (!controller.signal.aborted) setDecisionLoaded(true);
@@ -91,7 +111,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   }, []);
 
   const playAd = useCallback(
-    async (slot: VideoAdSlot) => {
+    async (slot: VideoAdSlot, playbackIntent?: VideoAdPlaybackIntent) => {
       const adContainer = adContainerRef.current;
       const contentVideo = contentVideoRef.current;
       if (!decision || !adContainer || !contentVideo) return false;
@@ -103,49 +123,77 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         setAdActive(true);
         setStatus("Advertisement");
         contentVideo.pause();
-        await service.play(slot, decision.tagUrl, {
-          onEvent: (type, errorCode) => emit(slot, type, errorCode),
-          onContentPause: () => {
-            contentVideo.pause();
-            setAdActive(true);
+        await service.play(
+          slot,
+          decision.tagUrl,
+          {
+            onEvent: (type, errorCode) => emit(slot, type, errorCode),
+            onContentPause: () => {
+              contentVideo.pause();
+              setAdActive(true);
+            },
+            onContentResume: () => {
+              setAdActive(false);
+              setStatus(null);
+              if (slot !== "POST_ROLL") void attemptContentPlayback();
+            },
           },
-          onContentResume: () => {
-            setAdActive(false);
-            setStatus(null);
-            if (slot !== "POST_ROLL") void attemptContentPlayback();
-          },
-        });
+          playbackIntent,
+        );
         return true;
       } catch {
         setAdActive(false);
         setStatus(null);
-        if (slot !== "POST_ROLL") void attemptContentPlayback();
         return false;
       }
     },
     [attemptContentPlayback, decision, emit],
   );
 
-  const activatePlayback = useCallback(async () => {
-    const contentVideo = contentVideoRef.current;
-    const adContainer = adContainerRef.current;
-    if (!contentVideo || !adContainer) return;
-    setActivated(true);
-    setAutoplayBlocked(false);
-    if (decision?.preRollEnabled) {
-      const served = await playAd("PRE_ROLL");
-      if (served) return;
-    }
-    await attemptContentPlayback();
-  }, [attemptContentPlayback, decision, playAd]);
+  const activatePlayback = useCallback(
+    async (autoPlayAttempt = false) => {
+      const contentVideo = contentVideoRef.current;
+      const adContainer = adContainerRef.current;
+      if (!contentVideo || !adContainer) return;
+      setActivated(true);
+      setAutoplayBlocked(false);
+
+      if (decision?.preRollEnabled) {
+        if (autoPlayAttempt) contentVideo.muted = true;
+        const served = await playAd("PRE_ROLL", {
+          autoPlay: autoPlayAttempt,
+          muted: contentVideo.muted,
+        });
+        if (served) return;
+      }
+      await attemptContentPlayback();
+    },
+    [attemptContentPlayback, decision, playAd],
+  );
 
   useEffect(() => {
-    if (!decisionLoaded || !targetsReady || activated || props.autoPlay !== true) return;
+    if (
+      !decisionLoaded ||
+      !targetsReady ||
+      activated ||
+      props.autoPlay !== true ||
+      (decision?.preRollEnabled && imaGestureRequired)
+    ) {
+      return;
+    }
     const timeout = window.setTimeout(() => {
-      void activatePlayback();
+      void activatePlayback(true);
     }, 0);
     return () => window.clearTimeout(timeout);
-  }, [activatePlayback, activated, decisionLoaded, props.autoPlay, targetsReady]);
+  }, [
+    activatePlayback,
+    activated,
+    decision?.preRollEnabled,
+    decisionLoaded,
+    imaGestureRequired,
+    props.autoPlay,
+    targetsReady,
+  ]);
 
   useEffect(() => {
     const contentVideo = contentVideoRef.current;
@@ -159,13 +207,13 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         return;
       }
       midRollPlayedRef.current = true;
-      void playAd("MID_ROLL");
+      void playAd("MID_ROLL", { autoPlay: false, muted: contentVideo.muted });
     };
     const onEnded = () => {
       serviceRef.current?.contentComplete();
       if (decision.postRollEnabled && !postRollPlayedRef.current) {
         postRollPlayedRef.current = true;
-        void playAd("POST_ROLL");
+        void playAd("POST_ROLL", { autoPlay: false, muted: contentVideo.muted });
       }
     };
     contentVideo.addEventListener("timeupdate", onTimeUpdate);
@@ -187,6 +235,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const adEligible = Boolean(
     decision && (decision.preRollEnabled || decision.midRollEnabled || decision.postRollEnabled),
   );
+  const gestureGate = Boolean(decision?.preRollEnabled && imaGestureRequired);
 
   return (
     <div className={styles.wrap}>
@@ -196,12 +245,13 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         adMode={{ active: adActive, controlsLocked: adActive, label: status ?? "Advertisement" }}
         onAdContainerReady={handleAdContainerReady}
       />
-      {autoplayBlocked || (adEligible && !activated && props.autoPlay !== true) ? (
+      {autoplayBlocked ||
+      (adEligible && !activated && (props.autoPlay !== true || gestureGate)) ? (
         <button
           aria-label="Play video"
           className={styles.start}
           data-tv-focusable="true"
-          onClick={() => void activatePlayback()}
+          onClick={() => void activatePlayback(false)}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24">
