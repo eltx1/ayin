@@ -1,4 +1,9 @@
-import type { VideoAdCallbacks, VideoAdService, VideoAdSlot } from "./video-ads";
+import type {
+  VideoAdCallbacks,
+  VideoAdPlaybackIntent,
+  VideoAdService,
+  VideoAdSlot,
+} from "./video-ads";
 
 const IMA_SDK_URL = "https://imasdk.googleapis.com/js/sdkloader/ima3.js";
 
@@ -95,6 +100,10 @@ export class GoogleImaVideoAdService implements VideoAdService {
   private ima: ImaNamespace | null = null;
   private initialized = false;
 
+  async preload(): Promise<void> {
+    this.ima = await loadImaSdk();
+  }
+
   async initialize(container: HTMLDivElement, contentVideo: HTMLVideoElement): Promise<void> {
     if (this.container === container && this.contentVideo === contentVideo && this.adsLoader) {
       if (!this.initialized) {
@@ -103,17 +112,26 @@ export class GoogleImaVideoAdService implements VideoAdService {
       }
       return;
     }
+
     this.destroy();
-    this.ima = await loadImaSdk();
-    this.container = container;
-    this.contentVideo = contentVideo;
-    this.displayContainer = new this.ima.AdDisplayContainer(container, contentVideo);
-    this.adsLoader = new this.ima.AdsLoader(this.displayContainer);
-    this.displayContainer.initialize();
-    this.initialized = true;
+    const existing = (window as ImaWindow).google?.ima;
+    if (existing) {
+      // Keep AdDisplayContainer.initialize() synchronous when the SDK was preloaded.
+      // Mobile IMA requires this call to remain in the direct user-gesture stack.
+      this.attach(existing, container, contentVideo);
+      return;
+    }
+
+    const ima = await loadImaSdk();
+    this.attach(ima, container, contentVideo);
   }
 
-  async play(_slot: VideoAdSlot, tagUrl: string, callbacks: VideoAdCallbacks): Promise<void> {
+  async play(
+    _slot: VideoAdSlot,
+    tagUrl: string,
+    callbacks: VideoAdCallbacks,
+    playbackIntent?: VideoAdPlaybackIntent,
+  ): Promise<void> {
     const ima = this.ima;
     const loader = this.adsLoader;
     const content = this.contentVideo;
@@ -186,8 +204,8 @@ export class GoogleImaVideoAdService implements VideoAdService {
       request.linearAdSlotHeight = Math.max(container.clientHeight, 360);
       request.nonLinearAdSlotWidth = Math.max(container.clientWidth, 640);
       request.nonLinearAdSlotHeight = 150;
-      request.setAdWillAutoPlay(false);
-      request.setAdWillPlayMuted(content.muted);
+      request.setAdWillAutoPlay(playbackIntent?.autoPlay ?? false);
+      request.setAdWillPlayMuted(playbackIntent?.muted ?? content.muted);
       loader.requestAds(request);
     });
   }
@@ -206,5 +224,19 @@ export class GoogleImaVideoAdService implements VideoAdService {
     this.contentVideo = null;
     this.ima = null;
     this.initialized = false;
+  }
+
+  private attach(
+    ima: ImaNamespace,
+    container: HTMLDivElement,
+    contentVideo: HTMLVideoElement,
+  ): void {
+    this.ima = ima;
+    this.container = container;
+    this.contentVideo = contentVideo;
+    this.displayContainer = new ima.AdDisplayContainer(container, contentVideo);
+    this.adsLoader = new ima.AdsLoader(this.displayContainer);
+    this.displayContainer.initialize();
+    this.initialized = true;
   }
 }

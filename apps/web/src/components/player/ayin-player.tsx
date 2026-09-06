@@ -288,6 +288,12 @@ export function AyinPlayer({
   }, [captionsEnabled]);
 
   function onStageKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.closest("button,input,select,textarea,a")
+    ) {
+      return;
+    }
     if (event.altKey || event.ctrlKey || event.metaKey) return;
     const key = event.key.toLowerCase();
     if (key === " " || key === "k" || key === "enter") {
@@ -316,12 +322,27 @@ export function AyinPlayer({
   const locked = adMode.active && adMode.controlsLocked !== false;
   return (
     <TvFocusScope className={className}>
-      <section className={styles.player} ref={rootRef} aria-label={`${title} player`}>
+      <section
+        className={styles.player}
+        data-playing={playing}
+        ref={rootRef}
+        aria-label={`${title} player`}
+      >
         <div
           className={styles.stage}
           data-player-stage="true"
           data-tv-focusable="true"
           data-tv-focus-id={`player-stage-${videoId}`}
+          onClick={(event) => {
+            if (
+              event.target instanceof HTMLElement &&
+              event.target.closest("button,input,select")
+            ) {
+              return;
+            }
+            void togglePlay();
+          }}
+          onDoubleClick={() => void toggleFullscreen()}
           onKeyDown={onStageKeyDown}
           tabIndex={0}
         >
@@ -366,13 +387,17 @@ export function AyinPlayer({
             onStalled={() => {
               analytics.emit({ type: "buffer", videoId, positionMs });
             }}
+            onVolumeChange={(event) => {
+              setMuted(event.currentTarget.muted);
+              setVolume(event.currentTarget.volume);
+            }}
             onTimeUpdate={(event) => {
               setPositionMs(Math.floor(event.currentTarget.currentTime * 1000));
               void persist(false);
             }}
             playsInline
             poster={posterUrl ?? undefined}
-            preload="metadata"
+            preload={autoPlay ? "auto" : "metadata"}
             ref={videoRef}
             src={sourceUrl}
           >
@@ -402,6 +427,33 @@ export function AyinPlayer({
             {activeChapter ? <span>{activeChapter.title}</span> : null}
           </div>
           {error ? <div className={styles.error}>{error}</div> : null}
+          {!playing && !locked && !error ? (
+            <button
+              aria-label="Play video"
+              className={styles.centerPlay}
+              onClick={(event) => {
+                event.stopPropagation();
+                void togglePlay();
+              }}
+              type="button"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M8 5.5v13l10-6.5z" />
+              </svg>
+            </button>
+          ) : null}
+          {playing && muted && !locked ? (
+            <button
+              className={styles.unmuteHint}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleMute();
+              }}
+              type="button"
+            >
+              Tap to unmute
+            </button>
+          ) : null}
         </div>
 
         <div className={styles.controls} aria-label="Playback controls">
@@ -420,43 +472,69 @@ export function AyinPlayer({
 
           <div className={styles.controlRow}>
             <button
+              aria-label={playing ? "Pause" : "Play"}
+              className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-play-${videoId}`}
               disabled={locked}
               onClick={() => void togglePlay()}
+              title={playing ? "Pause (K)" : "Play (K)"}
               type="button"
             >
-              {playing ? "Pause" : "Play"}
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                {playing ? <path d="M7 5h4v14H7zm6 0h4v14h-4z" /> : <path d="M8 5.5v13l10-6.5z" />}
+              </svg>
             </button>
+
             <button
+              aria-label="Back 10 seconds"
+              className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-back-${videoId}`}
               disabled={locked}
               onClick={() => seekBy(-10)}
+              title="Back 10 seconds (J)"
               type="button"
             >
-              −10s
+              <span className={styles.seekGlyph}>
+                ↶<small>10</small>
+              </span>
             </button>
+
             <button
+              aria-label="Forward 10 seconds"
+              className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-forward-${videoId}`}
               disabled={locked}
               onClick={() => seekBy(10)}
+              title="Forward 10 seconds (L)"
               type="button"
             >
-              +10s
+              <span className={styles.seekGlyph}>
+                ↷<small>10</small>
+              </span>
             </button>
-            <span className={styles.time}>
-              {formatTime(positionMs)} / {formatTime(durationMs)}
-            </span>
+
             <button
+              aria-label={muted ? "Unmute" : "Mute"}
+              className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-mute-${videoId}`}
               onClick={toggleMute}
+              title={muted ? "Unmute (M)" : "Mute (M)"}
               type="button"
             >
-              {muted ? "Unmute" : "Mute"}
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M4 9v6h4l5 4V5L8 9z" />
+                {muted ? (
+                  <path d="m16 9 4 6m0-6-4 6" />
+                ) : (
+                  <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" />
+                )}
+              </svg>
             </button>
+
             <input
               aria-label="Volume"
               className={styles.volume}
@@ -477,8 +555,16 @@ export function AyinPlayer({
               type="range"
               value={volume}
             />
+
+            <span className={styles.time}>
+              {formatTime(positionMs)} <i>/</i> {formatTime(durationMs)}
+            </span>
+
+            <span className={styles.controlSpacer} />
+
             <select
               aria-label="Playback speed"
+              className={styles.compactSelect}
               data-tv-focusable="true"
               data-tv-focus-id={`player-speed-${videoId}`}
               onChange={(event) => {
@@ -486,6 +572,7 @@ export function AyinPlayer({
                 setRate(next);
                 if (videoRef.current) videoRef.current.playbackRate = next;
               }}
+              title="Playback speed"
               value={rate}
             >
               {[0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => (
@@ -494,19 +581,26 @@ export function AyinPlayer({
                 </option>
               ))}
             </select>
+
             {captions.length > 0 ? (
               <button
+                aria-label={captionsEnabled ? "Turn captions off" : "Turn captions on"}
+                aria-pressed={captionsEnabled}
+                className={`${styles.iconButton} ${captionsEnabled ? styles.activeControl : ""}`}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-cc-${videoId}`}
                 onClick={toggleCaptions}
+                title="Captions"
                 type="button"
               >
-                CC {captionsEnabled ? "On" : "Off"}
+                <span className={styles.ccGlyph}>CC</span>
               </button>
             ) : null}
+
             {chapters.length > 0 ? (
               <select
                 aria-label="Chapters"
+                className={`${styles.compactSelect} ${styles.chapterSelect}`}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-chapters-${videoId}`}
                 onChange={(event) => seekTo(Number(event.currentTarget.value))}
@@ -521,33 +615,52 @@ export function AyinPlayer({
                   ))}
               </select>
             ) : null}
+
             <button
+              aria-label="Picture in picture"
+              className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-pip-${videoId}`}
               onClick={() => void togglePip()}
+              title="Picture in picture"
               type="button"
             >
-              PiP
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M4 5h16v14H4z" />
+                <path d="M12.5 12.5h5V16h-5z" />
+              </svg>
             </button>
+
             <button
+              aria-label="Fullscreen"
+              className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-fullscreen-${videoId}`}
               onClick={() => void toggleFullscreen()}
+              title="Fullscreen (F)"
               type="button"
             >
-              Fullscreen
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M5 9V5h4M15 5h4v4M19 15v4h-4M9 19H5v-4" />
+              </svg>
             </button>
+
             {onNext ? (
               <button
+                aria-label={upNext ? `Next: ${upNext.title}` : "Next video"}
+                className={styles.iconButton}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-next-${videoId}`}
                 onClick={() => {
                   analytics.emit({ type: "next", videoId });
                   onNext();
                 }}
+                title={upNext ? `Next · ${upNext.title}` : "Next"}
                 type="button"
               >
-                Next{upNext ? ` · ${upNext.title}` : ""}
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="m6 5 10 7L6 19zM18 5v14" />
+                </svg>
               </button>
             ) : null}
           </div>

@@ -37,9 +37,19 @@ export interface VideoAdCallbacks {
   onContentResume(): void;
 }
 
+export interface VideoAdPlaybackIntent {
+  autoPlay: boolean;
+  muted: boolean;
+}
+
 export interface VideoAdService {
   initialize(container: HTMLDivElement, contentVideo: HTMLVideoElement): Promise<void>;
-  play(slot: VideoAdSlot, tagUrl: string, callbacks: VideoAdCallbacks): Promise<void>;
+  play(
+    slot: VideoAdSlot,
+    tagUrl: string,
+    callbacks: VideoAdCallbacks,
+    playbackIntent?: VideoAdPlaybackIntent,
+  ): Promise<void>;
   contentComplete(): void;
   destroy(): void;
 }
