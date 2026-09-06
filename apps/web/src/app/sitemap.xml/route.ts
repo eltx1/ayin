@@ -1,5 +1,5 @@
 import { absoluteUrl } from "@/lib/seo";
-import { getSitemapCounts, SITEMAP_SHARD_SIZE, xmlEscape, xmlResponse } from "@/lib/sitemap";
+import { getSitemapCounts, getSitemapShardCount, xmlEscape, xmlResponse } from "@/lib/sitemap";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +8,7 @@ export async function GET() {
   const sitemapUrls = [absoluteUrl("/sitemaps/static.xml")];
 
   for (const kind of ["videos", "channels", "playlists"] as const) {
-    const shards = Math.max(1, Math.ceil(counts[kind] / SITEMAP_SHARD_SIZE));
+    const shards = getSitemapShardCount(kind, counts[kind]);
     for (let shard = 0; shard < shards; shard += 1) {
       sitemapUrls.push(absoluteUrl(`/sitemaps/${kind}/${shard}.xml`));
     }
