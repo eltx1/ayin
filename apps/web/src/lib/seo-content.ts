@@ -64,46 +64,6 @@ interface SeoImage {
   height: number | null;
 }
 
-export type SeoSitemapResponse =
-  | {
-      items: Array<{
-        id: string;
-        slug: string;
-        title: string;
-        description: string | null;
-        durationMs: number | null;
-        publishedAt: string | null;
-        updatedAt: string;
-        channel: { handle: string; name: string };
-        thumbnailObjectKey: string | null;
-        sourceObjectKey: string | null;
-      }>;
-      nextCursor: string | null;
-    }
-  | {
-      items: Array<{
-        id: string;
-        handle: string;
-        name: string;
-        description: string | null;
-        updatedAt: string;
-        imageObjectKey: string | null;
-      }>;
-      nextCursor: string | null;
-    }
-  | {
-      items: Array<{
-        id: string;
-        slug: string;
-        name: string;
-        description: string | null;
-        updatedAt: string;
-        channel: { handle: string; name: string };
-        imageObjectKey: string | null;
-      }>;
-      nextCursor: string | null;
-    };
-
 export const getSeoVideo = cache(async (slug: string): Promise<SeoVideoResponse | null> => {
   return fetchSeo<SeoVideoResponse>(`/public/seo/videos/${encodeURIComponent(slug)}`);
 });
@@ -119,20 +79,6 @@ export const getSeoPlaylist = cache(
     );
   },
 );
-
-export async function getSeoSitemapPage(
-  kind: "videos" | "channels" | "playlists",
-  cursor?: string,
-  limit = 1_000,
-): Promise<SeoSitemapResponse> {
-  const query = new URLSearchParams({ limit: String(limit) });
-  if (cursor) query.set("cursor", cursor);
-  const response = await fetch(`${apiBaseUrl}/public/seo/sitemap/${kind}?${query.toString()}`, {
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`SEO sitemap feed failed with ${response.status}.`);
-  return (await response.json()) as SeoSitemapResponse;
-}
 
 async function fetchSeo<T>(path: string): Promise<T | null> {
   const response = await fetch(`${apiBaseUrl}${path}`, { cache: "no-store" });
