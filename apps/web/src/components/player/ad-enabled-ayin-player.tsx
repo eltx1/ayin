@@ -20,13 +20,14 @@ import styles from "./ad-enabled-ayin-player.module.css";
 export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const [decision, setDecision] = useState<VideoAdDecision | null>(null);
   const [decisionLoaded, setDecisionLoaded] = useState(false);
-  const [adContainer, setAdContainer] = useState<HTMLDivElement | null>(null);
-  const [contentVideo, setContentVideo] = useState<HTMLVideoElement | null>(null);
+  const [targetsReady, setTargetsReady] = useState(false);
   const [activated, setActivated] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [adActive, setAdActive] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const serviceRef = useRef<GoogleImaVideoAdService | null>(null);
+  const adContainerRef = useRef<HTMLDivElement | null>(null);
+  const contentVideoRef = useRef<HTMLVideoElement | null>(null);
   const midRollPlayedRef = useRef(false);
   const postRollPlayedRef = useRef(false);
   const requestIdRef = useRef(crypto.randomUUID());
@@ -46,8 +47,9 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   }, [props.videoId]);
 
   const handleAdContainerReady = useCallback((element: HTMLDivElement | null) => {
-    setAdContainer(element);
-    setContentVideo(element?.parentElement?.querySelector("video") ?? null);
+    adContainerRef.current = element;
+    contentVideoRef.current = element?.parentElement?.querySelector("video") ?? null;
+    setTargetsReady(Boolean(adContainerRef.current && contentVideoRef.current));
   }, []);
 
   const emit = useCallback(
@@ -68,16 +70,17 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   );
 
   const attemptContentPlayback = useCallback(async () => {
-    if (!contentVideo) return false;
+    const video = contentVideoRef.current;
+    if (!video) return false;
     try {
-      await contentVideo.play();
+      await video.play();
       setAutoplayBlocked(false);
       return true;
     } catch {
       // Browsers commonly permit muted autoplay before a user gesture.
-      contentVideo.muted = true;
+      video.muted = true;
       try {
-        await contentVideo.play();
+        await video.play();
         setAutoplayBlocked(false);
         return true;
       } catch {
@@ -85,10 +88,12 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         return false;
       }
     }
-  }, [contentVideo]);
+  }, []);
 
   const playAd = useCallback(
     async (slot: VideoAdSlot) => {
+      const adContainer = adContainerRef.current;
+      const contentVideo = contentVideoRef.current;
       if (!decision || !adContainer || !contentVideo) return false;
       if (!canServeSessionAd(decision.frequencyCapPerSession)) return false;
       const service = serviceRef.current ?? new GoogleImaVideoAdService();
@@ -118,10 +123,12 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         return false;
       }
     },
-    [adContainer, attemptContentPlayback, contentVideo, decision, emit],
+    [attemptContentPlayback, decision, emit],
   );
 
   const activatePlayback = useCallback(async () => {
+    const contentVideo = contentVideoRef.current;
+    const adContainer = adContainerRef.current;
     if (!contentVideo || !adContainer) return;
     setActivated(true);
     setAutoplayBlocked(false);
@@ -130,16 +137,18 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
       if (served) return;
     }
     await attemptContentPlayback();
-  }, [adContainer, attemptContentPlayback, contentVideo, decision, playAd]);
+  }, [attemptContentPlayback, decision, playAd]);
 
   useEffect(() => {
-    if (!decisionLoaded || !contentVideo || !adContainer || activated || props.autoPlay !== true) {
-      return;
-    }
-    void activatePlayback();
-  }, [activatePlayback, activated, adContainer, contentVideo, decisionLoaded, props.autoPlay]);
+    if (!decisionLoaded || !targetsReady || activated || props.autoPlay !== true) return;
+    const timeout = window.setTimeout(() => {
+      void activatePlayback();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [activatePlayback, activated, decisionLoaded, props.autoPlay, targetsReady]);
 
   useEffect(() => {
+    const contentVideo = contentVideoRef.current;
     if (!decision || !contentVideo || !activated) return;
     const onTimeUpdate = () => {
       if (
@@ -165,7 +174,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
       contentVideo.removeEventListener("timeupdate", onTimeUpdate);
       contentVideo.removeEventListener("ended", onEnded);
     };
-  }, [activated, contentVideo, decision, playAd]);
+  }, [activated, decision, playAd]);
 
   useEffect(
     () => () => {
