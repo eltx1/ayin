@@ -16,9 +16,10 @@ import { PlatformConfigModule } from "./platform-config/platform-config.module.j
 import { RecommendationModule } from "./recommendations/recommendation.module.js";
 import { RevenueModule } from "./revenue/revenue.module.js";
 import { SearchModule } from "./search/search.module.js";
+import { SeoModule } from "./seo/seo.module.js";
 import { SocialModule } from "./social/social.module.js";
-import { WatchModule } from "./watch/watch.module.js";
 import { TrustModule } from "./trust/trust.module.js";
+import { WatchModule } from "./watch/watch.module.js";
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { TrustModule } from "./trust/trust.module.js";
     WatchModule,
     DiscoveryModule,
     SearchModule,
+    SeoModule,
     SocialModule,
     CommentsModule,
     CommunityModule,

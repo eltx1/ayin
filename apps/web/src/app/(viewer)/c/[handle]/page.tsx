@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import type { CSSProperties } from "react";
@@ -12,18 +13,71 @@ import {
   type PublicChannelResponse,
   resolveChannelTab,
 } from "@/lib/channel";
+import { getSeoChannel } from "@/lib/seo-content";
+import {
+  absoluteUrl,
+  AYIN_DEFAULT_IMAGE,
+  mediaSeoUrl,
+  metadataRobots,
+  seoDescription,
+  serializeJsonLd,
+} from "@/lib/seo";
+
+interface PublicChannelPageProperties {
+  params: Promise<{ handle: string }>;
+  searchParams: Promise<{ tab?: string | string[] }>;
+}
+
+export async function generateMetadata({ params }: PublicChannelPageProperties): Promise<Metadata> {
+  const { handle } = await params;
+  const channel = await getSeoChannel(handle);
+  if (!channel) {
+    return { title: "Channel unavailable", robots: metadataRobots(false) };
+  }
+
+  const canonical = absoluteUrl(`/c/${encodeURIComponent(channel.handle)}`);
+  const description = seoDescription(
+    channel.description,
+    `Watch videos, playlists and streaming from ${channel.name} (@${channel.handle}) on AYIN.`,
+  );
+  const image =
+    mediaSeoUrl(channel.banner?.objectKey) ??
+    mediaSeoUrl(channel.avatar?.objectKey) ??
+    AYIN_DEFAULT_IMAGE;
+
+  return {
+    title: channel.name,
+    description,
+    alternates: { canonical },
+    robots: metadataRobots(true),
+    openGraph: {
+      type: "profile",
+      siteName: "AYIN",
+      title: `${channel.name} (@${channel.handle})`,
+      description,
+      url: canonical,
+      images: [{ url: image, alt: `${channel.name} on AYIN` }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${channel.name} (@${channel.handle})`,
+      description,
+      images: [image],
+    },
+  };
+}
 
 export default async function PublicChannelPage({
   params,
   searchParams,
-}: {
-  params: Promise<{ handle: string }>;
-  searchParams: Promise<{ tab?: string | string[] }>;
-}) {
+}: PublicChannelPageProperties) {
   const [{ handle }, query] = await Promise.all([params, searchParams]);
-  const response = await fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}`, {
-    cache: "no-store",
-  });
+  const [response, seoChannel] = await Promise.all([
+    fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}`, {
+      cache: "no-store",
+    }),
+    getSeoChannel(handle),
+  ]);
   if (response.status === 404) notFound();
   if (!response.ok) {
     throw new Error("This channel could not be loaded right now.");
@@ -40,9 +94,16 @@ export default async function PublicChannelPage({
   const bannerUrl = mediaAssetUrl(data.appearance.banner?.objectKey);
   const accent = data.appearance.accentColor ?? "#63D1CC";
   const initial = data.channel.name.trim().charAt(0).toUpperCase() || "A";
+  const structuredData = seoChannel ? buildChannelStructuredData(seoChannel) : null;
 
   return (
     <main className={styles.page} style={{ "--channel-accent": accent } as CSSProperties}>
+      {structuredData ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
+        />
+      ) : null}
       <div
         className={styles.banner}
         style={bannerUrl ? { backgroundImage: `url("${bannerUrl}")` } : undefined}
@@ -226,6 +287,48 @@ function AboutSection({ data }: { data: PublicChannelResponse }) {
       </dl>
     </section>
   );
+}
+
+function buildChannelStructuredData(
+  channel: NonNullable<Awaited<ReturnType<typeof getSeoChannel>>>,
+) {
+  const canonical = absoluteUrl(`/c/${encodeURIComponent(channel.handle)}`);
+  const image = mediaSeoUrl(channel.avatar?.objectKey) ?? mediaSeoUrl(channel.banner?.objectKey);
+  const description = seoDescription(
+    channel.description,
+    `Watch videos, playlists and streaming from ${channel.name} (@${channel.handle}) on AYIN.`,
+    500,
+  );
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "ProfilePage",
+        "@id": `${canonical}#profile`,
+        url: canonical,
+        dateCreated: channel.createdAt,
+        dateModified: channel.updatedAt,
+        mainEntity: {
+          "@type": "Person",
+          "@id": `${canonical}#creator`,
+          name: channel.name,
+          alternateName: `@${channel.handle}`,
+          description,
+          url: canonical,
+          ...(image ? { image } : {}),
+        },
+      },
+      {
+        "@type": "BreadcrumbList",
+        "@id": `${canonical}#breadcrumbs`,
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "AYIN", item: absoluteUrl("/") },
+          { "@type": "ListItem", position: 2, name: channel.name, item: canonical },
+        ],
+      },
+    ],
+  };
 }
 
 function formatDuration(milliseconds: number): string {

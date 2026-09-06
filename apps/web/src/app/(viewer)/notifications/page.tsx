@@ -1,4 +1,12 @@
+import type { Metadata } from "next";
+
 import { NotificationFeed } from "@/components/social/notification-feed";
+import { metadataRobots } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  title: "Notifications",
+  robots: metadataRobots(false),
+};
 
 export default function NotificationsPage() {
   return (

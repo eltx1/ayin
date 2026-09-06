@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SearchAnalytics, SearchResultLinkAnalytics } from "@/components/search/search-analytics";
@@ -6,8 +7,15 @@ import { MediaCard } from "@/components/viewer/media-card";
 import { EmptyState } from "@/components/viewer/view-states";
 import { apiBaseUrl } from "@/lib/api";
 import { normalizeSearchTerm, type SearchResponse } from "@/lib/search";
+import { metadataRobots } from "@/lib/seo";
 
 import styles from "./search-page.module.css";
+
+export const metadata: Metadata = {
+  title: "Search",
+  description: "Search public videos, creators, playlists and Creator TV on AYIN.",
+  robots: metadataRobots(false),
+};
 
 export default async function SearchPage({
   searchParams,
