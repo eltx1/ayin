@@ -39,6 +39,8 @@ export default async function WatchPage({ params }: { params: Promise<{ slug: st
   return (
     <main className={styles.page}>
       <AnalyticsAyinPlayer
+        autoPlay
+        className={styles.playerFrame}
         captions={captions}
         chapters={data.video.chapters}
         durationMs={data.video.durationMs}
