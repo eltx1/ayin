@@ -63,7 +63,7 @@ export async function uploadVideoDirectly(input: {
     session,
     file: input.file,
     onProgress: input.onProgress,
-    onStatus: input.onStatus,
+    ...(input.onStatus ? { onStatus: input.onStatus } : {}),
   });
 }
 
