@@ -59,6 +59,10 @@ export function parseHlsMediaPlaylistSegments(playlist: string): readonly number
       throw new Error("HLS media playlist contains an invalid segment sequence.");
     }
     if (seen.has(sequence)) throw new Error("HLS media playlist contains a duplicate segment.");
+    const expectedSequence = segments.length + 1;
+    if (sequence !== expectedSequence) {
+      throw new Error("HLS media playlist contains a missing or out-of-order segment.");
+    }
     seen.add(sequence);
     segments.push(sequence);
   }
