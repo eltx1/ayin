@@ -18,6 +18,8 @@ import {
   type PlannedMediaRendition,
 } from "./media-architecture-v2.js";
 
+const ACTIVE_PROCESSING_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
+
 export interface AdaptiveRenditionState extends PlannedMediaRendition {
   id: string;
   playlistR2ObjectKey: string;
@@ -185,23 +187,50 @@ export class MediaAdaptiveLifecycleService {
     });
   }
 
-  async markFailed(generationId: string, renditionId?: string): Promise<void> {
-    await this.database.client.$transaction(async (tx) => {
-      if (renditionId) {
-        await tx.mediaPlaybackRendition.update({
-          where: { id: renditionId },
-          data: { status: "FAILED", failedAt: new Date(), readyAt: null },
+  async markFailedIfOwned(input: {
+    generationId: string;
+    renditionId?: string;
+    jobId: string;
+    workerId: string;
+  }): Promise<boolean> {
+    return this.database.client.$transaction(async (tx) => {
+      const now = new Date();
+      const ownership = await tx.mediaProcessingJob.updateMany({
+        where: {
+          id: input.jobId,
+          leaseOwner: input.workerId,
+          status: { in: [...ACTIVE_PROCESSING_STATUSES] },
+          leaseExpiresAt: { gt: now },
+        },
+        data: { heartbeatAt: now },
+      });
+      if (ownership.count !== 1) return false;
+
+      const generation = await tx.mediaPlaybackGeneration.findFirst({
+        where: { id: input.generationId, processingJobId: input.jobId },
+        select: { id: true },
+      });
+      if (!generation) return false;
+
+      if (input.renditionId) {
+        await tx.mediaPlaybackRendition.updateMany({
+          where: {
+            id: input.renditionId,
+            playbackGenerationId: input.generationId,
+          },
+          data: { status: "FAILED", failedAt: now, readyAt: null },
         });
       }
-      await tx.mediaPlaybackGeneration.update({
-        where: { id: generationId },
+      const failed = await tx.mediaPlaybackGeneration.updateMany({
+        where: { id: input.generationId, processingJobId: input.jobId },
         data: {
           status: "FAILED",
-          failedAt: new Date(),
+          failedAt: now,
           readyAt: null,
           hlsMasterStatus: "PLANNED",
         },
       });
+      return failed.count === 1;
     });
   }
 
