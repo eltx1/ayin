@@ -46,6 +46,7 @@ jobs:
           e2e.write_text(text)
           PY
           pnpm exec prettier --write apps/api/src/media/media-adaptive-processing.service.test.ts tests/e2e/adaptive-rollout.acceptance.spec.ts
+          pnpm packages:build
           pnpm --filter @ayin/api exec vitest run src/media/media-adaptive-processing.service.test.ts
       - name: Commit fixes
         run: |
