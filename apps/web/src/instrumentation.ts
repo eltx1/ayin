@@ -3,14 +3,6 @@ function releaseSha(): string {
   return candidate && /^[0-9a-f]{40}$/i.test(candidate) ? candidate.toLowerCase() : "unknown";
 }
 
-function safeText(value: unknown): string {
-  const raw = value instanceof Error ? value.message : typeof value === "string" ? value : "Unknown error";
-  return raw
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-    .replace(/\b(password|token|session|secret|api[_-]?key|stream[_-]?key)\b\s*[:=]\s*([^\s,;]+)/gi, "$1=[REDACTED]")
-    .slice(0, 2000);
-}
-
 export function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   process.stdout.write(
@@ -38,7 +30,6 @@ export function onRequestError(
       event: "web.request_error",
       releaseSha: releaseSha(),
       errorName: error instanceof Error ? error.name : typeof error,
-      message: safeText(error),
       method: request.method ?? null,
       path: context.routePath ?? request.path ?? null,
       routerKind: context.routerKind ?? null,
