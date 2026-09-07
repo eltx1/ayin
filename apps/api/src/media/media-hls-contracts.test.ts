@@ -62,6 +62,7 @@ describe("Task 40 HLS contracts", () => {
   it("accepts only deterministic contiguous VOD segment references during verification", () => {
     const playlist = [
       "#EXTM3U",
+      "#EXT-X-PLAYLIST-TYPE:VOD",
       "#EXT-X-TARGETDURATION:6",
       "#EXTINF:6.0,",
       "segment-000001.ts",
@@ -85,6 +86,33 @@ describe("Task 40 HLS contracts", () => {
     expect(() =>
       parseHlsMediaPlaylistSegments(playlist.replace("segment-000001.ts", "segment-000002.ts")),
     ).toThrow(/missing or out-of-order/);
+  });
+
+  it("rejects structurally incomplete VOD playlists during recovery verification", () => {
+    const playlist = [
+      "#EXTM3U",
+      "#EXT-X-PLAYLIST-TYPE:VOD",
+      "#EXT-X-TARGETDURATION:6",
+      "#EXTINF:6.0,",
+      "segment-000001.ts",
+      "#EXT-X-ENDLIST",
+      "",
+    ].join("\n");
+
+    expect(() =>
+      parseHlsMediaPlaylistSegments(playlist.replace("#EXT-X-PLAYLIST-TYPE:VOD\n", "")),
+    ).toThrow(/VOD playlist type/);
+    expect(() =>
+      parseHlsMediaPlaylistSegments(playlist.replace("#EXT-X-TARGETDURATION:6\n", "")),
+    ).toThrow(/TARGETDURATION/);
+    expect(() => parseHlsMediaPlaylistSegments(playlist.replace("#EXTINF:6.0,\n", ""))).toThrow(
+      /missing its #EXTINF/,
+    );
+    expect(() =>
+      parseHlsMediaPlaylistSegments(
+        playlist.replace("#EXT-X-TARGETDURATION:6", "#EXT-X-TARGETDURATION:0"),
+      ),
+    ).toThrow(/TARGETDURATION/);
   });
 
   it("builds FFmpeg HLS arguments without shell interpolation or arbitrary command strings", () => {
