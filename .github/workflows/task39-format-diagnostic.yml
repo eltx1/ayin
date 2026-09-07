@@ -1,0 +1,37 @@
+name: Task 39 format diagnostic
+
+on:
+  push:
+    branches:
+      - task-39-media-architecture-v2
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Render exact Prettier output
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/media/media-architecture-v2.ts \
+            apps/api/src/media/media-architecture-v2.test.ts \
+            docs/MEDIA_ARCHITECTURE_V2.md \
+            packages/db/src/media-v2.test.mjs
+          echo '===== media-architecture-v2.ts ====='
+          cat apps/api/src/media/media-architecture-v2.ts
+          echo '===== media-architecture-v2.test.ts ====='
+          cat apps/api/src/media/media-architecture-v2.test.ts
+          echo '===== MEDIA_ARCHITECTURE_V2.md ====='
+          cat docs/MEDIA_ARCHITECTURE_V2.md
+          echo '===== media-v2.test.mjs ====='
+          cat packages/db/src/media-v2.test.mjs
