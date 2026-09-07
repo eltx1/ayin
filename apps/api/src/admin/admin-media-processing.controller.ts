@@ -18,6 +18,7 @@ const recoverySchema = z
   .object({
     mode: z.enum(ADAPTIVE_RECOVERY_MODES),
     batchSize: z.number().int().min(1).max(20).optional(),
+    cursor: uuidSchema.optional(),
   })
   .strict();
 
@@ -76,12 +77,10 @@ export class AdminMediaProcessingController {
     const parsed = batchSchema.safeParse(body ?? {});
     if (!parsed.success)
       throw adminBadRequest("INVALID_BACKFILL_BATCH", "Backfill batch request is invalid.");
-    const result = await this.adaptiveRollout.enqueueBatch(parsed.data.batchSize);
-    await this.auditAdaptive(request, "media_adaptive.backfill_batch", {
-      requestedBatchSize: parsed.data.batchSize ?? null,
-      enqueued: result.enqueued,
-      reason: result.reason,
-    });
+    const result = await this.adaptiveRollout.enqueueBatch(
+      parsed.data.batchSize,
+      request.ayinAuth.accountId,
+    );
     return {
       ...result,
       jobs: result.jobs.map((job) => ({
@@ -95,17 +94,15 @@ export class AdminMediaProcessingController {
   }
 
   @Post("adaptive-rollout/backfill/pause")
+  @RequireAdminRoles("SUPERADMIN")
   async pauseAdaptiveBackfill(@Req() request: AdminAuthenticatedRequest) {
-    const controls = await this.adaptiveRollout.setPaused(true);
-    await this.auditAdaptive(request, "media_adaptive.backfill_pause", {});
-    return controls;
+    return this.adaptiveRollout.setPaused(true, request.ayinAuth.accountId);
   }
 
   @Post("adaptive-rollout/backfill/resume")
+  @RequireAdminRoles("SUPERADMIN")
   async resumeAdaptiveBackfill(@Req() request: AdminAuthenticatedRequest) {
-    const controls = await this.adaptiveRollout.setPaused(false);
-    await this.auditAdaptive(request, "media_adaptive.backfill_resume", {});
-    return controls;
+    return this.adaptiveRollout.setPaused(false, request.ayinAuth.accountId);
   }
 
   @Post("adaptive-rollout/recovery")
@@ -113,12 +110,12 @@ export class AdminMediaProcessingController {
     const parsed = recoverySchema.safeParse(body);
     if (!parsed.success)
       throw adminBadRequest("INVALID_ADAPTIVE_RECOVERY", "Adaptive recovery request is invalid.");
-    const result = await this.adaptiveRollout.recover(parsed.data.mode, parsed.data.batchSize);
-    await this.auditAdaptive(request, "media_adaptive.recovery", {
-      mode: parsed.data.mode,
-      requestedBatchSize: parsed.data.batchSize ?? null,
-    });
-    return result;
+    return this.adaptiveRollout.recover(
+      parsed.data.mode,
+      parsed.data.batchSize,
+      request.ayinAuth.accountId,
+      parsed.data.cursor,
+    );
   }
 
   @Post("jobs/:jobId/retry")
@@ -193,21 +190,6 @@ export class AdminMediaProcessingController {
       });
       return job;
     });
-  }
-
-  private async auditAdaptive(
-    request: AdminAuthenticatedRequest,
-    action: string,
-    metadata: Record<string, string | number | boolean | null>,
-  ) {
-    await this.database.client.$transaction((tx) =>
-      this.audit.recordInTransaction(tx, {
-        actorAccountId: request.ayinAuth.accountId,
-        action,
-        entityType: "AdaptiveStreamingRollout",
-        metadata,
-      }),
-    );
   }
 
   private uuid(value: string, code: string): string {

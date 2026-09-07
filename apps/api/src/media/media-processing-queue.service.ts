@@ -167,7 +167,9 @@ export class MediaProcessingQueueService {
     return { capacity, active, counts };
   }
 
-  async recoverStale() {
+  async recoverStale(
+    onRecovered?: (tx: Prisma.TransactionClient, result: { recovered: number }) => Promise<void>,
+  ) {
     return this.database.client.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", QUEUE_ADVISORY_LOCK);
       const capacity = await this.capacityInTransaction(tx);
@@ -176,7 +178,9 @@ export class MediaProcessingQueueService {
         where: { status: { in: [...ACTIVE_STATUSES] }, leaseExpiresAt: { lt: now } },
       });
       await this.recoverStaleInTransaction(tx, now, capacity.retryLimit);
-      return { recovered };
+      const result = { recovered };
+      await onRecovered?.(tx, result);
+      return result;
     });
   }
 

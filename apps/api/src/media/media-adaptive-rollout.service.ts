@@ -1,3 +1,4 @@
+import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -19,6 +20,9 @@ const ACTIVE_PROCESSING = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
 const ACTIVE_OR_QUEUED = ["QUEUED", ...ACTIVE_PROCESSING] as const;
 const RECOVERY_STALE_MS = 10 * 60 * 1000;
 const METRICS_WINDOW_DAYS = 30;
+const ADAPTIVE_BACKFILL_ADVISORY_LOCK = 86192042;
+const RECOVERY_SCAN_PAGE_SIZE = 25;
+const RECOVERY_SCAN_MAX_ROWS = 250;
 
 interface CatalogVideo {
   id: string;
@@ -127,114 +131,182 @@ export class MediaAdaptiveRolloutService {
     };
   }
 
-  async enqueueBatch(requestedBatchSize?: number) {
+  async enqueueBatch(requestedBatchSize?: number, actorAccountId?: string) {
     const controls = await this.controls();
     if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {
-      return { enqueued: 0, reason: "BACKFILL_DISABLED_OR_PAUSED", jobs: [] };
+      return { enqueued: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const, jobs: [] };
     }
     const requested = Number.isFinite(requestedBatchSize)
       ? Math.max(1, Math.floor(requestedBatchSize as number))
       : controls.batchSize;
     const batchSize = Math.min(requested, controls.batchSize, ADAPTIVE_BACKFILL_HARD_BATCH_MAX);
-    const inFlight = await this.database.client.mediaProcessingJob.count({
-      where: {
-        stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER },
-        status: { in: [...ACTIVE_OR_QUEUED] },
-      },
-    });
-    const availableSlots = Math.max(0, controls.maxInFlight - inFlight);
-    const take = Math.min(batchSize, availableSlots);
-    if (take === 0) return { enqueued: 0, reason: "IN_FLIGHT_LIMIT", jobs: [] };
+    const candidates = await this.pendingCandidates(batchSize * 4);
 
-    const candidates = await this.pendingCandidates(take * 4);
-    const jobs = [];
-    for (const candidate of candidates) {
-      if (jobs.length >= take) break;
-      const job = await this.database.client.$transaction((tx) =>
-        this.lifecycle.createAdaptiveBackfillJob(tx, candidate.id),
-      );
-      if (job) jobs.push(job);
-    }
-    return { enqueued: jobs.length, reason: jobs.length ? "ENQUEUED" : "NO_ELIGIBLE_VIDEO", jobs };
+    return this.database.client.$transaction(async (tx) => {
+      await this.lockBackfill(tx);
+      const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+      const take = Math.min(batchSize, availableSlots);
+      if (take === 0) {
+        const result = { enqueued: 0, reason: "IN_FLIGHT_LIMIT" as const, jobs: [] };
+        await this.auditMutation(tx, actorAccountId, "media_adaptive.backfill_batch", {
+          requestedBatchSize: requestedBatchSize ?? null,
+          enqueued: 0,
+          reason: result.reason,
+        });
+        return result;
+      }
+
+      const jobs = [];
+      for (const candidate of candidates) {
+        if (jobs.length >= take) break;
+        const job = await this.lifecycle.createAdaptiveBackfillJob(tx, candidate.id);
+        if (job) jobs.push(job);
+      }
+      const result = {
+        enqueued: jobs.length,
+        reason: jobs.length ? ("ENQUEUED" as const) : ("NO_ELIGIBLE_VIDEO" as const),
+        jobs,
+      };
+      await this.auditMutation(tx, actorAccountId, "media_adaptive.backfill_batch", {
+        requestedBatchSize: requestedBatchSize ?? null,
+        enqueued: result.enqueued,
+        reason: result.reason,
+      });
+      return result;
+    });
   }
 
-  async setPaused(paused: boolean) {
-    await this.database.client.$transaction((tx) =>
-      this.settings.setInTransaction(tx, "mediaHlsBackfillPaused", paused),
-    );
+  async setPaused(paused: boolean, actorAccountId?: string) {
+    await this.database.client.$transaction(async (tx) => {
+      await this.settings.setInTransaction(tx, "mediaHlsBackfillPaused", paused);
+      await this.auditMutation(
+        tx,
+        actorAccountId,
+        paused ? "media_adaptive.backfill_pause" : "media_adaptive.backfill_resume",
+        { paused },
+      );
+    });
     return this.controls();
   }
 
-  async recover(mode: AdaptiveRecoveryMode, requestedBatchSize?: number) {
+  async recover(
+    mode: AdaptiveRecoveryMode,
+    requestedBatchSize?: number,
+    actorAccountId?: string,
+    cursor?: string,
+  ) {
     const controls = await this.controls();
     const batchSize = Math.min(
       Math.max(1, Math.floor(requestedBatchSize ?? controls.batchSize)),
       ADAPTIVE_BACKFILL_HARD_BATCH_MAX,
     );
+
     if (mode === "STALE_PROCESSING") {
-      return { mode, ...(await this.queue.recoverStale()) };
+      const stale = await this.queue.recoverStale(async (tx, result) => {
+        await this.auditMutation(tx, actorAccountId, "media_adaptive.recovery", {
+          mode,
+          requestedBatchSize: requestedBatchSize ?? null,
+          recovered: result.recovered,
+        });
+      });
+      return { mode, ...stale };
     }
+
     if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {
       return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
     }
+
     if (mode === "FAILED_BACKFILL") {
-      const failed = await this.database.client.mediaProcessingJob.findMany({
-        where: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER }, status: "FAILED" },
-        orderBy: { updatedAt: "asc" },
-        take: batchSize,
-        select: { id: true },
-      });
-      let recovered = 0;
-      for (const job of failed) {
-        const changed = await this.database.client.mediaProcessingJob.updateMany({
-          where: { id: job.id, status: "FAILED" },
-          data: {
-            status: "QUEUED",
-            stage: "ADAPTIVE_BACKFILL_RETRY_QUEUED",
-            progressPercent: 0,
-            attempt: 0,
-            queuedAt: new Date(),
-            startedAt: null,
-            completedAt: null,
-            leaseOwner: null,
-            leaseExpiresAt: null,
-            heartbeatAt: null,
-            errorCode: null,
-            errorMessage: null,
-          },
+      return this.database.client.$transaction(async (tx) => {
+        await this.lockBackfill(tx);
+        const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+        if (availableSlots === 0) {
+          const result = { mode, recovered: 0, reason: "IN_FLIGHT_LIMIT" as const };
+          await this.auditMutation(tx, actorAccountId, "media_adaptive.recovery", {
+            mode,
+            requestedBatchSize: requestedBatchSize ?? null,
+            recovered: 0,
+            reason: result.reason,
+          });
+          return result;
+        }
+        const failed = await tx.mediaProcessingJob.findMany({
+          where: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER }, status: "FAILED" },
+          orderBy: { updatedAt: "asc" },
+          take: Math.min(batchSize, availableSlots),
+          select: { id: true },
         });
-        recovered += changed.count;
-      }
-      return { mode, recovered };
+        let recovered = 0;
+        for (const job of failed) {
+          const changed = await tx.mediaProcessingJob.updateMany({
+            where: { id: job.id, status: "FAILED" },
+            data: {
+              status: "QUEUED",
+              stage: "ADAPTIVE_BACKFILL_RETRY_QUEUED",
+              progressPercent: 0,
+              attempt: 0,
+              queuedAt: new Date(),
+              startedAt: null,
+              completedAt: null,
+              leaseOwner: null,
+              leaseExpiresAt: null,
+              heartbeatAt: null,
+              errorCode: null,
+              errorMessage: null,
+            },
+          });
+          recovered += changed.count;
+        }
+        await this.auditMutation(tx, actorAccountId, "media_adaptive.recovery", {
+          mode,
+          requestedBatchSize: requestedBatchSize ?? null,
+          recovered,
+        });
+        return { mode, recovered };
+      });
     }
+
     if (mode === "DB_MANIFEST_MISSING") {
-      const rows = await this.database.client.mediaPlaybackGeneration.findMany({
-        where: { status: "READY", hlsMasterStatus: "READY" },
-        orderBy: { readyAt: "asc" },
-        take: batchSize,
-        select: { id: true, videoId: true, hlsMasterR2ObjectKey: true },
-      });
-      let detected = 0;
-      let requeued = 0;
-      for (const row of rows) {
-        if (await this.objectExists(row.hlsMasterR2ObjectKey)) continue;
-        detected += 1;
-        await this.database.client.mediaPlaybackGeneration.updateMany({
-          where: { id: row.id, status: "READY", hlsMasterStatus: "READY" },
-          data: {
-            status: "FAILED",
-            hlsMasterStatus: "FAILED",
-            failedAt: new Date(),
-            readyAt: null,
-          },
+      const scan = await this.findMissingManifestRows(batchSize, cursor);
+      return this.database.client.$transaction(async (tx) => {
+        await this.lockBackfill(tx);
+        const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+        let detected = 0;
+        let requeued = 0;
+        for (const row of scan.rows) {
+          const changed = await tx.mediaPlaybackGeneration.updateMany({
+            where: { id: row.id, status: "READY", hlsMasterStatus: "READY" },
+            data: {
+              status: "FAILED",
+              hlsMasterStatus: "FAILED",
+              failedAt: new Date(),
+              readyAt: null,
+            },
+          });
+          if (changed.count !== 1) continue;
+          detected += 1;
+          if (requeued >= availableSlots) continue;
+          const job = await this.lifecycle.createAdaptiveBackfillJob(tx, row.videoId);
+          if (job) requeued += 1;
+        }
+        await this.auditMutation(tx, actorAccountId, "media_adaptive.recovery", {
+          mode,
+          requestedBatchSize: requestedBatchSize ?? null,
+          detected,
+          requeued,
+          scanned: scan.scanned,
         });
-        const job = await this.database.client.$transaction((tx) =>
-          this.lifecycle.createAdaptiveBackfillJob(tx, row.videoId),
-        );
-        if (job) requeued += 1;
-      }
-      return { mode, detected, requeued };
+        return {
+          mode,
+          detected,
+          requeued,
+          scanned: scan.scanned,
+          nextCursor: scan.nextCursor,
+          ...(availableSlots === 0 ? { reason: "IN_FLIGHT_LIMIT" as const } : {}),
+        };
+      });
     }
+
     if (mode === "INCOMPLETE_HLS") {
       const rows = await this.database.client.mediaPlaybackGeneration.findMany({
         where: {
@@ -242,24 +314,111 @@ export class MediaAdaptiveRolloutService {
           updatedAt: { lt: new Date(Date.now() - RECOVERY_STALE_MS) },
         },
         orderBy: { updatedAt: "asc" },
-        take: batchSize,
-        select: { videoId: true },
+        take: Math.min(batchSize * 4, RECOVERY_SCAN_MAX_ROWS),
+        select: { id: true, videoId: true },
       });
-      let requeued = 0;
-      for (const row of rows) {
-        const job = await this.database.client.$transaction((tx) =>
-          this.lifecycle.createAdaptiveBackfillJob(tx, row.videoId),
-        );
-        if (job) requeued += 1;
-      }
-      return { mode, detected: rows.length, requeued };
+      const uniqueRows = rows.filter(
+        (row, index, all) =>
+          all.findIndex((candidate) => candidate.videoId === row.videoId) === index,
+      );
+      return this.database.client.$transaction(async (tx) => {
+        await this.lockBackfill(tx);
+        const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+        let requeued = 0;
+        for (const row of uniqueRows) {
+          if (requeued >= Math.min(batchSize, availableSlots)) break;
+          const job = await this.lifecycle.createAdaptiveBackfillJob(tx, row.videoId);
+          if (!job) continue;
+          requeued += 1;
+          await tx.mediaPlaybackGeneration.updateMany({
+            where: { id: row.id, status: { in: ["BUILDING", "FAILED"] } },
+            data: { status: "SUPERSEDED" },
+          });
+        }
+        await this.auditMutation(tx, actorAccountId, "media_adaptive.recovery", {
+          mode,
+          requestedBatchSize: requestedBatchSize ?? null,
+          detected: uniqueRows.length,
+          requeued,
+        });
+        return {
+          mode,
+          detected: uniqueRows.length,
+          requeued,
+          ...(availableSlots === 0 ? { reason: "IN_FLIGHT_LIMIT" as const } : {}),
+        };
+      });
     }
 
-    const candidates = await this.pendingCandidates(batchSize * 3);
-    let detected = 0;
-    let requeued = 0;
+    const scan = await this.findVerifiedHlsMissingDb(batchSize, cursor);
+    return this.database.client.$transaction(async (tx) => {
+      await this.lockBackfill(tx);
+      const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+      let requeued = 0;
+      for (const video of scan.videos) {
+        if (requeued >= Math.min(batchSize, availableSlots)) break;
+        const job = await this.lifecycle.createAdaptiveBackfillJob(tx, video.id);
+        if (job) requeued += 1;
+      }
+      await this.auditMutation(tx, actorAccountId, "media_adaptive.recovery", {
+        mode,
+        requestedBatchSize: requestedBatchSize ?? null,
+        detected: scan.videos.length,
+        requeued,
+        scanned: scan.scanned,
+      });
+      return {
+        mode,
+        detected: scan.videos.length,
+        requeued,
+        scanned: scan.scanned,
+        nextCursor: scan.nextCursor,
+        policy: "REPROCESS_VERIFIED_ORPHAN_IN_NEW_GENERATION",
+        ...(availableSlots === 0 ? { reason: "IN_FLIGHT_LIMIT" as const } : {}),
+      };
+    });
+  }
+
+  private async findMissingManifestRows(batchSize: number, cursor?: string) {
+    const missing: Array<{ id: string; videoId: string; hlsMasterR2ObjectKey: string }> = [];
+    let nextCursor = cursor ?? null;
+    let scanned = 0;
+    let exhausted = false;
+
+    while (missing.length < batchSize && scanned < RECOVERY_SCAN_MAX_ROWS && !exhausted) {
+      const take = Math.min(RECOVERY_SCAN_PAGE_SIZE, RECOVERY_SCAN_MAX_ROWS - scanned);
+      const rows = await this.database.client.mediaPlaybackGeneration.findMany({
+        where: { status: "READY", hlsMasterStatus: "READY" },
+        orderBy: { id: "asc" },
+        take,
+        ...(nextCursor ? { cursor: { id: nextCursor }, skip: 1 } : {}),
+        select: { id: true, videoId: true, hlsMasterR2ObjectKey: true },
+      });
+      if (rows.length === 0) {
+        exhausted = true;
+        break;
+      }
+      for (const row of rows) {
+        nextCursor = row.id;
+        scanned += 1;
+        if (!(await this.objectExists(row.hlsMasterR2ObjectKey))) missing.push(row);
+        if (missing.length >= batchSize || scanned >= RECOVERY_SCAN_MAX_ROWS) break;
+      }
+      if (rows.length < take) exhausted = true;
+    }
+
+    return { rows: missing, scanned, nextCursor: exhausted ? null : nextCursor };
+  }
+
+  private async findVerifiedHlsMissingDb(batchSize: number, cursor?: string) {
+    const candidates = await this.pendingCandidates(RECOVERY_SCAN_MAX_ROWS, cursor);
+    const videos: CatalogVideo[] = [];
+    let scanned = 0;
+    let nextCursor: string | null = cursor ?? null;
+
     for (const video of candidates) {
-      if (detected >= batchSize) break;
+      nextCursor = video.id;
+      scanned += 1;
       const latestJob = await this.database.client.mediaProcessingJob.findFirst({
         where: { videoId: video.id },
         orderBy: { generation: "desc" },
@@ -277,13 +436,46 @@ export class MediaAdaptiveRolloutService {
         generation: latestJob.generation,
       });
       if (!(await this.objectExists(manifestKey))) continue;
-      detected += 1;
-      const job = await this.database.client.$transaction((tx) =>
-        this.lifecycle.createAdaptiveBackfillJob(tx, video.id),
-      );
-      if (job) requeued += 1;
+      videos.push(video);
+      if (videos.length >= batchSize) break;
     }
-    return { mode, detected, requeued, policy: "REPROCESS_VERIFIED_ORPHAN_IN_NEW_GENERATION" };
+
+    const exhausted = candidates.length < RECOVERY_SCAN_MAX_ROWS && scanned === candidates.length;
+    return { videos, scanned, nextCursor: exhausted ? null : nextCursor };
+  }
+
+  private async lockBackfill(tx: Prisma.TransactionClient): Promise<void> {
+    await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", ADAPTIVE_BACKFILL_ADVISORY_LOCK);
+  }
+
+  private async availableBackfillSlots(
+    tx: Prisma.TransactionClient,
+    maxInFlight: number,
+  ): Promise<number> {
+    const inFlight = await tx.mediaProcessingJob.count({
+      where: {
+        stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER },
+        status: { in: [...ACTIVE_OR_QUEUED] },
+      },
+    });
+    return Math.max(0, maxInFlight - inFlight);
+  }
+
+  private async auditMutation(
+    tx: Prisma.TransactionClient,
+    actorAccountId: string | undefined,
+    action: string,
+    metadata: Record<string, string | number | boolean | null>,
+  ): Promise<void> {
+    if (!actorAccountId) return;
+    await tx.adminAuditLog.create({
+      data: {
+        actorAccountId,
+        action,
+        entityType: "AdaptiveStreamingRollout",
+        metadata: metadata as Prisma.InputJsonObject,
+      },
+    });
   }
 
   private async metrics() {
@@ -360,12 +552,16 @@ export class MediaAdaptiveRolloutService {
     };
   }
 
-  private async pendingCandidates(limit: number): Promise<CatalogVideo[]> {
+  private async pendingCandidates(limit: number, afterVideoId?: string): Promise<CatalogVideo[]> {
     const videos = await this.catalogVideos();
     if (!videos.length) return [];
+    const cursorIndex = afterVideoId ? videos.findIndex((video) => video.id === afterVideoId) : -1;
+    const pool = cursorIndex >= 0 ? videos.slice(cursorIndex + 1) : videos;
+    if (!pool.length) return [];
+    const poolIds = pool.map((video) => video.id);
     const ready = await this.database.client.mediaPlaybackGeneration.findMany({
       where: {
-        videoId: { in: videos.map((video) => video.id) },
+        videoId: { in: poolIds },
         status: "READY",
         fallbackStatus: "READY",
         hlsMasterStatus: "READY",
@@ -376,7 +572,7 @@ export class MediaAdaptiveRolloutService {
     });
     const active = await this.database.client.mediaProcessingJob.findMany({
       where: {
-        videoId: { in: videos.map((video) => video.id) },
+        videoId: { in: poolIds },
         status: { in: [...ACTIVE_OR_QUEUED] },
       },
       distinct: ["videoId"],
@@ -386,7 +582,7 @@ export class MediaAdaptiveRolloutService {
       ...ready.map((row) => row.videoId),
       ...active.map((row) => row.videoId),
     ]);
-    return videos.filter((video) => !blocked.has(video.id)).slice(0, limit);
+    return pool.filter((video) => !blocked.has(video.id)).slice(0, limit);
   }
 
   private catalogVideos(): Promise<CatalogVideo[]> {
