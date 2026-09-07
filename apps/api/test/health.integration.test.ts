@@ -21,10 +21,24 @@ describe("GET /health", () => {
     await app.close();
   });
 
-  it("reports that the API is healthy", async () => {
+  it("reports process liveness with safe release diagnostics", async () => {
     const response = await app.inject({ method: "GET", url: "/health" });
+    const body = response.json() as {
+      service: string;
+      status: string;
+      releaseSha: string;
+      uptimeSeconds: number;
+      process: { pid: number; node: string };
+    };
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ service: "ayin-api", status: "ok" });
+    expect(body.service).toBe("ayin-api");
+    expect(body.status).toBe("alive");
+    expect(typeof body.releaseSha).toBe("string");
+    expect(body.uptimeSeconds).toBeGreaterThanOrEqual(0);
+    expect(body.process.pid).toBeGreaterThan(0);
+    expect(body.process.node).toBe(process.version);
+    expect(JSON.stringify(body)).not.toContain("AUTH_TOKEN_SECRET");
+    expect(JSON.stringify(body)).not.toContain("DATABASE_URL");
   });
 });
