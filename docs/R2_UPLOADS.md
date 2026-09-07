@@ -113,9 +113,9 @@ A partial R2 namespace is never sufficient evidence of readiness. Adaptive selec
 
 ### Retry and verification
 
-Retries reuse the same generation namespace. A rendition already marked `READY` is reused only after its remote playlist and every referenced deterministic segment pass verification again. A previously ready generation is reused only when the fallback, all renditions and the exact expected deterministic master manifest pass verification.
+Retries reuse the same generation namespace. A rendition already marked `READY` is reused only after its remote VOD playlist passes structural validation and every referenced deterministic segment passes verification again. Segment numbering must be contiguous from `000001`. A previously ready generation is reused only when the fallback, all renditions and the exact expected deterministic master manifest pass verification.
 
-If adaptive processing fails, Task 40 removes any master object and records failed adaptive lifecycle state while preserving the canonical MP4 fallback. Remaining partial variant objects are harmless because the public player does not select HLS in Task 40 and database readiness never derives from object presence alone.
+Adaptive failure-state transitions are conditional on the same active, unexpired media-worker lease that owns the processing job. A stale worker that has already lost its lease cannot mark the shared adaptive generation failed after another worker reclaims it. The HLS failure path also avoids destructive R2 cleanup of deterministic adaptive keys, because a stale worker and its replacement intentionally share the same generation namespace. Partial variant or master objects may remain and are safely overwritten/re-verified on retry; they are harmless because public playback does not select HLS in Task 40 and database readiness never derives from object presence alone. The canonical MP4 fallback is preserved.
 
 ## Source retention and reprocessing reality
 
