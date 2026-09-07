@@ -24,9 +24,9 @@ async function canonicalFixture(): Promise<{ directory: string; canonicalPath: s
 
 afterEach(async () => {
   await Promise.all(
-    createdDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true }).catch(() => undefined),
-    ),
+    createdDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true }).catch(() => undefined)),
   );
 });
 
@@ -53,7 +53,9 @@ function job() {
   } as never;
 }
 
-function generation(status: AdaptiveGenerationState["status"] = "BUILDING"): AdaptiveGenerationState {
+function generation(
+  status: AdaptiveGenerationState["status"] = "BUILDING",
+): AdaptiveGenerationState {
   const plan = planAdaptiveRenditions({ width: 640, height: 360 })[0]!;
   const rendition: AdaptiveRenditionState = {
     id: "44444444-4444-4444-8444-444444444444",
@@ -252,9 +254,11 @@ describe("Task 40 adaptive processing", () => {
           ? "application/vnd.apple.mpegurl"
           : "video/mp4",
     }));
-    const downloadText = vi.fn().mockImplementation(async (key: string) =>
-      key === state.hlsMasterR2ObjectKey ? master : playlistText,
-    );
+    const downloadText = vi
+      .fn()
+      .mockImplementation(async (key: string) =>
+        key === state.hlsMasterR2ObjectKey ? master : playlistText,
+      );
     const transcode = vi.fn();
     const fixture = serviceFixture({ generation: state, headObject, downloadText, transcode });
     const local = await canonicalFixture();

@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { planAdaptiveRenditions } from "./media-architecture-v2.js";
-import {
-  buildHlsMasterManifest,
-  parseHlsMediaPlaylistSegments,
-} from "./media-hls-manifest.js";
+import { buildHlsMasterManifest, parseHlsMediaPlaylistSegments } from "./media-hls-manifest.js";
 import { buildHlsFfmpegArgs } from "./media-hls-transcoder.service.js";
 import { parseFfprobeOutput } from "./media-probe.js";
 
