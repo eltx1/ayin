@@ -1,0 +1,121 @@
+name: Task 42 hardening helper
+
+on:
+  push:
+    branches:
+      - task-42-adaptive-rollout
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-42-adaptive-rollout
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Harden recovery gates and storage growth metrics
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path('apps/api/src/media/media-adaptive-rollout.service.ts')
+          text = service.read_text()
+
+          stale = '''    if (mode === "STALE_PROCESSING") {
+              return { mode, ...(await this.queue.recoverStale()) };
+            }
+'''
+          guard = stale + '''    if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {
+              return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
+            }
+'''
+          if 'return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };' not in text:
+              if stale not in text:
+                  raise SystemExit('recovery guard anchor missing')
+              text = text.replace(stale, guard, 1)
+
+          anchor = '''    const sourceIds = readyGenerations.flatMap((generation) =>
+              generation.sourceMediaAssetId ? [generation.sourceMediaAssetId] : [],
+            );
+'''
+          storage = '''    const [totalStorage, growthStorage] = await Promise.all([
+              this.database.client.mediaPlaybackGeneration.aggregate({
+                where: { status: "READY" },
+                _sum: { hlsOutputSizeBytes: true },
+              }),
+              this.database.client.mediaPlaybackGeneration.aggregate({
+                where: { status: "READY", readyAt: { gte: since } },
+                _sum: { hlsOutputSizeBytes: true },
+              }),
+            ]);
+            const sourceIds = readyGenerations.flatMap((generation) =>
+              generation.sourceMediaAssetId ? [generation.sourceMediaAssetId] : [],
+            );
+'''
+          if 'const [totalStorage, growthStorage]' not in text:
+              if anchor not in text:
+                  raise SystemExit('metrics storage anchor missing')
+              text = text.replace(anchor, storage, 1)
+
+          text = text.replace('    let outputStorageBytes = 0n;\n', '')
+          text = text.replace('      outputStorageBytes += generation.hlsOutputSizeBytes ?? 0n;\n', '')
+          text = text.replace(
+              '      outputStorageBytes: outputStorageBytes.toString(),\n',
+              '      outputStorageBytes: (totalStorage._sum.hlsOutputSizeBytes ?? 0n).toString(),\n      outputStorageGrowthBytes: (growthStorage._sum.hlsOutputSizeBytes ?? 0n).toString(),\n',
+          )
+          service.write_text(text)
+
+          test = Path('apps/api/src/media/media-adaptive-rollout.service.test.ts')
+          text = test.read_text()
+          before = '''  it("does not enqueue when the generation kill switch is off", async () => {
+              const { service } = createService();
+              vi.spyOn(service, "controls").mockResolvedValue({ ...baseControls, generationEnabled: false });
+
+              const result = await service.enqueueBatch(2);
+
+              expect(result.enqueued).toBe(0);
+              expect(result.reason).toBe("BACKFILL_DISABLED_OR_PAUSED");
+            });
+'''
+          after = before + '''
+            it("does not requeue failed backfill recovery while rollout is paused", async () => {
+              const { service } = createService();
+              vi.spyOn(service, "controls").mockResolvedValue({ ...baseControls, backfillPaused: true });
+
+              const result = await service.recover("FAILED_BACKFILL", 2);
+
+              expect(result).toEqual({
+                mode: "FAILED_BACKFILL",
+                recovered: 0,
+                reason: "BACKFILL_DISABLED_OR_PAUSED",
+              });
+            });
+'''
+          if 'does not requeue failed backfill recovery while rollout is paused' not in text:
+              if before not in text:
+                  raise SystemExit('test anchor missing')
+              text = text.replace(before, after, 1)
+          test.write_text(text)
+          PY
+          pnpm exec prettier --write apps/api/src/media/media-adaptive-rollout.service.ts apps/api/src/media/media-adaptive-rollout.service.test.ts
+          pnpm packages:build
+          pnpm --filter @ayin/api exec vitest run src/media/media-adaptive-rollout.service.test.ts
+      - name: Commit hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/media/media-adaptive-rollout.service.ts apps/api/src/media/media-adaptive-rollout.service.test.ts
+          git commit -m "fix(media): harden adaptive backfill recovery and metrics"
+          git push origin HEAD:task-42-adaptive-rollout
