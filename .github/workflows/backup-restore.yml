@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:17
+        image: postgres:16
         env:
           POSTGRES_DB: ayin_test
           POSTGRES_USER: ayin
@@ -60,7 +60,9 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y age postgresql-client-17
+          sudo apt-get install -y age postgresql-client
+          pg_dump --version
+          pg_restore --version
 
       - name: Build database package
         run: pnpm packages:build
