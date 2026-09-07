@@ -194,7 +194,7 @@ export class MediaAdaptiveProcessingService {
       const markedFailed = await this.adaptiveLifecycle
         .markFailedIfOwned({
           generationId: generation.id,
-          renditionId: activeRendition?.id,
+          ...(activeRendition ? { renditionId: activeRendition.id } : {}),
           jobId: input.job.id,
           workerId: input.workerId,
         })
