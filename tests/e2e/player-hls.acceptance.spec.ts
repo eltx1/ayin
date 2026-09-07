@@ -76,6 +76,19 @@ async function installMediaHarness(
         if (type.toLowerCase().includes("mpegurl")) return native ? "probably" : "";
         return originalCanPlayType.call(this, type);
       };
+      if (native) {
+        const nativeSources = new WeakMap<HTMLMediaElement, string>();
+        Object.defineProperty(HTMLMediaElement.prototype, "src", {
+          configurable: true,
+          get() {
+            return nativeSources.get(this) ?? "";
+          },
+          set(value: string) {
+            nativeSources.set(this, value);
+            (this as HTMLMediaElement).dataset.nativeHlsSource = value;
+          },
+        });
+      }
       HTMLMediaElement.prototype.play = function () {
         state.playCalls += 1;
         (this as typeof mediaPrototype).__ayinPaused = false;
@@ -368,7 +381,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await mockNoAds(page, fixture.id);
     await page.goto(`/watch/${fixture.slug}`);
 
-    await expect(page.locator("video")).toHaveAttribute("src", /master\.m3u8$/);
+    await expect(page.locator("video")).toHaveAttribute("data-native-hls-source", /master\.m3u8$/);
     await expect.poll(async () => (await harnessState(page)).hlsAttachCalls).toBe(0);
     await expect(page.getByLabel("Playback quality")).toHaveCount(0);
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
