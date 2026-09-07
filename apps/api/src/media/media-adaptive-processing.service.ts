@@ -47,7 +47,7 @@ export class MediaAdaptiveProcessingService {
     canonicalPath: string;
     canonicalMetadata: MediaProbeMetadata;
   }): Promise<boolean> {
-    const settings = await this.settings.resolve();
+    const settings = await this.settings.resolve(input.job);
     if (!settings.enabled) return false;
     const { width, height, durationMs } = input.canonicalMetadata;
     if (!width || !height || !durationMs || durationMs <= 0) {
@@ -243,6 +243,12 @@ export class MediaAdaptiveProcessingService {
           status: "READY",
         }),
       );
+      this.requireAdaptiveOwnership(
+        await this.adaptiveLifecycle.setOutputSizeIfOwned({
+          ...ownedGeneration,
+          sizeBytes: await this.measureGenerationBytes(generation),
+        }),
+      );
       const ready = await this.adaptiveLifecycle.markReadyIfCompleteIfOwned(ownedGeneration);
       if (!ready)
         throw new Error("HLS generation could not satisfy the owned atomic READY invariant.");
@@ -264,6 +270,27 @@ export class MediaAdaptiveProcessingService {
       }
       throw error;
     }
+  }
+
+  private async measureGenerationBytes(generation: AdaptiveGenerationState): Promise<bigint> {
+    let total = BigInt((await this.storage.headObject(generation.hlsMasterR2ObjectKey)).sizeBytes);
+    for (const rendition of generation.renditions) {
+      total += BigInt((await this.storage.headObject(rendition.playlistR2ObjectKey)).sizeBytes);
+      const playlist = await this.storage.downloadText(rendition.playlistR2ObjectKey);
+      for (const sequence of parseHlsMediaPlaylistSegments(playlist)) {
+        const key = hlsRenditionSegmentObjectKey(
+          {
+            channelId: generation.channelId,
+            videoId: generation.videoId,
+            generation: generation.generation,
+          },
+          rendition.identity,
+          sequence,
+        );
+        total += BigInt((await this.storage.headObject(key)).sizeBytes);
+      }
+    }
+    return total;
   }
 
   private async verifyReadyGeneration(
