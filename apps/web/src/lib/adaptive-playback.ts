@@ -17,6 +17,14 @@ export interface AyinAdaptivePlaybackSession {
   destroy(): void;
 }
 
+export type AyinHlsFailureReason =
+  | "NETWORK"
+  | "MEDIA"
+  | "MANIFEST"
+  | "STARTUP"
+  | "UNSUPPORTED"
+  | "OTHER";
+
 export interface AyinAdaptivePlaybackCallbacks {
   onReady?: (() => void) | undefined;
   onQualities?: ((renditions: AyinPlaybackRendition[]) => void) | undefined;
@@ -27,9 +35,7 @@ export interface AyinAdaptivePlaybackCallbacks {
         automatic: boolean;
       }) => void)
     | undefined;
-  onFatal?:
-    | ((reason: "NETWORK" | "MEDIA" | "MANIFEST" | "STARTUP" | "UNSUPPORTED" | "OTHER") => void)
-    | undefined;
+  onFatal?: ((reason: AyinHlsFailureReason) => void) | undefined;
 }
 
 interface HlsLevel {
@@ -49,7 +55,6 @@ interface HlsInstance {
   levels: HlsLevel[];
   currentLevel: number;
   nextLevel: number;
-  autoLevelEnabled?: boolean;
   attachMedia(video: HTMLVideoElement): void;
   loadSource(url: string): void;
   on(event: string, callback: (...args: unknown[]) => void): void;
@@ -76,6 +81,8 @@ declare global {
   }
 }
 
+// Pinned maintained runtime, isolated behind this AYIN-owned adapter. A load/CSP failure is
+// intentionally non-fatal to the viewer because the caller immediately falls back to MP4.
 const HLS_JS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1.7.2/dist/hls.min.js";
 let hlsScriptPromise: Promise<HlsConstructor> | null = null;
 
@@ -113,7 +120,7 @@ function loadHlsRuntime(): Promise<HlsConstructor> {
   return hlsScriptPromise;
 }
 
-export function supportsNativeHls(video: HTMLVideoElement): boolean {
+export function supportsNativeHls(video: Pick<HTMLVideoElement, "canPlayType">): boolean {
   return Boolean(
     video.canPlayType("application/vnd.apple.mpegurl") ||
       video.canPlayType("application/x-mpegURL"),
@@ -127,14 +134,16 @@ function renditionForLevel(level: HlsLevel, index: number): AyinPlaybackRenditio
     Number.isFinite(level.bitrate) && level.bitrate ? Math.round(level.bitrate / 1000) : null;
   return {
     id: `level-${index}`,
-    label: level.name || (height ? `${height}p` : bitrateKbps ? `${bitrateKbps} kbps` : `Quality ${index + 1}`),
+    label:
+      level.name ||
+      (height ? `${height}p` : bitrateKbps ? `${bitrateKbps} kbps` : `Quality ${index + 1}`),
     width,
     height,
     bitrateKbps,
   };
 }
 
-function classifyFatal(data: HlsErrorData): Parameters<NonNullable<AyinAdaptivePlaybackCallbacks["onFatal"]>>[0] {
+export function classifyHlsFailure(data: HlsErrorData): AyinHlsFailureReason {
   const detail = `${data.type ?? ""} ${data.details ?? ""}`.toLowerCase();
   if (detail.includes("manifest")) return "MANIFEST";
   if (detail.includes("network")) return "NETWORK";
@@ -151,10 +160,17 @@ export async function startAdaptiveHlsPlayback(input: {
 
   if (supportsNativeHls(video)) {
     let destroyed = false;
+    let fatalReported = false;
     const ready = () => {
       if (!destroyed) callbacks.onReady?.();
     };
+    const failed = () => {
+      if (destroyed || fatalReported) return;
+      fatalReported = true;
+      callbacks.onFatal?.("MANIFEST");
+    };
     video.addEventListener("loadedmetadata", ready, { once: true });
+    video.addEventListener("error", failed, { once: true });
     video.src = hlsUrl;
     video.load();
     return {
@@ -164,6 +180,7 @@ export async function startAdaptiveHlsPlayback(input: {
       destroy() {
         destroyed = true;
         video.removeEventListener("loadedmetadata", ready);
+        video.removeEventListener("error", failed);
       },
     };
   }
@@ -189,10 +206,17 @@ export async function startAdaptiveHlsPlayback(input: {
     backBufferLength: 30,
   });
   let destroyed = false;
+  let fatalReported = false;
   let networkRecoveries = 0;
   let mediaRecoveries = 0;
   let renditions: AyinPlaybackRendition[] = [];
   let manualSelection = false;
+
+  const reportFatal = (reason: AyinHlsFailureReason) => {
+    if (destroyed || fatalReported) return;
+    fatalReported = true;
+    callbacks.onFatal?.(reason);
+  };
 
   hls.on(Hls.Events.MEDIA_ATTACHED, () => {
     if (!destroyed) hls.loadSource(hlsUrl);
@@ -205,6 +229,7 @@ export async function startAdaptiveHlsPlayback(input: {
   });
   hls.on(Hls.Events.FRAG_BUFFERED, () => {
     networkRecoveries = 0;
+    mediaRecoveries = 0;
   });
   hls.on(Hls.Events.LEVEL_SWITCHED, (...args: unknown[]) => {
     if (destroyed) return;
@@ -217,10 +242,10 @@ export async function startAdaptiveHlsPlayback(input: {
     });
   });
   hls.on(Hls.Events.ERROR, (...args: unknown[]) => {
-    if (destroyed) return;
+    if (destroyed || fatalReported) return;
     const data = (args.at(-1) ?? {}) as HlsErrorData;
     if (!data.fatal) return;
-    const reason = classifyFatal(data);
+    const reason = classifyHlsFailure(data);
     if (reason === "NETWORK" && networkRecoveries < 2) {
       networkRecoveries += 1;
       hls.startLoad();
@@ -231,14 +256,22 @@ export async function startAdaptiveHlsPlayback(input: {
       hls.recoverMediaError();
       return;
     }
-    callbacks.onFatal?.(reason);
+    reportFatal(reason);
   });
-  hls.attachMedia(video);
+
+  try {
+    hls.attachMedia(video);
+  } catch {
+    reportFatal("OTHER");
+    hls.destroy();
+    return null;
+  }
 
   return {
     protocol: "HLS",
     native: false,
     setQuality(renditionId: string | null) {
+      if (destroyed || fatalReported) return;
       if (renditionId === null) {
         manualSelection = false;
         hls.currentLevel = -1;
