@@ -1,0 +1,95 @@
+enum MediaPlaybackGenerationStatus {
+  BUILDING
+  READY
+  FAILED
+  SUPERSEDED
+}
+
+enum MediaPlaybackOutputStatus {
+  PLANNED
+  PROCESSING
+  UPLOADING
+  VERIFYING
+  READY
+  FAILED
+  REMOVED
+}
+
+enum MediaPlaybackProtocol {
+  PROGRESSIVE
+  HLS
+}
+
+enum MediaPlaybackContainer {
+  MP4
+  MPEG_TS
+}
+
+enum MediaPlaybackVideoCodec {
+  H264
+}
+
+enum MediaPlaybackAudioCodec {
+  AAC
+}
+
+/// Durable distribution state for one video processing generation.
+/// `videoId`, `sourceMediaAssetId`, and `processingJobId` intentionally remain
+/// logical references in Task 39 so the live V1 Video/MediaAsset/ProcessingJob
+/// relation graph does not change before V2 output generation is implemented.
+model MediaPlaybackGeneration {
+  id                   String                        @id @default(uuid()) @db.Uuid
+  videoId              String                        @db.Uuid
+  sourceMediaAssetId   String?                       @db.Uuid
+  processingJobId      String?                       @unique @db.Uuid
+  generation           Int
+  processingVersion    Int                           @default(2)
+  status               MediaPlaybackGenerationStatus @default(BUILDING)
+  fallbackR2ObjectKey  String                        @unique @db.VarChar(1024)
+  fallbackStatus       MediaPlaybackOutputStatus     @default(PLANNED)
+  fallbackProtocol     MediaPlaybackProtocol         @default(PROGRESSIVE)
+  fallbackContainer    MediaPlaybackContainer        @default(MP4)
+  fallbackVideoCodec   MediaPlaybackVideoCodec       @default(H264)
+  fallbackAudioCodec   MediaPlaybackAudioCodec       @default(AAC)
+  fallbackPixelFormat  String                        @default("yuv420p") @db.VarChar(32)
+  hlsMasterR2ObjectKey String                        @unique @db.VarChar(1024)
+  hlsMasterStatus      MediaPlaybackOutputStatus     @default(PLANNED)
+  readyAt              DateTime?
+  failedAt             DateTime?
+  supersededAt         DateTime?
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+
+  renditions MediaPlaybackRendition[]
+
+  @@unique([videoId, generation])
+  @@index([videoId, status, generation])
+  @@index([sourceMediaAssetId])
+}
+
+model MediaPlaybackRendition {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  playbackGenerationId String                    @db.Uuid
+  identity             String                    @db.VarChar(32)
+  width                Int
+  height               Int
+  videoBitrateKbps     Int
+  audioBitrateKbps     Int
+  videoCodec           MediaPlaybackVideoCodec   @default(H264)
+  audioCodec           MediaPlaybackAudioCodec   @default(AAC)
+  pixelFormat          String                    @default("yuv420p") @db.VarChar(32)
+  protocol             MediaPlaybackProtocol     @default(HLS)
+  container            MediaPlaybackContainer    @default(MPEG_TS)
+  playlistR2ObjectKey  String                    @unique @db.VarChar(1024)
+  segmentR2Prefix      String                    @unique @db.VarChar(1024)
+  status               MediaPlaybackOutputStatus @default(PLANNED)
+  readyAt              DateTime?
+  failedAt             DateTime?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  playbackGeneration MediaPlaybackGeneration @relation(fields: [playbackGenerationId], references: [id], onDelete: Cascade)
+
+  @@unique([playbackGenerationId, identity])
+  @@index([playbackGenerationId, status])
+}
