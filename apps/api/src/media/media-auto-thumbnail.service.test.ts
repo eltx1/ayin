@@ -20,34 +20,37 @@ describe("automatic video thumbnails", () => {
     expect(autoThumbnailSeekSeconds(600_000)).toBe(3);
   });
 
-  it("never generates over an existing creator thumbnail", async () => {
-    const findUnique = vi.fn().mockResolvedValue({
-      channelId: "channel-1",
-      mediaAssets: [
-        {
-          id: "manual-thumb",
-          status: "UPLOADED",
-          r2ObjectKey: "channels/channel-1/media/manual/thumbnail.jpg",
-        },
-      ],
-    });
-    const uploadFile = vi.fn();
-    const service = new MediaAutoThumbnailService(
-      { client: { video: { findUnique } } } as never,
-      { uploadFile } as never,
-    );
+  it.each(["PENDING", "UPLOADED", "VALIDATED"] as const)(
+    "never generates over an existing %s creator thumbnail",
+    async (status) => {
+      const findUnique = vi.fn().mockResolvedValue({
+        channelId: "channel-1",
+        mediaAssets: [
+          {
+            id: "manual-thumb",
+            status,
+            r2ObjectKey: "channels/channel-1/media/manual/thumbnail.jpg",
+          },
+        ],
+      });
+      const uploadFile = vi.fn();
+      const service = new MediaAutoThumbnailService(
+        { client: { video: { findUnique } } } as never,
+        { uploadFile } as never,
+      );
 
-    await expect(
-      service.ensureForCanonical({
-        videoId: "video-1",
-        canonicalPath: "/tmp/canonical.mp4",
-        durationMs: 60_000,
-      }),
-    ).resolves.toMatchObject({
-      created: false,
-      assetId: "manual-thumb",
-      reason: "existing-thumbnail",
-    });
-    expect(uploadFile).not.toHaveBeenCalled();
-  });
+      await expect(
+        service.ensureForCanonical({
+          videoId: "video-1",
+          canonicalPath: "/tmp/canonical.mp4",
+          durationMs: 60_000,
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        assetId: "manual-thumb",
+        reason: "existing-thumbnail",
+      });
+      expect(uploadFile).not.toHaveBeenCalled();
+    },
+  );
 });
