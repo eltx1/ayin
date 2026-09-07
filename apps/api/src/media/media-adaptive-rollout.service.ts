@@ -218,7 +218,12 @@ export class MediaAdaptiveRolloutService {
         detected += 1;
         await this.database.client.mediaPlaybackGeneration.updateMany({
           where: { id: row.id, status: "READY", hlsMasterStatus: "READY" },
-          data: { status: "FAILED", hlsMasterStatus: "FAILED", failedAt: new Date(), readyAt: null },
+          data: {
+            status: "FAILED",
+            hlsMasterStatus: "FAILED",
+            failedAt: new Date(),
+            readyAt: null,
+          },
         });
         const job = await this.database.client.$transaction((tx) =>
           this.lifecycle.createAdaptiveBackfillJob(tx, row.videoId),
@@ -365,7 +370,10 @@ export class MediaAdaptiveRolloutService {
       distinct: ["videoId"],
       select: { videoId: true },
     });
-    const blocked = new Set([...ready.map((row) => row.videoId), ...active.map((row) => row.videoId)]);
+    const blocked = new Set([
+      ...ready.map((row) => row.videoId),
+      ...active.map((row) => row.videoId),
+    ]);
     return videos.filter((video) => !blocked.has(video.id)).slice(0, limit);
   }
 

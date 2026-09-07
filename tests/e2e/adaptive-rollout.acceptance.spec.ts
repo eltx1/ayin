@@ -1,7 +1,12 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-import { expect, request as playwrightRequest, test, type APIRequestContext } from "@playwright/test";
+import {
+  expect,
+  request as playwrightRequest,
+  test,
+  type APIRequestContext,
+} from "@playwright/test";
 
 const API = "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
@@ -17,7 +22,10 @@ function db<T>(command: string, payload: Record<string, unknown> = {}): T {
 }
 
 async function register(label: string) {
-  const api = await playwrightRequest.newContext({ baseURL: API, extraHTTPHeaders: { origin: WEB } });
+  const api = await playwrightRequest.newContext({
+    baseURL: API,
+    extraHTTPHeaders: { origin: WEB },
+  });
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const response = await api.post("/auth/register", {
     data: {
@@ -55,7 +63,9 @@ async function uploadAndPublish(api: APIRequestContext, channelId: string) {
     data: { sessionToken: draft.uploadSession.sessionToken, parts },
   });
   expect(completed.ok()).toBeTruthy();
-  expect((await api.post(`/creator/videos/${draft.video.id}/upload-complete`, { data: {} })).ok()).toBeTruthy();
+  expect(
+    (await api.post(`/creator/videos/${draft.video.id}/upload-complete`, { data: {} })).ok(),
+  ).toBeTruthy();
 
   // The E2E environment intentionally has no long-lived FFmpeg worker. This helper mirrors
   // the already-tested canonical worker READY state before the adaptive verification step.
@@ -64,7 +74,9 @@ async function uploadAndPublish(api: APIRequestContext, channelId: string) {
     data: { rightsConfirmed: true, title },
   });
   expect(published.ok()).toBeTruthy();
-  const video = ((await published.json()) as { video: { id: string; slug: string; status: string } }).video;
+  const video = (
+    (await published.json()) as { video: { id: string; slug: string; status: string } }
+  ).video;
   expect(video.status).toBe("PUBLISHED");
   return video;
 }
@@ -76,7 +88,9 @@ test("Task 42 new upload becomes HLS-ready and is advertised safely on watch", a
 
     const before = await creator.api.get(`/public/videos/${video.slug}/playback`);
     expect(before.ok()).toBeTruthy();
-    expect(((await before.json()) as { video: { adaptiveSource: unknown } }).video.adaptiveSource).toBeNull();
+    expect(
+      ((await before.json()) as { video: { adaptiveSource: unknown } }).video.adaptiveSource,
+    ).toBeNull();
 
     const ready = db<{ enabled: boolean; masterKey: string }>("configure-hls-playback", {
       enabled: true,

@@ -6,15 +6,15 @@ Task 42 adds operational rollout controls around the HLS generation from Task 40
 
 AYIN uses independent controls so generation, new-upload adoption, catalog backfill, and playback can be staged separately:
 
-| Control | Default | Purpose |
-| --- | --- | --- |
-| `mediaHlsEnabled` | `false` | Technical kill switch for HLS generation. |
-| `mediaHlsNewUploadsEnabled` | `false` | Allows verified HLS generation for newly processed uploads. |
-| `mediaHlsBackfillEnabled` | `false` | Allows explicitly requested catalog backfill jobs. |
-| `mediaHlsBackfillPaused` | `true` | Persistent pause for claiming queued backfill work. Already-claimed work may finish safely. |
-| `mediaHlsBackfillBatchSize` | `2` | Normal maximum videos considered per operator batch; hard maximum is 20. |
-| `mediaHlsBackfillMaxInFlight` | `1` | Maximum queued + active backfill jobs; hard maximum is 4. |
-| feature flag `player.hls.enabled` | absent/off | Allows verified adaptive output to be advertised by the public playback contract. |
+| Control                           | Default    | Purpose                                                                                     |
+| --------------------------------- | ---------- | ------------------------------------------------------------------------------------------- |
+| `mediaHlsEnabled`                 | `false`    | Technical kill switch for HLS generation.                                                   |
+| `mediaHlsNewUploadsEnabled`       | `false`    | Allows verified HLS generation for newly processed uploads.                                 |
+| `mediaHlsBackfillEnabled`         | `false`    | Allows explicitly requested catalog backfill jobs.                                          |
+| `mediaHlsBackfillPaused`          | `true`     | Persistent pause for claiming queued backfill work. Already-claimed work may finish safely. |
+| `mediaHlsBackfillBatchSize`       | `2`        | Normal maximum videos considered per operator batch; hard maximum is 20.                    |
+| `mediaHlsBackfillMaxInFlight`     | `1`        | Maximum queued + active backfill jobs; hard maximum is 4.                                   |
+| feature flag `player.hls.enabled` | absent/off | Allows verified adaptive output to be advertised by the public playback contract.           |
 
 The existing global media worker concurrency and FFmpeg thread/scratch limits remain authoritative. Backfill jobs use lower queue priority than normal uploads so catalog maintenance cannot starve creator uploads.
 

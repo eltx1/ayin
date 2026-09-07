@@ -34,7 +34,10 @@ function service(overrides: Record<string, unknown> = {}) {
 
 describe("MediaHlsSettingsService rollout controls", () => {
   it("keeps new-upload HLS independent and off by default", async () => {
-    const resolved = await service().resolve({ generation: 1, stagingKey: "uploads/source.mp4" } as never);
+    const resolved = await service().resolve({
+      generation: 1,
+      stagingKey: "uploads/source.mp4",
+    } as never);
     expect(resolved.enabled).toBe(false);
   });
 

@@ -15,8 +15,6 @@ export const ADAPTIVE_RECOVERY_MODES = [
 
 export type AdaptiveRecoveryMode = (typeof ADAPTIVE_RECOVERY_MODES)[number];
 
-export function isAdaptiveBackfillJob(
-  job: Pick<MediaProcessingJob, "stagingKey">,
-): boolean {
+export function isAdaptiveBackfillJob(job: Pick<MediaProcessingJob, "stagingKey">): boolean {
   return job.stagingKey.includes(ADAPTIVE_BACKFILL_MARKER);
 }
