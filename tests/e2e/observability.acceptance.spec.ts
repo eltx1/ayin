@@ -8,7 +8,7 @@ test("API liveness, readiness and request IDs expose safe diagnostics", async ()
     baseURL: API,
     extraHTTPHeaders: { origin: WEB },
   });
-  const requestId = "e2e-observability-request-1234";
+  const requestId = "550e8400-e29b-41d4-a716-446655440000";
   const live = await api.get("/health/live", { headers: { "x-request-id": requestId } });
   expect(live.ok()).toBeTruthy();
   expect(live.headers()["x-request-id"]).toBe(requestId);
@@ -42,12 +42,14 @@ test("invalid inbound trace IDs are replaced instead of reflected", async () => 
     baseURL: API,
     extraHTTPHeaders: { origin: WEB },
   });
-  const response = await api.get("/health", { headers: { "x-request-id": "token=secret value" } });
+  const response = await api.get("/health", {
+    headers: { "x-request-id": "opaque-session-token-looking-value" },
+  });
   expect(response.ok()).toBeTruthy();
   const reflected = response.headers()["x-request-id"];
   expect(reflected).toBeTruthy();
-  expect(reflected).not.toContain("secret");
-  expect(reflected).not.toBe("token=secret value");
+  expect(reflected).not.toContain("session-token");
+  expect(reflected).not.toBe("opaque-session-token-looking-value");
   await api.dispose();
 });
 
