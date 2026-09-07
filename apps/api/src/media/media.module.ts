@@ -6,6 +6,7 @@ import { PlatformConfigModule } from "../platform-config/platform-config.module.
 import { DevelopmentMediaStorageAdapter } from "./development-media-storage.adapter.js";
 import { MediaAdaptiveLifecycleService } from "./media-adaptive-lifecycle.service.js";
 import { MediaAdaptiveProcessingService } from "./media-adaptive-processing.service.js";
+import { MediaAdaptiveRolloutService } from "./media-adaptive-rollout.service.js";
 import { E2eMediaStorageAdapter } from "./e2e-media-storage.adapter.js";
 import {
   MEDIA_STORAGE_ADAPTER,
@@ -51,6 +52,7 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MediaHlsSettingsService,
     MediaHlsTranscoderService,
     MediaAdaptiveProcessingService,
+    MediaAdaptiveRolloutService,
     MediaAutoThumbnailService,
     MediaProcessingExecutorService,
     MediaProcessingWorkerService,
@@ -64,6 +66,7 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MediaProcessingStorageService,
     MediaAdaptiveLifecycleService,
     MediaAdaptiveProcessingService,
+    MediaAdaptiveRolloutService,
     MediaProcessingExecutorService,
     MediaProcessingWorkerService,
   ],

@@ -54,6 +54,7 @@ model MediaPlaybackGeneration {
   fallbackPixelFormat  String                        @default("yuv420p") @db.VarChar(32)
   hlsMasterR2ObjectKey String                        @unique @db.VarChar(1024)
   hlsMasterStatus      MediaPlaybackOutputStatus     @default(PLANNED)
+  hlsOutputSizeBytes   BigInt                        @default(0)
   readyAt              DateTime?
   failedAt             DateTime?
   supersededAt         DateTime?

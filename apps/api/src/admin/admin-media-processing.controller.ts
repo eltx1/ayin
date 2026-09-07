@@ -1,8 +1,10 @@
-import { Controller, Get, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
 import { DatabaseService } from "../database/database.service.js";
+import { MediaAdaptiveRolloutService } from "../media/media-adaptive-rollout.service.js";
+import { ADAPTIVE_RECOVERY_MODES } from "../media/media-adaptive-rollout.js";
 import { MediaProcessingLifecycleService } from "../media/media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "../media/media-processing-queue.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
@@ -11,6 +13,14 @@ import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from ".
 
 const uuidSchema = z.string().uuid();
 const terminalStatuses = new Set(["READY", "FAILED", "CANCELLED"]);
+const batchSchema = z.object({ batchSize: z.number().int().min(1).max(20).optional() }).strict();
+const recoverySchema = z
+  .object({
+    mode: z.enum(ADAPTIVE_RECOVERY_MODES),
+    batchSize: z.number().int().min(1).max(20).optional(),
+    cursor: uuidSchema.optional(),
+  })
+  .strict();
 
 @Controller("admin/media-processing")
 @UseGuards(AuthGuard, AdminGuard)
@@ -21,6 +31,8 @@ export class AdminMediaProcessingController {
     @Inject(MediaProcessingQueueService) private readonly queue: MediaProcessingQueueService,
     @Inject(MediaProcessingLifecycleService)
     private readonly lifecycle: MediaProcessingLifecycleService,
+    @Inject(MediaAdaptiveRolloutService)
+    private readonly adaptiveRollout: MediaAdaptiveRolloutService,
     @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
   ) {}
 
@@ -53,6 +65,57 @@ export class AdminMediaProcessingController {
       }),
     ]);
     return { ...overview, jobs };
+  }
+
+  @Get("adaptive-rollout")
+  async adaptiveOverview() {
+    return this.adaptiveRollout.overview();
+  }
+
+  @Post("adaptive-rollout/backfill/run")
+  async runAdaptiveBackfill(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
+    const parsed = batchSchema.safeParse(body ?? {});
+    if (!parsed.success)
+      throw adminBadRequest("INVALID_BACKFILL_BATCH", "Backfill batch request is invalid.");
+    const result = await this.adaptiveRollout.enqueueBatch(
+      parsed.data.batchSize,
+      request.ayinAuth.accountId,
+    );
+    return {
+      ...result,
+      jobs: result.jobs.map((job) => ({
+        id: job.id,
+        videoId: job.videoId,
+        generation: job.generation,
+        status: job.status,
+        stage: job.stage,
+      })),
+    };
+  }
+
+  @Post("adaptive-rollout/backfill/pause")
+  @RequireAdminRoles("SUPERADMIN")
+  async pauseAdaptiveBackfill(@Req() request: AdminAuthenticatedRequest) {
+    return this.adaptiveRollout.setPaused(true, request.ayinAuth.accountId);
+  }
+
+  @Post("adaptive-rollout/backfill/resume")
+  @RequireAdminRoles("SUPERADMIN")
+  async resumeAdaptiveBackfill(@Req() request: AdminAuthenticatedRequest) {
+    return this.adaptiveRollout.setPaused(false, request.ayinAuth.accountId);
+  }
+
+  @Post("adaptive-rollout/recovery")
+  async recoverAdaptive(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
+    const parsed = recoverySchema.safeParse(body);
+    if (!parsed.success)
+      throw adminBadRequest("INVALID_ADAPTIVE_RECOVERY", "Adaptive recovery request is invalid.");
+    return this.adaptiveRollout.recover(
+      parsed.data.mode,
+      parsed.data.batchSize,
+      request.ayinAuth.accountId,
+      parsed.data.cursor,
+    );
   }
 
   @Post("jobs/:jobId/retry")

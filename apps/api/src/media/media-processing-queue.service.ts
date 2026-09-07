@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { ADAPTIVE_BACKFILL_MARKER } from "./media-adaptive-rollout.js";
 
 const ACTIVE_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
 const QUEUE_ADVISORY_LOCK = 86192028;
@@ -53,8 +54,24 @@ export class MediaProcessingQueueService {
       });
       if (activeCount >= capacity.concurrentJobs) return null;
 
+      const [hlsEnabled, backfillEnabled, backfillPaused] = await Promise.all([
+        this.settings.getResolvedInTransaction(tx, "mediaHlsEnabled"),
+        this.settings.getResolvedInTransaction(tx, "mediaHlsBackfillEnabled"),
+        this.settings.getResolvedInTransaction(tx, "mediaHlsBackfillPaused"),
+      ]);
+      const canClaimBackfill =
+        (hlsEnabled.value as boolean) &&
+        (backfillEnabled.value as boolean) &&
+        !(backfillPaused.value as boolean);
+
       const candidate = await tx.mediaProcessingJob.findFirst({
-        where: { status: "QUEUED", queuedAt: { lte: now } },
+        where: {
+          status: "QUEUED",
+          queuedAt: { lte: now },
+          ...(canClaimBackfill
+            ? {}
+            : { NOT: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER } } }),
+        },
         orderBy: [{ priority: "desc" }, { queuedAt: "asc" }, { createdAt: "asc" }],
       });
       if (!candidate) return null;
@@ -148,6 +165,23 @@ export class MediaProcessingQueueService {
     const counts = Object.fromEntries(grouped.map((row) => [row.status, row._count._all]));
     const active = ACTIVE_STATUSES.reduce((total, status) => total + (counts[status] ?? 0), 0);
     return { capacity, active, counts };
+  }
+
+  async recoverStale(
+    onRecovered?: (tx: Prisma.TransactionClient, result: { recovered: number }) => Promise<void>,
+  ) {
+    return this.database.client.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", QUEUE_ADVISORY_LOCK);
+      const capacity = await this.capacityInTransaction(tx);
+      const now = new Date();
+      const recovered = await tx.mediaProcessingJob.count({
+        where: { status: { in: [...ACTIVE_STATUSES] }, leaseExpiresAt: { lt: now } },
+      });
+      await this.recoverStaleInTransaction(tx, now, capacity.retryLimit);
+      const result = { recovered };
+      await onRecovered?.(tx, result);
+      return result;
+    });
   }
 
   private async capacityInTransaction(

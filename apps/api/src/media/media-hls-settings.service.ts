@@ -1,7 +1,9 @@
+import type { MediaProcessingJob } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import type { MediaRenditionIdentity } from "./media-architecture-v2.js";
+import { isAdaptiveBackfillJob } from "./media-adaptive-rollout.js";
 
 export interface MediaHlsOperationalSettings {
   enabled: boolean;
@@ -21,9 +23,13 @@ export class MediaHlsSettingsService {
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
   ) {}
 
-  async resolve(): Promise<MediaHlsOperationalSettings> {
+  async resolve(
+    job?: Pick<MediaProcessingJob, "generation" | "stagingKey">,
+  ): Promise<MediaHlsOperationalSettings> {
     const [
       enabled,
+      newUploadsEnabled,
+      backfillEnabled,
       enable360p,
       enable480p,
       enable720p,
@@ -43,6 +49,8 @@ export class MediaHlsSettingsService {
       ffmpegPreset,
     ] = await Promise.all([
       this.settings.get("mediaHlsEnabled"),
+      this.settings.get("mediaHlsNewUploadsEnabled"),
+      this.settings.get("mediaHlsBackfillEnabled"),
       this.settings.get("mediaHls360pEnabled"),
       this.settings.get("mediaHls480pEnabled"),
       this.settings.get("mediaHls720pEnabled"),
@@ -68,8 +76,17 @@ export class MediaHlsSettingsService {
     if (enable720p as boolean) allowedIdentities.push("720p");
     if (enable1080p as boolean) allowedIdentities.push("1080p");
 
+    // The queue owns pause/resume semantics: paused backfill jobs are not claimed, while
+    // already-claimed work is allowed to finish safely. The generation service therefore
+    // only checks the durable backfill enable switch once a worker owns a backfill job.
+    const rolloutEnabled = job
+      ? isAdaptiveBackfillJob(job)
+        ? (backfillEnabled as boolean)
+        : (newUploadsEnabled as boolean)
+      : true;
+
     return {
-      enabled: enabled as boolean,
+      enabled: (enabled as boolean) && rolloutEnabled,
       allowedIdentities,
       videoBitrateKbps: {
         "360p": video360p as number,

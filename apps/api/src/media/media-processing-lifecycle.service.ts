@@ -2,6 +2,7 @@ import type { MediaProcessingJobStatus, Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { ADAPTIVE_BACKFILL_MARKER } from "./media-adaptive-rollout.js";
 
 const OWNED_ACTIVE_STATUSES: MediaProcessingJobStatus[] = ["PROCESSING", "UPLOADING", "VERIFYING"];
 
@@ -192,6 +193,87 @@ export class MediaProcessingLifecycleService {
         id: jobId,
         leaseOwner: workerId,
         status: { in: OWNED_ACTIVE_STATUSES },
+      },
+    });
+  }
+
+  async createAdaptiveBackfillJob(tx: Prisma.TransactionClient, videoId: string) {
+    const video = await tx.video.findUnique({
+      where: { id: videoId },
+      select: {
+        id: true,
+        channelId: true,
+        status: true,
+        visibility: true,
+        removedAt: true,
+        channel: { select: { status: true, removedAt: true } },
+        mediaAssets: {
+          where: {
+            kind: "SOURCE_VIDEO",
+            status: "VALIDATED",
+            mimeType: "video/mp4",
+            removedAt: null,
+          },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+        mediaProcessingJobs: { orderBy: { generation: "desc" }, take: 1 },
+      },
+    });
+    const source = video?.mediaAssets[0];
+    if (
+      !video ||
+      !source ||
+      video.status !== "PUBLISHED" ||
+      video.visibility === "PRIVATE" ||
+      video.removedAt ||
+      video.channel.status !== "ACTIVE" ||
+      video.channel.removedAt
+    ) {
+      return null;
+    }
+
+    const [readyAdaptive, activeJob, latestAdaptive] = await Promise.all([
+      tx.mediaPlaybackGeneration.findFirst({
+        where: {
+          videoId,
+          status: "READY",
+          fallbackStatus: "READY",
+          hlsMasterStatus: "READY",
+          renditions: { some: { status: "READY", protocol: "HLS" } },
+        },
+        select: { id: true },
+      }),
+      tx.mediaProcessingJob.findFirst({
+        where: {
+          videoId,
+          status: { in: ["INGESTING", "QUEUED", "PROCESSING", "UPLOADING", "VERIFYING"] },
+        },
+        select: { id: true },
+      }),
+      tx.mediaPlaybackGeneration.findFirst({
+        where: { videoId },
+        orderBy: { generation: "desc" },
+        select: { generation: true },
+      }),
+    ]);
+    if (readyAdaptive || activeJob) return null;
+
+    const generation =
+      Math.max(video.mediaProcessingJobs[0]?.generation ?? 0, latestAdaptive?.generation ?? 0) + 1;
+    return tx.mediaProcessingJob.create({
+      data: {
+        videoId,
+        generation,
+        status: "QUEUED",
+        sourceMimeType: source.mimeType,
+        sourceSizeBytes: source.sizeBytes,
+        stagingKey: `${source.r2ObjectKey}${ADAPTIVE_BACKFILL_MARKER}${generation}`,
+        inputR2ObjectKey: source.r2ObjectKey,
+        outputR2ObjectKey: source.r2ObjectKey,
+        queuedAt: new Date(),
+        stage: "ADAPTIVE_BACKFILL_QUEUED",
+        priority: -10,
       },
     });
   }

@@ -241,6 +241,19 @@ export class MediaAdaptiveLifecycleService {
     });
   }
 
+  async setOutputSizeIfOwned(
+    input: OwnedGenerationInput & { sizeBytes: bigint },
+  ): Promise<boolean> {
+    if (input.sizeBytes < 0n) throw new Error("Adaptive output size cannot be negative.");
+    return this.booleanMutationIfOwned(input, async (tx) => {
+      const updated = await tx.mediaPlaybackGeneration.updateMany({
+        where: { id: input.generationId, processingJobId: input.jobId },
+        data: { hlsOutputSizeBytes: input.sizeBytes },
+      });
+      return updated.count === 1;
+    });
+  }
+
   async markReadyIfCompleteIfOwned(
     input: OwnedGenerationInput,
   ): Promise<AdaptiveGenerationState | null> {
