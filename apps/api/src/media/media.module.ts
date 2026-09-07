@@ -11,6 +11,7 @@ import {
   type MediaStorageAdapter,
 } from "./media-storage.adapter.js";
 import { loadMediaStorageConfig, type MediaStorageConfig } from "./media-storage.config.js";
+import { MediaAutoThumbnailService } from "./media-auto-thumbnail.service.js";
 import { MediaProcessingExecutorService } from "./media-processing-executor.service.js";
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
@@ -42,6 +43,7 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MediaProcessingQueueService,
     MediaProcessingLifecycleService,
     MediaProcessingStorageService,
+    MediaAutoThumbnailService,
     MediaProcessingExecutorService,
     MediaProcessingWorkerService,
   ],

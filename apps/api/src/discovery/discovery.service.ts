@@ -4,6 +4,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 
 const playableAssetStates = ["VALIDATED"] as const;
+const completedThumbnailAssetStates = ["UPLOADED", "VALIDATED"] as const;
 const firstPageSize = 8;
 const maxPageSize = 24;
 
@@ -33,7 +34,7 @@ const videoCardSelect = {
   mediaAssets: {
     where: {
       kind: "THUMBNAIL",
-      status: { in: [...playableAssetStates] },
+      status: { in: [...completedThumbnailAssetStates] },
       removedAt: null,
     },
     orderBy: { createdAt: "desc" },
