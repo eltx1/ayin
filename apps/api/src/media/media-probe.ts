@@ -39,7 +39,8 @@ export function parseFfprobeOutput(stdout: string): MediaProbeMetadata {
   const encodedHeight = positiveInteger(video?.height);
   const rotationDegrees = resolveRotation(video);
   const swapsDisplayAxes = rotationDegrees === 90 || rotationDegrees === 270;
-  const durationSeconds = positiveNumber(parsed.format?.duration) ?? positiveNumber(video?.duration);
+  const durationSeconds =
+    positiveNumber(parsed.format?.duration) ?? positiveNumber(video?.duration);
 
   return {
     durationMs: durationSeconds === null ? null : Math.round(durationSeconds * 1000),

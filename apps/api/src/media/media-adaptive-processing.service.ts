@@ -32,7 +32,8 @@ export class MediaAdaptiveProcessingService {
 
   constructor(
     @Inject(MediaHlsSettingsService) private readonly settings: MediaHlsSettingsService,
-    @Inject(MediaAdaptiveLifecycleService) private readonly adaptiveLifecycle: MediaAdaptiveLifecycleService,
+    @Inject(MediaAdaptiveLifecycleService)
+    private readonly adaptiveLifecycle: MediaAdaptiveLifecycleService,
     @Inject(MediaProcessingLifecycleService)
     private readonly processingLifecycle: MediaProcessingLifecycleService,
     @Inject(MediaProcessingStorageService) private readonly storage: MediaProcessingStorageService,
@@ -63,7 +64,9 @@ export class MediaAdaptiveProcessingService {
       },
     );
     if (planned.length === 0) {
-      this.logger.log(`Video ${input.job.videoId} has no eligible HLS rendition; MP4 fallback remains.`);
+      this.logger.log(
+        `Video ${input.job.videoId} has no eligible HLS rendition; MP4 fallback remains.`,
+      );
       return false;
     }
 
@@ -72,7 +75,9 @@ export class MediaAdaptiveProcessingService {
     generation = { ...generation, fallbackStatus: "READY" };
 
     if (generation.status === "READY" && (await this.verifyReadyGeneration(generation))) {
-      this.logger.log(`Reused verified adaptive generation ${generation.videoId}/g${generation.generation}.`);
+      this.logger.log(
+        `Reused verified adaptive generation ${generation.videoId}/g${generation.generation}.`,
+      );
       return true;
     }
 
@@ -83,7 +88,10 @@ export class MediaAdaptiveProcessingService {
     try {
       for (const rendition of generation.renditions) {
         activeRendition = rendition;
-        if (rendition.status === "READY" && (await this.verifyRemoteRendition(generation, rendition))) {
+        if (
+          rendition.status === "READY" &&
+          (await this.verifyRemoteRendition(generation, rendition))
+        ) {
           continue;
         }
         await this.adaptiveLifecycle.setRenditionStatus(rendition.id, "PROCESSING");
@@ -113,7 +121,8 @@ export class MediaAdaptiveProcessingService {
           });
           await assertScratchActualWithinLimit(
             input.canonicalPath,
-            packaged.playlistSizeBytes + packaged.segments.reduce((total, item) => total + item.sizeBytes, 0),
+            packaged.playlistSizeBytes +
+              packaged.segments.reduce((total, item) => total + item.sizeBytes, 0),
             settings.scratchMaxBytesPerJob,
           );
 
@@ -167,21 +176,25 @@ export class MediaAdaptiveProcessingService {
         HLS_PLAYLIST_CONTENT_TYPE,
       );
       await this.adaptiveLifecycle.setMasterStatus(generation.id, "VERIFYING");
-      await this.verifyObject(
-        generation.hlsMasterR2ObjectKey,
-        Buffer.byteLength(master, "utf8"),
-        [HLS_PLAYLIST_CONTENT_TYPE, "application/x-mpegURL"],
-      );
+      await this.verifyObject(generation.hlsMasterR2ObjectKey, Buffer.byteLength(master, "utf8"), [
+        HLS_PLAYLIST_CONTENT_TYPE,
+        "application/x-mpegURL",
+      ]);
       const downloadedMaster = await this.storage.downloadText(generation.hlsMasterR2ObjectKey);
-      if (downloadedMaster !== master) throw new Error("HLS master manifest failed byte verification.");
+      if (downloadedMaster !== master)
+        throw new Error("HLS master manifest failed byte verification.");
       await this.adaptiveLifecycle.setMasterStatus(generation.id, "READY");
       const ready = await this.adaptiveLifecycle.markReadyIfComplete(generation.id);
       if (!ready) throw new Error("HLS generation could not satisfy the atomic READY invariant.");
-      this.logger.log(`Adaptive generation ${generation.videoId}/g${generation.generation} reached READY.`);
+      this.logger.log(
+        `Adaptive generation ${generation.videoId}/g${generation.generation} reached READY.`,
+      );
       return true;
     } catch (error) {
       await this.storage.deleteObject(generation.hlsMasterR2ObjectKey).catch(() => undefined);
-      await this.adaptiveLifecycle.markFailed(generation.id, activeRendition?.id).catch(() => undefined);
+      await this.adaptiveLifecycle
+        .markFailed(generation.id, activeRendition?.id)
+        .catch(() => undefined);
       throw error;
     }
   }
@@ -272,7 +285,10 @@ export class MediaAdaptiveProcessingService {
     expectedContentTypes: readonly string[],
   ): Promise<void> {
     const object = await this.storage.headObject(key);
-    if (object.sizeBytes <= 0 || (expectedSizeBytes !== null && object.sizeBytes !== expectedSizeBytes)) {
+    if (
+      object.sizeBytes <= 0 ||
+      (expectedSizeBytes !== null && object.sizeBytes !== expectedSizeBytes)
+    ) {
       throw new Error(`HLS R2 object ${key} failed size verification.`);
     }
     const type = object.contentType?.split(";", 1)[0]?.trim().toLowerCase();
@@ -300,8 +316,13 @@ export class MediaAdaptiveProcessingService {
 }
 
 function toPlannedRendition(rendition: AdaptiveRenditionState): PlannedMediaRendition {
-  const { id: _id, playlistR2ObjectKey: _playlist, segmentR2Prefix: _prefix, status: _status, ...plan } =
-    rendition;
+  const {
+    id: _id,
+    playlistR2ObjectKey: _playlist,
+    segmentR2Prefix: _prefix,
+    status: _status,
+    ...plan
+  } = rendition;
   return plan;
 }
 

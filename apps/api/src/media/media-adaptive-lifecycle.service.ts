@@ -167,10 +167,7 @@ export class MediaAdaptiveLifecycleService {
     });
   }
 
-  async setRenditionStatus(
-    renditionId: string,
-    status: MediaPlaybackOutputStatus,
-  ): Promise<void> {
+  async setRenditionStatus(renditionId: string, status: MediaPlaybackOutputStatus): Promise<void> {
     await this.database.client.mediaPlaybackRendition.update({
       where: { id: renditionId },
       data: {

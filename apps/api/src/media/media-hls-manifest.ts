@@ -19,8 +19,7 @@ export function buildHlsMasterManifest(
     const averageBandwidth =
       (rendition.videoBitrateKbps + (input.hasAudio ? rendition.audioBitrateKbps : 0)) * 1000;
     const peakBandwidth = Math.ceil(
-      (rendition.videoBitrateKbps * 1.1 + (input.hasAudio ? rendition.audioBitrateKbps : 0)) *
-        1000,
+      (rendition.videoBitrateKbps * 1.1 + (input.hasAudio ? rendition.audioBitrateKbps : 0)) * 1000,
     );
     const codecs = input.hasAudio
       ? `${HLS_VIDEO_CODEC_ATTRIBUTE},${HLS_AUDIO_CODEC_ATTRIBUTE}`

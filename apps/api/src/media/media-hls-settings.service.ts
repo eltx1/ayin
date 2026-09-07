@@ -17,7 +17,9 @@ export interface MediaHlsOperationalSettings {
 
 @Injectable()
 export class MediaHlsSettingsService {
-  constructor(@Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService) {}
+  constructor(
+    @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
+  ) {}
 
   async resolve(): Promise<MediaHlsOperationalSettings> {
     const [

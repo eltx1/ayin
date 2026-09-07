@@ -49,13 +49,7 @@ export const MEDIA_RENDITION_LADDER = [
 
 export type MediaRenditionIdentity = (typeof MEDIA_RENDITION_LADDER)[number]["identity"];
 export type MediaPlaybackOutputStatus =
-  | "PLANNED"
-  | "PROCESSING"
-  | "UPLOADING"
-  | "VERIFYING"
-  | "READY"
-  | "FAILED"
-  | "REMOVED";
+  "PLANNED" | "PROCESSING" | "UPLOADING" | "VERIFYING" | "READY" | "FAILED" | "REMOVED";
 export type MediaPlaybackGenerationStatus = "BUILDING" | "READY" | "FAILED" | "SUPERSEDED";
 
 export interface MediaSourceDimensions {

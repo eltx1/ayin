@@ -71,8 +71,14 @@ export class MediaProcessingExecutorService {
         await this.requireOwnedStage(job.id, workerId, "VERIFYING", "RECOVERING_FINAL_OBJECT", 90);
         await this.storage.downloadToFile(job.outputR2ObjectKey, outputPath);
         canonicalMetadata = await this.probe(outputPath);
-        if (!canonicalMetadata.width || !canonicalMetadata.height || !canonicalMetadata.videoCodec) {
-          throw new Error("The existing canonical R2 object does not contain a readable video stream.");
+        if (
+          !canonicalMetadata.width ||
+          !canonicalMetadata.height ||
+          !canonicalMetadata.videoCodec
+        ) {
+          throw new Error(
+            "The existing canonical R2 object does not contain a readable video stream.",
+          );
         }
       } else {
         if (!job.inputR2ObjectKey) {
@@ -104,7 +110,11 @@ export class MediaProcessingExecutorService {
           timeoutMs: this.ffmpegTimeoutMs,
         });
         canonicalMetadata = await this.probe(outputPath);
-        if (!canonicalMetadata.width || !canonicalMetadata.height || !canonicalMetadata.videoCodec) {
+        if (
+          !canonicalMetadata.width ||
+          !canonicalMetadata.height ||
+          !canonicalMetadata.videoCodec
+        ) {
           throw new Error("FFmpeg did not produce a readable canonical video stream.");
         }
 
