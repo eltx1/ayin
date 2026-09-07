@@ -181,8 +181,9 @@ export class MediaAdaptiveProcessingService {
         "application/x-mpegURL",
       ]);
       const downloadedMaster = await this.storage.downloadText(generation.hlsMasterR2ObjectKey);
-      if (downloadedMaster !== master)
+      if (downloadedMaster !== master) {
         throw new Error("HLS master manifest failed byte verification.");
+      }
       await this.adaptiveLifecycle.setMasterStatus(generation.id, "READY");
       const ready = await this.adaptiveLifecycle.markReadyIfComplete(generation.id);
       if (!ready) throw new Error("HLS generation could not satisfy the atomic READY invariant.");
@@ -205,15 +206,17 @@ export class MediaAdaptiveProcessingService {
       for (const rendition of generation.renditions) {
         if (!(await this.verifyRemoteRendition(generation, rendition))) return false;
       }
-      const expectedMaster = buildHlsMasterManifest(generation.renditions.map(toPlannedRendition), {
-        hasAudio: true,
-      });
+      const plannedRenditions = generation.renditions.map(toPlannedRendition);
+      const expectedMasters = [
+        buildHlsMasterManifest(plannedRenditions, { hasAudio: true }),
+        buildHlsMasterManifest(plannedRenditions, { hasAudio: false }),
+      ];
       await this.verifyObject(generation.hlsMasterR2ObjectKey, null, [
         HLS_PLAYLIST_CONTENT_TYPE,
         "application/x-mpegURL",
       ]);
       const master = await this.storage.downloadText(generation.hlsMasterR2ObjectKey);
-      return master === expectedMaster || master.includes("#EXT-X-STREAM-INF:");
+      return expectedMasters.includes(master);
     } catch {
       return false;
     }
