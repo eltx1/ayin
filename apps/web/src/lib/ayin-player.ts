@@ -23,6 +23,12 @@ export interface AyinPlayerUpNext {
   detail?: string | undefined;
 }
 
+export interface AyinPlayerRenditionMetadata {
+  label: string;
+  height?: number | null | undefined;
+  bitrateKbps?: number | null | undefined;
+}
+
 export type AyinPlayerAnalyticsEvent =
   | { type: "play"; videoId: string }
   | { type: "pause"; videoId: string; positionMs: number }
@@ -32,7 +38,25 @@ export type AyinPlayerAnalyticsEvent =
   | { type: "complete"; videoId: string }
   | { type: "next"; videoId: string }
   | { type: "error"; videoId: string; message: string }
-  | { type: "ad_mode"; videoId: string; active: boolean };
+  | { type: "ad_mode"; videoId: string; active: boolean }
+  | { type: "playback_protocol"; videoId: string; protocol: "HLS" | "MP4" }
+  | {
+      type: "quality_switch";
+      videoId: string;
+      selection: "AUTO" | "MANUAL";
+      automatic: boolean;
+      rendition: AyinPlayerRenditionMetadata | null;
+    }
+  | {
+      type: "hls_fatal";
+      videoId: string;
+      reason: "NETWORK" | "MEDIA" | "MANIFEST" | "STARTUP" | "UNSUPPORTED" | "OTHER";
+    }
+  | {
+      type: "fallback_mp4";
+      videoId: string;
+      reason: "NETWORK" | "MEDIA" | "MANIFEST" | "STARTUP" | "UNSUPPORTED" | "OTHER";
+    };
 
 export interface AyinPlayerAnalytics {
   emit(event: AyinPlayerAnalyticsEvent): void;
@@ -50,6 +74,17 @@ export interface PublicPlaybackResponse {
     publishedAt: string | null;
     channel: { id: string; handle: string; name: string };
     source: { objectKey: string; mimeType: string };
+    adaptiveSource: {
+      objectKey: string;
+      mimeType: "application/vnd.apple.mpegurl";
+      renditions: Array<{
+        id: string;
+        label: string;
+        width: number;
+        height: number;
+        bitrateKbps: number;
+      }>;
+    } | null;
     captions: Array<{
       id: string;
       objectKey: string;
@@ -70,5 +105,6 @@ export interface PublicPlaybackResponse {
   playerPolicy: {
     progressSaveIntervalMs: number;
     completionThresholdPercent: number;
+    hlsPlaybackEnabled: boolean;
   };
 }
