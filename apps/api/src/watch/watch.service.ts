@@ -1,9 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 
 const playableStates = ["VALIDATED"] as const;
+const HLS_PLAYBACK_FLAG = "player.hls.enabled";
 
 export class WatchError extends Error {
   constructor(
@@ -27,6 +29,7 @@ export class WatchService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
+    @Inject(FeatureFlagService) private readonly featureFlags: FeatureFlagService,
   ) {}
 
   async getPublicPlayback(slug: string) {
@@ -82,6 +85,35 @@ export class WatchService {
       );
     }
 
+    const hlsPlaybackEnabled = await this.featureFlags.isEnabled(HLS_PLAYBACK_FLAG);
+    const playbackGeneration = hlsPlaybackEnabled
+      ? await this.database.client.mediaPlaybackGeneration.findFirst({
+          where: {
+            videoId: video.id,
+            status: "READY",
+            fallbackStatus: "READY",
+            hlsMasterStatus: "READY",
+            renditions: { some: { status: "READY", protocol: "HLS" } },
+          },
+          orderBy: { generation: "desc" },
+          select: {
+            fallbackR2ObjectKey: true,
+            hlsMasterR2ObjectKey: true,
+            renditions: {
+              where: { status: "READY", protocol: "HLS" },
+              orderBy: [{ height: "asc" }, { videoBitrateKbps: "asc" }],
+              select: {
+                identity: true,
+                width: true,
+                height: true,
+                videoBitrateKbps: true,
+                audioBitrateKbps: true,
+              },
+            },
+          },
+        })
+      : null;
+
     const captions = video.mediaAssets
       .filter(
         (asset) =>
@@ -119,6 +151,21 @@ export class WatchService {
       select: { id: true, slug: true, title: true, durationMs: true },
     });
 
+    const adaptiveSource =
+      playbackGeneration && playbackGeneration.renditions.length > 0
+        ? {
+            objectKey: playbackGeneration.hlsMasterR2ObjectKey,
+            mimeType: "application/vnd.apple.mpegurl" as const,
+            renditions: playbackGeneration.renditions.map((rendition) => ({
+              id: rendition.identity,
+              label: `${rendition.height}p`,
+              width: rendition.width,
+              height: rendition.height,
+              bitrateKbps: rendition.videoBitrateKbps + rendition.audioBitrateKbps,
+            })),
+          }
+        : null;
+
     return {
       video: {
         id: video.id,
@@ -133,9 +180,10 @@ export class WatchService {
           name: video.channel.name,
         },
         source: {
-          objectKey: source.r2ObjectKey,
-          mimeType: source.mimeType,
+          objectKey: playbackGeneration?.fallbackR2ObjectKey ?? source.r2ObjectKey,
+          mimeType: "video/mp4",
         },
+        adaptiveSource,
         captions,
         chapters: [],
       },
