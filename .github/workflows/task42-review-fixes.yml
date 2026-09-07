@@ -27,59 +27,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Apply review fixes
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('apps/api/src/media/media-adaptive-rollout.service.test.ts')
-          text = path.read_text()
-          old = '''function createService() {
-            const jobs = { count: vi.fn() };
-            const database = {
-              client: {
-                mediaProcessingJob: jobs,
-                $transaction: vi.fn(),
-              },
-            };
-            const service = new MediaAdaptiveRolloutService(
-              database as never,
-              {} as never,
-              {} as never,
-              {} as never,
-              {} as never,
-              {} as never,
-            );
-            return { service, jobs };
-          }
-'''
-          new = '''function createService() {
-            const jobs = { count: vi.fn() };
-            const tx = {
-              $executeRawUnsafe: vi.fn().mockResolvedValue(0),
-              mediaProcessingJob: jobs,
-              adminAuditLog: { create: vi.fn() },
-            };
-            const database = {
-              client: {
-                mediaProcessingJob: jobs,
-                mediaPlaybackGeneration: { findMany: vi.fn().mockResolvedValue([]) },
-                video: { findMany: vi.fn().mockResolvedValue([]) },
-                $transaction: vi.fn(async (callback: (value: typeof tx) => unknown) => callback(tx)),
-              },
-            };
-            const service = new MediaAdaptiveRolloutService(
-              database as never,
-              {} as never,
-              {} as never,
-              {} as never,
-              {} as never,
-              {} as never,
-            );
-            return { service, jobs };
-          }
-'''
-          if old not in text:
-              raise SystemExit('createService fixture anchor missing')
-          path.write_text(text.replace(old, new, 1))
-          PY
           python scripts/task42_review_fixes.py
           pnpm exec prettier --write apps/api/src/admin/admin-media-processing.controller.ts apps/api/src/media/media-adaptive-rollout.service.ts apps/api/src/media/media-adaptive-rollout.service.test.ts apps/api/src/media/media-processing-queue.service.ts
           pnpm packages:build
