@@ -59,7 +59,7 @@ describe("Task 40 HLS contracts", () => {
     expect(manifest.indexOf("360p/index.m3u8")).toBeLessThan(manifest.indexOf("720p/index.m3u8"));
   });
 
-  it("accepts only deterministic VOD segment references during verification", () => {
+  it("accepts only deterministic contiguous VOD segment references during verification", () => {
     const playlist = [
       "#EXTM3U",
       "#EXT-X-TARGETDURATION:6",
@@ -79,6 +79,12 @@ describe("Task 40 HLS contracts", () => {
     expect(() => parseHlsMediaPlaylistSegments(playlist.replace("#EXT-X-ENDLIST", ""))).toThrow(
       /ENDLIST/,
     );
+    expect(() =>
+      parseHlsMediaPlaylistSegments(playlist.replace("segment-000002.ts", "segment-000003.ts")),
+    ).toThrow(/missing or out-of-order/);
+    expect(() =>
+      parseHlsMediaPlaylistSegments(playlist.replace("segment-000001.ts", "segment-000002.ts")),
+    ).toThrow(/missing or out-of-order/);
   });
 
   it("builds FFmpeg HLS arguments without shell interpolation or arbitrary command strings", () => {
