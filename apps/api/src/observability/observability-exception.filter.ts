@@ -1,4 +1,10 @@
-import { Catch, HttpException, type ArgumentsHost, type ExceptionFilter, Inject } from "@nestjs/common";
+import {
+  Catch,
+  HttpException,
+  type ArgumentsHost,
+  type ExceptionFilter,
+  Inject,
+} from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
 import type { FastifyRequest } from "fastify";
 
