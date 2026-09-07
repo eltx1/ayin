@@ -30,7 +30,6 @@ export class MediaHlsSettingsService {
       enabled,
       newUploadsEnabled,
       backfillEnabled,
-      backfillPaused,
       enable360p,
       enable480p,
       enable720p,
@@ -52,7 +51,6 @@ export class MediaHlsSettingsService {
       this.settings.get("mediaHlsEnabled"),
       this.settings.get("mediaHlsNewUploadsEnabled"),
       this.settings.get("mediaHlsBackfillEnabled"),
-      this.settings.get("mediaHlsBackfillPaused"),
       this.settings.get("mediaHls360pEnabled"),
       this.settings.get("mediaHls480pEnabled"),
       this.settings.get("mediaHls720pEnabled"),
@@ -78,9 +76,12 @@ export class MediaHlsSettingsService {
     if (enable720p as boolean) allowedIdentities.push("720p");
     if (enable1080p as boolean) allowedIdentities.push("1080p");
 
+    // The queue owns pause/resume semantics: paused backfill jobs are not claimed, while
+    // already-claimed work is allowed to finish safely. The generation service therefore
+    // only checks the durable backfill enable switch once a worker owns a backfill job.
     const rolloutEnabled = job
       ? isAdaptiveBackfillJob(job)
-        ? (backfillEnabled as boolean) && !(backfillPaused as boolean)
+        ? (backfillEnabled as boolean)
         : (newUploadsEnabled as boolean)
       : true;
 
