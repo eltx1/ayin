@@ -153,6 +153,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         );
         return true;
       } catch {
+        emit(slot, "ERROR", "IMA_PLAYBACK_EXCEPTION");
         setAdActive(false);
         setStatus(null);
         return false;
