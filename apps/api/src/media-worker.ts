@@ -28,7 +28,6 @@ try {
 } catch (error) {
   logger.event("error", "media_worker.fatal", {
     errorName: error instanceof Error ? error.name : typeof error,
-    message: error instanceof Error ? error.message : "Unknown media worker fatal error",
   });
   process.exitCode = 1;
 } finally {
