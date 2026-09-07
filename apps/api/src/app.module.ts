@@ -12,6 +12,7 @@ import { DatabaseModule } from "./database/database.module.js";
 import { DiscoveryModule } from "./discovery/discovery.module.js";
 import { LiveModule } from "./live/live.module.js";
 import { MediaModule } from "./media/media.module.js";
+import { ObservabilityModule } from "./observability/observability.module.js";
 import { PlatformConfigModule } from "./platform-config/platform-config.module.js";
 import { RecommendationModule } from "./recommendations/recommendation.module.js";
 import { RevenueModule } from "./revenue/revenue.module.js";
@@ -25,6 +26,7 @@ import { WatchModule } from "./watch/watch.module.js";
   imports: [
     DatabaseModule,
     PlatformConfigModule,
+    ObservabilityModule,
     AuthModule,
     AdminModule,
     AdsModule,

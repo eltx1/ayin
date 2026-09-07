@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("node:fs");
 const path = require("node:path");
 const { loadEnvFile } = require("./env-file.cjs");
 
@@ -9,6 +10,17 @@ const apiEnvFile = process.env.AYIN_API_ENV_FILE || "/home/ayin/env/api.env";
 
 const webEnv = loadEnvFile(webEnvFile);
 const apiEnv = loadEnvFile(apiEnvFile);
+
+function releaseSha() {
+  try {
+    const head = fs.readFileSync(path.join(currentDir, ".git", "HEAD"), "utf8").trim();
+    if (/^[0-9a-f]{40}$/i.test(head)) return head.toLowerCase();
+  } catch {}
+  const fallback = process.env.AYIN_RELEASE_SHA || "";
+  return /^[0-9a-f]{40}$/i.test(fallback) ? fallback.toLowerCase() : "unknown";
+}
+
+const currentReleaseSha = releaseSha();
 
 module.exports = {
   apps: [
@@ -21,6 +33,8 @@ module.exports = {
       env: {
         ...webEnv,
         NODE_ENV: "production",
+        AYIN_RELEASE_SHA: currentReleaseSha,
+        AYIN_SERVICE_NAME: "ayin-web",
       },
       exec_mode: "fork",
       instances: 1,
@@ -43,6 +57,8 @@ module.exports = {
         APP_ENV: "production",
         API_HOST: "127.0.0.1",
         PORT: "4000",
+        AYIN_RELEASE_SHA: currentReleaseSha,
+        AYIN_SERVICE_NAME: "ayin-api",
       },
       exec_mode: "fork",
       instances: 1,
@@ -63,6 +79,10 @@ module.exports = {
         ...apiEnv,
         NODE_ENV: "production",
         APP_ENV: "production",
+        AYIN_RELEASE_SHA: currentReleaseSha,
+        AYIN_SERVICE_NAME: "ayin-media-worker",
+        MEDIA_WORKER_HEARTBEAT_PATH:
+          apiEnv.MEDIA_WORKER_HEARTBEAT_PATH || "/tmp/ayin-media-worker-heartbeat.json",
         MEDIA_PROCESSING_WORKDIR: apiEnv.MEDIA_PROCESSING_WORKDIR || "/tmp/ayin-media-processing",
         FFMPEG_PATH: apiEnv.FFMPEG_PATH || "/home/ayin/bin/ffmpeg",
         FFPROBE_PATH: apiEnv.FFPROBE_PATH || "/home/ayin/bin/ffprobe",

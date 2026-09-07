@@ -14,6 +14,7 @@ import {
 } from "./admin-governance.controller.js";
 import { AdminGovernanceService } from "./admin-governance.service.js";
 import { AdminMediaProcessingController } from "./admin-media-processing.controller.js";
+import { AdminObservabilityController } from "./admin-observability.controller.js";
 import { AdminProductController, PublicProductController } from "./admin-product.controller.js";
 import { AdminProductService } from "./admin-product.service.js";
 import { AdminScopedDirectoryController } from "./admin-scoped-directory.controller.js";
@@ -30,6 +31,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminControlController,
     AdminGovernanceController,
     AdminMediaProcessingController,
+    AdminObservabilityController,
     AdminScopedDirectoryController,
     SupportTicketController,
     AdminProductController,
