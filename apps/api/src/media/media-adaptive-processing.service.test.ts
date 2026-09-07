@@ -346,14 +346,25 @@ describe("Task 40 adaptive processing", () => {
     const playlistText = validMediaPlaylist();
     const wrongSilentMaster = buildHlsMasterManifest(state.renditions, { hasAudio: false });
     const correctAudioMaster = buildHlsMasterManifest(state.renditions, { hasAudio: true });
-    const headObject = vi.fn().mockImplementation(async (key: string) => ({
-      sizeBytes: key === state.hlsMasterR2ObjectKey ? Buffer.byteLength(wrongSilentMaster) : 100,
-      contentType: key.endsWith(".ts")
-        ? "video/mp2t"
-        : key.endsWith(".m3u8")
-          ? "application/vnd.apple.mpegurl"
-          : "video/mp4",
-    }));
+    let masterHeads = 0;
+    const headObject = vi.fn().mockImplementation(async (key: string) => {
+      if (key === state.hlsMasterR2ObjectKey) {
+        masterHeads += 1;
+        const currentMaster = masterHeads === 1 ? wrongSilentMaster : correctAudioMaster;
+        return {
+          sizeBytes: Buffer.byteLength(currentMaster),
+          contentType: "application/vnd.apple.mpegurl",
+        };
+      }
+      return {
+        sizeBytes: 100,
+        contentType: key.endsWith(".ts")
+          ? "video/mp2t"
+          : key.endsWith(".m3u8")
+            ? "application/vnd.apple.mpegurl"
+            : "video/mp4",
+      };
+    });
     let masterReads = 0;
     const downloadText = vi.fn().mockImplementation(async (key: string) => {
       if (key === state.hlsMasterR2ObjectKey) {
