@@ -1,0 +1,25 @@
+[Unit]
+Description=AYIN verified encrypted PostgreSQL backup
+Documentation=file:/home/ayin/htdocs/current/docs/TASK44_BACKUP_RESTORE.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ayin
+Group=ayin
+UMask=0077
+ExecStart=/home/ayin/htdocs/current/deploy/postgres/backup-production.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ayin/backup-runtime /home/ayin/backup-status
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+TimeoutStartSec=3h
