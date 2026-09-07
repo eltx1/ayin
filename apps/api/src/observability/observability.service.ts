@@ -42,14 +42,20 @@ export class ObservabilityService {
     return this.telemetry.status();
   }
 
-  recordRequest(input: { method: string; path: string; statusCode: number; latencyMs: number }): void {
+  recordRequest(input: {
+    method: string;
+    path: string;
+    statusCode: number;
+    latencyMs: number;
+  }): void {
     const now = Date.now();
     this.apiEvents.push({ at: now, latencyMs: input.latencyMs, statusCode: input.statusCode });
     this.prune(now);
     if (input.statusCode >= 400) {
       const errorClass = classifyError(null, input.path, input.statusCode);
       this.increment(`http.${errorClass}`);
-      if (input.path.startsWith("/media") || input.path.includes("upload")) this.increment("media.upload_error");
+      if (input.path.startsWith("/media") || input.path.includes("upload"))
+        this.increment("media.upload_error");
       if (input.statusCode === 401 || input.statusCode === 403) this.increment("auth.error");
       if (input.path.startsWith("/ads")) this.increment("ads.http_error");
     }
@@ -140,7 +146,10 @@ export class ObservabilityService {
       }),
     ]);
     const queueCounts = Object.fromEntries(queueRows.map((row) => [row.status, row._count._all]));
-    const activeJobs = ACTIVE_MEDIA_STATUSES.reduce((sum, status) => sum + (queueCounts[status] ?? 0), 0);
+    const activeJobs = ACTIVE_MEDIA_STATUSES.reduce(
+      (sum, status) => sum + (queueCounts[status] ?? 0),
+      0,
+    );
     const statusClasses = { "1xx": 0, "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0 };
     for (const event of this.apiEvents) statusClasses[statusClass(event.statusCode)] += 1;
     const latencies = this.apiEvents.map((event) => event.latencyMs).sort((a, b) => a - b);
@@ -217,7 +226,8 @@ export class ObservabilityService {
       return { status: "unknown" as const, reason: "settings_unavailable" };
     }
     if (!enabled) return { status: "disabled" as const };
-    const heartbeatPath = process.env.MEDIA_WORKER_HEARTBEAT_PATH ?? "/tmp/ayin-media-worker-heartbeat.json";
+    const heartbeatPath =
+      process.env.MEDIA_WORKER_HEARTBEAT_PATH ?? "/tmp/ayin-media-worker-heartbeat.json";
     try {
       const parsed = JSON.parse(await readFile(heartbeatPath, "utf8")) as {
         heartbeatAt?: string;
@@ -225,9 +235,12 @@ export class ObservabilityService {
         activeJobs?: number;
       };
       const heartbeatAt = Date.parse(parsed.heartbeatAt ?? "");
-      const ageMs = Number.isFinite(heartbeatAt) ? Date.now() - heartbeatAt : Number.POSITIVE_INFINITY;
+      const ageMs = Number.isFinite(heartbeatAt)
+        ? Date.now() - heartbeatAt
+        : Number.POSITIVE_INFINITY;
       const currentRelease = releaseSha();
-      const releaseMatchesApi = currentRelease === "unknown" || parsed.releaseSha === currentRelease;
+      const releaseMatchesApi =
+        currentRelease === "unknown" || parsed.releaseSha === currentRelease;
       const fresh = ageMs >= 0 && ageMs <= WORKER_HEARTBEAT_MAX_AGE_MS;
       const healthy = fresh && (process.env.APP_ENV !== "production" || releaseMatchesApi);
       return {

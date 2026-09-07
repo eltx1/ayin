@@ -31,12 +31,16 @@ export function registerObservabilityHooks(
       latencyMs,
     });
     if (HEALTH_PATHS.has(path) && reply.statusCode < 400) return;
-    logger.event(reply.statusCode >= 500 ? "error" : reply.statusCode >= 400 ? "warn" : "info", "http.request", {
-      method: request.method,
-      path,
-      statusCode: reply.statusCode,
-      latencyMs: Math.round(latencyMs * 100) / 100,
-    });
+    logger.event(
+      reply.statusCode >= 500 ? "error" : reply.statusCode >= 400 ? "warn" : "info",
+      "http.request",
+      {
+        method: request.method,
+        path,
+        statusCode: reply.statusCode,
+        latencyMs: Math.round(latencyMs * 100) / 100,
+      },
+    );
   });
 }
 

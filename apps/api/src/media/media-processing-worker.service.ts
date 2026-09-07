@@ -91,7 +91,8 @@ export class MediaProcessingWorkerService {
   }
 
   private async writeHeartbeat(status: "running" | "stopping"): Promise<void> {
-    const heartbeatPath = process.env.MEDIA_WORKER_HEARTBEAT_PATH ?? "/tmp/ayin-media-worker-heartbeat.json";
+    const heartbeatPath =
+      process.env.MEDIA_WORKER_HEARTBEAT_PATH ?? "/tmp/ayin-media-worker-heartbeat.json";
     const temporaryPath = `${heartbeatPath}.${process.pid}.tmp`;
     try {
       await writeFile(

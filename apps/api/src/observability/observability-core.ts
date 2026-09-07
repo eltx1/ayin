@@ -1,7 +1,9 @@
 import { HttpException } from "@nestjs/common";
 
-const SENSITIVE_KEY = /(pass(word|phrase)?|authorization|cookie|token|session|stream.?key|api.?key|secret|client.?secret|private.?key|bank|card|iban|routing|kyc|payout|financial|account.?number)/i;
-const SECRET_ASSIGNMENT = /\b(password|passphrase|authorization|token|session(?:token)?|reset(?:token)?|stream[_-]?key|api[_-]?key|secret|client[_-]?secret|private[_-]?key|bank(?:account)?|card(?:number)?|iban|routing(?:number)?|kyc|payout|financial|account[_-]?number)\b\s*[:=]\s*([^\s,;]+)/gi;
+const SENSITIVE_KEY =
+  /(pass(word|phrase)?|authorization|cookie|token|session|stream.?key|api.?key|secret|client.?secret|private.?key|bank|card|iban|routing|kyc|payout|financial|account.?number)/i;
+const SECRET_ASSIGNMENT =
+  /\b(password|passphrase|authorization|token|session(?:token)?|reset(?:token)?|stream[_-]?key|api[_-]?key|secret|client[_-]?secret|private[_-]?key|bank(?:account)?|card(?:number)?|iban|routing(?:number)?|kyc|payout|financial|account[_-]?number)\b\s*[:=]\s*([^\s,;]+)/gi;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
 const IBAN = /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g;
@@ -58,11 +60,16 @@ export function classifyError(error: unknown, path = "", statusCode?: number): E
   if (status === 404) return "not_found";
   if (status === 409) return "conflict";
   if (status === 429) return "rate_limit";
-  if (lowerPath.includes("/ads") || message.includes("ima") || message.includes("advert")) return "advertising";
-  if (lowerPath.includes("/media") || lowerPath.includes("/upload") || message.includes("ffmpeg")) return "media";
-  if (message.includes("prisma") || message.includes("database") || message.includes("postgres")) return "database";
-  if (message.includes("r2") || message.includes("storage") || message.includes("object")) return "storage";
-  if (message.includes("config") || message.includes("environment") || message.includes("required")) return "configuration";
+  if (lowerPath.includes("/ads") || message.includes("ima") || message.includes("advert"))
+    return "advertising";
+  if (lowerPath.includes("/media") || lowerPath.includes("/upload") || message.includes("ffmpeg"))
+    return "media";
+  if (message.includes("prisma") || message.includes("database") || message.includes("postgres"))
+    return "database";
+  if (message.includes("r2") || message.includes("storage") || message.includes("object"))
+    return "storage";
+  if (message.includes("config") || message.includes("environment") || message.includes("required"))
+    return "configuration";
   if (status && status >= 500) return "dependency";
   return "internal";
 }

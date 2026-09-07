@@ -4,7 +4,10 @@ const API = "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
 
 test("API liveness, readiness and request IDs expose safe diagnostics", async () => {
-  const api = await playwrightRequest.newContext({ baseURL: API, extraHTTPHeaders: { origin: WEB } });
+  const api = await playwrightRequest.newContext({
+    baseURL: API,
+    extraHTTPHeaders: { origin: WEB },
+  });
   const requestId = "e2e-observability-request-1234";
   const live = await api.get("/health/live", { headers: { "x-request-id": requestId } });
   expect(live.ok()).toBeTruthy();
@@ -21,7 +24,11 @@ test("API liveness, readiness and request IDs expose safe diagnostics", async ()
   expect(ready.ok()).toBeTruthy();
   const readyBody = (await ready.json()) as {
     status: string;
-    checks: { database: { status: string }; configuration: { status: string }; worker: { status: string } };
+    checks: {
+      database: { status: string };
+      configuration: { status: string };
+      worker: { status: string };
+    };
   };
   expect(readyBody.status).toBe("ready");
   expect(readyBody.checks.database.status).toBe("ok");
@@ -31,7 +38,10 @@ test("API liveness, readiness and request IDs expose safe diagnostics", async ()
 });
 
 test("invalid inbound trace IDs are replaced instead of reflected", async () => {
-  const api = await playwrightRequest.newContext({ baseURL: API, extraHTTPHeaders: { origin: WEB } });
+  const api = await playwrightRequest.newContext({
+    baseURL: API,
+    extraHTTPHeaders: { origin: WEB },
+  });
   const response = await api.get("/health", { headers: { "x-request-id": "token=secret value" } });
   expect(response.ok()).toBeTruthy();
   const reflected = response.headers()["x-request-id"];

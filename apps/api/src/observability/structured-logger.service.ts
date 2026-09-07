@@ -34,7 +34,11 @@ export class StructuredLoggerService implements LoggerService {
     this.write("fatal", message, optionalParams);
   }
 
-  event(level: "info" | "warn" | "error", event: string, fields: Record<string, unknown> = {}): void {
+  event(
+    level: "info" | "warn" | "error",
+    event: string,
+    fields: Record<string, unknown> = {},
+  ): void {
     this.writeRecord(level, event, fields);
   }
 
