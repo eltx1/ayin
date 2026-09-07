@@ -115,13 +115,7 @@ export class MediaProcessingExecutorService {
         throw new Error("The canonical R2 object failed size or content-type verification.");
       }
 
-      await this.requireOwnedStage(
-        job.id,
-        workerId,
-        "VERIFYING",
-        "GENERATING_AUTO_THUMBNAIL",
-        94,
-      );
+      await this.requireOwnedStage(job.id, workerId, "VERIFYING", "GENERATING_AUTO_THUMBNAIL", 94);
       try {
         const thumbnail = await this.thumbnails.ensureForCanonical({
           videoId: job.videoId,
