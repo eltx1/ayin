@@ -53,14 +53,41 @@ ENCRYPTED_FILE="$WORK_DIR/backup.dump.age"
 CHECKSUM_FILE="$WORK_DIR/backup.sha256"
 MANIFEST_FILE="$WORK_DIR/manifest.json"
 DUMP_FILE="$WORK_DIR/backup.dump"
-REPORT_PATH="${AYIN_RESTORE_REPORT_PATH:-$WORK_DIR/restore-report.json}"
+REPORT_ROOT="${AYIN_RESTORE_REPORT_DIR:-/var/tmp/ayin-restore-reports}"
+REPORT_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+REPORT_PATH="${AYIN_RESTORE_REPORT_PATH:-$REPORT_ROOT/ayin-restore-${REPORT_TIMESTAMP}-${RESTORE_DATABASE}.json}"
+[[ "$REPORT_PATH" != "$WORK_DIR" && "$REPORT_PATH" != "$WORK_DIR/"* ]] || \
+  ayin_backup_fail "restore report must be stored outside the temporary work directory"
 START_EPOCH="$(date +%s)"
 DATABASE_CREATED=0
 SUCCESS=0
 CURRENT_STAGE="download"
 
+write_failure_report() {
+  local exit_code="$1"
+  local report_dir
+  report_dir="$(dirname "$REPORT_PATH")"
+  install -d -m 700 "$report_dir" || return 0
+  jq -cn \
+    --arg status failure \
+    --arg completedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg objectKey "$OBJECT_KEY" \
+    --arg targetDatabase "$RESTORE_DATABASE" \
+    --arg releaseSha "$(ayin_release_sha)" \
+    --arg failedStage "$CURRENT_STAGE" \
+    --argjson exitCode "$exit_code" \
+    --argjson durationSeconds "$(( $(date +%s) - START_EPOCH ))" \
+    '{schemaVersion:1,status:$status,completedAt:$completedAt,objectKey:$objectKey,targetDatabase:$targetDatabase,releaseSha:$releaseSha,durationSeconds:$durationSeconds,failedStage:$failedStage,exitCode:$exitCode}' \
+    > "$REPORT_PATH.tmp" || return 0
+  chmod 600 "$REPORT_PATH.tmp" || true
+  mv "$REPORT_PATH.tmp" "$REPORT_PATH" || true
+}
+
 cleanup() {
   local exit_code=$?
+  if (( SUCCESS == 0 )); then
+    write_failure_report "$exit_code" || true
+  fi
   if (( DATABASE_CREATED == 1 )) && [[ "${AYIN_RESTORE_CLEANUP_DATABASE:-0}" == "1" ]]; then
     PGPASSWORD="$PGPASSWORD_TARGET" dropdb \
       -h "$PGHOST_TARGET" -p "$PGPORT_TARGET" -U "$PGUSER_TARGET" \
@@ -70,7 +97,16 @@ cleanup() {
   unset PGPASSWORD_TARGET AYIN_BACKUP_R2_SECRET_ACCESS_KEY AYIN_BACKUP_R2_ACCESS_KEY_ID DATABASE_URL
   return "$exit_code"
 }
-trap cleanup EXIT INT TERM
+
+on_signal() {
+  local exit_code="$1"
+  trap - INT TERM
+  exit "$exit_code"
+}
+
+trap cleanup EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 
 source_get() {
   local key="$1"
