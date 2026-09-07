@@ -29,84 +29,33 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           service = Path('apps/api/src/media/media-adaptive-rollout.service.ts')
           text = service.read_text()
-
-          stale = '''    if (mode === "STALE_PROCESSING") {
-              return { mode, ...(await this.queue.recoverStale()) };
-            }
-'''
-          guard = stale + '''    if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {
-              return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
-            }
-'''
+          stale = '    if (mode === "STALE_PROCESSING") {\n      return { mode, ...(await this.queue.recoverStale()) };\n    }\n'
+          guard_line = '    if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {\n      return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };\n    }\n'
           if 'return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };' not in text:
               if stale not in text:
                   raise SystemExit('recovery guard anchor missing')
-              text = text.replace(stale, guard, 1)
-
-          anchor = '''    const sourceIds = readyGenerations.flatMap((generation) =>
-              generation.sourceMediaAssetId ? [generation.sourceMediaAssetId] : [],
-            );
-'''
-          storage = '''    const [totalStorage, growthStorage] = await Promise.all([
-              this.database.client.mediaPlaybackGeneration.aggregate({
-                where: { status: "READY" },
-                _sum: { hlsOutputSizeBytes: true },
-              }),
-              this.database.client.mediaPlaybackGeneration.aggregate({
-                where: { status: "READY", readyAt: { gte: since } },
-                _sum: { hlsOutputSizeBytes: true },
-              }),
-            ]);
-            const sourceIds = readyGenerations.flatMap((generation) =>
-              generation.sourceMediaAssetId ? [generation.sourceMediaAssetId] : [],
-            );
-'''
+              text = text.replace(stale, stale + guard_line, 1)
+          anchor = '    const sourceIds = readyGenerations.flatMap((generation) =>\n      generation.sourceMediaAssetId ? [generation.sourceMediaAssetId] : [],\n    );\n'
+          storage = '    const [totalStorage, growthStorage] = await Promise.all([\n      this.database.client.mediaPlaybackGeneration.aggregate({\n        where: { status: "READY" },\n        _sum: { hlsOutputSizeBytes: true },\n      }),\n      this.database.client.mediaPlaybackGeneration.aggregate({\n        where: { status: "READY", readyAt: { gte: since } },\n        _sum: { hlsOutputSizeBytes: true },\n      }),\n    ]);\n' + anchor
           if 'const [totalStorage, growthStorage]' not in text:
               if anchor not in text:
                   raise SystemExit('metrics storage anchor missing')
               text = text.replace(anchor, storage, 1)
-
           text = text.replace('    let outputStorageBytes = 0n;\n', '')
           text = text.replace('      outputStorageBytes += generation.hlsOutputSizeBytes ?? 0n;\n', '')
-          text = text.replace(
-              '      outputStorageBytes: outputStorageBytes.toString(),\n',
-              '      outputStorageBytes: (totalStorage._sum.hlsOutputSizeBytes ?? 0n).toString(),\n      outputStorageGrowthBytes: (growthStorage._sum.hlsOutputSizeBytes ?? 0n).toString(),\n',
-          )
+          text = text.replace('      outputStorageBytes: outputStorageBytes.toString(),\n', '      outputStorageBytes: (totalStorage._sum.hlsOutputSizeBytes ?? 0n).toString(),\n      outputStorageGrowthBytes: (growthStorage._sum.hlsOutputSizeBytes ?? 0n).toString(),\n')
           service.write_text(text)
-
           test = Path('apps/api/src/media/media-adaptive-rollout.service.test.ts')
           text = test.read_text()
-          before = '''  it("does not enqueue when the generation kill switch is off", async () => {
-              const { service } = createService();
-              vi.spyOn(service, "controls").mockResolvedValue({ ...baseControls, generationEnabled: false });
-
-              const result = await service.enqueueBatch(2);
-
-              expect(result.enqueued).toBe(0);
-              expect(result.reason).toBe("BACKFILL_DISABLED_OR_PAUSED");
-            });
-'''
-          after = before + '''
-            it("does not requeue failed backfill recovery while rollout is paused", async () => {
-              const { service } = createService();
-              vi.spyOn(service, "controls").mockResolvedValue({ ...baseControls, backfillPaused: true });
-
-              const result = await service.recover("FAILED_BACKFILL", 2);
-
-              expect(result).toEqual({
-                mode: "FAILED_BACKFILL",
-                recovered: 0,
-                reason: "BACKFILL_DISABLED_OR_PAUSED",
-              });
-            });
-'''
-          if 'does not requeue failed backfill recovery while rollout is paused' not in text:
-              if before not in text:
-                  raise SystemExit('test anchor missing')
-              text = text.replace(before, after, 1)
+          marker = '  it("does not requeue failed backfill recovery while rollout is paused"'
+          if marker not in text:
+              closing = '\n});\n'
+              addition = '\n  it("does not requeue failed backfill recovery while rollout is paused", async () => {\n    const { service } = createService();\n    vi.spyOn(service, "controls").mockResolvedValue({ ...baseControls, backfillPaused: true });\n\n    const result = await service.recover("FAILED_BACKFILL", 2);\n\n    expect(result).toEqual({\n      mode: "FAILED_BACKFILL",\n      recovered: 0,\n      reason: "BACKFILL_DISABLED_OR_PAUSED",\n    });\n  });\n'
+              if not text.endswith(closing):
+                  raise SystemExit('test closing anchor missing')
+              text = text[:-len(closing)] + addition + closing
           test.write_text(text)
           PY
           pnpm exec prettier --write apps/api/src/media/media-adaptive-rollout.service.ts apps/api/src/media/media-adaptive-rollout.service.test.ts
