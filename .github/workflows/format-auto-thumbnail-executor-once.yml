@@ -1,0 +1,38 @@
+name: Auto-thumbnail formatting fix
+
+on:
+  push:
+    branches:
+      - feat/seo-auto-thumbnails-hardening
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feat/seo-auto-thumbnails-hardening
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install formatter
+        run: pnpm install --frozen-lockfile
+      - name: Format touched executor
+        run: pnpm exec prettier --write apps/api/src/media/media-processing-executor.service.ts
+      - name: Remove one-shot workflow
+        run: rm .github/workflows/format-auto-thumbnail-executor-once.yml
+      - name: Commit formatting
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/media/media-processing-executor.service.ts .github/workflows/format-auto-thumbnail-executor-once.yml
+          git commit -m "Format automatic thumbnail processing"
+          git push origin HEAD:feat/seo-auto-thumbnails-hardening
