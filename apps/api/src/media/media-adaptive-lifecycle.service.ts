@@ -157,7 +157,7 @@ export class MediaAdaptiveLifecycleService {
   }
 
   async reopenIfOwned(input: OwnedGenerationInput): Promise<boolean> {
-    return this.mutateIfOwned(input, async (tx) => {
+    return this.booleanMutationIfOwned(input, async (tx) => {
       const updated = await tx.mediaPlaybackGeneration.updateMany({
         where: { id: input.generationId, processingJobId: input.jobId },
         data: {
@@ -172,7 +172,7 @@ export class MediaAdaptiveLifecycleService {
   }
 
   async markFallbackReadyIfOwned(input: OwnedGenerationInput): Promise<boolean> {
-    return this.mutateIfOwned(input, async (tx) => {
+    return this.booleanMutationIfOwned(input, async (tx) => {
       const updated = await tx.mediaPlaybackGeneration.updateMany({
         where: { id: input.generationId, processingJobId: input.jobId },
         data: { fallbackStatus: "READY" },
@@ -187,7 +187,7 @@ export class MediaAdaptiveLifecycleService {
       status: MediaPlaybackOutputStatus;
     },
   ): Promise<boolean> {
-    return this.mutateIfOwned(input, async (tx, now) => {
+    return this.booleanMutationIfOwned(input, async (tx, now) => {
       const updated = await tx.mediaPlaybackRendition.updateMany({
         where: {
           id: input.renditionId,
@@ -206,7 +206,7 @@ export class MediaAdaptiveLifecycleService {
   async setMasterStatusIfOwned(
     input: OwnedGenerationInput & { status: MediaPlaybackOutputStatus },
   ): Promise<boolean> {
-    return this.mutateIfOwned(input, async (tx) => {
+    return this.booleanMutationIfOwned(input, async (tx) => {
       const updated = await tx.mediaPlaybackGeneration.updateMany({
         where: { id: input.generationId, processingJobId: input.jobId },
         data: { hlsMasterStatus: input.status },
@@ -218,7 +218,7 @@ export class MediaAdaptiveLifecycleService {
   async markFailedIfOwned(
     input: OwnedGenerationInput & { renditionId?: string },
   ): Promise<boolean> {
-    return this.mutateIfOwned(input, async (tx, now) => {
+    return this.booleanMutationIfOwned(input, async (tx, now) => {
       if (input.renditionId) {
         await tx.mediaPlaybackRendition.updateMany({
           where: {
@@ -271,6 +271,14 @@ export class MediaAdaptiveLifecycleService {
       return toGenerationState(updated, video.channelId);
     });
     return result.owned ? result.value : null;
+  }
+
+  private async booleanMutationIfOwned(
+    input: OwnedGenerationInput,
+    operation: (tx: Prisma.TransactionClient, now: Date) => Promise<boolean>,
+  ): Promise<boolean> {
+    const result = await this.mutateIfOwned(input, operation);
+    return result.owned && result.value;
   }
 
   private async mutateIfOwned<T>(
