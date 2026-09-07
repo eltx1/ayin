@@ -103,6 +103,7 @@ function serviceFixture(overrides?: {
   headObject?: ReturnType<typeof vi.fn>;
   downloadText?: ReturnType<typeof vi.fn>;
   markFailedIfOwned?: ReturnType<typeof vi.fn>;
+  setRenditionStatusIfOwned?: ReturnType<typeof vi.fn>;
 }) {
   const state = overrides?.generation ?? generation();
   const settings = {
@@ -110,12 +111,13 @@ function serviceFixture(overrides?: {
   };
   const adaptiveLifecycle = {
     loadOrCreate: vi.fn().mockResolvedValue(state),
-    markFallbackReady: vi.fn().mockResolvedValue(undefined),
-    reopen: vi.fn().mockResolvedValue(undefined),
-    setRenditionStatus: vi.fn().mockResolvedValue(undefined),
-    setMasterStatus: vi.fn().mockResolvedValue(undefined),
+    markFallbackReadyIfOwned: vi.fn().mockResolvedValue(true),
+    reopenIfOwned: vi.fn().mockResolvedValue(true),
+    setRenditionStatusIfOwned:
+      overrides?.setRenditionStatusIfOwned ?? vi.fn().mockResolvedValue(true),
+    setMasterStatusIfOwned: vi.fn().mockResolvedValue(true),
     markFailedIfOwned: overrides?.markFailedIfOwned ?? vi.fn().mockResolvedValue(true),
-    markReadyIfComplete: vi.fn().mockResolvedValue({ ...state, status: "READY" }),
+    markReadyIfCompleteIfOwned: vi.fn().mockResolvedValue({ ...state, status: "READY" }),
   };
   const processingLifecycle = {
     setOwnedStage: vi.fn().mockResolvedValue(true),
@@ -219,9 +221,13 @@ describe("Task 40 adaptive processing", () => {
 
   it("does not perform destructive cleanup after a stale worker loses its lease", async () => {
     const state = generation();
-    const transcode = vi.fn().mockRejectedValue(new Error("media worker lost its lease"));
+    const setRenditionStatusIfOwned = vi.fn().mockResolvedValue(false);
     const markFailedIfOwned = vi.fn().mockResolvedValue(false);
-    const fixture = serviceFixture({ generation: state, transcode, markFailedIfOwned });
+    const fixture = serviceFixture({
+      generation: state,
+      setRenditionStatusIfOwned,
+      markFailedIfOwned,
+    });
     const local = await canonicalFixture();
 
     await expect(
@@ -234,6 +240,16 @@ describe("Task 40 adaptive processing", () => {
       }),
     ).rejects.toThrow(/lost its lease/);
 
+    expect(setRenditionStatusIfOwned).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generationId: state.id,
+        renditionId: state.renditions[0]!.id,
+        jobId: "11111111-1111-4111-8111-111111111111",
+        workerId: "stale-worker",
+        status: "PROCESSING",
+      }),
+    );
+    expect(fixture.transcoder.transcode).not.toHaveBeenCalled();
     expect(markFailedIfOwned).toHaveBeenCalledWith(
       expect.objectContaining({
         generationId: state.id,
@@ -310,10 +326,60 @@ describe("Task 40 adaptive processing", () => {
     ).resolves.toBe(true);
 
     expect(transcode).not.toHaveBeenCalled();
-    expect(fixture.adaptiveLifecycle.setRenditionStatus).not.toHaveBeenCalledWith(
-      state.renditions[0]!.id,
-      "PROCESSING",
+    expect(fixture.adaptiveLifecycle.setRenditionStatusIfOwned).not.toHaveBeenCalledWith(
+      expect.objectContaining({ renditionId: state.renditions[0]!.id, status: "PROCESSING" }),
     );
-    expect(fixture.adaptiveLifecycle.markReadyIfComplete).toHaveBeenCalledWith(state.id);
+    expect(fixture.adaptiveLifecycle.markReadyIfCompleteIfOwned).toHaveBeenCalledWith({
+      generationId: state.id,
+      jobId: "11111111-1111-4111-8111-111111111111",
+      workerId: "worker-1",
+    });
+  });
+
+  it("rebuilds the master when recovered CODECS do not match the probed audio layout", async () => {
+    const baseState = generation("READY");
+    const state: AdaptiveGenerationState = {
+      ...baseState,
+      hlsMasterStatus: "READY",
+      renditions: baseState.renditions.map((rendition) => ({ ...rendition, status: "READY" })),
+    };
+    const playlistText = validMediaPlaylist();
+    const wrongSilentMaster = buildHlsMasterManifest(state.renditions, { hasAudio: false });
+    const correctAudioMaster = buildHlsMasterManifest(state.renditions, { hasAudio: true });
+    const headObject = vi.fn().mockImplementation(async (key: string) => ({
+      sizeBytes: key === state.hlsMasterR2ObjectKey ? Buffer.byteLength(wrongSilentMaster) : 100,
+      contentType: key.endsWith(".ts")
+        ? "video/mp2t"
+        : key.endsWith(".m3u8")
+          ? "application/vnd.apple.mpegurl"
+          : "video/mp4",
+    }));
+    let masterReads = 0;
+    const downloadText = vi.fn().mockImplementation(async (key: string) => {
+      if (key === state.hlsMasterR2ObjectKey) {
+        masterReads += 1;
+        return masterReads === 1 ? wrongSilentMaster : correctAudioMaster;
+      }
+      return playlistText;
+    });
+    const fixture = serviceFixture({ generation: state, headObject, downloadText });
+    const local = await canonicalFixture();
+
+    await expect(
+      fixture.service.process({
+        job: job(),
+        workerId: "worker-1",
+        workDirectory: local.directory,
+        canonicalPath: local.canonicalPath,
+        canonicalMetadata,
+      }),
+    ).resolves.toBe(true);
+
+    expect(fixture.transcoder.transcode).not.toHaveBeenCalled();
+    expect(fixture.storage.uploadFile).toHaveBeenCalledWith(
+      state.hlsMasterR2ObjectKey,
+      expect.stringMatching(/master\.m3u8$/),
+      "application/vnd.apple.mpegurl",
+    );
   });
 });
