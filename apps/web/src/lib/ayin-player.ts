@@ -105,6 +105,5 @@ export interface PublicPlaybackResponse {
   playerPolicy: {
     progressSaveIntervalMs: number;
     completionThresholdPercent: number;
-    hlsPlaybackEnabled: boolean;
   };
 }
