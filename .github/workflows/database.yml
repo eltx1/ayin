@@ -92,6 +92,7 @@ jobs:
           bash -n deploy/postgres/bootstrap-local-production.sh
           bash -n deploy/env/bootstrap-production-env.sh
           bash -n deploy/env/rotate-r2-credentials.sh
+          bash -n deploy/ensure-ffmpeg-runtime.sh
           node --check deploy/admin/bootstrap-first-superadmin.mjs
           node --check deploy/media/requeue-missing-content-length.mjs
           node --check deploy/env-file.cjs
@@ -136,6 +137,14 @@ jobs:
 
       - name: Run unit and schema tests
         run: pnpm test
+
+      - name: Install pinned FFmpeg integration runtime
+        run: |
+          set -euo pipefail
+          export AYIN_BIN_DIR="$RUNNER_TEMP/ayin-media-bin"
+          bash deploy/ensure-ffmpeg-runtime.sh
+          echo "FFMPEG_PATH=$AYIN_BIN_DIR/ffmpeg" >> "$GITHUB_ENV"
+          echo "FFPROBE_PATH=$AYIN_BIN_DIR/ffprobe" >> "$GITHUB_ENV"
 
       - name: Apply clean migrations and integration tests
         run: pnpm test:integration

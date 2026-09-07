@@ -1,5 +1,5 @@
-import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 
 import { Inject, Injectable, Logger } from "@nestjs/common";
 
@@ -24,8 +24,10 @@ export class MediaProcessingWorkerService {
   async run(): Promise<void> {
     this.logger.log(`AYIN media worker pool started on ${hostname()}:${process.pid}.`);
     while (!this.stopping) {
+      const capacity = await this.queue.capacity();
+      const localSlotLimit = Math.min(MAX_LOCAL_SLOTS, capacity.concurrentJobs);
       let claimedAny = false;
-      while (!this.stopping && this.active.size < MAX_LOCAL_SLOTS) {
+      while (!this.stopping && this.active.size < localSlotLimit) {
         const workerId = `${hostname()}:${process.pid}:${randomUUID()}`;
         const job = await this.queue.claimNext(workerId);
         if (!job) break;

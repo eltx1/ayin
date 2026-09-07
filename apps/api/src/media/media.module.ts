@@ -4,6 +4,8 @@ import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { DevelopmentMediaStorageAdapter } from "./development-media-storage.adapter.js";
+import { MediaAdaptiveLifecycleService } from "./media-adaptive-lifecycle.service.js";
+import { MediaAdaptiveProcessingService } from "./media-adaptive-processing.service.js";
 import { E2eMediaStorageAdapter } from "./e2e-media-storage.adapter.js";
 import {
   MEDIA_STORAGE_ADAPTER,
@@ -12,6 +14,8 @@ import {
 } from "./media-storage.adapter.js";
 import { loadMediaStorageConfig, type MediaStorageConfig } from "./media-storage.config.js";
 import { MediaAutoThumbnailService } from "./media-auto-thumbnail.service.js";
+import { MediaHlsSettingsService } from "./media-hls-settings.service.js";
+import { MediaHlsTranscoderService } from "./media-hls-transcoder.service.js";
 import { MediaProcessingExecutorService } from "./media-processing-executor.service.js";
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
@@ -43,6 +47,10 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MediaProcessingQueueService,
     MediaProcessingLifecycleService,
     MediaProcessingStorageService,
+    MediaAdaptiveLifecycleService,
+    MediaHlsSettingsService,
+    MediaHlsTranscoderService,
+    MediaAdaptiveProcessingService,
     MediaAutoThumbnailService,
     MediaProcessingExecutorService,
     MediaProcessingWorkerService,
@@ -54,6 +62,8 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MediaProcessingQueueService,
     MediaProcessingLifecycleService,
     MediaProcessingStorageService,
+    MediaAdaptiveLifecycleService,
+    MediaAdaptiveProcessingService,
     MediaProcessingExecutorService,
     MediaProcessingWorkerService,
   ],

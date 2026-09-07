@@ -21,6 +21,8 @@ runtime_ok() {
   [[ -x "$AYIN_BIN_DIR/ffmpeg" && -x "$AYIN_BIN_DIR/ffprobe" ]] || return 1
   "$AYIN_BIN_DIR/ffmpeg" -hide_banner -version 2>/dev/null | grep -F "ffmpeg version $FFMPEG_VERSION" >/dev/null || return 1
   "$AYIN_BIN_DIR/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -F "libx264" >/dev/null || return 1
+  "$AYIN_BIN_DIR/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -E "[[:space:]]aac[[:space:]]" >/dev/null || return 1
+  "$AYIN_BIN_DIR/ffmpeg" -hide_banner -muxers 2>/dev/null | grep -E "[[:space:]]hls[[:space:]]" >/dev/null || return 1
   "$AYIN_BIN_DIR/ffprobe" -hide_banner -version >/dev/null 2>&1 || return 1
 }
 

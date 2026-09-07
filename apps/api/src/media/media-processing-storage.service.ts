@@ -43,6 +43,25 @@ export class MediaProcessingStorageService {
     });
   }
 
+  async downloadText(key: string, maxBytes = 2 * 1024 * 1024): Promise<string> {
+    this.assertR2();
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1024 || maxBytes > 8 * 1024 * 1024) {
+      throw new Error("R2 text verification limit is outside the safe range.");
+    }
+    return this.withDeadline("text download", this.r2TransferTimeoutMs, async (signal) => {
+      const response = await new R2SigV4(this.config).request({ method: "GET", key, signal });
+      const declaredLength = Number(response.headers.get("content-length") ?? "0");
+      if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+        throw new Error("R2 text object exceeds the verification size limit.");
+      }
+      const text = await response.text();
+      if (Buffer.byteLength(text, "utf8") > maxBytes) {
+        throw new Error("R2 text object exceeds the verification size limit.");
+      }
+      return text;
+    });
+  }
+
   async uploadFile(key: string, filePath: string, contentType = "video/mp4"): Promise<void> {
     this.assertR2();
     const fileMetadata = await stat(filePath);
