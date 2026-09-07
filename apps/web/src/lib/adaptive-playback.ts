@@ -18,12 +18,7 @@ export interface AyinAdaptivePlaybackSession {
 }
 
 export type AyinHlsFailureReason =
-  | "NETWORK"
-  | "MEDIA"
-  | "MANIFEST"
-  | "STARTUP"
-  | "UNSUPPORTED"
-  | "OTHER";
+  "NETWORK" | "MEDIA" | "MANIFEST" | "STARTUP" | "UNSUPPORTED" | "OTHER";
 
 export interface AyinAdaptivePlaybackCallbacks {
   onReady?: (() => void) | undefined;
@@ -123,7 +118,7 @@ function loadHlsRuntime(): Promise<HlsConstructor> {
 export function supportsNativeHls(video: Pick<HTMLVideoElement, "canPlayType">): boolean {
   return Boolean(
     video.canPlayType("application/vnd.apple.mpegurl") ||
-      video.canPlayType("application/x-mpegURL"),
+    video.canPlayType("application/x-mpegURL"),
   );
 }
 

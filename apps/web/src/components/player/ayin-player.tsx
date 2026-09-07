@@ -673,11 +673,7 @@ export function AyinPlayer({
               type="button"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24">
-                {playing ? (
-                  <path d="M7 5h4v14H7zm6 0h4v14h-4z" />
-                ) : (
-                  <path d="M8 5.5v13l10-6.5z" />
-                )}
+                {playing ? <path d="M7 5h4v14H7zm6 0h4v14h-4z" /> : <path d="M8 5.5v13l10-6.5z" />}
               </svg>
             </button>
 

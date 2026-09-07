@@ -105,7 +105,16 @@ function bindLifecycle() {
 
 export function trackAnalyticsEvent(
   eventName: AnalyticsEventName,
-  input: Omit<Partial<QueuedEvent>, "clientEventId" | "schemaVersion" | "eventName" | "occurredAt" | "sessionId" | "source" | "deviceClass"> = {},
+  input: Omit<
+    Partial<QueuedEvent>,
+    | "clientEventId"
+    | "schemaVersion"
+    | "eventName"
+    | "occurredAt"
+    | "sessionId"
+    | "source"
+    | "deviceClass"
+  > = {},
 ) {
   if (typeof window === "undefined") return;
   bindLifecycle();
@@ -182,14 +191,26 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           started = true;
           break;
         case "pause":
-          trackAnalyticsEvent("VIDEO_PAUSE", { ...common, positionMs: event.positionMs, metadata: { protocol } });
+          trackAnalyticsEvent("VIDEO_PAUSE", {
+            ...common,
+            positionMs: event.positionMs,
+            metadata: { protocol },
+          });
           break;
         case "seek":
           lastProgressMs = event.positionMs;
-          trackAnalyticsEvent("VIDEO_SEEK", { ...common, positionMs: event.positionMs, metadata: { protocol } });
+          trackAnalyticsEvent("VIDEO_SEEK", {
+            ...common,
+            positionMs: event.positionMs,
+            metadata: { protocol },
+          });
           break;
         case "buffer":
-          trackAnalyticsEvent("VIDEO_BUFFER", { ...common, positionMs: event.positionMs, metadata: { protocol } });
+          trackAnalyticsEvent("VIDEO_BUFFER", {
+            ...common,
+            positionMs: event.positionMs,
+            metadata: { protocol },
+          });
           break;
         case "quality_switch":
           trackAnalyticsEvent("VIDEO_QUALITY_SWITCH", {
@@ -205,26 +226,46 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           });
           break;
         case "hls_fatal":
-          trackAnalyticsEvent("VIDEO_HLS_FATAL", { ...common, metadata: { protocol: "HLS", reason: event.reason } });
+          trackAnalyticsEvent("VIDEO_HLS_FATAL", {
+            ...common,
+            metadata: { protocol: "HLS", reason: event.reason },
+          });
           break;
         case "fallback_mp4":
           protocol = "MP4";
-          trackAnalyticsEvent("VIDEO_FALLBACK", { ...common, metadata: { from: "HLS", to: "MP4", reason: event.reason } });
+          trackAnalyticsEvent("VIDEO_FALLBACK", {
+            ...common,
+            metadata: { from: "HLS", to: "MP4", reason: event.reason },
+          });
           break;
         case "progress_checkpoint": {
-          const delta = lastProgressMs === null ? Math.min(15_000, event.positionMs) : Math.max(0, Math.min(60_000, event.positionMs - lastProgressMs));
+          const delta =
+            lastProgressMs === null
+              ? Math.min(15_000, event.positionMs)
+              : Math.max(0, Math.min(60_000, event.positionMs - lastProgressMs));
           lastProgressMs = event.positionMs;
-          trackAnalyticsEvent("VIDEO_PROGRESS", { ...common, positionMs: event.positionMs, durationDeltaMs: delta, metadata: { protocol } });
+          trackAnalyticsEvent("VIDEO_PROGRESS", {
+            ...common,
+            positionMs: event.positionMs,
+            durationDeltaMs: delta,
+            metadata: { protocol },
+          });
           break;
         }
         case "complete":
           trackAnalyticsEvent("VIDEO_COMPLETE", { ...common, metadata: { protocol } });
           break;
         case "error":
-          trackAnalyticsEvent("VIDEO_BUFFER", { ...common, metadata: { protocol, message: event.message.slice(0, 200) } });
+          trackAnalyticsEvent("VIDEO_BUFFER", {
+            ...common,
+            metadata: { protocol, message: event.message.slice(0, 200) },
+          });
           break;
         case "next":
-          trackAnalyticsEvent("CONTENT_CLICK", { ...common, metadata: { action: "next", protocol } });
+          trackAnalyticsEvent("CONTENT_CLICK", {
+            ...common,
+            metadata: { action: "next", protocol },
+          });
           break;
         case "ad_mode":
           break;

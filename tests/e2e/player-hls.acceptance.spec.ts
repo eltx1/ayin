@@ -26,7 +26,11 @@ function db<T>(command: string, payload: Record<string, unknown> = {}): T {
 
 async function installMediaHarness(
   page: Page,
-  options: { hlsMode?: "ready" | "malformed" | "unsupported"; nativeHls?: boolean; ima?: boolean } = {},
+  options: {
+    hlsMode?: "ready" | "malformed" | "unsupported";
+    nativeHls?: boolean;
+    ima?: boolean;
+  } = {},
 ) {
   const hlsMode = options.hlsMode ?? "ready";
   const nativeHls = options.nativeHls ?? false;
@@ -255,9 +259,7 @@ async function installMediaHarness(
 }
 
 async function harnessState(page: Page): Promise<HarnessState> {
-  return page.evaluate(() =>
-    (window as unknown as { __ayinHarness: HarnessState }).__ayinHarness,
-  );
+  return page.evaluate(() => (window as unknown as { __ayinHarness: HarnessState }).__ayinHarness);
 }
 
 async function mockNoAds(page: Page, videoId: string) {
@@ -306,7 +308,9 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     db("configure-hls-playback", { enabled: false });
   });
 
-  test("HLS available defaults to AUTO, exposes only available levels, autoplays and keeps keyboard controls", async ({ page }) => {
+  test("HLS available defaults to AUTO, exposes only available levels, autoplays and keeps keyboard controls", async ({
+    page,
+  }) => {
     await installMediaHarness(page);
     await mockNoAds(page, fixture.id);
     await page.goto(`/watch/${fixture.slug}`);
@@ -345,7 +349,9 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     });
   });
 
-  test("malformed HLS manifest falls back once to the generation canonical MP4", async ({ page }) => {
+  test("malformed HLS manifest falls back once to the generation canonical MP4", async ({
+    page,
+  }) => {
     await installMediaHarness(page, { hlsMode: "malformed" });
     await mockNoAds(page, fixture.id);
     await page.goto(`/watch/${fixture.slug}`);
@@ -368,7 +374,9 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
   });
 
-  test("Google IMA preroll completes on the same video element before HLS content resumes", async ({ page }) => {
+  test("Google IMA preroll completes on the same video element before HLS content resumes", async ({
+    page,
+  }) => {
     await installMediaHarness(page, { ima: true });
     await mockPreroll(page, fixture);
     await page.goto(`/watch/${fixture.slug}`);
@@ -402,7 +410,9 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await context.close();
   });
 
-  test("fatal HLS failure during playback resumes MP4 without a duplicate VIDEO_START", async ({ page }) => {
+  test("fatal HLS failure during playback resumes MP4 without a duplicate VIDEO_START", async ({
+    page,
+  }) => {
     const analyticsNames: string[] = [];
     await installMediaHarness(page);
     await mockNoAds(page, fixture.id);
@@ -417,9 +427,11 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
 
     await page.evaluate(() => {
-      const hls = (window as unknown as {
-        __ayinHlsInstance: { emit(event: string, data: unknown): void };
-      }).__ayinHlsInstance;
+      const hls = (
+        window as unknown as {
+          __ayinHlsInstance: { emit(event: string, data: unknown): void };
+        }
+      ).__ayinHlsInstance;
       hls.emit("error", { fatal: true, type: "otherError", details: "fatalDecodeFailure" });
     });
 
