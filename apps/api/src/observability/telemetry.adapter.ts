@@ -25,7 +25,8 @@ export class LocalTelemetryAdapter implements TelemetryAdapter {
     return { provider: "local", externalConnected: false };
   }
 
-  capture(_event: TelemetryEvent): void {
+  capture(event: TelemetryEvent): void {
+    void event;
     // Local structured logs and metrics remain the operational sink until a provider is explicitly configured.
   }
 }
