@@ -8,13 +8,17 @@ export interface RequestTraceContext {
 
 export const requestTraceStorage = new AsyncLocalStorage<RequestTraceContext>();
 
-const SAFE_TRACE_ID = /^[A-Za-z0-9._:-]{8,128}$/;
+const UUID_TRACE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const HEX_TRACE_ID = /^(?:[0-9a-f]{16}|[0-9a-f]{32})$/i;
+const ULID_TRACE_ID = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
 
 export function normalizeTraceId(value: unknown): string | null {
   const candidate = Array.isArray(value) ? value[0] : value;
   if (typeof candidate !== "string") return null;
   const trimmed = candidate.trim();
-  return SAFE_TRACE_ID.test(trimmed) ? trimmed : null;
+  return UUID_TRACE_ID.test(trimmed) || HEX_TRACE_ID.test(trimmed) || ULID_TRACE_ID.test(trimmed)
+    ? trimmed
+    : null;
 }
 
 export function createRequestTraceContext(headers: Record<string, unknown>): RequestTraceContext {
