@@ -1,0 +1,38 @@
+name: Task 40 format tests
+
+on:
+  push:
+    branches:
+      - task-40-hls-transcoding
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-40-hls-transcoding
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          pnpm install --frozen-lockfile
+      - name: Format Task 40 tests
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/media/media-adaptive-processing.service.test.ts \
+            apps/api/src/media/media-hls-contracts.test.ts
+          if git diff --quiet; then
+            echo "Task 40 tests already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/media/media-adaptive-processing.service.test.ts apps/api/src/media/media-hls-contracts.test.ts
+          git commit -m "style(task40): format HLS tests"
+          git push origin HEAD:task-40-hls-transcoding
