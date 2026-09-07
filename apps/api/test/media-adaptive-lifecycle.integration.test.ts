@@ -119,11 +119,49 @@ databaseDescribe("Task 40 adaptive playback lifecycle", () => {
     expect(ready?.renditions.every((item) => item.status === "READY")).toBe(true);
   });
 
-  it("reopens a failed generation without duplicating its deterministic rendition set", async () => {
+  it("rejects failure transitions from a worker whose lease already expired", async () => {
+    const { job } = await createJob("stale-owner");
+    const generation = await lifecycle.loadOrCreate(
+      job,
+      planAdaptiveRenditions({ width: 1_280, height: 720 }),
+    );
+    await prisma.mediaProcessingJob.update({
+      where: { id: job.id },
+      data: { leaseExpiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    await expect(
+      lifecycle.markFailedIfOwned({
+        generationId: generation.id,
+        renditionId: generation.renditions[0]!.id,
+        jobId: job.id,
+        workerId: "integration-worker",
+      }),
+    ).resolves.toBe(false);
+
+    const storedGeneration = await prisma.mediaPlaybackGeneration.findUniqueOrThrow({
+      where: { id: generation.id },
+    });
+    const storedRendition = await prisma.mediaPlaybackRendition.findUniqueOrThrow({
+      where: { id: generation.renditions[0]!.id },
+    });
+    expect(storedGeneration.status).toBe("BUILDING");
+    expect(storedRendition.status).toBe("PLANNED");
+  });
+
+  it("reopens an actively-owned failed generation without duplicating its deterministic rendition set", async () => {
     const { job } = await createJob("reopen");
     const planned = planAdaptiveRenditions({ width: 1_280, height: 720 });
     const generation = await lifecycle.loadOrCreate(job, planned);
-    await lifecycle.markFailed(generation.id, generation.renditions[1]!.id);
+
+    await expect(
+      lifecycle.markFailedIfOwned({
+        generationId: generation.id,
+        renditionId: generation.renditions[1]!.id,
+        jobId: job.id,
+        workerId: "integration-worker",
+      }),
+    ).resolves.toBe(true);
 
     await lifecycle.reopen(generation.id);
     const retried = await lifecycle.loadOrCreate(job, planned);
