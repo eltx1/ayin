@@ -319,14 +319,18 @@ export class MediaAdaptiveProcessingService {
 }
 
 function toPlannedRendition(rendition: AdaptiveRenditionState): PlannedMediaRendition {
-  const {
-    id: _id,
-    playlistR2ObjectKey: _playlist,
-    segmentR2Prefix: _prefix,
-    status: _status,
-    ...plan
-  } = rendition;
-  return plan;
+  return {
+    identity: rendition.identity,
+    width: rendition.width,
+    height: rendition.height,
+    videoBitrateKbps: rendition.videoBitrateKbps,
+    audioBitrateKbps: rendition.audioBitrateKbps,
+    videoCodec: rendition.videoCodec,
+    audioCodec: rendition.audioCodec,
+    pixelFormat: rendition.pixelFormat,
+    protocol: rendition.protocol,
+    container: rendition.container,
+  };
 }
 
 async function assertScratchEstimateWithinLimit(input: {
