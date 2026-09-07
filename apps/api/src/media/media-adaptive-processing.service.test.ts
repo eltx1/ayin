@@ -82,12 +82,27 @@ function generation(
   };
 }
 
+function validMediaPlaylist(): string {
+  return [
+    "#EXTM3U",
+    "#EXT-X-VERSION:3",
+    "#EXT-X-TARGETDURATION:6",
+    "#EXT-X-MEDIA-SEQUENCE:1",
+    "#EXT-X-PLAYLIST-TYPE:VOD",
+    "#EXTINF:6.000000,",
+    "segment-000001.ts",
+    "#EXT-X-ENDLIST",
+    "",
+  ].join("\n");
+}
+
 function serviceFixture(overrides?: {
   enabled?: boolean;
   generation?: AdaptiveGenerationState;
   transcode?: ReturnType<typeof vi.fn>;
   headObject?: ReturnType<typeof vi.fn>;
   downloadText?: ReturnType<typeof vi.fn>;
+  markFailedIfOwned?: ReturnType<typeof vi.fn>;
 }) {
   const state = overrides?.generation ?? generation();
   const settings = {
@@ -99,7 +114,7 @@ function serviceFixture(overrides?: {
     reopen: vi.fn().mockResolvedValue(undefined),
     setRenditionStatus: vi.fn().mockResolvedValue(undefined),
     setMasterStatus: vi.fn().mockResolvedValue(undefined),
-    markFailed: vi.fn().mockResolvedValue(undefined),
+    markFailedIfOwned: overrides?.markFailedIfOwned ?? vi.fn().mockResolvedValue(true),
     markReadyIfComplete: vi.fn().mockResolvedValue({ ...state, status: "READY" }),
   };
   const processingLifecycle = {
@@ -177,7 +192,7 @@ describe("Task 40 adaptive processing", () => {
     expect(fixture.adaptiveLifecycle.loadOrCreate).not.toHaveBeenCalled();
   });
 
-  it("marks a failed rendition/generation and never deletes the MP4 fallback", async () => {
+  it("marks a failed rendition only through the active lease and preserves R2 fallback/master", async () => {
     const state = generation();
     const transcode = vi.fn().mockRejectedValue(new Error("FFmpeg HLS 360p failed"));
     const fixture = serviceFixture({ generation: state, transcode });
@@ -193,23 +208,45 @@ describe("Task 40 adaptive processing", () => {
       }),
     ).rejects.toThrow(/HLS 360p failed/);
 
-    expect(fixture.adaptiveLifecycle.markFailed).toHaveBeenCalledWith(
-      state.id,
-      state.renditions[0]!.id,
+    expect(fixture.adaptiveLifecycle.markFailedIfOwned).toHaveBeenCalledWith({
+      generationId: state.id,
+      renditionId: state.renditions[0]!.id,
+      jobId: "11111111-1111-4111-8111-111111111111",
+      workerId: "worker-1",
+    });
+    expect(fixture.storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it("does not perform destructive cleanup after a stale worker loses its lease", async () => {
+    const state = generation();
+    const transcode = vi.fn().mockRejectedValue(new Error("media worker lost its lease"));
+    const markFailedIfOwned = vi.fn().mockResolvedValue(false);
+    const fixture = serviceFixture({ generation: state, transcode, markFailedIfOwned });
+    const local = await canonicalFixture();
+
+    await expect(
+      fixture.service.process({
+        job: job(),
+        workerId: "stale-worker",
+        workDirectory: local.directory,
+        canonicalPath: local.canonicalPath,
+        canonicalMetadata,
+      }),
+    ).rejects.toThrow(/lost its lease/);
+
+    expect(markFailedIfOwned).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generationId: state.id,
+        jobId: "11111111-1111-4111-8111-111111111111",
+        workerId: "stale-worker",
+      }),
     );
-    expect(fixture.storage.deleteObject).toHaveBeenCalledWith(state.hlsMasterR2ObjectKey);
-    expect(fixture.storage.deleteObject).not.toHaveBeenCalledWith(state.fallbackR2ObjectKey);
+    expect(fixture.storage.deleteObject).not.toHaveBeenCalled();
   });
 
   it("rejects a rendition whose uploaded R2 segment fails verification", async () => {
     const state = generation();
-    const playlistText = [
-      "#EXTM3U",
-      "#EXTINF:6.0,",
-      "segment-000001.ts",
-      "#EXT-X-ENDLIST",
-      "",
-    ].join("\n");
+    const playlistText = validMediaPlaylist();
     const transcode = vi.fn().mockResolvedValue({
       playlistPath: "/tmp/index.m3u8",
       playlistText,
@@ -229,7 +266,7 @@ describe("Task 40 adaptive processing", () => {
         canonicalMetadata,
       }),
     ).rejects.toThrow(/failed size verification/);
-    expect(fixture.adaptiveLifecycle.markFailed).toHaveBeenCalled();
+    expect(fixture.adaptiveLifecycle.markFailedIfOwned).toHaveBeenCalled();
     expect(
       fixture.storage.uploadFile.mock.calls.some(([key]) => key === state.hlsMasterR2ObjectKey),
     ).toBe(false);
@@ -243,13 +280,7 @@ describe("Task 40 adaptive processing", () => {
         index === 0 ? { ...rendition, status: "READY" } : rendition,
       ),
     };
-    const playlistText = [
-      "#EXTM3U",
-      "#EXTINF:6.0,",
-      "segment-000001.ts",
-      "#EXT-X-ENDLIST",
-      "",
-    ].join("\n");
+    const playlistText = validMediaPlaylist();
     const master = buildHlsMasterManifest(state.renditions, { hasAudio: true });
     const headObject = vi.fn().mockImplementation(async (key: string) => ({
       sizeBytes: key === state.hlsMasterR2ObjectKey ? Buffer.byteLength(master) : 100,
