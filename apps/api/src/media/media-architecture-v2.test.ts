@@ -20,9 +20,7 @@ const namespace = {
 };
 
 function renditionIdentities(width: number, height: number): string[] {
-  return planAdaptiveRenditions({ width, height }).map(
-    (rendition) => rendition.identity,
-  );
+  return planAdaptiveRenditions({ width, height }).map((rendition) => rendition.identity);
 }
 
 describe("AYIN media architecture V2 contracts", () => {
@@ -48,27 +46,13 @@ describe("AYIN media architecture V2 contracts", () => {
     expect(renditionIdentities(640, 359)).toEqual([]);
     expect(renditionIdentities(640, 360)).toEqual(["360p"]);
     expect(renditionIdentities(854, 480)).toEqual(["360p", "480p"]);
-    expect(renditionIdentities(1_280, 720)).toEqual([
-      "360p",
-      "480p",
-      "720p",
-    ]);
-    expect(renditionIdentities(1_920, 1_080)).toEqual([
-      "360p",
-      "480p",
-      "720p",
-      "1080p",
-    ]);
+    expect(renditionIdentities(1_280, 720)).toEqual(["360p", "480p", "720p"]);
+    expect(renditionIdentities(1_920, 1_080)).toEqual(["360p", "480p", "720p", "1080p"]);
   });
 
   it("never plans production output above 1080p even for a 4K source", () => {
     const renditions = planAdaptiveRenditions({ width: 3_840, height: 2_160 });
-    expect(renditions.map((item) => item.identity)).toEqual([
-      "360p",
-      "480p",
-      "720p",
-      "1080p",
-    ]);
+    expect(renditions.map((item) => item.identity)).toEqual(["360p", "480p", "720p", "1080p"]);
     expect(Math.max(...renditions.map((item) => item.height))).toBe(1_080);
   });
 
@@ -105,18 +89,14 @@ describe("AYIN media architecture V2 contracts", () => {
   });
 
   it("rejects unsafe namespace inputs and invalid segment/generation identities", () => {
-    expect(() =>
-      canonicalFallbackObjectKey({ ...namespace, generation: 0 }),
-    ).toThrow(/positive integer/);
-    expect(() =>
-      canonicalFallbackObjectKey({ ...namespace, channelId: "bad/channel" }),
-    ).toThrow(/namespace segment/);
-    expect(() =>
-      hlsRenditionSegmentObjectKey(namespace, "360p", -1),
-    ).toThrow(/segment sequence/);
-    expect(() => planAdaptiveRenditions({ width: 0, height: 720 })).toThrow(
-      /positive integers/,
+    expect(() => canonicalFallbackObjectKey({ ...namespace, generation: 0 })).toThrow(
+      /positive integer/,
     );
+    expect(() => canonicalFallbackObjectKey({ ...namespace, channelId: "bad/channel" })).toThrow(
+      /namespace segment/,
+    );
+    expect(() => hlsRenditionSegmentObjectKey(namespace, "360p", -1)).toThrow(/segment sequence/);
+    expect(() => planAdaptiveRenditions({ width: 0, height: 720 })).toThrow(/positive integers/);
   });
 
   it("allows adaptive READY only when fallback, master and every planned rendition are READY", () => {
@@ -126,9 +106,7 @@ describe("AYIN media architecture V2 contracts", () => {
       renditions: [{ status: "READY" as const }, { status: "READY" as const }],
     };
     expect(canMarkAdaptiveGenerationReady(fullyReady)).toBe(true);
-    expect(
-      canMarkAdaptiveGenerationReady({ ...fullyReady, renditions: [] }),
-    ).toBe(false);
+    expect(canMarkAdaptiveGenerationReady({ ...fullyReady, renditions: [] })).toBe(false);
     expect(
       canMarkAdaptiveGenerationReady({
         ...fullyReady,

@@ -63,11 +63,11 @@ The existing V1 MP4 remains independently usable throughout migration.
 The initial production ladder is deliberately conservative and limited to 360p/480p/720p/1080p.
 
 | Identity | Target height | H.264 video bitrate | AAC audio bitrate | Pixel format |
-| --- | ---: | ---: | ---: | --- |
-| `360p` | 360 | 800 kbps | 96 kbps | `yuv420p` |
-| `480p` | 480 | 1,400 kbps | 128 kbps | `yuv420p` |
-| `720p` | 720 | 2,800 kbps | 128 kbps | `yuv420p` |
-| `1080p` | 1080 | 5,000 kbps | 160 kbps | `yuv420p` |
+| -------- | ------------: | ------------------: | ----------------: | ------------ |
+| `360p`   |           360 |            800 kbps |           96 kbps | `yuv420p`    |
+| `480p`   |           480 |          1,400 kbps |          128 kbps | `yuv420p`    |
+| `720p`   |           720 |          2,800 kbps |          128 kbps | `yuv420p`    |
+| `1080p`  |          1080 |          5,000 kbps |          160 kbps | `yuv420p`    |
 
 Planning rules:
 

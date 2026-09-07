@@ -47,21 +47,10 @@ export const MEDIA_RENDITION_LADDER = [
   },
 ] as const;
 
-export type MediaRenditionIdentity =
-  (typeof MEDIA_RENDITION_LADDER)[number]["identity"];
+export type MediaRenditionIdentity = (typeof MEDIA_RENDITION_LADDER)[number]["identity"];
 export type MediaPlaybackOutputStatus =
-  | "PLANNED"
-  | "PROCESSING"
-  | "UPLOADING"
-  | "VERIFYING"
-  | "READY"
-  | "FAILED"
-  | "REMOVED";
-export type MediaPlaybackGenerationStatus =
-  | "BUILDING"
-  | "READY"
-  | "FAILED"
-  | "SUPERSEDED";
+  "PLANNED" | "PROCESSING" | "UPLOADING" | "VERIFYING" | "READY" | "FAILED" | "REMOVED";
+export type MediaPlaybackGenerationStatus = "BUILDING" | "READY" | "FAILED" | "SUPERSEDED";
 
 export interface MediaSourceDimensions {
   width: number;
@@ -103,25 +92,23 @@ export function planAdaptiveRenditions(
 ): readonly PlannedMediaRendition[] {
   assertSourceDimensions(source);
 
-  return MEDIA_RENDITION_LADDER.filter(
-    (entry) => entry.targetHeight <= source.height,
-  ).map((entry) => ({
-    identity: entry.identity,
-    width: scaledEvenWidth(source, entry.targetHeight),
-    height: entry.targetHeight,
-    videoBitrateKbps: entry.videoBitrateKbps,
-    audioBitrateKbps: entry.audioBitrateKbps,
-    videoCodec: MEDIA_HLS_PROFILE.videoCodec,
-    audioCodec: MEDIA_HLS_PROFILE.audioCodec,
-    pixelFormat: MEDIA_HLS_PROFILE.pixelFormat,
-    protocol: MEDIA_HLS_PROFILE.protocol,
-    container: MEDIA_HLS_PROFILE.container,
-  }));
+  return MEDIA_RENDITION_LADDER.filter((entry) => entry.targetHeight <= source.height).map(
+    (entry) => ({
+      identity: entry.identity,
+      width: scaledEvenWidth(source, entry.targetHeight),
+      height: entry.targetHeight,
+      videoBitrateKbps: entry.videoBitrateKbps,
+      audioBitrateKbps: entry.audioBitrateKbps,
+      videoCodec: MEDIA_HLS_PROFILE.videoCodec,
+      audioCodec: MEDIA_HLS_PROFILE.audioCodec,
+      pixelFormat: MEDIA_HLS_PROFILE.pixelFormat,
+      protocol: MEDIA_HLS_PROFILE.protocol,
+      container: MEDIA_HLS_PROFILE.container,
+    }),
+  );
 }
 
-export function canonicalFallbackObjectKey(
-  namespace: MediaGenerationNamespace,
-): string {
+export function canonicalFallbackObjectKey(namespace: MediaGenerationNamespace): string {
   return `${generationBase(namespace)}.mp4`;
 }
 
@@ -149,16 +136,12 @@ export function hlsRenditionSegmentObjectKey(
   sequence: number,
 ): string {
   if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence > 999_999) {
-    throw new Error(
-      "HLS segment sequence must be an integer between 0 and 999999.",
-    );
+    throw new Error("HLS segment sequence must be an integer between 0 and 999999.");
   }
   return `${hlsRenditionSegmentPrefix(namespace, identity)}${String(sequence).padStart(6, "0")}.ts`;
 }
 
-export function canMarkAdaptiveGenerationReady(
-  readiness: MediaPlaybackReadiness,
-): boolean {
+export function canMarkAdaptiveGenerationReady(readiness: MediaPlaybackReadiness): boolean {
   return (
     readiness.fallbackStatus === "READY" &&
     readiness.hlsMasterStatus === "READY" &&
@@ -176,10 +159,7 @@ function generationBase(namespace: MediaGenerationNamespace): string {
   return `channels/${namespace.channelId}/videos/${namespace.videoId}/playback/g${namespace.generation}`;
 }
 
-function scaledEvenWidth(
-  source: MediaSourceDimensions,
-  targetHeight: number,
-): number {
+function scaledEvenWidth(source: MediaSourceDimensions, targetHeight: number): number {
   const scaledWidth = Math.floor((source.width * targetHeight) / source.height);
   const evenWidth = scaledWidth - (scaledWidth % 2);
   return Math.max(2, evenWidth);
