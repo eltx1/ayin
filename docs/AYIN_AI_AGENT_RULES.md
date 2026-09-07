@@ -11,7 +11,9 @@ Before changing code, read:
 3. The current task in `docs/AYIN_EXECUTION_ROADMAP.md`
 4. Existing code directly related to the task
 
-Do not rely on memory from an earlier run. Inspect the current repository state first.
+For media tasks also read `docs/MEDIA_ARCHITECTURE_V2.md`, `docs/R2_UPLOADS.md`, and the relevant ADRs in `docs/DECISIONS.md`.
+
+Do not rely on memory from an earlier run. Inspect the current repository state first. Current code is authoritative when an older historical task document describes behavior that has since evolved.
 
 ## 2. Work one task at a time
 
@@ -44,9 +46,11 @@ Every implementation must preserve these rules:
 - Every successful registration automatically creates a viewer profile, creator channel, Uploads playlist and Creator TV.
 - Creator workflows must be extremely simple by default. Advanced options belong behind optional controls.
 - Admin must be able to control operational/business settings without code whenever reasonably safe.
-- Video media is stored on Cloudflare R2 only. Never store AYIN video files on AWS/EBS.
-- Creator video uploads go directly from the client to R2; application servers must not proxy video bytes.
-- V1 video is playback-ready MP4. Do not silently introduce transcoding infrastructure.
+- Cloudflare R2 is the only durable creator-video object store. Never turn AWS/EBS or application filesystems into authoritative creator-media storage.
+- Creator uploads go directly from the client to R2; web/API request handlers must not proxy creator upload bodies.
+- The existing media worker may use bounded ephemeral local scratch for probe/transcode/package work. Scratch is temporary processing state, must be cleaned, and must never become durable media storage.
+- AYIN already has a real `ffprobe`/FFmpeg canonical MP4 pipeline. Do not regress it to the historical playback-ready-upload assumption.
+- Production playback currently remains the validated canonical MP4. HLS/ABR generation or playback selection may change only in its explicit roadmap task/ADR, behind safe rollout semantics, while retaining MP4 fallback.
 - Web/PWA is the source of truth. Shared UI/business logic should not be duplicated unnecessarily across shells.
 - Advertising architecture must support in-player video ads and outside-player display placements.
 - Google IMA / Google Ad Manager readiness must not be broken by local abstractions.
@@ -68,7 +72,7 @@ Default path should feel like:
 
 Title may be prefilled automatically. Detailed metadata is optional.
 
-Do not expose codec jargon unless validation fails.
+Do not expose codec jargon unless validation/processing fails.
 
 ### Admin
 
@@ -91,7 +95,9 @@ Do not create a “developer settings” maze for ordinary platform operations.
 - Use typed contracts/interfaces at boundaries.
 - Keep third-party providers behind narrow adapters.
 - Make asynchronous/retryable operations idempotent.
-- Use database transactions for account auto-provisioning.
+- Durable processing readiness must come from authoritative lifecycle state, not merely from an object existing in R2.
+- Preserve deterministic media namespaces and processing generations when extending the media worker.
+- Use database transactions for account auto-provisioning and atomic state transitions where required.
 - Use migrations for schema changes.
 - Never commit secrets.
 
@@ -119,10 +125,12 @@ Before finishing:
 1. Run formatting if configured.
 2. Run linting if configured.
 3. Run type checking.
-4. Run relevant unit/integration tests.
-5. Run production build for affected apps when practical.
-6. Fix failures introduced by the task.
-7. Check that no secrets or large generated artifacts were added.
+4. Run Prisma validation/generation when schema is affected.
+5. Validate/apply migrations against a clean test database when migrations are affected.
+6. Run relevant unit/integration tests.
+7. Run production build for affected apps when practical.
+8. Fix failures introduced by the task.
+9. Check that no secrets or large generated artifacts were added.
 
 If a command cannot run because required infrastructure/credentials are unavailable, state exactly what could and could not be validated.
 
@@ -133,7 +141,9 @@ Prioritize tests for:
 - account auto-provisioning
 - authorization
 - admin settings
-- upload authorization
+- upload authorization and media lifecycle state
+- media processing idempotency/retry contracts
+- adaptive rendition planning/readiness when applicable
 - TV auto-queue behavior
 - watch progress
 - advertising decision logic
@@ -148,6 +158,7 @@ Avoid brittle tests that only mirror implementation details.
 - Keep migrations deterministic.
 - Add indexes intentionally for real access patterns.
 - Do not delete production-facing fields casually.
+- Do not require immediate backfills when an additive rollout can safely tolerate absent V2 rows.
 - Validate pagination and limits for list endpoints.
 - Prefer stable IDs over mutable handles for relationships.
 

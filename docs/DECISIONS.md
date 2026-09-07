@@ -1,9 +1,9 @@
 # AYIN Architecture Decision Records
 
-Status: Initial accepted decisions for Task 00  
-Decision date: 2026-08-27
+Status: Accepted decisions through Task 39  
+Decision date baseline: 2026-08-27
 
-These short ADRs establish the greenfield implementation contract. A later change must add a superseding ADR with its reason and migration impact rather than silently editing an accepted decision.
+These ADRs establish the implementation contract. A later change must add a superseding ADR with its reason and migration impact rather than silently editing an accepted decision.
 
 ## ADR-001 — Global Web/PWA source of truth
 
@@ -77,13 +77,13 @@ These short ADRs establish the greenfield implementation contract. A later chang
 
 ## ADR-008 — Direct-to-R2 creator video storage
 
-**Status:** Accepted
+**Status:** Accepted; processing details superseded by ADR-015
 
 **Context:** Creator uploads may be large, and the master plan prohibits AYIN video storage on AWS application infrastructure.
 
-**Decision:** Cloudflare R2 is the only AYIN creator video object store. The required media path is **Creator browser -> Cloudflare R2 directly**, using short-lived authorization issued after server-side ownership/quota checks. AWS EC2/CloudPanel hosts application services and PostgreSQL but never receives, proxies, buffers, stages, or persists creator video bytes.
+**Decision:** Cloudflare R2 is the only durable AYIN creator video object store. The upload path is **Creator browser -> Cloudflare R2 directly**, using short-lived authorization issued after server-side ownership/quota checks. Web/API request handlers do not receive or proxy creator upload bodies.
 
-**Consequences:** The API stores metadata and R2 references only. Upload sessions, multipart completion, cleanup, and delivery use an AYIN media adapter. V1 accepts playback-ready MP4 and introduces no implicit transcoding service.
+**Consequences:** The API stores metadata and R2 references. Upload sessions, multipart completion, cleanup, and delivery use AYIN-owned media infrastructure. ADR-015 supersedes the original V1 assumption that no processing worker or temporary local media scratch exists.
 
 ## ADR-009 — Studio and Admin share the initial web deployment
 
@@ -144,3 +144,37 @@ These short ADRs establish the greenfield implementation contract. A later chang
 **Decision:** Revenue share, upload limits, creator defaults, homepage/navigation, ad policy, moderation defaults, and feature availability use typed platform settings and audited Admin controls where reasonably safe.
 
 **Consequences:** Business values must not be scattered constants. Secrets remain server-side environment configuration, high-impact changes require authorization/audit, and Admin is not raw server access.
+
+## ADR-015 — Adaptive media architecture with canonical MP4 fallback
+
+**Status:** Accepted in Task 39 (2026-09-07)
+
+**Context:** The repository has evolved beyond the original playback-ready-MP4 assumption. AYIN now has a real database-backed media queue, a separate worker process inside the modular application boundary, `ffprobe`, FFmpeg canonicalization to H.264/AAC `yuv420p` fast-start MP4, R2 upload/verification, lease recovery, retry/backoff, and deterministic per-video processing generations. Public playback, however, still exposes and plays a single validated MP4. A single progressive object is inefficient and fragile across variable network conditions and TV/browser environments, while changing the working production path in the same step would create unnecessary rollout risk.
+
+**Decision:** AYIN will evolve to HLS adaptive bitrate streaming while retaining the canonical progressive MP4 as a mandatory fallback. The initial production ladder is 360p/480p/720p/1080p using H.264 video, AAC audio and `yuv420p`; a rendition is created only when the normalized source display resolution justifies it, so AYIN never upscales. 1440p/4K are not initial production outputs. Task 39 defines contracts, durable generation/rendition state and deterministic storage namespaces only; it does not generate HLS or switch playback.
+
+The existing modular-monolith/worker boundary remains the home of media processing. No transcoding microservice is introduced. The existing canonical key remains:
+
+```text
+channels/{channelId}/videos/{videoId}/playback/g{generation}.mp4
+```
+
+Adaptive objects for the same generation use:
+
+```text
+channels/{channelId}/videos/{videoId}/playback/g{generation}/hls/master.m3u8
+channels/{channelId}/videos/{videoId}/playback/g{generation}/hls/{rendition}/index.m3u8
+channels/{channelId}/videos/{videoId}/playback/g{generation}/hls/{rendition}/segment-000001.ts
+```
+
+Only planned rendition identities receive objects. A retry of the same generation reuses the same namespace; an intentional reprocess gets the next generation.
+
+**Failure/retry semantics:** R2 object existence is never readiness. A V2 generation may be marked adaptive `READY` only when the fallback MP4, HLS master manifest and every planned rendition are individually `READY` after upload/verification. Partial output remains non-ready and invisible to adaptive selection. Existing queue leases, heartbeats, bounded retry/backoff and stale-lease recovery remain the processing foundation. Deterministic keys permit idempotent HEAD/probe/verify reuse. Failed attempts do not create a new generation; explicit reprocess does.
+
+**Why retain MP4:** It is the known-working production path, supports instant rollback, covers sources for which no adaptive rung is justified, and prevents HLS packaging/player problems from making existing videos unplayable.
+
+**Why stay in the modular monolith/worker boundary:** The current worker already isolates CPU-heavy work operationally without introducing network/service coordination. No measured scaling or team-ownership requirement justifies a media microservice yet. A later service extraction requires evidence and a separate ADR.
+
+**Rollout:** (1) Task 39 contracts/schema only; (2) generate and verify V2 outputs behind a default-off capability; (3) observe production output correctness while the player remains MP4; (4) expose adaptive metadata without preferring it; (5) enable adaptive player selection separately with automatic/manual MP4 fallback; (6) retain old generations until cleanup policy and rollback windows are proven.
+
+**Consequences:** The processing worker may use bounded ephemeral local scratch for probe/transcode/package work, but R2 remains the only durable creator video object store and upload request bodies still bypass web/API servers. PostgreSQL stores metadata/lifecycle state, never media bytes. The `MediaAsset`/watch/player V1 contract remains untouched in Task 39. See `docs/MEDIA_ARCHITECTURE_V2.md` for the detailed contract and drift audit.
