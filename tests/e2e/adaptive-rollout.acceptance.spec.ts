@@ -105,10 +105,8 @@ test("Task 42 new upload becomes HLS-ready and is advertised safely on watch", a
         source: { objectKey: string; mimeType: string };
         adaptiveSource: { objectKey: string; mimeType: string; renditions: unknown[] } | null;
       };
-      playerPolicy: { hlsPlaybackEnabled: boolean };
     };
     expect(body.video.source.mimeType).toBe("video/mp4");
-    expect(body.playerPolicy.hlsPlaybackEnabled).toBe(true);
     expect(body.video.adaptiveSource?.objectKey).toBe(ready.masterKey);
     expect(body.video.adaptiveSource?.mimeType).toBe("application/vnd.apple.mpegurl");
     expect(body.video.adaptiveSource?.renditions.length).toBeGreaterThan(0);

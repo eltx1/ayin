@@ -116,6 +116,7 @@ function serviceFixture(overrides?: {
     setRenditionStatusIfOwned:
       overrides?.setRenditionStatusIfOwned ?? vi.fn().mockResolvedValue(true),
     setMasterStatusIfOwned: vi.fn().mockResolvedValue(true),
+    setOutputSizeIfOwned: vi.fn().mockResolvedValue(true),
     markFailedIfOwned: overrides?.markFailedIfOwned ?? vi.fn().mockResolvedValue(true),
     markReadyIfCompleteIfOwned: vi.fn().mockResolvedValue({ ...state, status: "READY" }),
   };
