@@ -68,6 +68,14 @@ databaseDescribe("Task 40 adaptive playback lifecycle", () => {
     return { channel, video, job };
   }
 
+  function owned(generationId: string, jobId: string) {
+    return {
+      generationId,
+      jobId,
+      workerId: "integration-worker",
+    } as const;
+  }
+
   it("reuses the same generation and rendition rows across retries", async () => {
     const { job } = await createJob("idempotent");
     const planned = planAdaptiveRenditions({ width: 1_280, height: 720 });
@@ -88,12 +96,21 @@ databaseDescribe("Task 40 adaptive playback lifecycle", () => {
       job,
       planAdaptiveRenditions({ width: 1_280, height: 720 }),
     );
+    const owner = owned(generation.id, job.id);
 
-    await lifecycle.markFallbackReady(generation.id);
-    await lifecycle.setMasterStatus(generation.id, "READY");
-    await lifecycle.setRenditionStatus(generation.renditions[0]!.id, "READY");
+    await expect(lifecycle.markFallbackReadyIfOwned(owner)).resolves.toBe(true);
+    await expect(lifecycle.setMasterStatusIfOwned({ ...owner, status: "READY" })).resolves.toBe(
+      true,
+    );
+    await expect(
+      lifecycle.setRenditionStatusIfOwned({
+        ...owner,
+        renditionId: generation.renditions[0]!.id,
+        status: "READY",
+      }),
+    ).resolves.toBe(true);
 
-    await expect(lifecycle.markReadyIfComplete(generation.id)).resolves.toBeNull();
+    await expect(lifecycle.markReadyIfCompleteIfOwned(owner)).resolves.toBeNull();
     const stored = await prisma.mediaPlaybackGeneration.findUniqueOrThrow({
       where: { id: generation.id },
     });
@@ -106,17 +123,64 @@ databaseDescribe("Task 40 adaptive playback lifecycle", () => {
       job,
       planAdaptiveRenditions({ width: 1_920, height: 1_080 }),
     );
+    const owner = owned(generation.id, job.id);
 
-    await lifecycle.markFallbackReady(generation.id);
+    await expect(lifecycle.markFallbackReadyIfOwned(owner)).resolves.toBe(true);
     for (const rendition of generation.renditions) {
-      await lifecycle.setRenditionStatus(rendition.id, "READY");
+      await expect(
+        lifecycle.setRenditionStatusIfOwned({
+          ...owner,
+          renditionId: rendition.id,
+          status: "READY",
+        }),
+      ).resolves.toBe(true);
     }
-    await lifecycle.setMasterStatus(generation.id, "READY");
+    await expect(lifecycle.setMasterStatusIfOwned({ ...owner, status: "READY" })).resolves.toBe(
+      true,
+    );
 
-    const ready = await lifecycle.markReadyIfComplete(generation.id);
+    const ready = await lifecycle.markReadyIfCompleteIfOwned(owner);
     expect(ready?.status).toBe("READY");
     expect(ready?.renditions).toHaveLength(4);
     expect(ready?.renditions.every((item) => item.status === "READY")).toBe(true);
+  });
+
+  it("prevents an expired worker from downgrading rendition or master progress", async () => {
+    const { job } = await createJob("stale-progress");
+    const generation = await lifecycle.loadOrCreate(
+      job,
+      planAdaptiveRenditions({ width: 1_280, height: 720 }),
+    );
+    const owner = owned(generation.id, job.id);
+    const renditionId = generation.renditions[0]!.id;
+
+    await expect(
+      lifecycle.setRenditionStatusIfOwned({ ...owner, renditionId, status: "READY" }),
+    ).resolves.toBe(true);
+    await expect(lifecycle.setMasterStatusIfOwned({ ...owner, status: "READY" })).resolves.toBe(
+      true,
+    );
+    await prisma.mediaProcessingJob.update({
+      where: { id: job.id },
+      data: { leaseExpiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    await expect(
+      lifecycle.setRenditionStatusIfOwned({ ...owner, renditionId, status: "PROCESSING" }),
+    ).resolves.toBe(false);
+    await expect(
+      lifecycle.setMasterStatusIfOwned({ ...owner, status: "UPLOADING" }),
+    ).resolves.toBe(false);
+    await expect(lifecycle.reopenIfOwned(owner)).resolves.toBe(false);
+
+    const storedGeneration = await prisma.mediaPlaybackGeneration.findUniqueOrThrow({
+      where: { id: generation.id },
+    });
+    const storedRendition = await prisma.mediaPlaybackRendition.findUniqueOrThrow({
+      where: { id: renditionId },
+    });
+    expect(storedGeneration.hlsMasterStatus).toBe("READY");
+    expect(storedRendition.status).toBe("READY");
   });
 
   it("rejects failure transitions from a worker whose lease already expired", async () => {
@@ -132,10 +196,8 @@ databaseDescribe("Task 40 adaptive playback lifecycle", () => {
 
     await expect(
       lifecycle.markFailedIfOwned({
-        generationId: generation.id,
+        ...owned(generation.id, job.id),
         renditionId: generation.renditions[0]!.id,
-        jobId: job.id,
-        workerId: "integration-worker",
       }),
     ).resolves.toBe(false);
 
@@ -153,17 +215,16 @@ databaseDescribe("Task 40 adaptive playback lifecycle", () => {
     const { job } = await createJob("reopen");
     const planned = planAdaptiveRenditions({ width: 1_280, height: 720 });
     const generation = await lifecycle.loadOrCreate(job, planned);
+    const owner = owned(generation.id, job.id);
 
     await expect(
       lifecycle.markFailedIfOwned({
-        generationId: generation.id,
+        ...owner,
         renditionId: generation.renditions[1]!.id,
-        jobId: job.id,
-        workerId: "integration-worker",
       }),
     ).resolves.toBe(true);
 
-    await lifecycle.reopen(generation.id);
+    await expect(lifecycle.reopenIfOwned(owner)).resolves.toBe(true);
     const retried = await lifecycle.loadOrCreate(job, planned);
 
     expect(retried.id).toBe(generation.id);
