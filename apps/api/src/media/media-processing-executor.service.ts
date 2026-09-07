@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -7,19 +7,16 @@ import type { MediaProcessingJob } from "@ayin/db";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { MediaAdaptiveProcessingService } from "./media-adaptive-processing.service.js";
 import { MediaAutoThumbnailService } from "./media-auto-thumbnail.service.js";
+import { runBoundedMediaProcess } from "./media-process-runner.js";
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
 import { resolveMediaProcessingTimeouts } from "./media-processing-timeouts.js";
+import { parseFfprobeOutput, type MediaProbeMetadata } from "./media-probe.js";
 
 const execFileAsync = promisify(execFile);
-
-interface ProbeMetadata {
-  durationMs: number | null;
-  width: number | null;
-  height: number | null;
-}
 
 @Injectable()
 export class MediaProcessingExecutorService {
@@ -35,6 +32,8 @@ export class MediaProcessingExecutorService {
     @Inject(MediaProcessingLifecycleService)
     private readonly lifecycle: MediaProcessingLifecycleService,
     @Inject(MediaProcessingStorageService) private readonly storage: MediaProcessingStorageService,
+    @Inject(MediaAdaptiveProcessingService)
+    private readonly adaptive: MediaAdaptiveProcessingService,
     @Inject(MediaAutoThumbnailService) private readonly thumbnails: MediaAutoThumbnailService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
   ) {
@@ -66,20 +65,24 @@ export class MediaProcessingExecutorService {
       heartbeatTimer.unref();
 
       const existingOutput = await this.tryHead(job.outputR2ObjectKey);
-      let canonicalMetadata: ProbeMetadata;
+      let canonicalMetadata: MediaProbeMetadata;
 
       if (isVerifiedCanonical(existingOutput)) {
         await this.requireOwnedStage(job.id, workerId, "VERIFYING", "RECOVERING_FINAL_OBJECT", 90);
         await this.storage.downloadToFile(job.outputR2ObjectKey, outputPath);
         canonicalMetadata = await this.probe(outputPath);
+        if (!canonicalMetadata.width || !canonicalMetadata.height || !canonicalMetadata.videoCodec) {
+          throw new Error("The existing canonical R2 object does not contain a readable video stream.");
+        }
       } else {
-        if (!job.inputR2ObjectKey)
+        if (!job.inputR2ObjectKey) {
           throw new Error("The processing job has no input R2 object key.");
+        }
         await this.requireOwnedStage(job.id, workerId, "PROCESSING", "DOWNLOADING_SOURCE", 5);
         await this.storage.downloadToFile(job.inputR2ObjectKey, inputPath);
 
         const sourceMetadata = await this.probe(inputPath);
-        if (!sourceMetadata.width || !sourceMetadata.height) {
+        if (!sourceMetadata.width || !sourceMetadata.height || !sourceMetadata.videoCodec) {
           throw new Error("The uploaded file does not contain a readable video stream.");
         }
 
@@ -90,7 +93,7 @@ export class MediaProcessingExecutorService {
           this.settings.get("mediaProcessingPreset"),
         ]);
         await this.requireOwnedStage(job.id, workerId, "PROCESSING", "FFMPEG_TRANSCODING", 20);
-        await runFfmpeg({
+        await runCanonicalFfmpeg({
           executable: this.ffmpegPath,
           inputPath,
           outputPath,
@@ -101,7 +104,7 @@ export class MediaProcessingExecutorService {
           timeoutMs: this.ffmpegTimeoutMs,
         });
         canonicalMetadata = await this.probe(outputPath);
-        if (!canonicalMetadata.width || !canonicalMetadata.height) {
+        if (!canonicalMetadata.width || !canonicalMetadata.height || !canonicalMetadata.videoCodec) {
           throw new Error("FFmpeg did not produce a readable canonical video stream.");
         }
 
@@ -131,12 +134,22 @@ export class MediaProcessingExecutorService {
         );
       }
 
+      // Release the local source before adaptive work; the canonical MP4 is the normalized HLS input.
+      await rm(inputPath, { force: true }).catch(() => undefined);
+      await this.adaptive.process({
+        job,
+        workerId,
+        workDirectory,
+        canonicalPath: outputPath,
+        canonicalMetadata,
+      });
+
       if (
         job.inputR2ObjectKey &&
         job.stagingKey === job.inputR2ObjectKey &&
         job.inputR2ObjectKey !== job.outputR2ObjectKey
       ) {
-        await this.requireOwnedStage(job.id, workerId, "VERIFYING", "REMOVING_STAGING_SOURCE", 96);
+        await this.requireOwnedStage(job.id, workerId, "VERIFYING", "REMOVING_STAGING_SOURCE", 99);
         await this.storage.deleteObject(job.inputR2ObjectKey);
       }
 
@@ -167,7 +180,7 @@ export class MediaProcessingExecutorService {
     }
   }
 
-  private async probe(filePath: string): Promise<ProbeMetadata> {
+  private async probe(filePath: string): Promise<MediaProbeMetadata> {
     let stdout: string;
     try {
       ({ stdout } = await execFileAsync(
@@ -176,7 +189,7 @@ export class MediaProcessingExecutorService {
           "-v",
           "error",
           "-show_entries",
-          "format=duration:stream=codec_type,width,height",
+          "format=duration:stream=codec_type,codec_name,width,height,duration:stream_tags=rotate:stream_side_data=rotation",
           "-of",
           "json",
           filePath,
@@ -195,20 +208,7 @@ export class MediaProcessingExecutorService {
       }
       throw error;
     }
-    const parsed = JSON.parse(stdout) as {
-      format?: { duration?: string };
-      streams?: Array<{ codec_type?: string; width?: number; height?: number }>;
-    };
-    const video = parsed.streams?.find((stream) => stream.codec_type === "video");
-    const durationSeconds = Number(parsed.format?.duration);
-    return {
-      durationMs:
-        Number.isFinite(durationSeconds) && durationSeconds > 0
-          ? Math.round(durationSeconds * 1000)
-          : null,
-      width: video?.width && video.width > 0 ? video.width : null,
-      height: video?.height && video.height > 0 ? video.height : null,
-    };
+    return parseFfprobeOutput(stdout);
   }
 
   private async tryHead(key: string) {
@@ -268,6 +268,7 @@ function isVerifiedCanonical(
 function classifyProcessingError(error: unknown): string {
   const message = errorMessage(error).toLowerCase();
   if (message.includes("timed out")) return "MEDIA_PROCESSING_TIMEOUT";
+  if (message.includes("hls") || message.includes("rendition")) return "HLS_PROCESSING_FAILED";
   if (message.includes("ffmpeg") || message.includes("ffprobe")) return "FFMPEG_PROCESSING_FAILED";
   if (message.includes("r2")) return "R2_PROCESSING_FAILED";
   if (message.includes("video stream")) return "INVALID_VIDEO_SOURCE";
@@ -284,7 +285,7 @@ function wasKilledByTimeout(error: unknown): boolean {
   return processError.killed === true || processError.signal === "SIGKILL";
 }
 
-async function runFfmpeg(input: {
+async function runCanonicalFfmpeg(input: {
   executable: string;
   inputPath: string;
   outputPath: string;
@@ -332,37 +333,10 @@ async function runFfmpeg(input: {
     input.outputPath,
   ];
 
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(input.executable, args, { stdio: ["ignore", "ignore", "pipe"] });
-    let stderr = "";
-    let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, input.timeoutMs);
-    timeout.unref();
-
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      stderr = `${stderr}${chunk}`.slice(-16_384);
-    });
-    child.once("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    child.once("exit", (code, signal) => {
-      clearTimeout(timeout);
-      if (timedOut) {
-        reject(new Error(`FFmpeg timed out after ${Math.ceil(input.timeoutMs / 1000)} seconds.`));
-      } else if (code === 0) {
-        resolve();
-      } else {
-        reject(
-          new Error(
-            `FFmpeg exited with ${code === null ? `signal ${signal ?? "unknown"}` : `code ${code}`}. ${stderr}`.trim(),
-          ),
-        );
-      }
-    });
+  await runBoundedMediaProcess({
+    executable: input.executable,
+    args,
+    timeoutMs: input.timeoutMs,
+    label: "FFmpeg canonical transcode",
   });
 }
