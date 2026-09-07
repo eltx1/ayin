@@ -19,6 +19,12 @@ const namespace = {
   generation: 3,
 };
 
+function renditionIdentities(width: number, height: number): string[] {
+  return planAdaptiveRenditions({ width, height }).map(
+    (rendition) => rendition.identity,
+  );
+}
+
 describe("AYIN media architecture V2 contracts", () => {
   it("pins the initial codecs, containers and processing contract version", () => {
     expect(MEDIA_ARCHITECTURE_VERSION).toBe(2);
@@ -39,20 +45,20 @@ describe("AYIN media architecture V2 contracts", () => {
   });
 
   it("creates only renditions justified by the normalized source height", () => {
-    expect(planAdaptiveRenditions({ width: 640, height: 359 })).toEqual([]);
-    expect(planAdaptiveRenditions({ width: 640, height: 360 }).map((item) => item.identity)).toEqual([
-      "360p",
-    ]);
-    expect(planAdaptiveRenditions({ width: 854, height: 480 }).map((item) => item.identity)).toEqual([
+    expect(renditionIdentities(640, 359)).toEqual([]);
+    expect(renditionIdentities(640, 360)).toEqual(["360p"]);
+    expect(renditionIdentities(854, 480)).toEqual(["360p", "480p"]);
+    expect(renditionIdentities(1_280, 720)).toEqual([
       "360p",
       "480p",
+      "720p",
     ]);
-    expect(
-      planAdaptiveRenditions({ width: 1_280, height: 720 }).map((item) => item.identity),
-    ).toEqual(["360p", "480p", "720p"]);
-    expect(
-      planAdaptiveRenditions({ width: 1_920, height: 1_080 }).map((item) => item.identity),
-    ).toEqual(["360p", "480p", "720p", "1080p"]);
+    expect(renditionIdentities(1_920, 1_080)).toEqual([
+      "360p",
+      "480p",
+      "720p",
+      "1080p",
+    ]);
   });
 
   it("never plans production output above 1080p even for a 4K source", () => {
@@ -73,7 +79,11 @@ describe("AYIN media architecture V2 contracts", () => {
       expect(rendition.width).toBeLessThanOrEqual(1_919);
       expect(rendition.width % 2).toBe(0);
     }
-    expect(renditions.at(-1)).toMatchObject({ identity: "1080p", width: 1_918, height: 1_080 });
+    expect(renditions.at(-1)).toMatchObject({
+      identity: "1080p",
+      width: 1_918,
+      height: 1_080,
+    });
   });
 
   it("uses the existing generation MP4 key and deterministic HLS namespaces", () => {
@@ -95,16 +105,18 @@ describe("AYIN media architecture V2 contracts", () => {
   });
 
   it("rejects unsafe namespace inputs and invalid segment/generation identities", () => {
-    expect(() => canonicalFallbackObjectKey({ ...namespace, generation: 0 })).toThrow(
-      /positive integer/,
+    expect(() =>
+      canonicalFallbackObjectKey({ ...namespace, generation: 0 }),
+    ).toThrow(/positive integer/);
+    expect(() =>
+      canonicalFallbackObjectKey({ ...namespace, channelId: "bad/channel" }),
+    ).toThrow(/namespace segment/);
+    expect(() =>
+      hlsRenditionSegmentObjectKey(namespace, "360p", -1),
+    ).toThrow(/segment sequence/);
+    expect(() => planAdaptiveRenditions({ width: 0, height: 720 })).toThrow(
+      /positive integers/,
     );
-    expect(() => canonicalFallbackObjectKey({ ...namespace, channelId: "bad/channel" })).toThrow(
-      /namespace segment/,
-    );
-    expect(() => hlsRenditionSegmentObjectKey(namespace, "360p", -1)).toThrow(
-      /segment sequence/,
-    );
-    expect(() => planAdaptiveRenditions({ width: 0, height: 720 })).toThrow(/positive integers/);
   });
 
   it("allows adaptive READY only when fallback, master and every planned rendition are READY", () => {
@@ -114,12 +126,20 @@ describe("AYIN media architecture V2 contracts", () => {
       renditions: [{ status: "READY" as const }, { status: "READY" as const }],
     };
     expect(canMarkAdaptiveGenerationReady(fullyReady)).toBe(true);
-    expect(canMarkAdaptiveGenerationReady({ ...fullyReady, renditions: [] })).toBe(false);
     expect(
-      canMarkAdaptiveGenerationReady({ ...fullyReady, fallbackStatus: "VERIFYING" }),
+      canMarkAdaptiveGenerationReady({ ...fullyReady, renditions: [] }),
     ).toBe(false);
     expect(
-      canMarkAdaptiveGenerationReady({ ...fullyReady, hlsMasterStatus: "UPLOADING" }),
+      canMarkAdaptiveGenerationReady({
+        ...fullyReady,
+        fallbackStatus: "VERIFYING",
+      }),
+    ).toBe(false);
+    expect(
+      canMarkAdaptiveGenerationReady({
+        ...fullyReady,
+        hlsMasterStatus: "UPLOADING",
+      }),
     ).toBe(false);
     expect(
       canMarkAdaptiveGenerationReady({
