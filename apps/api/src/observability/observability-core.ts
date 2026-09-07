@@ -4,6 +4,8 @@ const SENSITIVE_KEY =
   /(pass(word|phrase)?|authorization|cookie|token|session|stream.?key|api.?key|secret|client.?secret|private.?key|bank|card|iban|routing|kyc|payout|financial|account.?number)/i;
 const SECRET_ASSIGNMENT =
   /\b(password|passphrase|authorization|token|session(?:token)?|reset(?:token)?|stream[_-]?key|api[_-]?key|secret|client[_-]?secret|private[_-]?key|bank(?:account)?|card(?:number)?|iban|routing(?:number)?|kyc|payout|financial|account[_-]?number)\b\s*[:=]\s*([^\s,;]+)/gi;
+const SECRET_QUERY_PARAM =
+  /([?&](?:x-amz-(?:credential|signature|security-token)|access[_-]?key|api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?token|sig|signature|credential|token|secret)=)[^&#\s]*/gi;
 const BEARER = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
 const IBAN = /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g;
@@ -28,6 +30,7 @@ export function redactText(value: string): string {
   return value
     .replace(BEARER, "Bearer [REDACTED]")
     .replace(JWT, "[REDACTED_JWT]")
+    .replace(SECRET_QUERY_PARAM, "$1[REDACTED]")
     .replace(SECRET_ASSIGNMENT, (_match, key: string) => `${key}=[REDACTED]`)
     .replace(IBAN, "[REDACTED_IBAN]")
     .replace(PAYMENT_CARD, "[REDACTED_PAYMENT_NUMBER]")
