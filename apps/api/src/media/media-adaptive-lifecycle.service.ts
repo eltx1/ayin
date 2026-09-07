@@ -1,4 +1,4 @@
-import type { MediaProcessingJob } from "@ayin/db";
+import type { MediaProcessingJob, Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -19,6 +19,12 @@ import {
 } from "./media-architecture-v2.js";
 
 const ACTIVE_PROCESSING_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
+
+type OwnedGenerationInput = {
+  generationId: string;
+  jobId: string;
+  workerId: string;
+};
 
 export interface AdaptiveRenditionState extends PlannedMediaRendition {
   id: string;
@@ -150,68 +156,69 @@ export class MediaAdaptiveLifecycleService {
     });
   }
 
-  async reopen(generationId: string): Promise<void> {
-    await this.database.client.mediaPlaybackGeneration.update({
-      where: { id: generationId },
-      data: {
-        status: "BUILDING",
-        readyAt: null,
-        failedAt: null,
-        hlsMasterStatus: "PLANNED",
-      },
-    });
-  }
-
-  async markFallbackReady(generationId: string): Promise<void> {
-    await this.database.client.mediaPlaybackGeneration.update({
-      where: { id: generationId },
-      data: { fallbackStatus: "READY" },
-    });
-  }
-
-  async setRenditionStatus(renditionId: string, status: MediaPlaybackOutputStatus): Promise<void> {
-    await this.database.client.mediaPlaybackRendition.update({
-      where: { id: renditionId },
-      data: {
-        status,
-        readyAt: status === "READY" ? new Date() : null,
-        failedAt: status === "FAILED" ? new Date() : null,
-      },
-    });
-  }
-
-  async setMasterStatus(generationId: string, status: MediaPlaybackOutputStatus): Promise<void> {
-    await this.database.client.mediaPlaybackGeneration.update({
-      where: { id: generationId },
-      data: { hlsMasterStatus: status },
-    });
-  }
-
-  async markFailedIfOwned(input: {
-    generationId: string;
-    renditionId?: string;
-    jobId: string;
-    workerId: string;
-  }): Promise<boolean> {
-    return this.database.client.$transaction(async (tx) => {
-      const now = new Date();
-      const ownership = await tx.mediaProcessingJob.updateMany({
-        where: {
-          id: input.jobId,
-          leaseOwner: input.workerId,
-          status: { in: [...ACTIVE_PROCESSING_STATUSES] },
-          leaseExpiresAt: { gt: now },
-        },
-        data: { heartbeatAt: now },
-      });
-      if (ownership.count !== 1) return false;
-
-      const generation = await tx.mediaPlaybackGeneration.findFirst({
+  async reopenIfOwned(input: OwnedGenerationInput): Promise<boolean> {
+    return this.mutateIfOwned(input, async (tx) => {
+      const updated = await tx.mediaPlaybackGeneration.updateMany({
         where: { id: input.generationId, processingJobId: input.jobId },
-        select: { id: true },
+        data: {
+          status: "BUILDING",
+          readyAt: null,
+          failedAt: null,
+          hlsMasterStatus: "PLANNED",
+        },
       });
-      if (!generation) return false;
+      return updated.count === 1;
+    });
+  }
 
+  async markFallbackReadyIfOwned(input: OwnedGenerationInput): Promise<boolean> {
+    return this.mutateIfOwned(input, async (tx) => {
+      const updated = await tx.mediaPlaybackGeneration.updateMany({
+        where: { id: input.generationId, processingJobId: input.jobId },
+        data: { fallbackStatus: "READY" },
+      });
+      return updated.count === 1;
+    });
+  }
+
+  async setRenditionStatusIfOwned(
+    input: OwnedGenerationInput & {
+      renditionId: string;
+      status: MediaPlaybackOutputStatus;
+    },
+  ): Promise<boolean> {
+    return this.mutateIfOwned(input, async (tx, now) => {
+      const updated = await tx.mediaPlaybackRendition.updateMany({
+        where: {
+          id: input.renditionId,
+          playbackGenerationId: input.generationId,
+        },
+        data: {
+          status: input.status,
+          readyAt: input.status === "READY" ? now : null,
+          failedAt: input.status === "FAILED" ? now : null,
+        },
+      });
+      return updated.count === 1;
+    });
+  }
+
+  async setMasterStatusIfOwned(
+    input: OwnedGenerationInput & { status: MediaPlaybackOutputStatus },
+  ): Promise<boolean> {
+    return this.mutateIfOwned(input, async (tx) => {
+      const updated = await tx.mediaPlaybackGeneration.updateMany({
+        where: { id: input.generationId, processingJobId: input.jobId },
+        data: { hlsMasterStatus: input.status },
+      });
+      return updated.count === 1;
+    });
+  }
+
+  async markFailedIfOwned(
+    input: OwnedGenerationInput & { renditionId?: string },
+  ): Promise<boolean> {
+    return this.mutateIfOwned(input, async (tx, now) => {
       if (input.renditionId) {
         await tx.mediaPlaybackRendition.updateMany({
           where: {
@@ -234,10 +241,12 @@ export class MediaAdaptiveLifecycleService {
     });
   }
 
-  async markReadyIfComplete(generationId: string): Promise<AdaptiveGenerationState | null> {
-    return this.database.client.$transaction(async (tx) => {
-      const generation = await tx.mediaPlaybackGeneration.findUnique({
-        where: { id: generationId },
+  async markReadyIfCompleteIfOwned(
+    input: OwnedGenerationInput,
+  ): Promise<AdaptiveGenerationState | null> {
+    const result = await this.mutateIfOwned(input, async (tx, now) => {
+      const generation = await tx.mediaPlaybackGeneration.findFirst({
+        where: { id: input.generationId, processingJobId: input.jobId },
         include: { renditions: true },
       });
       if (!generation) return null;
@@ -252,7 +261,7 @@ export class MediaAdaptiveLifecycleService {
       }
       const updated = await tx.mediaPlaybackGeneration.update({
         where: { id: generation.id },
-        data: { status: "READY", readyAt: new Date(), failedAt: null },
+        data: { status: "READY", readyAt: now, failedAt: null },
         include: { renditions: true },
       });
       const video = await tx.video.findUniqueOrThrow({
@@ -260,6 +269,36 @@ export class MediaAdaptiveLifecycleService {
         select: { channelId: true },
       });
       return toGenerationState(updated, video.channelId);
+    });
+    return result.owned ? result.value : null;
+  }
+
+  private async mutateIfOwned<T>(
+    input: OwnedGenerationInput,
+    operation: (tx: Prisma.TransactionClient, now: Date) => Promise<T>,
+  ): Promise<{ owned: true; value: T } | { owned: false }> {
+    return this.database.client.$transaction(async (tx) => {
+      const now = new Date();
+      // The conditional write both validates ownership and row-locks the processing job
+      // until this transaction commits, preventing a stale worker from racing a reclaim.
+      const ownership = await tx.mediaProcessingJob.updateMany({
+        where: {
+          id: input.jobId,
+          leaseOwner: input.workerId,
+          status: { in: [...ACTIVE_PROCESSING_STATUSES] },
+          leaseExpiresAt: { gt: now },
+        },
+        data: { heartbeatAt: now },
+      });
+      if (ownership.count !== 1) return { owned: false as const };
+
+      const generation = await tx.mediaPlaybackGeneration.findFirst({
+        where: { id: input.generationId, processingJobId: input.jobId },
+        select: { id: true },
+      });
+      if (!generation) return { owned: false as const };
+
+      return { owned: true as const, value: await operation(tx, now) };
     });
   }
 }
