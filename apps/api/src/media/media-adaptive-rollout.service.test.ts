@@ -4,10 +4,17 @@ import { MediaAdaptiveRolloutService } from "./media-adaptive-rollout.service.js
 
 function createService() {
   const jobs = { count: vi.fn() };
+  const tx = {
+    $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+    mediaProcessingJob: jobs,
+    adminAuditLog: { create: vi.fn() },
+  };
   const database = {
     client: {
       mediaProcessingJob: jobs,
-      $transaction: vi.fn(),
+      mediaPlaybackGeneration: { findMany: vi.fn().mockResolvedValue([]) },
+      video: { findMany: vi.fn().mockResolvedValue([]) },
+      $transaction: vi.fn(async (callback: (value: typeof tx) => unknown) => callback(tx)),
     },
   };
   const service = new MediaAdaptiveRolloutService(
@@ -61,6 +68,7 @@ describe("MediaAdaptiveRolloutService backfill safety", () => {
     expect(result.enqueued).toBe(0);
     expect(result.reason).toBe("BACKFILL_DISABLED_OR_PAUSED");
   });
+
   it("does not requeue failed backfill recovery while rollout is paused", async () => {
     const { service } = createService();
     vi.spyOn(service, "controls").mockResolvedValue({ ...baseControls, backfillPaused: true });
