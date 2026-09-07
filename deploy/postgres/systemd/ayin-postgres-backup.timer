@@ -1,0 +1,12 @@
+[Unit]
+Description=Run AYIN PostgreSQL backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:17:00 UTC
+RandomizedDelaySec=20m
+Persistent=true
+AccuracySec=1m
+Unit=ayin-postgres-backup.service
+
+[Install]
+WantedBy=timers.target
