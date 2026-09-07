@@ -499,7 +499,6 @@ export function AyinPlayer({
       <section
         className={styles.player}
         data-playing={playing}
-        data-playback-protocol={protocolRef.current.toLowerCase()}
         ref={rootRef}
         aria-label={`${title} player`}
       >

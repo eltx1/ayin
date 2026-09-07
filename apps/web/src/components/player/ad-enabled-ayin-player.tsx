@@ -30,7 +30,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const [decision, setDecision] = useState<VideoAdDecision | null>(null);
   const [decisionLoaded, setDecisionLoaded] = useState(false);
   const [targetsReady, setTargetsReady] = useState(false);
-  const [playbackReady, setPlaybackReady] = useState(false);
+  const [playbackReadyFor, setPlaybackReadyFor] = useState<string | null>(null);
   const [activated, setActivated] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [imaGestureRequired, setImaGestureRequired] = useState(false);
@@ -42,10 +42,9 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const midRollPlayedRef = useRef(false);
   const postRollPlayedRef = useRef(false);
   const requestIdRef = useRef(crypto.randomUUID());
-
-  useEffect(() => {
-    setPlaybackReady(false);
-  }, [props.adaptiveSourceUrl, props.sourceUrl, props.videoId]);
+  const playbackIdentity = `${props.videoId}:${props.sourceUrl}:${props.adaptiveSourceUrl ?? ""}`;
+  const playbackReady = playbackReadyFor === playbackIdentity;
+  const onPlaybackReady = props.onPlaybackReady;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,9 +79,9 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   }, []);
 
   const handlePlaybackReady = useCallback(() => {
-    setPlaybackReady(true);
-    props.onPlaybackReady?.();
-  }, [props.onPlaybackReady]);
+    setPlaybackReadyFor(playbackIdentity);
+    onPlaybackReady?.();
+  }, [onPlaybackReady, playbackIdentity]);
 
   const emit = useCallback(
     (slot: VideoAdSlot, type: VideoAdEventType, errorCode?: string) => {
