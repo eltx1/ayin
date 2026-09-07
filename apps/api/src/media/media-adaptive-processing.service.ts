@@ -82,7 +82,6 @@ export class MediaAdaptiveProcessingService {
     }
 
     await this.adaptiveLifecycle.reopen(generation.id);
-    await this.storage.deleteObject(generation.hlsMasterR2ObjectKey).catch(() => undefined);
     let activeRendition: AdaptiveRenditionState | undefined;
 
     try {
@@ -192,10 +191,19 @@ export class MediaAdaptiveProcessingService {
       );
       return true;
     } catch (error) {
-      await this.storage.deleteObject(generation.hlsMasterR2ObjectKey).catch(() => undefined);
-      await this.adaptiveLifecycle
-        .markFailed(generation.id, activeRendition?.id)
-        .catch(() => undefined);
+      const markedFailed = await this.adaptiveLifecycle
+        .markFailedIfOwned({
+          generationId: generation.id,
+          renditionId: activeRendition?.id,
+          jobId: input.job.id,
+          workerId: input.workerId,
+        })
+        .catch(() => false);
+      if (!markedFailed) {
+        this.logger.warn(
+          `Skipped adaptive failure cleanup for ${generation.videoId}/g${generation.generation} because this worker no longer owns an active lease.`,
+        );
+      }
       throw error;
     }
   }
