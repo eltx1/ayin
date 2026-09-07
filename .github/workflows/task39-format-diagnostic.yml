@@ -6,7 +6,7 @@ on:
       - task-39-media-architecture-v2
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
@@ -20,18 +20,27 @@ jobs:
           corepack enable
           corepack prepare pnpm@11.24.0 --activate
       - run: pnpm install --frozen-lockfile
-      - name: Render exact Prettier output
+      - name: Apply exact Prettier output
         run: |
           pnpm exec prettier --write \
             apps/api/src/media/media-architecture-v2.ts \
             apps/api/src/media/media-architecture-v2.test.ts \
             docs/MEDIA_ARCHITECTURE_V2.md \
             packages/db/src/media-v2.test.mjs
-          echo '===== media-architecture-v2.ts ====='
-          cat apps/api/src/media/media-architecture-v2.ts
-          echo '===== media-architecture-v2.test.ts ====='
-          cat apps/api/src/media/media-architecture-v2.test.ts
-          echo '===== MEDIA_ARCHITECTURE_V2.md ====='
-          cat docs/MEDIA_ARCHITECTURE_V2.md
-          echo '===== media-v2.test.mjs ====='
-          cat packages/db/src/media-v2.test.mjs
+          if git diff --quiet -- \
+            apps/api/src/media/media-architecture-v2.ts \
+            apps/api/src/media/media-architecture-v2.test.ts \
+            docs/MEDIA_ARCHITECTURE_V2.md \
+            packages/db/src/media-v2.test.mjs; then
+            echo "Already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/media/media-architecture-v2.ts \
+            apps/api/src/media/media-architecture-v2.test.ts \
+            docs/MEDIA_ARCHITECTURE_V2.md \
+            packages/db/src/media-v2.test.mjs
+          git commit -m "style(task39): apply prettier"
+          git push origin HEAD:task-39-media-architecture-v2
