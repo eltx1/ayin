@@ -42,14 +42,40 @@ export function parseHlsMediaPlaylistSegments(playlist: string): readonly number
     .map((line) => line.trim())
     .filter(Boolean);
   if (lines[0] !== "#EXTM3U") throw new Error("HLS media playlist is missing #EXTM3U.");
+  if (!lines.includes("#EXT-X-PLAYLIST-TYPE:VOD")) {
+    throw new Error("HLS media playlist is missing the VOD playlist type.");
+  }
   if (!lines.includes("#EXT-X-ENDLIST")) {
     throw new Error("HLS VOD media playlist is missing #EXT-X-ENDLIST.");
   }
 
+  const targetDurations = lines
+    .map((line) => /^#EXT-X-TARGETDURATION:(\d+)$/.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null);
+  if (targetDurations.length !== 1 || Number(targetDurations[0]?.[1]) <= 0) {
+    throw new Error("HLS media playlist requires one positive #EXT-X-TARGETDURATION.");
+  }
+
   const segments: number[] = [];
   const seen = new Set<number>();
+  let awaitingSegment = false;
   for (const line of lines) {
+    if (line.startsWith("#EXTINF:")) {
+      if (awaitingSegment) {
+        throw new Error("HLS media playlist contains an #EXTINF without a media segment.");
+      }
+      const match = /^#EXTINF:(\d+(?:\.\d+)?),?$/.exec(line);
+      const duration = match ? Number(match[1]) : Number.NaN;
+      if (!Number.isFinite(duration) || duration <= 0) {
+        throw new Error("HLS media playlist contains an invalid #EXTINF duration.");
+      }
+      awaitingSegment = true;
+      continue;
+    }
     if (line.startsWith("#")) continue;
+    if (!awaitingSegment) {
+      throw new Error("HLS media playlist segment is missing its #EXTINF duration.");
+    }
     const match = /^segment-(\d{6})\.ts$/.exec(line);
     if (!match) {
       throw new Error("HLS media playlist contains a non-deterministic segment URI.");
@@ -65,6 +91,10 @@ export function parseHlsMediaPlaylistSegments(playlist: string): readonly number
     }
     seen.add(sequence);
     segments.push(sequence);
+    awaitingSegment = false;
+  }
+  if (awaitingSegment) {
+    throw new Error("HLS media playlist ends with an #EXTINF without a media segment.");
   }
   if (segments.length === 0) throw new Error("HLS media playlist contains no media segments.");
   return segments;
