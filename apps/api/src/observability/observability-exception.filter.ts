@@ -23,11 +23,17 @@ export class ObservabilityExceptionFilter implements ExceptionFilter {
     const response = http.getResponse();
     const statusCode = exception instanceof HttpException ? exception.getStatus() : 500;
     const path = request.routeOptions?.url ?? request.url.split("?", 1)[0] ?? request.url;
-    this.observability.captureError(exception, {
-      source: "http.exception",
-      path,
-      statusCode,
-    });
+
+    // Routine client failures are already classified and counted by the response hook.
+    // Keep exception logs focused on server/dependency failures to avoid operational noise.
+    if (statusCode >= 500) {
+      this.observability.captureError(exception, {
+        source: "http.exception",
+        path,
+        statusCode,
+      });
+    }
+
     const body =
       exception instanceof HttpException
         ? exception.getResponse()
