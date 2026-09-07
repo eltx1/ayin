@@ -49,7 +49,13 @@ export const MEDIA_RENDITION_LADDER = [
 
 export type MediaRenditionIdentity = (typeof MEDIA_RENDITION_LADDER)[number]["identity"];
 export type MediaPlaybackOutputStatus =
-  "PLANNED" | "PROCESSING" | "UPLOADING" | "VERIFYING" | "READY" | "FAILED" | "REMOVED";
+  | "PLANNED"
+  | "PROCESSING"
+  | "UPLOADING"
+  | "VERIFYING"
+  | "READY"
+  | "FAILED"
+  | "REMOVED";
 export type MediaPlaybackGenerationStatus = "BUILDING" | "READY" | "FAILED" | "SUPERSEDED";
 
 export interface MediaSourceDimensions {
@@ -68,6 +74,13 @@ export interface PlannedMediaRendition {
   pixelFormat: typeof MEDIA_PIXEL_FORMAT;
   protocol: typeof MEDIA_HLS_PROFILE.protocol;
   container: typeof MEDIA_HLS_PROFILE.container;
+}
+
+export interface MediaRenditionPlanningOptions {
+  allowedIdentities?: readonly MediaRenditionIdentity[];
+  maxOutputHeight?: number;
+  videoBitrateKbps?: Partial<Record<MediaRenditionIdentity, number>>;
+  audioBitrateKbps?: Partial<Record<MediaRenditionIdentity, number>>;
 }
 
 export interface MediaGenerationNamespace {
@@ -89,23 +102,42 @@ export interface MediaPlaybackReadiness {
 
 export function planAdaptiveRenditions(
   source: MediaSourceDimensions,
+  options: MediaRenditionPlanningOptions = {},
 ): readonly PlannedMediaRendition[] {
   assertSourceDimensions(source);
-
-  return MEDIA_RENDITION_LADDER.filter((entry) => entry.targetHeight <= source.height).map(
-    (entry) => ({
-      identity: entry.identity,
-      width: scaledEvenWidth(source, entry.targetHeight),
-      height: entry.targetHeight,
-      videoBitrateKbps: entry.videoBitrateKbps,
-      audioBitrateKbps: entry.audioBitrateKbps,
-      videoCodec: MEDIA_HLS_PROFILE.videoCodec,
-      audioCodec: MEDIA_HLS_PROFILE.audioCodec,
-      pixelFormat: MEDIA_HLS_PROFILE.pixelFormat,
-      protocol: MEDIA_HLS_PROFILE.protocol,
-      container: MEDIA_HLS_PROFILE.container,
-    }),
+  const maxOutputHeight = options.maxOutputHeight ?? 1_080;
+  if (!Number.isSafeInteger(maxOutputHeight) || maxOutputHeight <= 0 || maxOutputHeight > 1_080) {
+    throw new Error("HLS maximum output height must be an integer between 1 and 1080.");
+  }
+  const allowed = new Set(
+    options.allowedIdentities ?? MEDIA_RENDITION_LADDER.map((entry) => entry.identity),
   );
+
+  return MEDIA_RENDITION_LADDER.filter(
+    (entry) =>
+      entry.targetHeight <= source.height &&
+      entry.targetHeight <= maxOutputHeight &&
+      allowed.has(entry.identity),
+  ).map((entry) => ({
+    identity: entry.identity,
+    width: scaledEvenWidth(source, entry.targetHeight),
+    height: entry.targetHeight,
+    videoBitrateKbps: resolveBitrate(
+      options.videoBitrateKbps?.[entry.identity],
+      entry.videoBitrateKbps,
+      "video",
+    ),
+    audioBitrateKbps: resolveBitrate(
+      options.audioBitrateKbps?.[entry.identity],
+      entry.audioBitrateKbps,
+      "audio",
+    ),
+    videoCodec: MEDIA_HLS_PROFILE.videoCodec,
+    audioCodec: MEDIA_HLS_PROFILE.audioCodec,
+    pixelFormat: MEDIA_HLS_PROFILE.pixelFormat,
+    protocol: MEDIA_HLS_PROFILE.protocol,
+    container: MEDIA_HLS_PROFILE.container,
+  }));
 }
 
 export function canonicalFallbackObjectKey(namespace: MediaGenerationNamespace): string {
@@ -163,6 +195,14 @@ function scaledEvenWidth(source: MediaSourceDimensions, targetHeight: number): n
   const scaledWidth = Math.floor((source.width * targetHeight) / source.height);
   const evenWidth = scaledWidth - (scaledWidth % 2);
   return Math.max(2, evenWidth);
+}
+
+function resolveBitrate(value: number | undefined, fallback: number, label: string): number {
+  const bitrate = value ?? fallback;
+  if (!Number.isSafeInteger(bitrate) || bitrate <= 0 || bitrate > 50_000) {
+    throw new Error(`HLS ${label} bitrate must be a positive integer no greater than 50000 kbps.`);
+  }
+  return bitrate;
 }
 
 function assertSourceDimensions(source: MediaSourceDimensions): void {
