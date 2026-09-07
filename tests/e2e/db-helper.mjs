@@ -83,6 +83,109 @@ try {
       result = { ok: true };
       break;
     }
+    case "seed-player-video": {
+      const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const channel = await prisma.channel.create({
+        data: { handle: `hls-${suffix}`, name: "HLS E2E Channel", status: "ACTIVE" },
+      });
+      const video = await prisma.video.create({
+        data: {
+          channelId: channel.id,
+          slug: `hls-player-${suffix}`,
+          title: "HLS Player E2E",
+          status: "PUBLISHED",
+          visibility: "PUBLIC",
+          commentsEnabled: true,
+          durationMs: 120_000,
+          publishedAt: new Date(),
+        },
+      });
+      const sourceKey = `e2e/player/${video.id}/canonical.mp4`;
+      await prisma.mediaAsset.create({
+        data: {
+          videoId: video.id,
+          channelId: channel.id,
+          kind: "SOURCE_VIDEO",
+          status: "VALIDATED",
+          r2ObjectKey: sourceKey,
+          mimeType: "video/mp4",
+          sizeBytes: 2048n,
+          durationMs: 120_000,
+          width: 1280,
+          height: 720,
+        },
+      });
+      result = { id: video.id, slug: video.slug, channelId: channel.id, sourceKey };
+      break;
+    }
+    case "configure-hls-playback": {
+      const enabled = payload.enabled !== false;
+      await prisma.featureFlag.upsert({
+        where: { key: "player.hls.enabled" },
+        update: { enabled, rolloutPercentage: 100 },
+        create: {
+          key: "player.hls.enabled",
+          description: "Task 41 E2E HLS playback gate",
+          enabled,
+          rolloutPercentage: 100,
+        },
+      });
+      if (!enabled || !payload.videoId) {
+        result = { enabled };
+        break;
+      }
+      const latest = await prisma.mediaPlaybackGeneration.findFirst({
+        where: { videoId: payload.videoId },
+        orderBy: { generation: "desc" },
+        select: { generation: true },
+      });
+      const generation = (latest?.generation ?? 0) + 1;
+      const prefix = `e2e/player/${payload.videoId}/g${generation}`;
+      const created = await prisma.mediaPlaybackGeneration.create({
+        data: {
+          videoId: payload.videoId,
+          generation,
+          status: "READY",
+          fallbackR2ObjectKey: `${prefix}/fallback.mp4`,
+          fallbackStatus: "READY",
+          hlsMasterR2ObjectKey: `${prefix}/master.m3u8`,
+          hlsMasterStatus: "READY",
+          readyAt: new Date(),
+          renditions: {
+            create: [
+              {
+                identity: "360p",
+                width: 640,
+                height: 360,
+                videoBitrateKbps: 700,
+                audioBitrateKbps: 96,
+                playlistR2ObjectKey: `${prefix}/360p/index.m3u8`,
+                segmentR2Prefix: `${prefix}/360p/segments`,
+                status: "READY",
+                readyAt: new Date(),
+              },
+              {
+                identity: "720p",
+                width: 1280,
+                height: 720,
+                videoBitrateKbps: 2800,
+                audioBitrateKbps: 128,
+                playlistR2ObjectKey: `${prefix}/720p/index.m3u8`,
+                segmentR2Prefix: `${prefix}/720p/segments`,
+                status: "READY",
+                readyAt: new Date(),
+              },
+            ],
+          },
+        },
+      });
+      result = {
+        enabled,
+        fallbackKey: created.fallbackR2ObjectKey,
+        masterKey: created.hlsMasterR2ObjectKey,
+      };
+      break;
+    }
     case "upload-association": {
       const uploads = await prisma.playlist.findUniqueOrThrow({
         where: { channelId_systemKey: { channelId: payload.channelId, systemKey: "UPLOADS" } },
