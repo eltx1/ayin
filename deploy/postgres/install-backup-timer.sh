@@ -18,20 +18,18 @@ id "$APP_USER" >/dev/null 2>&1 || fail "required Linux user '$APP_USER' does not
 [[ -d "$RELEASE_ROOT" ]] || fail "$RELEASE_ROOT is missing"
 [[ -f "$UNIT_SOURCE/ayin-postgres-backup.service" && -f "$UNIT_SOURCE/ayin-postgres-backup.timer" ]] || fail "backup systemd units are missing from the active release"
 
+needs_packages=0
+for command in age aws jq; do
+  command -v "$command" >/dev/null 2>&1 || needs_packages=1
+done
+if (( needs_packages == 1 )); then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y age awscli jq
+fi
+
 for command in age aws flock ionice jq pg_dump pg_restore psql systemctl; do
-  if ! command -v "$command" >/dev/null 2>&1; then
-    case "$command" in
-      age|aws|jq)
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update
-        apt-get install -y age awscli jq
-        break
-        ;;
-      *)
-        fail "required command '$command' is missing"
-        ;;
-    esac
-  fi
+  command -v "$command" >/dev/null 2>&1 || fail "required command '$command' is missing"
 done
 
 for file in "$DATABASE_ENV" "$BACKUP_ENV"; do
