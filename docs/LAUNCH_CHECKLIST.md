@@ -27,7 +27,13 @@ The V1 zero-additional-service topology keeps Web/API/PostgreSQL and the isolate
 - [ ] Dedicated database `ayin` and application role `ayin_app` are used; no Horus database/user is reused.
 - [ ] Production `DATABASE_URL` is stored outside git with mode `600`.
 - [ ] `pnpm db:migrate:deploy` succeeds before public acceptance.
-- [ ] Automated backups exist, an off-host recoverable copy is retained, and at least one restore test has succeeded.
+- [ ] Dedicated private R2 bucket `ayin-production-db-backups` exists outside the EC2/EBS failure domain and is not the media bucket.
+- [ ] Backup-bucket credentials are least privilege, server-only, and stored outside git with mode `600`.
+- [ ] The production host contains only the public `age` backup recipient; the matching private recovery identity is held off-host.
+- [ ] `ayin-postgres-backup.timer` is enabled, active and scheduled daily; `/home/ayin/backup-status/latest.json` records a verified success no older than 26 hours.
+- [ ] A real production backup has passed remote re-download + SHA-256 integrity verification.
+- [ ] At least one real encrypted R2 backup has been restored into an `ayin_restore_*` non-production database and produced a successful Task 44 restore report including PostgreSQL, Prisma migration and application smoke checks.
+- [ ] RPO target (24h), RTO target (4h), 35-day retention and recovery owner are accepted by operations.
 
 ## R2 and media delivery
 
@@ -93,10 +99,12 @@ The V1 zero-additional-service topology keeps Web/API/PostgreSQL and the isolate
 - [ ] Media-worker crashes, queue stalls and repeated processing failures are detectable and have an operational response path.
 - [ ] Health-check failure and elevated 5xx rate have an operational response path.
 - [ ] R2/media delivery failures can be distinguished from API/web/media-processing failures.
+- [ ] Backup unit failure or absence of a verified backup for more than 26 hours has an operational alert/response path.
 
 ## Final acceptance
 
 - [ ] Run `pnpm test:e2e` against the release candidate with the isolated E2E storage adapter only in `APP_ENV=test`, or against an explicitly safe R2 test environment.
+- [ ] `PostgreSQL backup restore acceptance` CI is green for the release candidate.
 - [ ] Register -> automatic profile/channel/Uploads/TV verified.
 - [ ] Direct source upload -> processing -> validated canonical media -> publish -> channel/Uploads/Creator TV verified.
 - [ ] Watch -> progress -> resume verified.
@@ -109,5 +117,6 @@ The V1 zero-additional-service topology keeps Web/API/PostgreSQL and the isolate
 
 - [ ] Previous release path is known before deployment.
 - [ ] Database migration compatibility/rollback implications are reviewed before switching the `current` symlink.
+- [ ] A verified backup/recovery point exists before a migration with material data-loss risk.
 - [ ] PM2 rollback and public health checks are documented and executable.
 - [ ] Incident owner knows how to activate maintenance/ad kill switches without code edits.
