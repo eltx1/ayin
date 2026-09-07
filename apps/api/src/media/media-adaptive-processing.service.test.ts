@@ -236,8 +236,13 @@ describe("Task 40 adaptive processing", () => {
   });
 
   it("reuses a verified READY rendition on retry without transcoding it again", async () => {
-    const state = generation();
-    state.renditions[0] = { ...state.renditions[0]!, status: "READY" };
+    const baseState = generation();
+    const state: AdaptiveGenerationState = {
+      ...baseState,
+      renditions: baseState.renditions.map((rendition, index) =>
+        index === 0 ? { ...rendition, status: "READY" } : rendition,
+      ),
+    };
     const playlistText = [
       "#EXTM3U",
       "#EXTINF:6.0,",
