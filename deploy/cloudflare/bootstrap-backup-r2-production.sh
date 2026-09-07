@@ -23,22 +23,29 @@ api_call() {
   local payload="${3:-}"
   local output
   output="$(mktemp)"
-  trap 'rm -f "$output"' RETURN
 
   if [[ -n "$payload" ]]; then
-    curl --fail-with-body --silent --show-error \
+    if ! curl --fail-with-body --silent --show-error \
       --request "$method" --header "$AUTH_HEADER" --header "$CONTENT_HEADER" \
-      --data "$payload" "$url" > "$output"
+      --data "$payload" "$url" > "$output"; then
+      rm -f "$output"
+      return 1
+    fi
   else
-    curl --fail-with-body --silent --show-error \
-      --request "$method" --header "$AUTH_HEADER" "$url" > "$output"
+    if ! curl --fail-with-body --silent --show-error \
+      --request "$method" --header "$AUTH_HEADER" "$url" > "$output"; then
+      rm -f "$output"
+      return 1
+    fi
   fi
 
-  jq -e '.success == true' "$output" >/dev/null || {
+  if ! jq -e '.success == true' "$output" >/dev/null; then
     jq '{errors, messages}' "$output" >&2
+    rm -f "$output"
     return 1
-  }
+  fi
   cat "$output"
+  rm -f "$output"
 }
 
 command -v curl >/dev/null || fail "curl is required"
@@ -63,16 +70,27 @@ elif [[ "$count" != "1" ]]; then
   fail "unexpected exact bucket match count: $count"
 fi
 
-# No custom domain is created here. Backups are accessed only through authenticated S3 API calls.
+# Backup objects must not be reachable through either custom domains or Cloudflare's managed r2.dev URL.
 domains="$(api_call GET "$API_ROOT/accounts/$ACCOUNT_ID/r2/buckets/$BACKUP_BUCKET/domains/custom")"
 jq -e '[.result.domains[]?] | length == 0' <<<"$domains" >/dev/null || \
   fail "backup bucket has a custom public domain; remove it before using this bucket"
+
+managed="$(api_call GET "$API_ROOT/accounts/$ACCOUNT_ID/r2/buckets/$BACKUP_BUCKET/domains/managed")"
+if jq -e '.result.enabled == true' <<<"$managed" >/dev/null; then
+  api_call PUT \
+    "$API_ROOT/accounts/$ACCOUNT_ID/r2/buckets/$BACKUP_BUCKET/domains/managed" \
+    '{"enabled":false}' >/dev/null
+fi
+managed="$(api_call GET "$API_ROOT/accounts/$ACCOUNT_ID/r2/buckets/$BACKUP_BUCKET/domains/managed")"
+jq -e '.result.enabled == false' <<<"$managed" >/dev/null || \
+  fail "backup bucket r2.dev public access is still enabled"
 
 cat <<EOF
 AYIN private database-backup bucket is ready.
 Bucket: $BACKUP_BUCKET
 Account: $ACCOUNT_ID
 Public media bucket: $MEDIA_BUCKET (not used)
-No custom domain is attached.
+Custom domains: none
+Managed r2.dev public access: disabled
 Next: create R2 Object Read & Write credentials restricted only to '$BACKUP_BUCKET'.
 EOF
