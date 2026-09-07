@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { hostname } from "node:os";
 import { rename, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 
 import { Inject, Injectable } from "@nestjs/common";
 
@@ -18,6 +18,7 @@ export class MediaProcessingWorkerService {
   private readonly active = new Set<Promise<void>>();
   private readonly instanceId = `${hostname()}:${process.pid}:${randomUUID()}`;
   private readonly startedAt = new Date().toISOString();
+  private heartbeatErrorActive = false;
   private stopping = false;
 
   constructor(
@@ -53,11 +54,7 @@ export class MediaProcessingWorkerService {
               this.observability.captureError(error, {
                 source: "media.worker.executor",
                 path: "/media-worker",
-              });
-              this.logger.event("error", "media_worker.executor_failure", {
-                jobId: job.id,
-                errorName: error instanceof Error ? error.name : typeof error,
-                message: error instanceof Error ? error.message : "Unknown worker failure",
+                details: { jobId: job.id },
               });
             })
             .finally(() => this.active.delete(task));
@@ -112,8 +109,15 @@ export class MediaProcessingWorkerService {
         { mode: 0o640 },
       );
       await rename(temporaryPath, heartbeatPath);
+      if (this.heartbeatErrorActive) {
+        this.heartbeatErrorActive = false;
+        this.logger.event("info", "media_worker.heartbeat_recovered");
+      }
     } catch (error) {
-      this.observability.captureError(error, { source: "media.worker.heartbeat" });
+      if (!this.heartbeatErrorActive) {
+        this.heartbeatErrorActive = true;
+        this.observability.captureError(error, { source: "media.worker.heartbeat" });
+      }
     }
   }
 }
