@@ -1,0 +1,81 @@
+name: PostgreSQL backup restore acceptance
+
+on:
+  pull_request:
+    paths:
+      - "deploy/postgres/**"
+      - "deploy/env/backup.env.example"
+      - ".github/workflows/backup-restore.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "deploy/postgres/**"
+      - "deploy/env/backup.env.example"
+      - ".github/workflows/backup-restore.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  restore-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ayin_test
+          POSTGRES_USER: ayin
+          POSTGRES_PASSWORD: ayin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install backup tooling
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y age postgresql-client
+          pg_dump --version
+          pg_restore --version
+
+      - name: Build database package
+        run: pnpm packages:build
+
+      - name: Validate backup tooling syntax
+        run: |
+          set -euo pipefail
+          bash -n deploy/postgres/backup-common.sh
+          bash -n deploy/postgres/backup-production.sh
+          bash -n deploy/postgres/restore-drill.sh
+          bash -n deploy/postgres/test-backup-restore.sh
+          bash -n deploy/postgres/install-backup-timer.sh
+          node --check deploy/postgres/restore-smoke.mjs
+
+      - name: Run encrypted backup and restore drill
+        run: bash deploy/postgres/test-backup-restore.sh
