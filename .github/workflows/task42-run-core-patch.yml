@@ -34,7 +34,7 @@ jobs:
           script = "\n".join(line[10:] if line.startswith("          ") else line for line in script.splitlines())
           exec(compile(script, 'task42-core-patch.py', 'exec'))
           PY
-          pnpm exec prettier --write apps/api/src/platform-config/platform-settings.catalog.ts apps/api/src/media/media-adaptive-processing.service.ts apps/api/src/media/media-processing-lifecycle.service.ts apps/api/src/media/media-processing-queue.service.ts apps/api/src/media/media.module.ts apps/api/src/media/media-adaptive-lifecycle.service.ts packages/db/prisma/media-v2.prisma
+          pnpm exec prettier --write apps/api/src/platform-config/platform-settings.catalog.ts apps/api/src/media/media-adaptive-processing.service.ts apps/api/src/media/media-processing-lifecycle.service.ts apps/api/src/media/media-processing-queue.service.ts apps/api/src/media/media.module.ts apps/api/src/media/media-adaptive-lifecycle.service.ts
           pnpm db:generate
           pnpm packages:build
           pnpm --filter @ayin/api lint
