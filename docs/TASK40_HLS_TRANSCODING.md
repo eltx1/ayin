@@ -62,13 +62,15 @@ R2 object existence alone never means adaptive playback is ready. `MediaPlayback
 3. the HLS master is `READY`;
 4. all required R2 objects have passed size/content-type checks and manifest verification.
 
-A rendition failure marks the adaptive generation failed and removes any master object. The canonical MP4 is preserved. Therefore partial HLS cannot become public adaptive playback even if some segments or variant playlists remain in the deterministic generation namespace.
+A rendition failure may mark the adaptive generation failed only while the same processing job is still owned by the active, unexpired worker lease. The worker does not destructively delete deterministic HLS objects from its failure path because a stale worker could race a replacement worker using the same namespace. The canonical MP4 is always preserved. Partial or stale HLS objects are harmless because database readiness—not R2 object presence—controls whether an adaptive generation is usable.
 
 ## Retry and recovery
 
 Retries reuse the same `(videoId, generation)` rows and deterministic R2 keys. They do not create a second adaptive generation for the same processing job.
 
-A rendition previously marked `READY` is reusable only after its remote playlist and every referenced deterministic segment are re-verified. A generation previously marked `READY` is reusable only after the fallback, every rendition and the exact deterministic master manifest are re-verified. An arbitrary or mutated `master.m3u8` is not accepted as recovery evidence.
+A rendition previously marked `READY` is reusable only after its remote VOD playlist passes structural validation and every referenced deterministic segment is re-verified. Segment numbering must be contiguous from `000001`, and the playlist must contain the required VOD structure including a positive target duration and media durations. A generation previously marked `READY` is reusable only after the fallback, every rendition and the exact deterministic master manifest are re-verified. An arbitrary or mutated `master.m3u8` is not accepted as recovery evidence.
+
+Failure-state transitions are lease-owned. If a worker has lost or expired its processing lease, it cannot mark the shared adaptive generation or rendition failed after another worker has reclaimed the job.
 
 The database lifecycle remains the source of truth. Operators must never repair adaptive readiness by manually uploading a master manifest or changing R2 objects without matching verified database state.
 
@@ -99,7 +101,7 @@ Merging Task 40 must not enable HLS automatically. `mediaHlsEnabled` defaults to
 
 When adaptive generation is deliberately enabled for a controlled validation population, rollback is immediate at the processing layer: set `mediaHlsEnabled=false`. Existing canonical MP4 upload, publish and playback paths continue to work. Already generated HLS objects may remain in R2, but they are not selected by the Task 40 player/API path.
 
-If an adaptive job fails, inspect the `MediaProcessingJob`, `MediaPlaybackGeneration` and `MediaPlaybackRendition` lifecycle records first. Do not infer readiness from the presence of `master.m3u8`. A normal queue retry re-enters the same deterministic generation and verifies reusable outputs before continuing.
+If an adaptive job fails, inspect the `MediaProcessingJob`, `MediaPlaybackGeneration` and `MediaPlaybackRendition` lifecycle records first. Do not infer readiness from the presence of `master.m3u8`. A normal queue retry re-enters the same deterministic generation and verifies reusable outputs before continuing. Do not manually delete deterministic HLS objects to recover a lease race; the replacement worker safely overwrites and verifies the same deterministic keys.
 
 ## Task 41 boundary
 
