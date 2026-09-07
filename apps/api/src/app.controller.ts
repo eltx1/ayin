@@ -1,33 +1,22 @@
-import type { HealthResponse } from "@ayin/types";
 import { Controller, Get, Inject, ServiceUnavailableException } from "@nestjs/common";
 
-import { DatabaseService } from "./database/database.service.js";
+import { ObservabilityService } from "./observability/observability.service.js";
 
 @Controller()
 export class AppController {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(@Inject(ObservabilityService) private readonly observability: ObservabilityService) {}
 
-  @Get("health")
-  getHealth(): HealthResponse {
-    return {
-      service: "ayin-api",
-      status: "ok",
-    };
+  @Get(["health", "health/live"])
+  getHealth() {
+    return this.observability.live();
   }
 
-  @Get("ready")
+  @Get(["ready", "health/ready"])
   async getReadiness() {
-    try {
-      await this.database.client.$queryRaw`SELECT 1`;
-      return {
-        service: "ayin-api",
-        status: "ready",
-      } as const;
-    } catch {
-      throw new ServiceUnavailableException({
-        service: "ayin-api",
-        status: "not_ready",
-      });
+    const readiness = await this.observability.ready();
+    if (readiness.status !== "ready") {
+      throw new ServiceUnavailableException(readiness);
     }
+    return readiness;
   }
 }
