@@ -168,9 +168,9 @@ databaseDescribe("Task 40 adaptive playback lifecycle", () => {
     await expect(
       lifecycle.setRenditionStatusIfOwned({ ...owner, renditionId, status: "PROCESSING" }),
     ).resolves.toBe(false);
-    await expect(
-      lifecycle.setMasterStatusIfOwned({ ...owner, status: "UPLOADING" }),
-    ).resolves.toBe(false);
+    await expect(lifecycle.setMasterStatusIfOwned({ ...owner, status: "UPLOADING" })).resolves.toBe(
+      false,
+    );
     await expect(lifecycle.reopenIfOwned(owner)).resolves.toBe(false);
 
     const storedGeneration = await prisma.mediaPlaybackGeneration.findUniqueOrThrow({

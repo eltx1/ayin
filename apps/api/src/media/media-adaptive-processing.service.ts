@@ -244,7 +244,8 @@ export class MediaAdaptiveProcessingService {
         }),
       );
       const ready = await this.adaptiveLifecycle.markReadyIfCompleteIfOwned(ownedGeneration);
-      if (!ready) throw new Error("HLS generation could not satisfy the owned atomic READY invariant.");
+      if (!ready)
+        throw new Error("HLS generation could not satisfy the owned atomic READY invariant.");
       this.logger.log(
         `Adaptive generation ${generation.videoId}/g${generation.generation} reached READY.`,
       );
