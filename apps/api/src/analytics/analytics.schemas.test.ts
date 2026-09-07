@@ -23,6 +23,24 @@ describe("analytics contracts", () => {
     });
   });
 
+  it.each(["VIDEO_QUALITY_SWITCH", "VIDEO_HLS_FATAL", "VIDEO_FALLBACK"] as const)(
+    "accepts adaptive playback event %s without adding private identifiers",
+    (eventName) => {
+      const parsed = analyticsEventSchema.parse({
+        ...event,
+        clientEventId: "87846524-50de-4bf0-b047-c0a86ea57c04",
+        eventName,
+        durationDeltaMs: undefined,
+        positionMs: undefined,
+        metadata: { protocol: eventName === "VIDEO_FALLBACK" ? "MP4" : "HLS" },
+      });
+      expect(parsed.eventName).toBe(eventName);
+      expect(parsed.metadata).toEqual({
+        protocol: eventName === "VIDEO_FALLBACK" ? "MP4" : "HLS",
+      });
+    },
+  );
+
   it("rejects unbounded noisy progress deltas", () => {
     expect(() => analyticsEventSchema.parse({ ...event, durationDeltaMs: 3_600_001 })).toThrow();
   });

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { type AyinPlayerProps, AyinPlayer } from "./ayin-player";
 import { GoogleImaVideoAdService } from "@/lib/google-ima-video-ad-service";
 import {
   canServeSessionAd,
@@ -16,6 +15,7 @@ import {
   type VideoAdSlot,
 } from "@/lib/video-ads";
 
+import { type AyinPlayerProps, AyinPlayer } from "./ayin-player";
 import styles from "./ad-enabled-ayin-player.module.css";
 
 function mobileImaRequiresGesture(): boolean {
@@ -30,6 +30,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const [decision, setDecision] = useState<VideoAdDecision | null>(null);
   const [decisionLoaded, setDecisionLoaded] = useState(false);
   const [targetsReady, setTargetsReady] = useState(false);
+  const [playbackReadyFor, setPlaybackReadyFor] = useState<string | null>(null);
   const [activated, setActivated] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [imaGestureRequired, setImaGestureRequired] = useState(false);
@@ -41,6 +42,9 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const midRollPlayedRef = useRef(false);
   const postRollPlayedRef = useRef(false);
   const requestIdRef = useRef(crypto.randomUUID());
+  const playbackIdentity = `${props.videoId}:${props.sourceUrl}:${props.adaptiveSourceUrl ?? ""}`;
+  const playbackReady = playbackReadyFor === playbackIdentity;
+  const onPlaybackReady = props.onPlaybackReady;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -73,6 +77,11 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
     contentVideoRef.current = element?.parentElement?.querySelector("video") ?? null;
     setTargetsReady(Boolean(adContainerRef.current && contentVideoRef.current));
   }, []);
+
+  const handlePlaybackReady = useCallback(() => {
+    setPlaybackReadyFor(playbackIdentity);
+    onPlaybackReady?.();
+  }, [onPlaybackReady, playbackIdentity]);
 
   const emit = useCallback(
     (slot: VideoAdSlot, type: VideoAdEventType, errorCode?: string) => {
@@ -156,7 +165,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
     async (autoPlayAttempt = false) => {
       const contentVideo = contentVideoRef.current;
       const adContainer = adContainerRef.current;
-      if (!contentVideo || !adContainer) return;
+      if (!contentVideo || !adContainer || !playbackReady) return;
       setActivated(true);
       setAutoplayBlocked(false);
 
@@ -170,13 +179,14 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
       }
       await attemptContentPlayback();
     },
-    [attemptContentPlayback, decision, playAd],
+    [attemptContentPlayback, decision, playAd, playbackReady],
   );
 
   useEffect(() => {
     if (
       !decisionLoaded ||
       !targetsReady ||
+      !playbackReady ||
       activated ||
       props.autoPlay !== true ||
       (decision?.preRollEnabled && imaGestureRequired)
@@ -193,6 +203,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
     decision?.preRollEnabled,
     decisionLoaded,
     imaGestureRequired,
+    playbackReady,
     props.autoPlay,
     targetsReady,
   ]);
@@ -238,6 +249,8 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
     decision && (decision.preRollEnabled || decision.midRollEnabled || decision.postRollEnabled),
   );
   const gestureGate = Boolean(decision?.preRollEnabled && imaGestureRequired);
+  const showStart =
+    autoplayBlocked || (adEligible && !activated && (props.autoPlay !== true || gestureGate));
 
   return (
     <div className={styles.wrap}>
@@ -246,19 +259,23 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         autoPlay={false}
         adMode={{ active: adActive, controlsLocked: adActive, label: status ?? "Advertisement" }}
         onAdContainerReady={handleAdContainerReady}
+        onPlaybackReady={handlePlaybackReady}
       />
-      {autoplayBlocked || (adEligible && !activated && (props.autoPlay !== true || gestureGate)) ? (
+      {showStart ? (
         <button
           aria-label="Play video"
           className={styles.start}
           data-tv-focusable="true"
+          disabled={!playbackReady}
           onClick={() => void activatePlayback(false)}
           type="button"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24">
             <path d="M8 5.5v13l10-6.5z" />
           </svg>
-          <span>{autoplayBlocked ? "Tap to play" : "Play video"}</span>
+          <span>
+            {!playbackReady ? "Preparing video…" : autoplayBlocked ? "Tap to play" : "Play video"}
+          </span>
         </button>
       ) : null}
     </div>

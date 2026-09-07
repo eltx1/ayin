@@ -12,6 +12,12 @@ import {
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
 import {
+  type AyinAdaptivePlaybackSession,
+  type AyinHlsFailureReason,
+  type AyinPlaybackRendition,
+  startAdaptiveHlsPlayback,
+} from "@/lib/adaptive-playback";
+import {
   type AyinCaptionTrack,
   type AyinPlayerAdModeState,
   type AyinPlayerAnalytics,
@@ -32,6 +38,7 @@ import styles from "./ayin-player.module.css";
 export interface AyinPlayerProps {
   videoId: string;
   sourceUrl: string;
+  adaptiveSourceUrl?: string | null | undefined;
   title: string;
   durationMs?: number | null | undefined;
   posterUrl?: string | null | undefined;
@@ -46,6 +53,7 @@ export interface AyinPlayerProps {
   analytics?: AyinPlayerAnalytics | undefined;
   adMode?: AyinPlayerAdModeState | undefined;
   onAdContainerReady?: ((element: HTMLDivElement | null) => void) | undefined;
+  onPlaybackReady?: (() => void) | undefined;
   autoPlay?: boolean | undefined;
   muted?: boolean | undefined;
   className?: string | undefined;
@@ -55,6 +63,7 @@ export interface AyinPlayerProps {
 export function AyinPlayer({
   videoId,
   sourceUrl,
+  adaptiveSourceUrl = null,
   title,
   durationMs: declaredDurationMs = null,
   posterUrl = null,
@@ -69,6 +78,7 @@ export function AyinPlayer({
   analytics = noopPlayerAnalytics,
   adMode = { active: false },
   onAdContainerReady,
+  onPlaybackReady,
   autoPlay = false,
   muted: initiallyMuted = false,
   className,
@@ -77,6 +87,15 @@ export function AyinPlayer({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const adContainerRef = useRef<HTMLDivElement | null>(null);
+  const adaptiveSessionRef = useRef<AyinAdaptivePlaybackSession | null>(null);
+  const fallbackToMp4Ref = useRef<((reason: AyinHlsFailureReason) => void) | null>(null);
+  const fallbackUsedRef = useRef(false);
+  const protocolRef = useRef<"HLS" | "MP4">("MP4");
+  const adActiveRef = useRef(adMode.active);
+  const bufferingRef = useRef(false);
+  const lastQualityTelemetryRef = useRef<string | null>(null);
+  const suppressPauseTelemetryRef = useRef(false);
+  const suppressNextPlayTelemetryRef = useRef(false);
   const lastPersistedAtRef = useRef(0);
   const lastPersistedPositionRef = useRef(0);
   const persistBusyRef = useRef(false);
@@ -93,6 +112,8 @@ export function AyinPlayer({
   const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
     null,
   );
+  const [qualities, setQualities] = useState<AyinPlaybackRendition[]>([]);
+  const [selectedQuality, setSelectedQuality] = useState("AUTO");
   const [error, setError] = useState<string | null>(null);
 
   const effectivePolicy = progressPolicy ?? {
@@ -110,11 +131,158 @@ export function AyinPlayer({
   }, [onAdContainerReady]);
 
   useEffect(() => {
+    adActiveRef.current = adMode.active;
     if (lastAdActiveRef.current !== adMode.active) {
       analytics.emit({ type: "ad_mode", videoId, active: adMode.active });
       lastAdActiveRef.current = adMode.active;
     }
   }, [adMode.active, analytics, videoId]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let cancelled = false;
+    let startupTimer: number | null = null;
+    fallbackUsedRef.current = false;
+    bufferingRef.current = false;
+    lastQualityTelemetryRef.current = null;
+    setSelectedQuality("AUTO");
+    setQualities([]);
+    setError(null);
+    adaptiveSessionRef.current?.destroy();
+    adaptiveSessionRef.current = null;
+
+    const clearStartupTimer = () => {
+      if (startupTimer !== null) {
+        window.clearTimeout(startupTimer);
+        startupTimer = null;
+      }
+    };
+
+    const fallbackToMp4 = (reason: AyinHlsFailureReason) => {
+      if (cancelled || fallbackUsedRef.current || protocolRef.current !== "HLS") return;
+      fallbackUsedRef.current = true;
+      clearStartupTimer();
+
+      const restoreTime = Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : 0;
+      const shouldResume = !video.paused && !adActiveRef.current;
+      if (!video.paused) {
+        suppressPauseTelemetryRef.current = true;
+        video.pause();
+      }
+      adaptiveSessionRef.current?.destroy();
+      adaptiveSessionRef.current = null;
+      setQualities([]);
+      setSelectedQuality("AUTO");
+      protocolRef.current = "MP4";
+      analytics.emit({ type: "hls_fatal", videoId, reason });
+      analytics.emit({ type: "fallback_mp4", videoId, reason });
+      analytics.emit({ type: "playback_protocol", videoId, protocol: "MP4" });
+
+      const restore = () => {
+        if (cancelled) return;
+        if (restoreTime > 0) {
+          try {
+            const maxTime = Number.isFinite(video.duration)
+              ? Math.max(0, video.duration - 0.25)
+              : restoreTime;
+            video.currentTime = Math.min(restoreTime, maxTime);
+            setPositionMs(Math.floor(video.currentTime * 1000));
+          } catch {
+            // Range seeking is best-effort; MP4 playback must remain available from zero.
+          }
+        }
+        if (shouldResume && !adActiveRef.current) {
+          suppressNextPlayTelemetryRef.current = true;
+          void video.play().catch(() => {
+            suppressNextPlayTelemetryRef.current = false;
+          });
+        }
+      };
+      video.addEventListener("loadedmetadata", restore, { once: true });
+      video.src = sourceUrl;
+      video.load();
+      onPlaybackReady?.();
+    };
+    fallbackToMp4Ref.current = fallbackToMp4;
+
+    if (!adaptiveSourceUrl) {
+      protocolRef.current = "MP4";
+      analytics.emit({ type: "playback_protocol", videoId, protocol: "MP4" });
+      if (video.src !== sourceUrl) {
+        video.src = sourceUrl;
+        video.load();
+      }
+      onPlaybackReady?.();
+      return () => {
+        cancelled = true;
+        if (fallbackToMp4Ref.current === fallbackToMp4) fallbackToMp4Ref.current = null;
+      };
+    }
+
+    protocolRef.current = "HLS";
+    analytics.emit({ type: "playback_protocol", videoId, protocol: "HLS" });
+    video.removeAttribute("src");
+    video.load();
+    startupTimer = window.setTimeout(() => fallbackToMp4("STARTUP"), 10_000);
+
+    void startAdaptiveHlsPlayback({
+      video,
+      hlsUrl: adaptiveSourceUrl,
+      callbacks: {
+        onReady: () => {
+          if (cancelled || fallbackUsedRef.current) return;
+          clearStartupTimer();
+          onPlaybackReady?.();
+        },
+        onQualities: (available) => {
+          if (!cancelled && !fallbackUsedRef.current) setQualities(available);
+        },
+        onQualitySwitch: ({ selection, rendition, automatic }) => {
+          if (cancelled || fallbackUsedRef.current) return;
+          const signature = `${selection}:${rendition?.id ?? "auto"}:${automatic}`;
+          if (lastQualityTelemetryRef.current === signature) return;
+          lastQualityTelemetryRef.current = signature;
+          analytics.emit({
+            type: "quality_switch",
+            videoId,
+            selection,
+            automatic,
+            rendition: rendition
+              ? {
+                  label: rendition.label,
+                  height: rendition.height,
+                  bitrateKbps: rendition.bitrateKbps,
+                }
+              : null,
+          });
+        },
+        onFatal: fallbackToMp4,
+      },
+    })
+      .then((session) => {
+        if (cancelled) {
+          session?.destroy();
+          return;
+        }
+        if (fallbackUsedRef.current) {
+          session?.destroy();
+          return;
+        }
+        adaptiveSessionRef.current = session;
+        if (!session) fallbackToMp4("UNSUPPORTED");
+      })
+      .catch(() => fallbackToMp4("OTHER"));
+
+    return () => {
+      cancelled = true;
+      clearStartupTimer();
+      adaptiveSessionRef.current?.destroy();
+      adaptiveSessionRef.current = null;
+      if (fallbackToMp4Ref.current === fallbackToMp4) fallbackToMp4Ref.current = null;
+    };
+  }, [adaptiveSourceUrl, analytics, onPlaybackReady, sourceUrl, videoId]);
 
   useEffect(() => {
     resumeAppliedRef.current = false;
@@ -154,7 +322,7 @@ export function AyinPlayer({
       setPositionMs(safePositionMs);
       resumeAppliedRef.current = true;
     } catch {
-      // Progressive MP4 seeking depends on browser/R2 range support; playback can still start at zero.
+      // Progressive MP4/HLS seeking is best-effort; playback can still start at zero.
     }
   }, [durationMs, resumePositionMs]);
 
@@ -287,6 +455,12 @@ export function AyinPlayer({
     setCaptionsEnabled(next);
   }, [captionsEnabled]);
 
+  const reportBuffering = useCallback(() => {
+    if (bufferingRef.current) return;
+    bufferingRef.current = true;
+    analytics.emit({ type: "buffer", videoId, positionMs });
+  }, [analytics, positionMs, videoId]);
+
   function onStageKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (
       event.target instanceof HTMLElement &&
@@ -349,9 +523,12 @@ export function AyinPlayer({
           <video
             autoPlay={autoPlay}
             className={styles.video}
-            key={`${videoId}:${sourceUrl}`}
+            key={videoId}
             muted={muted}
-            onCanPlay={applyResume}
+            onCanPlay={() => {
+              bufferingRef.current = false;
+              applyResume();
+            }}
             onEnded={() => {
               void persist(true);
               analytics.emit({ type: "complete", videoId });
@@ -361,6 +538,10 @@ export function AyinPlayer({
               }
             }}
             onError={() => {
+              if (protocolRef.current === "HLS" && !fallbackUsedRef.current) {
+                fallbackToMp4Ref.current?.("OTHER");
+                return;
+              }
               const message = "AYIN could not play this MP4 source.";
               setError(message);
               analytics.emit({ type: "error", videoId, message });
@@ -374,24 +555,33 @@ export function AyinPlayer({
             }}
             onPause={() => {
               setPlaying(false);
+              if (suppressPauseTelemetryRef.current) {
+                suppressPauseTelemetryRef.current = false;
+                return;
+              }
               analytics.emit({ type: "pause", videoId, positionMs });
               void persist(true);
             }}
             onPlay={() => {
+              bufferingRef.current = false;
               setPlaying(true);
+              if (suppressNextPlayTelemetryRef.current) {
+                suppressNextPlayTelemetryRef.current = false;
+                return;
+              }
               analytics.emit({ type: "play", videoId });
             }}
-            onWaiting={() => {
-              analytics.emit({ type: "buffer", videoId, positionMs });
+            onPlaying={() => {
+              bufferingRef.current = false;
             }}
-            onStalled={() => {
-              analytics.emit({ type: "buffer", videoId, positionMs });
-            }}
+            onWaiting={reportBuffering}
+            onStalled={reportBuffering}
             onVolumeChange={(event) => {
               setMuted(event.currentTarget.muted);
               setVolume(event.currentTarget.volume);
             }}
             onTimeUpdate={(event) => {
+              bufferingRef.current = false;
               setPositionMs(Math.floor(event.currentTarget.currentTime * 1000));
               void persist(false);
             }}
@@ -399,7 +589,7 @@ export function AyinPlayer({
             poster={posterUrl ?? undefined}
             preload={autoPlay ? "auto" : "metadata"}
             ref={videoRef}
-            src={sourceUrl}
+            src={adaptiveSourceUrl ? undefined : sourceUrl}
           >
             {captions.map((track) => (
               <track
@@ -561,6 +751,30 @@ export function AyinPlayer({
             </span>
 
             <span className={styles.controlSpacer} />
+
+            {qualities.length > 0 ? (
+              <select
+                aria-label="Playback quality"
+                className={styles.compactSelect}
+                data-tv-focusable="true"
+                data-tv-focus-id={`player-quality-${videoId}`}
+                disabled={locked}
+                onChange={(event) => {
+                  const next = event.currentTarget.value;
+                  setSelectedQuality(next);
+                  adaptiveSessionRef.current?.setQuality(next === "AUTO" ? null : next);
+                }}
+                title="Playback quality"
+                value={selectedQuality}
+              >
+                <option value="AUTO">Auto</option>
+                {qualities.map((quality) => (
+                  <option key={quality.id} value={quality.id}>
+                    {quality.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
 
             <select
               aria-label="Playback speed"

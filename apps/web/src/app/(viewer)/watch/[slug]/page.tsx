@@ -78,6 +78,9 @@ export default async function WatchPage({ params }: WatchPageProperties) {
   const data = (await response.json()) as PublicPlaybackResponse;
   const sourceUrl = mediaAssetUrl(data.video.source.objectKey);
   if (!sourceUrl) throw new Error("AYIN media delivery is not configured for this client.");
+  const adaptiveSourceUrl = data.video.adaptiveSource
+    ? mediaAssetUrl(data.video.adaptiveSource.objectKey)
+    : null;
   const captions = data.video.captions.flatMap((track) => {
     const src = mediaAssetUrl(track.objectKey);
     return src
@@ -104,6 +107,7 @@ export default async function WatchPage({ params }: WatchPageProperties) {
         />
       ) : null}
       <AnalyticsAyinPlayer
+        adaptiveSourceUrl={adaptiveSourceUrl}
         autoPlay
         className={styles.playerFrame}
         captions={captions}
