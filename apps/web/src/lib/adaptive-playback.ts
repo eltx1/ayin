@@ -76,43 +76,22 @@ declare global {
   }
 }
 
-// Pinned maintained runtime, isolated behind this AYIN-owned adapter. A load/CSP failure is
-// intentionally non-fatal to the viewer because the caller immediately falls back to MP4.
-const HLS_JS_URL = "https://cdn.jsdelivr.net/npm/hls.js@1.7.2/dist/hls.min.js";
-let hlsScriptPromise: Promise<HlsConstructor> | null = null;
+// The maintained HLS runtime is bundled with AYIN so production playback is not dependent on
+// an external script origin or CSP exception. window.Hls is retained only as an internal test
+// injection seam; application/domain code never sees hls.js-specific types.
+let hlsImportPromise: Promise<HlsConstructor> | null = null;
 
 function loadHlsRuntime(): Promise<HlsConstructor> {
   if (window.Hls) return Promise.resolve(window.Hls);
-  if (hlsScriptPromise) return hlsScriptPromise;
-
-  hlsScriptPromise = new Promise<HlsConstructor>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>("script[data-ayin-hls-runtime]");
-    const script = existing ?? document.createElement("script");
-    const timeout = window.setTimeout(() => reject(new Error("HLS runtime load timeout")), 8_000);
-    const done = () => {
-      window.clearTimeout(timeout);
-      if (window.Hls) resolve(window.Hls);
-      else reject(new Error("HLS runtime unavailable"));
-    };
-    const failed = () => {
-      window.clearTimeout(timeout);
-      reject(new Error("HLS runtime failed to load"));
-    };
-    script.addEventListener("load", done, { once: true });
-    script.addEventListener("error", failed, { once: true });
-    if (!existing) {
-      script.async = true;
-      script.crossOrigin = "anonymous";
-      script.referrerPolicy = "no-referrer";
-      script.dataset.ayinHlsRuntime = "true";
-      script.src = HLS_JS_URL;
-      document.head.appendChild(script);
-    }
-  }).catch((error) => {
-    hlsScriptPromise = null;
-    throw error;
-  });
-  return hlsScriptPromise;
+  if (!hlsImportPromise) {
+    hlsImportPromise = import("hls.js")
+      .then((module) => module.default as unknown as HlsConstructor)
+      .catch((error) => {
+        hlsImportPromise = null;
+        throw error;
+      });
+  }
+  return hlsImportPromise;
 }
 
 export function supportsNativeHls(video: Pick<HTMLVideoElement, "canPlayType">): boolean {

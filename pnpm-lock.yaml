@@ -85,6 +85,9 @@ importers:
       '@ayin/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      hls.js:
+        specifier: 1.7.2
+        version: 1.7.2
       next:
         specifier: 16.3.3
         version: 16.3.3(@babel/core@7.29.7(supports-color@7.2.0))(@playwright/test@1.55.1)(@types/node@26.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -2173,6 +2176,9 @@ packages:
 
   hermes-parser@0.25.1:
     resolution: {integrity: sha512-6pEjquH3rqaI6cYAXYPcz9MS4rY6R4ngRgrgfDshRptUZIc3lw0MCIJIGDj9++mfySOuPTHB4nrSW99BCvOPIA==}
+
+  hls.js@1.7.2:
+    resolution: {integrity: sha512-CW/pPvSOFIRsosbwxrYaE9ERmpTo5fbTqL7wCvuCFlqW1Bmb1K5fXsY7yiH95rmlr4rVuA7UXHbM/cIXQ6AXwg==}
 
   iconv-lite@0.7.3:
     resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
@@ -5406,6 +5412,8 @@ snapshots:
   hermes-parser@0.25.1:
     dependencies:
       hermes-estree: 0.25.1
+
+  hls.js@1.7.2: {}
 
   iconv-lite@0.7.3:
     dependencies:
