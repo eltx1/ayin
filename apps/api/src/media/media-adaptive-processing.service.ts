@@ -71,17 +71,27 @@ export class MediaAdaptiveProcessingService {
     }
 
     let generation = await this.adaptiveLifecycle.loadOrCreate(input.job, planned);
-    await this.adaptiveLifecycle.markFallbackReady(generation.id);
+    const ownedGeneration = {
+      generationId: generation.id,
+      jobId: input.job.id,
+      workerId: input.workerId,
+    } as const;
+    this.requireAdaptiveOwnership(
+      await this.adaptiveLifecycle.markFallbackReadyIfOwned(ownedGeneration),
+    );
     generation = { ...generation, fallbackStatus: "READY" };
 
-    if (generation.status === "READY" && (await this.verifyReadyGeneration(generation))) {
+    if (
+      generation.status === "READY" &&
+      (await this.verifyReadyGeneration(generation, input.canonicalMetadata.hasAudio))
+    ) {
       this.logger.log(
         `Reused verified adaptive generation ${generation.videoId}/g${generation.generation}.`,
       );
       return true;
     }
 
-    await this.adaptiveLifecycle.reopen(generation.id);
+    this.requireAdaptiveOwnership(await this.adaptiveLifecycle.reopenIfOwned(ownedGeneration));
     let activeRendition: AdaptiveRenditionState | undefined;
 
     try {
@@ -93,12 +103,19 @@ export class MediaAdaptiveProcessingService {
         ) {
           continue;
         }
-        await this.adaptiveLifecycle.setRenditionStatus(rendition.id, "PROCESSING");
+
         await this.requireOwnedStage(
           input.job.id,
           input.workerId,
           `HLS_${rendition.identity.toUpperCase()}_TRANSCODING`,
           95,
+        );
+        this.requireAdaptiveOwnership(
+          await this.adaptiveLifecycle.setRenditionStatusIfOwned({
+            ...ownedGeneration,
+            renditionId: rendition.id,
+            status: "PROCESSING",
+          }),
         );
         await assertScratchEstimateWithinLimit({
           canonicalPath: input.canonicalPath,
@@ -125,12 +142,18 @@ export class MediaAdaptiveProcessingService {
             settings.scratchMaxBytesPerJob,
           );
 
-          await this.adaptiveLifecycle.setRenditionStatus(rendition.id, "UPLOADING");
           await this.requireOwnedStage(
             input.job.id,
             input.workerId,
             `HLS_${rendition.identity.toUpperCase()}_UPLOADING`,
             96,
+          );
+          this.requireAdaptiveOwnership(
+            await this.adaptiveLifecycle.setRenditionStatusIfOwned({
+              ...ownedGeneration,
+              renditionId: rendition.id,
+              status: "UPLOADING",
+            }),
           );
           for (const segment of packaged.segments) {
             const key = hlsRenditionSegmentObjectKey(
@@ -150,9 +173,27 @@ export class MediaAdaptiveProcessingService {
             HLS_PLAYLIST_CONTENT_TYPE,
           );
 
-          await this.adaptiveLifecycle.setRenditionStatus(rendition.id, "VERIFYING");
+          await this.requireOwnedStage(
+            input.job.id,
+            input.workerId,
+            `HLS_${rendition.identity.toUpperCase()}_VERIFYING`,
+            97,
+          );
+          this.requireAdaptiveOwnership(
+            await this.adaptiveLifecycle.setRenditionStatusIfOwned({
+              ...ownedGeneration,
+              renditionId: rendition.id,
+              status: "VERIFYING",
+            }),
+          );
           await this.verifyPackagedRendition(generation, rendition, packaged);
-          await this.adaptiveLifecycle.setRenditionStatus(rendition.id, "READY");
+          this.requireAdaptiveOwnership(
+            await this.adaptiveLifecycle.setRenditionStatusIfOwned({
+              ...ownedGeneration,
+              renditionId: rendition.id,
+              status: "READY",
+            }),
+          );
         } finally {
           await rm(renditionDirectory, { recursive: true, force: true }).catch(() => undefined);
         }
@@ -167,14 +208,27 @@ export class MediaAdaptiveProcessingService {
       await mkdir(hlsRoot, { recursive: true });
       const masterPath = join(hlsRoot, "master.m3u8");
       await writeFile(masterPath, master, { encoding: "utf8", flag: "w" });
-      await this.adaptiveLifecycle.setMasterStatus(generation.id, "UPLOADING");
+
       await this.requireOwnedStage(input.job.id, input.workerId, "HLS_MASTER_UPLOADING", 98);
+      this.requireAdaptiveOwnership(
+        await this.adaptiveLifecycle.setMasterStatusIfOwned({
+          ...ownedGeneration,
+          status: "UPLOADING",
+        }),
+      );
       await this.storage.uploadFile(
         generation.hlsMasterR2ObjectKey,
         masterPath,
         HLS_PLAYLIST_CONTENT_TYPE,
       );
-      await this.adaptiveLifecycle.setMasterStatus(generation.id, "VERIFYING");
+
+      await this.requireOwnedStage(input.job.id, input.workerId, "HLS_MASTER_VERIFYING", 99);
+      this.requireAdaptiveOwnership(
+        await this.adaptiveLifecycle.setMasterStatusIfOwned({
+          ...ownedGeneration,
+          status: "VERIFYING",
+        }),
+      );
       await this.verifyObject(generation.hlsMasterR2ObjectKey, Buffer.byteLength(master, "utf8"), [
         HLS_PLAYLIST_CONTENT_TYPE,
         "application/x-mpegURL",
@@ -183,9 +237,14 @@ export class MediaAdaptiveProcessingService {
       if (downloadedMaster !== master) {
         throw new Error("HLS master manifest failed byte verification.");
       }
-      await this.adaptiveLifecycle.setMasterStatus(generation.id, "READY");
-      const ready = await this.adaptiveLifecycle.markReadyIfComplete(generation.id);
-      if (!ready) throw new Error("HLS generation could not satisfy the atomic READY invariant.");
+      this.requireAdaptiveOwnership(
+        await this.adaptiveLifecycle.setMasterStatusIfOwned({
+          ...ownedGeneration,
+          status: "READY",
+        }),
+      );
+      const ready = await this.adaptiveLifecycle.markReadyIfCompleteIfOwned(ownedGeneration);
+      if (!ready) throw new Error("HLS generation could not satisfy the owned atomic READY invariant.");
       this.logger.log(
         `Adaptive generation ${generation.videoId}/g${generation.generation} reached READY.`,
       );
@@ -193,10 +252,8 @@ export class MediaAdaptiveProcessingService {
     } catch (error) {
       const markedFailed = await this.adaptiveLifecycle
         .markFailedIfOwned({
-          generationId: generation.id,
+          ...ownedGeneration,
           ...(activeRendition ? { renditionId: activeRendition.id } : {}),
-          jobId: input.job.id,
-          workerId: input.workerId,
         })
         .catch(() => false);
       if (!markedFailed) {
@@ -208,23 +265,24 @@ export class MediaAdaptiveProcessingService {
     }
   }
 
-  private async verifyReadyGeneration(generation: AdaptiveGenerationState): Promise<boolean> {
+  private async verifyReadyGeneration(
+    generation: AdaptiveGenerationState,
+    hasAudio: boolean,
+  ): Promise<boolean> {
     try {
       await this.verifyObject(generation.fallbackR2ObjectKey, null, ["video/mp4"]);
       for (const rendition of generation.renditions) {
         if (!(await this.verifyRemoteRendition(generation, rendition))) return false;
       }
-      const plannedRenditions = generation.renditions.map(toPlannedRendition);
-      const expectedMasters = [
-        buildHlsMasterManifest(plannedRenditions, { hasAudio: true }),
-        buildHlsMasterManifest(plannedRenditions, { hasAudio: false }),
-      ];
+      const expectedMaster = buildHlsMasterManifest(generation.renditions.map(toPlannedRendition), {
+        hasAudio,
+      });
       await this.verifyObject(generation.hlsMasterR2ObjectKey, null, [
         HLS_PLAYLIST_CONTENT_TYPE,
         "application/x-mpegURL",
       ]);
       const master = await this.storage.downloadText(generation.hlsMasterR2ObjectKey);
-      return expectedMasters.includes(master);
+      return master === expectedMaster;
     } catch {
       return false;
     }
@@ -318,11 +376,19 @@ export class MediaAdaptiveProcessingService {
     const updated = await this.processingLifecycle.setOwnedStage({
       jobId,
       workerId,
-      status: stage.includes("UPLOAD") ? "UPLOADING" : "PROCESSING",
+      status: stage.includes("VERIFY")
+        ? "VERIFYING"
+        : stage.includes("UPLOAD")
+          ? "UPLOADING"
+          : "PROCESSING",
       stage,
       progressPercent,
     });
     if (!updated) throw new Error("The media worker lost its lease during HLS processing.");
+  }
+
+  private requireAdaptiveOwnership(updated: boolean): void {
+    if (!updated) throw new Error("The media worker lost its lease during adaptive state update.");
   }
 }
 
