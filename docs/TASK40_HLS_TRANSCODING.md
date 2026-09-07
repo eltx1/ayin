@@ -62,15 +62,17 @@ R2 object existence alone never means adaptive playback is ready. `MediaPlayback
 3. the HLS master is `READY`;
 4. all required R2 objects have passed size/content-type checks and manifest verification.
 
-A rendition failure may mark the adaptive generation failed only while the same processing job is still owned by the active, unexpired worker lease. The worker does not destructively delete deterministic HLS objects from its failure path because a stale worker could race a replacement worker using the same namespace. The canonical MP4 is always preserved. Partial or stale HLS objects are harmless because database readiness—not R2 object presence—controls whether an adaptive generation is usable.
+Every adaptive lifecycle mutation performed by the worker—fallback readiness, reopen, rendition states, master states, failure and final generation readiness—is conditional on the same active, unexpired processing lease. The ownership check and adaptive mutation occur in one database transaction that row-locks the processing job, so a stale worker cannot downgrade or overwrite lifecycle state after a replacement worker has reclaimed the job.
+
+The worker does not destructively delete deterministic HLS objects from its failure path because a stale worker could race a replacement worker using the same namespace. The canonical MP4 is always preserved. Partial or stale HLS objects are harmless because database readiness—not R2 object presence—controls whether an adaptive generation is usable.
 
 ## Retry and recovery
 
 Retries reuse the same `(videoId, generation)` rows and deterministic R2 keys. They do not create a second adaptive generation for the same processing job.
 
-A rendition previously marked `READY` is reusable only after its remote VOD playlist passes structural validation and every referenced deterministic segment is re-verified. Segment numbering must be contiguous from `000001`, and the playlist must contain the required VOD structure including a positive target duration and media durations. A generation previously marked `READY` is reusable only after the fallback, every rendition and the exact deterministic master manifest are re-verified. An arbitrary or mutated `master.m3u8` is not accepted as recovery evidence.
+A rendition previously marked `READY` is reusable only after its remote VOD playlist passes structural validation and every referenced deterministic segment is re-verified. Segment numbering must be contiguous from `000001`, and the playlist must contain the required VOD structure including a positive target duration and media durations. A generation previously marked `READY` is reusable only after the fallback, every rendition and the exact deterministic master manifest are re-verified. The recovered master must match the current probe's audio layout exactly: an audio source accepts only the AAC-advertising master form, while a silent source accepts only the silent master form. An arbitrary, mutated or audio-mismatched `master.m3u8` is not accepted as recovery evidence.
 
-Failure-state transitions are lease-owned. If a worker has lost or expired its processing lease, it cannot mark the shared adaptive generation or rendition failed after another worker has reclaimed the job.
+If a worker has lost or expired its processing lease, it cannot change positive progress, readiness or failure state after another worker has reclaimed the job.
 
 The database lifecycle remains the source of truth. Operators must never repair adaptive readiness by manually uploading a master manifest or changing R2 objects without matching verified database state.
 
