@@ -85,7 +85,16 @@ cleanup() {
   fi
   return "$exit_code"
 }
-trap cleanup EXIT INT TERM
+
+on_signal() {
+  local exit_code="$1"
+  trap - INT TERM
+  exit "$exit_code"
+}
+
+trap cleanup EXIT
+trap 'on_signal 130' INT
+trap 'on_signal 143' TERM
 
 CURRENT_STAGE="database_preflight"
 PGPASSWORD="$AYIN_PGPASSWORD" PGAPPNAME=ayin-backup \
@@ -206,6 +215,11 @@ fi
 CURRENT_STAGE="retention"
 if [[ "$STORAGE_MODE" == "r2" ]]; then
   CUTOFF_EPOCH="$(( $(date +%s) - AYIN_BACKUP_RETENTION_DAYS * 86400 ))"
+  RETENTION_LISTING="$(ayin_r2 s3api list-objects-v2 \
+    --bucket "$AYIN_BACKUP_R2_BUCKET" \
+    --prefix postgresql/daily/ \
+    --output json)"
+  RETENTION_ROWS="$(jq -r '(.Contents // [])[] | [.Key,.LastModified] | @tsv' <<<"$RETENTION_LISTING")"
   while IFS=$'\t' read -r key modified; do
     [[ -n "$key" && -n "$modified" ]] || continue
     [[ "$key" =~ ^postgresql/daily/[0-9]{4}/[0-9]{2}/[0-9]{2}/ayin-postgresql-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}\.(dump\.age|dump\.age\.sha256|dump\.age\.manifest\.json)$ ]] || continue
@@ -213,7 +227,7 @@ if [[ "$STORAGE_MODE" == "r2" ]]; then
     if (( modified_epoch > 0 && modified_epoch < CUTOFF_EPOCH )); then
       ayin_r2 s3api delete-object --bucket "$AYIN_BACKUP_R2_BUCKET" --key "$key" >/dev/null
     fi
-  done < <(ayin_r2 s3api list-objects-v2 --bucket "$AYIN_BACKUP_R2_BUCKET" --prefix postgresql/daily/ --output json | jq -r '.Contents[]? | [.Key,.LastModified] | @tsv')
+  done <<<"$RETENTION_ROWS"
 fi
 
 CURRENT_STAGE="complete"
