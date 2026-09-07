@@ -1,0 +1,85 @@
+name: Task 41 lintfix helper
+
+on:
+  push:
+    branches:
+      - task-41-player-hls-abr
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-41-player-hls-abr
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply lint-safe React changes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/web/src/components/player/ad-enabled-ayin-player.tsx')
+          text = path.read_text()
+          text = text.replace(
+              '  const [playbackReady, setPlaybackReady] = useState(false);\n',
+              '  const [playbackReadyFor, setPlaybackReadyFor] = useState<string | null>(null);\n',
+          )
+          text = text.replace(
+              '  useEffect(() => {\n    setPlaybackReady(false);\n  }, [props.adaptiveSourceUrl, props.sourceUrl, props.videoId]);\n\n',
+              '',
+          )
+          anchor = '  const requestIdRef = useRef(crypto.randomUUID());\n\n'
+          replacement = (
+              '  const requestIdRef = useRef(crypto.randomUUID());\n'
+              '  const playbackIdentity = `${props.videoId}:${props.sourceUrl}:${props.adaptiveSourceUrl ?? ""}`;\n'
+              '  const playbackReady = playbackReadyFor === playbackIdentity;\n'
+              '  const onPlaybackReady = props.onPlaybackReady;\n\n'
+          )
+          if anchor not in text:
+              raise SystemExit('requestId anchor missing')
+          text = text.replace(anchor, replacement, 1)
+          old = (
+              '  const handlePlaybackReady = useCallback(() => {\n'
+              '    setPlaybackReady(true);\n'
+              '    props.onPlaybackReady?.();\n'
+              '  }, [props.onPlaybackReady]);\n'
+          )
+          new = (
+              '  const handlePlaybackReady = useCallback(() => {\n'
+              '    setPlaybackReadyFor(playbackIdentity);\n'
+              '    onPlaybackReady?.();\n'
+              '  }, [onPlaybackReady, playbackIdentity]);\n'
+          )
+          if old not in text:
+              raise SystemExit('playback callback anchor missing')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+
+          path = Path('apps/web/src/components/player/ayin-player.tsx')
+          text = path.read_text()
+          marker = '        data-playback-protocol={protocolRef.current.toLowerCase()}\n'
+          if marker not in text:
+              raise SystemExit('protocol render marker missing')
+          path.write_text(text.replace(marker, '', 1))
+          PY
+          pnpm exec prettier --write apps/web/src/components/player/ad-enabled-ayin-player.tsx apps/web/src/components/player/ayin-player.tsx
+          pnpm --filter @ayin/web lint
+      - name: Commit lint fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/components/player/ad-enabled-ayin-player.tsx apps/web/src/components/player/ayin-player.tsx
+          git commit -m "fix: satisfy player React lint rules"
+          git push origin HEAD:task-41-player-hls-abr
