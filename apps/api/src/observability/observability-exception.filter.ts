@@ -22,9 +22,10 @@ export class ObservabilityExceptionFilter implements ExceptionFilter {
     const request = http.getRequest<FastifyRequest>();
     const response = http.getResponse();
     const statusCode = exception instanceof HttpException ? exception.getStatus() : 500;
+    const path = request.routeOptions?.url ?? request.url.split("?", 1)[0] ?? request.url;
     this.observability.captureError(exception, {
       source: "http.exception",
-      path: request.routeOptions?.url ?? request.url.split("?", 1)[0],
+      path,
       statusCode,
     });
     const body =
