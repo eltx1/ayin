@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=deploy/postgres/backup-common.sh
 source "$SCRIPT_DIR/backup-common.sh"
 
-for command in age date flock git ionice jq mktemp nice node pg_dump pg_restore sha256sum stat; do
+for command in age date flock git ionice jq mktemp nice node pg_dump pg_restore psql sha256sum stat; do
   ayin_require_command "$command"
 done
 
@@ -121,6 +121,9 @@ printf '%s\n' "$CHECKSUM" > "$CHECKSUM_FILE"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DATE_PATH="$(date -u +%Y/%m/%d)"
 RELEASE_SHA="$(ayin_release_sha)"
+if [[ "${APP_ENV:-production}" != "test" && ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+  ayin_backup_fail "production backup cannot determine the active release SHA"
+fi
 RELEASE_LABEL="${RELEASE_SHA:0:12}"
 OBJECT_KEY="postgresql/daily/$DATE_PATH/ayin-postgresql-${TIMESTAMP}-${RELEASE_LABEL}.dump.age"
 CHECKSUM_KEY="${OBJECT_KEY}.sha256"
