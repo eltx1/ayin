@@ -18,6 +18,8 @@ const WORKER_HEARTBEAT_MAX_AGE_MS = 30_000;
 const METRIC_WINDOW_MS = 60_000;
 const MAX_LATENCY_SAMPLES = 1000;
 
+type SafeDetail = string | number | boolean | null;
+
 interface ApiMetricEvent {
   at: number;
   latencyMs: number;
@@ -53,7 +55,15 @@ export class ObservabilityService {
     }
   }
 
-  captureError(error: unknown, input: { path?: string; statusCode?: number; source: string }): ErrorClass {
+  captureError(
+    error: unknown,
+    input: {
+      path?: string;
+      statusCode?: number;
+      source: string;
+      details?: Record<string, SafeDetail>;
+    },
+  ): ErrorClass {
     const errorClass = classifyError(error, input.path ?? "", input.statusCode);
     this.increment(`error.${errorClass}`);
     const severity = input.statusCode && input.statusCode < 500 ? "warn" : "error";
@@ -63,6 +73,7 @@ export class ObservabilityService {
       statusCode: input.statusCode ?? null,
       path: input.path ?? null,
       errorName: error instanceof Error ? error.name : typeof error,
+      ...(input.details ?? {}),
     };
     this.logger.event(severity, "error.captured", event);
     void Promise.resolve(
