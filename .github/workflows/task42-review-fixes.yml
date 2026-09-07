@@ -1,0 +1,42 @@
+name: Task 42 review fixes helper
+
+on:
+  push:
+    branches:
+      - task-42-adaptive-rollout
+
+permissions:
+  contents: write
+
+jobs:
+  fix-review:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-42-adaptive-rollout
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply review fixes
+        run: |
+          python scripts/task42_review_fixes.py
+          pnpm exec prettier --write apps/api/src/admin/admin-media-processing.controller.ts apps/api/src/media/media-adaptive-rollout.service.ts apps/api/src/media/media-adaptive-rollout.service.test.ts apps/api/src/media/media-processing-queue.service.ts
+          pnpm packages:build
+          pnpm --filter @ayin/api lint
+          pnpm --filter @ayin/api typecheck
+          pnpm --filter @ayin/api exec vitest run src/media/media-adaptive-rollout.service.test.ts src/media/media-adaptive-processing.service.test.ts
+      - name: Commit review fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/admin/admin-media-processing.controller.ts apps/api/src/media/media-adaptive-rollout.service.ts apps/api/src/media/media-adaptive-rollout.service.test.ts apps/api/src/media/media-processing-queue.service.ts
+          git commit -m "fix(media): address Task 42 rollout review findings"
+          git push origin HEAD:task-42-adaptive-rollout
