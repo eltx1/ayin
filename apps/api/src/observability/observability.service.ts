@@ -170,7 +170,7 @@ export class ObservabilityService {
       },
       worker: {
         queueDepth: queueCounts.QUEUED ?? 0,
-        oldestQueuedAgeSeconds: oldestQueued
+        oldestQueuedAgeSeconds: oldestQueued?.queuedAt
           ? Math.max(0, Math.floor((now - oldestQueued.queuedAt.getTime()) / 1000))
           : 0,
         activeJobs,
