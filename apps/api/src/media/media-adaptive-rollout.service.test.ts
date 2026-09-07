@@ -61,4 +61,16 @@ describe("MediaAdaptiveRolloutService backfill safety", () => {
     expect(result.enqueued).toBe(0);
     expect(result.reason).toBe("BACKFILL_DISABLED_OR_PAUSED");
   });
+  it("does not requeue failed backfill recovery while rollout is paused", async () => {
+    const { service } = createService();
+    vi.spyOn(service, "controls").mockResolvedValue({ ...baseControls, backfillPaused: true });
+
+    const result = await service.recover("FAILED_BACKFILL", 2);
+
+    expect(result).toEqual({
+      mode: "FAILED_BACKFILL",
+      recovered: 0,
+      reason: "BACKFILL_DISABLED_OR_PAUSED",
+    });
+  });
 });

@@ -174,6 +174,9 @@ export class MediaAdaptiveRolloutService {
     if (mode === "STALE_PROCESSING") {
       return { mode, ...(await this.queue.recoverStale()) };
     }
+    if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {
+      return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
+    }
     if (mode === "FAILED_BACKFILL") {
       const failed = await this.database.client.mediaProcessingJob.findMany({
         where: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER }, status: "FAILED" },
@@ -311,6 +314,16 @@ export class MediaAdaptiveRolloutService {
         },
       }),
     ]);
+    const [totalStorage, growthStorage] = await Promise.all([
+      this.database.client.mediaPlaybackGeneration.aggregate({
+        where: { status: "READY" },
+        _sum: { hlsOutputSizeBytes: true },
+      }),
+      this.database.client.mediaPlaybackGeneration.aggregate({
+        where: { status: "READY", readyAt: { gte: since } },
+        _sum: { hlsOutputSizeBytes: true },
+      }),
+    ]);
     const sourceIds = readyGenerations.flatMap((generation) =>
       generation.sourceMediaAssetId ? [generation.sourceMediaAssetId] : [],
     );
@@ -322,9 +335,7 @@ export class MediaAdaptiveRolloutService {
       : [];
     const dimensions = new Map(assets.map((asset) => [asset.id, asset]));
     const buckets = new Map<string, { totalMs: number; count: number }>();
-    let outputStorageBytes = 0n;
     for (const generation of readyGenerations) {
-      outputStorageBytes += generation.hlsOutputSizeBytes ?? 0n;
       if (!generation.readyAt || !generation.sourceMediaAssetId) continue;
       const asset = dimensions.get(generation.sourceMediaAssetId);
       const label = resolutionBucket(asset?.height ?? null);
@@ -343,7 +354,8 @@ export class MediaAdaptiveRolloutService {
       averageProcessingDurationMsBySourceResolution: Object.fromEntries(
         [...buckets].map(([key, value]) => [key, Math.round(value.totalMs / value.count)]),
       ),
-      outputStorageBytes: outputStorageBytes.toString(),
+      outputStorageBytes: (totalStorage._sum.hlsOutputSizeBytes ?? 0n).toString(),
+      outputStorageGrowthBytes: (growthStorage._sum.hlsOutputSizeBytes ?? 0n).toString(),
       sampledReadyGenerations: readyGenerations.length,
     };
   }
