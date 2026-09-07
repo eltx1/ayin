@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { ADAPTIVE_BACKFILL_MARKER } from "./media-adaptive-rollout.js";
 
 const ACTIVE_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
 const QUEUE_ADVISORY_LOCK = 86192028;
@@ -53,8 +54,24 @@ export class MediaProcessingQueueService {
       });
       if (activeCount >= capacity.concurrentJobs) return null;
 
+      const [hlsEnabled, backfillEnabled, backfillPaused] = await Promise.all([
+        this.settings.getResolvedInTransaction(tx, "mediaHlsEnabled"),
+        this.settings.getResolvedInTransaction(tx, "mediaHlsBackfillEnabled"),
+        this.settings.getResolvedInTransaction(tx, "mediaHlsBackfillPaused"),
+      ]);
+      const canClaimBackfill =
+        (hlsEnabled.value as boolean) &&
+        (backfillEnabled.value as boolean) &&
+        !(backfillPaused.value as boolean);
+
       const candidate = await tx.mediaProcessingJob.findFirst({
-        where: { status: "QUEUED", queuedAt: { lte: now } },
+        where: {
+          status: "QUEUED",
+          queuedAt: { lte: now },
+          ...(canClaimBackfill
+            ? {}
+            : { NOT: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER } } }),
+        },
         orderBy: [{ priority: "desc" }, { queuedAt: "asc" }, { createdAt: "asc" }],
       });
       if (!candidate) return null;
