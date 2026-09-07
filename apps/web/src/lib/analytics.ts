@@ -14,6 +14,9 @@ export type AnalyticsEventName =
   | "VIDEO_PAUSE"
   | "VIDEO_SEEK"
   | "VIDEO_BUFFER"
+  | "VIDEO_QUALITY_SWITCH"
+  | "VIDEO_HLS_FATAL"
+  | "VIDEO_FALLBACK"
   | "SEARCH"
   | "SEARCH_CLICK"
   | "SUBSCRIBE"
@@ -102,16 +105,7 @@ function bindLifecycle() {
 
 export function trackAnalyticsEvent(
   eventName: AnalyticsEventName,
-  input: Omit<
-    Partial<QueuedEvent>,
-    | "clientEventId"
-    | "schemaVersion"
-    | "eventName"
-    | "occurredAt"
-    | "sessionId"
-    | "source"
-    | "deviceClass"
-  > = {},
+  input: Omit<Partial<QueuedEvent>, "clientEventId" | "schemaVersion" | "eventName" | "occurredAt" | "sessionId" | "source" | "deviceClass"> = {},
 ) {
   if (typeof window === "undefined") return;
   bindLifecycle();
@@ -159,53 +153,78 @@ export async function flushAnalytics(keepalive = false) {
 }
 
 export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
+  let currentVideoId: string | null = null;
   let lastProgressMs: number | null = null;
   let started = false;
+  let protocol: "HLS" | "MP4" = "MP4";
+
+  function resetForVideo(videoId: string) {
+    if (currentVideoId === videoId) return;
+    currentVideoId = videoId;
+    lastProgressMs = null;
+    started = false;
+    protocol = "MP4";
+  }
+
   return {
     emit(event: AyinPlayerAnalyticsEvent) {
-      const common = {
-        videoId: event.videoId,
-        ...(profileId ? { profileId } : {}),
-      };
+      resetForVideo(event.videoId);
+      const common = { videoId: event.videoId, ...(profileId ? { profileId } : {}) };
       switch (event.type) {
+        case "playback_protocol":
+          protocol = event.protocol;
+          break;
         case "play":
-          trackAnalyticsEvent(started ? "CONTENT_CLICK" : "VIDEO_START", common);
+          trackAnalyticsEvent(started ? "CONTENT_CLICK" : "VIDEO_START", {
+            ...common,
+            metadata: { protocol },
+          });
           started = true;
           break;
         case "pause":
-          trackAnalyticsEvent("VIDEO_PAUSE", { ...common, positionMs: event.positionMs });
+          trackAnalyticsEvent("VIDEO_PAUSE", { ...common, positionMs: event.positionMs, metadata: { protocol } });
           break;
         case "seek":
           lastProgressMs = event.positionMs;
-          trackAnalyticsEvent("VIDEO_SEEK", { ...common, positionMs: event.positionMs });
+          trackAnalyticsEvent("VIDEO_SEEK", { ...common, positionMs: event.positionMs, metadata: { protocol } });
           break;
         case "buffer":
-          trackAnalyticsEvent("VIDEO_BUFFER", { ...common, positionMs: event.positionMs });
+          trackAnalyticsEvent("VIDEO_BUFFER", { ...common, positionMs: event.positionMs, metadata: { protocol } });
+          break;
+        case "quality_switch":
+          trackAnalyticsEvent("VIDEO_QUALITY_SWITCH", {
+            ...common,
+            metadata: {
+              protocol: "HLS",
+              selection: event.selection,
+              automatic: event.automatic,
+              rendition: event.rendition?.label ?? null,
+              renditionHeight: event.rendition?.height ?? null,
+              bitrateKbps: event.rendition?.bitrateKbps ?? null,
+            },
+          });
+          break;
+        case "hls_fatal":
+          trackAnalyticsEvent("VIDEO_HLS_FATAL", { ...common, metadata: { protocol: "HLS", reason: event.reason } });
+          break;
+        case "fallback_mp4":
+          protocol = "MP4";
+          trackAnalyticsEvent("VIDEO_FALLBACK", { ...common, metadata: { from: "HLS", to: "MP4", reason: event.reason } });
           break;
         case "progress_checkpoint": {
-          const delta =
-            lastProgressMs === null
-              ? Math.min(15_000, event.positionMs)
-              : Math.max(0, Math.min(60_000, event.positionMs - lastProgressMs));
+          const delta = lastProgressMs === null ? Math.min(15_000, event.positionMs) : Math.max(0, Math.min(60_000, event.positionMs - lastProgressMs));
           lastProgressMs = event.positionMs;
-          trackAnalyticsEvent("VIDEO_PROGRESS", {
-            ...common,
-            positionMs: event.positionMs,
-            durationDeltaMs: delta,
-          });
+          trackAnalyticsEvent("VIDEO_PROGRESS", { ...common, positionMs: event.positionMs, durationDeltaMs: delta, metadata: { protocol } });
           break;
         }
         case "complete":
-          trackAnalyticsEvent("VIDEO_COMPLETE", common);
+          trackAnalyticsEvent("VIDEO_COMPLETE", { ...common, metadata: { protocol } });
           break;
         case "error":
-          trackAnalyticsEvent("VIDEO_BUFFER", {
-            ...common,
-            metadata: { message: event.message.slice(0, 200) },
-          });
+          trackAnalyticsEvent("VIDEO_BUFFER", { ...common, metadata: { protocol, message: event.message.slice(0, 200) } });
           break;
         case "next":
-          trackAnalyticsEvent("CONTENT_CLICK", { ...common, metadata: { action: "next" } });
+          trackAnalyticsEvent("CONTENT_CLICK", { ...common, metadata: { action: "next", protocol } });
           break;
         case "ad_mode":
           break;
