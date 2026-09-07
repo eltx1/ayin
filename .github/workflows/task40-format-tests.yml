@@ -26,13 +26,17 @@ jobs:
         run: |
           pnpm exec prettier --write \
             apps/api/src/media/media-adaptive-processing.service.test.ts \
-            apps/api/src/media/media-hls-contracts.test.ts
+            apps/api/src/media/media-hls-contracts.test.ts \
+            apps/api/test/media-adaptive-lifecycle.integration.test.ts
           if git diff --quiet; then
             echo "Task 40 tests already formatted."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/api/src/media/media-adaptive-processing.service.test.ts apps/api/src/media/media-hls-contracts.test.ts
+          git add \
+            apps/api/src/media/media-adaptive-processing.service.test.ts \
+            apps/api/src/media/media-hls-contracts.test.ts \
+            apps/api/test/media-adaptive-lifecycle.integration.test.ts
           git commit -m "style(task40): format HLS tests"
           git push origin HEAD:task-40-hls-transcoding
