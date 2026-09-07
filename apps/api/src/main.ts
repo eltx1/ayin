@@ -6,6 +6,9 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { z } from "zod";
 
 import { AppModule } from "./app.module.js";
+import { registerObservabilityHooks } from "./observability/observability-fastify.js";
+import { ObservabilityService } from "./observability/observability.service.js";
+import { releaseSha, StructuredLoggerService } from "./observability/structured-logger.service.js";
 import {
   applyApiSecurityHeaders,
   isAllowedCookieMutationOrigin,
@@ -32,25 +35,34 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
-      // AYIN is intentionally reachable only through the local CloudPanel/Nginx reverse proxy.
-      // Trust exactly that hop so request.ip reflects the real direct-origin client for auth limits.
-      // When Cloudflare proxying is enabled, normalize Cloudflare client IPs in Nginx rather than
-      // broadening this trust boundary to arbitrary forwarding headers.
       trustProxy: "127.0.0.1",
-      // Media uploads are direct-to-R2. Keep ordinary API bodies deliberately small.
       bodyLimit: 1024 * 1024,
     }),
+    { bufferLogs: true },
   );
 
+  const logger = app.get(StructuredLoggerService);
+  const observability = app.get(ObservabilityService);
+  app.useLogger(logger);
+  app.flushLogs();
   app.enableShutdownHooks();
   app.enableCors({
-    allowedHeaders: ["authorization", "content-type", "x-ayin-auth-transport"],
+    allowedHeaders: [
+      "authorization",
+      "content-type",
+      "x-ayin-auth-transport",
+      "x-request-id",
+      "x-correlation-id",
+    ],
+    exposedHeaders: ["x-request-id", "x-correlation-id", "x-ayin-release"],
     credentials: true,
     origin: environment.CORS_ORIGIN,
   });
 
   const fastify = app.getHttpAdapter().getInstance();
+  registerObservabilityHooks(fastify, observability, logger);
   fastify.addHook("onRequest", async (request, reply) => {
+    reply.header("x-ayin-release", releaseSha());
     applyApiSecurityHeaders(reply, request);
     if (!isAllowedCookieMutationOrigin(request, environment.CORS_ORIGIN)) {
       await reply.code(403).send({
@@ -63,6 +75,12 @@ async function bootstrap(): Promise<void> {
   });
 
   await app.listen({ host: environment.API_HOST, port: environment.PORT });
+  logger.event("info", "server.started", {
+    host: environment.API_HOST,
+    port: environment.PORT,
+    releaseSha: releaseSha(),
+    telemetry: observability.adapterStatus(),
+  });
 }
 
 void bootstrap();
