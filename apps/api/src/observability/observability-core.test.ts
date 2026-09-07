@@ -27,16 +27,30 @@ describe("observability safety", () => {
     expect(redacted).not.toContain("GB82WEST12345698765432");
   });
 
+  it("redacts signed URL credentials", () => {
+    const redacted = redactText(
+      "https://media.example/object?X-Amz-Credential=credential-value&X-Amz-Signature=signature-value&X-Amz-Security-Token=session-value",
+    );
+    expect(redacted).not.toContain("credential-value");
+    expect(redacted).not.toContain("signature-value");
+    expect(redacted).not.toContain("session-value");
+  });
+
   it("does not serialize raw Error messages", () => {
     expect(redactValue(new Error("kyc=raw-sensitive-value"))).toEqual({ name: "Error" });
   });
 
-  it("accepts only bounded safe request identifiers", () => {
-    expect(normalizeTraceId("trace-1234")).toBe("trace-1234");
+  it("accepts only standard opaque trace identifiers", () => {
+    const requestId = "550e8400-e29b-41d4-a716-446655440000";
+    expect(normalizeTraceId(requestId)).toBe(requestId);
+    expect(normalizeTraceId("4bf92f3577b34da6a3ce929d0e0e4736")).toBe(
+      "4bf92f3577b34da6a3ce929d0e0e4736",
+    );
     expect(normalizeTraceId("bad id with spaces")).toBeNull();
     expect(normalizeTraceId("token=secret-value")).toBeNull();
-    const context = createRequestTraceContext({ "x-request-id": "request-1234" });
-    expect(context).toEqual({ requestId: "request-1234", correlationId: "request-1234" });
+    expect(normalizeTraceId("opaque-session-token-looking-value")).toBeNull();
+    const context = createRequestTraceContext({ "x-request-id": requestId });
+    expect(context).toEqual({ requestId, correlationId: requestId });
   });
 
   it("classifies common operational failures without inspecting request bodies", () => {
