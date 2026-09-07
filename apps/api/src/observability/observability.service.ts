@@ -7,16 +7,16 @@ import { loadMediaStorageConfig } from "../media/media-storage.config.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { classifyError, type ErrorClass, statusClass } from "./observability-core.js";
 import { releaseSha, StructuredLoggerService } from "./structured-logger.service.js";
+import {
+  TELEMETRY_ADAPTER,
+  type TelemetryAdapter,
+  type TelemetryAdapterStatus,
+} from "./telemetry.adapter.js";
 
 const ACTIVE_MEDIA_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
 const WORKER_HEARTBEAT_MAX_AGE_MS = 30_000;
 const METRIC_WINDOW_MS = 60_000;
 const MAX_LATENCY_SAMPLES = 1000;
-
-export interface TelemetryAdapterStatus {
-  provider: "local";
-  externalConnected: false;
-}
 
 interface ApiMetricEvent {
   at: number;
@@ -33,10 +33,11 @@ export class ObservabilityService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
     @Inject(StructuredLoggerService) private readonly logger: StructuredLoggerService,
+    @Inject(TELEMETRY_ADAPTER) private readonly telemetry: TelemetryAdapter,
   ) {}
 
   adapterStatus(): TelemetryAdapterStatus {
-    return { provider: "local", externalConnected: false };
+    return this.telemetry.status();
   }
 
   recordRequest(input: { method: string; path: string; statusCode: number; latencyMs: number }): void {
@@ -55,15 +56,27 @@ export class ObservabilityService {
   captureError(error: unknown, input: { path?: string; statusCode?: number; source: string }): ErrorClass {
     const errorClass = classifyError(error, input.path ?? "", input.statusCode);
     this.increment(`error.${errorClass}`);
-    const errorName = error instanceof Error ? error.name : typeof error;
-    const message = error instanceof Error ? error.message : "Unhandled non-Error exception";
-    this.logger.event(input.statusCode && input.statusCode < 500 ? "warn" : "error", "error.captured", {
+    const severity = input.statusCode && input.statusCode < 500 ? "warn" : "error";
+    const event = {
       source: input.source,
       errorClass,
       statusCode: input.statusCode ?? null,
       path: input.path ?? null,
-      errorName,
-      message,
+      errorName: error instanceof Error ? error.name : typeof error,
+    };
+    this.logger.event(severity, "error.captured", event);
+    void Promise.resolve(
+      this.telemetry.capture({
+        event: "error.captured",
+        severity,
+        releaseSha: releaseSha(),
+        errorClass,
+        source: input.source,
+        statusCode: input.statusCode ?? null,
+        path: input.path ?? null,
+      }),
+    ).catch(() => {
+      this.increment("telemetry.export_error");
     });
     return errorClass;
   }
@@ -142,7 +155,7 @@ export class ObservabilityService {
           : 0,
         activeJobs,
         failures: failed,
-        retries,
+        jobsWithRetries: retries,
       },
       errors: {
         counters: Object.fromEntries(this.errorCounters),
@@ -164,10 +177,16 @@ export class ObservabilityService {
 
   private configurationCheck() {
     try {
-      const storage = loadMediaStorageConfig(process.env);
+      const environment =
+        process.env.APP_ENV === "local"
+          ? ({ ...process.env, APP_ENV: "development" } as NodeJS.ProcessEnv)
+          : process.env;
+      const storage = loadMediaStorageConfig(environment);
       const authSecretOk = (process.env.AUTH_TOKEN_SECRET?.length ?? 0) >= 32;
       const payoutKeyOk = Boolean(process.env.PAYOUT_DATA_ENCRYPTION_KEY);
-      if (!authSecretOk || !payoutKeyOk) throw new Error("Critical authentication or payout configuration is invalid.");
+      if (!authSecretOk || !payoutKeyOk) {
+        throw new Error("Critical runtime configuration is invalid.");
+      }
       return {
         status: "ok" as const,
         appEnv: process.env.APP_ENV ?? "development",
@@ -196,11 +215,14 @@ export class ObservabilityService {
       };
       const heartbeatAt = Date.parse(parsed.heartbeatAt ?? "");
       const ageMs = Number.isFinite(heartbeatAt) ? Date.now() - heartbeatAt : Number.POSITIVE_INFINITY;
-      const healthy = ageMs >= 0 && ageMs <= WORKER_HEARTBEAT_MAX_AGE_MS;
+      const currentRelease = releaseSha();
+      const releaseMatchesApi = currentRelease === "unknown" || parsed.releaseSha === currentRelease;
+      const fresh = ageMs >= 0 && ageMs <= WORKER_HEARTBEAT_MAX_AGE_MS;
+      const healthy = fresh && (process.env.APP_ENV !== "production" || releaseMatchesApi);
       return {
         status: healthy ? ("ok" as const) : ("unhealthy" as const),
         ageSeconds: Number.isFinite(ageMs) ? Math.max(0, Math.floor(ageMs / 1000)) : null,
-        releaseMatchesApi: parsed.releaseSha === releaseSha(),
+        releaseMatchesApi,
         activeJobs: parsed.activeJobs ?? 0,
       };
     } catch {
