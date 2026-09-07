@@ -1,0 +1,50 @@
+name: Task 41 bundle HLS helper
+
+on:
+  push:
+    branches:
+      - task-41-player-hls-abr
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-41-player-hls-abr
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Bundle pinned hls.js runtime
+        run: |
+          pnpm --filter @ayin/web add hls.js@1.7.2 --save-exact
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/lib/adaptive-playback.ts')
+          text = path.read_text()
+          start = text.index('// Pinned maintained runtime, isolated behind this AYIN-owned adapter.')
+          end = text.index('\nexport function supportsNativeHls', start)
+          replacement = '''// The maintained HLS runtime is bundled with AYIN so production playback is not dependent on\n// an external script origin or CSP exception. window.Hls is retained only as an internal test\n// injection seam; application/domain code never sees hls.js-specific types.\nlet hlsImportPromise: Promise<HlsConstructor> | null = null;\n\nfunction loadHlsRuntime(): Promise<HlsConstructor> {\n  if (window.Hls) return Promise.resolve(window.Hls);\n  if (!hlsImportPromise) {\n    hlsImportPromise = import("hls.js")\n      .then((module) => module.default as unknown as HlsConstructor)\n      .catch((error) => {\n        hlsImportPromise = null;\n        throw error;\n      });\n  }\n  return hlsImportPromise;\n}\n'''
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+          pnpm exec prettier --write apps/web/src/lib/adaptive-playback.ts apps/web/package.json pnpm-lock.yaml
+          pnpm --filter @ayin/web lint
+          pnpm --filter @ayin/web typecheck
+          pnpm --filter @ayin/web test
+      - name: Commit bundled runtime
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/lib/adaptive-playback.ts apps/web/package.json pnpm-lock.yaml
+          git commit -m "fix: bundle hls.js for CSP-safe playback"
+          git push origin HEAD:task-41-player-hls-abr
