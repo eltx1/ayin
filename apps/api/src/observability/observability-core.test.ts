@@ -4,18 +4,31 @@ import { createRequestTraceContext, normalizeTraceId } from "./observability-con
 import { classifyError, redactText, redactValue, statusClass } from "./observability-core.js";
 
 describe("observability safety", () => {
-  it("redacts credential-like fields and strings", () => {
+  it("redacts credential and financial fields and strings", () => {
     const value = redactValue({
       password: "secret-password",
       sessionToken: "session-secret",
-      nested: { streamKey: "live-secret", ordinary: "safe" },
+      nested: {
+        streamKey: "live-secret",
+        iban: "GB82WEST12345698765432",
+        ordinary: "safe",
+      },
     });
     expect(value).toEqual({
       password: "[REDACTED]",
       sessionToken: "[REDACTED]",
-      nested: { streamKey: "[REDACTED]", ordinary: "safe" },
+      nested: { streamKey: "[REDACTED]", iban: "[REDACTED]", ordinary: "safe" },
     });
-    expect(redactText("authorization=abc Bearer xyz.password.token")).not.toContain("abc");
+    const redacted = redactText(
+      "authorization=abc Bearer xyz.password.token card=4111111111111111 GB82WEST12345698765432",
+    );
+    expect(redacted).not.toContain("abc");
+    expect(redacted).not.toContain("4111111111111111");
+    expect(redacted).not.toContain("GB82WEST12345698765432");
+  });
+
+  it("does not serialize raw Error messages", () => {
+    expect(redactValue(new Error("kyc=raw-sensitive-value"))).toEqual({ name: "Error" });
   });
 
   it("accepts only bounded safe request identifiers", () => {
