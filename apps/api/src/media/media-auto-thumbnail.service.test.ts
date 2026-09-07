@@ -50,6 +50,17 @@ describe("automatic video thumbnails", () => {
         assetId: "manual-thumb",
         reason: "existing-thumbnail",
       });
+      expect(findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            mediaAssets: expect.objectContaining({
+              where: expect.objectContaining({
+                status: { in: ["PENDING", "UPLOADED", "VALIDATED"] },
+              }),
+            }),
+          }),
+        }),
+      );
       expect(uploadFile).not.toHaveBeenCalled();
     },
   );
