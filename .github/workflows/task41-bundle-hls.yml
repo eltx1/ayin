@@ -38,6 +38,7 @@ jobs:
           path.write_text(text[:start] + replacement + text[end:])
           PY
           pnpm exec prettier --write apps/web/src/lib/adaptive-playback.ts apps/web/package.json pnpm-lock.yaml
+          pnpm packages:build
           pnpm --filter @ayin/web lint
           pnpm --filter @ayin/web typecheck
           pnpm --filter @ayin/web test
