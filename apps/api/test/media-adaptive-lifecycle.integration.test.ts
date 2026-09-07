@@ -19,8 +19,7 @@ databaseDescribe("Task 40 adaptive playback lifecycle", () => {
   beforeAll(async () => {
     process.env.APP_ENV = "test";
     process.env.AUTH_TOKEN_SECRET = "media-adaptive-test-auth-secret-with-more-than-32-characters";
-    process.env.UPLOAD_SESSION_SECRET =
-      "media-adaptive-upload-secret-with-more-than-32-characters";
+    process.env.UPLOAD_SESSION_SECRET = "media-adaptive-upload-secret-with-more-than-32-characters";
     process.env.DATABASE_URL = testDatabaseUrl;
     process.env.WEB_ORIGIN = "http://localhost:3000";
     moduleReference = await Test.createTestingModule({ imports: [AppModule] }).compile();
