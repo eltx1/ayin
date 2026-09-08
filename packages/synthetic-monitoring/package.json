@@ -1,0 +1,11 @@
+{
+  "name": "@ayin/synthetic-monitoring",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "node --test",
+    "typecheck": "node --check src/cli.mjs && node --check src/checker.mjs && node --check src/config.mjs"
+  }
+}
