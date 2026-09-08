@@ -6,6 +6,7 @@ on:
       - "apps/api/**"
       - "apps/web/**"
       - "packages/db/**"
+      - "packages/synthetic-monitoring/**"
       - "deploy/**"
       - "docs/**"
       - "package.json"
@@ -15,11 +16,13 @@ on:
       - ".github/workflows/deploy.yml"
       - ".github/workflows/cloudflare-production.yml"
       - ".github/workflows/r2-production.yml"
+      - ".github/workflows/synthetic-monitoring.yml"
   pull_request:
     paths:
       - "apps/api/**"
       - "apps/web/**"
       - "packages/db/**"
+      - "packages/synthetic-monitoring/**"
       - "deploy/**"
       - "docs/**"
       - "package.json"
@@ -29,6 +32,7 @@ on:
       - ".github/workflows/deploy.yml"
       - ".github/workflows/cloudflare-production.yml"
       - ".github/workflows/r2-production.yml"
+      - ".github/workflows/synthetic-monitoring.yml"
 
 permissions:
   contents: read

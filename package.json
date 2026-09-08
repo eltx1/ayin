@@ -23,6 +23,7 @@
     "format:check": "prettier --check .",
     "lint": "corepack pnpm --recursive --if-present run lint",
     "packages:build": "corepack pnpm --filter './packages/*' --workspace-concurrency=1 run build",
+    "synthetic:check": "node packages/synthetic-monitoring/src/cli.mjs",
     "test": "corepack pnpm --recursive --if-present run test",
     "test:e2e": "playwright test",
     "test:integration": "corepack pnpm --filter @ayin/db run test:integration && corepack pnpm --filter @ayin/api run test:integration",

@@ -1,0 +1,44 @@
+name: Production synthetic monitoring
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-production-synthetic-monitoring
+  cancel-in-progress: true
+
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      AYIN_SYNTHETIC_WATCH_SLUG: ${{ vars.AYIN_SYNTHETIC_WATCH_SLUG }}
+      AYIN_SYNTHETIC_MEDIA_OBJECT_URL: ${{ vars.AYIN_SYNTHETIC_MEDIA_OBJECT_URL }}
+      AYIN_SYNTHETIC_THUMBNAIL_URL: ${{ vars.AYIN_SYNTHETIC_THUMBNAIL_URL }}
+      AYIN_SYNTHETIC_MAINTENANCE_UNTIL: ${{ vars.AYIN_SYNTHETIC_MAINTENANCE_UNTIL }}
+
+    steps:
+      - name: Check out monitoring code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Run confirmed read-only production checks
+        run: node packages/synthetic-monitoring/src/cli.mjs --report="$RUNNER_TEMP/ayin-synthetic-report.json"
+
+      - name: Upload synthetic report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ayin-synthetic-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ayin-synthetic-report.json
+          retention-days: 30
+          if-no-files-found: warn
