@@ -240,11 +240,18 @@ export class AuthController {
   ) {
     if ("mfaRequired" in result) return result;
     if (wantsBearerToken(request)) {
-      return { sessionToken: result.token, user: result.user };
+      return {
+        sessionToken: result.token,
+        user: result.user,
+        ...(result.recoveryCodes ? { recoveryCodes: result.recoveryCodes } : {}),
+      };
     }
 
     reply.header("set-cookie", buildSessionCookie(result.token, this.authConfig));
-    return { user: result.user };
+    return {
+      user: result.user,
+      ...(result.recoveryCodes ? { recoveryCodes: result.recoveryCodes } : {}),
+    };
   }
 
   private finishToken(
