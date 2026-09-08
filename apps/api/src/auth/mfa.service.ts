@@ -9,6 +9,7 @@ import { badRequest, conflict, unauthorized } from "./auth.errors.js";
 import { AuthTokenService, type AuthTokenPayload } from "./auth-token.service.js";
 import { MfaCryptoService } from "./mfa-crypto.service.js";
 import { PasswordService } from "./password.service.js";
+import { SessionService } from "./session.service.js";
 import {
   buildTotpProvisioningUri,
   encodeBase32,
@@ -35,6 +36,7 @@ export class MfaService {
     @Inject(AuthTokenService) private readonly tokens: AuthTokenService,
     @Inject(MfaCryptoService) private readonly crypto: MfaCryptoService,
     @Inject(PasswordService) private readonly passwords: PasswordService,
+    @Inject(SessionService) private readonly sessions: SessionService,
   ) {}
 
   async loginChallenge(accountId: string, authVersion: number) {
@@ -141,8 +143,17 @@ export class MfaService {
         },
       });
       if (result.count !== 1) return false;
+      await tx.account.update({
+        where: { id: payload.sub },
+        data: { authVersion: { increment: 1 } },
+      });
+      await tx.accountSession.updateMany({
+        where: { accountId: payload.sub, revokedAt: null },
+        data: { revokedAt: now, revokeReason: "MFA_ENABLED" },
+      });
       await this.audit(tx, payload.sub, "auth.mfa_enabled", payload.sub, {
         recoveryCodeCount: recoveryCodes.length,
+        sessionsRevoked: true,
       });
       return true;
     });
@@ -154,7 +165,7 @@ export class MfaService {
     const epoch = Math.floor(now.getTime() / 1_000);
     return {
       accountId: payload.sub,
-      authVersion: payload.av,
+      authVersion: payload.av + 1,
       mfaAt: epoch,
       mfaVersion: payload.mv,
       reauthAt: epoch,
@@ -190,7 +201,7 @@ export class MfaService {
     };
   }
 
-  async stepUp(accountId: string, password: string, code?: string) {
+  async stepUp(accountId: string, sessionId: string, password: string, code?: string) {
     const account = await this.verifyPassword(accountId, password);
     const credential = await this.database.client.accountMfaCredential.findUnique({
       where: { accountId },
@@ -210,7 +221,7 @@ export class MfaService {
     }
     const reauthAt = Math.floor(Date.now() / 1_000);
     return {
-      token: this.tokens.issueSession(accountId, account.authVersion, {
+      token: await this.sessions.rotate(accountId, sessionId, account.authVersion, {
         reauthAt,
         ...(mfaAt ? { mfaAt } : {}),
         ...(mfaVersion !== undefined ? { mfaVersion } : {}),
@@ -262,6 +273,10 @@ export class MfaService {
         where: { id: accountId },
         data: { authVersion: { increment: 1 } },
       });
+      await tx.accountSession.updateMany({
+        where: { accountId, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: "MFA_DISABLED" },
+      });
       await this.audit(tx, accountId, "auth.mfa_disabled", accountId);
     });
     return { disabled: true };
@@ -280,6 +295,10 @@ export class MfaService {
       await tx.account.update({
         where: { id: targetAccountId },
         data: { authVersion: { increment: 1 } },
+      });
+      await tx.accountSession.updateMany({
+        where: { accountId: targetAccountId, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: "MFA_RESET" },
       });
       await tx.adminAuditLog.create({
         data: {

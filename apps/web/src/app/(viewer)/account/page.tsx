@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { AccountOverview } from "@/components/account/account-overview";
 import { AccountRevenue } from "@/components/account/account-revenue";
+import { AccountSecuritySessions } from "@/components/account/account-security-sessions";
 
 import styles from "./account.module.css";
 
@@ -19,6 +20,8 @@ export default function AccountPage() {
       </header>
 
       <AccountOverview />
+
+      <AccountSecuritySessions />
 
       <div className={styles.sectionHeading}>
         <h2>Earnings & payouts</h2>

@@ -20,10 +20,19 @@ export const resetPasswordSchema = z.object({
   token: z.string().min(32).max(2_048),
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(128),
+    newPassword: z.string().min(10).max(128),
+    revokeOtherSessions: z.boolean().default(true),
+  })
+  .strict();
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();

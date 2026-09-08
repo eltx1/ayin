@@ -56,6 +56,7 @@ async function bootstrap(): Promise<void> {
     ],
     exposedHeaders: ["x-request-id", "x-correlation-id", "x-ayin-release"],
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     origin: environment.CORS_ORIGIN,
   });
 

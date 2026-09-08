@@ -12,6 +12,7 @@ import { EMAIL_ADAPTER, SmtpEmailAdapter } from "./email.adapter.js";
 import { PasswordService } from "./password.service.js";
 import { MfaCryptoService } from "./mfa-crypto.service.js";
 import { MfaService } from "./mfa.service.js";
+import { SessionService } from "./session.service.js";
 
 @Module({
   imports: [PlatformConfigModule],
@@ -24,11 +25,12 @@ import { MfaService } from "./mfa.service.js";
     AuthTokenService,
     MfaCryptoService,
     MfaService,
+    SessionService,
     CreatorProvisioningService,
     PasswordService,
     SmtpEmailAdapter,
     { provide: EMAIL_ADAPTER, useExisting: SmtpEmailAdapter },
   ],
-  exports: [AuthGuard, AuthService, CreatorProvisioningService, MfaService],
+  exports: [AuthGuard, AuthService, CreatorProvisioningService, MfaService, SessionService],
 })
 export class AuthModule {}

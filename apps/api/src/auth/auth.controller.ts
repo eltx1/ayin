@@ -1,10 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
+  Param,
   Post,
   Req,
   Res,
@@ -21,10 +23,12 @@ import { AuthService } from "./auth.service.js";
 import { MfaService } from "./mfa.service.js";
 import {
   forgotPasswordSchema,
+  changePasswordSchema,
   loginSchema,
   registerSchema,
   resetPasswordSchema,
 } from "./schemas.js";
+import { SessionService } from "./session.service.js";
 import {
   buildClearedSessionCookie,
   buildSessionCookie,
@@ -63,6 +67,7 @@ const stepUpSchema = z
 const recoveryRegenerateSchema = z
   .object({ password: z.string().min(1).max(128), code: z.string().regex(/^\d{6}$/) })
   .strict();
+const sessionIdSchema = z.uuid();
 
 function parseBody<T>(schema: ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
@@ -79,6 +84,7 @@ export class AuthController {
     @Inject(AuthConfig) private readonly authConfig: AuthConfig,
     @Inject(AuthRateLimiter) private readonly rateLimiter: AuthRateLimiter,
     @Inject(MfaService) private readonly mfa: MfaService,
+    @Inject(SessionService) private readonly sessions: SessionService,
   ) {}
 
   @Post("register")
@@ -88,7 +94,10 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     this.rateLimiter.consume("register", request.ip);
-    const result = await this.authService.register(parseBody(registerSchema, body));
+    const result = await this.authService.register(
+      parseBody(registerSchema, body),
+      this.sessionMetadata(request),
+    );
     return this.finishSession(request, reply, result);
   }
 
@@ -100,7 +109,10 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
     this.rateLimiter.consume("login", request.ip);
-    const result = await this.authService.login(parseBody(loginSchema, body));
+    const result = await this.authService.login(
+      parseBody(loginSchema, body),
+      this.sessionMetadata(request),
+    );
     return this.finishSession(request, reply, result);
   }
 
@@ -133,7 +145,11 @@ export class AuthController {
     return this.finishSession(
       request,
       reply,
-      await this.authService.completeMfaEnrollment(input.enrollmentToken, input.code),
+      await this.authService.completeMfaEnrollment(
+        input.enrollmentToken,
+        input.code,
+        this.sessionMetadata(request),
+      ),
     );
   }
 
@@ -150,10 +166,14 @@ export class AuthController {
     return this.finishSession(
       request,
       reply,
-      await this.authService.completeMfaChallenge(input.challengeToken, {
-        ...(input.code ? { code: input.code } : {}),
-        ...(input.recoveryCode ? { recoveryCode: input.recoveryCode } : {}),
-      }),
+      await this.authService.completeMfaChallenge(
+        input.challengeToken,
+        {
+          ...(input.code ? { code: input.code } : {}),
+          ...(input.recoveryCode ? { recoveryCode: input.recoveryCode } : {}),
+        },
+        this.sessionMetadata(request),
+      ),
     );
   }
 
@@ -173,7 +193,12 @@ export class AuthController {
   ) {
     const input = parseBody(stepUpSchema, body);
     this.rateLimiter.consumeMfa("mfa-step-up", request.ayinAuth.accountId);
-    const result = await this.mfa.stepUp(request.ayinAuth.accountId, input.password, input.code);
+    const result = await this.mfa.stepUp(
+      request.ayinAuth.accountId,
+      request.ayinAuth.sessionId,
+      input.password,
+      input.code,
+    );
     return this.finishToken(request, reply, result.token, { steppedUp: true });
   }
 
@@ -215,6 +240,53 @@ export class AuthController {
   @UseGuards(AuthGuard)
   async currentUser(@Req() request: AuthenticatedRequest) {
     return this.authService.getCurrentIdentity(request.ayinAuth.accountId);
+  }
+
+  @Get("sessions")
+  @UseGuards(AuthGuard)
+  sessionsList(@Req() request: AuthenticatedRequest) {
+    return this.sessions.list(request.ayinAuth.accountId, request.ayinAuth.sessionId);
+  }
+
+  @Delete("sessions/:sessionId")
+  @UseGuards(AuthGuard)
+  async revokeSession(
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+    @Param("sessionId") sessionIdRaw: string,
+  ) {
+    const parsed = sessionIdSchema.safeParse(sessionIdRaw);
+    if (!parsed.success) throw badRequest("INVALID_SESSION_ID", "Invalid session identifier.");
+    this.rateLimiter.consume("session-revoke", request.ayinAuth.accountId);
+    const result = await this.sessions.revoke(
+      request.ayinAuth.accountId,
+      parsed.data,
+      request.ayinAuth.sessionId,
+    );
+    if (result.currentSessionRevoked) {
+      reply.header("set-cookie", buildClearedSessionCookie(this.authConfig));
+    }
+    return result;
+  }
+
+  @Post("sessions/revoke-others")
+  @UseGuards(AuthGuard)
+  @HttpCode(HttpStatus.OK)
+  revokeOtherSessions(@Req() request: AuthenticatedRequest) {
+    this.rateLimiter.consume("session-revoke-others", request.ayinAuth.accountId);
+    return this.sessions.revokeOthers(request.ayinAuth.accountId, request.ayinAuth.sessionId);
+  }
+
+  @Post("password/change")
+  @UseGuards(AuthGuard)
+  @HttpCode(HttpStatus.OK)
+  changePassword(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
+    this.rateLimiter.consume("password-change", request.ayinAuth.accountId);
+    return this.authService.changePassword(
+      request.ayinAuth.accountId,
+      request.ayinAuth.sessionId,
+      parseBody(changePasswordSchema, body),
+    );
   }
 
   @Post("forgot-password")
@@ -263,5 +335,10 @@ export class AuthController {
     if (wantsBearerToken(request)) return { ...response, sessionToken: token };
     reply.header("set-cookie", buildSessionCookie(token, this.authConfig));
     return response;
+  }
+
+  private sessionMetadata(request: FastifyRequest) {
+    const userAgent = request.headers["user-agent"];
+    return { ...(userAgent ? { userAgent } : {}) };
   }
 }

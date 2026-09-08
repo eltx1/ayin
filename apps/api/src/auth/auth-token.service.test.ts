@@ -5,6 +5,7 @@ import { AuthTokenService } from "./auth-token.service.js";
 
 describe("AuthTokenService MFA tokens", () => {
   const accountId = "11111111-1111-4111-8111-111111111111";
+  const sessionId = "22222222-2222-4222-8222-222222222222";
 
   function tokens() {
     process.env.APP_ENV = "test";
@@ -38,16 +39,23 @@ describe("AuthTokenService MFA tokens", () => {
 
   it("carries MFA and recent re-authentication assurance only in sessions", () => {
     const service = tokens();
-    const session = service.issueSession(accountId, 3, {
-      mfaAt: 1_788_868_800,
-      mfaVersion: 7,
-      reauthAt: 1_788_868_800,
-    });
+    const session = service.issueSession(
+      accountId,
+      3,
+      sessionId,
+      new Date(Date.now() + 60 * 60 * 1_000),
+      {
+        mfaAt: 1_788_868_800,
+        mfaVersion: 7,
+        reauthAt: 1_788_868_800,
+      },
+    );
     expect(service.verifySession(session)).toMatchObject({
       av: 3,
       mfaAt: 1_788_868_800,
       mv: 7,
       reauthAt: 1_788_868_800,
+      sid: sessionId,
     });
   });
 });
