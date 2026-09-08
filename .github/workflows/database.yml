@@ -6,6 +6,7 @@ on:
       - "apps/api/**"
       - "apps/web/**"
       - "packages/db/**"
+      - "packages/capacity-testing/**"
       - "packages/synthetic-monitoring/**"
       - "deploy/**"
       - "docs/**"
@@ -16,12 +17,14 @@ on:
       - ".github/workflows/deploy.yml"
       - ".github/workflows/cloudflare-production.yml"
       - ".github/workflows/r2-production.yml"
+      - ".github/workflows/capacity-baseline.yml"
       - ".github/workflows/synthetic-monitoring.yml"
   pull_request:
     paths:
       - "apps/api/**"
       - "apps/web/**"
       - "packages/db/**"
+      - "packages/capacity-testing/**"
       - "packages/synthetic-monitoring/**"
       - "deploy/**"
       - "docs/**"
@@ -32,6 +35,7 @@ on:
       - ".github/workflows/deploy.yml"
       - ".github/workflows/cloudflare-production.yml"
       - ".github/workflows/r2-production.yml"
+      - ".github/workflows/capacity-baseline.yml"
       - ".github/workflows/synthetic-monitoring.yml"
 
 permissions:

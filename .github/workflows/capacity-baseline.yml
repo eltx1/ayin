@@ -1,0 +1,91 @@
+name: Staging capacity baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Progressive load profile
+        required: true
+        type: choice
+        default: smoke
+        options: [smoke, normal, peak, stress, soak]
+      mode:
+        description: HTTP scenarios or separate queue observation
+        required: true
+        type: choice
+        default: http
+        options: [http, queue]
+      include_mutations:
+        description: Run bounded analytics/login/upload-session scenarios with cleanup
+        required: true
+        type: boolean
+        default: false
+      confirmation:
+        description: Type RUN_SAFE_CAPACITY_TEST
+        required: true
+        type: string
+      high_load_confirmation:
+        description: For stress/soak only, type RUN_HIGH_LOAD_PROFILE
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-staging-capacity
+  cancel-in-progress: false
+
+jobs:
+  capacity:
+    runs-on: ubuntu-latest
+    environment: capacity-staging
+    timeout-minutes: 40
+    env:
+      AYIN_CAPACITY_ENVIRONMENT: staging
+      AYIN_CAPACITY_RUN_CONFIRMATION: ${{ inputs.confirmation }}
+      AYIN_CAPACITY_PROFILE: ${{ inputs.profile }}
+      AYIN_CAPACITY_MODE: ${{ inputs.mode }}
+      AYIN_CAPACITY_HIGH_LOAD_CONFIRMATION: ${{ inputs.high_load_confirmation }}
+      AYIN_CAPACITY_API_URL: ${{ vars.AYIN_STAGING_API_URL }}
+      AYIN_CAPACITY_ALLOWED_HOSTS: ${{ vars.AYIN_STAGING_ALLOWED_HOSTS }}
+      AYIN_CAPACITY_ALLOWED_DATABASE_HOSTS: ${{ vars.AYIN_STAGING_ALLOWED_DATABASE_HOSTS }}
+      AYIN_CAPACITY_WATCH_SLUG: ${{ vars.AYIN_STAGING_WATCH_SLUG }}
+      AYIN_CAPACITY_SEARCH_QUERY: ${{ vars.AYIN_STAGING_SEARCH_QUERY }}
+      AYIN_CAPACITY_UPLOAD_CHANNEL_ID: ${{ vars.AYIN_STAGING_UPLOAD_CHANNEL_ID }}
+      AYIN_CAPACITY_LOGIN_EMAIL: ${{ secrets.AYIN_STAGING_SYNTHETIC_EMAIL }}
+      AYIN_CAPACITY_LOGIN_PASSWORD: ${{ secrets.AYIN_STAGING_SYNTHETIC_PASSWORD }}
+      AYIN_CAPACITY_DATABASE_URL: ${{ secrets.AYIN_STAGING_CAPACITY_DATABASE_URL }}
+      AYIN_CAPACITY_QUEUE_CONFIRMATION: ${{ inputs.mode == 'queue' && 'OBSERVE_SYNTHETIC_QUEUE' || '' }}
+      AYIN_CAPACITY_OUTPUT: capacity-report.json
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run guarded staging profile
+        env:
+          AYIN_CAPACITY_ENABLE_MUTATIONS: ${{ inputs.include_mutations && '1' || '0' }}
+        run: pnpm capacity:run
+
+      - name: Preserve measured report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: capacity-${{ inputs.mode }}-${{ inputs.profile }}-${{ github.run_id }}
+          path: capacity-report.json
+          if-no-files-found: warn
+          retention-days: 30
