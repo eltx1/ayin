@@ -31,6 +31,14 @@ import { SessionService } from "./session.service.js";
     SmtpEmailAdapter,
     { provide: EMAIL_ADAPTER, useExisting: SmtpEmailAdapter },
   ],
-  exports: [AuthGuard, AuthService, CreatorProvisioningService, MfaService, SessionService],
+  exports: [
+    AuthGuard,
+    AuthRateLimiter,
+    AuthService,
+    CreatorProvisioningService,
+    MfaService,
+    PasswordService,
+    SessionService,
+  ],
 })
 export class AuthModule {}

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AccountOverview } from "@/components/account/account-overview";
+import { AccountPrivacyControls } from "@/components/account/account-privacy-controls";
 import { AccountRevenue } from "@/components/account/account-revenue";
 import { AccountSecuritySessions } from "@/components/account/account-security-sessions";
 
@@ -22,6 +23,8 @@ export default function AccountPage() {
       <AccountOverview />
 
       <AccountSecuritySessions />
+
+      <AccountPrivacyControls />
 
       <div className={styles.sectionHeading}>
         <h2>Earnings & payouts</h2>

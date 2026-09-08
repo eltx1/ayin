@@ -46,6 +46,10 @@ export class DevelopmentMediaStorageAdapter implements MediaStorageAdapter {
     return this.unavailable();
   }
 
+  async deletePrefix(): Promise<void> {
+    return this.unavailable();
+  }
+
   async listMultipartUploads(): Promise<AbandonedMultipartUpload[]> {
     return this.unavailable();
   }

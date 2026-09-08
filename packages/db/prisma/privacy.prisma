@@ -1,0 +1,68 @@
+enum AccountDeletionState {
+  REQUESTED
+  GRACE_PERIOD
+  DEACTIVATED
+  ANONYMIZED
+  CANCELLED
+}
+
+enum PrivacyMediaDeletionKind {
+  OBJECT
+  PREFIX
+}
+
+enum PrivacyMediaDeletionStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model AccountDeletionRequest {
+  id                      String               @id @default(uuid()) @db.Uuid
+  accountId               String               @db.Uuid
+  state                   AccountDeletionState @default(REQUESTED)
+  requestedFromSessionId  String?              @db.Uuid
+  requestedAt             DateTime             @default(now())
+  graceEndsAt             DateTime?
+  deactivatedAt           DateTime?
+  anonymizedAt            DateTime?
+  cancelledAt             DateTime?
+  mediaCleanupQueuedAt    DateTime?
+  mediaCleanupCompletedAt DateTime?
+  lastError               String?              @db.Text
+  lifecycleLeaseOwner     String?              @db.VarChar(200)
+  lifecycleLeaseUntil     DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  mediaDeletionJobs PrivacyMediaDeletionJob[]
+
+  @@index([accountId, createdAt])
+  @@index([state, graceEndsAt])
+  @@index([state, deactivatedAt])
+  @@index([lifecycleLeaseUntil])
+}
+
+model PrivacyMediaDeletionJob {
+  id          String                     @id @default(uuid()) @db.Uuid
+  requestId   String                     @db.Uuid
+  accountId   String                     @db.Uuid
+  kind        PrivacyMediaDeletionKind
+  target      String                     @db.VarChar(1024)
+  status      PrivacyMediaDeletionStatus @default(PENDING)
+  attempts    Int                        @default(0)
+  availableAt DateTime                   @default(now())
+  claimedAt   DateTime?
+  completedAt DateTime?
+  lastError   String?                    @db.Text
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  request AccountDeletionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, kind, target])
+  @@index([status, availableAt, createdAt])
+  @@index([requestId, status])
+  @@index([accountId, createdAt])
+}

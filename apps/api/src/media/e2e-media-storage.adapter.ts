@@ -54,6 +54,8 @@ export class E2eMediaStorageAdapter implements MediaStorageAdapter {
 
   async deleteObject(): Promise<void> {}
 
+  async deletePrefix(): Promise<void> {}
+
   async listMultipartUploads(): Promise<AbandonedMultipartUpload[]> {
     return [];
   }
