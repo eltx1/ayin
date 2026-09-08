@@ -335,6 +335,7 @@ model Account {
   communityPosts          CommunityPost[]
   revenueDisputesCreated  RevenueDispute[] @relation("RevenueDisputeCreator")
   revenueDisputesResolved RevenueDispute[] @relation("RevenueDisputeResolver")
+  mfaCredential           AccountMfaCredential?
 
   @@index([status, createdAt])
 }

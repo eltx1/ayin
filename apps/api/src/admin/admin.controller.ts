@@ -7,7 +7,12 @@ import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+  RequireAdminStepUp,
+} from "./admin.guard.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
 
 const updateSettingSchema = z.object({
@@ -47,6 +52,7 @@ export class AdminController {
 
   @Patch("settings/:key")
   @RequireAdminRoles("OPERATIONS")
+  @RequireAdminStepUp()
   async updateSetting(
     @Req() request: AdminAuthenticatedRequest,
     @Param("key") key: string,
@@ -78,6 +84,7 @@ export class AdminController {
 
   @Patch("feature-flags/:key")
   @RequireAdminRoles("OPERATIONS")
+  @RequireAdminStepUp()
   async updateFeatureFlag(
     @Req() request: AdminAuthenticatedRequest,
     @Param("key") key: string,

@@ -10,7 +10,11 @@ const tokenPayloadSchema = z.object({
   exp: z.number().int().positive(),
   iat: z.number().int().positive(),
   nonce: z.string().min(16).max(64),
-  purpose: z.enum(["session", "password-reset"]),
+  intent: z.enum(["enroll", "verify"]).optional(),
+  mfaAt: z.number().int().positive().optional(),
+  mv: z.number().int().min(0).optional(),
+  purpose: z.enum(["session", "password-reset", "mfa-challenge", "mfa-enrollment"]),
+  reauthAt: z.number().int().positive().optional(),
   sub: z.uuid(),
   v: z.literal(1),
 });
@@ -21,8 +25,16 @@ export type AuthTokenPayload = z.infer<typeof tokenPayloadSchema>;
 export class AuthTokenService {
   constructor(@Inject(AuthConfig) private readonly config: AuthConfig) {}
 
-  issueSession(accountId: string, authVersion: number): string {
-    return this.issue("session", accountId, authVersion, this.config.sessionTtlSeconds);
+  issueSession(
+    accountId: string,
+    authVersion: number,
+    assurance: { mfaAt?: number; mfaVersion?: number; reauthAt?: number } = {},
+  ): string {
+    return this.issue("session", accountId, authVersion, this.config.sessionTtlSeconds, {
+      ...(assurance.mfaAt ? { mfaAt: assurance.mfaAt } : {}),
+      ...(assurance.mfaVersion !== undefined ? { mv: assurance.mfaVersion } : {}),
+      ...(assurance.reauthAt ? { reauthAt: assurance.reauthAt } : {}),
+    });
   }
 
   issuePasswordReset(accountId: string, authVersion: number): string {
@@ -34,6 +46,25 @@ export class AuthTokenService {
     );
   }
 
+  issueMfaChallenge(
+    accountId: string,
+    authVersion: number,
+    mfaVersion: number,
+    intent: "enroll" | "verify",
+  ): string {
+    return this.issue("mfa-challenge", accountId, authVersion, 300, {
+      intent,
+      mv: mfaVersion,
+    });
+  }
+
+  issueMfaEnrollment(accountId: string, authVersion: number, mfaVersion: number): string {
+    return this.issue("mfa-enrollment", accountId, authVersion, 600, {
+      intent: "enroll",
+      mv: mfaVersion,
+    });
+  }
+
   verifySession(token: string): AuthTokenPayload | null {
     return this.verify(token, "session");
   }
@@ -42,11 +73,22 @@ export class AuthTokenService {
     return this.verify(token, "password-reset");
   }
 
+  verifyMfaChallenge(token: string): AuthTokenPayload | null {
+    const payload = this.verify(token, "mfa-challenge");
+    return payload?.intent && payload.mv !== undefined ? payload : null;
+  }
+
+  verifyMfaEnrollment(token: string): AuthTokenPayload | null {
+    const payload = this.verify(token, "mfa-enrollment");
+    return payload?.intent === "enroll" && payload.mv !== undefined ? payload : null;
+  }
+
   private issue(
     purpose: AuthTokenPayload["purpose"],
     accountId: string,
     authVersion: number,
     ttlSeconds: number,
+    extra: Partial<Pick<AuthTokenPayload, "intent" | "mfaAt" | "mv" | "reauthAt">> = {},
   ): string {
     const issuedAt = Math.floor(Date.now() / 1_000);
     const payload: AuthTokenPayload = {
@@ -57,6 +99,7 @@ export class AuthTokenService {
       purpose,
       sub: accountId,
       v: 1,
+      ...extra,
     };
     const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
     const signature = this.sign(encodedPayload);

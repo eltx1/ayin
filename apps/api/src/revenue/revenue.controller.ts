@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 
-import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
+import { AdminGuard, RequireAdminRoles, RequireAdminStepUp } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { AdminPayoutCreationService } from "./admin-payout-creation.service.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
@@ -166,6 +166,7 @@ export class AdminRevenueController {
   }
 
   @Post("adjustments")
+  @RequireAdminStepUp()
   adjustment(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return this.revenue.addAdjustment(request.ayinAuth.accountId, body);
   }
@@ -190,6 +191,7 @@ export class AdminRevenueController {
   }
 
   @Post("payouts")
+  @RequireAdminStepUp()
   async createPayout(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     const payout = await this.adminPayoutCreation.create(request.ayinAuth.accountId, body);
     await this.notifications
@@ -204,6 +206,7 @@ export class AdminRevenueController {
   }
 
   @Patch("payouts/:payoutId")
+  @RequireAdminStepUp()
   async updatePayout(
     @Req() request: AuthenticatedRequest,
     @Param("payoutId") payoutId: string,

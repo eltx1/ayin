@@ -18,6 +18,7 @@ import {
   AdminGuard,
   type AdminAuthenticatedRequest,
   RequireAdminRoles,
+  RequireAdminStepUp,
 } from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { AdvertisingControlService } from "./advertising-control.service.js";
@@ -105,6 +106,7 @@ export class AdminAdvertisingControlController {
   }
 
   @Patch("kill-switch")
+  @RequireAdminStepUp()
   async killSwitch(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     const parsed = killSwitchSchema.safeParse(body);
     if (!parsed.success) throw this.invalid("INVALID_KILL_SWITCH");
@@ -121,11 +123,13 @@ export class AdminAdvertisingControlController {
   }
 
   @Post("placements")
+  @RequireAdminStepUp()
   async createPlacement(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     return this.execute(() => this.advertising.createPlacement(request.ayinAuth.accountId, body));
   }
 
   @Patch("placements/:id")
+  @RequireAdminStepUp()
   async updatePlacement(
     @Req() request: AdminAuthenticatedRequest,
     @Param("id") idRaw: string,
@@ -142,11 +146,13 @@ export class AdminAdvertisingControlController {
   }
 
   @Post("advertisers")
+  @RequireAdminStepUp()
   createAdvertiser(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     return this.execute(() => this.advertising.createAdvertiser(request.ayinAuth.accountId, body));
   }
 
   @Patch("advertisers/:id")
+  @RequireAdminStepUp()
   updateAdvertiser(
     @Req() request: AdminAuthenticatedRequest,
     @Param("id") idRaw: string,
@@ -158,6 +164,7 @@ export class AdminAdvertisingControlController {
   }
 
   @Delete("advertisers/:id")
+  @RequireAdminStepUp()
   deleteAdvertiser(@Req() request: AdminAuthenticatedRequest, @Param("id") idRaw: string) {
     return this.execute(() =>
       this.advertising.deleteAdvertiser(request.ayinAuth.accountId, this.id(idRaw)),
@@ -182,11 +189,13 @@ export class AdminAdvertisingControlController {
   }
 
   @Post("campaigns")
+  @RequireAdminStepUp()
   createCampaign(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     return this.execute(() => this.advertising.createCampaign(request.ayinAuth.accountId, body));
   }
 
   @Patch("campaigns/:id")
+  @RequireAdminStepUp()
   updateCampaign(
     @Req() request: AdminAuthenticatedRequest,
     @Param("id") idRaw: string,
@@ -198,6 +207,7 @@ export class AdminAdvertisingControlController {
   }
 
   @Delete("campaigns/:id")
+  @RequireAdminStepUp()
   deleteCampaign(@Req() request: AdminAuthenticatedRequest, @Param("id") idRaw: string) {
     return this.execute(() =>
       this.advertising.deleteCampaign(request.ayinAuth.accountId, this.id(idRaw)),
@@ -210,11 +220,13 @@ export class AdminAdvertisingControlController {
   }
 
   @Post("creatives")
+  @RequireAdminStepUp()
   createCreative(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     return this.execute(() => this.advertising.createCreative(request.ayinAuth.accountId, body));
   }
 
   @Patch("creatives/:id")
+  @RequireAdminStepUp()
   updateCreative(
     @Req() request: AdminAuthenticatedRequest,
     @Param("id") idRaw: string,
@@ -226,6 +238,7 @@ export class AdminAdvertisingControlController {
   }
 
   @Delete("creatives/:id")
+  @RequireAdminStepUp()
   deleteCreative(@Req() request: AdminAuthenticatedRequest, @Param("id") idRaw: string) {
     return this.execute(() =>
       this.advertising.deleteCreative(request.ayinAuth.accountId, this.id(idRaw)),

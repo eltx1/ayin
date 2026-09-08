@@ -6,6 +6,7 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
+import { enrollTestMfa } from "./mfa-test-helper.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseDescribe = testDatabaseUrl ? describe : describe.skip;
@@ -54,10 +55,11 @@ databaseDescribe("Task 04 platform settings and admin authorization", () => {
       payload: { name: "Admin Test", email, password: "strong-pass-123" },
     });
     expect(response.statusCode).toBe(201);
-    return {
+    const account = {
       accountId: response.json().user.account.id as string,
       cookie: cookiePair(response.headers["set-cookie"]),
     };
+    return { ...account, cookie: (await enrollTestMfa(app, account.cookie)).cookie };
   }
 
   async function grant(accountId: string, role: "ADMIN" | "SUPERADMIN") {

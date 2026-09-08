@@ -14,7 +14,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 
-import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
+import { AdminGuard, RequireAdminRoles, RequireAdminStepUp } from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { AuthService } from "../auth/auth.service.js";
 import { readSessionToken } from "../auth/session-transport.js";
@@ -94,6 +94,7 @@ export class AdminPageAdController {
   }
 
   @Patch("settings")
+  @RequireAdminStepUp()
   async updateSettings(@Body() body: unknown) {
     try {
       return await this.pageAds.updateSettings(body);

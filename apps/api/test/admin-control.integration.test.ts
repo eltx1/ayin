@@ -6,6 +6,7 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
+import { enrollTestMfa } from "./mfa-test-helper.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseDescribe = testDatabaseUrl ? describe : describe.skip;
@@ -49,10 +50,11 @@ databaseDescribe("Task 17 Admin control plane", () => {
       payload: { name, email, password: "strong-pass-123" },
     });
     expect(response.statusCode).toBe(201);
-    return {
+    const account = {
       cookie: cookiePair(response.headers["set-cookie"]),
       user: response.json().user,
     };
+    return { ...account, cookie: (await enrollTestMfa(app, account.cookie)).cookie };
   }
 
   async function grant(accountId: string) {

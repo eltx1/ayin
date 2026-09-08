@@ -8,6 +8,8 @@ import {
   type APIRequestContext,
 } from "@playwright/test";
 
+import { enrollMfa } from "./mfa-helper.js";
+
 const API = "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
 const DB_HELPER = path.resolve(process.cwd(), "tests/e2e/db-helper.mjs");
@@ -195,6 +197,7 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
   await test.step("7. admin finds and edits user, channel and video", async () => {
     if (!creator) throw new Error("Creator setup missing.");
     admin = await registerApi("Launch Admin");
+    await enrollMfa(admin.api);
     db("grant-admin", { accountId: admin.user.account.id });
     const users = await admin.api.get("/admin/control/users?query=upload&take=10&page=1");
     expect(users.ok()).toBeTruthy();

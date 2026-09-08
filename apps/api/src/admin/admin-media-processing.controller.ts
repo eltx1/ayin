@@ -9,7 +9,12 @@ import { MediaProcessingLifecycleService } from "../media/media-processing-lifec
 import { MediaProcessingQueueService } from "../media/media-processing-queue.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+  RequireAdminStepUp,
+} from "./admin.guard.js";
 
 const uuidSchema = z.string().uuid();
 const terminalStatuses = new Set(["READY", "FAILED", "CANCELLED"]);
@@ -73,6 +78,7 @@ export class AdminMediaProcessingController {
   }
 
   @Post("adaptive-rollout/backfill/run")
+  @RequireAdminStepUp()
   async runAdaptiveBackfill(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     const parsed = batchSchema.safeParse(body ?? {});
     if (!parsed.success)
@@ -94,18 +100,21 @@ export class AdminMediaProcessingController {
   }
 
   @Post("adaptive-rollout/backfill/pause")
+  @RequireAdminStepUp()
   @RequireAdminRoles("SUPERADMIN")
   async pauseAdaptiveBackfill(@Req() request: AdminAuthenticatedRequest) {
     return this.adaptiveRollout.setPaused(true, request.ayinAuth.accountId);
   }
 
   @Post("adaptive-rollout/backfill/resume")
+  @RequireAdminStepUp()
   @RequireAdminRoles("SUPERADMIN")
   async resumeAdaptiveBackfill(@Req() request: AdminAuthenticatedRequest) {
     return this.adaptiveRollout.setPaused(false, request.ayinAuth.accountId);
   }
 
   @Post("adaptive-rollout/recovery")
+  @RequireAdminStepUp()
   async recoverAdaptive(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     const parsed = recoverySchema.safeParse(body);
     if (!parsed.success)
@@ -119,6 +128,7 @@ export class AdminMediaProcessingController {
   }
 
   @Post("jobs/:jobId/retry")
+  @RequireAdminStepUp()
   async retryFailed(@Req() request: AdminAuthenticatedRequest, @Param("jobId") jobIdRaw: string) {
     const jobId = this.uuid(jobIdRaw, "INVALID_MEDIA_JOB_ID");
     return this.database.client.$transaction(async (tx) => {
@@ -160,6 +170,7 @@ export class AdminMediaProcessingController {
   }
 
   @Post("videos/:videoId/reprocess")
+  @RequireAdminStepUp()
   async reprocess(@Req() request: AdminAuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
     const videoId = this.uuid(videoIdRaw, "INVALID_VIDEO_ID");
     return this.database.client.$transaction(async (tx) => {

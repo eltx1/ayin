@@ -4,7 +4,12 @@ import { z } from "zod";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { AdminControlService } from "./admin-control.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+  RequireAdminStepUp,
+} from "./admin.guard.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
 
 const uuidSchema = z.string().uuid();
@@ -60,6 +65,7 @@ export class ContentSeedingController {
   }
 
   @Post("batches")
+  @RequireAdminStepUp()
   createBatch(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     return this.seeding.createBatch(
       request.ayinAuth.accountId,
@@ -68,6 +74,7 @@ export class ContentSeedingController {
   }
 
   @Post("items/:itemId/upload-session")
+  @RequireAdminStepUp()
   createUpload(
     @Req() request: AdminAuthenticatedRequest,
     @Param("itemId") itemIdRaw: string,
@@ -81,16 +88,19 @@ export class ContentSeedingController {
   }
 
   @Post("items/:itemId/confirm-upload")
+  @RequireAdminStepUp()
   confirmUpload(@Param("itemId") itemIdRaw: string) {
     return this.seeding.confirmUpload(this.id(itemIdRaw));
   }
 
   @Post("items/:itemId/publish")
+  @RequireAdminStepUp()
   publish(@Req() request: AdminAuthenticatedRequest, @Param("itemId") itemIdRaw: string) {
     return this.seeding.publish(request.ayinAuth.accountId, this.id(itemIdRaw));
   }
 
   @Post("batches/:batchId/rollback")
+  @RequireAdminStepUp()
   rollback(@Req() request: AdminAuthenticatedRequest, @Param("batchId") batchIdRaw: string) {
     return this.seeding.rollback(request.ayinAuth.accountId, this.id(batchIdRaw));
   }

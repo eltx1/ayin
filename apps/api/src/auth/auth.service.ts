@@ -11,6 +11,7 @@ import {
 } from "./creator-provisioning.service.js";
 import { EMAIL_ADAPTER, type EmailAdapter } from "./email.adapter.js";
 import { PasswordService } from "./password.service.js";
+import { MfaService } from "./mfa.service.js";
 import {
   type ForgotPasswordInput,
   type LoginInput,
@@ -42,9 +43,16 @@ export interface PublicIdentity {
   };
 }
 
-interface SessionResult {
+export interface SessionResult {
   token: string;
   user: PublicIdentity;
+  recoveryCodes?: string[];
+}
+
+export interface MfaLoginResult {
+  mfaRequired: true;
+  enrollmentRequired: boolean;
+  challengeToken: string;
 }
 
 @Injectable()
@@ -58,6 +66,7 @@ export class AuthService {
     @Inject(AuthConfig) private readonly config: AuthConfig,
     @Inject(EMAIL_ADAPTER) private readonly emailAdapter: EmailAdapter,
     @Inject(PlatformSettingsService) private readonly platformSettings: PlatformSettingsService,
+    @Inject(MfaService) private readonly mfa: MfaService,
   ) {}
 
   async register(input: RegisterInput): Promise<SessionResult> {
@@ -108,7 +117,9 @@ export class AuthService {
       });
 
       return {
-        token: this.tokenService.issueSession(created.account.id, created.account.authVersion),
+        token: this.tokenService.issueSession(created.account.id, created.account.authVersion, {
+          reauthAt: Math.floor(Date.now() / 1_000),
+        }),
         user: {
           account: {
             displayName: created.account.displayName,
@@ -146,7 +157,7 @@ export class AuthService {
     }
   }
 
-  async login(input: LoginInput): Promise<SessionResult> {
+  async login(input: LoginInput): Promise<SessionResult | MfaLoginResult> {
     const email = normalizeEmail(input.email);
     const account = await this.database.client.account.findUnique({
       where: { email },
@@ -167,13 +178,23 @@ export class AuthService {
       throw unauthorized("Email or password is incorrect.");
     }
 
+    const challenge = await this.mfa.loginChallenge(account.id, account.authVersion);
+    if (challenge) return challenge;
     return {
-      token: this.tokenService.issueSession(account.id, account.authVersion),
+      token: this.tokenService.issueSession(account.id, account.authVersion, {
+        reauthAt: Math.floor(Date.now() / 1_000),
+      }),
       user: await this.getCurrentIdentity(account.id),
     };
   }
 
-  async authenticate(token: string): Promise<{ accountId: string; authVersion: number }> {
+  async authenticate(token: string): Promise<{
+    accountId: string;
+    authVersion: number;
+    mfaAt?: number;
+    mfaVersion?: number;
+    reauthAt?: number;
+  }> {
     const payload = this.tokenService.verifySession(token);
     if (!payload) {
       throw unauthorized();
@@ -187,7 +208,37 @@ export class AuthService {
       throw unauthorized();
     }
 
-    return { accountId: payload.sub, authVersion: payload.av };
+    return {
+      accountId: payload.sub,
+      authVersion: payload.av,
+      ...(payload.mfaAt ? { mfaAt: payload.mfaAt } : {}),
+      ...(payload.mv !== undefined ? { mfaVersion: payload.mv } : {}),
+      ...(payload.reauthAt ? { reauthAt: payload.reauthAt } : {}),
+    };
+  }
+
+  async completeMfaChallenge(
+    challengeToken: string,
+    input: { code?: string; recoveryCode?: string },
+  ): Promise<SessionResult> {
+    const assurance = await this.mfa.verifyChallenge(
+      challengeToken,
+      input.code,
+      input.recoveryCode,
+    );
+    return {
+      token: this.tokenService.issueSession(assurance.accountId, assurance.authVersion, assurance),
+      user: await this.getCurrentIdentity(assurance.accountId),
+    };
+  }
+
+  async completeMfaEnrollment(enrollmentToken: string, code: string): Promise<SessionResult> {
+    const assurance = await this.mfa.confirmEnrollment(enrollmentToken, code);
+    return {
+      token: this.tokenService.issueSession(assurance.accountId, assurance.authVersion, assurance),
+      user: await this.getCurrentIdentity(assurance.accountId),
+      ...(assurance.recoveryCodes ? { recoveryCodes: assurance.recoveryCodes } : {}),
+    };
   }
 
   async logout(token: string | null): Promise<void> {

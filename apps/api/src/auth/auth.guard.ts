@@ -9,6 +9,9 @@ export interface AuthenticatedRequest extends FastifyRequest {
   ayinAuth: {
     accountId: string;
     authVersion: number;
+    mfaAt?: number | undefined;
+    mfaVersion?: number | undefined;
+    reauthAt?: number | undefined;
   };
 }
 

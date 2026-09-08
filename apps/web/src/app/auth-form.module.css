@@ -175,6 +175,56 @@
   opacity: 0.62;
 }
 
+.provisioning {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.provisioning img {
+  background: white;
+  border-radius: var(--radius-sm);
+  justify-self: center;
+  max-width: 100%;
+}
+
+.provisioning details {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.provisioning summary {
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.provisioning code {
+  color: #f3dcff;
+  display: block;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.recoveryCodes {
+  background: rgb(3 2 10 / 66%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  display: grid;
+  font-family: monospace;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 1rem;
+}
+
+.recoveryCodes li {
+  overflow-wrap: anywhere;
+}
+
 .error {
   background: rgb(255 96 117 / 11%);
   border: 1px solid rgb(255 96 117 / 25%);
@@ -213,5 +263,9 @@
 
   .card h1 {
     font-size: clamp(2rem, 12vw, 2.7rem);
+  }
+
+  .recoveryCodes {
+    grid-template-columns: 1fr;
   }
 }

@@ -15,9 +15,16 @@ export class AuthRateLimiter {
   constructor(@Inject(AuthConfig) private readonly config: AuthConfig) {}
 
   consume(scope: string, key: string): void {
+    this.consumeWithLimit(scope, key, this.config.appEnvironment === "test" ? 100 : 12);
+  }
+
+  consumeMfa(scope: string, key: string): void {
+    this.consumeWithLimit(scope, key, this.config.appEnvironment === "test" ? 100 : 5);
+  }
+
+  private consumeWithLimit(scope: string, key: string, limit: number): void {
     const now = Date.now();
     const windowMs = 5 * 60 * 1_000;
-    const limit = this.config.appEnvironment === "test" ? 100 : 12;
     const mapKey = `${scope}:${key}`;
     const existing = this.counters.get(mapKey);
 
