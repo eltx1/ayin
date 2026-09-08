@@ -15,7 +15,13 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { adminBadRequest, adminForbidden } from "./admin.errors.js";
 import { AdminGovernanceService } from "./admin-governance.service.js";
-import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+  RequireAdminStepUp,
+} from "./admin.guard.js";
+import { MfaService } from "../auth/mfa.service.js";
 import { assignableAdminRoles, isPrivilegedAdminRole } from "./admin.roles.js";
 
 const uuidSchema = z.string().uuid();
@@ -119,6 +125,7 @@ export class SupportTicketController {
 export class AdminGovernanceController {
   constructor(
     @Inject(AdminGovernanceService) private readonly governance: AdminGovernanceService,
+    @Inject(MfaService) private readonly mfa: MfaService,
   ) {}
 
   @Get("roles")
@@ -135,6 +142,7 @@ export class AdminGovernanceController {
 
   @Patch("staff/:accountId/roles")
   @RequireAdminRoles("SUPERADMIN")
+  @RequireAdminStepUp()
   setStaffRoles(
     @Req() request: AdminAuthenticatedRequest,
     @Param("accountId") accountIdRaw: string,
@@ -156,6 +164,25 @@ export class AdminGovernanceController {
     );
   }
 
+  @Post("staff/:accountId/mfa/reset")
+  @RequireAdminRoles("SUPERADMIN")
+  @RequireAdminStepUp()
+  resetStaffMfa(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("accountId") accountIdRaw: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = z.object({ reason: reasonSchema }).strict().safeParse(body);
+    if (!parsed.success) {
+      throw adminBadRequest("INVALID_MFA_RESET", "A valid MFA reset reason is required.");
+    }
+    return this.mfa.resetBySuperadmin(
+      request.ayinAuth.accountId,
+      this.uuid(accountIdRaw),
+      parsed.data.reason,
+    );
+  }
+
   @Get("audit")
   @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR", "AD_MANAGER", "FINANCE_MANAGER")
   audit(@Query() query: unknown) {
@@ -173,6 +200,7 @@ export class AdminGovernanceController {
   }
 
   @Post("accounts/:accountId/revoke-sessions")
+  @RequireAdminStepUp()
   @RequireAdminRoles("OPERATIONS")
   revokeSessions(
     @Req() request: AdminAuthenticatedRequest,
@@ -197,6 +225,7 @@ export class AdminGovernanceController {
   }
 
   @Patch("compliance/:channelId")
+  @RequireAdminStepUp()
   @RequireAdminRoles("FINANCE_MANAGER")
   updateCompliance(
     @Req() request: AdminAuthenticatedRequest,

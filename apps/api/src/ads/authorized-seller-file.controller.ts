@@ -15,6 +15,7 @@ import {
   AdminGuard,
   type AdminAuthenticatedRequest,
   RequireAdminRoles,
+  RequireAdminStepUp,
 } from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import {
@@ -71,6 +72,7 @@ export class AdminAuthorizedSellerFileController {
   }
 
   @Put(":kind")
+  @RequireAdminStepUp()
   async update(
     @Req() request: AdminAuthenticatedRequest,
     @Param("kind") rawKind: string,

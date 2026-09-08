@@ -51,6 +51,10 @@ The V1 zero-additional-service topology keeps Web/API/PostgreSQL and the isolate
 - [ ] `AUTH_TOKEN_SECRET` and `UPLOAD_SESSION_SECRET` are unique production secrets and have rotation ownership.
 - [ ] Session cookies are Secure/HttpOnly/SameSite as intended through the deployed proxy.
 - [ ] Register, login and logout succeed on the production domains.
+- [ ] Every ADMIN and SUPERADMIN has completed TOTP enrollment, stored recovery codes
+      in an approved password manager, and passed an admin-login/step-up smoke test.
+- [ ] At least two active superadministrators can perform the audited, two-person MFA
+      reset procedure documented in docs/TASK47_ADMIN_MFA.md.
 - [ ] Any transactional email provider required by enabled product flows is configured and tested; do not advertise email-dependent flows before it is live.
 
 ## Advertising

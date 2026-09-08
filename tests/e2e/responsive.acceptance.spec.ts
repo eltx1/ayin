@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import { enrollMfa } from "./mfa-helper.js";
+
 const API = "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
 const DB_HELPER = path.resolve(process.cwd(), "tests/e2e/db-helper.mjs");
@@ -67,6 +69,7 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
       channel: { handle: string };
     };
   };
+  await enrollMfa(page.request);
   db("grant-admin", { accountId: identity.user.account.id });
 
   await test.step("phone layout keeps core viewer, account, creator and admin surfaces app-ready", async () => {

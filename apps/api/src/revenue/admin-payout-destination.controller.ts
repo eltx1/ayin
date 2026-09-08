@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Header, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
 
-import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
+import { AdminGuard, RequireAdminRoles, RequireAdminStepUp } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { AdminPayoutDestinationService } from "./admin-payout-destination.service.js";
 
@@ -20,6 +20,7 @@ export class AdminPayoutDestinationController {
   }
 
   @Post(":payoutId/destination")
+  @RequireAdminStepUp()
   @Header("Cache-Control", "no-store, private")
   @Header("Pragma", "no-cache")
   reveal(

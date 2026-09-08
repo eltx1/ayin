@@ -18,6 +18,7 @@ import {
   AdminGuard,
   type AdminAuthenticatedRequest,
   RequireAdminRoles,
+  RequireAdminStepUp,
 } from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { VideoAdService, adEventSchema } from "./video-ad.service.js";
@@ -93,6 +94,7 @@ export class AdminVideoAdController {
   }
 
   @Patch("settings")
+  @RequireAdminStepUp()
   async updateSettings(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     try {
       return await this.videoAds.updateSettings(request.ayinAuth.accountId, body);
@@ -115,6 +117,7 @@ export class AdminVideoAdController {
   }
 
   @Patch("channels/:channelId")
+  @RequireAdminStepUp()
   async updateChannelOverride(
     @Req() request: AdminAuthenticatedRequest,
     @Param("channelId") channelIdRaw: string,
@@ -135,6 +138,7 @@ export class AdminVideoAdController {
   }
 
   @Delete("channels/:channelId")
+  @RequireAdminStepUp()
   deleteChannelOverride(
     @Req() request: AdminAuthenticatedRequest,
     @Param("channelId") channelIdRaw: string,
@@ -145,6 +149,7 @@ export class AdminVideoAdController {
   }
 
   @Patch("videos/:videoId")
+  @RequireAdminStepUp()
   async updateVideoOverride(
     @Req() request: AdminAuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
@@ -165,6 +170,7 @@ export class AdminVideoAdController {
   }
 
   @Delete("videos/:videoId")
+  @RequireAdminStepUp()
   deleteVideoOverride(
     @Req() request: AdminAuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,

@@ -10,7 +10,12 @@ import {
 } from "./admin-product-config.js";
 import { AdminProductService } from "./admin-product.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+  RequireAdminStepUp,
+} from "./admin.guard.js";
 
 const uuidSchema = z.string().uuid();
 
@@ -26,6 +31,7 @@ export class AdminProductController {
   }
 
   @Patch("home-rows/:rowId")
+  @RequireAdminStepUp()
   patchRow(
     @Req() request: AdminAuthenticatedRequest,
     @Param("rowId") rowIdRaw: string,
@@ -42,6 +48,7 @@ export class AdminProductController {
   }
 
   @Put("home-rows/order")
+  @RequireAdminStepUp()
   reorderRows(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     const input = this.parse(
       reorderHomeRowsSchema,
@@ -53,6 +60,7 @@ export class AdminProductController {
   }
 
   @Put("home-rows/:rowId/manual-items")
+  @RequireAdminStepUp()
   replaceManualItems(
     @Req() request: AdminAuthenticatedRequest,
     @Param("rowId") rowIdRaw: string,
@@ -74,6 +82,7 @@ export class AdminProductController {
   }
 
   @Put("global")
+  @RequireAdminStepUp()
   updateControls(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     const input = this.parse(
       updateProductControlsSchema,

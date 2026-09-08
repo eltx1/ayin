@@ -16,7 +16,12 @@ import { AuthGuard } from "../auth/auth.guard.js";
 import { AdminCommandCenterService } from "./admin-command-center.service.js";
 import { AdminControlService } from "./admin-control.service.js";
 import { adminBadRequest } from "./admin.errors.js";
-import { AdminGuard, type AdminAuthenticatedRequest, RequireAdminRoles } from "./admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+  RequireAdminStepUp,
+} from "./admin.guard.js";
 
 const uuidSchema = z.string().uuid();
 const searchSchema = z.object({ query: z.string().trim().min(2).max(200) });
@@ -127,6 +132,7 @@ export class AdminControlController {
 
   @Patch("users/:accountId")
   @RequireAdminRoles("OPERATIONS")
+  @RequireAdminStepUp()
   updateUser(
     @Req() request: AdminAuthenticatedRequest,
     @Param("accountId") accountIdRaw: string,
@@ -147,6 +153,7 @@ export class AdminControlController {
 
   @Patch("channels/:channelId")
   @RequireAdminRoles("OPERATIONS")
+  @RequireAdminStepUp()
   updateChannel(
     @Req() request: AdminAuthenticatedRequest,
     @Param("channelId") channelIdRaw: string,
@@ -167,6 +174,7 @@ export class AdminControlController {
 
   @Patch("videos/:videoId")
   @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
+  @RequireAdminStepUp()
   updateVideo(
     @Req() request: AdminAuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
@@ -181,6 +189,7 @@ export class AdminControlController {
 
   @Post("videos/bulk")
   @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
+  @RequireAdminStepUp()
   bulkVideos(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     return this.control.bulkVideos(
       request.ayinAuth.accountId,

@@ -8,15 +8,18 @@ import {
 import { Reflector } from "@nestjs/core";
 
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
-import { unauthorized } from "../auth/auth.errors.js";
+import { AuthHttpError, unauthorized } from "../auth/auth.errors.js";
+import { MfaService } from "../auth/mfa.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
 import { adminForbidden } from "./admin.errors.js";
 import { isPrivilegedAdminRole, type AdminRole } from "./admin.roles.js";
 
 const ADMIN_ROLES_METADATA = "ayin.admin.requiredRoles";
+const ADMIN_STEP_UP_METADATA = "ayin.admin.stepUp";
 
 export const RequireAdminRoles = (...roles: AdminRole[]) =>
   SetMetadata(ADMIN_ROLES_METADATA, roles);
+export const RequireAdminStepUp = () => SetMetadata(ADMIN_STEP_UP_METADATA, true);
 
 export interface AdminAuthenticatedRequest extends AuthenticatedRequest {
   ayinAdmin: { roles: AdminRole[] };
@@ -28,6 +31,7 @@ export class AdminGuard implements CanActivate {
     @Inject(AdminAuthorizationService)
     private readonly authorization: AdminAuthorizationService,
     @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(MfaService) private readonly mfa: MfaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -54,6 +58,13 @@ export class AdminGuard implements CanActivate {
     }
 
     const privileged = roles.some(isPrivilegedAdminRole);
+    if (privileged) {
+      await this.mfa.assertAdminMfa(
+        request.ayinAuth.accountId,
+        request.ayinAuth.mfaAt,
+        request.ayinAuth.mfaVersion,
+      );
+    }
     if (!privileged) {
       if (!requiredRoles?.length) {
         throw adminForbidden("This staff role is not permitted on this admin operation.");
@@ -61,6 +72,22 @@ export class AdminGuard implements CanActivate {
       if (!requiredRoles.some((role) => roles.includes(role))) {
         throw adminForbidden("This administrator role cannot perform that operation.");
       }
+    }
+
+    const requiresStepUp = this.reflector.getAllAndOverride<boolean>(ADMIN_STEP_UP_METADATA, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    const fiveMinutesAgo = Math.floor(Date.now() / 1_000) - 300;
+    if (
+      requiresStepUp &&
+      (!request.ayinAuth.reauthAt || request.ayinAuth.reauthAt < fiveMinutesAgo)
+    ) {
+      throw new AuthHttpError(
+        403,
+        "STEP_UP_REQUIRED",
+        "Re-enter your password and authentication code before this sensitive operation.",
+      );
     }
 
     (request as AdminAuthenticatedRequest).ayinAdmin = { roles };

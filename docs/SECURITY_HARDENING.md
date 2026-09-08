@@ -9,6 +9,9 @@ This document records the repository-side security controls reviewed in Task 27.
 - Production requires `AUTH_TOKEN_SECRET` with at least 32 characters. The local fallback secret is not accepted for production.
 - Browser sessions use `HttpOnly`, `SameSite=Lax` cookies and add `Secure` in staging/production. Native/thin-shell clients can explicitly request bearer transport.
 - Auth registration/login/reset entry points are rate limited and session invalidation remains server controlled.
+- ADMIN and SUPERADMIN password logins require provider-neutral TOTP MFA. Secrets are
+  AES-256-GCM encrypted, recovery codes are stored only as keyed hashes, and sensitive
+  control-plane actions require recent re-authentication. See docs/TASK47_ADMIN_MFA.md.
 
 ## CSRF, CORS and browser isolation
 
