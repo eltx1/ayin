@@ -155,6 +155,10 @@ export class TrustService {
           where: { id: d.targetAccountId },
           data: { status: "SUSPENDED", authVersion: { increment: 1 } },
         });
+        await tx.accountSession.updateMany({
+          where: { accountId: d.targetAccountId, revokedAt: null },
+          data: { revokedAt: new Date(), revokeReason: "ACCOUNT_SUSPENDED" },
+        });
       }
       if (d.kind === "SUSPEND_CHANNEL") {
         if (!d.channelId) throw new Error("CHANNEL_REQUIRED");

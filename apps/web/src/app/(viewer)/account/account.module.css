@@ -117,10 +117,155 @@
 }
 
 .loading,
-.error {
+.error,
+.success {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 1rem;
+}
+
+.success {
+  background: rgb(45 190 118 / 10%);
+  border-color: rgb(45 190 118 / 28%);
+  color: #c9ffe1;
+}
+
+.securityCard {
+  background: rgb(10 7 20 / 76%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 1.25rem;
+  margin: 2rem 0;
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.securityHeading {
+  align-items: end;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.securityHeading h2,
+.sessionGroup h3,
+.passwordForm h3 {
+  margin: 0;
+}
+
+.securityHeading p,
+.sessionRow p,
+.sessionRow small {
+  color: var(--muted);
+}
+
+.securityHeading p,
+.sessionRow p {
+  margin: 0.35rem 0 0;
+}
+
+.sessionGroup,
+.sessionList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.sessionRow {
+  align-items: center;
+  background: rgb(255 255 255 / 3%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 1rem;
+}
+
+.currentBadge {
+  background: var(--brand-gradient-soft);
+  border: 1px solid var(--border-brand);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  margin-left: 0.6rem;
+  padding: 0.22rem 0.5rem;
+  text-transform: uppercase;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 850;
+  padding: 0.65rem 0.9rem;
+}
+
+.primaryButton {
+  background: var(--brand-gradient);
+  color: white;
+  justify-self: start;
+}
+
+.secondaryButton {
+  background: rgb(255 255 255 / 7%);
+  border-color: var(--border);
+  color: white;
+}
+
+.dangerButton {
+  background: rgb(255 96 117 / 10%);
+  border-color: rgb(255 96 117 / 28%);
+  color: #ffd7df;
+  flex: 0 0 auto;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.passwordForm {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-top: 1.25rem;
+}
+
+.passwordForm h3,
+.passwordForm .checkLabel,
+.passwordForm button {
+  grid-column: 1 / -1;
+}
+
+.passwordForm label:not(.checkLabel) {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.passwordForm label span {
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.passwordForm input[type="password"] {
+  background: rgb(255 255 255 / 5%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: white;
+  font: inherit;
+  padding: 0.75rem;
+}
+
+.checkLabel {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
 }
 
 .loading {
@@ -136,6 +281,10 @@
 @media (max-width: 760px) {
   .quickGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .passwordForm {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -155,5 +304,11 @@
 
   .linkCard {
     min-height: 0;
+  }
+
+  .securityHeading,
+  .sessionRow {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

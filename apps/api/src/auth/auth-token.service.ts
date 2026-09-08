@@ -15,6 +15,7 @@ const tokenPayloadSchema = z.object({
   mv: z.number().int().min(0).optional(),
   purpose: z.enum(["session", "password-reset", "mfa-challenge", "mfa-enrollment"]),
   reauthAt: z.number().int().positive().optional(),
+  sid: z.uuid().optional(),
   sub: z.uuid(),
   v: z.literal(1),
 });
@@ -28,9 +29,14 @@ export class AuthTokenService {
   issueSession(
     accountId: string,
     authVersion: number,
+    sessionId: string,
+    expiresAt: Date,
     assurance: { mfaAt?: number; mfaVersion?: number; reauthAt?: number } = {},
   ): string {
-    return this.issue("session", accountId, authVersion, this.config.sessionTtlSeconds, {
+    const now = Math.floor(Date.now() / 1_000);
+    const expiresAtEpoch = Math.floor(expiresAt.getTime() / 1_000);
+    return this.issue("session", accountId, authVersion, Math.max(1, expiresAtEpoch - now), {
+      sid: sessionId,
       ...(assurance.mfaAt ? { mfaAt: assurance.mfaAt } : {}),
       ...(assurance.mfaVersion !== undefined ? { mv: assurance.mfaVersion } : {}),
       ...(assurance.reauthAt ? { reauthAt: assurance.reauthAt } : {}),
@@ -66,7 +72,8 @@ export class AuthTokenService {
   }
 
   verifySession(token: string): AuthTokenPayload | null {
-    return this.verify(token, "session");
+    const payload = this.verify(token, "session");
+    return payload?.sid ? payload : null;
   }
 
   verifyPasswordReset(token: string): AuthTokenPayload | null {
@@ -88,7 +95,7 @@ export class AuthTokenService {
     accountId: string,
     authVersion: number,
     ttlSeconds: number,
-    extra: Partial<Pick<AuthTokenPayload, "intent" | "mfaAt" | "mv" | "reauthAt">> = {},
+    extra: Partial<Pick<AuthTokenPayload, "intent" | "mfaAt" | "mv" | "reauthAt" | "sid">> = {},
   ): string {
     const issuedAt = Math.floor(Date.now() / 1_000);
     const payload: AuthTokenPayload = {

@@ -336,8 +336,26 @@ model Account {
   revenueDisputesCreated  RevenueDispute[] @relation("RevenueDisputeCreator")
   revenueDisputesResolved RevenueDispute[] @relation("RevenueDisputeResolver")
   mfaCredential           AccountMfaCredential?
+  sessions                AccountSession[]
 
   @@index([status, createdAt])
+}
+
+model AccountSession {
+  id           String    @id @default(uuid()) @db.Uuid
+  accountId    String    @db.Uuid
+  authVersion  Int
+  deviceLabel  String    @db.VarChar(160)
+  createdAt    DateTime  @default(now())
+  lastActiveAt DateTime  @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  revokeReason String?   @db.VarChar(64)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, revokedAt, expiresAt])
+  @@index([expiresAt])
 }
 
 model ViewerProfile {

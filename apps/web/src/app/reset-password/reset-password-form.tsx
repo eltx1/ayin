@@ -68,6 +68,9 @@ export function ResetPasswordForm({ token }: { token: string }) {
           </>
         ) : token ? (
           <form className={styles.form} onSubmit={submit}>
+            <p className={styles.intro}>
+              Resetting your password will securely sign out every active AYIN session.
+            </p>
             <label>
               <span>New password</span>
               <input

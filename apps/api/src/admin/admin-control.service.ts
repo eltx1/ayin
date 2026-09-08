@@ -175,6 +175,12 @@ export class AdminControlService {
           updatedAt: true,
         },
       });
+      if (patch.status !== undefined) {
+        await tx.accountSession.updateMany({
+          where: { accountId, revokedAt: null },
+          data: { revokedAt: new Date(), revokeReason: "ACCOUNT_STATUS_CHANGED" },
+        });
+      }
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
         action: patch.status ? "account.status_updated" : "account.updated",

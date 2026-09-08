@@ -14,11 +14,13 @@ import { PasswordService } from "./password.service.js";
 import { MfaService } from "./mfa.service.js";
 import {
   type ForgotPasswordInput,
+  type ChangePasswordInput,
   type LoginInput,
   normalizeEmail,
   type RegisterInput,
   type ResetPasswordInput,
 } from "./schemas.js";
+import { SessionService, type SessionRequestMetadata } from "./session.service.js";
 
 export interface PublicIdentity {
   account: {
@@ -67,9 +69,10 @@ export class AuthService {
     @Inject(EMAIL_ADAPTER) private readonly emailAdapter: EmailAdapter,
     @Inject(PlatformSettingsService) private readonly platformSettings: PlatformSettingsService,
     @Inject(MfaService) private readonly mfa: MfaService,
+    @Inject(SessionService) private readonly sessions: SessionService,
   ) {}
 
-  async register(input: RegisterInput): Promise<SessionResult> {
+  async register(input: RegisterInput, metadata: SessionRequestMetadata): Promise<SessionResult> {
     const registrationPolicy = await this.platformSettings.getRegistrationPolicy();
     if (!registrationPolicy.registrationEnabled) {
       throw new AuthHttpError(
@@ -117,9 +120,14 @@ export class AuthService {
       });
 
       return {
-        token: this.tokenService.issueSession(created.account.id, created.account.authVersion, {
-          reauthAt: Math.floor(Date.now() / 1_000),
-        }),
+        token: await this.sessions.create(
+          created.account.id,
+          created.account.authVersion,
+          {
+            reauthAt: Math.floor(Date.now() / 1_000),
+          },
+          metadata,
+        ),
         user: {
           account: {
             displayName: created.account.displayName,
@@ -157,7 +165,10 @@ export class AuthService {
     }
   }
 
-  async login(input: LoginInput): Promise<SessionResult | MfaLoginResult> {
+  async login(
+    input: LoginInput,
+    metadata: SessionRequestMetadata,
+  ): Promise<SessionResult | MfaLoginResult> {
     const email = normalizeEmail(input.email);
     const account = await this.database.client.account.findUnique({
       where: { email },
@@ -181,9 +192,14 @@ export class AuthService {
     const challenge = await this.mfa.loginChallenge(account.id, account.authVersion);
     if (challenge) return challenge;
     return {
-      token: this.tokenService.issueSession(account.id, account.authVersion, {
-        reauthAt: Math.floor(Date.now() / 1_000),
-      }),
+      token: await this.sessions.create(
+        account.id,
+        account.authVersion,
+        {
+          reauthAt: Math.floor(Date.now() / 1_000),
+        },
+        metadata,
+      ),
       user: await this.getCurrentIdentity(account.id),
     };
   }
@@ -194,23 +210,19 @@ export class AuthService {
     mfaAt?: number;
     mfaVersion?: number;
     reauthAt?: number;
+    sessionId: string;
   }> {
     const payload = this.tokenService.verifySession(token);
     if (!payload) {
       throw unauthorized();
     }
 
-    const account = await this.database.client.account.findUnique({
-      where: { id: payload.sub },
-      select: { authVersion: true, status: true },
-    });
-    if (!account || account.status !== "ACTIVE" || account.authVersion !== payload.av) {
-      throw unauthorized();
-    }
+    const session = await this.sessions.authenticate(payload);
 
     return {
       accountId: payload.sub,
       authVersion: payload.av,
+      sessionId: session.sessionId,
       ...(payload.mfaAt ? { mfaAt: payload.mfaAt } : {}),
       ...(payload.mv !== undefined ? { mfaVersion: payload.mv } : {}),
       ...(payload.reauthAt ? { reauthAt: payload.reauthAt } : {}),
@@ -220,6 +232,7 @@ export class AuthService {
   async completeMfaChallenge(
     challengeToken: string,
     input: { code?: string; recoveryCode?: string },
+    metadata: SessionRequestMetadata,
   ): Promise<SessionResult> {
     const assurance = await this.mfa.verifyChallenge(
       challengeToken,
@@ -227,15 +240,29 @@ export class AuthService {
       input.recoveryCode,
     );
     return {
-      token: this.tokenService.issueSession(assurance.accountId, assurance.authVersion, assurance),
+      token: await this.sessions.create(
+        assurance.accountId,
+        assurance.authVersion,
+        assurance,
+        metadata,
+      ),
       user: await this.getCurrentIdentity(assurance.accountId),
     };
   }
 
-  async completeMfaEnrollment(enrollmentToken: string, code: string): Promise<SessionResult> {
+  async completeMfaEnrollment(
+    enrollmentToken: string,
+    code: string,
+    metadata: SessionRequestMetadata,
+  ): Promise<SessionResult> {
     const assurance = await this.mfa.confirmEnrollment(enrollmentToken, code);
     return {
-      token: this.tokenService.issueSession(assurance.accountId, assurance.authVersion, assurance),
+      token: await this.sessions.create(
+        assurance.accountId,
+        assurance.authVersion,
+        assurance,
+        metadata,
+      ),
       user: await this.getCurrentIdentity(assurance.accountId),
       ...(assurance.recoveryCodes ? { recoveryCodes: assurance.recoveryCodes } : {}),
     };
@@ -245,18 +272,7 @@ export class AuthService {
     if (!token) {
       return;
     }
-    const payload = this.tokenService.verifySession(token);
-    if (!payload) {
-      return;
-    }
-
-    await this.database.client.account.updateMany({
-      where: {
-        authVersion: payload.av,
-        id: payload.sub,
-      },
-      data: { authVersion: { increment: 1 } },
-    });
+    await this.sessions.logout(this.tokenService.verifySession(token));
   }
 
   async requestPasswordReset(input: ForgotPasswordInput): Promise<void> {
@@ -295,21 +311,56 @@ export class AuthService {
     }
 
     const passwordHash = await this.passwordService.hash(input.password);
-    const result = await this.database.client.account.updateMany({
-      where: {
-        authVersion: payload.av,
-        id: payload.sub,
-        status: "ACTIVE",
-      },
-      data: {
-        authVersion: { increment: 1 },
-        passwordHash,
-      },
+    const result = await this.database.client.$transaction(async (tx) => {
+      const updated = await tx.account.updateMany({
+        where: {
+          authVersion: payload.av,
+          id: payload.sub,
+          status: "ACTIVE",
+        },
+        data: {
+          authVersion: { increment: 1 },
+          passwordHash,
+        },
+      });
+      if (updated.count === 1) {
+        await tx.accountSession.updateMany({
+          where: { accountId: payload.sub, revokedAt: null },
+          data: { revokedAt: new Date(), revokeReason: "PASSWORD_RESET" },
+        });
+      }
+      return updated;
     });
 
     if (result.count !== 1) {
       throw unauthorized("This password reset link is invalid or expired.");
     }
+  }
+
+  async changePassword(accountId: string, currentSessionId: string, input: ChangePasswordInput) {
+    const account = await this.database.client.account.findUnique({
+      where: { id: accountId },
+      select: { passwordHash: true, status: true },
+    });
+    if (
+      !account ||
+      account.status !== "ACTIVE" ||
+      !account.passwordHash ||
+      !(await this.passwordService.verify(input.currentPassword, account.passwordHash))
+    ) {
+      throw unauthorized("The current password is incorrect.");
+    }
+    const passwordHash = await this.passwordService.hash(input.newPassword);
+    const revoked = await this.database.client.$transaction(async (tx) => {
+      await tx.account.update({ where: { id: accountId }, data: { passwordHash } });
+      if (!input.revokeOtherSessions) return 0;
+      const result = await tx.accountSession.updateMany({
+        where: { accountId, id: { not: currentSessionId }, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: "PASSWORD_CHANGED" },
+      });
+      return result.count;
+    });
+    return { changed: true, otherSessionsRevoked: revoked };
   }
 
   async getCurrentIdentity(accountId: string): Promise<PublicIdentity> {

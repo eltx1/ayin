@@ -12,6 +12,7 @@ export interface AuthenticatedRequest extends FastifyRequest {
     mfaAt?: number | undefined;
     mfaVersion?: number | undefined;
     reauthAt?: number | undefined;
+    sessionId: string;
   };
 }
 

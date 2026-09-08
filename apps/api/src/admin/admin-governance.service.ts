@@ -163,6 +163,10 @@ export class AdminGovernanceService {
         where: { id: accountId },
         data: { authVersion: { increment: 1 } },
       });
+      await tx.accountSession.updateMany({
+        where: { accountId, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: "ADMIN_ROLES_CHANGED" },
+      });
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
         action: "staff.roles_updated",
@@ -236,6 +240,10 @@ export class AdminGovernanceService {
         where: { id: accountId },
         data: { authVersion: { increment: 1 } },
         select: { id: true, email: true, displayName: true, authVersion: true },
+      });
+      await tx.accountSession.updateMany({
+        where: { accountId, revokedAt: null },
+        data: { revokedAt: new Date(), revokeReason: "ADMIN_REVOKED" },
       });
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
