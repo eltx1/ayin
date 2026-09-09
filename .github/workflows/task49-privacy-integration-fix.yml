@@ -1,0 +1,78 @@
+name: Task 49 temporary privacy integration fix
+
+on:
+  push:
+    branches:
+      - task-49-privacy-controls
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ayin_test
+          POSTGRES_USER: ayin
+          POSTGRES_PASSWORD: ayin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      AUTH_TOKEN_SECRET: task-49-test-auth-secret-with-more-than-32-characters
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_test?schema=public
+      WEB_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: http://localhost:3000
+      AYIN_E2E_STORAGE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-49-privacy-controls
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          check-latest: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fix report fixtures
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('apps/api/test/privacy-controls.integration.test.ts')
+          text = path.read_text()
+          first = '''        reporterProfileId: first.profileId,\n        moderationCaseId: moderationCase.id,\n        reason: "OTHER",'''
+          first_new = '''        reporterProfileId: first.profileId,\n        moderationCaseId: moderationCase.id,\n        channelId: first.channelId,\n        reason: "OTHER",'''
+          second = '''        reporterProfileId: owner.profileId,\n        reason: "SPAM",'''
+          second_new = '''        reporterProfileId: owner.profileId,\n        channelId: owner.channelId,\n        reason: "SPAM",'''
+          if first not in text or second not in text:
+              raise SystemExit('Expected Task 49 report fixture pattern not found')
+          path.write_text(text.replace(first, first_new, 1).replace(second, second_new, 1))
+          PY
+          pnpm exec prettier --write apps/api/test/privacy-controls.integration.test.ts
+      - name: Generate schema and migrate
+        run: |
+          pnpm db:generate
+          pnpm db:migrate:deploy
+      - name: Run Task 49 integration tests
+        run: pnpm --filter @ayin/api exec vitest run --testTimeout=30000 --fileParallelism=false test/privacy-controls.integration.test.ts
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/task49-privacy-integration-fix.yml
+          git add -A
+          git commit -m "test(task-49): target moderation report fixtures"
+          git push origin HEAD:task-49-privacy-controls
