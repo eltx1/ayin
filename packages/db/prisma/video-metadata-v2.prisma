@@ -26,8 +26,13 @@ enum VideoGeoAvailabilityMode {
 enum VideoAdBreakPreference {
   AUTOMATIC
   DISABLED
+  CUSTOM
 }
 
+// Optional creator-supplied metadata extension. No row is created for the
+// zero-friction upload path unless a creator actually uses advanced metadata.
+// contentType remains owned by Video and rights remain owned by
+// ContentRightsDeclaration; this model intentionally does not duplicate them.
 model VideoCreatorMetadata {
   videoId             String                   @id @db.Uuid
   tags                String[]                 @default([])
@@ -40,13 +45,14 @@ model VideoCreatorMetadata {
   maturityLevel       VideoMaturityLevel?
   geoAvailabilityMode VideoGeoAvailabilityMode?
   geoCountries        String[]                 @default([])
-  chapters            Json                     @default("[]")
+  chapters            Json?                    @db.JsonB
   adBreakPreference   VideoAdBreakPreference?
+  adBreakOffsetsSeconds Int[]                  @default([])
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
 
-  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
-
+  // The SQL migration enforces the FK to Video with ON DELETE CASCADE. Keeping
+  // this extension unidirectional avoids changing the core Video relation graph.
   @@index([category])
   @@index([primaryLanguage])
 }
