@@ -1,7 +1,7 @@
 CREATE TYPE "VideoCategory" AS ENUM ('ENTERTAINMENT', 'EDUCATION', 'GAMING', 'MUSIC', 'NEWS', 'SPORTS', 'TECHNOLOGY', 'LIFESTYLE', 'FILM_ANIMATION', 'OTHER');
 CREATE TYPE "VideoMaturityLevel" AS ENUM ('GENERAL', 'TEEN', 'MATURE');
 CREATE TYPE "VideoGeoAvailabilityMode" AS ENUM ('WORLDWIDE', 'INCLUDE_ONLY', 'EXCLUDE');
-CREATE TYPE "VideoAdBreakPreference" AS ENUM ('AUTOMATIC', 'DISABLED');
+CREATE TYPE "VideoAdBreakPreference" AS ENUM ('AUTOMATIC', 'DISABLED', 'CUSTOM');
 
 CREATE TABLE "VideoCreatorMetadata" (
   "videoId" UUID NOT NULL,
@@ -17,6 +17,7 @@ CREATE TABLE "VideoCreatorMetadata" (
   "geoCountries" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   "chapters" JSONB,
   "adBreakPreference" "VideoAdBreakPreference",
+  "adBreakOffsetsSeconds" INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updatedAt" TIMESTAMP(3) NOT NULL,
   CONSTRAINT "VideoCreatorMetadata_pkey" PRIMARY KEY ("videoId")
