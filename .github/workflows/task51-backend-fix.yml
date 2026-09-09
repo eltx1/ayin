@@ -34,13 +34,12 @@ jobs:
           script = textwrap.dedent(source[start:end])
           exec(compile(script, 'task51-backend-patch', 'exec'))
           PY
-      - name: Validate backend
+      - name: Validate backend in workspace build order
         run: |
           pnpm install --frozen-lockfile
           pnpm --filter @ayin/db exec prisma format --schema prisma
           pnpm exec prettier --write apps/api/src/creator/quick-upload.service.ts apps/api/src/creator/studio.service.ts apps/api/src/search/search.service.ts apps/api/src/admin/admin-control.service.ts apps/api/src/creator/creator-tv.service.ts apps/api/src/creator/video-metadata.validation.ts apps/api/src/creator/quick-upload.controller.ts
-          pnpm --filter @ayin/db db:generate
-          pnpm --filter @ayin/api typecheck
+          pnpm typecheck
       - name: Commit validated backend and remove temporary workflows
         run: |
           rm .github/workflows/task51-implementation.yml .github/workflows/task51-backend-fix.yml
