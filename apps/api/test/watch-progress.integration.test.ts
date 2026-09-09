@@ -31,6 +31,7 @@ const storage: MediaStorageAdapter = {
   abortMultipartUpload: vi.fn(async () => undefined),
   headObject: vi.fn(async () => ({ sizeBytes: 1024, contentType: "video/mp4", etag: '"video"' })),
   deleteObject: vi.fn(async () => undefined),
+  deletePrefix: vi.fn(async () => undefined),
   listMultipartUploads: vi.fn(async () => []),
 };
 

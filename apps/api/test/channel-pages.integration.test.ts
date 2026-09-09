@@ -42,6 +42,7 @@ const storage: MediaStorageAdapter = {
     etag: '"channel-image"',
   })),
   deleteObject: vi.fn(async () => undefined),
+  deletePrefix: vi.fn(async () => undefined),
   listMultipartUploads: vi.fn(async () => []),
 };
 
