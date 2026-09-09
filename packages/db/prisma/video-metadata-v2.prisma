@@ -40,7 +40,7 @@ model VideoCreatorMetadata {
   maturityLevel       VideoMaturityLevel?
   geoAvailabilityMode VideoGeoAvailabilityMode?
   geoCountries        String[]                 @default([])
-  chapters            Json?
+  chapters            Json                     @default("[]")
   adBreakPreference   VideoAdBreakPreference?
   createdAt           DateTime                 @default(now())
   updatedAt           DateTime                 @updatedAt
