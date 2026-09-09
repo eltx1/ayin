@@ -1,10 +1,16 @@
-import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
+import { hostname } from "node:os";
 
+import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
-import { badRequest, conflict, unauthorized } from "../auth/auth.errors.js";
+import {
+  badRequest,
+  conflict,
+  isUniqueConstraintError,
+  unauthorized,
+} from "../auth/auth.errors.js";
 import { PasswordService } from "../auth/password.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
@@ -23,7 +29,14 @@ const MAX_MEDIA_ATTEMPTS = 5;
 
 type ActiveDeletionState = "REQUESTED" | "GRACE_PERIOD" | "DEACTIVATED";
 
-function publicRequest(request: {
+interface LifecycleClaim {
+  id: string;
+  accountId: string;
+  state: ActiveDeletionState;
+  requestedAt: Date;
+}
+
+interface PublicDeletionRequest {
   id: string;
   state: string;
   requestedAt: Date;
@@ -33,7 +46,9 @@ function publicRequest(request: {
   cancelledAt: Date | null;
   mediaCleanupQueuedAt: Date | null;
   mediaCleanupCompletedAt: Date | null;
-}) {
+}
+
+function publicRequest(request: PublicDeletionRequest) {
   return {
     id: request.id,
     state: request.state,
@@ -107,42 +122,42 @@ export class PrivacyLifecycleService {
     ) {
       throw unauthorized("The current password is incorrect.");
     }
-    const existing = await this.database.client.accountDeletionRequest.findFirst({
-      where: { accountId, state: { in: ["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"] } },
-      select: { id: true },
-    });
-    if (existing) {
-      throw conflict(
-        "ACCOUNT_DELETION_ALREADY_ACTIVE",
-        "An account deletion request is already active.",
-      );
-    }
 
-    const request = await this.database.client.$transaction(async (tx) => {
-      const created = await tx.accountDeletionRequest.create({
-        data: { accountId, requestedFromSessionId: sessionId },
-        select: {
-          id: true,
-          state: true,
-          requestedAt: true,
-          graceEndsAt: true,
-          deactivatedAt: true,
-          anonymizedAt: true,
-          cancelledAt: true,
-          mediaCleanupQueuedAt: true,
-          mediaCleanupCompletedAt: true,
-        },
+    try {
+      const request = await this.database.client.$transaction(async (tx) => {
+        const created = await tx.accountDeletionRequest.create({
+          data: { accountId, requestedFromSessionId: sessionId },
+          select: {
+            id: true,
+            state: true,
+            requestedAt: true,
+            graceEndsAt: true,
+            deactivatedAt: true,
+            anonymizedAt: true,
+            cancelledAt: true,
+            mediaCleanupQueuedAt: true,
+            mediaCleanupCompletedAt: true,
+          },
+        });
+        await this.audit.recordInTransaction(tx, {
+          actorAccountId: accountId,
+          action: "privacy.deletion_requested",
+          entityType: "Account",
+          entityId: accountId,
+          metadata: { requestId: created.id },
+        });
+        return created;
       });
-      await this.audit.recordInTransaction(tx, {
-        actorAccountId: accountId,
-        action: "privacy.deletion_requested",
-        entityType: "Account",
-        entityId: accountId,
-        metadata: { requestId: created.id },
-      });
-      return created;
-    });
-    return publicRequest(request);
+      return publicRequest(request);
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw conflict(
+          "ACCOUNT_DELETION_ALREADY_ACTIVE",
+          "An account deletion request is already active.",
+        );
+      }
+      throw error;
+    }
   }
 
   async cancelDeletion(accountId: string) {
@@ -160,7 +175,11 @@ export class PrivacyLifecycleService {
     const now = new Date();
     await this.database.client.$transaction(async (tx) => {
       const changed = await tx.accountDeletionRequest.updateMany({
-        where: { id: request.id, accountId, state: { in: ["REQUESTED", "GRACE_PERIOD"] } },
+        where: {
+          id: request.id,
+          accountId,
+          state: { in: ["REQUESTED", "GRACE_PERIOD"] },
+        },
         data: {
           state: "CANCELLED",
           cancelledAt: now,
@@ -169,7 +188,10 @@ export class PrivacyLifecycleService {
         },
       });
       if (changed.count !== 1) {
-        throw conflict("ACCOUNT_DELETION_CHANGED", "The deletion request changed before cancellation.");
+        throw conflict(
+          "ACCOUNT_DELETION_CHANGED",
+          "The deletion request changed before cancellation.",
+        );
       }
       await this.audit.recordInTransaction(tx, {
         actorAccountId: accountId,
@@ -213,7 +235,10 @@ export class PrivacyLifecycleService {
         },
       });
       if (changed.count !== 1) {
-        throw conflict("ACCOUNT_DELETION_CHANGED", "The deletion request changed before recovery.");
+        throw conflict(
+          "ACCOUNT_DELETION_CHANGED",
+          "The deletion request changed before recovery.",
+        );
       }
       if (request.state === "DEACTIVATED") {
         await tx.account.update({
@@ -250,7 +275,9 @@ export class PrivacyLifecycleService {
       const job = await this.claimMediaJob(now);
       if (!job) break;
       try {
-        if (!this.storage.available) throw new Error("Media storage is not configured on this worker.");
+        if (!this.storage.available) {
+          throw new Error("Media storage is not configured on this worker.");
+        }
         if (job.kind === "PREFIX") await this.storage.deletePrefix(job.target);
         else await this.storage.deleteObject(job.target);
         await this.database.client.privacyMediaDeletionJob.update({
@@ -259,39 +286,14 @@ export class PrivacyLifecycleService {
         });
         await this.finalizeMediaCleanup(job.requestId);
       } catch (error) {
-        const message = (error instanceof Error ? error.message : "Unknown media deletion error").slice(
-          0,
-          1_000,
-        );
-        if (job.attempts >= MAX_MEDIA_ATTEMPTS) {
-          await this.database.client.$transaction(async (tx) => {
-            await tx.privacyMediaDeletionJob.update({
-              where: { id: job.id },
-              data: { status: "FAILED", lastError: message },
-            });
-            await tx.accountDeletionRequest.update({
-              where: { id: job.requestId },
-              data: { lastError: "One or more media objects require operator retry." },
-            });
-          });
-        } else {
-          const backoffMs = Math.min(60_000, 2 ** job.attempts * 1_000);
-          await this.database.client.privacyMediaDeletionJob.update({
-            where: { id: job.id },
-            data: {
-              status: "PENDING",
-              availableAt: new Date(now.getTime() + backoffMs),
-              lastError: message,
-            },
-          });
-        }
+        await this.retryMediaJob(job, now, error);
       }
       processed += 1;
     }
     return processed;
   }
 
-  private async claimLifecycle(now: Date) {
+  private async claimLifecycle(now: Date): Promise<LifecycleClaim | null> {
     const recoveryCutoff = new Date(now.getTime() - RECOVERY_MS);
     const candidate = await this.database.client.accountDeletionRequest.findFirst({
       where: {
@@ -324,78 +326,94 @@ export class PrivacyLifecycleService {
       },
       data: { lifecycleLeaseOwner: this.workerId, lifecycleLeaseUntil: leaseUntil },
     });
-    return claimed.count === 1 ? candidate : null;
+    if (claimed.count !== 1) return null;
+    return { ...candidate, state: candidate.state as ActiveDeletionState };
   }
 
-  private async advanceClaimed(
-    request: { id: string; accountId: string; state: ActiveDeletionState; requestedAt: Date },
-    now: Date,
-  ) {
+  private async advanceClaimed(request: LifecycleClaim, now: Date) {
     if (request.state === "REQUESTED") {
-      const graceEndsAt = new Date(request.requestedAt.getTime() + GRACE_MS);
-      await this.database.client.$transaction(async (tx) => {
-        const changed = await tx.accountDeletionRequest.updateMany({
-          where: { id: request.id, state: "REQUESTED", lifecycleLeaseOwner: this.workerId },
-          data: {
-            state: "GRACE_PERIOD",
-            graceEndsAt,
-            lifecycleLeaseOwner: null,
-            lifecycleLeaseUntil: null,
-          },
-        });
-        if (changed.count === 1) {
-          await tx.adminAuditLog.create({
-            data: {
-              action: "privacy.deletion_grace_started",
-              entityType: "Account",
-              entityId: request.accountId,
-              metadata: { requestId: request.id, graceEndsAt: graceEndsAt.toISOString() },
-            },
-          });
-        }
-      });
+      await this.startGrace(request, now);
       return;
     }
-
     if (request.state === "GRACE_PERIOD") {
-      await this.database.client.$transaction(async (tx) => {
-        const changed = await tx.accountDeletionRequest.updateMany({
-          where: { id: request.id, state: "GRACE_PERIOD", lifecycleLeaseOwner: this.workerId },
-          data: {
-            state: "DEACTIVATED",
-            deactivatedAt: now,
-            lifecycleLeaseOwner: null,
-            lifecycleLeaseUntil: null,
-          },
-        });
-        if (changed.count !== 1) return;
-        await tx.account.update({
-          where: { id: request.accountId },
-          data: { status: "CLOSED", closedAt: now, authVersion: { increment: 1 } },
-        });
-        await tx.accountSession.updateMany({
-          where: { accountId: request.accountId, revokedAt: null },
-          data: { revokedAt: now, revokeReason: "ACCOUNT_DELETION" },
-        });
-        await tx.adminAuditLog.create({
-          data: {
-            action: "privacy.account_deactivated",
-            entityType: "Account",
-            entityId: request.accountId,
-            metadata: { requestId: request.id },
-          },
-        });
-      });
+      await this.deactivate(request, now);
       return;
     }
-
     await this.anonymize(request.id, request.accountId, now);
+  }
+
+  private async startGrace(request: LifecycleClaim, now: Date) {
+    const graceEndsAt = new Date(request.requestedAt.getTime() + GRACE_MS);
+    await this.database.client.$transaction(async (tx) => {
+      const changed = await tx.accountDeletionRequest.updateMany({
+        where: {
+          id: request.id,
+          state: "REQUESTED",
+          lifecycleLeaseOwner: this.workerId,
+        },
+        data: {
+          state: "GRACE_PERIOD",
+          graceEndsAt,
+          lifecycleLeaseOwner: null,
+          lifecycleLeaseUntil: null,
+        },
+      });
+      if (changed.count !== 1) return;
+      await tx.adminAuditLog.create({
+        data: {
+          action: "privacy.deletion_grace_started",
+          entityType: "Account",
+          entityId: request.accountId,
+          metadata: { requestId: request.id, graceEndsAt: graceEndsAt.toISOString() },
+        },
+      });
+    });
+  }
+
+  private async deactivate(request: LifecycleClaim, now: Date) {
+    await this.database.client.$transaction(async (tx) => {
+      const changed = await tx.accountDeletionRequest.updateMany({
+        where: {
+          id: request.id,
+          state: "GRACE_PERIOD",
+          lifecycleLeaseOwner: this.workerId,
+        },
+        data: {
+          state: "DEACTIVATED",
+          deactivatedAt: now,
+          lifecycleLeaseOwner: null,
+          lifecycleLeaseUntil: null,
+        },
+      });
+      if (changed.count !== 1) return;
+      await tx.account.update({
+        where: { id: request.accountId },
+        data: { status: "CLOSED", closedAt: now, authVersion: { increment: 1 } },
+      });
+      await tx.accountSession.updateMany({
+        where: { accountId: request.accountId, revokedAt: null },
+        data: { revokedAt: now, revokeReason: "ACCOUNT_DELETION" },
+      });
+      await tx.adminAuditLog.create({
+        data: {
+          action: "privacy.account_deactivated",
+          entityType: "Account",
+          entityId: request.accountId,
+          metadata: { requestId: request.id },
+        },
+      });
+    });
   }
 
   private async anonymize(requestId: string, accountId: string, now: Date) {
     await this.database.client.$transaction(async (tx) => {
       const changed = await tx.accountDeletionRequest.updateMany({
-        where: { id: requestId, accountId, state: "DEACTIVATED", lifecycleLeaseOwner: this.workerId },
+        where: {
+          id: requestId,
+          accountId,
+          state: "DEACTIVATED",
+          lifecycleLeaseOwner: this.workerId,
+        },
         data: {
           state: "ANONYMIZED",
           anonymizedAt: now,
@@ -410,13 +428,9 @@ export class PrivacyLifecycleService {
         select: { id: true },
       });
       const profileIds = profiles.map(({ id }) => id);
-      const memberships = await tx.channelMember.findMany({
-        where: { accountId, role: "OWNER" },
-        select: { channelId: true },
-      });
-      const channelIds = memberships.map(({ channelId }) => channelId);
+      const exclusiveChannelIds = await this.exclusiveOwnedChannelIds(tx, accountId);
       const videos = await tx.video.findMany({
-        where: { channelId: { in: channelIds } },
+        where: { channelId: { in: exclusiveChannelIds } },
         select: { id: true },
       });
       const videoIds = videos.map(({ id }) => id);
@@ -429,216 +443,32 @@ export class PrivacyLifecycleService {
         .map(({ imageAssetId }) => imageAssetId)
         .filter((value): value is string => Boolean(value));
 
-      const [assets, processingJobs, playbackGenerations] = await Promise.all([
-        tx.mediaAsset.findMany({
-          where: {
-            OR: [
-              { channelId: { in: channelIds } },
-              { videoId: { in: videoIds } },
-              { id: { in: postImageIds } },
-            ],
-          },
-          select: { id: true, r2ObjectKey: true },
-        }),
-        tx.mediaProcessingJob.findMany({
-          where: { videoId: { in: videoIds } },
-          select: { stagingKey: true, inputR2ObjectKey: true, outputR2ObjectKey: true },
-        }),
-        tx.mediaPlaybackGeneration.findMany({
-          where: { videoId: { in: videoIds } },
-          select: {
-            id: true,
-            fallbackR2ObjectKey: true,
-            hlsMasterR2ObjectKey: true,
-            renditions: { select: { playlistR2ObjectKey: true, segmentR2Prefix: true } },
-          },
-        }),
-      ]);
+      const mediaJobs = await this.queueCreatorMediaCleanup(
+        tx,
+        requestId,
+        accountId,
+        exclusiveChannelIds,
+        videoIds,
+        postImageIds,
+        now,
+      );
 
-      const objectTargets = new Set<string>();
-      const prefixTargets = new Set<string>();
-      for (const asset of assets) objectTargets.add(asset.r2ObjectKey);
-      for (const job of processingJobs) {
-        objectTargets.add(job.stagingKey);
-        objectTargets.add(job.outputR2ObjectKey);
-        if (job.inputR2ObjectKey) objectTargets.add(job.inputR2ObjectKey);
-      }
-      for (const generation of playbackGenerations) {
-        objectTargets.add(generation.fallbackR2ObjectKey);
-        objectTargets.add(generation.hlsMasterR2ObjectKey);
-        for (const rendition of generation.renditions) {
-          objectTargets.add(rendition.playlistR2ObjectKey);
-          prefixTargets.add(rendition.segmentR2Prefix);
-        }
-      }
-      const mediaJobs = [
-        ...[...objectTargets].map((target) => ({
-          requestId,
-          accountId,
-          kind: "OBJECT" as const,
-          target,
-        })),
-        ...[...prefixTargets].map((target) => ({
-          requestId,
-          accountId,
-          kind: "PREFIX" as const,
-          target,
-        })),
-      ];
-      if (mediaJobs.length > 0) {
-        await tx.privacyMediaDeletionJob.createMany({ data: mediaJobs, skipDuplicates: true });
-      }
-
-      await tx.mediaAsset.updateMany({
-        where: { id: { in: assets.map(({ id }) => id) } },
-        data: { status: "REMOVED", removedAt: now },
-      });
-      await tx.mediaProcessingJob.updateMany({
-        where: { videoId: { in: videoIds } },
-        data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null },
-      });
-      await tx.mediaPlaybackGeneration.updateMany({
-        where: { id: { in: playbackGenerations.map(({ id }) => id) } },
-        data: { fallbackStatus: "REMOVED", hlsMasterStatus: "REMOVED" },
-      });
-      await tx.mediaPlaybackRendition.updateMany({
-        where: { playbackGenerationId: { in: playbackGenerations.map(({ id }) => id) } },
-        data: { status: "REMOVED" },
-      });
-
-      for (const video of videos) {
-        await tx.video.update({
-          where: { id: video.id },
-          data: {
-            slug: `deleted-${video.id}`,
-            title: "Deleted video",
-            description: null,
-            status: "REMOVED",
-            visibility: "PRIVATE",
-            commentsEnabled: false,
-            removedAt: now,
-          },
-        });
-      }
-      const playlists = await tx.playlist.findMany({
-        where: { channelId: { in: channelIds } },
-        select: { id: true },
-      });
-      for (const playlist of playlists) {
-        await tx.playlist.update({
-          where: { id: playlist.id },
-          data: {
-            slug: `deleted-${playlist.id}`,
-            name: "Deleted playlist",
-            description: null,
-            visibility: "PRIVATE",
-            isPublic: false,
-            deletedAt: now,
-          },
-        });
-      }
-      const tvChannels = await tx.creatorTvChannel.findMany({
-        where: { channelId: { in: channelIds } },
-        select: { id: true },
-      });
-      for (const tvChannel of tvChannels) {
-        await tx.creatorTvChannel.update({
-          where: { id: tvChannel.id },
-          data: {
-            slug: `deleted-${tvChannel.id}`,
-            name: "Deleted TV channel",
-            status: "DISABLED",
-            disabledAt: now,
-          },
-        });
-      }
-      for (const channelId of channelIds) {
-        await tx.channel.update({
-          where: { id: channelId },
-          data: {
-            handle: `deleted-${channelId}`,
-            name: "Deleted channel",
-            description: null,
-            status: "REMOVED",
-            removedAt: now,
-          },
-        });
-      }
-
-      await tx.communityPost.updateMany({
-        where: { authorAccountId: accountId },
-        data: {
-          body: null,
-          status: "REMOVED",
-          imageAssetId: null,
-          sharedVideoId: null,
-          removedAt: now,
-        },
-      });
-      await tx.communityPollOption.updateMany({
-        where: { postId: { in: postIds } },
-        data: { label: "[deleted]" },
-      });
-      await tx.comment.updateMany({
-        where: { authorProfileId: { in: profileIds } },
-        data: { body: "[deleted]", status: "REMOVED", removedAt: now },
-      });
-      await tx.communityPostComment.updateMany({
-        where: { authorProfileId: { in: profileIds } },
-        data: { body: "[deleted]", status: "REMOVED", removedAt: now },
-      });
-      await tx.liveChatMessage.updateMany({
-        where: { authorProfileId: { in: profileIds } },
-        data: { body: "[deleted]", status: "REMOVED", removedAt: now },
-      });
-
-      const liveStreams = await tx.liveStream.findMany({
-        where: { OR: [{ createdByAccountId: accountId }, { channelId: { in: channelIds } }] },
-        select: { id: true },
-      });
-      for (const stream of liveStreams) {
-        await tx.liveStream.update({
-          where: { id: stream.id },
-          data: {
-            slug: `deleted-${stream.id}`,
-            title: "Deleted live stream",
-            description: null,
-            status: "CANCELLED",
-            providerStreamId: null,
-            streamKeyHash: null,
-            ingestEndpoint: null,
-            playbackUrl: null,
-            chatEnabled: false,
-          },
-        });
-      }
-
-      await Promise.all([
-        tx.watchProgress.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.watchHistory.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.watchLaterItem.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.myListItem.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.subscription.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.reaction.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.communityPostReaction.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.communityPollVote.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.recommendationFeedback.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.recommendationProfileState.deleteMany({ where: { profileId: { in: profileIds } } }),
-        tx.notification.deleteMany({ where: { accountId } }),
-        tx.accountMfaCredential.deleteMany({ where: { accountId } }),
-        tx.adminRoleAssignment.deleteMany({ where: { accountId } }),
-        tx.channelMember.deleteMany({ where: { accountId, role: { not: "OWNER" } } }),
-        tx.adEvent.updateMany({ where: { profileId: { in: profileIds } }, data: { profileId: null } }),
-      ]);
+      await this.removeExclusiveCreatorSurfaces(tx, exclusiveChannelIds, videos, now);
+      await this.redactAuthoredActivity(tx, accountId, profileIds, postIds, now);
+      await this.deleteDisposableAccountData(tx, accountId, profileIds);
 
       for (const profile of profiles) {
         await tx.viewerProfile.update({
           where: { id: profile.id },
-          data: { name: "Deleted profile", slug: `deleted-${profile.id}`, deletedAt: now },
+          data: {
+            name: "Deleted profile",
+            slug: `deleted-${profile.id}`,
+            deletedAt: now,
+          },
         });
       }
       await tx.creatorPayoutProfile.updateMany({
-        where: { channelId: { in: channelIds } },
+        where: { channelId: { in: exclusiveChannelIds } },
         data: {
           legalName: "Deleted account",
           destinationEncrypted: null,
@@ -670,7 +500,7 @@ export class PrivacyLifecycleService {
         where: { id: requestId },
         data: {
           mediaCleanupQueuedAt: now,
-          ...(mediaJobs.length === 0 ? { mediaCleanupCompletedAt: now } : {}),
+          ...(mediaJobs === 0 ? { mediaCleanupCompletedAt: now } : {}),
         },
       });
       await tx.adminAuditLog.create({
@@ -678,9 +508,262 @@ export class PrivacyLifecycleService {
           action: "privacy.account_anonymized",
           entityType: "Account",
           entityId: accountId,
-          metadata: { requestId, mediaDeletionJobs: mediaJobs.length },
+          metadata: {
+            requestId,
+            mediaDeletionJobs: mediaJobs,
+            exclusiveCreatorChannels: exclusiveChannelIds.length,
+          },
         },
       });
+    });
+  }
+
+  private async exclusiveOwnedChannelIds(tx: Prisma.TransactionClient, accountId: string) {
+    const ownerships = await tx.channelMember.findMany({
+      where: { accountId, role: "OWNER" },
+      select: { channelId: true },
+    });
+    const candidateIds = ownerships.map(({ channelId }) => channelId);
+    if (candidateIds.length === 0) return [];
+    const sharedOwnerships = await tx.channelMember.findMany({
+      where: {
+        channelId: { in: candidateIds },
+        role: "OWNER",
+        accountId: { not: accountId },
+      },
+      select: { channelId: true },
+    });
+    const shared = new Set(sharedOwnerships.map(({ channelId }) => channelId));
+    return candidateIds.filter((channelId) => !shared.has(channelId));
+  }
+
+  private async queueCreatorMediaCleanup(
+    tx: Prisma.TransactionClient,
+    requestId: string,
+    accountId: string,
+    channelIds: string[],
+    videoIds: string[],
+    postImageIds: string[],
+    now: Date,
+  ): Promise<number> {
+    const [assets, processingJobs, playbackGenerations] = await Promise.all([
+      tx.mediaAsset.findMany({
+        where: {
+          OR: [
+            { channelId: { in: channelIds } },
+            { videoId: { in: videoIds } },
+            { id: { in: postImageIds } },
+          ],
+        },
+        select: { id: true, r2ObjectKey: true },
+      }),
+      tx.mediaProcessingJob.findMany({
+        where: { videoId: { in: videoIds } },
+        select: {
+          stagingKey: true,
+          inputR2ObjectKey: true,
+          outputR2ObjectKey: true,
+        },
+      }),
+      tx.mediaPlaybackGeneration.findMany({
+        where: { videoId: { in: videoIds } },
+        select: {
+          id: true,
+          fallbackR2ObjectKey: true,
+          hlsMasterR2ObjectKey: true,
+          renditions: {
+            select: { playlistR2ObjectKey: true, segmentR2Prefix: true },
+          },
+        },
+      }),
+    ]);
+
+    const objectTargets = new Set<string>();
+    const prefixTargets = new Set<string>();
+    for (const asset of assets) objectTargets.add(asset.r2ObjectKey);
+    for (const job of processingJobs) {
+      objectTargets.add(job.stagingKey);
+      objectTargets.add(job.outputR2ObjectKey);
+      if (job.inputR2ObjectKey) objectTargets.add(job.inputR2ObjectKey);
+    }
+    for (const generation of playbackGenerations) {
+      objectTargets.add(generation.fallbackR2ObjectKey);
+      objectTargets.add(generation.hlsMasterR2ObjectKey);
+      for (const rendition of generation.renditions) {
+        objectTargets.add(rendition.playlistR2ObjectKey);
+        prefixTargets.add(rendition.segmentR2Prefix);
+      }
+    }
+    const jobs = [
+      ...[...objectTargets].map((target) => ({
+        requestId,
+        accountId,
+        kind: "OBJECT" as const,
+        target,
+      })),
+      ...[...prefixTargets].map((target) => ({
+        requestId,
+        accountId,
+        kind: "PREFIX" as const,
+        target,
+      })),
+    ];
+    if (jobs.length > 0) {
+      await tx.privacyMediaDeletionJob.createMany({ data: jobs, skipDuplicates: true });
+    }
+
+    await tx.mediaAsset.updateMany({
+      where: { id: { in: assets.map(({ id }) => id) } },
+      data: { status: "REMOVED", removedAt: now },
+    });
+    await tx.mediaProcessingJob.updateMany({
+      where: { videoId: { in: videoIds } },
+      data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null },
+    });
+    await tx.mediaPlaybackGeneration.updateMany({
+      where: { id: { in: playbackGenerations.map(({ id }) => id) } },
+      data: { fallbackStatus: "REMOVED", hlsMasterStatus: "REMOVED" },
+    });
+    await tx.mediaPlaybackRendition.updateMany({
+      where: {
+        playbackGenerationId: {
+          in: playbackGenerations.map(({ id }) => id),
+        },
+      },
+      data: { status: "REMOVED" },
+    });
+    return jobs.length;
+  }
+
+  private async removeExclusiveCreatorSurfaces(
+    tx: Prisma.TransactionClient,
+    channelIds: string[],
+    videos: Array<{ id: string }>,
+    now: Date,
+  ) {
+    for (const video of videos) {
+      await tx.video.update({
+        where: { id: video.id },
+        data: {
+          slug: `deleted-${video.id}`,
+          title: "Deleted video",
+          description: null,
+          status: "REMOVED",
+          visibility: "PRIVATE",
+          commentsEnabled: false,
+          removedAt: now,
+        },
+      });
+    }
+    const playlists = await tx.playlist.findMany({
+      where: { channelId: { in: channelIds } },
+      select: { id: true },
+    });
+    for (const playlist of playlists) {
+      await tx.playlist.update({
+        where: { id: playlist.id },
+        data: {
+          slug: `deleted-${playlist.id}`,
+          name: "Deleted playlist",
+          description: null,
+          visibility: "PRIVATE",
+          isPublic: false,
+          deletedAt: now,
+        },
+      });
+    }
+    const tvChannels = await tx.creatorTvChannel.findMany({
+      where: { channelId: { in: channelIds } },
+      select: { id: true },
+    });
+    for (const tvChannel of tvChannels) {
+      await tx.creatorTvChannel.update({
+        where: { id: tvChannel.id },
+        data: {
+          slug: `deleted-${tvChannel.id}`,
+          name: "Deleted TV channel",
+          status: "DISABLED",
+          disabledAt: now,
+        },
+      });
+    }
+    for (const channelId of channelIds) {
+      await tx.channel.update({
+        where: { id: channelId },
+        data: {
+          handle: `deleted-${channelId}`,
+          name: "Deleted channel",
+          description: null,
+          status: "REMOVED",
+          removedAt: now,
+        },
+      });
+    }
+  }
+
+  private async redactAuthoredActivity(
+    tx: Prisma.TransactionClient,
+    accountId: string,
+    profileIds: string[],
+    postIds: string[],
+    now: Date,
+  ) {
+    await tx.communityPost.updateMany({
+      where: { authorAccountId: accountId },
+      data: {
+        body: null,
+        status: "REMOVED",
+        imageAssetId: null,
+        sharedVideoId: null,
+        removedAt: now,
+      },
+    });
+    await tx.communityPollOption.updateMany({
+      where: { postId: { in: postIds } },
+      data: { label: "[deleted]" },
+    });
+    await tx.comment.updateMany({
+      where: { authorProfileId: { in: profileIds } },
+      data: { body: "[deleted]", status: "REMOVED", removedAt: now },
+    });
+    await tx.communityPostComment.updateMany({
+      where: { authorProfileId: { in: profileIds } },
+      data: { body: "[deleted]", status: "REMOVED", removedAt: now },
+    });
+    await tx.liveChatMessage.updateMany({
+      where: { authorProfileId: { in: profileIds } },
+      data: { body: "[deleted]", status: "REMOVED", removedAt: now },
+    });
+  }
+
+  private async deleteDisposableAccountData(
+    tx: Prisma.TransactionClient,
+    accountId: string,
+    profileIds: string[],
+  ) {
+    await tx.watchProgress.deleteMany({ where: { profileId: { in: profileIds } } });
+    await tx.watchHistory.deleteMany({ where: { profileId: { in: profileIds } } });
+    await tx.watchLaterItem.deleteMany({ where: { profileId: { in: profileIds } } });
+    await tx.myListItem.deleteMany({ where: { profileId: { in: profileIds } } });
+    await tx.subscription.deleteMany({ where: { profileId: { in: profileIds } } });
+    await tx.reaction.deleteMany({ where: { profileId: { in: profileIds } } });
+    await tx.communityPostReaction.deleteMany({
+      where: { profileId: { in: profileIds } },
+    });
+    await tx.communityPollVote.deleteMany({ where: { profileId: { in: profileIds } } });
+    await tx.recommendationFeedback.deleteMany({
+      where: { profileId: { in: profileIds } },
+    });
+    await tx.recommendationProfileState.deleteMany({
+      where: { profileId: { in: profileIds } },
+    });
+    await tx.notification.deleteMany({ where: { accountId } });
+    await tx.accountMfaCredential.deleteMany({ where: { accountId } });
+    await tx.adminRoleAssignment.deleteMany({ where: { accountId } });
+    await tx.channelMember.deleteMany({ where: { accountId } });
+    await tx.adEvent.updateMany({
+      where: { profileId: { in: profileIds } },
+      data: { profileId: null },
     });
   }
 
@@ -694,7 +777,13 @@ export class PrivacyLifecycleService {
         ],
       },
       orderBy: { createdAt: "asc" },
-      select: { id: true, requestId: true, kind: true, target: true, attempts: true, status: true },
+      select: {
+        id: true,
+        requestId: true,
+        kind: true,
+        target: true,
+        attempts: true,
+      },
     });
     if (!candidate) return null;
     const claimed = await this.database.client.privacyMediaDeletionJob.updateMany({
@@ -705,10 +794,50 @@ export class PrivacyLifecycleService {
           { status: "PROCESSING", claimedAt: { lte: staleClaim } },
         ],
       },
-      data: { status: "PROCESSING", claimedAt: now, attempts: { increment: 1 } },
+      data: {
+        status: "PROCESSING",
+        claimedAt: now,
+        attempts: { increment: 1 },
+      },
     });
     if (claimed.count !== 1) return null;
     return { ...candidate, attempts: candidate.attempts + 1 };
+  }
+
+  private async retryMediaJob(
+    job: {
+      id: string;
+      requestId: string;
+      attempts: number;
+    },
+    now: Date,
+    error: unknown,
+  ) {
+    const message = (
+      error instanceof Error ? error.message : "Unknown media deletion error"
+    ).slice(0, 1_000);
+    if (job.attempts >= MAX_MEDIA_ATTEMPTS) {
+      await this.database.client.$transaction(async (tx) => {
+        await tx.privacyMediaDeletionJob.update({
+          where: { id: job.id },
+          data: { status: "FAILED", lastError: message },
+        });
+        await tx.accountDeletionRequest.update({
+          where: { id: job.requestId },
+          data: { lastError: "One or more media objects require operator retry." },
+        });
+      });
+      return;
+    }
+    const backoffMs = Math.min(60_000, 2 ** job.attempts * 1_000);
+    await this.database.client.privacyMediaDeletionJob.update({
+      where: { id: job.id },
+      data: {
+        status: "PENDING",
+        availableAt: new Date(now.getTime() + backoffMs),
+        lastError: message,
+      },
+    });
   }
 
   private async finalizeMediaCleanup(requestId: string) {

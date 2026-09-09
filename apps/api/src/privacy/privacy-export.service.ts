@@ -59,7 +59,13 @@ export class PrivacyExportService {
         role: true,
         createdAt: true,
         channel: {
-          select: { id: true, handle: true, name: true, status: true, createdAt: true },
+          select: {
+            id: true,
+            handle: true,
+            name: true,
+            status: true,
+            createdAt: true,
+          },
         },
       },
     });
@@ -174,12 +180,18 @@ export class PrivacyExportService {
       this.database.client.watchLaterItem.findMany({
         where: { profileId: { in: profileIds } },
         orderBy: { createdAt: "asc" },
-        select: { id: true, profileId: true, videoId: true, createdAt: true, updatedAt: true },
+        select: {
+          id: true,
+          profileId: true,
+          videoId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       }),
       this.database.client.myListItem.findMany({
         where: { profileId: { in: profileIds } },
         orderBy: { createdAt: "asc" },
-        select: { id: true, profileId: true, videoId: true, createdAt: true, updatedAt: true },
+        select: { id: true, profileId: true, videoId: true, createdAt: true },
       }),
       this.database.client.notification.findMany({
         where: { accountId },
@@ -214,7 +226,14 @@ export class PrivacyExportService {
       this.database.client.communityPostReaction.findMany({
         where: { profileId: { in: profileIds } },
         orderBy: { createdAt: "asc" },
-        select: { id: true, postId: true, profileId: true, type: true, createdAt: true, updatedAt: true },
+        select: {
+          id: true,
+          postId: true,
+          profileId: true,
+          type: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       }),
       this.database.client.communityPostComment.findMany({
         where: { authorProfileId: { in: profileIds } },
@@ -233,7 +252,14 @@ export class PrivacyExportService {
       this.database.client.communityPollVote.findMany({
         where: { profileId: { in: profileIds } },
         orderBy: { createdAt: "asc" },
-        select: { id: true, postId: true, optionId: true, profileId: true, createdAt: true, updatedAt: true },
+        select: {
+          id: true,
+          postId: true,
+          optionId: true,
+          profileId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
       }),
       this.database.client.communityPostReport.findMany({
         where: { reporterProfileId: { in: profileIds } },
@@ -357,7 +383,10 @@ export class PrivacyExportService {
         },
       }),
       this.database.client.revenueDispute.findMany({
-        where: { channelId: { in: ownedChannelIds }, createdByAccountId: accountId },
+        where: {
+          channelId: { in: ownedChannelIds },
+          createdByAccountId: accountId,
+        },
         orderBy: { createdAt: "asc" },
         select: {
           id: true,
@@ -374,7 +403,10 @@ export class PrivacyExportService {
       }),
       this.database.client.mediaAsset.findMany({
         where: {
-          OR: [{ channelId: { in: ownedChannelIds } }, { videoId: { in: videoIds } }],
+          OR: [
+            { channelId: { in: ownedChannelIds } },
+            { videoId: { in: videoIds } },
+          ],
         },
         orderBy: { createdAt: "asc" },
         select: {
@@ -394,7 +426,12 @@ export class PrivacyExportService {
         },
       }),
       this.database.client.liveStream.findMany({
-        where: { OR: [{ createdByAccountId: accountId }, { channelId: { in: ownedChannelIds } }] },
+        where: {
+          OR: [
+            { createdByAccountId: accountId },
+            { channelId: { in: ownedChannelIds } },
+          ],
+        },
         orderBy: { createdAt: "asc" },
         select: {
           id: true,
@@ -426,7 +463,11 @@ export class PrivacyExportService {
         },
       }),
       this.database.client.adminAuditLog.findMany({
-        where: { entityType: "Account", entityId: accountId, action: { startsWith: "privacy." } },
+        where: {
+          entityType: "Account",
+          entityId: accountId,
+          action: { startsWith: "privacy." },
+        },
         orderBy: { createdAt: "asc" },
         select: { action: true, createdAt: true },
       }),
