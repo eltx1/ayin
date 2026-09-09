@@ -139,6 +139,32 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
     await this.signer.request({ method: "DELETE", key });
   }
 
+  async deletePrefix(prefix: string): Promise<void> {
+    let continuationToken: string | null = null;
+    do {
+      const query: Array<[string, string]> = [
+        ["list-type", "2"],
+        ["prefix", prefix],
+        ["max-keys", "1000"],
+        ["encoding-type", "url"],
+      ];
+      if (continuationToken) query.push(["continuation-token", continuationToken]);
+      const response = await this.signer.request({ method: "GET", query });
+      const xml = await response.text();
+      const keys: string[] = [];
+      for (const match of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+        const encodedKey = xmlValue(match[1] ?? "", "Key");
+        if (encodedKey) keys.push(decodeURIComponent(encodedKey));
+      }
+      for (const key of keys) await this.deleteObject(key);
+      continuationToken =
+        xmlValue(xml, "IsTruncated") === "true" ? xmlValue(xml, "NextContinuationToken") : null;
+      if (continuationToken === null && xmlValue(xml, "IsTruncated") === "true") {
+        throw new Error("R2 returned a truncated prefix listing without a continuation token.");
+      }
+    } while (continuationToken);
+  }
+
   async listMultipartUploads(prefix: string): Promise<AbandonedMultipartUpload[]> {
     const response = await this.signer.request({
       method: "GET",

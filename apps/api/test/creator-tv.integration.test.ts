@@ -36,6 +36,7 @@ const storage: MediaStorageAdapter = {
     etag: '"video"',
   })),
   deleteObject: vi.fn(async () => undefined),
+  deletePrefix: vi.fn(async () => undefined),
   listMultipartUploads: vi.fn(async () => []),
 };
 

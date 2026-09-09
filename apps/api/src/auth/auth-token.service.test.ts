@@ -25,7 +25,12 @@ describe("AuthTokenService MFA tokens", () => {
       mv: 2,
       sub: accountId,
     });
-    expect(service.verifyMfaChallenge(`${challenge.slice(0, -1)}x`)).toBeNull();
+    const [header, payload, signature] = challenge.split(".");
+    expect(header).toBeTruthy();
+    expect(payload).toBeTruthy();
+    expect(signature).toBeTruthy();
+    const tamperedSignature = `${signature?.startsWith("A") ? "B" : "A"}${signature?.slice(1) ?? ""}`;
+    expect(service.verifyMfaChallenge(`${header}.${payload}.${tamperedSignature}`)).toBeNull();
   });
 
   it("expires MFA challenges after five minutes", () => {

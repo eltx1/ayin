@@ -14,6 +14,7 @@ import { LiveModule } from "./live/live.module.js";
 import { MediaModule } from "./media/media.module.js";
 import { ObservabilityModule } from "./observability/observability.module.js";
 import { PlatformConfigModule } from "./platform-config/platform-config.module.js";
+import { PrivacyModule } from "./privacy/privacy.module.js";
 import { RecommendationModule } from "./recommendations/recommendation.module.js";
 import { RevenueModule } from "./revenue/revenue.module.js";
 import { SearchModule } from "./search/search.module.js";
@@ -34,6 +35,7 @@ import { WatchModule } from "./watch/watch.module.js";
     RevenueModule,
     RecommendationModule,
     MediaModule,
+    PrivacyModule,
     CreatorModule,
     LiveModule,
     WatchModule,
