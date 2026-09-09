@@ -339,7 +339,9 @@ databaseDescribe("Task 49 privacy controls", () => {
     expect(
       (await prisma.channel.findUniqueOrThrow({ where: { id: deletingOwner.channelId } })).status,
     ).toBe("ACTIVE");
-    expect((await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).status).toBe("DRAFT");
+    expect((await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).status).toBe(
+      "DRAFT",
+    );
     expect((await prisma.mediaAsset.findUniqueOrThrow({ where: { id: media.id } })).status).toBe(
       "VALIDATED",
     );
