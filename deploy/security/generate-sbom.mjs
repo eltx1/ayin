@@ -3,9 +3,7 @@ import fs from "node:fs";
 const [inventoryPath, outputPath] = process.argv.slice(2);
 
 if (!inventoryPath || !outputPath) {
-  throw new Error(
-    "Usage: node deploy/security/generate-sbom.mjs <pnpm-list.json> <output.json>",
-  );
+  throw new Error("Usage: node deploy/security/generate-sbom.mjs <pnpm-list.json> <output.json>");
 }
 
 const inventory = JSON.parse(fs.readFileSync(inventoryPath, "utf8"));
@@ -72,6 +70,4 @@ for (const pattern of forbiddenCredentialPatterns) {
 }
 
 fs.writeFileSync(outputPath, serialized, { mode: 0o600 });
-console.log(
-  `Generated sanitized CycloneDX SBOM with ${components.size} components.`,
-);
+console.log(`Generated sanitized CycloneDX SBOM with ${components.size} components.`);
