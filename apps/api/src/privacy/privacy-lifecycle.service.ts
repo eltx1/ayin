@@ -323,7 +323,7 @@ export class PrivacyLifecycleService {
 
   private async advanceClaimed(request: LifecycleClaim, now: Date) {
     if (request.state === "REQUESTED") {
-      await this.startGrace(request, now);
+      await this.startGrace(request);
       return;
     }
     if (request.state === "GRACE_PERIOD") {
@@ -333,7 +333,7 @@ export class PrivacyLifecycleService {
     await this.anonymize(request.id, request.accountId, now);
   }
 
-  private async startGrace(request: LifecycleClaim, now: Date) {
+  private async startGrace(request: LifecycleClaim) {
     const graceEndsAt = new Date(request.requestedAt.getTime() + GRACE_MS);
     await this.database.client.$transaction(async (tx) => {
       const changed = await tx.accountDeletionRequest.updateMany({
