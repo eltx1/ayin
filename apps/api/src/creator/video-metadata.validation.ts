@@ -5,6 +5,23 @@ export const VIDEO_TAG_MAX_COUNT = 20;
 export const VIDEO_TAG_MAX_LENGTH = 40;
 export const VIDEO_CHAPTER_MAX_COUNT = 100;
 export const VIDEO_CHAPTER_TITLE_MAX_LENGTH = 100;
+export const VIDEO_AD_BREAK_MAX_COUNT = 20;
+
+export const VIDEO_CATEGORIES = [
+  "ENTERTAINMENT",
+  "EDUCATION",
+  "GAMING",
+  "MUSIC",
+  "NEWS",
+  "SPORTS",
+  "TECHNOLOGY",
+  "LIFESTYLE",
+  "FILM_ANIMATION",
+  "OTHER",
+] as const;
+
+export const VIDEO_CONTENT_TYPES = ["CREATOR_VIDEO", "MOVIE", "DOCUMENTARY"] as const;
+export const RIGHTS_BASES = ["OWNED", "LICENSED", "AUTHORIZED", "PUBLIC_DOMAIN", "OTHER"] as const;
 
 const languageSchema = z
   .string()
@@ -13,12 +30,12 @@ const languageSchema = z
   .max(35)
   .refine((value) => {
     try {
-      Intl.getCanonicalLocales(value);
-      return true;
+      return Intl.getCanonicalLocales(value).length === 1;
     } catch {
       return false;
     }
-  }, "Use a valid BCP 47 language code, such as en or ar-EG.");
+  }, "Use a valid BCP 47 language code, such as en or ar-EG.")
+  .transform((value) => Intl.getCanonicalLocales(value)[0]!);
 
 const tagSchema = z.string().trim().min(1).max(VIDEO_TAG_MAX_LENGTH);
 const countrySchema = z
@@ -49,33 +66,29 @@ export const videoMetadataSchema = z
         return normalized;
       })
       .optional(),
-    category: z
-      .enum([
-        "ENTERTAINMENT",
-        "EDUCATION",
-        "GAMING",
-        "MUSIC",
-        "NEWS",
-        "SPORTS",
-        "TECHNOLOGY",
-        "LIFESTYLE",
-        "FILM_ANIMATION",
-        "OTHER",
-      ])
-      .nullable()
-      .optional(),
+    category: z.enum(VIDEO_CATEGORIES).nullable().optional(),
     primaryLanguage: languageSchema.nullable().optional(),
     recordingDate: z.string().date().nullable().optional(),
-    contentType: z.enum(["VIDEO", "MOVIE", "DOCUMENTARY", "EXCLUSIVE", "PREMIUM", "OTHER"]).optional(),
-    rightsBasis: z.enum(["AUTHORIZED", "PUBLIC_DOMAIN", "CREATOR_OWNED", "LICENSED"]).optional(),
+    contentType: z.enum(VIDEO_CONTENT_TYPES).optional(),
+    rightsBasis: z.enum(RIGHTS_BASES).optional(),
+    rightsNote: z.string().trim().max(1_000).nullable().optional(),
     seriesTitle: z.string().trim().min(1).max(120).nullable().optional(),
     seasonNumber: z.number().int().min(1).max(10_000).nullable().optional(),
     episodeNumber: z.number().int().min(1).max(100_000).nullable().optional(),
     maturityLevel: z.enum(["GENERAL", "TEEN", "MATURE"]).nullable().optional(),
     geoAvailabilityMode: z.enum(["WORLDWIDE", "INCLUDE_ONLY", "EXCLUDE"]).nullable().optional(),
-    geoCountries: z.array(countrySchema).max(50).optional(),
+    geoCountries: z
+      .array(countrySchema)
+      .max(50)
+      .transform((countries) => [...new Set(countries)])
+      .optional(),
     chapters: z.array(chapterSchema).max(VIDEO_CHAPTER_MAX_COUNT).nullable().optional(),
-    adBreakPreference: z.enum(["AUTOMATIC", "DISABLED"]).nullable().optional(),
+    adBreakPreference: z.enum(["AUTOMATIC", "DISABLED", "CUSTOM"]).nullable().optional(),
+    adBreakOffsetsSeconds: z
+      .array(z.number().finite().int().min(1))
+      .max(VIDEO_AD_BREAK_MAX_COUNT)
+      .transform((offsets) => [...new Set(offsets)].sort((left, right) => left - right))
+      .optional(),
   })
   .superRefine((value, context) => {
     if (value.recordingDate && new Date(`${value.recordingDate}T00:00:00.000Z`).getTime() > Date.now()) {
@@ -113,15 +126,37 @@ export const videoMetadataSchema = z
         }
       }
     }
+    if (value.adBreakPreference === "CUSTOM" && (value.adBreakOffsetsSeconds?.length ?? 0) === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["adBreakOffsetsSeconds"],
+        message: "Add at least one offset for custom ad breaks.",
+      });
+    }
+    if (
+      value.adBreakPreference !== undefined &&
+      value.adBreakPreference !== null &&
+      value.adBreakPreference !== "CUSTOM" &&
+      (value.adBreakOffsetsSeconds?.length ?? 0) > 0
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["adBreakOffsetsSeconds"],
+        message: "Ad-break offsets are only used with the custom preference.",
+      });
+    }
   });
 
 export type VideoMetadataInput = z.infer<typeof videoMetadataSchema>;
 
-export function validateChapterDuration(input: VideoMetadataInput, durationMs: number | null): void {
-  if (!input.chapters?.length || !durationMs) return;
-  const durationSeconds = Math.ceil(durationMs / 1000);
-  if (input.chapters.some((chapter) => chapter.startSeconds >= durationSeconds)) {
+export function validateMetadataDuration(input: VideoMetadataInput, durationMs: number | null): void {
+  if (!durationMs || durationMs <= 0) return;
+  const durationSeconds = durationMs / 1000;
+  if (input.chapters?.some((chapter) => chapter.startSeconds >= durationSeconds)) {
     throw new Error("CHAPTER_OUTSIDE_VIDEO");
+  }
+  if (input.adBreakOffsetsSeconds?.some((offset) => offset >= durationSeconds)) {
+    throw new Error("AD_BREAK_OUTSIDE_VIDEO");
   }
 }
 
@@ -129,13 +164,7 @@ export function metadataData(input: VideoMetadataInput) {
   return {
     ...(input.tags !== undefined ? { tags: input.tags } : {}),
     ...(input.category !== undefined ? { category: input.category } : {}),
-    ...(input.primaryLanguage !== undefined
-      ? {
-          primaryLanguage: input.primaryLanguage
-            ? Intl.getCanonicalLocales(input.primaryLanguage)[0]
-            : null,
-        }
-      : {}),
+    ...(input.primaryLanguage !== undefined ? { primaryLanguage: input.primaryLanguage } : {}),
     ...(input.recordingDate !== undefined
       ? { recordingDate: input.recordingDate ? new Date(`${input.recordingDate}T00:00:00.000Z`) : null }
       : {}),
@@ -146,10 +175,13 @@ export function metadataData(input: VideoMetadataInput) {
     ...(input.geoAvailabilityMode !== undefined
       ? { geoAvailabilityMode: input.geoAvailabilityMode }
       : {}),
-    ...(input.geoCountries !== undefined ? { geoCountries: [...new Set(input.geoCountries)] } : {}),
+    ...(input.geoCountries !== undefined ? { geoCountries: input.geoCountries } : {}),
     ...(input.chapters !== undefined ? { chapters: input.chapters } : {}),
     ...(input.adBreakPreference !== undefined
       ? { adBreakPreference: input.adBreakPreference }
+      : {}),
+    ...(input.adBreakOffsetsSeconds !== undefined
+      ? { adBreakOffsetsSeconds: input.adBreakOffsetsSeconds }
       : {}),
   };
 }
@@ -168,5 +200,15 @@ export function hasCompanionMetadata(input: VideoMetadataInput): boolean {
     "geoCountries",
     "chapters",
     "adBreakPreference",
+    "adBreakOffsetsSeconds",
   ].some((key) => Object.prototype.hasOwnProperty.call(input, key));
+}
+
+export function hasAnyAdvancedMetadata(input: VideoMetadataInput): boolean {
+  return (
+    hasCompanionMetadata(input) ||
+    input.contentType !== undefined ||
+    input.rightsBasis !== undefined ||
+    input.rightsNote !== undefined
+  );
 }
