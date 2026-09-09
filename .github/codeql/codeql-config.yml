@@ -1,0 +1,14 @@
+name: AYIN JavaScript and TypeScript security scan
+
+paths:
+  - apps
+  - packages
+  - deploy
+
+paths-ignore:
+  - "packages/db/src/generated/**"
+  - "tests/**"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
