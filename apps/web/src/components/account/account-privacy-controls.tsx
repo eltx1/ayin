@@ -55,9 +55,22 @@ export function AccountPrivacyControls() {
   }
 
   useEffect(() => {
-    void refresh().catch((caught) => {
-      setError(caught instanceof Error ? caught.message : "Privacy controls could not be loaded.");
-    });
+    let active = true;
+    void readStatus().then(
+      (nextStatus) => {
+        if (active) setStatus(nextStatus);
+      },
+      (caught) => {
+        if (active) {
+          setError(
+            caught instanceof Error ? caught.message : "Privacy controls could not be loaded.",
+          );
+        }
+      },
+    );
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function downloadData() {
