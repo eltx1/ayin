@@ -20,6 +20,7 @@ import {
   QuickUploadError,
   QuickUploadService,
 } from "./quick-upload.service.js";
+import { videoMetadataSchema, type VideoMetadataInput } from "./video-metadata.validation.js";
 
 const videoIdSchema = z.string().uuid();
 const detailsSchema = z.object({
@@ -71,8 +72,9 @@ export class QuickUploadController {
 
   @Post(":videoId/upload-complete")
   async confirmUpload(@Req() request: AuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
-    const videoId = this.videoId(videoIdRaw);
-    return this.run(() => this.quickUpload.confirmUpload(request.ayinAuth.accountId, videoId));
+    return this.run(() =>
+      this.quickUpload.confirmUpload(request.ayinAuth.accountId, this.videoId(videoIdRaw)),
+    );
   }
 
   @Get(":videoId/processing")
@@ -80,8 +82,9 @@ export class QuickUploadController {
     @Req() request: AuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
   ) {
-    const videoId = this.videoId(videoIdRaw);
-    return this.run(() => this.quickUpload.processingStatus(request.ayinAuth.accountId, videoId));
+    return this.run(() =>
+      this.quickUpload.processingStatus(request.ayinAuth.accountId, this.videoId(videoIdRaw)),
+    );
   }
 
   @Patch(":videoId")
@@ -90,18 +93,19 @@ export class QuickUploadController {
     @Param("videoId") videoIdRaw: string,
     @Body() body: unknown,
   ) {
-    const videoId = this.videoId(videoIdRaw);
     const parsed = detailsSchema.safeParse(body);
-    if (!parsed.success) {
-      throw this.httpError(
-        new QuickUploadError("INVALID_VIDEO_DETAILS", "Check the video details and try again."),
-      );
+    const metadata = videoMetadataSchema.safeParse(body);
+    if (!parsed.success || !metadata.success) {
+      const message = metadata.success
+        ? "Check the video details and try again."
+        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");
+      throw this.httpError(new QuickUploadError("INVALID_VIDEO_DETAILS", message));
     }
     return this.run(() =>
       this.quickUpload.updateDetails(
         request.ayinAuth.accountId,
-        videoId,
-        this.parseDetails(parsed.data),
+        this.videoId(videoIdRaw),
+        this.parseDetails(parsed.data, metadata.data),
       ),
     );
   }
@@ -112,20 +116,21 @@ export class QuickUploadController {
     @Param("videoId") videoIdRaw: string,
     @Body() body: unknown,
   ) {
-    const videoId = this.videoId(videoIdRaw);
     const parsed = publishSchema.safeParse(body);
-    if (!parsed.success) {
-      throw this.httpError(
-        new QuickUploadError("INVALID_PUBLISH_REQUEST", "Check the publish details and try again."),
-      );
+    const metadata = videoMetadataSchema.safeParse(body);
+    if (!parsed.success || !metadata.success) {
+      const message = metadata.success
+        ? "Check the publish details and try again."
+        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");
+      throw this.httpError(new QuickUploadError("INVALID_PUBLISH_REQUEST", message));
     }
     const { rightsConfirmed, ...details } = parsed.data;
     return this.run(() =>
       this.quickUpload.publish(
         request.ayinAuth.accountId,
-        videoId,
+        this.videoId(videoIdRaw),
         rightsConfirmed,
-        this.parseDetails(details),
+        this.parseDetails(details, metadata.data),
       ),
     );
   }
@@ -169,8 +174,11 @@ export class QuickUploadController {
     );
   }
 
-  private parseDetails(input: z.infer<typeof detailsSchema>): DraftDetailsInput {
-    const details: DraftDetailsInput = {};
+  private parseDetails(
+    input: z.infer<typeof detailsSchema>,
+    metadata: VideoMetadataInput,
+  ): DraftDetailsInput {
+    const details: DraftDetailsInput = { ...metadata };
     if (input.title !== undefined) details.title = input.title;
     if (input.description !== undefined) details.description = input.description;
     if (input.visibility !== undefined) details.visibility = input.visibility;
