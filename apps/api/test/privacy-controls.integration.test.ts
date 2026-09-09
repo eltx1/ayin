@@ -264,12 +264,12 @@ databaseDescribe("Task 49 privacy controls", () => {
     expect(account.email).toBe(`deleted+${owner.accountId}@deleted.ayin.invalid`);
     expect(account.displayName).toBe("Deleted AYIN user");
     expect(account.passwordHash).toBeNull();
-    expect((await prisma.viewerProfile.findUniqueOrThrow({ where: { id: owner.profileId } })).name).toBe(
-      "Deleted profile",
-    );
-    expect((await prisma.channel.findUniqueOrThrow({ where: { id: owner.channelId } })).status).toBe(
-      "REMOVED",
-    );
+    expect(
+      (await prisma.viewerProfile.findUniqueOrThrow({ where: { id: owner.profileId } })).name,
+    ).toBe("Deleted profile");
+    expect(
+      (await prisma.channel.findUniqueOrThrow({ where: { id: owner.channelId } })).status,
+    ).toBe("REMOVED");
 
     expect(
       (await prisma.payout.findUniqueOrThrow({ where: { id: payout.id } }))
@@ -312,9 +312,9 @@ databaseDescribe("Task 49 privacy controls", () => {
     expect(
       (await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id: request.id } })).state,
     ).toBe("CANCELLED");
-    expect((await prisma.account.findUniqueOrThrow({ where: { id: target.accountId } })).status).toBe(
-      "ACTIVE",
-    );
+    expect(
+      (await prisma.account.findUniqueOrThrow({ where: { id: target.accountId } })).status,
+    ).toBe("ACTIVE");
     const audit = await prisma.adminAuditLog.findFirstOrThrow({
       where: { action: "privacy.deletion_admin_recovered", entityId: target.accountId },
     });

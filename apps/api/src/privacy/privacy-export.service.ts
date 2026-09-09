@@ -9,9 +9,7 @@ function jsonSafe(value: unknown): unknown {
   if (value && typeof value === "object") {
     const candidate = value as { toJSON?: () => unknown };
     if (typeof candidate.toJSON === "function") return jsonSafe(candidate.toJSON());
-    return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, jsonSafe(item)]),
-    );
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, jsonSafe(item)]));
   }
   return value;
 }
@@ -403,10 +401,7 @@ export class PrivacyExportService {
       }),
       this.database.client.mediaAsset.findMany({
         where: {
-          OR: [
-            { channelId: { in: ownedChannelIds } },
-            { videoId: { in: videoIds } },
-          ],
+          OR: [{ channelId: { in: ownedChannelIds } }, { videoId: { in: videoIds } }],
         },
         orderBy: { createdAt: "asc" },
         select: {
@@ -427,10 +422,7 @@ export class PrivacyExportService {
       }),
       this.database.client.liveStream.findMany({
         where: {
-          OR: [
-            { createdByAccountId: accountId },
-            { channelId: { in: ownedChannelIds } },
-          ],
+          OR: [{ createdByAccountId: accountId }, { channelId: { in: ownedChannelIds } }],
         },
         orderBy: { createdAt: "asc" },
         select: {

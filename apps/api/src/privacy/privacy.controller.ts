@@ -65,10 +65,7 @@ export class PrivacyController {
     if (!exportData) throw unauthorized();
     const date = new Date().toISOString().slice(0, 10);
     reply.header("content-type", "application/json; charset=utf-8");
-    reply.header(
-      "content-disposition",
-      `attachment; filename="ayin-data-export-${date}.json"`,
-    );
+    reply.header("content-disposition", `attachment; filename="ayin-data-export-${date}.json"`);
     reply.header("cache-control", "no-store, private");
     return exportData;
   }

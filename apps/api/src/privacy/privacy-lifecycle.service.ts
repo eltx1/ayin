@@ -13,10 +13,7 @@ import {
 } from "../auth/auth.errors.js";
 import { PasswordService } from "../auth/password.service.js";
 import { DatabaseService } from "../database/database.service.js";
-import {
-  MEDIA_STORAGE_ADAPTER,
-  type MediaStorageAdapter,
-} from "../media/media-storage.adapter.js";
+import { MEDIA_STORAGE_ADAPTER, type MediaStorageAdapter } from "../media/media-storage.adapter.js";
 
 export const ACCOUNT_DELETION_CONFIRMATION = "DELETE MY AYIN ACCOUNT";
 export const ACCOUNT_DELETION_GRACE_DAYS = 14;
@@ -235,10 +232,7 @@ export class PrivacyLifecycleService {
         },
       });
       if (changed.count !== 1) {
-        throw conflict(
-          "ACCOUNT_DELETION_CHANGED",
-          "The deletion request changed before recovery.",
-        );
+        throw conflict("ACCOUNT_DELETION_CHANGED", "The deletion request changed before recovery.");
       }
       if (request.state === "DEACTIVATED") {
         await tx.account.update({
@@ -299,10 +293,7 @@ export class PrivacyLifecycleService {
       where: {
         AND: [
           {
-            OR: [
-              { lifecycleLeaseUntil: null },
-              { lifecycleLeaseUntil: { lte: now } },
-            ],
+            OR: [{ lifecycleLeaseUntil: null }, { lifecycleLeaseUntil: { lte: now } }],
           },
           {
             OR: [
@@ -813,9 +804,10 @@ export class PrivacyLifecycleService {
     now: Date,
     error: unknown,
   ) {
-    const message = (
-      error instanceof Error ? error.message : "Unknown media deletion error"
-    ).slice(0, 1_000);
+    const message = (error instanceof Error ? error.message : "Unknown media deletion error").slice(
+      0,
+      1_000,
+    );
     if (job.attempts >= MAX_MEDIA_ATTEMPTS) {
       await this.database.client.$transaction(async (tx) => {
         await tx.privacyMediaDeletionJob.update({

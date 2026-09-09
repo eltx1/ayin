@@ -111,7 +111,9 @@ export function AccountPrivacyControls() {
       await refresh();
       setMessage("Account deletion requested. You can cancel during the grace period.");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Account deletion could not be requested.");
+      setError(
+        caught instanceof Error ? caught.message : "Account deletion could not be requested.",
+      );
     } finally {
       setBusy("");
     }
@@ -168,7 +170,8 @@ export function AccountPrivacyControls() {
               <strong>{active.state.replaceAll("_", " ")}</strong>
               <p>Requested {formatDate(active.requestedAt)}</p>
               <small>
-                Grace ends {formatDate(active.graceEndsAt)} · Deactivated {formatDate(active.deactivatedAt)}
+                Grace ends {formatDate(active.graceEndsAt)} · Deactivated{" "}
+                {formatDate(active.deactivatedAt)}
               </small>
             </div>
             {cancellable ? (
@@ -190,14 +193,15 @@ export function AccountPrivacyControls() {
         <p className={styles.muted}>
           AYIN uses a {status?.policy.gracePeriodDays ?? 14}-day grace period. After it ends, the
           account is deactivated and sessions stop working. After the additional technical recovery
-          window, identity data is anonymized, creator content is removed from publication, and media
-          objects are queued for asynchronous deletion.
+          window, identity data is anonymized, creator content is removed from publication, and
+          media objects are queued for asynchronous deletion.
         </p>
         <p className={styles.muted}>
-          Financial accounting records, fraud/security evidence, moderation evidence and audit records
-          may remain where deleting them would break those records; identity fields are anonymized where
-          appropriate. This describes AYIN&apos;s implemented technical behavior and is not a claim of legal
-          compliance or a statement of every jurisdiction&apos;s retention requirements.
+          Financial accounting records, fraud/security evidence, moderation evidence and audit
+          records may remain where deleting them would break those records; identity fields are
+          anonymized where appropriate. This describes AYIN&apos;s implemented technical behavior
+          and is not a claim of legal compliance or a statement of every jurisdiction&apos;s
+          retention requirements.
         </p>
       </div>
 
