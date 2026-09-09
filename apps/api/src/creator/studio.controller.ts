@@ -16,6 +16,11 @@ import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { StudioError, StudioService } from "./studio.service.js";
+import { VideoMetadataError, VideoMetadataService } from "./video-metadata.service.js";
+import {
+  VIDEO_DESCRIPTION_MAX_LENGTH,
+  videoMetadataSchema,
+} from "./video-metadata.validation.js";
 
 const uuidSchema = z.string().uuid();
 const contentQuerySchema = z.object({
@@ -26,20 +31,21 @@ const contentQuerySchema = z.object({
   visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
   take: z.coerce.number().int().min(1).max(100).optional(),
 });
-const videoPatchSchema = z
-  .object({
-    title: z.string().trim().min(1).max(200).optional(),
-    description: z.string().max(20_000).nullable().optional(),
-    visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
-    commentsEnabled: z.boolean().optional(),
-    tvIncluded: z.boolean().optional(),
-  })
-  .strict();
+const videoPatchSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  description: z.string().max(VIDEO_DESCRIPTION_MAX_LENGTH).nullable().optional(),
+  visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
+  commentsEnabled: z.boolean().optional(),
+  tvIncluded: z.boolean().optional(),
+});
 
 @Controller("creator/studio")
 @UseGuards(AuthGuard)
 export class StudioController {
-  constructor(@Inject(StudioService) private readonly studio: StudioService) {}
+  constructor(
+    @Inject(StudioService) private readonly studio: StudioService,
+    @Inject(VideoMetadataService) private readonly metadata: VideoMetadataService,
+  ) {}
 
   @Get("overview")
   overview(@Req() request: AuthenticatedRequest) {
@@ -54,7 +60,17 @@ export class StudioController {
         new StudioError("INVALID_CONTENT_FILTER", "Check the content filters and try again."),
       );
     }
-    return this.run(() => this.studio.content(request.ayinAuth.accountId, parsed.data));
+    return this.run(async () => {
+      const result = await this.studio.content(request.ayinAuth.accountId, parsed.data);
+      const metadata = await this.metadata.readMany(result.videos.map((video) => video.id));
+      return {
+        ...result,
+        videos: result.videos.map((video) => ({
+          ...video,
+          metadata: metadata.get(video.id) ?? null,
+        })),
+      };
+    });
   }
 
   @Patch("videos/:videoId")
@@ -65,14 +81,22 @@ export class StudioController {
   ) {
     const videoId = this.videoId(videoIdRaw);
     const parsed = videoPatchSchema.safeParse(body);
-    if (!parsed.success) {
-      throw this.httpError(
-        new StudioError("INVALID_VIDEO_UPDATE", "Check the video changes and try again."),
-      );
+    const metadata = videoMetadataSchema.safeParse(body);
+    if (!parsed.success || !metadata.success) {
+      const message = metadata.success
+        ? (parsed.error.issues[0]?.message ?? "Check the video changes and try again.")
+        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");
+      throw this.httpError(new StudioError("INVALID_VIDEO_UPDATE", message));
     }
-    return this.run(() =>
-      this.studio.updateVideo(request.ayinAuth.accountId, videoId, parsed.data),
-    );
+    return this.run(async () => {
+      const video = await this.studio.updateVideo(request.ayinAuth.accountId, videoId, parsed.data);
+      const advanced = await this.metadata.applyForStudio(
+        request.ayinAuth.accountId,
+        videoId,
+        metadata.data,
+      );
+      return { ...video, metadata: advanced };
+    });
   }
 
   @Post("videos/:videoId/unpublish")
@@ -114,7 +138,7 @@ export class StudioController {
   }
 
   private httpError(error: unknown): Error {
-    if (error instanceof StudioError) {
+    if (error instanceof StudioError || error instanceof VideoMetadataError) {
       return new HttpException(
         { error: { code: error.code, message: error.message } },
         error.statusCode,
