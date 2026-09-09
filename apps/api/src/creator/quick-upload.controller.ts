@@ -20,12 +20,17 @@ import {
   QuickUploadError,
   QuickUploadService,
 } from "./quick-upload.service.js";
-import { videoMetadataSchema, type VideoMetadataInput } from "./video-metadata.validation.js";
+import { VideoMetadataError, VideoMetadataService } from "./video-metadata.service.js";
+import {
+  VIDEO_DESCRIPTION_MAX_LENGTH,
+  videoMetadataSchema,
+  type VideoMetadataInput,
+} from "./video-metadata.validation.js";
 
 const videoIdSchema = z.string().uuid();
 const detailsSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
-  description: z.string().max(20_000).nullable().optional(),
+  description: z.string().max(VIDEO_DESCRIPTION_MAX_LENGTH).nullable().optional(),
   visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
   commentsEnabled: z.boolean().optional(),
   scheduledPublishAt: z.string().datetime().nullable().optional(),
@@ -49,7 +54,10 @@ const thumbnailCompleteSchema = z.object({ assetId: z.string().uuid() });
 @Controller("creator/videos")
 @UseGuards(AuthGuard)
 export class QuickUploadController {
-  constructor(@Inject(QuickUploadService) private readonly quickUpload: QuickUploadService) {}
+  constructor(
+    @Inject(QuickUploadService) private readonly quickUpload: QuickUploadService,
+    @Inject(VideoMetadataService) private readonly metadata: VideoMetadataService,
+  ) {}
 
   @Post("drafts")
   async createDraft(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
@@ -97,17 +105,24 @@ export class QuickUploadController {
     const metadata = videoMetadataSchema.safeParse(body);
     if (!parsed.success || !metadata.success) {
       const message = metadata.success
-        ? "Check the video details and try again."
+        ? (parsed.error.issues[0]?.message ?? "Check the video details and try again.")
         : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");
       throw this.httpError(new QuickUploadError("INVALID_VIDEO_DETAILS", message));
     }
-    return this.run(() =>
-      this.quickUpload.updateDetails(
+    const videoId = this.videoId(videoIdRaw);
+    return this.run(async () => {
+      const video = await this.quickUpload.updateDetails(
         request.ayinAuth.accountId,
-        this.videoId(videoIdRaw),
-        this.parseDetails(parsed.data, metadata.data),
-      ),
-    );
+        videoId,
+        this.parseDetails(parsed.data),
+      );
+      const advanced = await this.metadata.applyForOwner(
+        request.ayinAuth.accountId,
+        videoId,
+        metadata.data,
+      );
+      return { ...video, metadata: advanced };
+    });
   }
 
   @Post(":videoId/publish")
@@ -120,19 +135,25 @@ export class QuickUploadController {
     const metadata = videoMetadataSchema.safeParse(body);
     if (!parsed.success || !metadata.success) {
       const message = metadata.success
-        ? "Check the publish details and try again."
+        ? (parsed.error.issues[0]?.message ?? "Check the publish details and try again.")
         : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");
       throw this.httpError(new QuickUploadError("INVALID_PUBLISH_REQUEST", message));
     }
+    const videoId = this.videoId(videoIdRaw);
     const { rightsConfirmed, ...details } = parsed.data;
-    return this.run(() =>
-      this.quickUpload.publish(
+    return this.run(async () => {
+      // Advanced metadata is intentionally independent of the required publish path.
+      // With an empty metadata payload this performs no companion-table write.
+      await this.metadata.applyForOwner(request.ayinAuth.accountId, videoId, metadata.data);
+      const result = await this.quickUpload.publish(
         request.ayinAuth.accountId,
-        this.videoId(videoIdRaw),
+        videoId,
         rightsConfirmed,
-        this.parseDetails(details, metadata.data),
-      ),
-    );
+        this.parseDetails(details),
+      );
+      await this.metadata.updateRightsForOwner(request.ayinAuth.accountId, videoId, metadata.data);
+      return { ...result, metadata: await this.metadata.readOne(videoId) };
+    });
   }
 
   @Post(":videoId/thumbnail/authorize")
@@ -174,11 +195,8 @@ export class QuickUploadController {
     );
   }
 
-  private parseDetails(
-    input: z.infer<typeof detailsSchema>,
-    metadata: VideoMetadataInput,
-  ): DraftDetailsInput {
-    const details: DraftDetailsInput = { ...metadata };
+  private parseDetails(input: z.infer<typeof detailsSchema>): DraftDetailsInput {
+    const details: DraftDetailsInput = {};
     if (input.title !== undefined) details.title = input.title;
     if (input.description !== undefined) details.description = input.description;
     if (input.visibility !== undefined) details.visibility = input.visibility;
@@ -209,7 +227,11 @@ export class QuickUploadController {
   }
 
   private httpError(error: unknown): Error {
-    if (error instanceof QuickUploadError || error instanceof MediaUploadError) {
+    if (
+      error instanceof QuickUploadError ||
+      error instanceof MediaUploadError ||
+      error instanceof VideoMetadataError
+    ) {
       return new HttpException(
         { error: { code: error.code, message: error.message } },
         error.statusCode,
