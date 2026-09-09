@@ -67,9 +67,7 @@ const forbiddenCredentialPatterns = [
 
 for (const pattern of forbiddenCredentialPatterns) {
   if (pattern.test(serialized)) {
-    throw new Error(
-      "Refusing to write an SBOM containing credential-like data.",
-    );
+    throw new Error("Refusing to write an SBOM containing credential-like data.");
   }
 }
 
