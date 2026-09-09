@@ -1,0 +1,64 @@
+name: Task 49 temporary storage mock fix
+
+on:
+  push:
+    branches:
+      - task-49-privacy-controls
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-49-privacy-controls
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          check-latest: false
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Update storage mocks and verify typecheck
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          files = [
+              'apps/api/test/channel-pages.integration.test.ts',
+              'apps/api/test/creator-tv.integration.test.ts',
+              'apps/api/test/discovery.integration.test.ts',
+              'apps/api/test/media-upload.integration.test.ts',
+              'apps/api/test/quick-upload.integration.test.ts',
+              'apps/api/test/watch-progress.integration.test.ts',
+          ]
+          old = '  deleteObject: vi.fn(async () => undefined),\n  listMultipartUploads:'
+          new = '  deleteObject: vi.fn(async () => undefined),\n  deletePrefix: vi.fn(async () => undefined),\n  listMultipartUploads:'
+          for filename in files:
+              path = Path(filename)
+              text = path.read_text()
+              if old not in text:
+                  raise SystemExit(f'Expected MediaStorageAdapter mock pattern not found in {filename}')
+              path.write_text(text.replace(old, new, 1))
+          PY
+          pnpm exec prettier --write \
+            apps/api/test/channel-pages.integration.test.ts \
+            apps/api/test/creator-tv.integration.test.ts \
+            apps/api/test/discovery.integration.test.ts \
+            apps/api/test/media-upload.integration.test.ts \
+            apps/api/test/quick-upload.integration.test.ts \
+            apps/api/test/watch-progress.integration.test.ts
+          pnpm typecheck
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/task49-storage-mocks-fix.yml
+          git add -A
+          git commit -m "test(task-49): update media storage adapter mocks"
+          git push origin HEAD:task-49-privacy-controls
