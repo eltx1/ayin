@@ -14,6 +14,8 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/database.yml"
+      - ".github/workflows/security.yml"
+      - ".github/codeql/**"
       - ".github/workflows/deploy.yml"
       - ".github/workflows/cloudflare-production.yml"
       - ".github/workflows/r2-production.yml"
@@ -32,6 +34,8 @@ on:
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
       - ".github/workflows/database.yml"
+      - ".github/workflows/security.yml"
+      - ".github/codeql/**"
       - ".github/workflows/deploy.yml"
       - ".github/workflows/cloudflare-production.yml"
       - ".github/workflows/r2-production.yml"
@@ -103,6 +107,7 @@ jobs:
           bash -n deploy/ensure-ffmpeg-runtime.sh
           node --check deploy/admin/bootstrap-first-superadmin.mjs
           node --check deploy/media/requeue-missing-content-length.mjs
+          node --check deploy/security/generate-sbom.mjs
           node --check deploy/env-file.cjs
           node --check deploy/run-with-env.cjs
           node --check deploy/validate-production-env.cjs
