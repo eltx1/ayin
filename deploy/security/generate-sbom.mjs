@@ -67,9 +67,13 @@ const forbiddenCredentialPatterns = [
 
 for (const pattern of forbiddenCredentialPatterns) {
   if (pattern.test(serialized)) {
-    throw new Error("Refusing to write an SBOM containing credential-like data.");
+    throw new Error(
+      "Refusing to write an SBOM containing credential-like data.",
+    );
   }
 }
 
 fs.writeFileSync(outputPath, serialized, { mode: 0o600 });
-console.log(`Generated sanitized CycloneDX SBOM with ${components.size} components.`);
+console.log(
+  `Generated sanitized CycloneDX SBOM with ${components.size} components.`,
+);

@@ -48,16 +48,52 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Check out repository
+      - name: Check out full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Review introduced runtime dependencies
-        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
-          fail-on-severity: high
-          fail-on-scopes: runtime
-          show-openssf-scorecard: false
-          show-patched-versions: true
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect dependency changes
+        id: dependency-changes
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA" -- \
+            package.json \
+            pnpm-lock.yaml \
+            pnpm-workspace.yaml \
+            'apps/**/package.json' \
+            'packages/**/package.json')"
+          if [[ -z "$changed" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No dependency manifest or lockfile changes in this pull request."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Dependency files changed:"
+            printf '%s\n' "$changed"
+          fi
+
+      - name: Set up Node.js
+        if: steps.dependency-changes.outputs.changed == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        if: steps.dependency-changes.outputs.changed == 'true'
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Verify dependency change and audit production graph
+        if: steps.dependency-changes.outputs.changed == 'true'
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm audit:prod
 
   supply-chain:
     name: Lockfile, production audit and SBOM
@@ -67,6 +103,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -112,6 +150,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install pinned Gitleaks without a token
         shell: bash
@@ -167,6 +206,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4

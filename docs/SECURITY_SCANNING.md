@@ -10,9 +10,14 @@ unsafe remediation.
 The `Security gates` workflow runs on relevant pull requests, pushes to `main`,
 a weekly schedule, and manual dispatch.
 
-- **Dependency review:** pull requests are blocked when they introduce a runtime
-  dependency with a HIGH or CRITICAL advisory. Development-only findings remain
-  visible but do not block solely because of this gate.
+- **Dependency review:** pull requests detect changes to dependency manifests,
+  the pnpm workspace definition, and the lockfile. When dependency inputs change,
+  the job requires a frozen install with lifecycle scripts disabled and a HIGH
+  threshold production audit. GitHub's native Dependency Review action was
+  evaluated first, but this repository currently has Dependency Graph disabled,
+  so the native action cannot run. The local gate remains blocking rather than
+  silently skipping dependency validation. Native Dependency Review can replace
+  this fallback if Dependency Graph is enabled later.
 - **Lockfile integrity:** `pnpm install --frozen-lockfile --ignore-scripts` must
   succeed. The security job does not execute dependency lifecycle scripts.
 - **Production dependency audit:** `pnpm audit --prod --audit-level high` blocks
@@ -32,11 +37,11 @@ a weekly schedule, and manual dispatch.
   source file contents, environment variables, registry credentials, repository
   URLs, or dependency installation paths.
 
-Third-party scanner code is not given repository secrets. GitHub-maintained
-CodeQL and dependency-review actions use only the built-in, job-scoped GitHub
-token under the explicit least-privilege permissions in the workflow. Actions
-and external scanner versions are pinned to exact commits or checksummed release
-artifacts.
+Third-party scanner code is not given repository secrets. CodeQL uses only the
+built-in, job-scoped GitHub token under the explicit least-privilege permissions
+in the workflow. Checkout credentials are not persisted by security jobs.
+Actions and external scanner versions are pinned to exact commits or checksummed
+release artifacts.
 
 No Dependabot or equivalent auto-merge configuration is added by this task.
 Production dependency upgrades remain explicit reviewed changes.
