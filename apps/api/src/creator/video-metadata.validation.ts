@@ -39,12 +39,14 @@ export const videoMetadataSchema = z
       .max(VIDEO_TAG_MAX_COUNT)
       .transform((tags) => {
         const seen = new Set<string>();
-        return tags.filter((tag) => {
+        const normalized: string[] = [];
+        for (const tag of tags) {
           const key = tag.toLocaleLowerCase();
-          if (seen.has(key)) return false;
+          if (seen.has(key)) continue;
           seen.add(key);
-          return true;
-        });
+          normalized.push(key);
+        }
+        return normalized;
       })
       .optional(),
     category: z
@@ -75,7 +77,6 @@ export const videoMetadataSchema = z
     chapters: z.array(chapterSchema).max(VIDEO_CHAPTER_MAX_COUNT).nullable().optional(),
     adBreakPreference: z.enum(["AUTOMATIC", "DISABLED"]).nullable().optional(),
   })
-  .strict()
   .superRefine((value, context) => {
     if (value.recordingDate && new Date(`${value.recordingDate}T00:00:00.000Z`).getTime() > Date.now()) {
       context.addIssue({
