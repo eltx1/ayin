@@ -122,6 +122,7 @@ databaseDescribe("Task 49 privacy controls", () => {
       data: {
         reporterProfileId: first.profileId,
         moderationCaseId: moderationCase.id,
+        channelId: first.channelId,
         reason: "OTHER",
         details: "user-visible report details",
       },
@@ -201,6 +202,7 @@ databaseDescribe("Task 49 privacy controls", () => {
     const report = await prisma.report.create({
       data: {
         reporterProfileId: owner.profileId,
+        channelId: owner.channelId,
         reason: "SPAM",
         details: "moderation evidence",
       },
