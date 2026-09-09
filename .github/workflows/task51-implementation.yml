@@ -1,0 +1,168 @@
+name: Task 51 implementation
+
+on:
+  push:
+    branches:
+      - task-51-video-metadata-v2
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-51-video-metadata-v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Apply Task 51 integration patches
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing patch anchor in {path}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, count))
+
+          # Prisma reciprocal relation.
+          replace(
+              'packages/db/prisma/schema.prisma',
+              '  rightsDeclarations     ContentRightsDeclaration[]\n  reports                Report[]',
+              '  rightsDeclarations     ContentRightsDeclaration[]\n  creatorMetadata        VideoCreatorMetadata?\n  reports                Report[]',
+          )
+
+          # Quick Upload service: metadata persistence and authoritative rights/content type.
+          path = 'apps/api/src/creator/quick-upload.service.ts'
+          replace(
+              path,
+              'import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";\n',
+              'import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";\nimport {\n  hasCompanionMetadata,\n  metadataData,\n  type VideoMetadataInput,\n  validateChapterDuration,\n} from "./video-metadata.validation.js";\n',
+          )
+          replace(
+              path,
+              'export interface DraftDetailsInput {\n  title?: string;\n  description?: string | null;\n  visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE";\n  commentsEnabled?: boolean;\n  scheduledPublishAt?: Date | null;\n  videoForm?: "LONG_FORM" | "CLIP";\n}\n',
+              'export type DraftDetailsInput = VideoMetadataInput & {\n  title?: string;\n  description?: string | null;\n  visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE";\n  commentsEnabled?: boolean;\n  scheduledPublishAt?: Date | null;\n  videoForm?: "LONG_FORM" | "CLIP";\n};\n',
+          )
+          replace(
+              path,
+              '''    const data = this.detailsData(input);\n    return this.database.client.video.update({\n      where: { id: videoId },\n      data,\n      select: {\n        id: true,\n        title: true,\n        description: true,\n        visibility: true,\n        commentsEnabled: true,\n        scheduledPublishAt: true,\n        status: true,\n      },\n    });''',
+              '''    try {\n      validateChapterDuration(input, video.durationMs);\n    } catch {\n      throw new QuickUploadError(\n        "CHAPTER_OUTSIDE_VIDEO",\n        "Chapter start times must fall within the video duration.",\n      );\n    }\n    return this.database.client.$transaction(async (tx) => {\n      if (hasCompanionMetadata(input)) {\n        const metadata = metadataData(input);\n        await tx.videoCreatorMetadata.upsert({\n          where: { videoId },\n          create: { videoId, ...metadata },\n          update: metadata,\n        });\n      }\n      return tx.video.update({\n        where: { id: videoId },\n        data: this.detailsData(input),\n        select: {\n          id: true,\n          title: true,\n          description: true,\n          contentType: true,\n          visibility: true,\n          commentsEnabled: true,\n          scheduledPublishAt: true,\n          status: true,\n          creatorMetadata: true,\n        },\n      });\n    });''',
+          )
+          replace(
+              path,
+              '''      await tx.contentRightsDeclaration.upsert({\n        where: { videoId_version: { videoId, version: RIGHTS_DECLARATION_VERSION } },\n        update: {},\n        create: {\n          videoId,\n          declaredByAccountId: accountId,\n          version: RIGHTS_DECLARATION_VERSION,\n          basis: "AUTHORIZED",\n          status: "CONFIRMED",\n          statement: RIGHTS_STATEMENT,\n          declaredAt: now,\n        },\n      });''',
+              '''      try {\n        validateChapterDuration(input, video.durationMs);\n      } catch {\n        throw new QuickUploadError(\n          "CHAPTER_OUTSIDE_VIDEO",\n          "Chapter start times must fall within the video duration.",\n        );\n      }\n      if (hasCompanionMetadata(input)) {\n        const metadata = metadataData(input);\n        await tx.videoCreatorMetadata.upsert({\n          where: { videoId },\n          create: { videoId, ...metadata },\n          update: metadata,\n        });\n      }\n\n      const rightsBasis = input.rightsBasis ?? "AUTHORIZED";\n      await tx.contentRightsDeclaration.upsert({\n        where: { videoId_version: { videoId, version: RIGHTS_DECLARATION_VERSION } },\n        update: {\n          declaredByAccountId: accountId,\n          basis: rightsBasis,\n          status: "CONFIRMED",\n          statement: RIGHTS_STATEMENT,\n          declaredAt: now,\n        },\n        create: {\n          videoId,\n          declaredByAccountId: accountId,\n          version: RIGHTS_DECLARATION_VERSION,\n          basis: rightsBasis,\n          status: "CONFIRMED",\n          statement: RIGHTS_STATEMENT,\n          declaredAt: now,\n        },\n      });''',
+          )
+          replace(
+              path,
+              '      ...(input.videoForm !== undefined ? { videoForm: input.videoForm } : {}),\n',
+              '      ...(input.videoForm !== undefined ? { videoForm: input.videoForm } : {}),\n      ...(input.contentType !== undefined ? { contentType: input.contentType } : {}),\n',
+          )
+          replace(
+              path,
+              '      select: { id: true, channelId: true, status: true },\n',
+              '      select: { id: true, channelId: true, status: true, durationMs: true },\n',
+              1,
+          )
+
+          # Studio service: expose and edit metadata while preserving rights authority.
+          path = 'apps/api/src/creator/studio.service.ts'
+          replace(
+              path,
+              'import { DatabaseService } from "../database/database.service.js";\n',
+              'import { DatabaseService } from "../database/database.service.js";\nimport {\n  hasCompanionMetadata,\n  metadataData,\n  type VideoMetadataInput,\n  validateChapterDuration,\n} from "./video-metadata.validation.js";\n',
+          )
+          replace(
+              path,
+              'export interface StudioVideoPatch {\n',
+              'export type StudioVideoPatch = VideoMetadataInput & {\n',
+          )
+          replace(path, '}\n\ninterface StudioContentQuery {', '};\n\ninterface StudioContentQuery {')
+          replace(
+              path,
+              '''        videoForm: true,\n        commentsEnabled: true,\n        createdAt: true,''',
+              '''        videoForm: true,\n        contentType: true,\n        durationMs: true,\n        commentsEnabled: true,\n        creatorMetadata: true,\n        rightsDeclarations: {\n          where: { status: "CONFIRMED" },\n          orderBy: { version: "desc" },\n          take: 1,\n          select: { basis: true },\n        },\n        createdAt: true,''',
+          )
+          replace(
+              path,
+              '''        tvIncluded: video.tvPreferences[0]?.included ?? true,\n        tvPreferences: undefined,''',
+              '''        tvIncluded: video.tvPreferences[0]?.included ?? true,\n        rightsBasis: video.rightsDeclarations[0]?.basis ?? null,\n        tags: video.creatorMetadata?.tags ?? [],\n        category: video.creatorMetadata?.category ?? null,\n        primaryLanguage: video.creatorMetadata?.primaryLanguage ?? null,\n        recordingDate: video.creatorMetadata?.recordingDate ?? null,\n        seriesTitle: video.creatorMetadata?.seriesTitle ?? null,\n        seasonNumber: video.creatorMetadata?.seasonNumber ?? null,\n        episodeNumber: video.creatorMetadata?.episodeNumber ?? null,\n        maturityLevel: video.creatorMetadata?.maturityLevel ?? null,\n        geoAvailabilityMode: video.creatorMetadata?.geoAvailabilityMode ?? null,\n        geoCountries: video.creatorMetadata?.geoCountries ?? [],\n        chapters: video.creatorMetadata?.chapters ?? null,\n        adBreakPreference: video.creatorMetadata?.adBreakPreference ?? null,\n        creatorMetadata: undefined,\n        rightsDeclarations: undefined,\n        tvPreferences: undefined,''',
+          )
+          replace(
+              path,
+              '''    await this.database.client.$transaction(async (tx) => {\n      await tx.video.update({''',
+              '''    try {\n      validateChapterDuration(patch, video.durationMs);\n    } catch {\n      throw new StudioError(\n        "CHAPTER_OUTSIDE_VIDEO",\n        "Chapter start times must fall within the video duration.",\n      );\n    }\n\n    await this.database.client.$transaction(async (tx) => {\n      await tx.video.update({''',
+          )
+          replace(
+              path,
+              '''          ...(patch.commentsEnabled !== undefined\n            ? { commentsEnabled: patch.commentsEnabled }\n            : {}),\n        },''',
+              '''          ...(patch.commentsEnabled !== undefined\n            ? { commentsEnabled: patch.commentsEnabled }\n            : {}),\n          ...(patch.contentType !== undefined ? { contentType: patch.contentType } : {}),\n        },''',
+          )
+          replace(
+              path,
+              '''      if (patch.tvIncluded !== undefined) {''',
+              '''      if (hasCompanionMetadata(patch)) {\n        const metadata = metadataData(patch);\n        await tx.videoCreatorMetadata.upsert({\n          where: { videoId: video.id },\n          create: { videoId: video.id, ...metadata },\n          update: metadata,\n        });\n      }\n\n      if (patch.rightsBasis !== undefined) {\n        const currentRights = await tx.contentRightsDeclaration.findFirst({\n          where: { videoId: video.id, status: "CONFIRMED" },\n          orderBy: { version: "desc" },\n          select: { videoId: true, version: true },\n        });\n        if (!currentRights) {\n          throw new StudioError(\n            "RIGHTS_CONFIRMATION_REQUIRED",\n            "Choose the rights basis during publishing before editing it in Studio.",\n            409,\n          );\n        }\n        await tx.contentRightsDeclaration.update({\n          where: {\n            videoId_version: { videoId: currentRights.videoId, version: currentRights.version },\n          },\n          data: { basis: patch.rightsBasis, declaredByAccountId: accountId, declaredAt: new Date() },\n        });\n      }\n\n      if (patch.tvIncluded !== undefined) {''',
+          )
+          replace(
+              path,
+              '      select: { id: true, channelId: true, status: true },\n',
+              '      select: { id: true, channelId: true, status: true, durationMs: true },\n',
+          )
+          replace(
+              path,
+              '''        description: true,\n        status: true,''',
+              '''        description: true,\n        contentType: true,\n        creatorMetadata: true,\n        rightsDeclarations: {\n          where: { status: "CONFIRMED" },\n          orderBy: { version: "desc" },\n          take: 1,\n          select: { basis: true },\n        },\n        status: true,''',
+              1,
+          )
+
+          # Search: exact normalized tags are valid search metadata; no ranking policy changes.
+          path = 'apps/api/src/search/search.service.ts'
+          replace(
+              path,
+              '{ channel: { handle: { contains: normalized, mode: "insensitive" } } },\n',
+              '{ channel: { handle: { contains: normalized, mode: "insensitive" } } },\n                { creatorMetadata: { tags: { has: normalized.toLocaleLowerCase() } } },\n',
+              1,
+          )
+
+          # Admin inventory: read-only creator metadata and authoritative rights visibility.
+          path = 'apps/api/src/admin/admin-control.service.ts'
+          replace(
+              path,
+              '''          description: true,\n          status: true,\n          visibility: true,\n          videoForm: true,''',
+              '''          description: true,\n          status: true,\n          visibility: true,\n          videoForm: true,\n          contentType: true,\n          creatorMetadata: true,\n          rightsDeclarations: {\n            where: { status: "CONFIRMED" },\n            orderBy: { version: "desc" },\n            take: 1,\n            select: { basis: true },\n          },''',
+              1,
+          )
+
+          # Creator TV: honor opt-out without changing the ad provider contract.
+          path = 'apps/api/src/creator/creator-tv.service.ts'
+          old = '''    return this.adBreakHook.getBreaks({\n      tvChannelId,\n      channelId,\n      generatedAt,\n      programs: programs.map((program) => ({\n        occurrenceKey: program.occurrenceKey,\n        videoId: program.video.id,\n        startsAt: new Date(program.startsAtMs),\n        endsAt: new Date(program.endsAtMs),\n      })),\n    });'''
+          new = '''    const disabledRows = await this.database.client.videoCreatorMetadata.findMany({\n      where: {\n        videoId: { in: [...new Set(programs.map((program) => program.video.id))] },\n        adBreakPreference: "DISABLED",\n      },\n      select: { videoId: true },\n    });\n    const disabledVideoIds = new Set(disabledRows.map((row) => row.videoId));\n    const disabledOccurrences = new Set(\n      programs\n        .filter((program) => disabledVideoIds.has(program.video.id))\n        .map((program) => program.occurrenceKey),\n    );\n    const breaks = await this.adBreakHook.getBreaks({\n      tvChannelId,\n      channelId,\n      generatedAt,\n      programs: programs.map((program) => ({\n        occurrenceKey: program.occurrenceKey,\n        videoId: program.video.id,\n        startsAt: new Date(program.startsAtMs),\n        endsAt: new Date(program.endsAtMs),\n      })),\n    });\n    return breaks.filter((marker) => !disabledOccurrences.has(marker.occurrenceKey));'''
+          replace(path, old, new)
+          PY
+      - name: Install dependencies and format
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec prettier --write packages/db/prisma/schema.prisma packages/db/prisma/video-metadata-v2.prisma apps/api/src/creator/quick-upload.service.ts apps/api/src/creator/studio.service.ts apps/api/src/search/search.service.ts apps/api/src/admin/admin-control.service.ts apps/api/src/creator/creator-tv.service.ts apps/api/src/creator/video-metadata.validation.ts
+      - name: Generate Prisma and typecheck API
+        run: |
+          pnpm --filter @ayin/db prisma:generate
+          pnpm --filter @ayin/api typecheck
+      - name: Commit implementation patch and remove temporary workflow
+        run: |
+          rm .github/workflows/task51-implementation.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat(task-51): integrate creator metadata across backend"
+          git push origin HEAD:task-51-video-metadata-v2
