@@ -1,0 +1,52 @@
+enum VideoCategory {
+  ENTERTAINMENT
+  EDUCATION
+  GAMING
+  MUSIC
+  NEWS
+  SPORTS
+  TECHNOLOGY
+  LIFESTYLE
+  FILM_ANIMATION
+  OTHER
+}
+
+enum VideoMaturityLevel {
+  GENERAL
+  TEEN
+  MATURE
+}
+
+enum VideoGeoAvailabilityMode {
+  WORLDWIDE
+  INCLUDE_ONLY
+  EXCLUDE
+}
+
+enum VideoAdBreakPreference {
+  AUTOMATIC
+  DISABLED
+}
+
+model VideoCreatorMetadata {
+  videoId             String                   @id @db.Uuid
+  tags                String[]                 @default([])
+  category            VideoCategory?
+  primaryLanguage     String?                  @db.VarChar(35)
+  recordingDate       DateTime?                @db.Date
+  seriesTitle         String?                  @db.VarChar(120)
+  seasonNumber        Int?
+  episodeNumber       Int?
+  maturityLevel       VideoMaturityLevel?
+  geoAvailabilityMode VideoGeoAvailabilityMode?
+  geoCountries        String[]                 @default([])
+  chapters            Json?
+  adBreakPreference   VideoAdBreakPreference?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([category])
+  @@index([primaryLanguage])
+}
