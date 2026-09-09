@@ -281,6 +281,84 @@ databaseDescribe("Task 49 privacy controls", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("does not remove a creator channel or its media when another owner remains", async () => {
+    const deletingOwner = await register("privacy-shared-owner-delete@example.com");
+    const remainingOwner = await register("privacy-shared-owner-remain@example.com");
+    await prisma.channelMember.create({
+      data: {
+        channelId: deletingOwner.channelId,
+        accountId: remainingOwner.accountId,
+        role: "OWNER",
+      },
+    });
+    const video = await prisma.video.create({
+      data: {
+        channelId: deletingOwner.channelId,
+        slug: `shared-delete-${Date.now()}`,
+        title: "Shared ownership survives deletion",
+        status: "DRAFT",
+        visibility: "PRIVATE",
+      },
+    });
+    const media = await prisma.mediaAsset.create({
+      data: {
+        channelId: deletingOwner.channelId,
+        kind: "CHANNEL_BANNER",
+        status: "VALIDATED",
+        r2ObjectKey: `channels/${deletingOwner.channelId}/shared-banner.jpg`,
+        mimeType: "image/jpeg",
+        sizeBytes: BigInt(1_024),
+      },
+    });
+
+    const requested = await app.inject({
+      method: "POST",
+      url: "/privacy/deletion",
+      headers: { cookie: deletingOwner.cookie },
+      payload: { password, confirmation: ACCOUNT_DELETION_CONFIRMATION },
+    });
+    expect(requested.statusCode).toBe(202);
+
+    const lifecycle = moduleReference.get(PrivacyLifecycleService);
+    const deletion = await prisma.accountDeletionRequest.findFirstOrThrow({
+      where: { accountId: deletingOwner.accountId },
+    });
+    const now = new Date();
+    await lifecycle.advanceDue(now);
+    await prisma.accountDeletionRequest.update({
+      where: { id: deletion.id },
+      data: { graceEndsAt: new Date(now.getTime() - 1_000) },
+    });
+    await lifecycle.advanceDue(now);
+    await prisma.accountDeletionRequest.update({
+      where: { id: deletion.id },
+      data: { deactivatedAt: new Date(now.getTime() - 25 * 60 * 60 * 1_000) },
+    });
+    await lifecycle.advanceDue(now);
+
+    expect(
+      (await prisma.channel.findUniqueOrThrow({ where: { id: deletingOwner.channelId } })).status,
+    ).toBe("ACTIVE");
+    expect((await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).status).toBe("DRAFT");
+    expect((await prisma.mediaAsset.findUniqueOrThrow({ where: { id: media.id } })).status).toBe(
+      "VALIDATED",
+    );
+    expect(
+      await prisma.channelMember.count({
+        where: {
+          channelId: deletingOwner.channelId,
+          accountId: remainingOwner.accountId,
+          role: "OWNER",
+        },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.privacyMediaDeletionJob.count({
+        where: { requestId: deletion.id, target: media.r2ObjectKey },
+      }),
+    ).toBe(0);
+  });
+
   it("allows audited admin recovery before anonymization and refuses recovery afterward", async () => {
     const actor = await register("privacy-recovery-actor@example.com");
     const target = await register("privacy-recovery-target@example.com");
