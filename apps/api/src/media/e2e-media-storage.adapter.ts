@@ -7,6 +7,10 @@ import {
   type StoredObjectMetadata,
 } from "./media-storage.adapter.js";
 
+const E2E_VTT = new TextEncoder().encode(
+  "WEBVTT\n\n00:00.000 --> 00:01.000\nAYIN caption test\n",
+);
+
 export class E2eMediaStorageAdapter implements MediaStorageAdapter {
   readonly kind = "development" as const;
   readonly available = true;
@@ -48,8 +52,18 @@ export class E2eMediaStorageAdapter implements MediaStorageAdapter {
 
   async abortMultipartUpload(): Promise<void> {}
 
-  async headObject(): Promise<StoredObjectMetadata> {
+  async headObject(key: string): Promise<StoredObjectMetadata> {
+    if (key.startsWith("captions/videos/")) {
+      return { sizeBytes: E2E_VTT.byteLength, contentType: "text/vtt", etag: '"e2e-caption"' };
+    }
     return { sizeBytes: 1024, contentType: "video/mp4", etag: '"e2e-object"' };
+  }
+
+  async readObject(key: string, maxBytes: number): Promise<Uint8Array> {
+    if (!key.startsWith("captions/videos/") || E2E_VTT.byteLength > maxBytes) {
+      throw new Error("E2E object is unavailable for bounded reading.");
+    }
+    return E2E_VTT.slice();
   }
 
   async deleteObject(): Promise<void> {}
