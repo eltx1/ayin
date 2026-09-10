@@ -21,10 +21,7 @@ import {
   QuickUploadService,
 } from "./quick-upload.service.js";
 import { VideoMetadataError, VideoMetadataService } from "./video-metadata.service.js";
-import {
-  VIDEO_DESCRIPTION_MAX_LENGTH,
-  videoMetadataSchema,
-} from "./video-metadata.validation.js";
+import { VIDEO_DESCRIPTION_MAX_LENGTH, videoMetadataSchema } from "./video-metadata.validation.js";
 
 const videoIdSchema = z.string().uuid();
 const detailsSchema = z.object({
