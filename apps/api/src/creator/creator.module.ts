@@ -4,6 +4,8 @@ import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { MediaModule } from "../media/media.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
+import { CaptionController } from "./caption.controller.js";
+import { CaptionService } from "./caption.service.js";
 import { CreatorChannelController, PublicChannelController } from "./channel.controller.js";
 import { ChannelService } from "./channel.service.js";
 import { PublicClipsController } from "./clips.controller.js";
@@ -33,6 +35,7 @@ import { VideoMetadataService } from "./video-metadata.service.js";
   controllers: [
     QuickUploadController,
     StudioController,
+    CaptionController,
     PublicChannelController,
     PublicClipsController,
     CreatorChannelController,
@@ -46,6 +49,7 @@ import { VideoMetadataService } from "./video-metadata.service.js";
     QuickUploadService,
     StudioService,
     VideoMetadataService,
+    CaptionService,
     ChannelService,
     ClipsService,
     PlaylistService,
@@ -61,6 +65,7 @@ import { VideoMetadataService } from "./video-metadata.service.js";
     CreatorTvLinearService,
     StudioService,
     VideoMetadataService,
+    CaptionService,
   ],
 })
 export class CreatorModule {}
