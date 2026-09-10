@@ -1,0 +1,104 @@
+name: Task 51 recovery 3
+
+on:
+  push:
+    branches:
+      - task-51-video-metadata-v2
+
+permissions:
+  contents: write
+
+jobs:
+  recover:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-51-video-metadata-v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Apply implementation and strict-type fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Reuse the already-reviewed implementation patch.
+          workflow = Path('.github/workflows/task51-finalize.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(workflow) if "python3 <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(workflow)) if workflow[i].strip() == 'PY')
+          code = '\n'.join(line[10:] if line.startswith('          ') else line for line in workflow[start:end])
+          exec(compile(code, '/tmp/task51-patch.py', 'exec'))
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"missing type-fix anchor in {path}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, count))
+
+          path = 'apps/api/src/creator/quick-upload.controller.ts'
+          old = '''    if (!parsed.success || !metadata.success) {\n      const message = metadata.success\n        ? (parsed.error.issues[0]?.message ?? "Check the video details and try again.")\n        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");\n      throw this.httpError(new QuickUploadError("INVALID_VIDEO_DETAILS", message));\n    }'''
+          new = '''    if (!parsed.success) {\n      throw this.httpError(\n        new QuickUploadError(\n          "INVALID_VIDEO_DETAILS",\n          parsed.error.issues[0]?.message ?? "Check the video details and try again.",\n        ),\n      );\n    }\n    if (!metadata.success) {\n      throw this.httpError(\n        new QuickUploadError(\n          "INVALID_VIDEO_DETAILS",\n          metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.",\n        ),\n      );\n    }'''
+          replace(path, old, new)
+          old = '''    if (!parsed.success || !metadata.success) {\n      const message = metadata.success\n        ? (parsed.error.issues[0]?.message ?? "Check the publish details and try again.")\n        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");\n      throw this.httpError(new QuickUploadError("INVALID_PUBLISH_REQUEST", message));\n    }'''
+          new = '''    if (!parsed.success) {\n      throw this.httpError(\n        new QuickUploadError(\n          "INVALID_PUBLISH_REQUEST",\n          parsed.error.issues[0]?.message ?? "Check the publish details and try again.",\n        ),\n      );\n    }\n    if (!metadata.success) {\n      throw this.httpError(\n        new QuickUploadError(\n          "INVALID_PUBLISH_REQUEST",\n          metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.",\n        ),\n      );\n    }'''
+          replace(path, old, new)
+
+          path = 'apps/api/src/creator/studio.controller.ts'
+          old = '''    if (!parsed.success || !metadata.success) {\n      const message = metadata.success\n        ? (parsed.error.issues[0]?.message ?? "Check the video changes and try again.")\n        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");\n      throw this.httpError(new StudioError("INVALID_VIDEO_UPDATE", message));\n    }'''
+          new = '''    if (!parsed.success) {\n      throw this.httpError(\n        new StudioError(\n          "INVALID_VIDEO_UPDATE",\n          parsed.error.issues[0]?.message ?? "Check the video changes and try again.",\n        ),\n      );\n    }\n    if (!metadata.success) {\n      throw this.httpError(\n        new StudioError(\n          "INVALID_VIDEO_UPDATE",\n          metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.",\n        ),\n      );\n    }'''
+          replace(path, old, new)
+
+          path = 'apps/api/src/creator/video-metadata.service.ts'
+          replace(path,
+            'import { Inject, Injectable } from "@nestjs/common";',
+            'import { Prisma } from "@ayin/db";\nimport { Inject, Injectable } from "@nestjs/common";')
+          replace(path,
+            'withCreatorRightsNote(declaration.statement, input.rightsNote)',
+            'withCreatorRightsNote(declaration.statement ?? "", input.rightsNote)')
+          replace(path,
+            '''        const data = metadataData(input);\n        await tx.videoCreatorMetadata.upsert({\n          where: { videoId },\n          create: { videoId, ...data },\n          update: data,\n        });''',
+            '''        const data = metadataData(input);\n        const { chapters, ...scalarData } = data;\n        const prismaData = {\n          ...scalarData,\n          ...(chapters !== undefined\n            ? { chapters: chapters === null ? Prisma.JsonNull : chapters }\n            : {}),\n        };\n        await tx.videoCreatorMetadata.upsert({\n          where: { videoId },\n          create: { videoId, ...prismaData },\n          update: prismaData,\n        });''')
+          PY
+      - name: Install, format and validate
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @ayin/db exec prisma format --schema prisma
+          pnpm exec prettier --write --ignore-unknown \
+            packages/db/prisma/video-metadata-v2.prisma \
+            packages/db/prisma/migrations/20260910010000_video_metadata_v2/migration.sql \
+            apps/api/src/creator/video-metadata.validation.ts \
+            apps/api/src/creator/video-metadata.validation.test.ts \
+            apps/api/src/creator/video-metadata.service.ts \
+            apps/api/src/creator/quick-upload.controller.ts \
+            apps/api/src/creator/creator.module.ts \
+            apps/api/src/creator/studio.controller.ts \
+            apps/api/src/creator/creator-tv-ad-break.hook.ts \
+            apps/api/src/creator/creator-tv.service.ts \
+            apps/api/src/search/search.service.ts \
+            apps/api/src/discovery/discovery.service.ts \
+            apps/api/src/admin/admin-video-metadata.controller.ts \
+            apps/api/src/admin/admin.module.ts \
+            apps/api/test/video-metadata-v2.integration.test.ts \
+            apps/web/src/lib/quick-upload.ts \
+            apps/web/src/lib/studio.ts \
+            apps/web/src/components/upload/video-metadata-fields.tsx \
+            apps/web/src/components/upload/quick-upload.tsx \
+            apps/web/src/components/studio/studio-content-manager.tsx \
+            docs/TASK51_VIDEO_METADATA_V2.md
+          pnpm db:generate
+          pnpm typecheck
+          pnpm --filter @ayin/api test -- video-metadata.validation.test.ts
+      - name: Commit implementation and remove temporary workflows
+        run: |
+          rm .github/workflows/task51-finalize.yml .github/workflows/task51-recover.yml .github/workflows/task51-recover2.yml .github/workflows/task51-recover3.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat(task-51): finalize creator video metadata v2"
+          git push origin HEAD:task-51-video-metadata-v2
