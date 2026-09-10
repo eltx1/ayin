@@ -1,0 +1,25 @@
+enum VideoCaptionTrackKind {
+  CAPTIONS
+  SUBTITLES
+}
+
+// Creator-managed timed-text metadata. Binary/text object ownership remains in
+// MediaAsset (kind=CAPTION); these scalar IDs are protected by SQL foreign keys
+// so the core Video/MediaAsset relation graph stays unchanged.
+model VideoCaptionTrack {
+  id                    String                @id @default(uuid()) @db.Uuid
+  videoId               String                @db.Uuid
+  mediaAssetId          String?               @unique @db.Uuid
+  pendingMediaAssetId   String?               @unique @db.Uuid
+  languageCode          String                @db.VarChar(35)
+  label                 String                @db.VarChar(80)
+  kind                  VideoCaptionTrackKind @default(SUBTITLES)
+  isDefault             Boolean               @default(false)
+  isEnabled             Boolean               @default(true)
+  pendingMakeDefault    Boolean               @default(false)
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([videoId, isEnabled])
+  @@index([videoId, languageCode])
+}
