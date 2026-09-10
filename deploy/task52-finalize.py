@@ -1,0 +1,422 @@
+from pathlib import Path
+
+
+def replace(path: str, old: str, new: str) -> None:
+    target = Path(path)
+    text = target.read_text()
+    if old not in text:
+        raise SystemExit(f"anchor missing: {path}: {old[:100]!r}")
+    target.write_text(text.replace(old, new, 1))
+
+
+replace(
+    "apps/api/src/media/media-storage.adapter.ts",
+    "  readObject(key: string, maxBytes: number): Promise<Uint8Array>;",
+    "  readObject?(key: string, maxBytes: number): Promise<Uint8Array>;",
+)
+
+service = Path("apps/api/src/creator/caption.service.ts")
+text = service.read_text()
+text = text.replace("  MediaStorageUnavailableError,\n", "", 1)
+text = text.replace(
+    "  type captionPatchSchema,\n  type captionReplacementSchema,\n  type captionUploadSchema,\n",
+    "  captionPatchSchema,\n  captionReplacementSchema,\n  captionUploadSchema,\n",
+    1,
+)
+text = text.replace(
+    "      const bytes = await this.storage.readObject(pending.r2ObjectKey, CAPTION_FILE_MAX_BYTES);",
+    """      if (!this.storage.readObject) {
+        throw new CaptionError(
+          \"CAPTION_STORAGE_UNAVAILABLE\",
+          \"Caption validation storage is unavailable.\",
+          503,
+        );
+      }
+      const bytes = await this.storage.readObject(pending.r2ObjectKey, CAPTION_FILE_MAX_BYTES);""",
+    1,
+)
+text = text.replace(
+    "      const nextEnabled = input.enabled ?? track.isEnabled;\n      const nextDefault = input.default ?? track.isDefault;",
+    "      const explicitlyDisable = input.enabled === false;\n      const nextDefault = explicitlyDisable ? false : (input.default ?? track.isDefault);\n      const nextEnabled = nextDefault ? true : (input.enabled ?? track.isEnabled);",
+    1,
+)
+text = text.replace(
+    "          isEnabled: nextDefault ? true : nextEnabled,\n          isDefault: nextEnabled === false ? false : nextDefault,",
+    "          isEnabled: nextEnabled,\n          isDefault: nextDefault,",
+    1,
+)
+text = text.replace(
+    "  private assertStorage() {\n    if (!this.storage.available) throw new MediaStorageUnavailableError();\n  }",
+    """  private assertStorage() {
+    if (!this.storage.available) {
+      throw new CaptionError(
+        \"CAPTION_STORAGE_UNAVAILABLE\",
+        \"Caption uploads are unavailable until media storage is configured.\",
+        503,
+      );
+    }
+  }""",
+    1,
+)
+service.write_text(text)
+
+watch = Path("apps/api/src/watch/watch.service.ts")
+text = watch.read_text()
+old = '''    const captions = video.mediaAssets
+      .filter(
+        (asset) =>
+          asset.kind === "CAPTION" &&
+          (asset.mimeType === "text/vtt" || asset.mimeType === "application/vtt"),
+      )
+      .map((asset, index) => ({
+        id: asset.id,
+        objectKey: asset.r2ObjectKey,
+        mimeType: asset.mimeType,
+        label: index === 0 ? "Captions" : `Captions ${index + 1}`,
+        language: "und",
+        default: index === 0,
+      }));
+'''
+new = '''    const [captionTracks, creatorMetadata] = await Promise.all([
+      this.database.client.videoCaptionTrack.findMany({
+        where: { videoId: video.id, isEnabled: true, mediaAssetId: { not: null } },
+        orderBy: [{ isDefault: "desc" }, { languageCode: "asc" }, { createdAt: "asc" }],
+      }),
+      this.database.client.videoCreatorMetadata.findUnique({
+        where: { videoId: video.id },
+        select: { chapters: true },
+      }),
+    ]);
+    const captionAssets = new Map(
+      video.mediaAssets.filter((asset) => asset.kind === "CAPTION").map((asset) => [asset.id, asset]),
+    );
+    const captions = captionTracks.flatMap((track) => {
+      if (!track.mediaAssetId) return [];
+      const asset = captionAssets.get(track.mediaAssetId);
+      if (!asset || asset.mimeType !== "text/vtt") return [];
+      return [
+        {
+          id: track.id,
+          objectKey: asset.r2ObjectKey,
+          mimeType: "text/vtt" as const,
+          label: track.label,
+          language: track.languageCode,
+          kind: track.kind,
+          default: track.isDefault,
+        },
+      ];
+    });
+    const playbackDurationMs = video.durationMs ?? source.durationMs;
+    const chapters = playableChapters(creatorMetadata?.chapters, playbackDurationMs);
+'''
+if old not in text:
+    raise SystemExit("watch caption block missing")
+text = text.replace(old, new, 1)
+text = text.replace(
+    "        durationMs: video.durationMs ?? source.durationMs,",
+    "        durationMs: playbackDurationMs,",
+    1,
+)
+text = text.replace("        chapters: [],", "        chapters,", 1)
+text += '''
+function playableChapters(value: unknown, durationMs: number | null) {
+  if (!Array.isArray(value)) return [];
+  const result: Array<{ id: string; title: string; startMs: number }> = [];
+  let previousStartMs = -1;
+  for (let index = 0; index < value.length; index += 1) {
+    const item = value[index];
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const title = typeof record.title === "string" ? record.title.trim() : "";
+    const startSeconds = record.startSeconds;
+    if (
+      !title ||
+      title.length > 100 ||
+      typeof startSeconds !== "number" ||
+      !Number.isInteger(startSeconds) ||
+      startSeconds < 0
+    ) {
+      continue;
+    }
+    const startMs = startSeconds * 1000;
+    if (startMs <= previousStartMs) continue;
+    if (durationMs && durationMs > 0 && startMs >= durationMs) continue;
+    result.push({ id: `chapter-${index}-${startMs}`, title, startMs });
+    previousStartMs = startMs;
+  }
+  return result;
+}
+'''
+watch.write_text(text)
+
+replace(
+    "apps/web/src/app/(viewer)/watch/[slug]/page.tsx",
+    '''            language: track.language,
+            default: track.default,''',
+    '''            language: track.language,
+            kind: track.kind,
+            default: track.default,''',
+)
+
+studio = Path("apps/web/src/components/studio/studio-content-manager.tsx")
+text = studio.read_text()
+anchor = '''import {
+  buildMetadataPayload,
+  metadataDraftFromApi,
+  type MetadataDraft,
+  VideoMetadataFields,
+} from "../upload/video-metadata-fields";
+'''
+if anchor not in text:
+    raise SystemExit("studio import anchor missing")
+text = text.replace(anchor, anchor + '\nimport { StudioCaptionManager } from "./studio-caption-manager";\n', 1)
+marker = '''              </details>
+
+              <div className={styles.toggleRow}>'''
+if marker not in text:
+    raise SystemExit("studio insertion anchor missing")
+text = text.replace(
+    marker,
+    '''              </details>
+
+              <StudioCaptionManager disabled={disabled} videoId={video.id} />
+
+              <div className={styles.toggleRow}>''',
+    1,
+)
+studio.write_text(text)
+
+player = Path("apps/web/src/components/player/ayin-player.tsx")
+text = player.read_text()
+text = text.replace(
+    '''  const lastAdActiveRef = useRef(adMode.active);
+
+  const [playing, setPlaying] = useState(false);''',
+    '''  const lastAdActiveRef = useRef(adMode.active);
+  const defaultCaptionId = useMemo(
+    () => captions.find((track) => track.default)?.id ?? null,
+    [captions],
+  );
+
+  const [playing, setPlaying] = useState(false);''',
+    1,
+)
+text = text.replace(
+    "  const [captionsEnabled, setCaptionsEnabled] = useState(captions.some((track) => track.default));",
+    "  const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(defaultCaptionId);",
+    1,
+)
+active_anchor = '''  const activeChapter = useMemo(() => {
+    const ordered = [...chapters].sort((a, b) => a.startMs - b.startMs);
+    return [...ordered].reverse().find((chapter) => chapter.startMs <= positionMs) ?? null;
+  }, [chapters, positionMs]);
+'''
+if active_anchor not in text:
+    raise SystemExit("player active chapter anchor missing")
+text = text.replace(
+    active_anchor,
+    active_anchor
+    + '''
+  useEffect(() => {
+    setSelectedCaptionId(defaultCaptionId);
+  }, [defaultCaptionId, videoId]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    for (let index = 0; index < video.textTracks.length; index += 1) {
+      const textTrack = video.textTracks[index];
+      const sourceTrack = captions[index];
+      if (textTrack) textTrack.mode = sourceTrack?.id === selectedCaptionId ? "showing" : "disabled";
+    }
+  }, [captions, selectedCaptionId, videoId]);
+''',
+    1,
+)
+old_toggle = '''  const toggleCaptions = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || video.textTracks.length === 0) return;
+    const next = !captionsEnabled;
+    for (let index = 0; index < video.textTracks.length; index += 1) {
+      const track = video.textTracks[index];
+      if (track) track.mode = next && index === 0 ? "showing" : "disabled";
+    }
+    setCaptionsEnabled(next);
+  }, [captionsEnabled]);
+'''
+new_toggle = '''  const toggleCaptions = useCallback(() => {
+    setSelectedCaptionId((current) =>
+      current ? null : (defaultCaptionId ?? captions[0]?.id ?? null),
+    );
+  }, [captions, defaultCaptionId]);
+'''
+if old_toggle not in text:
+    raise SystemExit("player caption toggle anchor missing")
+text = text.replace(old_toggle, new_toggle, 1)
+text = text.replace(
+    '''    } else if (key === "m") {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleMute();
+    } else if (key === "f") {''',
+    '''    } else if (key === "m") {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleMute();
+    } else if (key === "c" && captions.length > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleCaptions();
+    } else if (key === "f") {''',
+    1,
+)
+text = text.replace(
+    '''                default={track.default}
+                key={track.id}
+                kind="captions"''',
+    '''                default={track.id === defaultCaptionId}
+                key={track.id}
+                kind={track.kind === "CAPTIONS" ? "captions" : "subtitles"}''',
+    1,
+)
+scrubber = '''          <input
+            aria-label="Seek video"
+            className={styles.scrubber}
+            data-tv-focusable="true"
+            data-tv-focus-id={`player-seek-${videoId}`}
+            disabled={locked}
+            max={Math.max(durationMs, 1)}
+            min={0}
+            onChange={(event) => seekTo(Number(event.currentTarget.value))}
+            type="range"
+            value={Math.min(positionMs, Math.max(durationMs, 1))}
+          />'''
+scrubber_new = '''          <div className={styles.scrubberWrap}>
+            <input
+              aria-label="Seek video"
+              className={styles.scrubber}
+              data-tv-focusable="true"
+              data-tv-focus-id={`player-seek-${videoId}`}
+              disabled={locked}
+              max={Math.max(durationMs, 1)}
+              min={0}
+              onChange={(event) => seekTo(Number(event.currentTarget.value))}
+              type="range"
+              value={Math.min(positionMs, Math.max(durationMs, 1))}
+            />
+            {durationMs > 0 && chapters.length > 0 ? (
+              <div aria-label="Chapter markers" className={styles.chapterMarkers}>
+                {chapters.map((chapter) => (
+                  <button
+                    aria-label={`Chapter ${chapter.title}, ${formatTime(chapter.startMs)}`}
+                    className={styles.chapterMarker}
+                    disabled={locked}
+                    key={chapter.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      seekTo(chapter.startMs);
+                    }}
+                    style={{
+                      left: `${Math.min(100, Math.max(0, (chapter.startMs / durationMs) * 100))}%`,
+                    }}
+                    title={`${chapter.title} · ${formatTime(chapter.startMs)}`}
+                    type="button"
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>'''
+if scrubber not in text:
+    raise SystemExit("player scrubber anchor missing")
+text = text.replace(scrubber, scrubber_new, 1)
+cc = '''            {captions.length > 0 ? (
+              <button
+                aria-label={captionsEnabled ? "Turn captions off" : "Turn captions on"}
+                aria-pressed={captionsEnabled}
+                className={`${styles.iconButton} ${captionsEnabled ? styles.activeControl : ""}`}
+                data-tv-focusable="true"
+                data-tv-focus-id={`player-cc-${videoId}`}
+                onClick={toggleCaptions}
+                title="Captions"
+                type="button"
+              >
+                <span className={styles.ccGlyph}>CC</span>
+              </button>
+            ) : null}'''
+cc_new = '''            {captions.length > 0 ? (
+              <select
+                aria-label="Captions and subtitles"
+                className={styles.compactSelect}
+                data-tv-focusable="true"
+                data-tv-focus-id={`player-captions-${videoId}`}
+                disabled={locked}
+                onChange={(event) => setSelectedCaptionId(event.currentTarget.value || null)}
+                title="Captions and subtitles (C)"
+                value={selectedCaptionId ?? ""}
+              >
+                <option value="">Off</option>
+                {captions.map((track) => (
+                  <option key={track.id} value={track.id}>
+                    {track.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}'''
+if cc not in text:
+    raise SystemExit("player CC control anchor missing")
+text = text.replace(cc, cc_new, 1)
+player.write_text(text)
+
+css = Path("apps/web/src/components/player/ayin-player.module.css")
+text = css.read_text()
+anchor = '''.scrubber {
+  accent-color: var(--brand-magenta);
+  cursor: pointer;
+  height: 1rem;
+  margin: 0;
+  width: 100%;
+}
+'''
+marker_css = '''
+.scrubberWrap {
+  position: relative;
+}
+
+.chapterMarkers {
+  height: 1rem;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.chapterMarker {
+  background: #fff;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  height: 8px;
+  opacity: 0.76;
+  padding: 0;
+  pointer-events: auto;
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  width: 3px;
+}
+
+.chapterMarker:hover {
+  height: 12px;
+  opacity: 1;
+  top: 2px;
+}
+
+.chapterMarker:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+'''
+if anchor not in text:
+    raise SystemExit("player CSS scrubber anchor missing")
+css.write_text(text.replace(anchor, anchor + marker_css, 1))
