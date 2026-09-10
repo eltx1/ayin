@@ -42,6 +42,10 @@ export class DevelopmentMediaStorageAdapter implements MediaStorageAdapter {
     return this.unavailable();
   }
 
+  async readObject(): Promise<Uint8Array> {
+    return this.unavailable();
+  }
+
   async deleteObject(): Promise<void> {
     return this.unavailable();
   }
