@@ -3,17 +3,13 @@ import { randomUUID } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
-import {
-  MEDIA_STORAGE_ADAPTER,
-  type MediaStorageAdapter,
-  MediaStorageUnavailableError,
-} from "../media/media-storage.adapter.js";
+import { MEDIA_STORAGE_ADAPTER, type MediaStorageAdapter } from "../media/media-storage.adapter.js";
 import {
   CAPTION_FILE_MAX_BYTES,
   CAPTION_UPLOAD_MIME,
-  type captionPatchSchema,
-  type captionReplacementSchema,
-  type captionUploadSchema,
+  captionPatchSchema,
+  captionReplacementSchema,
+  captionUploadSchema,
   validateWebVtt,
   WebVttValidationError,
 } from "./caption.validation.js";
@@ -138,7 +134,9 @@ export class CaptionService {
     const track = await this.track(videoId, trackId);
     this.assertStorage();
     const oldPending = track.pendingMediaAssetId
-      ? await this.database.client.mediaAsset.findUnique({ where: { id: track.pendingMediaAssetId } })
+      ? await this.database.client.mediaAsset.findUnique({
+          where: { id: track.pendingMediaAssetId },
+        })
       : null;
     const assetId = randomUUID();
     const key = this.objectKey(videoId, assetId);
@@ -188,7 +186,11 @@ export class CaptionService {
     const video = await this.assertVideoEditor(accountId, videoId);
     const track = await this.track(videoId, trackId);
     if (!track.pendingMediaAssetId) {
-      throw new CaptionError("CAPTION_UPLOAD_NOT_PENDING", "This caption track has no upload waiting to be finalized.", 409);
+      throw new CaptionError(
+        "CAPTION_UPLOAD_NOT_PENDING",
+        "This caption track has no upload waiting to be finalized.",
+        409,
+      );
     }
     const pending = await this.database.client.mediaAsset.findFirst({
       where: {
@@ -200,7 +202,11 @@ export class CaptionService {
       },
     });
     if (!pending) {
-      throw new CaptionError("CAPTION_UPLOAD_NOT_FOUND", "The pending caption upload could not be found.", 404);
+      throw new CaptionError(
+        "CAPTION_UPLOAD_NOT_FOUND",
+        "The pending caption upload could not be found.",
+        404,
+      );
     }
     this.assertStorage();
 
@@ -212,10 +218,23 @@ export class CaptionService {
         metadata.sizeBytes > CAPTION_FILE_MAX_BYTES ||
         metadata.sizeBytes !== Number(pending.sizeBytes)
       ) {
-        throw new CaptionError("CAPTION_FILE_SIZE_INVALID", "Uploaded caption size does not match the prepared upload.");
+        throw new CaptionError(
+          "CAPTION_FILE_SIZE_INVALID",
+          "Uploaded caption size does not match the prepared upload.",
+        );
       }
       if (mime !== CAPTION_UPLOAD_MIME) {
-        throw new CaptionError("CAPTION_MIME_INVALID", "Uploaded caption must use the text/vtt MIME type.");
+        throw new CaptionError(
+          "CAPTION_MIME_INVALID",
+          "Uploaded caption must use the text/vtt MIME type.",
+        );
+      }
+      if (!this.storage.readObject) {
+        throw new CaptionError(
+          "CAPTION_STORAGE_UNAVAILABLE",
+          "Caption validation storage is unavailable.",
+          503,
+        );
       }
       const bytes = await this.storage.readObject(pending.r2ObjectKey, CAPTION_FILE_MAX_BYTES);
       const parsed = validateWebVtt(bytes, video.durationMs);
@@ -272,11 +291,16 @@ export class CaptionService {
     await this.assertVideoEditor(accountId, videoId);
     const track = await this.track(videoId, trackId);
     if (!track.mediaAssetId) {
-      throw new CaptionError("CAPTION_NOT_READY", "Finish uploading this caption track before changing it.", 409);
+      throw new CaptionError(
+        "CAPTION_NOT_READY",
+        "Finish uploading this caption track before changing it.",
+        409,
+      );
     }
     return this.database.client.$transaction(async (tx) => {
-      const nextEnabled = input.enabled ?? track.isEnabled;
-      const nextDefault = input.default ?? track.isDefault;
+      const explicitlyDisable = input.enabled === false;
+      const nextDefault = explicitlyDisable ? false : (input.default ?? track.isDefault);
+      const nextEnabled = nextDefault ? true : (input.enabled ?? track.isEnabled);
       if (nextDefault) {
         await tx.videoCaptionTrack.updateMany({
           where: { videoId, isDefault: true, id: { not: trackId } },
@@ -289,8 +313,8 @@ export class CaptionService {
           ...(input.languageCode !== undefined ? { languageCode: input.languageCode } : {}),
           ...(input.label !== undefined ? { label: input.label } : {}),
           ...(input.kind !== undefined ? { kind: input.kind } : {}),
-          isEnabled: nextDefault ? true : nextEnabled,
-          isDefault: nextEnabled === false ? false : nextDefault,
+          isEnabled: nextEnabled,
+          isDefault: nextDefault,
         },
       });
       return {
@@ -307,7 +331,9 @@ export class CaptionService {
   async remove(accountId: string, videoId: string, trackId: string) {
     await this.assertVideoEditor(accountId, videoId);
     const track = await this.track(videoId, trackId);
-    const ids = [track.mediaAssetId, track.pendingMediaAssetId].filter((id): id is string => Boolean(id));
+    const ids = [track.mediaAssetId, track.pendingMediaAssetId].filter((id): id is string =>
+      Boolean(id),
+    );
     const assets = ids.length
       ? await this.database.client.mediaAsset.findMany({ where: { id: { in: ids } } })
       : [];
@@ -320,7 +346,9 @@ export class CaptionService {
         });
       }
     });
-    await Promise.all(assets.map((asset) => this.storage.deleteObject(asset.r2ObjectKey).catch(() => undefined)));
+    await Promise.all(
+      assets.map((asset) => this.storage.deleteObject(asset.r2ObjectKey).catch(() => undefined)),
+    );
     return { removed: true, trackId };
   }
 
@@ -339,17 +367,32 @@ export class CaptionService {
       select: { id: true },
     });
     if (!membership) {
-      throw new CaptionError("VIDEO_EDITOR_REQUIRED", "You do not have permission to manage captions for this video.", 403);
+      throw new CaptionError(
+        "VIDEO_EDITOR_REQUIRED",
+        "You do not have permission to manage captions for this video.",
+        403,
+      );
     }
     if (video.status === "REMOVED") {
-      throw new CaptionError("VIDEO_REMOVED", "Captions cannot be changed on a removed video.", 409);
+      throw new CaptionError(
+        "VIDEO_REMOVED",
+        "Captions cannot be changed on a removed video.",
+        409,
+      );
     }
     return video;
   }
 
   private async track(videoId: string, trackId: string) {
-    const track = await this.database.client.videoCaptionTrack.findFirst({ where: { id: trackId, videoId } });
-    if (!track) throw new CaptionError("CAPTION_TRACK_NOT_FOUND", "This caption track could not be found.", 404);
+    const track = await this.database.client.videoCaptionTrack.findFirst({
+      where: { id: trackId, videoId },
+    });
+    if (!track)
+      throw new CaptionError(
+        "CAPTION_TRACK_NOT_FOUND",
+        "This caption track could not be found.",
+        404,
+      );
     return track;
   }
 
@@ -358,7 +401,13 @@ export class CaptionService {
   }
 
   private assertStorage() {
-    if (!this.storage.available) throw new MediaStorageUnavailableError();
+    if (!this.storage.available) {
+      throw new CaptionError(
+        "CAPTION_STORAGE_UNAVAILABLE",
+        "Caption uploads are unavailable until media storage is configured.",
+        503,
+      );
+    }
   }
 
   private async rejectPending(trackId: string, assetId: string, key: string) {

@@ -43,7 +43,7 @@ export interface MediaStorageAdapter {
   }): Promise<{ etag: string | null }>;
   abortMultipartUpload(input: { key: string; uploadId: string }): Promise<void>;
   headObject(key: string): Promise<StoredObjectMetadata>;
-  readObject(key: string, maxBytes: number): Promise<Uint8Array>;
+  readObject?(key: string, maxBytes: number): Promise<Uint8Array>;
   deleteObject(key: string): Promise<void>;
   deletePrefix(prefix: string): Promise<void>;
   listMultipartUploads(prefix: string): Promise<AbandonedMultipartUpload[]>;

@@ -18,6 +18,8 @@ import {
   VideoMetadataFields,
 } from "../upload/video-metadata-fields";
 
+import { StudioCaptionManager } from "./studio-caption-manager";
+
 type Draft = Pick<
   StudioVideo,
   "title" | "description" | "visibility" | "commentsEnabled" | "tvIncluded"
@@ -271,6 +273,8 @@ export function StudioContentManager() {
                   here.
                 </p>
               </details>
+
+              <StudioCaptionManager disabled={disabled} videoId={video.id} />
 
               <div className={styles.toggleRow}>
                 <label>
