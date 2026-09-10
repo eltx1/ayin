@@ -24,7 +24,6 @@ import { VideoMetadataError, VideoMetadataService } from "./video-metadata.servi
 import {
   VIDEO_DESCRIPTION_MAX_LENGTH,
   videoMetadataSchema,
-  type VideoMetadataInput,
 } from "./video-metadata.validation.js";
 
 const videoIdSchema = z.string().uuid();
