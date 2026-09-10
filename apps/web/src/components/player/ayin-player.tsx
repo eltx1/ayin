@@ -112,7 +112,12 @@ export function AyinPlayer({
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(initiallyMuted);
   const [rate, setRate] = useState(1);
-  const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(defaultCaptionId);
+  const [captionSelection, setCaptionSelection] = useState<{
+    videoId: string;
+    trackId: string | null;
+  }>({ videoId, trackId: defaultCaptionId });
+  const selectedCaptionId =
+    captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;
   const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
     null,
   );
@@ -128,10 +133,6 @@ export function AyinPlayer({
     const ordered = [...chapters].sort((a, b) => a.startMs - b.startMs);
     return [...ordered].reverse().find((chapter) => chapter.startMs <= positionMs) ?? null;
   }, [chapters, positionMs]);
-
-  useEffect(() => {
-    setSelectedCaptionId(defaultCaptionId);
-  }, [defaultCaptionId, videoId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -480,7 +481,7 @@ export function AyinPlayer({
     (trackId: string | null) => {
       const track = trackId ? captions.find((candidate) => candidate.id === trackId) : undefined;
       const nextId = track?.id ?? null;
-      setSelectedCaptionId(nextId);
+      setCaptionSelection({ videoId, trackId: nextId });
       analytics.emit({
         type: "caption_change",
         videoId,

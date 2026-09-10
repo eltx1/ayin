@@ -7,11 +7,13 @@ import { MEDIA_STORAGE_ADAPTER, type MediaStorageAdapter } from "../media/media-
 import {
   CAPTION_FILE_MAX_BYTES,
   CAPTION_UPLOAD_MIME,
+  validateWebVtt,
+  WebVttValidationError,
+} from "./caption.validation.js";
+import type {
   captionPatchSchema,
   captionReplacementSchema,
   captionUploadSchema,
-  validateWebVtt,
-  WebVttValidationError,
 } from "./caption.validation.js";
 import type { z } from "zod";
 
