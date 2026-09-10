@@ -19,54 +19,71 @@ jobs:
         with:
           ref: task-52-captions-chapters
 
-      - name: Apply deterministic lint fixes
+      - name: Apply line-safe lint fixes
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
           service = Path('apps/api/src/creator/caption.service.ts')
-          text = service.read_text()
-          type_names = '  captionPatchSchema,\n  captionReplacementSchema,\n  captionUploadSchema,\n'
-          if type_names not in text:
-              raise SystemExit('caption schema imports not found')
-          text = text.replace(type_names, '', 1)
-          anchor = '} from "./caption.validation.js";\nimport type { z } from "zod";'
-          replacement = '''} from "./caption.validation.js";
-          import type {
-            captionPatchSchema,
-            captionReplacementSchema,
-            captionUploadSchema,
-          } from "./caption.validation.js";
-          import type { z } from "zod";'''
-          if anchor not in text:
-              raise SystemExit('caption import anchor not found')
-          service.write_text(text.replace(anchor, replacement, 1))
+          lines = service.read_text().splitlines()
+          type_names = {'captionPatchSchema,', 'captionReplacementSchema,', 'captionUploadSchema,'}
+          kept = [line for line in lines if line.strip() not in type_names]
+          anchor_index = next(
+              (i for i, line in enumerate(kept) if line == '} from "./caption.validation.js";'),
+              None,
+          )
+          if anchor_index is None:
+              raise SystemExit('caption validation import anchor not found')
+          type_block = [
+              'import type {',
+              '  captionPatchSchema,',
+              '  captionReplacementSchema,',
+              '  captionUploadSchema,',
+              '} from "./caption.validation.js";',
+          ]
+          if not any(line == 'import type {' for line in kept[anchor_index + 1:anchor_index + 7]):
+              kept[anchor_index + 1:anchor_index + 1] = type_block
+          service.write_text('\n'.join(kept) + '\n')
 
           player = Path('apps/web/src/components/player/ayin-player.tsx')
-          text = player.read_text()
-          state = '  const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(defaultCaptionId);'
-          state_replacement = '''  const [captionSelection, setCaptionSelection] = useState<{
-            videoId: string;
-            trackId: string | null;
-          }>({ videoId, trackId: defaultCaptionId });
-          const selectedCaptionId =
-            captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;'''
-          if state not in text:
+          lines = player.read_text().splitlines()
+          state_index = next(
+              (i for i, line in enumerate(lines) if 'const [selectedCaptionId, setSelectedCaptionId]' in line),
+              None,
+          )
+          if state_index is None:
               raise SystemExit('caption state line not found')
-          text = text.replace(state, state_replacement, 1)
-          effect = '''  useEffect(() => {
-            setSelectedCaptionId(defaultCaptionId);
-          }, [defaultCaptionId, videoId]);
+          indent = lines[state_index][:len(lines[state_index]) - len(lines[state_index].lstrip())]
+          lines[state_index:state_index + 1] = [
+              f'{indent}const [captionSelection, setCaptionSelection] = useState<{{',
+              f'{indent}  videoId: string;',
+              f'{indent}  trackId: string | null;',
+              f'{indent}}}>({{ videoId, trackId: defaultCaptionId }});',
+              f'{indent}const selectedCaptionId =',
+              f'{indent}  captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;',
+          ]
 
-          '''
-          if effect not in text:
+          reset_index = next(
+              (i for i, line in enumerate(lines) if 'setSelectedCaptionId(defaultCaptionId);' in line),
+              None,
+          )
+          if reset_index is None or reset_index < 1 or reset_index + 1 >= len(lines):
               raise SystemExit('caption reset effect not found')
-          text = text.replace(effect, '', 1)
-          setter = '      setSelectedCaptionId(nextId);'
-          if setter not in text:
+          start = reset_index - 1
+          end = reset_index + 2
+          if end < len(lines) and lines[end].strip() == '':
+              end += 1
+          del lines[start:end]
+
+          setter_index = next(
+              (i for i, line in enumerate(lines) if 'setSelectedCaptionId(nextId);' in line),
+              None,
+          )
+          if setter_index is None:
               raise SystemExit('caption selection setter not found')
-          text = text.replace(setter, '      setCaptionSelection({ videoId, trackId: nextId });', 1)
-          player.write_text(text)
+          setter_indent = lines[setter_index][:len(lines[setter_index]) - len(lines[setter_index].lstrip())]
+          lines[setter_index] = f'{setter_indent}setCaptionSelection({{ videoId, trackId: nextId }});'
+          player.write_text('\n'.join(lines) + '\n')
           PY
 
       - name: Set up Node
