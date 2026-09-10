@@ -20,14 +20,18 @@ describe("video metadata validation", () => {
 
   it("enforces tag count and length", () => {
     expect(
-      videoMetadataSchema.safeParse({ tags: Array.from({ length: VIDEO_TAG_MAX_COUNT + 1 }, (_, i) => `t${i}`) }).success,
+      videoMetadataSchema.safeParse({
+        tags: Array.from({ length: VIDEO_TAG_MAX_COUNT + 1 }, (_, i) => `t${i}`),
+      }).success,
     ).toBe(false);
     expect(videoMetadataSchema.safeParse({ tags: ["x".repeat(41)] }).success).toBe(false);
   });
 
   it("accepts canonical BCP 47 language codes and rejects invalid ones", () => {
     expect(videoMetadataSchema.parse({ primaryLanguage: "ar-eg" }).primaryLanguage).toBe("ar-EG");
-    expect(videoMetadataSchema.safeParse({ primaryLanguage: "not_a_language" }).success).toBe(false);
+    expect(videoMetadataSchema.safeParse({ primaryLanguage: "not_a_language" }).success).toBe(
+      false,
+    );
   });
 
   it("requires ordered chapters and keeps them inside the known duration", () => {
@@ -50,10 +54,12 @@ describe("video metadata validation", () => {
 
   it("validates geo availability and custom ad-break preferences", () => {
     expect(
-      videoMetadataSchema.safeParse({ geoAvailabilityMode: "INCLUDE_ONLY", geoCountries: [] }).success,
+      videoMetadataSchema.safeParse({ geoAvailabilityMode: "INCLUDE_ONLY", geoCountries: [] })
+        .success,
     ).toBe(false);
     expect(
-      videoMetadataSchema.safeParse({ geoAvailabilityMode: "WORLDWIDE", geoCountries: ["EG"] }).success,
+      videoMetadataSchema.safeParse({ geoAvailabilityMode: "WORLDWIDE", geoCountries: ["EG"] })
+        .success,
     ).toBe(false);
     expect(videoMetadataSchema.safeParse({ adBreakPreference: "CUSTOM" }).success).toBe(false);
     const parsed = videoMetadataSchema.parse({

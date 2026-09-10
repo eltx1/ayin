@@ -700,17 +700,40 @@ export class CreatorTvService {
     generatedAt: Date,
     programs: TvProgram[],
   ) {
-    return this.adBreakHook.getBreaks({
-      tvChannelId,
-      channelId,
-      generatedAt,
-      programs: programs.map((program) => ({
+    if (!programs.length) return [];
+    const preferences = await this.database.client.videoCreatorMetadata.findMany({
+      where: { videoId: { in: [...new Set(programs.map((program) => program.video.id))] } },
+      select: { videoId: true, adBreakPreference: true, adBreakOffsetsSeconds: true },
+    });
+    const preferenceByVideo = new Map(
+      preferences.map((preference) => [preference.videoId, preference]),
+    );
+    const disabledOccurrences = new Set<string>();
+    const hookPrograms = programs.map((program) => {
+      const preference = preferenceByVideo.get(program.video.id);
+      if (preference?.adBreakPreference === "DISABLED") {
+        disabledOccurrences.add(program.occurrenceKey);
+      }
+      return {
         occurrenceKey: program.occurrenceKey,
         videoId: program.video.id,
         startsAt: new Date(program.startsAtMs),
         endsAt: new Date(program.endsAtMs),
-      })),
+        creatorPreference: preference?.adBreakPreference
+          ? {
+              mode: preference.adBreakPreference,
+              offsetsSeconds: preference.adBreakOffsetsSeconds,
+            }
+          : null,
+      };
     });
+    const breaks = await this.adBreakHook.getBreaks({
+      tvChannelId,
+      channelId,
+      generatedAt,
+      programs: hookPrograms,
+    });
+    return breaks.filter((marker) => !disabledOccurrences.has(marker.occurrenceKey));
   }
 
   private async getTvForActor(actor: CreatorTvEditActor, tvChannelId: string) {

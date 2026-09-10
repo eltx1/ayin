@@ -34,22 +34,22 @@ enum VideoAdBreakPreference {
 // contentType remains owned by Video and rights remain owned by
 // ContentRightsDeclaration; this model intentionally does not duplicate them.
 model VideoCreatorMetadata {
-  videoId             String                   @id @db.Uuid
-  tags                String[]                 @default([])
-  category            VideoCategory?
-  primaryLanguage     String?                  @db.VarChar(35)
-  recordingDate       DateTime?                @db.Date
-  seriesTitle         String?                  @db.VarChar(120)
-  seasonNumber        Int?
-  episodeNumber       Int?
-  maturityLevel       VideoMaturityLevel?
-  geoAvailabilityMode VideoGeoAvailabilityMode?
-  geoCountries        String[]                 @default([])
-  chapters            Json?                    @db.JsonB
-  adBreakPreference   VideoAdBreakPreference?
-  adBreakOffsetsSeconds Int[]                  @default([])
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  videoId               String                    @id @db.Uuid
+  tags                  String[]                  @default([])
+  category              VideoCategory?
+  primaryLanguage       String?                   @db.VarChar(35)
+  recordingDate         DateTime?                 @db.Date
+  seriesTitle           String?                   @db.VarChar(120)
+  seasonNumber          Int?
+  episodeNumber         Int?
+  maturityLevel         VideoMaturityLevel?
+  geoAvailabilityMode   VideoGeoAvailabilityMode?
+  geoCountries          String[]                  @default([])
+  chapters              Json?                     @db.JsonB
+  adBreakPreference     VideoAdBreakPreference?
+  adBreakOffsetsSeconds Int[]                     @default([])
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
 
   // The SQL migration enforces the FK to Video with ON DELETE CASCADE. Keeping
   // this extension unidirectional avoids changing the core Video relation graph.

@@ -103,11 +103,21 @@ export class QuickUploadController {
   ) {
     const parsed = detailsSchema.safeParse(body);
     const metadata = videoMetadataSchema.safeParse(body);
-    if (!parsed.success || !metadata.success) {
-      const message = metadata.success
-        ? (parsed.error.issues[0]?.message ?? "Check the video details and try again.")
-        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");
-      throw this.httpError(new QuickUploadError("INVALID_VIDEO_DETAILS", message));
+    if (!parsed.success) {
+      throw this.httpError(
+        new QuickUploadError(
+          "INVALID_VIDEO_DETAILS",
+          parsed.error.issues[0]?.message ?? "Check the video details and try again.",
+        ),
+      );
+    }
+    if (!metadata.success) {
+      throw this.httpError(
+        new QuickUploadError(
+          "INVALID_VIDEO_DETAILS",
+          metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.",
+        ),
+      );
     }
     const videoId = this.videoId(videoIdRaw);
     return this.run(async () => {
@@ -133,11 +143,21 @@ export class QuickUploadController {
   ) {
     const parsed = publishSchema.safeParse(body);
     const metadata = videoMetadataSchema.safeParse(body);
-    if (!parsed.success || !metadata.success) {
-      const message = metadata.success
-        ? (parsed.error.issues[0]?.message ?? "Check the publish details and try again.")
-        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");
-      throw this.httpError(new QuickUploadError("INVALID_PUBLISH_REQUEST", message));
+    if (!parsed.success) {
+      throw this.httpError(
+        new QuickUploadError(
+          "INVALID_PUBLISH_REQUEST",
+          parsed.error.issues[0]?.message ?? "Check the publish details and try again.",
+        ),
+      );
+    }
+    if (!metadata.success) {
+      throw this.httpError(
+        new QuickUploadError(
+          "INVALID_PUBLISH_REQUEST",
+          metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.",
+        ),
+      );
     }
     const videoId = this.videoId(videoIdRaw);
     const { rightsConfirmed, ...details } = parsed.data;

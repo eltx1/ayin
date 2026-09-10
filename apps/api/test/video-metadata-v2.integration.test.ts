@@ -89,7 +89,11 @@ databaseDescribe("video metadata v2", () => {
     return { cookie: cookiePair(response.headers["set-cookie"]), user: response.json().user };
   }
 
-  async function createDraft(cookie: string, channelId: string, title: string): Promise<DraftPayload> {
+  async function createDraft(
+    cookie: string,
+    channelId: string,
+    title: string,
+  ): Promise<DraftPayload> {
     const response = await app.inject({
       method: "POST",
       url: "/creator/videos/drafts",
@@ -244,7 +248,8 @@ databaseDescribe("video metadata v2", () => {
       orderBy: { version: "desc" },
     });
     expect(rights.basis).toBe("LICENSED");
-    expect(rights.statement).toBe("Licensed for AYIN distribution.");
+    expect(rights.statement).toContain("I confirm that I own or have the rights");
+    expect(rights.statement).toContain("Creator note: Licensed for AYIN distribution.");
   });
 
   it("rejects invalid chapter timing and cross-account edits", async () => {

@@ -17,10 +17,7 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { StudioError, StudioService } from "./studio.service.js";
 import { VideoMetadataError, VideoMetadataService } from "./video-metadata.service.js";
-import {
-  VIDEO_DESCRIPTION_MAX_LENGTH,
-  videoMetadataSchema,
-} from "./video-metadata.validation.js";
+import { VIDEO_DESCRIPTION_MAX_LENGTH, videoMetadataSchema } from "./video-metadata.validation.js";
 
 const uuidSchema = z.string().uuid();
 const contentQuerySchema = z.object({
@@ -82,11 +79,21 @@ export class StudioController {
     const videoId = this.videoId(videoIdRaw);
     const parsed = videoPatchSchema.safeParse(body);
     const metadata = videoMetadataSchema.safeParse(body);
-    if (!parsed.success || !metadata.success) {
-      const message = metadata.success
-        ? (parsed.error.issues[0]?.message ?? "Check the video changes and try again.")
-        : (metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.");
-      throw this.httpError(new StudioError("INVALID_VIDEO_UPDATE", message));
+    if (!parsed.success) {
+      throw this.httpError(
+        new StudioError(
+          "INVALID_VIDEO_UPDATE",
+          parsed.error.issues[0]?.message ?? "Check the video changes and try again.",
+        ),
+      );
+    }
+    if (!metadata.success) {
+      throw this.httpError(
+        new StudioError(
+          "INVALID_VIDEO_UPDATE",
+          metadata.error.issues[0]?.message ?? "Check the advanced metadata and try again.",
+        ),
+      );
     }
     return this.run(async () => {
       const video = await this.studio.updateVideo(request.ayinAuth.accountId, videoId, parsed.data);

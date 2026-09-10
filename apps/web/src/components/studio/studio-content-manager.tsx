@@ -266,8 +266,9 @@ export function StudioContentManager() {
                   />
                 </div>
                 <p className={styles.muted}>
-                  Rights basis: {video.metadata?.rightsBasis ?? "standard publish declaration"}. Rights
-                  records remain managed by AYIN&apos;s rights domain rather than duplicated here.
+                  Rights basis: {video.metadata?.rightsBasis ?? "standard publish declaration"}.
+                  Rights records remain managed by AYIN&apos;s rights domain rather than duplicated
+                  here.
                 </p>
               </details>
 

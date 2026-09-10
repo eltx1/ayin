@@ -9,13 +9,15 @@ export type StudioVideo = {
   visibility: "PUBLIC" | "UNLISTED" | "PRIVATE";
   commentsEnabled: boolean;
   tvIncluded: boolean;
-  metadata: (QuickVideoMetadata & {
-    contentType: "CREATOR_VIDEO" | "MOVIE" | "DOCUMENTARY";
-    tags: string[];
-    geoCountries: string[];
-    chapters: unknown[];
-    adBreakOffsetsSeconds: number[];
-  }) | null;
+  metadata:
+    | (QuickVideoMetadata & {
+        contentType: "CREATOR_VIDEO" | "MOVIE" | "DOCUMENTARY";
+        tags: string[];
+        geoCountries: string[];
+        chapters: unknown[];
+        adBreakOffsetsSeconds: number[];
+      })
+    | null;
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;

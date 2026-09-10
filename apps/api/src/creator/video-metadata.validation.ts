@@ -91,7 +91,10 @@ export const videoMetadataSchema = z
       .optional(),
   })
   .superRefine((value, context) => {
-    if (value.recordingDate && new Date(`${value.recordingDate}T00:00:00.000Z`).getTime() > Date.now()) {
+    if (
+      value.recordingDate &&
+      new Date(`${value.recordingDate}T00:00:00.000Z`).getTime() > Date.now()
+    ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["recordingDate"],
@@ -133,12 +136,7 @@ export const videoMetadataSchema = z
         message: "Add at least one offset for custom ad breaks.",
       });
     }
-    if (
-      value.adBreakPreference !== undefined &&
-      value.adBreakPreference !== null &&
-      value.adBreakPreference !== "CUSTOM" &&
-      (value.adBreakOffsetsSeconds?.length ?? 0) > 0
-    ) {
+    if (value.adBreakPreference !== "CUSTOM" && (value.adBreakOffsetsSeconds?.length ?? 0) > 0) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["adBreakOffsetsSeconds"],
@@ -149,7 +147,10 @@ export const videoMetadataSchema = z
 
 export type VideoMetadataInput = z.infer<typeof videoMetadataSchema>;
 
-export function validateMetadataDuration(input: VideoMetadataInput, durationMs: number | null): void {
+export function validateMetadataDuration(
+  input: VideoMetadataInput,
+  durationMs: number | null,
+): void {
   if (!durationMs || durationMs <= 0) return;
   const durationSeconds = durationMs / 1000;
   if (input.chapters?.some((chapter) => chapter.startSeconds >= durationSeconds)) {
@@ -166,7 +167,11 @@ export function metadataData(input: VideoMetadataInput) {
     ...(input.category !== undefined ? { category: input.category } : {}),
     ...(input.primaryLanguage !== undefined ? { primaryLanguage: input.primaryLanguage } : {}),
     ...(input.recordingDate !== undefined
-      ? { recordingDate: input.recordingDate ? new Date(`${input.recordingDate}T00:00:00.000Z`) : null }
+      ? {
+          recordingDate: input.recordingDate
+            ? new Date(`${input.recordingDate}T00:00:00.000Z`)
+            : null,
+        }
       : {}),
     ...(input.seriesTitle !== undefined ? { seriesTitle: input.seriesTitle } : {}),
     ...(input.seasonNumber !== undefined ? { seasonNumber: input.seasonNumber } : {}),

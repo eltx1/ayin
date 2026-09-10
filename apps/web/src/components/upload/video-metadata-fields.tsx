@@ -45,13 +45,16 @@ export const EMPTY_METADATA_DRAFT: MetadataDraft = {
   adBreakOffsets: "",
 };
 
-export function metadataDraftFromApi(metadata: Record<string, unknown> | null | undefined): MetadataDraft {
+export function metadataDraftFromApi(
+  metadata: Record<string, unknown> | null | undefined,
+): MetadataDraft {
   if (!metadata) return { ...EMPTY_METADATA_DRAFT };
   const chapters = Array.isArray(metadata.chapters)
     ? metadata.chapters
         .flatMap((chapter) => {
           if (!chapter || typeof chapter !== "object") return [];
-          const title = "title" in chapter && typeof chapter.title === "string" ? chapter.title : "";
+          const title =
+            "title" in chapter && typeof chapter.title === "string" ? chapter.title : "";
           const startSeconds =
             "startSeconds" in chapter && typeof chapter.startSeconds === "number"
               ? chapter.startSeconds
@@ -61,26 +64,38 @@ export function metadataDraftFromApi(metadata: Record<string, unknown> | null | 
         .join("\n")
     : "";
   return {
-    tags: Array.isArray(metadata.tags) ? metadata.tags.filter((value): value is string => typeof value === "string").join(", ") : "",
+    tags: Array.isArray(metadata.tags)
+      ? metadata.tags.filter((value): value is string => typeof value === "string").join(", ")
+      : "",
     category: stringValue(metadata.category) as MetadataDraft["category"],
     primaryLanguage: stringValue(metadata.primaryLanguage),
     recordingDate: stringValue(metadata.recordingDate),
     contentType:
-      metadata.contentType === "CREATOR_VIDEO" ? "" : (stringValue(metadata.contentType) as MetadataDraft["contentType"]),
+      metadata.contentType === "CREATOR_VIDEO"
+        ? ""
+        : (stringValue(metadata.contentType) as MetadataDraft["contentType"]),
     rightsBasis: stringValue(metadata.rightsBasis) as MetadataDraft["rightsBasis"],
     rightsNote: stringValue(metadata.rightsNote),
     seriesTitle: stringValue(metadata.seriesTitle),
     seasonNumber: numberText(metadata.seasonNumber),
     episodeNumber: numberText(metadata.episodeNumber),
     maturityLevel: stringValue(metadata.maturityLevel) as MetadataDraft["maturityLevel"],
-    geoAvailabilityMode: stringValue(metadata.geoAvailabilityMode) as MetadataDraft["geoAvailabilityMode"],
+    geoAvailabilityMode: stringValue(
+      metadata.geoAvailabilityMode,
+    ) as MetadataDraft["geoAvailabilityMode"],
     geoCountries: Array.isArray(metadata.geoCountries)
-      ? metadata.geoCountries.filter((value): value is string => typeof value === "string").join(", ")
+      ? metadata.geoCountries
+          .filter((value): value is string => typeof value === "string")
+          .join(", ")
       : "",
     chapters,
-    adBreakPreference: stringValue(metadata.adBreakPreference) as MetadataDraft["adBreakPreference"],
+    adBreakPreference: stringValue(
+      metadata.adBreakPreference,
+    ) as MetadataDraft["adBreakPreference"],
     adBreakOffsets: Array.isArray(metadata.adBreakOffsetsSeconds)
-      ? metadata.adBreakOffsetsSeconds.filter((value): value is number => typeof value === "number").join(", ")
+      ? metadata.adBreakOffsetsSeconds
+          .filter((value): value is number => typeof value === "number")
+          .join(", ")
       : "",
   };
 }
@@ -109,10 +124,10 @@ export function buildMetadataPayload(
   }
   if (draft.seriesTitle.trim()) result.seriesTitle = draft.seriesTitle.trim();
   else if (includeEmpty) result.seriesTitle = null;
-  result.seasonNumber = optionalInteger(draft.seasonNumber, "Season number", includeEmpty);
-  result.episodeNumber = optionalInteger(draft.episodeNumber, "Episode number", includeEmpty);
-  if (result.seasonNumber === undefined) delete result.seasonNumber;
-  if (result.episodeNumber === undefined) delete result.episodeNumber;
+  const seasonNumber = optionalInteger(draft.seasonNumber, "Season number", includeEmpty);
+  const episodeNumber = optionalInteger(draft.episodeNumber, "Episode number", includeEmpty);
+  if (seasonNumber !== undefined) result.seasonNumber = seasonNumber;
+  if (episodeNumber !== undefined) result.episodeNumber = episodeNumber;
   if (draft.maturityLevel) result.maturityLevel = draft.maturityLevel;
   else if (includeEmpty) result.maturityLevel = null;
   if (draft.geoAvailabilityMode) result.geoAvailabilityMode = draft.geoAvailabilityMode;
@@ -123,7 +138,8 @@ export function buildMetadataPayload(
   else if (includeEmpty) result.chapters = [];
   if (draft.adBreakPreference) result.adBreakPreference = draft.adBreakPreference;
   else if (includeEmpty) result.adBreakPreference = null;
-  if (draft.adBreakOffsets.trim()) result.adBreakOffsetsSeconds = parseOffsets(draft.adBreakOffsets);
+  if (draft.adBreakOffsets.trim())
+    result.adBreakOffsetsSeconds = parseOffsets(draft.adBreakOffsets);
   else if (includeEmpty) result.adBreakOffsetsSeconds = [];
   return result;
 }
@@ -137,7 +153,7 @@ export function VideoMetadataFields({
 }: {
   value: MetadataDraft;
   onChange: (next: MetadataDraft) => void;
-  fullWidthClassName?: string;
+  fullWidthClassName?: string | undefined;
   disabled?: boolean;
   showRights?: boolean;
 }) {
@@ -205,7 +221,9 @@ export function VideoMetadataFields({
         <select
           disabled={disabled}
           value={value.contentType}
-          onChange={(event) => set("contentType", event.target.value as MetadataDraft["contentType"])}
+          onChange={(event) =>
+            set("contentType", event.target.value as MetadataDraft["contentType"])
+          }
         >
           <option value="">Creator video (default)</option>
           <option value="MOVIE">Movie</option>
@@ -220,7 +238,9 @@ export function VideoMetadataFields({
             <select
               disabled={disabled}
               value={value.rightsBasis}
-              onChange={(event) => set("rightsBasis", event.target.value as MetadataDraft["rightsBasis"])}
+              onChange={(event) =>
+                set("rightsBasis", event.target.value as MetadataDraft["rightsBasis"])
+              }
             >
               <option value="">Standard authorization</option>
               <option value="OWNED">I own it</option>
@@ -283,7 +303,9 @@ export function VideoMetadataFields({
         <select
           disabled={disabled}
           value={value.maturityLevel}
-          onChange={(event) => set("maturityLevel", event.target.value as MetadataDraft["maturityLevel"])}
+          onChange={(event) =>
+            set("maturityLevel", event.target.value as MetadataDraft["maturityLevel"])
+          }
         >
           <option value="">Not set</option>
           <option value="GENERAL">General</option>
@@ -316,7 +338,9 @@ export function VideoMetadataFields({
           placeholder="EG, US, GB"
           onChange={(event) => set("geoCountries", event.target.value)}
         />
-        <small>This is a catalog policy hook; enforcement remains owned by AYIN availability policy.</small>
+        <small>
+          This is a catalog policy hook; enforcement remains owned by AYIN availability policy.
+        </small>
       </label>
 
       <label className={fullWidthClassName}>
@@ -368,10 +392,15 @@ function splitList(value: string): string[] {
     .filter(Boolean);
 }
 
-function optionalInteger(value: string, label: string, includeEmpty: boolean): number | null | undefined {
+function optionalInteger(
+  value: string,
+  label: string,
+  includeEmpty: boolean,
+): number | null | undefined {
   if (!value.trim()) return includeEmpty ? null : undefined;
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error(`${label} must be a positive whole number.`);
+  if (!Number.isSafeInteger(parsed) || parsed < 1)
+    throw new Error(`${label} must be a positive whole number.`);
   return parsed;
 }
 
@@ -390,7 +419,8 @@ function parseChapterLines(value: string): Array<{ title: string; startSeconds: 
     .filter(Boolean)
     .map((line, index) => {
       const match = /^(\d{1,2}:)?\d{1,2}:\d{2}\s+(.+)$/.exec(line);
-      if (!match) throw new Error(`Chapter line ${index + 1} must use MM:SS Title or HH:MM:SS Title.`);
+      if (!match)
+        throw new Error(`Chapter line ${index + 1} must use MM:SS Title or HH:MM:SS Title.`);
       const firstSpace = line.indexOf(" ");
       const timestamp = line.slice(0, firstSpace);
       const title = line.slice(firstSpace + 1).trim();

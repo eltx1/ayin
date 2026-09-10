@@ -27,6 +27,11 @@ import {
   type VideoInspectionResult,
 } from "@/lib/video-inspection";
 
+import {
+  buildMetadataPayload,
+  EMPTY_METADATA_DRAFT,
+  VideoMetadataFields,
+} from "./video-metadata-fields";
 import styles from "./quick-upload.module.css";
 
 type Visibility = "PUBLIC" | "UNLISTED" | "PRIVATE";
@@ -43,6 +48,7 @@ export function QuickUpload() {
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const [videoForm, setVideoForm] = useState<VideoForm>("LONG_FORM");
   const [scheduledPublishAt, setScheduledPublishAt] = useState("");
+  const [metadataDraft, setMetadataDraft] = useState(() => ({ ...EMPTY_METADATA_DRAFT }));
   const [progress, setProgress] = useState(0);
   const [uploadComplete, setUploadComplete] = useState(false);
   const [processingReady, setProcessingReady] = useState(false);
@@ -96,6 +102,7 @@ export function QuickUpload() {
     setProcessingReady(false);
     setProcessingLabel(null);
     setPublished(false);
+    setMetadataDraft({ ...EMPTY_METADATA_DRAFT });
     setMessage(null);
     if (!selected || !identity) return;
 
@@ -303,6 +310,7 @@ export function QuickUpload() {
       commentsEnabled,
       scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt).toISOString() : null,
       videoForm,
+      ...buildMetadataPayload(metadataDraft),
     };
   }
 
@@ -530,8 +538,10 @@ export function QuickUpload() {
             <details className={styles.advanced}>
               <summary>
                 <span>
-                  <strong>Publishing settings</strong>
-                  <small>Description, visibility, schedule, comments and thumbnail</small>
+                  <strong>Advanced settings</strong>
+                  <small>
+                    Optional metadata, publishing controls and thumbnail · SEO stays automatic
+                  </small>
                 </span>
                 <span className={styles.summaryChevron} aria-hidden="true">
                   ⌄
@@ -542,12 +552,19 @@ export function QuickUpload() {
                   <span>Description</span>
                   <textarea
                     rows={5}
+                    maxLength={20_000}
                     value={description}
                     placeholder="Tell viewers what this video is about"
                     onBlur={() => void saveDetails()}
                     onChange={(event) => setDescription(event.target.value)}
                   />
                 </label>
+
+                <VideoMetadataFields
+                  fullWidthClassName={styles.fullWidth}
+                  value={metadataDraft}
+                  onChange={setMetadataDraft}
+                />
 
                 <label>
                   <span>Visibility</span>

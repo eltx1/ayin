@@ -2,6 +2,7 @@ import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { VIDEO_CATEGORIES } from "../creator/video-metadata.validation.js";
 
 const maxPageSize = 24;
 const publicVideoWhere = {
@@ -51,6 +52,20 @@ export class SearchService {
     const offset = decodeCursor(cursor);
     const limit = Math.min(Math.max(requestedLimit, 1), maxPageSize);
     const takePerType = Math.min(offset + limit + 1, maxPageSize * 3);
+    const normalizedTag = normalized.toLocaleLowerCase();
+    const categoryToken = normalized
+      .trim()
+      .toUpperCase()
+      .replace(/[\s&-]+/g, "_");
+    const category = VIDEO_CATEGORIES.find((value) => value === categoryToken);
+    const metadataMatches = await this.database.client.videoCreatorMetadata.findMany({
+      where: {
+        OR: [{ tags: { has: normalizedTag } }, ...(category ? [{ category }] : [])],
+      },
+      take: takePerType,
+      select: { videoId: true },
+    });
+    const metadataVideoIds = metadataMatches.map((item) => item.videoId);
 
     const [videos, channels, playlists, televisions] = await Promise.all([
       this.database.client.video.findMany({
@@ -63,6 +78,7 @@ export class SearchService {
                 { description: { contains: normalized, mode: "insensitive" } },
                 { channel: { name: { contains: normalized, mode: "insensitive" } } },
                 { channel: { handle: { contains: normalized, mode: "insensitive" } } },
+                { id: { in: metadataVideoIds } },
               ],
             },
           ],

@@ -1,3 +1,4 @@
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -82,7 +83,7 @@ export class VideoMetadataService {
       data: {
         ...(input.rightsBasis !== undefined ? { basis: input.rightsBasis } : {}),
         ...(input.rightsNote !== undefined
-          ? { statement: withCreatorRightsNote(declaration.statement, input.rightsNote) }
+          ? { statement: withCreatorRightsNote(declaration.statement ?? "", input.rightsNote) }
           : {}),
       },
     });
@@ -140,7 +141,8 @@ export class VideoMetadataService {
     const metadataByVideo = new Map(metadata.map((item) => [item.videoId, item]));
     const rightsByVideo = new Map<string, (typeof rights)[number]>();
     for (const declaration of rights) {
-      if (!rightsByVideo.has(declaration.videoId)) rightsByVideo.set(declaration.videoId, declaration);
+      if (!rightsByVideo.has(declaration.videoId))
+        rightsByVideo.set(declaration.videoId, declaration);
     }
     return new Map(
       videos.map((video) => {
@@ -200,10 +202,17 @@ export class VideoMetadataService {
       }
       if (hasCompanionMetadata(input)) {
         const data = metadataData(input);
+        const { chapters, ...scalarData } = data;
+        const prismaData = {
+          ...scalarData,
+          ...(chapters !== undefined
+            ? { chapters: chapters === null ? Prisma.JsonNull : chapters }
+            : {}),
+        };
         await tx.videoCreatorMetadata.upsert({
           where: { videoId },
-          create: { videoId, ...data },
-          update: data,
+          create: { videoId, ...prismaData },
+          update: prismaData,
         });
       }
     });
