@@ -3,6 +3,7 @@ export interface AyinCaptionTrack {
   src: string;
   label: string;
   language: string;
+  kind: "CAPTIONS" | "SUBTITLES";
   default?: boolean | undefined;
 }
 
@@ -91,6 +92,7 @@ export interface PublicPlaybackResponse {
       mimeType: string;
       label: string;
       language: string;
+      kind: "CAPTIONS" | "SUBTITLES";
       default: boolean;
     }>;
     chapters: AyinPlayerChapter[];
