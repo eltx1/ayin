@@ -19,12 +19,13 @@ jobs:
         with:
           ref: task-52-captions-chapters
 
-      - name: Fix type-only schema imports
+      - name: Apply lint fixes
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('apps/api/src/creator/caption.service.ts')
-          text = path.read_text()
+
+          service = Path('apps/api/src/creator/caption.service.ts')
+          text = service.read_text()
           old = '''import {
             CAPTION_FILE_MAX_BYTES,
             CAPTION_UPLOAD_MIME,
@@ -50,8 +51,42 @@ jobs:
           import type { z } from "zod";
           '''
           if old not in text:
-              raise SystemExit('expected import block not found')
-          path.write_text(text.replace(old, new, 1))
+              raise SystemExit('expected caption import block not found')
+          service.write_text(text.replace(old, new, 1))
+
+          player = Path('apps/web/src/components/player/ayin-player.tsx')
+          text = player.read_text()
+          old = '''  const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(defaultCaptionId);
+          const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
+          '''
+          new = '''  const [captionSelection, setCaptionSelection] = useState<{
+            videoId: string;
+            trackId: string | null;
+          }>({ videoId, trackId: defaultCaptionId });
+          const selectedCaptionId =
+            captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;
+          const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
+          '''
+          if old not in text:
+              raise SystemExit('expected caption state block not found')
+          text = text.replace(old, new, 1)
+          old = '''  useEffect(() => {
+            setSelectedCaptionId(defaultCaptionId);
+          }, [defaultCaptionId, videoId]);
+
+          '''
+          if old not in text:
+              raise SystemExit('expected caption reset effect not found')
+          text = text.replace(old, '', 1)
+          old = '''      setSelectedCaptionId(nextId);
+          analytics.emit({
+          '''
+          new = '''      setCaptionSelection({ videoId, trackId: nextId });
+          analytics.emit({
+          '''
+          if old not in text:
+              raise SystemExit('expected caption selection setter not found')
+          player.write_text(text.replace(old, new, 1))
           PY
 
       - name: Set up Node
@@ -65,17 +100,18 @@ jobs:
           corepack prepare pnpm@11.24.0 --activate
           pnpm install --frozen-lockfile
 
-      - name: Verify formatting and lint
-        run: |
-          pnpm exec prettier --write apps/api/src/creator/caption.service.ts
-          pnpm lint
+      - name: Format patched files
+        run: pnpm exec prettier --write apps/api/src/creator/caption.service.ts apps/web/src/components/player/ayin-player.tsx
 
-      - name: Remove temporary workflow and commit
+      - name: Persist fix and remove temporary workflow
         run: |
           rm -f .github/workflows/task52-lint-fix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
           git diff --cached --check
-          git commit -m "fix(task-52): use type-only caption schema imports"
+          git commit -m "fix(task-52): satisfy caption player lint invariants"
           git push origin HEAD:task-52-captions-chapters
+
+      - name: Verify lint after persisted fix
+        run: pnpm lint
