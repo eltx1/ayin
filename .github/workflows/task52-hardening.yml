@@ -1,0 +1,59 @@
+name: Task 52 hardening
+
+on:
+  push:
+    branches:
+      - task-52-captions-chapters
+    paths:
+      - .github/workflows/task52-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout task branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: task-52-captions-chapters
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply Task 52 hardening
+        run: python3 deploy/task52-hardening.py
+
+      - name: Format
+        run: pnpm format
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Remove temporary hardening files and commit
+        run: |
+          rm -f deploy/task52-hardening.py .github/workflows/task52-hardening.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(task-52): harden captions ordering and analytics"
+          git push origin HEAD:task-52-captions-chapters
