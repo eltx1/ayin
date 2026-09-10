@@ -61,6 +61,8 @@ function harness(input: { hlsEnabled: boolean; generation?: typeof readyGenerati
         findMany: vi.fn().mockResolvedValue([]),
       },
       mediaPlaybackGeneration: { findFirst: generationLookup },
+      videoCaptionTrack: { findMany: vi.fn().mockResolvedValue([]) },
+      videoCreatorMetadata: { findUnique: vi.fn().mockResolvedValue(null) },
     },
   };
   const settings = {
