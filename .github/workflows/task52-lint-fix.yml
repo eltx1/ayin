@@ -19,74 +19,54 @@ jobs:
         with:
           ref: task-52-captions-chapters
 
-      - name: Apply lint fixes
+      - name: Apply deterministic lint fixes
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
           service = Path('apps/api/src/creator/caption.service.ts')
           text = service.read_text()
-          old = '''import {
-            CAPTION_FILE_MAX_BYTES,
-            CAPTION_UPLOAD_MIME,
-            captionPatchSchema,
-            captionReplacementSchema,
-            captionUploadSchema,
-            validateWebVtt,
-            WebVttValidationError,
-          } from "./caption.validation.js";
-          import type { z } from "zod";
-          '''
-          new = '''import {
-            CAPTION_FILE_MAX_BYTES,
-            CAPTION_UPLOAD_MIME,
-            validateWebVtt,
-            WebVttValidationError,
-          } from "./caption.validation.js";
+          type_names = '  captionPatchSchema,\n  captionReplacementSchema,\n  captionUploadSchema,\n'
+          if type_names not in text:
+              raise SystemExit('caption schema imports not found')
+          text = text.replace(type_names, '', 1)
+          anchor = '} from "./caption.validation.js";\nimport type { z } from "zod";'
+          replacement = '''} from "./caption.validation.js";
           import type {
             captionPatchSchema,
             captionReplacementSchema,
             captionUploadSchema,
           } from "./caption.validation.js";
-          import type { z } from "zod";
-          '''
-          if old not in text:
-              raise SystemExit('expected caption import block not found')
-          service.write_text(text.replace(old, new, 1))
+          import type { z } from "zod";'''
+          if anchor not in text:
+              raise SystemExit('caption import anchor not found')
+          service.write_text(text.replace(anchor, replacement, 1))
 
           player = Path('apps/web/src/components/player/ayin-player.tsx')
           text = player.read_text()
-          old = '''  const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(defaultCaptionId);
-          const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
-          '''
-          new = '''  const [captionSelection, setCaptionSelection] = useState<{
+          state = '  const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(defaultCaptionId);'
+          state_replacement = '''  const [captionSelection, setCaptionSelection] = useState<{
             videoId: string;
             trackId: string | null;
           }>({ videoId, trackId: defaultCaptionId });
           const selectedCaptionId =
-            captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;
-          const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
-          '''
-          if old not in text:
-              raise SystemExit('expected caption state block not found')
-          text = text.replace(old, new, 1)
-          old = '''  useEffect(() => {
+            captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;'''
+          if state not in text:
+              raise SystemExit('caption state line not found')
+          text = text.replace(state, state_replacement, 1)
+          effect = '''  useEffect(() => {
             setSelectedCaptionId(defaultCaptionId);
           }, [defaultCaptionId, videoId]);
 
           '''
-          if old not in text:
-              raise SystemExit('expected caption reset effect not found')
-          text = text.replace(old, '', 1)
-          old = '''      setSelectedCaptionId(nextId);
-          analytics.emit({
-          '''
-          new = '''      setCaptionSelection({ videoId, trackId: nextId });
-          analytics.emit({
-          '''
-          if old not in text:
-              raise SystemExit('expected caption selection setter not found')
-          player.write_text(text.replace(old, new, 1))
+          if effect not in text:
+              raise SystemExit('caption reset effect not found')
+          text = text.replace(effect, '', 1)
+          setter = '      setSelectedCaptionId(nextId);'
+          if setter not in text:
+              raise SystemExit('caption selection setter not found')
+          text = text.replace(setter, '      setCaptionSelection({ videoId, trackId: nextId });', 1)
+          player.write_text(text)
           PY
 
       - name: Set up Node
@@ -103,7 +83,7 @@ jobs:
       - name: Format patched files
         run: pnpm exec prettier --write apps/api/src/creator/caption.service.ts apps/web/src/components/player/ayin-player.tsx
 
-      - name: Persist fix and remove temporary workflow
+      - name: Persist fixes and remove temporary workflow
         run: |
           rm -f .github/workflows/task52-lint-fix.yml
           git config user.name "github-actions[bot]"
@@ -113,5 +93,5 @@ jobs:
           git commit -m "fix(task-52): satisfy caption player lint invariants"
           git push origin HEAD:task-52-captions-chapters
 
-      - name: Verify lint after persisted fix
+      - name: Verify lint on persisted source
         run: pnpm lint
