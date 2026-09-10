@@ -27,12 +27,23 @@ export class VideoMetadataService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async applyForOwner(accountId: string, videoId: string, input: VideoMetadataInput) {
-    const video = await this.database.client.video.findFirst({
-      where: { id: videoId, channel: { members: { some: { accountId, role: "OWNER" } } } },
-      select: { id: true, durationMs: true, status: true },
+    const video = await this.database.client.video.findUnique({
+      where: { id: videoId },
+      select: { id: true, channelId: true, durationMs: true, status: true },
     });
     if (!video) {
       throw new VideoMetadataError("VIDEO_NOT_FOUND", "This video could not be found.", 404);
+    }
+    const membership = await this.database.client.channelMember.findFirst({
+      where: { accountId, channelId: video.channelId, role: "OWNER" },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new VideoMetadataError(
+        "VIDEO_OWNER_REQUIRED",
+        "Only the channel owner can manage this video.",
+        403,
+      );
     }
     if (video.status === "REMOVED") {
       throw new VideoMetadataError("VIDEO_REMOVED", "This video can no longer be edited.", 409);
