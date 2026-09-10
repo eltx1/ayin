@@ -213,16 +213,22 @@ export function updateStudioCaption(
     Pick<StudioCaptionTrack, "languageCode" | "label" | "kind" | "enabled" | "default">
   >,
 ) {
-  return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}`, {
-    method: "PATCH",
-    body: JSON.stringify(patch),
-  });
+  return studioFetch(
+    `/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    },
+  );
 }
 
 export function removeStudioCaption(videoId: string, trackId: string) {
-  return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}`, {
-    method: "DELETE",
-  });
+  return studioFetch(
+    `/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export function unpublishStudioVideo(videoId: string) {

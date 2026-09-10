@@ -18,8 +18,9 @@ CREATE TABLE "VideoCaptionTrack" (
 
 CREATE UNIQUE INDEX "VideoCaptionTrack_mediaAssetId_key" ON "VideoCaptionTrack"("mediaAssetId");
 CREATE UNIQUE INDEX "VideoCaptionTrack_pendingMediaAssetId_key" ON "VideoCaptionTrack"("pendingMediaAssetId");
+CREATE UNIQUE INDEX "VideoCaptionTrack_videoId_languageCode_kind_key" ON "VideoCaptionTrack"("videoId", "languageCode", "kind");
 CREATE INDEX "VideoCaptionTrack_videoId_isEnabled_idx" ON "VideoCaptionTrack"("videoId", "isEnabled");
-CREATE INDEX "VideoCaptionTrack_videoId_languageCode_idx" ON "VideoCaptionTrack"("videoId", "languageCode");
+CREATE INDEX "VideoCaptionTrack_videoId_createdAt_id_idx" ON "VideoCaptionTrack"("videoId", "createdAt", "id");
 CREATE UNIQUE INDEX "VideoCaptionTrack_one_default_per_video_idx"
   ON "VideoCaptionTrack"("videoId") WHERE "isDefault" = true;
 

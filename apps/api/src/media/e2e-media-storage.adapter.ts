@@ -7,9 +7,7 @@ import {
   type StoredObjectMetadata,
 } from "./media-storage.adapter.js";
 
-const E2E_VTT = new TextEncoder().encode(
-  "WEBVTT\n\n00:00.000 --> 00:01.000\nAYIN caption test\n",
-);
+const E2E_VTT = new TextEncoder().encode("WEBVTT\n\n00:00.000 --> 00:01.000\nAYIN caption test\n");
 
 export class E2eMediaStorageAdapter implements MediaStorageAdapter {
   readonly kind = "development" as const;

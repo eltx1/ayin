@@ -117,7 +117,7 @@ export class WatchService {
     const [captionTracks, creatorMetadata] = await Promise.all([
       this.database.client.videoCaptionTrack.findMany({
         where: { videoId: video.id, isEnabled: true, mediaAssetId: { not: null } },
-        orderBy: [{ isDefault: "desc" }, { languageCode: "asc" }, { createdAt: "asc" }],
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       }),
       this.database.client.videoCreatorMetadata.findUnique({
         where: { videoId: video.id },

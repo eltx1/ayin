@@ -20,6 +20,7 @@ model VideoCaptionTrack {
   createdAt             DateTime              @default(now())
   updatedAt             DateTime              @updatedAt
 
+  @@unique([videoId, languageCode, kind])
   @@index([videoId, isEnabled])
-  @@index([videoId, languageCode])
+  @@index([videoId, createdAt, id])
 }

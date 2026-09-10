@@ -42,6 +42,14 @@ export type AyinPlayerAnalyticsEvent =
   | { type: "ad_mode"; videoId: string; active: boolean }
   | { type: "playback_protocol"; videoId: string; protocol: "HLS" | "MP4" }
   | {
+      type: "caption_change";
+      videoId: string;
+      trackId: string | null;
+      language: string | null;
+      kind: "CAPTIONS" | "SUBTITLES" | null;
+    }
+  | { type: "chapter_seek"; videoId: string; chapterId: string; startMs: number }
+  | {
       type: "quality_switch";
       videoId: string;
       selection: "AUTO" | "MANUAL";

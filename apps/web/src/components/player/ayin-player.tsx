@@ -441,6 +441,19 @@ export function AyinPlayer({
     [adMode.active, adMode.controlsLocked, analytics, videoId],
   );
 
+  const seekToChapter = useCallback(
+    (chapter: AyinPlayerChapter) => {
+      analytics.emit({
+        type: "chapter_seek",
+        videoId,
+        chapterId: chapter.id,
+        startMs: chapter.startMs,
+      });
+      seekTo(chapter.startMs);
+    },
+    [analytics, seekTo, videoId],
+  );
+
   const toggleMute = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -463,11 +476,25 @@ export function AyinPlayer({
     else await video.requestPictureInPicture();
   }, []);
 
+  const selectCaption = useCallback(
+    (trackId: string | null) => {
+      const track = trackId ? captions.find((candidate) => candidate.id === trackId) : undefined;
+      const nextId = track?.id ?? null;
+      setSelectedCaptionId(nextId);
+      analytics.emit({
+        type: "caption_change",
+        videoId,
+        trackId: nextId,
+        language: track?.language ?? null,
+        kind: track?.kind ?? null,
+      });
+    },
+    [analytics, captions, videoId],
+  );
+
   const toggleCaptions = useCallback(() => {
-    setSelectedCaptionId((current) =>
-      current ? null : (defaultCaptionId ?? captions[0]?.id ?? null),
-    );
-  }, [captions, defaultCaptionId]);
+    selectCaption(selectedCaptionId ? null : (defaultCaptionId ?? captions[0]?.id ?? null));
+  }, [captions, defaultCaptionId, selectCaption, selectedCaptionId]);
 
   const reportBuffering = useCallback(() => {
     if (bufferingRef.current) return;
@@ -688,7 +715,7 @@ export function AyinPlayer({
                     key={chapter.id}
                     onClick={(event) => {
                       event.stopPropagation();
-                      seekTo(chapter.startMs);
+                      seekToChapter(chapter);
                     }}
                     style={{
                       left: `${Math.min(100, Math.max(0, (chapter.startMs / durationMs) * 100))}%`,
@@ -844,7 +871,7 @@ export function AyinPlayer({
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-captions-${videoId}`}
                 disabled={locked}
-                onChange={(event) => setSelectedCaptionId(event.currentTarget.value || null)}
+                onChange={(event) => selectCaption(event.currentTarget.value || null)}
                 title="Captions and subtitles (C)"
                 value={selectedCaptionId ?? ""}
               >
@@ -863,7 +890,11 @@ export function AyinPlayer({
                 className={`${styles.compactSelect} ${styles.chapterSelect}`}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-chapters-${videoId}`}
-                onChange={(event) => seekTo(Number(event.currentTarget.value))}
+                onChange={(event) => {
+                  const startMs = Number(event.currentTarget.value);
+                  const chapter = chapters.find((candidate) => candidate.startMs === startMs);
+                  if (chapter) seekToChapter(chapter);
+                }}
                 value={activeChapter?.startMs ?? chapters[0]?.startMs ?? 0}
               >
                 {[...chapters]

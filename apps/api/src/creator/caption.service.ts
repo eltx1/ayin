@@ -44,7 +44,7 @@ export class CaptionService {
     await this.assertVideoEditor(accountId, videoId);
     const tracks = await this.database.client.videoCaptionTrack.findMany({
       where: { videoId },
-      orderBy: [{ isDefault: "desc" }, { languageCode: "asc" }, { createdAt: "asc" }],
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
     const assetIds = tracks.flatMap((track) =>
       [track.mediaAssetId, track.pendingMediaAssetId].filter((id): id is string => Boolean(id)),
@@ -80,6 +80,7 @@ export class CaptionService {
   async prepareCreate(accountId: string, videoId: string, input: CaptionUploadInput) {
     const video = await this.assertVideoEditor(accountId, videoId);
     this.assertStorage();
+    await this.assertUniqueIdentity(videoId, input.languageCode, input.kind);
     const assetId = randomUUID();
     const trackId = randomUUID();
     const key = this.objectKey(videoId, assetId);
@@ -107,7 +108,7 @@ export class CaptionService {
           videoId,
           pendingMediaAssetId: assetId,
           languageCode: input.languageCode,
-          label: input.label,
+          label: input.label ?? input.languageCode,
           kind: input.kind,
           isEnabled: true,
           isDefault: false,
@@ -297,6 +298,11 @@ export class CaptionService {
         409,
       );
     }
+    const nextLanguageCode = input.languageCode ?? track.languageCode;
+    const nextKind = input.kind ?? track.kind;
+    if (nextLanguageCode !== track.languageCode || nextKind !== track.kind) {
+      await this.assertUniqueIdentity(videoId, nextLanguageCode, nextKind, trackId);
+    }
     return this.database.client.$transaction(async (tx) => {
       const explicitlyDisable = input.enabled === false;
       const nextDefault = explicitlyDisable ? false : (input.default ?? track.isDefault);
@@ -394,6 +400,30 @@ export class CaptionService {
         404,
       );
     return track;
+  }
+
+  private async assertUniqueIdentity(
+    videoId: string,
+    languageCode: string,
+    kind: CaptionUploadInput["kind"],
+    excludeTrackId?: string,
+  ) {
+    const existing = await this.database.client.videoCaptionTrack.findFirst({
+      where: {
+        videoId,
+        languageCode,
+        kind,
+        ...(excludeTrackId ? { id: { not: excludeTrackId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new CaptionError(
+        "CAPTION_TRACK_DUPLICATE",
+        "This video already has a caption track with the same language and type.",
+        409,
+      );
+    }
   }
 
   private objectKey(videoId: string, assetId: string): string {

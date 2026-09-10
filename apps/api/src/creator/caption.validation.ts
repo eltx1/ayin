@@ -26,15 +26,21 @@ export const captionUploadSchema = z.object({
     .trim()
     .min(1)
     .max(255)
-    .refine((value) => value.toLowerCase().endsWith(".vtt"), "Caption files must use the .vtt extension."),
+    .refine(
+      (value) => value.toLowerCase().endsWith(".vtt"),
+      "Caption files must use the .vtt extension.",
+    ),
   sizeBytes: z.number().int().min(1).max(CAPTION_FILE_MAX_BYTES),
   mimeType: z
     .string()
     .trim()
     .transform((value) => value.toLowerCase().split(";", 1)[0] ?? value.toLowerCase())
-    .refine((value) => value === CAPTION_UPLOAD_MIME, "Caption files must use the text/vtt MIME type."),
+    .refine(
+      (value) => value === CAPTION_UPLOAD_MIME,
+      "Caption files must use the text/vtt MIME type.",
+    ),
   languageCode: captionLanguageSchema,
-  label: captionLabelSchema,
+  label: captionLabelSchema.optional(),
   kind: z.enum(["CAPTIONS", "SUBTITLES"]).default("SUBTITLES"),
   default: z.boolean().default(false),
 });
@@ -45,13 +51,19 @@ export const captionReplacementSchema = z.object({
     .trim()
     .min(1)
     .max(255)
-    .refine((value) => value.toLowerCase().endsWith(".vtt"), "Caption files must use the .vtt extension."),
+    .refine(
+      (value) => value.toLowerCase().endsWith(".vtt"),
+      "Caption files must use the .vtt extension.",
+    ),
   sizeBytes: z.number().int().min(1).max(CAPTION_FILE_MAX_BYTES),
   mimeType: z
     .string()
     .trim()
     .transform((value) => value.toLowerCase().split(";", 1)[0] ?? value.toLowerCase())
-    .refine((value) => value === CAPTION_UPLOAD_MIME, "Caption files must use the text/vtt MIME type."),
+    .refine(
+      (value) => value === CAPTION_UPLOAD_MIME,
+      "Caption files must use the text/vtt MIME type.",
+    ),
   default: z.boolean().optional(),
 });
 
@@ -71,7 +83,10 @@ export interface ParsedWebVtt {
 }
 
 export class WebVttValidationError extends Error {
-  constructor(readonly code: string, message: string) {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
     super(message);
     this.name = "WebVttValidationError";
   }
@@ -84,7 +99,10 @@ export function decodeUtf8WebVtt(bytes: Uint8Array): string {
   try {
     const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     if (text.includes("\u0000")) {
-      throw new WebVttValidationError("CAPTION_UTF8_INVALID", "Caption file contains invalid text bytes.");
+      throw new WebVttValidationError(
+        "CAPTION_UTF8_INVALID",
+        "Caption file contains invalid text bytes.",
+      );
     }
     return text.replace(/^\uFEFF/, "");
   } catch (error) {
@@ -98,11 +116,15 @@ export function validateWebVtt(bytes: Uint8Array, durationMs?: number | null): P
   const firstLineEnd = source.indexOf("\n");
   const header = (firstLineEnd < 0 ? source : source.slice(0, firstLineEnd)).trimEnd();
   if (!(header === "WEBVTT" || /^WEBVTT[\t ].+$/.test(header)) || header.includes("-->")) {
-    throw new WebVttValidationError("CAPTION_WEBVTT_INVALID", "Caption file must start with a valid WEBVTT header.");
+    throw new WebVttValidationError(
+      "CAPTION_WEBVTT_INVALID",
+      "Caption file must start with a valid WEBVTT header.",
+    );
   }
 
   const lines = source.split("\n");
-  const timingPattern = /^(\d{2,}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})\s+-->\s+(\d{2,}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})(?:\s+.*)?$/;
+  const timingPattern =
+    /^(\d{2,}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})\s+-->\s+(\d{2,}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})(?:\s+.*)?$/;
   let cueCount = 0;
   let previousStartMs = -1;
   let lastCueEndMs = 0;
@@ -112,18 +134,30 @@ export function validateWebVtt(bytes: Uint8Array, durationMs?: number | null): P
     if (!line.includes("-->")) continue;
     const match = timingPattern.exec(line);
     if (!match) {
-      throw new WebVttValidationError("CAPTION_WEBVTT_INVALID", `Invalid WebVTT cue timing near line ${index + 1}.`);
+      throw new WebVttValidationError(
+        "CAPTION_WEBVTT_INVALID",
+        `Invalid WebVTT cue timing near line ${index + 1}.`,
+      );
     }
     const startMs = webVttTimestampMs(match[1]!);
     const endMs = webVttTimestampMs(match[2]!);
     if (endMs <= startMs) {
-      throw new WebVttValidationError("CAPTION_WEBVTT_INVALID", "Every WebVTT cue must end after it starts.");
+      throw new WebVttValidationError(
+        "CAPTION_WEBVTT_INVALID",
+        "Every WebVTT cue must end after it starts.",
+      );
     }
     if (startMs < previousStartMs) {
-      throw new WebVttValidationError("CAPTION_WEBVTT_INVALID", "WebVTT cue start times must be ordered.");
+      throw new WebVttValidationError(
+        "CAPTION_WEBVTT_INVALID",
+        "WebVTT cue start times must be ordered.",
+      );
     }
     if (durationMs && durationMs > 0 && endMs > durationMs + 250) {
-      throw new WebVttValidationError("CAPTION_OUTSIDE_VIDEO", "WebVTT cues cannot extend beyond the video duration.");
+      throw new WebVttValidationError(
+        "CAPTION_OUTSIDE_VIDEO",
+        "WebVTT cues cannot extend beyond the video duration.",
+      );
     }
     cueCount += 1;
     previousStartMs = startMs;
@@ -131,7 +165,10 @@ export function validateWebVtt(bytes: Uint8Array, durationMs?: number | null): P
   }
 
   if (cueCount === 0) {
-    throw new WebVttValidationError("CAPTION_WEBVTT_EMPTY", "Caption file must contain at least one WebVTT cue.");
+    throw new WebVttValidationError(
+      "CAPTION_WEBVTT_EMPTY",
+      "Caption file must contain at least one WebVTT cue.",
+    );
   }
   return { cueCount, lastCueEndMs };
 }
@@ -157,7 +194,10 @@ function webVttTimestampMs(value: string): number {
     milliseconds < 0 ||
     milliseconds > 999
   ) {
-    throw new WebVttValidationError("CAPTION_WEBVTT_INVALID", "WebVTT contains an invalid timestamp.");
+    throw new WebVttValidationError(
+      "CAPTION_WEBVTT_INVALID",
+      "WebVTT contains an invalid timestamp.",
+    );
   }
-  return ((hours * 60 * 60 + minutes * 60 + seconds) * 1000) + milliseconds;
+  return (hours * 60 * 60 + minutes * 60 + seconds) * 1000 + milliseconds;
 }

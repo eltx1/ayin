@@ -72,11 +72,7 @@ export class CaptionController {
     @Param("trackId") trackIdRaw: string,
   ) {
     return this.run(() =>
-      this.captions.finalize(
-        request.ayinAuth.accountId,
-        this.id(videoIdRaw),
-        this.id(trackIdRaw),
-      ),
+      this.captions.finalize(request.ayinAuth.accountId, this.id(videoIdRaw), this.id(trackIdRaw)),
     );
   }
 
@@ -106,23 +102,23 @@ export class CaptionController {
     @Param("trackId") trackIdRaw: string,
   ) {
     return this.run(() =>
-      this.captions.remove(
-        request.ayinAuth.accountId,
-        this.id(videoIdRaw),
-        this.id(trackIdRaw),
-      ),
+      this.captions.remove(request.ayinAuth.accountId, this.id(videoIdRaw), this.id(trackIdRaw)),
     );
   }
 
   private id(raw: string): string {
     const parsed = uuidSchema.safeParse(raw);
-    if (!parsed.success) throw this.httpError(new CaptionError("INVALID_ID", "This caption link is invalid."));
+    if (!parsed.success)
+      throw this.httpError(new CaptionError("INVALID_ID", "This caption link is invalid."));
     return parsed.data;
   }
 
   private invalid(message?: string): never {
     throw this.httpError(
-      new CaptionError("INVALID_CAPTION_INPUT", message ?? "Check the caption settings and try again."),
+      new CaptionError(
+        "INVALID_CAPTION_INPUT",
+        message ?? "Check the caption settings and try again.",
+      ),
     );
   }
 

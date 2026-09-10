@@ -26,17 +26,15 @@ describe("caption WebVTT validation", () => {
     );
     expect(() =>
       validateWebVtt(
-        encode(
-          "WEBVTT\n\n00:05.000 --> 00:06.000\nLater\n\n00:02.000 --> 00:03.000\nEarlier\n",
-        ),
+        encode("WEBVTT\n\n00:05.000 --> 00:06.000\nLater\n\n00:02.000 --> 00:03.000\nEarlier\n"),
       ),
     ).toThrow(/ordered/);
   });
 
   it("rejects zero-length cues and cues beyond video duration", () => {
-    expect(() =>
-      validateWebVtt(encode("WEBVTT\n\n00:01.000 --> 00:01.000\nBad\n")),
-    ).toThrow(/end after it starts/);
+    expect(() => validateWebVtt(encode("WEBVTT\n\n00:01.000 --> 00:01.000\nBad\n"))).toThrow(
+      /end after it starts/,
+    );
     expect(() =>
       validateWebVtt(encode("WEBVTT\n\n00:08.000 --> 00:12.000\nToo late\n"), 10_000),
     ).toThrow(/video duration/);

@@ -16,7 +16,13 @@ import {
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
-export function StudioCaptionManager({ videoId, disabled }: { videoId: string; disabled: boolean }) {
+export function StudioCaptionManager({
+  videoId,
+  disabled,
+}: {
+  videoId: string;
+  disabled: boolean;
+}) {
   const [tracks, setTracks] = useState<StudioCaptionTrack[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -47,8 +53,10 @@ export function StudioCaptionManager({ videoId, disabled }: { videoId: string; d
   }
 
   function validFile(candidate: File) {
-    if (!candidate.name.toLowerCase().endsWith(".vtt")) throw new Error("Choose a .vtt WebVTT file.");
-    if (candidate.size < 1 || candidate.size > MAX_BYTES) throw new Error("WebVTT files must be 2 MB or smaller.");
+    if (!candidate.name.toLowerCase().endsWith(".vtt"))
+      throw new Error("Choose a .vtt WebVTT file.");
+    if (candidate.size < 1 || candidate.size > MAX_BYTES)
+      throw new Error("WebVTT files must be 2 MB or smaller.");
   }
 
   async function upload() {
@@ -137,9 +145,13 @@ export function StudioCaptionManager({ videoId, disabled }: { videoId: string; d
           {busy ? "Working…" : "Upload WebVTT"}
         </button>
       </div>
-      <p className={styles.muted}>Files upload directly to AYIN media storage and are validated before playback.</p>
+      <p className={styles.muted}>
+        Files upload directly to AYIN media storage and are validated before playback.
+      </p>
       {error ? <p className={styles.error}>{error}</p> : null}
-      {loaded && tracks.length === 0 ? <p className={styles.muted}>No caption tracks yet.</p> : null}
+      {loaded && tracks.length === 0 ? (
+        <p className={styles.muted}>No caption tracks yet.</p>
+      ) : null}
       {tracks.map((track) => (
         <div className={styles.toggleRow} key={track.id}>
           <span>

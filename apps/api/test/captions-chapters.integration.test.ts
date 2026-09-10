@@ -147,7 +147,6 @@ databaseDescribe("captions and chapter playback", () => {
         sizeBytes: captionBytes.byteLength,
         mimeType: "text/vtt",
         languageCode: "en-US",
-        label: "English CC",
         kind: "CAPTIONS",
         default: true,
       },
@@ -164,6 +163,21 @@ databaseDescribe("captions and chapter playback", () => {
     expect(finalized.statusCode).toBe(201);
     expect(finalized.json()).toMatchObject({ status: "READY", cueCount: 2 });
 
+    const duplicate = await app.inject({
+      method: "POST",
+      url: `/creator/studio/videos/${video.id}/captions/uploads`,
+      headers: { cookie: owner.cookie },
+      payload: {
+        fileName: "duplicate.vtt",
+        sizeBytes: captionBytes.byteLength,
+        mimeType: "text/vtt",
+        languageCode: "en-US",
+        kind: "CAPTIONS",
+      },
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json().error.code).toBe("CAPTION_TRACK_DUPLICATE");
+
     const playback = await app.inject({
       method: "GET",
       url: `/public/videos/${video.slug}/playback`,
@@ -171,7 +185,7 @@ databaseDescribe("captions and chapter playback", () => {
     expect(playback.statusCode).toBe(200);
     expect(playback.json().video.captions).toHaveLength(1);
     expect(playback.json().video.captions[0]).toMatchObject({
-      label: "English CC",
+      label: "en-US",
       language: "en-US",
       kind: "CAPTIONS",
       default: true,
