@@ -11,10 +11,17 @@ import {
   updateStudioVideo,
 } from "@/lib/studio";
 
+import {
+  buildMetadataPayload,
+  metadataDraftFromApi,
+  type MetadataDraft,
+  VideoMetadataFields,
+} from "../upload/video-metadata-fields";
+
 type Draft = Pick<
   StudioVideo,
   "title" | "description" | "visibility" | "commentsEnabled" | "tvIncluded"
->;
+> & { metadata: MetadataDraft };
 
 export function StudioContentManager() {
   const [videos, setVideos] = useState<StudioVideo[]>([]);
@@ -46,6 +53,7 @@ export function StudioContentManager() {
                   visibility: video.visibility,
                   commentsEnabled: video.commentsEnabled,
                   tvIncluded: video.tvIncluded,
+                  metadata: metadataDraftFromApi(video.metadata as Record<string, unknown> | null),
                 },
               ]),
             ),
@@ -78,7 +86,11 @@ export function StudioContentManager() {
     setMessage(null);
     setError(null);
     try {
-      await updateStudioVideo(video.id, draft);
+      const { metadata, ...basic } = draft;
+      await updateStudioVideo(video.id, {
+        ...basic,
+        ...buildMetadataPayload(metadata, { includeEmpty: true, includeRights: false }),
+      });
       await refresh();
       setMessage(`Saved “${draft.title}”.`);
     } catch (caught) {
@@ -178,6 +190,7 @@ export function StudioContentManager() {
             visibility: video.visibility,
             commentsEnabled: video.commentsEnabled,
             tvIncluded: video.tvIncluded,
+            metadata: metadataDraftFromApi(video.metadata as Record<string, unknown> | null),
           };
           const disabled = busyId === video.id || video.status === "REMOVED";
           return (
@@ -222,6 +235,7 @@ export function StudioContentManager() {
                 </select>
                 <textarea
                   disabled={disabled}
+                  maxLength={20_000}
                   onChange={(event) =>
                     setDrafts((current) => ({
                       ...current,
@@ -232,6 +246,30 @@ export function StudioContentManager() {
                   value={draft.description ?? ""}
                 />
               </div>
+
+              <details className={styles.panel}>
+                <summary>
+                  <strong>Advanced metadata</strong>
+                  <span className={styles.muted}> Optional · SEO stays automatic</span>
+                </summary>
+                <div className={styles.formGrid}>
+                  <VideoMetadataFields
+                    disabled={disabled}
+                    showRights={false}
+                    value={draft.metadata}
+                    onChange={(metadata) =>
+                      setDrafts((current) => ({
+                        ...current,
+                        [video.id]: { ...draft, metadata },
+                      }))
+                    }
+                  />
+                </div>
+                <p className={styles.muted}>
+                  Rights basis: {video.metadata?.rightsBasis ?? "standard publish declaration"}. Rights
+                  records remain managed by AYIN&apos;s rights domain rather than duplicated here.
+                </p>
+              </details>
 
               <div className={styles.toggleRow}>
                 <label>
