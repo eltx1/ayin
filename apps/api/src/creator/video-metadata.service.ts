@@ -8,6 +8,8 @@ import {
   validateMetadataDuration,
 } from "./video-metadata.validation.js";
 
+const CREATOR_RIGHTS_NOTE_SEPARATOR = "\n\nCreator note: ";
+
 export class VideoMetadataError extends Error {
   constructor(
     readonly code: string,
@@ -72,14 +74,16 @@ export class VideoMetadataService {
     const declaration = await this.database.client.contentRightsDeclaration.findFirst({
       where: { videoId, status: "CONFIRMED" },
       orderBy: { version: "desc" },
-      select: { id: true },
+      select: { id: true, statement: true },
     });
     if (!declaration) return;
     await this.database.client.contentRightsDeclaration.update({
       where: { id: declaration.id },
       data: {
         ...(input.rightsBasis !== undefined ? { basis: input.rightsBasis } : {}),
-        ...(input.rightsNote !== undefined ? { statement: input.rightsNote } : {}),
+        ...(input.rightsNote !== undefined
+          ? { statement: withCreatorRightsNote(declaration.statement, input.rightsNote) }
+          : {}),
       },
     });
   }
@@ -114,13 +118,13 @@ export class VideoMetadataService {
       adBreakPreference: metadata?.adBreakPreference ?? null,
       adBreakOffsetsSeconds: metadata?.adBreakOffsetsSeconds ?? [],
       rightsBasis: rights?.basis ?? null,
-      rightsNote: rights?.statement ?? null,
+      rightsNote: creatorRightsNote(rights?.statement),
     };
   }
 
   async readMany(videoIds: string[]) {
     const ids = [...new Set(videoIds)];
-    if (!ids.length) return new Map<string, Awaited<ReturnType<VideoMetadataService["readOne"]>>>();
+    if (!ids.length) return new Map();
     const [videos, metadata, rights] = await Promise.all([
       this.database.client.video.findMany({
         where: { id: { in: ids } },
@@ -160,7 +164,7 @@ export class VideoMetadataService {
             adBreakPreference: item?.adBreakPreference ?? null,
             adBreakOffsetsSeconds: item?.adBreakOffsetsSeconds ?? [],
             rightsBasis: declaration?.basis ?? null,
-            rightsNote: declaration?.statement ?? null,
+            rightsNote: creatorRightsNote(declaration?.statement),
           },
         ] as const;
       }),
@@ -205,4 +209,19 @@ export class VideoMetadataService {
     });
     return this.readOne(videoId);
   }
+}
+
+function creatorRightsNote(statement: string | null | undefined): string | null {
+  if (!statement) return null;
+  const index = statement.indexOf(CREATOR_RIGHTS_NOTE_SEPARATOR);
+  if (index < 0) return null;
+  return statement.slice(index + CREATOR_RIGHTS_NOTE_SEPARATOR.length).trim() || null;
+}
+
+function withCreatorRightsNote(statement: string, note: string | null): string {
+  const index = statement.indexOf(CREATOR_RIGHTS_NOTE_SEPARATOR);
+  const attestation = (index < 0 ? statement : statement.slice(0, index)).trim();
+  return note?.trim()
+    ? `${attestation}${CREATOR_RIGHTS_NOTE_SEPARATOR}${note.trim()}`
+    : attestation;
 }
