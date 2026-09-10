@@ -26,6 +26,7 @@ import { QuickUploadController } from "./quick-upload.controller.js";
 import { QuickUploadService } from "./quick-upload.service.js";
 import { StudioController } from "./studio.controller.js";
 import { StudioService } from "./studio.service.js";
+import { VideoMetadataService } from "./video-metadata.service.js";
 
 @Module({
   imports: [AuthModule, DatabaseModule, MediaModule, PlatformConfigModule],
@@ -44,6 +45,7 @@ import { StudioService } from "./studio.service.js";
   providers: [
     QuickUploadService,
     StudioService,
+    VideoMetadataService,
     ChannelService,
     ClipsService,
     PlaylistService,
@@ -58,6 +60,7 @@ import { StudioService } from "./studio.service.js";
     CreatorTvService,
     CreatorTvLinearService,
     StudioService,
+    VideoMetadataService,
   ],
 })
 export class CreatorModule {}

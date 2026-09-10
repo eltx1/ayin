@@ -1,4 +1,5 @@
 import { apiBaseUrl, readApiError } from "./api";
+import type { QuickVideoMetadata } from "./quick-upload";
 
 export type StudioVideo = {
   id: string;
@@ -8,6 +9,15 @@ export type StudioVideo = {
   visibility: "PUBLIC" | "UNLISTED" | "PRIVATE";
   commentsEnabled: boolean;
   tvIncluded: boolean;
+  metadata:
+    | (QuickVideoMetadata & {
+        contentType: "CREATOR_VIDEO" | "MOVIE" | "DOCUMENTARY";
+        tags: string[];
+        geoCountries: string[];
+        chapters: unknown[];
+        adBreakOffsetsSeconds: number[];
+      })
+    | null;
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
@@ -108,7 +118,8 @@ export function updateStudioVideo(
   videoId: string,
   patch: Partial<
     Pick<StudioVideo, "title" | "description" | "visibility" | "commentsEnabled" | "tvIncluded">
-  >,
+  > &
+    QuickVideoMetadata,
 ) {
   return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}`, {
     method: "PATCH",

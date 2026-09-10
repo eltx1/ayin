@@ -8,6 +8,7 @@ function serviceWith(overrides: Record<string, unknown[]> = {}) {
     channel: { findMany: async () => overrides.channel ?? [] },
     playlist: { findMany: async () => overrides.playlist ?? [] },
     creatorTvChannel: { findMany: async () => overrides.creatorTvChannel ?? [] },
+    videoCreatorMetadata: { findMany: async () => overrides.videoCreatorMetadata ?? [] },
   };
   return new SearchService({ client } as never);
 }
@@ -40,6 +41,7 @@ describe("SearchService", () => {
         channel: { findMany: vi.fn(async () => []) },
         playlist: { findMany: vi.fn(async () => []) },
         creatorTvChannel: { findMany: vi.fn(async () => []) },
+        videoCreatorMetadata: { findMany: vi.fn(async () => []) },
       },
     } as never);
 

@@ -3,6 +3,43 @@ import type { UploadSession } from "@/lib/direct-video-upload";
 import { videoMimeTypeForUpload } from "@/lib/video-inspection";
 
 export type VideoForm = "LONG_FORM" | "CLIP";
+export type VideoContentType = "CREATOR_VIDEO" | "MOVIE" | "DOCUMENTARY";
+export type VideoCategory =
+  | "ENTERTAINMENT"
+  | "EDUCATION"
+  | "GAMING"
+  | "MUSIC"
+  | "NEWS"
+  | "SPORTS"
+  | "TECHNOLOGY"
+  | "LIFESTYLE"
+  | "FILM_ANIMATION"
+  | "OTHER";
+export type RightsBasis = "OWNED" | "LICENSED" | "AUTHORIZED" | "PUBLIC_DOMAIN" | "OTHER";
+
+export interface VideoChapterInput {
+  title: string;
+  startSeconds: number;
+}
+
+export interface QuickVideoMetadata {
+  tags?: string[];
+  category?: VideoCategory | null;
+  primaryLanguage?: string | null;
+  recordingDate?: string | null;
+  contentType?: VideoContentType;
+  rightsBasis?: RightsBasis;
+  rightsNote?: string | null;
+  seriesTitle?: string | null;
+  seasonNumber?: number | null;
+  episodeNumber?: number | null;
+  maturityLevel?: "GENERAL" | "TEEN" | "MATURE" | null;
+  geoAvailabilityMode?: "WORLDWIDE" | "INCLUDE_ONLY" | "EXCLUDE" | null;
+  geoCountries?: string[];
+  chapters?: VideoChapterInput[] | null;
+  adBreakPreference?: "AUTOMATIC" | "DISABLED" | "CUSTOM" | null;
+  adBreakOffsetsSeconds?: number[];
+}
 
 export interface QuickDraftResponse {
   video: {
@@ -42,7 +79,7 @@ export interface QuickProcessingStatus {
   };
 }
 
-export interface QuickVideoDetails {
+export interface QuickVideoDetails extends QuickVideoMetadata {
   title?: string;
   description?: string | null;
   visibility?: "PUBLIC" | "UNLISTED" | "PRIVATE";

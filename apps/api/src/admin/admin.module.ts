@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module.js";
+import { CreatorModule } from "../creator/creator.module.js";
 import { MediaModule } from "../media/media.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
@@ -19,16 +20,18 @@ import { AdminProductController, PublicProductController } from "./admin-product
 import { AdminProductService } from "./admin-product.service.js";
 import { AdminScopedDirectoryController } from "./admin-scoped-directory.controller.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
+import { AdminVideoMetadataController } from "./admin-video-metadata.controller.js";
 import { AdminController } from "./admin.controller.js";
 import { AdminGuard } from "./admin.guard.js";
 import { ContentSeedingController } from "./content-seeding.controller.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
 
 @Module({
-  imports: [AuthModule, MediaModule, PlatformConfigModule],
+  imports: [AuthModule, CreatorModule, MediaModule, PlatformConfigModule],
   controllers: [
     AdminController,
     AdminControlController,
+    AdminVideoMetadataController,
     AdminGovernanceController,
     AdminMediaProcessingController,
     AdminObservabilityController,

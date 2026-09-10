@@ -320,13 +320,10 @@ export class DiscoveryService {
           "UNAVAILABLE",
         );
       case "MOVIES":
-        return emptyPage(
-          "No movie catalog classification exists in the current data model yet, so AYIN will not label ordinary creator videos as movies.",
-          "UNAVAILABLE",
-        );
+        return this.loadRecentVideos(offset, limit, undefined, "Movies", "MOVIE");
       case "SERIES":
         return emptyPage(
-          "No series/episode catalog classification exists in the current data model yet, so AYIN will not invent series entries.",
+          "AYIN stores optional creator series/episode placeholders, but no first-class catalog relationship exists yet, so discovery will not promote those placeholders as catalog truth.",
           "UNAVAILABLE",
         );
       case "CREATOR_TV":
@@ -349,11 +346,13 @@ export class DiscoveryService {
     limit: number,
     publishedAfter: Date | undefined,
     kicker: string,
+    contentType?: "MOVIE",
   ): Promise<DiscoveryPage> {
     const records = await this.database.client.video.findMany({
       where: {
         ...publicVideoWhere,
         ...(publishedAfter ? { publishedAt: { gte: publishedAfter } } : {}),
+        ...(contentType ? { contentType } : {}),
       },
       orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
       skip: offset,

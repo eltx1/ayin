@@ -5,6 +5,10 @@ export interface CreatorTvAdBreakProgramRef {
   videoId: string;
   startsAt: Date;
   endsAt: Date;
+  creatorPreference: {
+    mode: "AUTOMATIC" | "DISABLED" | "CUSTOM";
+    offsetsSeconds: number[];
+  } | null;
 }
 
 export interface CreatorTvAdBreakContext {
