@@ -3,6 +3,7 @@ export interface AyinCaptionTrack {
   src: string;
   label: string;
   language: string;
+  kind: "CAPTIONS" | "SUBTITLES";
   default?: boolean | undefined;
 }
 
@@ -40,6 +41,14 @@ export type AyinPlayerAnalyticsEvent =
   | { type: "error"; videoId: string; message: string }
   | { type: "ad_mode"; videoId: string; active: boolean }
   | { type: "playback_protocol"; videoId: string; protocol: "HLS" | "MP4" }
+  | {
+      type: "caption_change";
+      videoId: string;
+      trackId: string | null;
+      language: string | null;
+      kind: "CAPTIONS" | "SUBTITLES" | null;
+    }
+  | { type: "chapter_seek"; videoId: string; chapterId: string; startMs: number }
   | {
       type: "quality_switch";
       videoId: string;
@@ -91,6 +100,7 @@ export interface PublicPlaybackResponse {
       mimeType: string;
       label: string;
       language: string;
+      kind: "CAPTIONS" | "SUBTITLES";
       default: boolean;
     }>;
     chapters: AyinPlayerChapter[];

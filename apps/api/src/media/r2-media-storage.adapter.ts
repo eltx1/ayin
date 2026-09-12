@@ -135,6 +135,27 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
     };
   }
 
+  async readObject(key: string, maxBytes: number): Promise<Uint8Array> {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      throw new Error("A positive bounded object-read limit is required.");
+    }
+    const metadata = await this.headObject(key);
+    if (metadata.sizeBytes < 1 || metadata.sizeBytes > maxBytes) {
+      throw new Error("R2 object exceeds the bounded read limit.");
+    }
+    const response = await this.signer.request({ method: "GET", key });
+    const declaredLength = Number(response.headers.get("content-length") ?? metadata.sizeBytes);
+    if (!Number.isFinite(declaredLength) || declaredLength < 1 || declaredLength > maxBytes) {
+      await response.body?.cancel();
+      throw new Error("R2 object exceeds the bounded read limit.");
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength < 1 || bytes.byteLength > maxBytes) {
+      throw new Error("R2 object exceeds the bounded read limit.");
+    }
+    return bytes;
+  }
+
   async deleteObject(key: string): Promise<void> {
     await this.signer.request({ method: "DELETE", key });
   }

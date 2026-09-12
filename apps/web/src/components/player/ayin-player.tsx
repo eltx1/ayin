@@ -101,6 +101,10 @@ export function AyinPlayer({
   const persistBusyRef = useRef(false);
   const resumeAppliedRef = useRef(false);
   const lastAdActiveRef = useRef(adMode.active);
+  const defaultCaptionId = useMemo(
+    () => captions.find((track) => track.default)?.id ?? null,
+    [captions],
+  );
 
   const [playing, setPlaying] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
@@ -108,7 +112,12 @@ export function AyinPlayer({
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(initiallyMuted);
   const [rate, setRate] = useState(1);
-  const [captionsEnabled, setCaptionsEnabled] = useState(captions.some((track) => track.default));
+  const [captionSelection, setCaptionSelection] = useState<{
+    videoId: string;
+    trackId: string | null;
+  }>({ videoId, trackId: defaultCaptionId });
+  const selectedCaptionId =
+    captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;
   const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
     null,
   );
@@ -124,6 +133,17 @@ export function AyinPlayer({
     const ordered = [...chapters].sort((a, b) => a.startMs - b.startMs);
     return [...ordered].reverse().find((chapter) => chapter.startMs <= positionMs) ?? null;
   }, [chapters, positionMs]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    for (let index = 0; index < video.textTracks.length; index += 1) {
+      const textTrack = video.textTracks[index];
+      const sourceTrack = captions[index];
+      if (textTrack)
+        textTrack.mode = sourceTrack?.id === selectedCaptionId ? "showing" : "disabled";
+    }
+  }, [captions, selectedCaptionId, videoId]);
 
   useEffect(() => {
     onAdContainerReady?.(adContainerRef.current);
@@ -422,6 +442,19 @@ export function AyinPlayer({
     [adMode.active, adMode.controlsLocked, analytics, videoId],
   );
 
+  const seekToChapter = useCallback(
+    (chapter: AyinPlayerChapter) => {
+      analytics.emit({
+        type: "chapter_seek",
+        videoId,
+        chapterId: chapter.id,
+        startMs: chapter.startMs,
+      });
+      seekTo(chapter.startMs);
+    },
+    [analytics, seekTo, videoId],
+  );
+
   const toggleMute = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -444,16 +477,25 @@ export function AyinPlayer({
     else await video.requestPictureInPicture();
   }, []);
 
+  const selectCaption = useCallback(
+    (trackId: string | null) => {
+      const track = trackId ? captions.find((candidate) => candidate.id === trackId) : undefined;
+      const nextId = track?.id ?? null;
+      setCaptionSelection({ videoId, trackId: nextId });
+      analytics.emit({
+        type: "caption_change",
+        videoId,
+        trackId: nextId,
+        language: track?.language ?? null,
+        kind: track?.kind ?? null,
+      });
+    },
+    [analytics, captions, videoId],
+  );
+
   const toggleCaptions = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || video.textTracks.length === 0) return;
-    const next = !captionsEnabled;
-    for (let index = 0; index < video.textTracks.length; index += 1) {
-      const track = video.textTracks[index];
-      if (track) track.mode = next && index === 0 ? "showing" : "disabled";
-    }
-    setCaptionsEnabled(next);
-  }, [captionsEnabled]);
+    selectCaption(selectedCaptionId ? null : (defaultCaptionId ?? captions[0]?.id ?? null));
+  }, [captions, defaultCaptionId, selectCaption, selectedCaptionId]);
 
   const reportBuffering = useCallback(() => {
     if (bufferingRef.current) return;
@@ -486,6 +528,10 @@ export function AyinPlayer({
       event.preventDefault();
       event.stopPropagation();
       toggleMute();
+    } else if (key === "c" && captions.length > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleCaptions();
     } else if (key === "f") {
       event.preventDefault();
       event.stopPropagation();
@@ -593,9 +639,9 @@ export function AyinPlayer({
           >
             {captions.map((track) => (
               <track
-                default={track.default}
+                default={track.id === defaultCaptionId}
                 key={track.id}
-                kind="captions"
+                kind={track.kind === "CAPTIONS" ? "captions" : "subtitles"}
                 label={track.label}
                 src={track.src}
                 srcLang={track.language}
@@ -647,18 +693,41 @@ export function AyinPlayer({
         </div>
 
         <div className={styles.controls} aria-label="Playback controls">
-          <input
-            aria-label="Seek video"
-            className={styles.scrubber}
-            data-tv-focusable="true"
-            data-tv-focus-id={`player-seek-${videoId}`}
-            disabled={locked}
-            max={Math.max(durationMs, 1)}
-            min={0}
-            onChange={(event) => seekTo(Number(event.currentTarget.value))}
-            type="range"
-            value={Math.min(positionMs, Math.max(durationMs, 1))}
-          />
+          <div className={styles.scrubberWrap}>
+            <input
+              aria-label="Seek video"
+              className={styles.scrubber}
+              data-tv-focusable="true"
+              data-tv-focus-id={`player-seek-${videoId}`}
+              disabled={locked}
+              max={Math.max(durationMs, 1)}
+              min={0}
+              onChange={(event) => seekTo(Number(event.currentTarget.value))}
+              type="range"
+              value={Math.min(positionMs, Math.max(durationMs, 1))}
+            />
+            {durationMs > 0 && chapters.length > 0 ? (
+              <div aria-label="Chapter markers" className={styles.chapterMarkers}>
+                {chapters.map((chapter) => (
+                  <button
+                    aria-label={`Chapter ${chapter.title}, ${formatTime(chapter.startMs)}`}
+                    className={styles.chapterMarker}
+                    disabled={locked}
+                    key={chapter.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      seekToChapter(chapter);
+                    }}
+                    style={{
+                      left: `${Math.min(100, Math.max(0, (chapter.startMs / durationMs) * 100))}%`,
+                    }}
+                    title={`${chapter.title} · ${formatTime(chapter.startMs)}`}
+                    type="button"
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
 
           <div className={styles.controlRow}>
             <button
@@ -797,18 +866,23 @@ export function AyinPlayer({
             </select>
 
             {captions.length > 0 ? (
-              <button
-                aria-label={captionsEnabled ? "Turn captions off" : "Turn captions on"}
-                aria-pressed={captionsEnabled}
-                className={`${styles.iconButton} ${captionsEnabled ? styles.activeControl : ""}`}
+              <select
+                aria-label="Captions and subtitles"
+                className={styles.compactSelect}
                 data-tv-focusable="true"
-                data-tv-focus-id={`player-cc-${videoId}`}
-                onClick={toggleCaptions}
-                title="Captions"
-                type="button"
+                data-tv-focus-id={`player-captions-${videoId}`}
+                disabled={locked}
+                onChange={(event) => selectCaption(event.currentTarget.value || null)}
+                title="Captions and subtitles (C)"
+                value={selectedCaptionId ?? ""}
               >
-                <span className={styles.ccGlyph}>CC</span>
-              </button>
+                <option value="">Off</option>
+                {captions.map((track) => (
+                  <option key={track.id} value={track.id}>
+                    {track.label}
+                  </option>
+                ))}
+              </select>
             ) : null}
 
             {chapters.length > 0 ? (
@@ -817,7 +891,11 @@ export function AyinPlayer({
                 className={`${styles.compactSelect} ${styles.chapterSelect}`}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-chapters-${videoId}`}
-                onChange={(event) => seekTo(Number(event.currentTarget.value))}
+                onChange={(event) => {
+                  const startMs = Number(event.currentTarget.value);
+                  const chapter = chapters.find((candidate) => candidate.startMs === startMs);
+                  if (chapter) seekToChapter(chapter);
+                }}
                 value={activeChapter?.startMs ?? chapters[0]?.startMs ?? 0}
               >
                 {[...chapters]

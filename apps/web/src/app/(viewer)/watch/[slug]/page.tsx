@@ -90,6 +90,7 @@ export default async function WatchPage({ params }: WatchPageProperties) {
             src,
             label: track.label,
             language: track.language,
+            kind: track.kind,
             default: track.default,
           },
         ]

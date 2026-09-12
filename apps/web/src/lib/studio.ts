@@ -1,6 +1,21 @@
 import { apiBaseUrl, readApiError } from "./api";
 import type { QuickVideoMetadata } from "./quick-upload";
 
+export type StudioCaptionTrack = {
+  id: string;
+  videoId: string;
+  languageCode: string;
+  label: string;
+  kind: "CAPTIONS" | "SUBTITLES";
+  default: boolean;
+  enabled: boolean;
+  status: "READY" | "PENDING";
+  sizeBytes: number | null;
+  replacing: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type StudioVideo = {
   id: string;
   title: string;
@@ -125,6 +140,95 @@ export function updateStudioVideo(
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+}
+
+export function getStudioCaptions(videoId: string): Promise<{ tracks: StudioCaptionTrack[] }> {
+  return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}/captions`);
+}
+
+export function prepareStudioCaptionUpload(
+  videoId: string,
+  input: {
+    fileName: string;
+    sizeBytes: number;
+    mimeType: "text/vtt";
+    languageCode: string;
+    label: string;
+    kind: "CAPTIONS" | "SUBTITLES";
+    default: boolean;
+  },
+): Promise<{
+  trackId: string;
+  uploadUrl: string;
+  expiresAt: string;
+  contentType: "text/vtt";
+  maxBytes: number;
+}> {
+  return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}/captions/uploads`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function prepareStudioCaptionReplacement(videoId: string, trackId: string, file: File) {
+  return studioFetch<{
+    trackId: string;
+    uploadUrl: string;
+    expiresAt: string;
+    contentType: "text/vtt";
+    maxBytes: number;
+  }>(
+    `/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}/uploads`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        fileName: file.name,
+        sizeBytes: file.size,
+        mimeType: "text/vtt",
+      }),
+    },
+  );
+}
+
+export async function putCaptionFile(uploadUrl: string, file: File): Promise<void> {
+  const response = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "content-type": "text/vtt" },
+    body: file,
+  });
+  if (!response.ok) throw new Error("Caption upload failed before validation.");
+}
+
+export function finalizeStudioCaptionUpload(videoId: string, trackId: string) {
+  return studioFetch<{ trackId: string; status: "READY"; cueCount: number }>(
+    `/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}/finalize`,
+    { method: "POST", body: "{}" },
+  );
+}
+
+export function updateStudioCaption(
+  videoId: string,
+  trackId: string,
+  patch: Partial<
+    Pick<StudioCaptionTrack, "languageCode" | "label" | "kind" | "enabled" | "default">
+  >,
+) {
+  return studioFetch(
+    `/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    },
+  );
+}
+
+export function removeStudioCaption(videoId: string, trackId: string) {
+  return studioFetch(
+    `/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export function unpublishStudioVideo(videoId: string) {

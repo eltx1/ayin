@@ -114,20 +114,39 @@ export class WatchService {
         })
       : null;
 
-    const captions = video.mediaAssets
-      .filter(
-        (asset) =>
-          asset.kind === "CAPTION" &&
-          (asset.mimeType === "text/vtt" || asset.mimeType === "application/vtt"),
-      )
-      .map((asset, index) => ({
-        id: asset.id,
-        objectKey: asset.r2ObjectKey,
-        mimeType: asset.mimeType,
-        label: index === 0 ? "Captions" : `Captions ${index + 1}`,
-        language: "und",
-        default: index === 0,
-      }));
+    const [captionTracks, creatorMetadata] = await Promise.all([
+      this.database.client.videoCaptionTrack.findMany({
+        where: { videoId: video.id, isEnabled: true, mediaAssetId: { not: null } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }),
+      this.database.client.videoCreatorMetadata.findUnique({
+        where: { videoId: video.id },
+        select: { chapters: true },
+      }),
+    ]);
+    const captionAssets = new Map(
+      video.mediaAssets
+        .filter((asset) => asset.kind === "CAPTION")
+        .map((asset) => [asset.id, asset]),
+    );
+    const captions = captionTracks.flatMap((track) => {
+      if (!track.mediaAssetId) return [];
+      const asset = captionAssets.get(track.mediaAssetId);
+      if (!asset || asset.mimeType !== "text/vtt") return [];
+      return [
+        {
+          id: track.id,
+          objectKey: asset.r2ObjectKey,
+          mimeType: "text/vtt" as const,
+          label: track.label,
+          language: track.languageCode,
+          kind: track.kind,
+          default: track.isDefault,
+        },
+      ];
+    });
+    const playbackDurationMs = video.durationMs ?? source.durationMs;
+    const chapters = playableChapters(creatorMetadata?.chapters, playbackDurationMs);
 
     const related = await this.database.client.video.findMany({
       where: {
@@ -172,7 +191,7 @@ export class WatchService {
         slug: video.slug,
         title: video.title,
         description: video.description,
-        durationMs: video.durationMs ?? source.durationMs,
+        durationMs: playbackDurationMs,
         publishedAt: video.publishedAt,
         channel: {
           id: video.channel.id,
@@ -185,7 +204,7 @@ export class WatchService {
         },
         adaptiveSource,
         captions,
-        chapters: [],
+        chapters,
       },
       detail: {
         contentType: "CREATOR_VIDEO" as const,
@@ -359,4 +378,32 @@ export class WatchService {
     }
     return video;
   }
+}
+
+function playableChapters(value: unknown, durationMs: number | null) {
+  if (!Array.isArray(value)) return [];
+  const result: Array<{ id: string; title: string; startMs: number }> = [];
+  let previousStartMs = -1;
+  for (let index = 0; index < value.length; index += 1) {
+    const item = value[index];
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const title = typeof record.title === "string" ? record.title.trim() : "";
+    const startSeconds = record.startSeconds;
+    if (
+      !title ||
+      title.length > 100 ||
+      typeof startSeconds !== "number" ||
+      !Number.isInteger(startSeconds) ||
+      startSeconds < 0
+    ) {
+      continue;
+    }
+    const startMs = startSeconds * 1000;
+    if (startMs <= previousStartMs) continue;
+    if (durationMs && durationMs > 0 && startMs >= durationMs) continue;
+    result.push({ id: `chapter-${index}-${startMs}`, title, startMs });
+    previousStartMs = startMs;
+  }
+  return result;
 }

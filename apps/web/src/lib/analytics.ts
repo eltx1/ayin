@@ -17,6 +17,8 @@ export type AnalyticsEventName =
   | "VIDEO_QUALITY_SWITCH"
   | "VIDEO_HLS_FATAL"
   | "VIDEO_FALLBACK"
+  | "VIDEO_CAPTION_CHANGE"
+  | "VIDEO_CHAPTER_SEEK"
   | "SEARCH"
   | "SEARCH_CLICK"
   | "SUBSCRIBE"
@@ -210,6 +212,24 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
             ...common,
             positionMs: event.positionMs,
             metadata: { protocol },
+          });
+          break;
+        case "caption_change":
+          trackAnalyticsEvent("VIDEO_CAPTION_CHANGE", {
+            ...common,
+            metadata: {
+              protocol,
+              trackId: event.trackId,
+              language: event.language,
+              kind: event.kind,
+            },
+          });
+          break;
+        case "chapter_seek":
+          trackAnalyticsEvent("VIDEO_CHAPTER_SEEK", {
+            ...common,
+            positionMs: event.startMs,
+            metadata: { protocol, chapterId: event.chapterId },
           });
           break;
         case "quality_switch":
