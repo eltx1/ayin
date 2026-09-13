@@ -25,4 +25,4 @@ OPERATIONS and CONTENT_MODERATOR staff can set or clear FORCE_ALLOW/FORCE_BLOCK 
 
 ## SEO
 
-Geo-restricted or rights-expired videos are not returned as available SEO video metadata when the request is unavailable in its trusted region. Sitemaps use conservative unknown-region evaluation, so only content safe for global indexing is emitted. PRIVATE content remains unavailable and UNLISTED content remains non-indexable.
+Geo-restricted or rights-expired videos are not returned as available SEO video metadata when the request is unavailable in its trusted region. Playlist SEO metadata applies the same trusted request-region decision to its video items and degrades to unavailable when none remain eligible. Sitemaps use conservative unknown-region evaluation, so only content safe for global indexing is emitted. PRIVATE content remains unavailable and UNLISTED content remains non-indexable.
