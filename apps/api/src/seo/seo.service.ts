@@ -198,7 +198,7 @@ export class SeoService {
     };
   }
 
-  async getPlaylist(handle: string, slug: string) {
+  async getPlaylist(handle: string, slug: string, context: VideoPolicyContext = {}) {
     const playlist = await this.database.client.playlist.findFirst({
       where: {
         slug,
@@ -258,8 +258,13 @@ export class SeoService {
 
     const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
       playlist.items.map((item) => item.video.id),
-      {},
+      context,
     );
+    const availableItems = playlist.items.filter((item) => allowedVideoIds.has(item.video.id));
+    if (!availableItems.length) {
+      throw new NotFoundException("This playlist is not available for SEO metadata.");
+    }
+
     return {
       id: playlist.id,
       slug: playlist.slug,
@@ -269,20 +274,18 @@ export class SeoService {
       createdAt: playlist.createdAt,
       updatedAt: playlist.updatedAt,
       channel: playlist.channel,
-      items: playlist.items
-        .filter((item) => allowedVideoIds.has(item.video.id))
-        .map((item) => ({
-          position: item.position,
-          video: {
-            id: item.video.id,
-            slug: item.video.slug,
-            title: item.video.title,
-            description: item.video.description,
-            durationMs: item.video.durationMs,
-            publishedAt: item.video.publishedAt,
-            thumbnail: item.video.mediaAssets[0] ?? null,
-          },
-        })),
+      items: availableItems.map((item) => ({
+        position: item.position,
+        video: {
+          id: item.video.id,
+          slug: item.video.slug,
+          title: item.video.title,
+          description: item.video.description,
+          durationMs: item.video.durationMs,
+          publishedAt: item.video.publishedAt,
+          thumbnail: item.video.mediaAssets[0] ?? null,
+        },
+      })),
     };
   }
 
@@ -417,6 +420,7 @@ export class SeoService {
           select: {
             video: {
               select: {
+                id: true,
                 mediaAssets: {
                   where: {
                     kind: "THUMBNAIL",
@@ -434,16 +438,24 @@ export class SeoService {
       },
     });
 
+    const leadVideoIds = playlists.flatMap((playlist) =>
+      playlist.items.map((item) => item.video.id),
+    );
+    const allowedLeadVideoIds = await this.videoPolicy.filterAvailableVideoIds(leadVideoIds, {});
     return {
-      items: playlists.map((playlist) => ({
-        id: playlist.id,
-        slug: playlist.slug,
-        name: playlist.name,
-        description: playlist.description,
-        updatedAt: playlist.updatedAt,
-        channel: playlist.channel,
-        imageObjectKey: playlist.items[0]?.video.mediaAssets[0]?.r2ObjectKey ?? null,
-      })),
+      items: playlists
+        .filter((playlist) =>
+          playlist.items.some((item) => allowedLeadVideoIds.has(item.video.id)),
+        )
+        .map((playlist) => ({
+          id: playlist.id,
+          slug: playlist.slug,
+          name: playlist.name,
+          description: playlist.description,
+          updatedAt: playlist.updatedAt,
+          channel: playlist.channel,
+          imageObjectKey: playlist.items[0]?.video.mediaAssets[0]?.r2ObjectKey ?? null,
+        })),
     };
   }
 }
