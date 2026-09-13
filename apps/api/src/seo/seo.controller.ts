@@ -33,11 +33,15 @@ export class SeoController {
   @Get("channels/:handle") getChannel(@Param("handle") handle: string) {
     return this.seo.getChannel(handle);
   }
-  @Get("playlists/:handle/:slug") getPlaylist(
+  @Get("playlists/:handle/:slug")
+  getPlaylist(
     @Param("handle") handle: string,
     @Param("slug") slug: string,
+    @Headers() headers: HeaderBag,
   ) {
-    return this.seo.getPlaylist(handle, slug);
+    return this.seo.getPlaylist(handle, slug, {
+      countryCode: this.trustedRegion.countryFromHeaders(headers),
+    });
   }
   @Get("sitemap/:kind")
   listSitemap(@Param("kind") kindRaw: string, @Query() query: unknown) {
