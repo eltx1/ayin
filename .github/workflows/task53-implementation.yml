@@ -1,0 +1,59 @@
+name: Task 53 implementation
+
+on:
+  push:
+    branches:
+      - task-53-rights-geo-maturity
+    paths:
+      - .github/workflows/task53-implementation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout task branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: task-53-rights-geo-maturity
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pnpm and install
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          pnpm install --frozen-lockfile
+
+      - name: Apply Task 53 implementation
+        run: python3 deploy/task53-implement.py
+
+      - name: Format Prisma and changed text files
+        run: |
+          (cd packages/db && pnpm exec prisma format)
+          git diff --name-only --diff-filter=ACM -z | xargs -0 pnpm exec prettier --write --ignore-unknown
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Persist clean implementation
+        run: |
+          rm -f deploy/task53-implement.py .github/workflows/task53-implementation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(task-53): enforce rights geo and maturity policy"
+          git push origin HEAD:task-53-rights-geo-maturity
