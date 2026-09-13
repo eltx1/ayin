@@ -26,3 +26,7 @@ OPERATIONS and CONTENT_MODERATOR staff can set or clear FORCE_ALLOW/FORCE_BLOCK 
 ## SEO
 
 Geo-restricted or rights-expired videos are not returned as available SEO video metadata when the request is unavailable in its trusted region. Playlist SEO metadata applies the same trusted request-region decision to its video items and degrades to unavailable when none remain eligible. Sitemaps use conservative unknown-region evaluation, so only content safe for global indexing is emitted. PRIVATE content remains unavailable and UNLISTED content remains non-indexable.
+
+## Verification scope
+
+Policy tests cover allowed and blocked regions, fail-closed unknown regions, audited admin overrides, PRIVATE and UNLISTED playback boundaries, and Creator TV eligibility. Repository formatting, lint, typechecking, and unit/schema tests are required to pass before merge.
