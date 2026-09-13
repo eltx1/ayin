@@ -1,0 +1,55 @@
+name: Task 53 format
+
+on:
+  push:
+    branches:
+      - task-53-rights-geo-maturity
+    paths:
+      - .github/workflows/task53-format.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout task branch
+        uses: actions/checkout@v7
+        with:
+          ref: task-53-rights-geo-maturity
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format Task 53 files
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/admin/admin-video-policy.controller.ts \
+            apps/api/src/admin/admin-video-policy.service.ts \
+            apps/api/src/creator/creator-tv-policy.test.ts \
+            apps/api/src/seo/seo.service.ts \
+            apps/api/src/video-policy/country-codes.ts \
+            apps/api/src/video-policy/video-policy.service.test.ts \
+            apps/api/src/video-policy/video-policy.service.ts
+
+      - name: Commit formatted files and remove helper workflow
+        run: |
+          rm .github/workflows/task53-format.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "style(task-53): format policy implementation"
+          git push origin HEAD:task-53-rights-geo-maturity
