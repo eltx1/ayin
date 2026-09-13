@@ -333,8 +333,8 @@ model Account {
   assignedModerationCases ModerationCase[]           @relation("ModerationAssignee")
   contentSeedBatches      ContentSeedBatch[]
   communityPosts          CommunityPost[]
-  revenueDisputesCreated  RevenueDispute[]           @relation("RevenueDisputeCreator")
-  revenueDisputesResolved RevenueDispute[]           @relation("RevenueDisputeResolver")
+  revenueDisputesCreated  RevenueDispute[] @relation("RevenueDisputeCreator")
+  revenueDisputesResolved RevenueDispute[] @relation("RevenueDisputeResolver")
   mfaCredential           AccountMfaCredential?
   sessions                AccountSession[]
 
@@ -472,7 +472,7 @@ model Video {
 
   channel                Channel                    @relation(fields: [channelId], references: [id], onDelete: Restrict)
   mediaAssets            MediaAsset[]
-  mediaProcessingJobs    MediaProcessingJob[]
+  mediaProcessingJobs     MediaProcessingJob[]
   playlistItems          PlaylistItem[]
   tvScheduleItems        TvScheduleItem[]
   tvPreferences          CreatorTvVideoPreference[]
@@ -513,10 +513,10 @@ model MediaAsset {
   updatedAt   DateTime         @updatedAt
   removedAt   DateTime?
 
-  video         Video?              @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  channel       Channel?            @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  video         Video?         @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  channel       Channel?       @relation(fields: [channelId], references: [id], onDelete: Cascade)
   creatives     Creative[]
-  communityPost CommunityPost?      @relation("CommunityImageAsset")
+  communityPost CommunityPost? @relation("CommunityImageAsset")
   processingJob MediaProcessingJob? @relation("MediaProcessingFinalAsset")
 
   @@index([videoId, kind, status])
@@ -1037,25 +1037,25 @@ model EarningsLedgerEntry {
 }
 
 model Payout {
-  id                           String       @id @default(uuid()) @db.Uuid
-  channelId                    String       @db.Uuid
-  status                       PayoutStatus @default(PENDING)
-  amount                       Decimal      @db.Decimal(20, 6)
-  currency                     String       @db.Char(3)
-  externalReference            String?      @db.VarChar(255)
-  provider                     String       @default("MANUAL") @db.VarChar(32)
-  requestSource                String       @default("ADMIN") @db.VarChar(16)
+  id                String       @id @default(uuid()) @db.Uuid
+  channelId         String       @db.Uuid
+  status            PayoutStatus @default(PENDING)
+  amount            Decimal      @db.Decimal(20, 6)
+  currency          String       @db.Char(3)
+  externalReference String?      @db.VarChar(255)
+  provider          String       @default("MANUAL") @db.VarChar(32)
+  requestSource     String       @default("ADMIN") @db.VarChar(16)
   paymentProfileId             String?      @db.Uuid
   destinationEncryptedSnapshot String?      @db.Text
   destinationMaskSnapshot      String?      @db.VarChar(120)
   legalNameSnapshot            String?      @db.VarChar(160)
   countryCodeSnapshot          String?      @db.Char(2)
   requestedAt                  DateTime     @default(now())
-  processedAt                  DateTime?
-  paidAt                       DateTime?
-  failureReason                String?      @db.Text
-  createdAt                    DateTime     @default(now())
-  updatedAt                    DateTime     @updatedAt
+  processedAt       DateTime?
+  paidAt            DateTime?
+  failureReason     String?      @db.Text
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   channel        Channel               @relation(fields: [channelId], references: [id], onDelete: Restrict)
   paymentProfile CreatorPayoutProfile? @relation(fields: [paymentProfileId], references: [id], onDelete: SetNull)
