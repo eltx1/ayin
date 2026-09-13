@@ -1,0 +1,116 @@
+name: Task 53 lint fix
+
+on:
+  push:
+    branches:
+      - task-53-rights-geo-maturity
+    paths:
+      - .github/workflows/task53-lint-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout task branch
+        uses: actions/checkout@v7
+        with:
+          ref: task-53-rights-geo-maturity
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply narrow typing fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/api/src/creator/video-metadata.service.ts')
+          text = path.read_text()
+          old = 'function compose(contentType: string, metadata: any, policy: any, rights: any) {'
+          new = '''type CreatorMetadataSnapshot = {
+            tags: string[];
+            category: string | null;
+            primaryLanguage: string | null;
+            recordingDate: Date | null;
+            seriesTitle: string | null;
+            seasonNumber: number | null;
+            episodeNumber: number | null;
+            maturityLevel: string | null;
+            geoAvailabilityMode: string | null;
+            geoCountries: string[];
+            chapters: unknown;
+            adBreakPreference: string | null;
+            adBreakOffsetsSeconds: number[];
+          } | null | undefined;
+
+          type PolicySnapshot = {
+            maturityLevel: string | null;
+            ageRestriction: string;
+            allowedTerritories: string[];
+            blockedTerritories: string[];
+            rightsExpiresAt: Date | null;
+          } | null | undefined;
+
+          type RightsSnapshot = {
+            basis: string;
+            statement: string | null;
+          } | null | undefined;
+
+          function compose(
+            contentType: string,
+            metadata: CreatorMetadataSnapshot,
+            policy: PolicySnapshot,
+            rights: RightsSnapshot,
+          ) {'''
+          if old not in text:
+            raise SystemExit('compose signature not found')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('apps/api/src/watch/watch.service.test.ts')
+          text = path.read_text()
+          old = '  return { service, generationLookup, featureFlags };'
+          new = '  return { service, database, generationLookup, featureFlags };'
+          if old not in text:
+            raise SystemExit('harness return not found')
+          text = text.replace(old, new, 1)
+          old = '''    const { service } = harness({ hlsEnabled: false });
+            (service as any).database.client.video.findUnique.mockResolvedValue({'''
+          new = '''    const { service, database } = harness({ hlsEnabled: false });
+            database.client.video.findUnique.mockResolvedValue({'''
+          if text.count(old) != 2:
+            raise SystemExit(f'expected 2 private database accesses, found {text.count(old)}')
+          text = text.replace(old, new)
+          path.write_text(text)
+          PY
+
+      - name: Format and verify
+        run: |
+          pnpm exec prettier --write apps/api/src/creator/video-metadata.service.ts apps/api/src/watch/watch.service.test.ts
+          rm .github/workflows/task53-lint-fix.yml
+          pnpm exec prettier --check .
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+
+      - name: Commit verified fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(task-53): use explicit policy test types"
+          git push origin HEAD:task-53-rights-geo-maturity
