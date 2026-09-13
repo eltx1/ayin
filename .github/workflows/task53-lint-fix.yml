@@ -87,13 +87,17 @@ jobs:
           if old not in text:
             raise SystemExit('harness return not found')
           text = text.replace(old, new, 1)
-          old = '''    const { service } = harness({ hlsEnabled: false });
-            (service as any).database.client.video.findUnique.mockResolvedValue({'''
-          new = '''    const { service, database } = harness({ hlsEnabled: false });
-            database.client.video.findUnique.mockResolvedValue({'''
-          if text.count(old) != 2:
-            raise SystemExit(f'expected 2 private database accesses, found {text.count(old)}')
-          text = text.replace(old, new)
+          private_access = '(service as any).database.client.video.findUnique.mockResolvedValue({'
+          if text.count(private_access) != 2:
+            raise SystemExit(f'expected 2 private database accesses, found {text.count(private_access)}')
+          text = text.replace(private_access, 'database.client.video.findUnique.mockResolvedValue({')
+          destructure = '    const { service } = harness({ hlsEnabled: false });\n    database.client.video.findUnique.mockResolvedValue({'
+          if text.count(destructure) != 2:
+            raise SystemExit(f'expected 2 harness destructures, found {text.count(destructure)}')
+          text = text.replace(
+            destructure,
+            '    const { service, database } = harness({ hlsEnabled: false });\n    database.client.video.findUnique.mockResolvedValue({',
+          )
           path.write_text(text)
           PY
 
