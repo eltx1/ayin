@@ -81,7 +81,7 @@ function harness(input: { hlsEnabled: boolean; generation?: typeof readyGenerati
     featureFlags as never,
     policy as never,
   );
-  return { service, generationLookup, featureFlags };
+  return { service, database, generationLookup, featureFlags };
 }
 
 describe("WatchService adaptive playback", () => {
@@ -132,8 +132,8 @@ describe("WatchService adaptive playback", () => {
   });
 
   it("keeps PRIVATE as a hard boundary before any policy/admin override can expose it", async () => {
-    const { service } = harness({ hlsEnabled: false });
-    (service as any).database.client.video.findUnique.mockResolvedValue({
+    const { service, database } = harness({ hlsEnabled: false });
+    database.client.video.findUnique.mockResolvedValue({
       ...video,
       visibility: "PRIVATE",
     });
@@ -144,8 +144,8 @@ describe("WatchService adaptive playback", () => {
   });
 
   it("allows direct UNLISTED playback when policy allows it", async () => {
-    const { service } = harness({ hlsEnabled: false });
-    (service as any).database.client.video.findUnique.mockResolvedValue({
+    const { service, database } = harness({ hlsEnabled: false });
+    database.client.video.findUnique.mockResolvedValue({
       ...video,
       visibility: "UNLISTED",
     });

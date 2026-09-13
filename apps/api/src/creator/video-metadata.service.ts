@@ -217,7 +217,50 @@ export class VideoMetadataService {
   }
 }
 
-function compose(contentType: string, metadata: any, policy: any, rights: any) {
+type CreatorMetadataSnapshot =
+  | {
+      tags: string[];
+      category: string | null;
+      primaryLanguage: string | null;
+      recordingDate: Date | null;
+      seriesTitle: string | null;
+      seasonNumber: number | null;
+      episodeNumber: number | null;
+      maturityLevel: string | null;
+      geoAvailabilityMode: string | null;
+      geoCountries: string[];
+      chapters: unknown;
+      adBreakPreference: string | null;
+      adBreakOffsetsSeconds: number[];
+    }
+  | null
+  | undefined;
+
+type PolicySnapshot =
+  | {
+      maturityLevel: string | null;
+      ageRestriction: string;
+      allowedTerritories: string[];
+      blockedTerritories: string[];
+      rightsExpiresAt: Date | null;
+    }
+  | null
+  | undefined;
+
+type RightsSnapshot =
+  | {
+      basis: string;
+      statement: string | null;
+    }
+  | null
+  | undefined;
+
+function compose(
+  contentType: string,
+  metadata: CreatorMetadataSnapshot,
+  policy: PolicySnapshot,
+  rights: RightsSnapshot,
+) {
   const allowedTerritories =
     policy?.allowedTerritories ??
     (metadata?.geoAvailabilityMode === "INCLUDE_ONLY" ? metadata.geoCountries : []);
