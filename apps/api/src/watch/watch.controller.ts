@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   Inject,
   Param,
@@ -13,6 +14,7 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { WatchError, WatchService } from "./watch.service.js";
 
 const uuidSchema = z.string().uuid();
@@ -36,24 +38,33 @@ const progressQuerySchema = z.object({ profileId: uuidSchema.optional() }).stric
 
 @Controller("public/videos")
 export class PublicWatchController {
-  constructor(@Inject(WatchService) private readonly watch: WatchService) {}
+  constructor(
+    @Inject(WatchService) private readonly watch: WatchService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+  ) {}
 
   @Get(":slug/playback")
-  async playback(@Param("slug") slug: string) {
-    return runWatchOperation(() => this.watch.getPublicPlayback(slug));
+  async playback(@Param("slug") slug: string, @Headers() headers: HeaderBag) {
+    return runWatchOperation(() =>
+      this.watch.getPublicPlayback(slug, this.trustedRegion.countryFromHeaders(headers)),
+    );
   }
 }
 
 @Controller("watch")
 @UseGuards(AuthGuard)
 export class WatchProgressController {
-  constructor(@Inject(WatchService) private readonly watch: WatchService) {}
+  constructor(
+    @Inject(WatchService) private readonly watch: WatchService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+  ) {}
 
   @Get("progress/:videoId")
   async progress(
     @Req() request: AuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
     @Query() query: unknown,
+    @Headers() headers: HeaderBag,
   ) {
     const videoId = parseUuid(videoIdRaw);
     const parsed = progressQuerySchema.safeParse(query);
@@ -63,7 +74,12 @@ export class WatchProgressController {
       );
     }
     return runWatchOperation(() =>
-      this.watch.getProgress(request.ayinAuth.accountId, videoId, parsed.data.profileId),
+      this.watch.getProgress(
+        request.ayinAuth.accountId,
+        videoId,
+        parsed.data.profileId,
+        this.trustedRegion.countryFromHeaders(headers),
+      ),
     );
   }
 
@@ -72,6 +88,7 @@ export class WatchProgressController {
     @Req() request: AuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
     @Body() body: unknown,
+    @Headers() headers: HeaderBag,
   ) {
     const videoId = parseUuid(videoIdRaw);
     const parsed = progressBodySchema.safeParse(body);
@@ -79,7 +96,12 @@ export class WatchProgressController {
       throw watchHttpError(new WatchError("INVALID_PROGRESS", "The playback position is invalid."));
     }
     return runWatchOperation(() =>
-      this.watch.saveProgress(request.ayinAuth.accountId, videoId, parsed.data),
+      this.watch.saveProgress(
+        request.ayinAuth.accountId,
+        videoId,
+        parsed.data,
+        this.trustedRegion.countryFromHeaders(headers),
+      ),
     );
   }
 }

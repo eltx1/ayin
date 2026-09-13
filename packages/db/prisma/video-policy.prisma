@@ -1,0 +1,41 @@
+enum VideoAgeRestriction {
+  NONE
+  AGE_13_PLUS
+  AGE_18_PLUS
+}
+
+enum VideoPolicyOverrideDisposition {
+  FORCE_ALLOW
+  FORCE_BLOCK
+}
+
+// Authoritative distribution policy. Absence of a row means the simple AYIN
+// default: worldwide availability, no expiry and no age gate.
+model VideoPolicy {
+  videoId            String              @id @db.Uuid
+  maturityLevel      VideoMaturityLevel?
+  allowedTerritories String[]            @default([])
+  blockedTerritories String[]            @default([])
+  rightsExpiresAt    DateTime?
+  ageRestriction     VideoAgeRestriction @default(NONE)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([maturityLevel])
+  @@index([rightsExpiresAt])
+}
+
+// Administrative policy override only. It never overrides Video publication,
+// visibility, channel state or removal state; those remain hard boundaries.
+model VideoPolicyOverride {
+  videoId        String                         @id @db.Uuid
+  disposition    VideoPolicyOverrideDisposition
+  reason         String                         @db.Text
+  actorAccountId String                         @db.Uuid
+  expiresAt      DateTime?
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+
+  @@index([disposition, expiresAt])
+  @@index([actorAccountId, updatedAt])
+}

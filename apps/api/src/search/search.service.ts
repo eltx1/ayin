@@ -3,6 +3,10 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { VIDEO_CATEGORIES } from "../creator/video-metadata.validation.js";
+import {
+  VideoPolicyService,
+  type VideoPolicyContext,
+} from "../video-policy/video-policy.service.js";
 
 const maxPageSize = 24;
 const publicVideoWhere = {
@@ -45,9 +49,17 @@ export class SearchError extends Error {
 
 @Injectable()
 export class SearchService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
+  ) {}
 
-  async search(query: string, cursor?: string, requestedLimit = 12) {
+  async search(
+    query: string,
+    cursor?: string,
+    requestedLimit = 12,
+    context: VideoPolicyContext = {},
+  ) {
     const normalized = normalizeQuery(query);
     const offset = decodeCursor(cursor);
     const limit = Math.min(Math.max(requestedLimit, 1), maxPageSize);
@@ -152,16 +164,22 @@ export class SearchService {
       }),
     ]);
 
+    const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
+      videos.map((video) => video.id),
+      context,
+    );
     const ranked: SearchResult[] = [
-      ...videos.map((video) => ({
-        id: video.id,
-        type: "VIDEO" as const,
-        title: video.title,
-        href: `/watch/${video.slug}`,
-        kicker: "Video",
-        meta: video.channel.name,
-        artworkObjectKey: video.mediaAssets[0]?.r2ObjectKey ?? null,
-      })),
+      ...videos
+        .filter((video) => allowedVideoIds.has(video.id))
+        .map((video) => ({
+          id: video.id,
+          type: "VIDEO" as const,
+          title: video.title,
+          href: `/watch/${video.slug}`,
+          kicker: "Video",
+          meta: video.channel.name,
+          artworkObjectKey: video.mediaAssets[0]?.r2ObjectKey ?? null,
+        })),
       ...channels.map((channel) => ({
         id: channel.id,
         type: "CHANNEL" as const,
@@ -202,7 +220,7 @@ export class SearchService {
     };
   }
 
-  async suggest(query: string, requestedLimit = 6) {
+  async suggest(query: string, requestedLimit = 6, context: VideoPolicyContext = {}) {
     const normalized = normalizeQuery(query);
     const limit = Math.min(Math.max(requestedLimit, 1), 8);
     const [videos, channels, televisions] = await Promise.all([
@@ -239,15 +257,21 @@ export class SearchService {
         select: { id: true, name: true, channel: { select: { handle: true } } },
       }),
     ]);
+    const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
+      videos.map((video) => video.id),
+      context,
+    );
     return {
       query: normalized,
       suggestions: [
-        ...videos.map((video) => ({
-          id: video.id,
-          type: "VIDEO" as const,
-          label: video.title,
-          href: `/watch/${video.slug}`,
-        })),
+        ...videos
+          .filter((video) => allowedVideoIds.has(video.id))
+          .map((video) => ({
+            id: video.id,
+            type: "VIDEO" as const,
+            label: video.title,
+            href: `/watch/${video.slug}`,
+          })),
         ...channels.map((channel) => ({
           id: channel.id,
           type: "CHANNEL" as const,
@@ -262,6 +286,13 @@ export class SearchService {
         })),
       ].slice(0, limit),
     };
+  }
+
+  async filterResults(items: SearchResult[], context: VideoPolicyContext = {}) {
+    const videoIds = items.filter((item) => item.type === "VIDEO").map((item) => item.id);
+    if (!videoIds.length) return items;
+    const allowed = await this.videoPolicy.filterAvailableVideoIds(videoIds, context);
+    return items.filter((item) => item.type !== "VIDEO" || allowed.has(item.id));
   }
 }
 

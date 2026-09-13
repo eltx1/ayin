@@ -21,6 +21,7 @@ import { SearchModule } from "./search/search.module.js";
 import { SeoModule } from "./seo/seo.module.js";
 import { SocialModule } from "./social/social.module.js";
 import { TrustModule } from "./trust/trust.module.js";
+import { VideoPolicyModule } from "./video-policy/video-policy.module.js";
 import { WatchModule } from "./watch/watch.module.js";
 
 @Module({
@@ -46,6 +47,7 @@ import { WatchModule } from "./watch/watch.module.js";
     CommentsModule,
     CommunityModule,
     TrustModule,
+    VideoPolicyModule,
   ],
   controllers: [AppController],
 })

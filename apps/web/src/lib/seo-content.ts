@@ -64,9 +64,15 @@ interface SeoImage {
   height: number | null;
 }
 
-export const getSeoVideo = cache(async (slug: string): Promise<SeoVideoResponse | null> => {
-  return fetchSeo<SeoVideoResponse>(`/public/seo/videos/${encodeURIComponent(slug)}`);
-});
+export async function getSeoVideo(
+  slug: string,
+  requestHeaders: Record<string, string> = {},
+): Promise<SeoVideoResponse | null> {
+  return fetchSeo<SeoVideoResponse>(
+    `/public/seo/videos/${encodeURIComponent(slug)}`,
+    requestHeaders,
+  );
+}
 
 export const getSeoChannel = cache(async (handle: string): Promise<SeoChannelResponse | null> => {
   return fetchSeo<SeoChannelResponse>(`/public/seo/channels/${encodeURIComponent(handle)}`);
@@ -80,8 +86,14 @@ export const getSeoPlaylist = cache(
   },
 );
 
-async function fetchSeo<T>(path: string): Promise<T | null> {
-  const response = await fetch(`${apiBaseUrl}${path}`, { cache: "no-store" });
+async function fetchSeo<T>(
+  path: string,
+  requestHeaders: Record<string, string> = {},
+): Promise<T | null> {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    cache: "no-store",
+    headers: requestHeaders,
+  });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`SEO metadata request failed with ${response.status}.`);
   return (await response.json()) as T;

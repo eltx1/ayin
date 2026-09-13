@@ -10,7 +10,10 @@ function serviceWith(overrides: Record<string, unknown[]> = {}) {
     creatorTvChannel: { findMany: async () => overrides.creatorTvChannel ?? [] },
     videoCreatorMetadata: { findMany: async () => overrides.videoCreatorMetadata ?? [] },
   };
-  return new SearchService({ client } as never);
+  return new SearchService(
+    { client } as never,
+    { filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)) } as never,
+  );
 }
 
 describe("SearchService", () => {
@@ -35,15 +38,18 @@ describe("SearchService", () => {
 
   it("requires a validated MP4 source for public video search candidates", async () => {
     const findMany = vi.fn(async () => []);
-    const service = new SearchService({
-      client: {
-        video: { findMany },
-        channel: { findMany: vi.fn(async () => []) },
-        playlist: { findMany: vi.fn(async () => []) },
-        creatorTvChannel: { findMany: vi.fn(async () => []) },
-        videoCreatorMetadata: { findMany: vi.fn(async () => []) },
-      },
-    } as never);
+    const service = new SearchService(
+      {
+        client: {
+          video: { findMany },
+          channel: { findMany: vi.fn(async () => []) },
+          playlist: { findMany: vi.fn(async () => []) },
+          creatorTvChannel: { findMany: vi.fn(async () => []) },
+          videoCreatorMetadata: { findMany: vi.fn(async () => []) },
+        },
+      } as never,
+      { filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)) } as never,
+    );
 
     await service.search("film");
     expect(findMany).toHaveBeenCalledWith(
