@@ -68,14 +68,20 @@ export class VideoPolicyService {
     return new Map(
       ids.map((videoId) => [
         videoId,
-        evaluatePolicy(policyByVideo.get(videoId) ?? null, overrideByVideo.get(videoId) ?? null, context),
+        evaluatePolicy(
+          policyByVideo.get(videoId) ?? null,
+          overrideByVideo.get(videoId) ?? null,
+          context,
+        ),
       ]),
     );
   }
 
   async filterAvailableVideoIds(videoIds: string[], context: VideoPolicyContext = {}) {
     const decisions = await this.decideMany(videoIds, context);
-    return new Set([...decisions].filter(([, decision]) => decision.allowed).map(([videoId]) => videoId));
+    return new Set(
+      [...decisions].filter(([, decision]) => decision.allowed).map(([videoId]) => videoId),
+    );
   }
 
   async readPolicy(videoId: string) {
@@ -111,7 +117,8 @@ export function evaluatePolicy(
 ): VideoPolicyDecision {
   const now = context.now ?? new Date();
   const countryCode = normalizeTerritoryCode(context.countryCode) ?? null;
-  const activeOverride = override && (!override.expiresAt || override.expiresAt > now) ? override : null;
+  const activeOverride =
+    override && (!override.expiresAt || override.expiresAt > now) ? override : null;
   const snapshot = {
     maturityLevel: policy?.maturityLevel ?? null,
     ageRestriction: policy?.ageRestriction ?? ("NONE" as const),
@@ -130,11 +137,17 @@ export function evaluatePolicy(
     return { allowed: false, reason: "RIGHTS_EXPIRED", ...snapshot };
   }
 
-  const hasGeoRule = Boolean(policy?.allowedTerritories.length || policy?.blockedTerritories.length);
+  const hasGeoRule = Boolean(
+    policy?.allowedTerritories.length || policy?.blockedTerritories.length,
+  );
   if (hasGeoRule && !countryCode) {
     return { allowed: false, reason: "REGION_UNKNOWN", ...snapshot };
   }
-  if (countryCode && policy?.allowedTerritories.length && !policy.allowedTerritories.includes(countryCode)) {
+  if (
+    countryCode &&
+    policy?.allowedTerritories.length &&
+    !policy.allowedTerritories.includes(countryCode)
+  ) {
     return { allowed: false, reason: "REGION_NOT_ALLOWED", ...snapshot };
   }
   if (countryCode && policy?.blockedTerritories.includes(countryCode)) {
@@ -142,7 +155,9 @@ export function evaluatePolicy(
   }
   if (
     context.isKidsProfile === true &&
-    ((policy?.maturityLevel !== null && policy?.maturityLevel !== undefined && policy.maturityLevel !== "GENERAL") ||
+    ((policy?.maturityLevel !== null &&
+      policy?.maturityLevel !== undefined &&
+      policy.maturityLevel !== "GENERAL") ||
       (policy?.ageRestriction ?? "NONE") !== "NONE")
   ) {
     return { allowed: false, reason: "KIDS_PROFILE_RESTRICTED", ...snapshot };

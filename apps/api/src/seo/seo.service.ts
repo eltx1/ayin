@@ -444,9 +444,7 @@ export class SeoService {
     const allowedLeadVideoIds = await this.videoPolicy.filterAvailableVideoIds(leadVideoIds, {});
     return {
       items: playlists
-        .filter((playlist) =>
-          playlist.items.some((item) => allowedLeadVideoIds.has(item.video.id)),
-        )
+        .filter((playlist) => playlist.items.some((item) => allowedLeadVideoIds.has(item.video.id)))
         .map((playlist) => ({
           id: playlist.id,
           slug: playlist.slug,

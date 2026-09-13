@@ -72,7 +72,9 @@ describe("VideoPolicyService decisions", () => {
       },
     };
     const service = new VideoPolicyService(database as never);
-    const allowed = await service.filterAvailableVideoIds([basePolicy.videoId], { countryCode: "EG" });
+    const allowed = await service.filterAvailableVideoIds([basePolicy.videoId], {
+      countryCode: "EG",
+    });
     expect(allowed.has(basePolicy.videoId)).toBe(true);
   });
 });

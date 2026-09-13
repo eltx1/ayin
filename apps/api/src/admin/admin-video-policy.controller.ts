@@ -26,7 +26,9 @@ const clearSchema = z.object({ reason: reasonSchema }).strict();
 @UseGuards(AuthGuard, AdminGuard)
 @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
 export class AdminVideoPolicyController {
-  constructor(@Inject(AdminVideoPolicyService) private readonly policies: AdminVideoPolicyService) {}
+  constructor(
+    @Inject(AdminVideoPolicyService) private readonly policies: AdminVideoPolicyService,
+  ) {}
 
   @Get(":videoId")
   async get(@Param("videoId") videoIdRaw: string) {
@@ -41,10 +43,17 @@ export class AdminVideoPolicyController {
     @Body() body: unknown,
   ) {
     const parsed = overrideSchema.safeParse(body);
-    if (!parsed.success) throw adminBadRequest("INVALID_VIDEO_POLICY_OVERRIDE", "Check the override disposition, reason and expiry.");
+    if (!parsed.success)
+      throw adminBadRequest(
+        "INVALID_VIDEO_POLICY_OVERRIDE",
+        "Check the override disposition, reason and expiry.",
+      );
     const expiresAt = parsed.data.expiresAt ? new Date(parsed.data.expiresAt) : null;
     if (expiresAt && expiresAt <= new Date()) {
-      throw adminBadRequest("INVALID_VIDEO_POLICY_OVERRIDE", "Override expiry must be in the future.");
+      throw adminBadRequest(
+        "INVALID_VIDEO_POLICY_OVERRIDE",
+        "Override expiry must be in the future.",
+      );
     }
     return this.policies.setOverride(request.ayinAuth.accountId, parseVideoId(videoIdRaw), {
       disposition: parsed.data.disposition,
@@ -61,8 +70,16 @@ export class AdminVideoPolicyController {
     @Body() body: unknown,
   ) {
     const parsed = clearSchema.safeParse(body);
-    if (!parsed.success) throw adminBadRequest("INVALID_VIDEO_POLICY_OVERRIDE", "An audit reason is required to clear an override.");
-    return this.policies.clearOverride(request.ayinAuth.accountId, parseVideoId(videoIdRaw), parsed.data.reason);
+    if (!parsed.success)
+      throw adminBadRequest(
+        "INVALID_VIDEO_POLICY_OVERRIDE",
+        "An audit reason is required to clear an override.",
+      );
+    return this.policies.clearOverride(
+      request.ayinAuth.accountId,
+      parseVideoId(videoIdRaw),
+      parsed.data.reason,
+    );
   }
 }
 

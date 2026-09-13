@@ -25,7 +25,9 @@ export class AdminVideoPolicyService {
 
   async setOverride(actorAccountId: string, videoId: string, input: AdminPolicyOverrideInput) {
     await this.assertVideo(videoId);
-    const previous = await this.database.client.videoPolicyOverride.findUnique({ where: { videoId } });
+    const previous = await this.database.client.videoPolicyOverride.findUnique({
+      where: { videoId },
+    });
     const override = await this.database.client.$transaction(async (tx) => {
       const saved = await tx.videoPolicyOverride.upsert({
         where: { videoId },
@@ -52,7 +54,9 @@ export class AdminVideoPolicyService {
 
   async clearOverride(actorAccountId: string, videoId: string, reason: string) {
     await this.assertVideo(videoId);
-    const previous = await this.database.client.videoPolicyOverride.findUnique({ where: { videoId } });
+    const previous = await this.database.client.videoPolicyOverride.findUnique({
+      where: { videoId },
+    });
     await this.database.client.$transaction(async (tx) => {
       await tx.videoPolicyOverride.deleteMany({ where: { videoId } });
       await this.audit.recordInTransaction(tx, {
@@ -71,7 +75,10 @@ export class AdminVideoPolicyService {
   }
 
   private async assertVideo(videoId: string) {
-    const video = await this.database.client.video.findUnique({ where: { id: videoId }, select: { id: true } });
+    const video = await this.database.client.video.findUnique({
+      where: { id: videoId },
+      select: { id: true },
+    });
     if (!video) throw new NotFoundException("This video could not be found.");
   }
 }

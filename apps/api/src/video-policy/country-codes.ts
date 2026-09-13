@@ -9,5 +9,11 @@ export function normalizeTerritoryCode(value: string | null | undefined): string
 }
 
 export function normalizeTerritoryCodes(values: string[]): string[] {
-  return [...new Set(values.map((value) => normalizeTerritoryCode(value)).filter((value): value is string => Boolean(value)))];
+  return [
+    ...new Set(
+      values
+        .map((value) => normalizeTerritoryCode(value))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
 }
