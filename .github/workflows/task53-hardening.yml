@@ -1,0 +1,119 @@
+name: Task 53 hardening
+
+on:
+  push:
+    branches:
+      - task-53-rights-geo-maturity
+    paths:
+      - .github/workflows/task53-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout task branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: task-53-rights-geo-maturity
+          fetch-depth: 0
+
+      - name: Remove unrelated Prisma formatter noise and harden SEO playlist eligibility
+        run: |
+          git checkout origin/main -- \
+            packages/db/prisma/captions.prisma \
+            packages/db/prisma/comments.prisma \
+            packages/db/prisma/schema.prisma \
+            packages/db/prisma/trust.prisma
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('apps/api/src/seo/seo.service.ts')
+          text = path.read_text()
+          old = '''            video: {
+              select: {
+                mediaAssets: {'''
+          new = '''            video: {
+              select: {
+                id: true,
+                mediaAssets: {'''
+          if old not in text:
+              raise SystemExit('playlist sitemap video select anchor not found')
+          # Only the final listPlaylists occurrence lacks id. Replace from the end.
+          index = text.rfind(old)
+          text = text[:index] + text[index:].replace(old, new, 1)
+          old_return = '''    return {
+      items: playlists.map((playlist) => ({
+        id: playlist.id,
+        slug: playlist.slug,
+        name: playlist.name,
+        description: playlist.description,
+        updatedAt: playlist.updatedAt,
+        channel: playlist.channel,
+        imageObjectKey: playlist.items[0]?.video.mediaAssets[0]?.r2ObjectKey ?? null,
+      })),
+    };
+  }
+}'''
+          new_return = '''    const leadVideoIds = playlists.flatMap((playlist) =>
+      playlist.items.map((item) => item.video.id),
+    );
+    const allowedLeadVideoIds = await this.videoPolicy.filterAvailableVideoIds(leadVideoIds, {});
+    return {
+      items: playlists
+        .filter((playlist) =>
+          playlist.items.some((item) => allowedLeadVideoIds.has(item.video.id)),
+        )
+        .map((playlist) => ({
+          id: playlist.id,
+          slug: playlist.slug,
+          name: playlist.name,
+          description: playlist.description,
+          updatedAt: playlist.updatedAt,
+          channel: playlist.channel,
+          imageObjectKey: playlist.items[0]?.video.mediaAssets[0]?.r2ObjectKey ?? null,
+        })),
+    };
+  }
+}'''
+          if old_return not in text:
+              raise SystemExit('playlist sitemap return block not found')
+          path.write_text(text.replace(old_return, new_return, 1))
+          PY
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pnpm and install
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          pnpm install --frozen-lockfile
+
+      - name: Format intended TypeScript only
+        run: pnpm exec prettier --write apps/api/src/seo/seo.service.ts
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Verify lint
+        run: pnpm lint
+
+      - name: Verify typecheck
+        run: pnpm typecheck
+
+      - name: Verify unit and schema tests
+        run: pnpm test
+
+      - name: Persist hardening and remove temporary workflow
+        run: |
+          rm -f .github/workflows/task53-hardening.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(task-53): harden SEO policy eligibility"
+          git push origin HEAD:task-53-rights-geo-maturity
