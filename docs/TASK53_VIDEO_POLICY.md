@@ -13,7 +13,7 @@ AYIN now has one authoritative video-availability policy used by playback, catal
 
 Territories use ISO 3166-1 alpha-2 identifiers. Free-form country text is rejected. An empty allow list plus empty block list means worldwide availability. If any geographic restriction exists and AYIN has no trusted country signal, availability is denied conservatively.
 
-`x-ayin-region` remains personalization-only and has no rights authority. Enforcement accepts either Cloudflare `CF-IPCountry` when `AYIN_TRUST_CLOUDFLARE_REGION=true`, or an internal `x-ayin-edge-country` header authenticated with `AYIN_INTERNAL_EDGE_TOKEN`. Production origins must remain protected from direct untrusted header injection.
+`x-ayin-region` remains personalization-only and has no rights authority. Enforcement accepts either Cloudflare `CF-IPCountry` when `AYIN_TRUST_CLOUDFLARE_REGION=true`, or an internal `x-ayin-edge-country` header authenticated with `AYIN_INTERNAL_EDGE_TOKEN`. Production origins must remain protected from direct untrusted header injection. Deployments must enable only a region source that is guaranteed to be set or authenticated by trusted edge infrastructure; otherwise restricted content intentionally fails closed.
 
 ## Maturity and age hook
 
