@@ -3,6 +3,10 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import {
+  VideoPolicyService,
+  type VideoPolicyContext,
+} from "../video-policy/video-policy.service.js";
 import { ChannelError, ChannelService } from "./channel.service.js";
 import {
   CREATOR_TV_AD_BREAK_HOOK,
@@ -78,9 +82,10 @@ export class CreatorTvService {
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
     @Inject(ChannelService) private readonly channels: ChannelService,
     @Inject(CREATOR_TV_AD_BREAK_HOOK) private readonly adBreakHook: CreatorTvAdBreakHook,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
-  async getPublicTv(handleRaw: string, now = new Date()) {
+  async getPublicTv(handleRaw: string, now = new Date(), policyContext: VideoPolicyContext = {}) {
     const publicChannel = await this.publicChannel(handleRaw);
     if (!publicChannel.creatorTv) {
       throw new CreatorTvError(
@@ -138,7 +143,7 @@ export class CreatorTvService {
       });
     }
 
-    const library = await this.loadEligibleLibrary(tv.id, tv.channelId);
+    const library = await this.loadEligibleLibrary(tv.id, tv.channelId, false, policyContext);
     if (library.length === 0) {
       return this.publicOffAirResponse(publicChannel, tv, now, {
         reason: "NO_ELIGIBLE_VIDEOS",
@@ -164,7 +169,12 @@ export class CreatorTvService {
       endsAtMs: program.endsAtMs,
       playbackOffsetMs: 0,
     }));
-    const overrides = await this.loadAdminOverrides(tv.id, now, new Date(automatic.windowEndsAtMs));
+    const overrides = await this.loadAdminOverrides(
+      tv.id,
+      now,
+      new Date(automatic.windowEndsAtMs),
+      policyContext,
+    );
     const programs = overlayAdminOverrides(automaticPrograms, overrides, now.getTime());
     const currentIndex = programs.findIndex(
       (program) => program.startsAtMs <= now.getTime() && now.getTime() < program.endsAtMs,
@@ -463,6 +473,7 @@ export class CreatorTvService {
     tvChannelId: string,
     channelId: string,
     includeExcluded = false,
+    policyContext?: VideoPolicyContext,
   ): Promise<
     Array<
       CreatorTvLibraryItem<TvVideoPayload & { payloadPreference: CreatorTvVideoPreferenceInput }>
@@ -516,7 +527,14 @@ export class CreatorTvService {
       },
     });
 
+    const allowedVideoIds = policyContext
+      ? await this.videoPolicy.filterAvailableVideoIds(
+          videos.map((video) => video.id),
+          policyContext,
+        )
+      : new Set(videos.map((video) => video.id));
     return videos.flatMap((video) => {
+      if (!allowedVideoIds.has(video.id)) return [];
       const source = video.mediaAssets.find(
         (asset) => asset.kind === "SOURCE_VIDEO" && asset.mimeType === MP4_MIME_TYPE,
       );
@@ -586,6 +604,7 @@ export class CreatorTvService {
     tvChannelId: string,
     from: Date,
     until: Date,
+    policyContext: VideoPolicyContext,
   ): Promise<TvProgram[]> {
     const items = await this.database.client.tvScheduleItem.findMany({
       where: {
@@ -629,7 +648,12 @@ export class CreatorTvService {
       },
     });
 
+    const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
+      items.map((item) => item.video.id),
+      policyContext,
+    );
     return items.flatMap((item) => {
+      if (!allowedVideoIds.has(item.video.id)) return [];
       const source = item.video.mediaAssets.find(
         (asset) => asset.kind === "SOURCE_VIDEO" && asset.mimeType === MP4_MIME_TYPE,
       );

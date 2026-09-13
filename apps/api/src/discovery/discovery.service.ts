@@ -2,6 +2,7 @@ import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
 const playableAssetStates = ["VALIDATED"] as const;
 const completedThumbnailAssetStates = ["UPLOADED", "VALIDATED"] as const;
@@ -71,6 +72,8 @@ export interface DiscoveryContext {
   profileId?: string | undefined;
   regionCode?: string | undefined;
   regionPersonalizationAllowed?: boolean | undefined;
+  availabilityCountryCode?: string | undefined;
+  isKidsProfile?: boolean | undefined;
 }
 
 export class DiscoveryError extends Error {
@@ -121,6 +124,7 @@ export class DiscoveryService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(HomeRowConfigService) private readonly rows: HomeRowConfigService,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
   async getHome(context: DiscoveryContext = {}) {
@@ -139,7 +143,10 @@ export class DiscoveryService {
           title: row.title,
           source: row.source,
           maxItems: row.maxItems,
-          ...(await this.loadRowPage(row, normalized, 0, Math.min(firstPageSize, row.maxItems))),
+          ...(await this.enforcePage(
+            await this.loadRowPage(row, normalized, 0, Math.min(firstPageSize, row.maxItems)),
+            normalized,
+          )),
         })),
       ),
     };
@@ -192,12 +199,23 @@ export class DiscoveryService {
       title: row.title,
       source: row.source,
       maxItems: row.maxItems,
-      ...(await this.loadRowPage(row, normalized, offset, limit)),
+      ...(await this.enforcePage(
+        await this.loadRowPage(row, normalized, offset, limit),
+        normalized,
+      )),
     };
   }
 
-  async getMyAyin(accountId: string, requestedProfileId?: string) {
-    const context = await this.normalizeContext({ accountId, profileId: requestedProfileId });
+  async getMyAyin(
+    accountId: string,
+    requestedProfileId?: string,
+    availabilityCountryCode?: string,
+  ) {
+    const context = await this.normalizeContext({
+      accountId,
+      profileId: requestedProfileId,
+      availabilityCountryCode,
+    });
     if (!context.profileId) {
       throw new DiscoveryError("PROFILE_NOT_FOUND", "A viewer profile is required.", 403);
     }
@@ -214,11 +232,19 @@ export class DiscoveryService {
     return {
       profileId,
       sections: [
-        { key: "continue-watching", title: "Continue Watching", ...continueWatching },
-        { key: "my-list", title: "My List", ...myList },
-        { key: "watch-later", title: "Watch Later", ...watchLater },
-        { key: "history", title: "Watch History", ...history },
-        { key: "liked", title: "Liked Content", ...liked },
+        {
+          key: "continue-watching",
+          title: "Continue Watching",
+          ...(await this.enforcePage(continueWatching, context)),
+        },
+        { key: "my-list", title: "My List", ...(await this.enforcePage(myList, context)) },
+        {
+          key: "watch-later",
+          title: "Watch Later",
+          ...(await this.enforcePage(watchLater, context)),
+        },
+        { key: "history", title: "Watch History", ...(await this.enforcePage(history, context)) },
+        { key: "liked", title: "Liked Content", ...(await this.enforcePage(liked, context)) },
         { key: "playlists", title: "Playlists", ...playlists },
       ],
     };
@@ -230,8 +256,13 @@ export class DiscoveryService {
     requestedProfileId?: string,
     cursor?: string,
     requestedLimit?: number,
+    availabilityCountryCode?: string,
   ) {
-    const context = await this.normalizeContext({ accountId, profileId: requestedProfileId });
+    const context = await this.normalizeContext({
+      accountId,
+      profileId: requestedProfileId,
+      availabilityCountryCode,
+    });
     if (!context.profileId) {
       throw new DiscoveryError("PROFILE_NOT_FOUND", "A viewer profile is required.", 403);
     }
@@ -239,17 +270,23 @@ export class DiscoveryService {
     const limit = Math.min(Math.max(requestedLimit ?? firstPageSize, 1), maxPageSize);
     switch (section) {
       case "continue-watching":
-        return this.loadContinueWatching(context.profileId, offset, limit);
+        return this.enforcePage(
+          await this.loadContinueWatching(context.profileId, offset, limit),
+          context,
+        );
       case "watch-later":
-        return this.loadWatchLater(context.profileId, offset, limit);
+        return this.enforcePage(
+          await this.loadWatchLater(context.profileId, offset, limit),
+          context,
+        );
       case "history":
-        return this.loadHistory(context.profileId, offset, limit);
+        return this.enforcePage(await this.loadHistory(context.profileId, offset, limit), context);
       case "liked":
-        return this.loadLiked(context.profileId, offset, limit);
+        return this.enforcePage(await this.loadLiked(context.profileId, offset, limit), context);
       case "playlists":
         return this.loadOwnedPlaylists(accountId, offset, limit);
       case "my-list":
-        return this.loadMyList(context.profileId, offset, limit);
+        return this.enforcePage(await this.loadMyList(context.profileId, offset, limit), context);
       default:
         throw new DiscoveryError(
           "SECTION_NOT_FOUND",
@@ -264,17 +301,18 @@ export class DiscoveryService {
       return {
         regionCode: normalizeRegionCode(context.regionCode),
         regionPersonalizationAllowed: context.regionPersonalizationAllowed === true,
+        availabilityCountryCode: context.availabilityCountryCode,
       };
     }
     const profile = context.profileId
       ? await this.database.client.viewerProfile.findFirst({
           where: { id: context.profileId, accountId: context.accountId, deletedAt: null },
-          select: { id: true },
+          select: { id: true, isKids: true },
         })
       : await this.database.client.viewerProfile.findFirst({
           where: { accountId: context.accountId, isDefault: true, deletedAt: null },
           orderBy: { createdAt: "asc" },
-          select: { id: true },
+          select: { id: true, isKids: true },
         });
     if (!profile) {
       throw new DiscoveryError(
@@ -288,6 +326,24 @@ export class DiscoveryService {
       profileId: profile.id,
       regionCode: normalizeRegionCode(context.regionCode),
       regionPersonalizationAllowed: context.regionPersonalizationAllowed === true,
+      availabilityCountryCode: context.availabilityCountryCode,
+      isKidsProfile: profile.isKids,
+    };
+  }
+
+  private async enforcePage(
+    page: DiscoveryPage,
+    context: DiscoveryContext,
+  ): Promise<DiscoveryPage> {
+    const videoIds = page.items.filter((item) => item.type === "VIDEO").map((item) => item.id);
+    if (!videoIds.length) return page;
+    const allowed = await this.videoPolicy.filterAvailableVideoIds(videoIds, {
+      countryCode: context.availabilityCountryCode,
+      isKidsProfile: context.isKidsProfile,
+    });
+    return {
+      ...page,
+      items: page.items.filter((item) => item.type !== "VIDEO" || allowed.has(item.id)),
     };
   }
 

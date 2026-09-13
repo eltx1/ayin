@@ -4,7 +4,9 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import {
   hasCompanionMetadata,
+  hasPolicyMetadata,
   metadataData,
+  policyData,
   type VideoMetadataInput,
   validateMetadataDuration,
 } from "./video-metadata.validation.js";
@@ -31,45 +33,52 @@ export class VideoMetadataService {
       where: { id: videoId },
       select: { id: true, channelId: true, durationMs: true, status: true },
     });
-    if (!video) {
+    if (!video)
       throw new VideoMetadataError("VIDEO_NOT_FOUND", "This video could not be found.", 404);
-    }
     const membership = await this.database.client.channelMember.findFirst({
       where: { accountId, channelId: video.channelId, role: "OWNER" },
       select: { id: true },
     });
-    if (!membership) {
+    if (!membership)
       throw new VideoMetadataError(
         "VIDEO_OWNER_REQUIRED",
         "Only the channel owner can manage this video.",
         403,
       );
-    }
-    if (video.status === "REMOVED") {
+    if (video.status === "REMOVED")
       throw new VideoMetadataError("VIDEO_REMOVED", "This video can no longer be edited.", 409);
-    }
     return this.apply(video.id, video.durationMs, input);
   }
 
   async applyForStudio(accountId: string, videoId: string, input: VideoMetadataInput) {
-    const video = await this.database.client.video.findFirst({
-      where: {
-        id: videoId,
-        channel: {
-          members: { some: { accountId, role: { in: ["OWNER", "ADMIN", "EDITOR"] } } },
-        },
-      },
-      select: { id: true, durationMs: true, status: true },
+    const video = await this.database.client.video.findUnique({
+      where: { id: videoId },
+      select: { id: true, channelId: true, durationMs: true, status: true },
     });
-    if (!video) {
+    if (!video)
       throw new VideoMetadataError(
         "VIDEO_NOT_FOUND",
         "This video is not available in your Studio.",
         404,
       );
-    }
-    if (video.status === "REMOVED") {
+    const membership = await this.database.client.channelMember.findFirst({
+      where: { accountId, channelId: video.channelId, role: { in: ["OWNER", "ADMIN", "EDITOR"] } },
+      select: { role: true },
+    });
+    if (!membership)
+      throw new VideoMetadataError(
+        "VIDEO_NOT_FOUND",
+        "This video is not available in your Studio.",
+        404,
+      );
+    if (video.status === "REMOVED")
       throw new VideoMetadataError("VIDEO_REMOVED", "This video can no longer be edited.", 409);
+    if (input.rightsExpiresAt !== undefined && membership.role !== "OWNER") {
+      throw new VideoMetadataError(
+        "RIGHTS_OWNER_REQUIRED",
+        "Only the channel owner can change distribution-rights expiry.",
+        403,
+      );
     }
     return this.apply(video.id, video.durationMs, input);
   }
@@ -80,9 +89,8 @@ export class VideoMetadataService {
       where: { id: videoId, channel: { members: { some: { accountId, role: "OWNER" } } } },
       select: { id: true },
     });
-    if (!video) {
+    if (!video)
       throw new VideoMetadataError("VIDEO_NOT_FOUND", "This video could not be found.", 404);
-    }
     const declaration = await this.database.client.contentRightsDeclaration.findFirst({
       where: { videoId, status: "CONFIRMED" },
       orderBy: { version: "desc" },
@@ -101,12 +109,13 @@ export class VideoMetadataService {
   }
 
   async readOne(videoId: string) {
-    const [video, metadata, rights] = await Promise.all([
+    const [video, metadata, policy, rights] = await Promise.all([
       this.database.client.video.findUnique({
         where: { id: videoId },
         select: { id: true, contentType: true },
       }),
       this.database.client.videoCreatorMetadata.findUnique({ where: { videoId } }),
+      this.database.client.videoPolicy.findUnique({ where: { videoId } }),
       this.database.client.contentRightsDeclaration.findFirst({
         where: { videoId, status: "CONFIRMED" },
         orderBy: { version: "desc" },
@@ -114,35 +123,19 @@ export class VideoMetadataService {
       }),
     ]);
     if (!video) return null;
-    return {
-      contentType: video.contentType,
-      tags: metadata?.tags ?? [],
-      category: metadata?.category ?? null,
-      primaryLanguage: metadata?.primaryLanguage ?? null,
-      recordingDate: metadata?.recordingDate?.toISOString().slice(0, 10) ?? null,
-      seriesTitle: metadata?.seriesTitle ?? null,
-      seasonNumber: metadata?.seasonNumber ?? null,
-      episodeNumber: metadata?.episodeNumber ?? null,
-      maturityLevel: metadata?.maturityLevel ?? null,
-      geoAvailabilityMode: metadata?.geoAvailabilityMode ?? null,
-      geoCountries: metadata?.geoCountries ?? [],
-      chapters: metadata?.chapters ?? [],
-      adBreakPreference: metadata?.adBreakPreference ?? null,
-      adBreakOffsetsSeconds: metadata?.adBreakOffsetsSeconds ?? [],
-      rightsBasis: rights?.basis ?? null,
-      rightsNote: creatorRightsNote(rights?.statement),
-    };
+    return compose(video.contentType, metadata, policy, rights);
   }
 
   async readMany(videoIds: string[]) {
     const ids = [...new Set(videoIds)];
     if (!ids.length) return new Map();
-    const [videos, metadata, rights] = await Promise.all([
+    const [videos, metadata, policies, rights] = await Promise.all([
       this.database.client.video.findMany({
         where: { id: { in: ids } },
         select: { id: true, contentType: true },
       }),
       this.database.client.videoCreatorMetadata.findMany({ where: { videoId: { in: ids } } }),
+      this.database.client.videoPolicy.findMany({ where: { videoId: { in: ids } } }),
       this.database.client.contentRightsDeclaration.findMany({
         where: { videoId: { in: ids }, status: "CONFIRMED" },
         orderBy: [{ videoId: "asc" }, { version: "desc" }],
@@ -150,37 +143,24 @@ export class VideoMetadataService {
       }),
     ]);
     const metadataByVideo = new Map(metadata.map((item) => [item.videoId, item]));
+    const policyByVideo = new Map(policies.map((item) => [item.videoId, item]));
     const rightsByVideo = new Map<string, (typeof rights)[number]>();
-    for (const declaration of rights) {
+    for (const declaration of rights)
       if (!rightsByVideo.has(declaration.videoId))
         rightsByVideo.set(declaration.videoId, declaration);
-    }
     return new Map(
-      videos.map((video) => {
-        const item = metadataByVideo.get(video.id);
-        const declaration = rightsByVideo.get(video.id);
-        return [
-          video.id,
-          {
-            contentType: video.contentType,
-            tags: item?.tags ?? [],
-            category: item?.category ?? null,
-            primaryLanguage: item?.primaryLanguage ?? null,
-            recordingDate: item?.recordingDate?.toISOString().slice(0, 10) ?? null,
-            seriesTitle: item?.seriesTitle ?? null,
-            seasonNumber: item?.seasonNumber ?? null,
-            episodeNumber: item?.episodeNumber ?? null,
-            maturityLevel: item?.maturityLevel ?? null,
-            geoAvailabilityMode: item?.geoAvailabilityMode ?? null,
-            geoCountries: item?.geoCountries ?? [],
-            chapters: item?.chapters ?? [],
-            adBreakPreference: item?.adBreakPreference ?? null,
-            adBreakOffsetsSeconds: item?.adBreakOffsetsSeconds ?? [],
-            rightsBasis: declaration?.basis ?? null,
-            rightsNote: creatorRightsNote(declaration?.statement),
-          },
-        ] as const;
-      }),
+      videos.map(
+        (video) =>
+          [
+            video.id,
+            compose(
+              video.contentType,
+              metadataByVideo.get(video.id),
+              policyByVideo.get(video.id),
+              rightsByVideo.get(video.id),
+            ),
+          ] as const,
+      ),
     );
   }
 
@@ -188,29 +168,27 @@ export class VideoMetadataService {
     try {
       validateMetadataDuration(input, durationMs);
     } catch (error) {
-      if (error instanceof Error && error.message === "CHAPTER_OUTSIDE_VIDEO") {
+      if (error instanceof Error && error.message === "CHAPTER_OUTSIDE_VIDEO")
         throw new VideoMetadataError(
           "CHAPTER_OUTSIDE_VIDEO",
           "Every chapter must start before the video ends.",
         );
-      }
-      if (error instanceof Error && error.message === "AD_BREAK_OUTSIDE_VIDEO") {
+      if (error instanceof Error && error.message === "AD_BREAK_OUTSIDE_VIDEO")
         throw new VideoMetadataError(
           "AD_BREAK_OUTSIDE_VIDEO",
           "Every custom ad break must occur before the video ends.",
         );
-      }
       throw error;
     }
-
-    if (input.contentType === undefined && !hasCompanionMetadata(input)) {
+    if (
+      input.contentType === undefined &&
+      !hasCompanionMetadata(input) &&
+      !hasPolicyMetadata(input)
+    )
       return this.readOne(videoId);
-    }
-
     await this.database.client.$transaction(async (tx) => {
-      if (input.contentType !== undefined) {
+      if (input.contentType !== undefined)
         await tx.video.update({ where: { id: videoId }, data: { contentType: input.contentType } });
-      }
       if (hasCompanionMetadata(input)) {
         const data = metadataData(input);
         const { chapters, ...scalarData } = data;
@@ -226,9 +204,99 @@ export class VideoMetadataService {
           update: prismaData,
         });
       }
+      if (hasPolicyMetadata(input)) {
+        const data = policyData(input);
+        await tx.videoPolicy.upsert({
+          where: { videoId },
+          create: { videoId, ...data },
+          update: data,
+        });
+      }
     });
     return this.readOne(videoId);
   }
+}
+
+type CreatorMetadataSnapshot =
+  | {
+      tags: string[];
+      category: string | null;
+      primaryLanguage: string | null;
+      recordingDate: Date | null;
+      seriesTitle: string | null;
+      seasonNumber: number | null;
+      episodeNumber: number | null;
+      maturityLevel: string | null;
+      geoAvailabilityMode: string | null;
+      geoCountries: string[];
+      chapters: unknown;
+      adBreakPreference: string | null;
+      adBreakOffsetsSeconds: number[];
+    }
+  | null
+  | undefined;
+
+type PolicySnapshot =
+  | {
+      maturityLevel: string | null;
+      ageRestriction: string;
+      allowedTerritories: string[];
+      blockedTerritories: string[];
+      rightsExpiresAt: Date | null;
+    }
+  | null
+  | undefined;
+
+type RightsSnapshot =
+  | {
+      basis: string;
+      statement: string | null;
+    }
+  | null
+  | undefined;
+
+function compose(
+  contentType: string,
+  metadata: CreatorMetadataSnapshot,
+  policy: PolicySnapshot,
+  rights: RightsSnapshot,
+) {
+  const allowedTerritories =
+    policy?.allowedTerritories ??
+    (metadata?.geoAvailabilityMode === "INCLUDE_ONLY" ? metadata.geoCountries : []);
+  const blockedTerritories =
+    policy?.blockedTerritories ??
+    (metadata?.geoAvailabilityMode === "EXCLUDE" ? metadata.geoCountries : []);
+  const geoAvailabilityMode = allowedTerritories.length
+    ? "INCLUDE_ONLY"
+    : blockedTerritories.length
+      ? "EXCLUDE"
+      : policy
+        ? "WORLDWIDE"
+        : (metadata?.geoAvailabilityMode ?? null);
+  const geoCountries = allowedTerritories.length ? allowedTerritories : blockedTerritories;
+  return {
+    contentType,
+    tags: metadata?.tags ?? [],
+    category: metadata?.category ?? null,
+    primaryLanguage: metadata?.primaryLanguage ?? null,
+    recordingDate: metadata?.recordingDate?.toISOString().slice(0, 10) ?? null,
+    seriesTitle: metadata?.seriesTitle ?? null,
+    seasonNumber: metadata?.seasonNumber ?? null,
+    episodeNumber: metadata?.episodeNumber ?? null,
+    maturityLevel: policy?.maturityLevel ?? metadata?.maturityLevel ?? null,
+    ageRestriction: policy?.ageRestriction ?? "NONE",
+    allowedTerritories,
+    blockedTerritories,
+    rightsExpiresAt: policy?.rightsExpiresAt?.toISOString() ?? null,
+    geoAvailabilityMode,
+    geoCountries,
+    chapters: metadata?.chapters ?? [],
+    adBreakPreference: metadata?.adBreakPreference ?? null,
+    adBreakOffsetsSeconds: metadata?.adBreakOffsetsSeconds ?? [],
+    rightsBasis: rights?.basis ?? null,
+    rightsNote: creatorRightsNote(rights?.statement),
+  };
 }
 
 function creatorRightsNote(statement: string | null | undefined): string | null {
@@ -237,7 +305,6 @@ function creatorRightsNote(statement: string | null | undefined): string | null 
   if (index < 0) return null;
   return statement.slice(index + CREATOR_RIGHTS_NOTE_SEPARATOR.length).trim() || null;
 }
-
 function withCreatorRightsNote(statement: string, note: string | null): string {
   const index = statement.indexOf(CREATOR_RIGHTS_NOTE_SEPARATOR);
   const attestation = (index < 0 ? statement : statement.slice(0, index)).trim();

@@ -69,8 +69,19 @@ function harness(input: { hlsEnabled: boolean; generation?: typeof readyGenerati
     get: vi.fn(async (key: string) => (key === "watchProgressSaveIntervalSeconds" ? 15 : 90)),
   };
   const featureFlags = { isEnabled: vi.fn().mockResolvedValue(input.hlsEnabled) };
-  const service = new WatchService(database as never, settings as never, featureFlags as never);
-  return { service, generationLookup, featureFlags };
+  const policy = {
+    decide: vi
+      .fn()
+      .mockResolvedValue({ allowed: true, maturityLevel: null, ageRestriction: "NONE" }),
+    filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)),
+  };
+  const service = new WatchService(
+    database as never,
+    settings as never,
+    featureFlags as never,
+    policy as never,
+  );
+  return { service, database, generationLookup, featureFlags };
 }
 
 describe("WatchService adaptive playback", () => {
@@ -118,6 +129,30 @@ describe("WatchService adaptive playback", () => {
         { id: "720p", label: "720p", width: 1280, height: 720, bitrateKbps: 2928 },
       ],
     });
+  });
+
+  it("keeps PRIVATE as a hard boundary before any policy/admin override can expose it", async () => {
+    const { service, database } = harness({ hlsEnabled: false });
+    database.client.video.findUnique.mockResolvedValue({
+      ...video,
+      visibility: "PRIVATE",
+    });
+    await expect(service.getPublicPlayback(video.slug, "US")).rejects.toMatchObject({
+      code: "VIDEO_NOT_FOUND",
+      statusCode: 404,
+    });
+  });
+
+  it("allows direct UNLISTED playback when policy allows it", async () => {
+    const { service, database } = harness({ hlsEnabled: false });
+    database.client.video.findUnique.mockResolvedValue({
+      ...video,
+      visibility: "UNLISTED",
+    });
+    await expect(service.getPublicPlayback(video.slug, "US")).resolves.toHaveProperty(
+      "video.id",
+      video.id,
+    );
   });
 
   it("falls through to MP4 when HLS is enabled but no complete READY generation exists", async () => {

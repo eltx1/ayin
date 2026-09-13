@@ -10,6 +10,7 @@ import { apiBaseUrl } from "@/lib/api";
 import { type PublicPlaybackResponse } from "@/lib/ayin-player";
 import { mediaAssetUrl } from "@/lib/channel";
 import { getSeoVideo } from "@/lib/seo-content";
+import { trustedApiRegionHeaders } from "@/lib/trusted-region";
 import {
   absoluteUrl,
   AYIN_DEFAULT_IMAGE,
@@ -28,7 +29,8 @@ interface WatchPageProperties {
 
 export async function generateMetadata({ params }: WatchPageProperties): Promise<Metadata> {
   const { slug } = await params;
-  const video = await getSeoVideo(slug);
+  const regionHeaders = await trustedApiRegionHeaders();
+  const video = await getSeoVideo(slug, regionHeaders);
   if (!video) {
     return { title: "Video unavailable", robots: metadataRobots(false) };
   }
@@ -67,11 +69,13 @@ export async function generateMetadata({ params }: WatchPageProperties): Promise
 
 export default async function WatchPage({ params }: WatchPageProperties) {
   const { slug } = await params;
+  const regionHeaders = await trustedApiRegionHeaders();
   const [response, seoVideo] = await Promise.all([
     fetch(`${apiBaseUrl}/public/videos/${encodeURIComponent(slug)}/playback`, {
       cache: "no-store",
+      headers: regionHeaders,
     }),
-    getSeoVideo(slug),
+    getSeoVideo(slug, regionHeaders),
   ]);
   if (response.status === 404) notFound();
   if (!response.ok) throw new Error("This video could not be loaded right now.");

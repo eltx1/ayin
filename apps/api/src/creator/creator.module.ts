@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { MediaModule } from "../media/media.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
+import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import { CaptionController } from "./caption.controller.js";
 import { CaptionService } from "./caption.service.js";
 import { CreatorChannelController, PublicChannelController } from "./channel.controller.js";
@@ -31,7 +32,7 @@ import { StudioService } from "./studio.service.js";
 import { VideoMetadataService } from "./video-metadata.service.js";
 
 @Module({
-  imports: [AuthModule, DatabaseModule, MediaModule, PlatformConfigModule],
+  imports: [AuthModule, DatabaseModule, MediaModule, PlatformConfigModule, VideoPolicyModule],
   controllers: [
     QuickUploadController,
     StudioController,

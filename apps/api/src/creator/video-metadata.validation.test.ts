@@ -72,4 +72,31 @@ describe("video metadata validation", () => {
     expect(parsed.adBreakOffsetsSeconds).toEqual([30, 90]);
     expect(() => validateMetadataDuration(parsed, 90_000)).toThrow("AD_BREAK_OUTSIDE_VIDEO");
   });
+  it("accepts standard ISO territories and rejects invented codes or overlaps", () => {
+    expect(
+      videoMetadataSchema.safeParse({
+        allowedTerritories: ["us", "EG"],
+        blockedTerritories: ["GB"],
+      }).success,
+    ).toBe(true);
+    expect(videoMetadataSchema.safeParse({ allowedTerritories: ["ZZ"] }).success).toBe(false);
+    expect(
+      videoMetadataSchema.safeParse({ allowedTerritories: ["US"], blockedTerritories: ["US"] })
+        .success,
+    ).toBe(false);
+  });
+
+  it("keeps legacy geo input compatible but rejects mixing legacy and authoritative lists", () => {
+    expect(
+      videoMetadataSchema.safeParse({ geoAvailabilityMode: "INCLUDE_ONLY", geoCountries: ["US"] })
+        .success,
+    ).toBe(true);
+    expect(
+      videoMetadataSchema.safeParse({
+        geoAvailabilityMode: "EXCLUDE",
+        geoCountries: ["US"],
+        blockedTerritories: ["GB"],
+      }).success,
+    ).toBe(false);
+  });
 });

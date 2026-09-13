@@ -181,13 +181,15 @@ databaseDescribe("video metadata v2", () => {
     expect(publish.statusCode).toBe(201);
     expect(publish.json().video.status).toBe("PUBLISHED");
 
-    const [video, metadata, rights] = await Promise.all([
+    const [video, metadata, policy, rights] = await Promise.all([
       prisma.video.findUniqueOrThrow({ where: { id: draft.video.id } }),
       prisma.videoCreatorMetadata.findUnique({ where: { videoId: draft.video.id } }),
+      prisma.videoPolicy.findUnique({ where: { videoId: draft.video.id } }),
       prisma.contentRightsDeclaration.findFirstOrThrow({ where: { videoId: draft.video.id } }),
     ]);
     expect(video.contentType).toBe("CREATOR_VIDEO");
     expect(metadata).toBeNull();
+    expect(policy).toBeNull();
     expect(rights.basis).toBe("AUTHORIZED");
   });
 
@@ -221,15 +223,21 @@ databaseDescribe("video metadata v2", () => {
     });
     expect(patch.statusCode).toBe(200);
 
-    const [video, metadata] = await Promise.all([
+    const [video, metadata, policy] = await Promise.all([
       prisma.video.findUniqueOrThrow({ where: { id: draft.video.id } }),
       prisma.videoCreatorMetadata.findUniqueOrThrow({ where: { videoId: draft.video.id } }),
+      prisma.videoPolicy.findUniqueOrThrow({ where: { videoId: draft.video.id } }),
     ]);
     expect(video.contentType).toBe("DOCUMENTARY");
     expect(metadata.tags).toEqual(["cairo", "documentary"]);
     expect(metadata.primaryLanguage).toBe("ar-EG");
-    expect(metadata.geoCountries).toEqual(["US", "GB"]);
+    expect(metadata.geoAvailabilityMode).toBeNull();
+    expect(metadata.geoCountries).toEqual([]);
     expect(metadata.adBreakOffsetsSeconds).toEqual([90]);
+    expect(policy.maturityLevel).toBe("GENERAL");
+    expect(policy.ageRestriction).toBe("NONE");
+    expect(policy.allowedTerritories).toEqual([]);
+    expect(policy.blockedTerritories).toEqual(["US", "GB"]);
 
     await completeAndMarkReady(owner.cookie, draft);
     const publish = await app.inject({

@@ -15,10 +15,14 @@ export type MetadataDraft = {
   contentType: "" | VideoContentType;
   rightsBasis: "" | RightsBasis;
   rightsNote: string;
+  rightsExpiresAt: string;
   seriesTitle: string;
   seasonNumber: string;
   episodeNumber: string;
   maturityLevel: "" | "GENERAL" | "TEEN" | "MATURE";
+  ageRestriction: "" | "NONE" | "AGE_13_PLUS" | "AGE_18_PLUS";
+  allowedTerritories: string;
+  blockedTerritories: string;
   geoAvailabilityMode: "" | "WORLDWIDE" | "INCLUDE_ONLY" | "EXCLUDE";
   geoCountries: string;
   chapters: string;
@@ -34,10 +38,14 @@ export const EMPTY_METADATA_DRAFT: MetadataDraft = {
   contentType: "",
   rightsBasis: "",
   rightsNote: "",
+  rightsExpiresAt: "",
   seriesTitle: "",
   seasonNumber: "",
   episodeNumber: "",
   maturityLevel: "",
+  ageRestriction: "",
+  allowedTerritories: "",
+  blockedTerritories: "",
   geoAvailabilityMode: "",
   geoCountries: "",
   chapters: "",
@@ -76,10 +84,14 @@ export function metadataDraftFromApi(
         : (stringValue(metadata.contentType) as MetadataDraft["contentType"]),
     rightsBasis: stringValue(metadata.rightsBasis) as MetadataDraft["rightsBasis"],
     rightsNote: stringValue(metadata.rightsNote),
+    rightsExpiresAt: dateTimeLocalValue(metadata.rightsExpiresAt),
     seriesTitle: stringValue(metadata.seriesTitle),
     seasonNumber: numberText(metadata.seasonNumber),
     episodeNumber: numberText(metadata.episodeNumber),
     maturityLevel: stringValue(metadata.maturityLevel) as MetadataDraft["maturityLevel"],
+    ageRestriction: stringValue(metadata.ageRestriction) as MetadataDraft["ageRestriction"],
+    allowedTerritories: listValue(metadata.allowedTerritories),
+    blockedTerritories: listValue(metadata.blockedTerritories),
     geoAvailabilityMode: stringValue(
       metadata.geoAvailabilityMode,
     ) as MetadataDraft["geoAvailabilityMode"],
@@ -121,6 +133,9 @@ export function buildMetadataPayload(
     if (draft.rightsBasis) result.rightsBasis = draft.rightsBasis;
     if (draft.rightsNote.trim()) result.rightsNote = draft.rightsNote.trim();
     else if (includeEmpty) result.rightsNote = null;
+    if (draft.rightsExpiresAt)
+      result.rightsExpiresAt = new Date(draft.rightsExpiresAt).toISOString();
+    else if (includeEmpty) result.rightsExpiresAt = null;
   }
   if (draft.seriesTitle.trim()) result.seriesTitle = draft.seriesTitle.trim();
   else if (includeEmpty) result.seriesTitle = null;
@@ -130,10 +145,16 @@ export function buildMetadataPayload(
   if (episodeNumber !== undefined) result.episodeNumber = episodeNumber;
   if (draft.maturityLevel) result.maturityLevel = draft.maturityLevel;
   else if (includeEmpty) result.maturityLevel = null;
-  if (draft.geoAvailabilityMode) result.geoAvailabilityMode = draft.geoAvailabilityMode;
-  else if (includeEmpty) result.geoAvailabilityMode = null;
-  const countries = splitList(draft.geoCountries).map((value) => value.toUpperCase());
-  if (countries.length || includeEmpty) result.geoCountries = countries;
+  if (draft.ageRestriction) result.ageRestriction = draft.ageRestriction;
+  else if (includeEmpty) result.ageRestriction = "NONE";
+  const allowedTerritories = splitList(draft.allowedTerritories).map((value) =>
+    value.toUpperCase(),
+  );
+  const blockedTerritories = splitList(draft.blockedTerritories).map((value) =>
+    value.toUpperCase(),
+  );
+  if (allowedTerritories.length || includeEmpty) result.allowedTerritories = allowedTerritories;
+  if (blockedTerritories.length || includeEmpty) result.blockedTerritories = blockedTerritories;
   if (draft.chapters.trim()) result.chapters = parseChapterLines(draft.chapters);
   else if (includeEmpty) result.chapters = [];
   if (draft.adBreakPreference) result.adBreakPreference = draft.adBreakPreference;
@@ -260,6 +281,16 @@ export function VideoMetadataFields({
               onChange={(event) => set("rightsNote", event.target.value)}
             />
           </label>
+          <label>
+            <span>Rights expiration</span>
+            <input
+              disabled={disabled}
+              type="datetime-local"
+              value={value.rightsExpiresAt}
+              onChange={(event) => set("rightsExpiresAt", event.target.value)}
+            />
+            <small>Optional distribution-rights expiry. Channel owner only in Studio.</small>
+          </label>
         </>
       ) : null}
 
@@ -315,31 +346,48 @@ export function VideoMetadataFields({
       </label>
 
       <label>
-        <span>Geographic availability</span>
+        <span>Age restriction hook</span>
         <select
           disabled={disabled}
-          value={value.geoAvailabilityMode}
+          value={value.ageRestriction}
           onChange={(event) =>
-            set("geoAvailabilityMode", event.target.value as MetadataDraft["geoAvailabilityMode"])
+            set("ageRestriction", event.target.value as MetadataDraft["ageRestriction"])
           }
         >
-          <option value="">Not set / platform default</option>
-          <option value="WORLDWIDE">Worldwide</option>
-          <option value="INCLUDE_ONLY">Only selected countries</option>
-          <option value="EXCLUDE">Everywhere except selected countries</option>
+          <option value="">None (default)</option>
+          <option value="AGE_13_PLUS">13+ hook</option>
+          <option value="AGE_18_PLUS">18+ hook</option>
         </select>
+        <small>
+          This is a product-policy hook, not a claim of regulatory compliance or age verification.
+        </small>
       </label>
 
       <label className={fullWidthClassName}>
-        <span>Country codes</span>
+        <span>Allowed territories</span>
         <input
-          disabled={disabled || value.geoAvailabilityMode === "WORLDWIDE"}
-          value={value.geoCountries}
-          placeholder="EG, US, GB"
-          onChange={(event) => set("geoCountries", event.target.value)}
+          disabled={disabled}
+          value={value.allowedTerritories}
+          placeholder="US, EG, GB"
+          onChange={(event) => set("allowedTerritories", event.target.value)}
         />
         <small>
-          This is a catalog policy hook; enforcement remains owned by AYIN availability policy.
+          ISO two-letter country codes. Leave allowed and blocked lists empty for worldwide
+          availability.
+        </small>
+      </label>
+
+      <label className={fullWidthClassName}>
+        <span>Blocked territories</span>
+        <input
+          disabled={disabled}
+          value={value.blockedTerritories}
+          placeholder="DE, FR"
+          onChange={(event) => set("blockedTerritories", event.target.value)}
+        />
+        <small>
+          Server-side playback, search, discovery, SEO and Creator TV all enforce these
+          restrictions.
         </small>
       </label>
 
@@ -447,6 +495,20 @@ function formatTimestamp(totalSeconds: number): string {
   return hours
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
     : `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function listValue(value: unknown): string {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string").join(", ")
+    : "";
+}
+
+function dateTimeLocalValue(value: unknown): string {
+  if (typeof value !== "string" || !value) return "";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 function stringValue(value: unknown): string {

@@ -30,10 +30,14 @@ export interface QuickVideoMetadata {
   contentType?: VideoContentType;
   rightsBasis?: RightsBasis;
   rightsNote?: string | null;
+  rightsExpiresAt?: string | null;
   seriesTitle?: string | null;
   seasonNumber?: number | null;
   episodeNumber?: number | null;
   maturityLevel?: "GENERAL" | "TEEN" | "MATURE" | null;
+  ageRestriction?: "NONE" | "AGE_13_PLUS" | "AGE_18_PLUS" | null;
+  allowedTerritories?: string[];
+  blockedTerritories?: string[];
   geoAvailabilityMode?: "WORLDWIDE" | "INCLUDE_ONLY" | "EXCLUDE" | null;
   geoCountries?: string[];
   chapters?: VideoChapterInput[] | null;

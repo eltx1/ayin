@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module.js";
 import { CreatorModule } from "../creator/creator.module.js";
 import { MediaModule } from "../media/media.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
+import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
 import { AdminCommandCenterService } from "./admin-command-center.service.js";
@@ -21,17 +22,20 @@ import { AdminProductService } from "./admin-product.service.js";
 import { AdminScopedDirectoryController } from "./admin-scoped-directory.controller.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
 import { AdminVideoMetadataController } from "./admin-video-metadata.controller.js";
+import { AdminVideoPolicyController } from "./admin-video-policy.controller.js";
+import { AdminVideoPolicyService } from "./admin-video-policy.service.js";
 import { AdminController } from "./admin.controller.js";
 import { AdminGuard } from "./admin.guard.js";
 import { ContentSeedingController } from "./content-seeding.controller.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
 
 @Module({
-  imports: [AuthModule, CreatorModule, MediaModule, PlatformConfigModule],
+  imports: [AuthModule, CreatorModule, MediaModule, PlatformConfigModule, VideoPolicyModule],
   controllers: [
     AdminController,
     AdminControlController,
     AdminVideoMetadataController,
+    AdminVideoPolicyController,
     AdminGovernanceController,
     AdminMediaProcessingController,
     AdminObservabilityController,
@@ -46,6 +50,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminAuthorizationService,
     AdminGuard,
     AdminSettingsService,
+    AdminVideoPolicyService,
     AdminControlService,
     AdminCommandCenterService,
     AdminGovernanceService,

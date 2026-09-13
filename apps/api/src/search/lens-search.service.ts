@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
 import { AYIN_LENS_SEARCH_PROVIDER, type AyinLensSearchProvider } from "./lens-search.provider.js";
 import { SearchService } from "./search.service.js";
 
@@ -12,10 +13,11 @@ export class LensSearchService {
     @Inject(AYIN_LENS_SEARCH_PROVIDER) private readonly provider: AyinLensSearchProvider,
   ) {}
 
-  async searchLens(query: string, limit = 12) {
+  async searchLens(query: string, limit = 12, context: VideoPolicyContext = {}) {
     const semanticEnabled = (await this.settings.get("lensSemanticSearchEnabled")) as boolean;
     if (semanticEnabled && this.provider.isConfigured()) {
-      const items = await this.provider.search(query, Math.min(Math.max(limit, 1), 24));
+      const providerItems = await this.provider.search(query, Math.min(Math.max(limit, 1), 24));
+      const items = await this.search.filterResults(providerItems, context);
       return {
         query,
         mode: "SEMANTIC_PROVIDER" as const,
@@ -25,7 +27,7 @@ export class LensSearchService {
       };
     }
 
-    const fallback = await this.search.search(query, undefined, limit);
+    const fallback = await this.search.search(query, undefined, limit, context);
     return {
       ...fallback,
       mode: "LEXICAL_FALLBACK" as const,

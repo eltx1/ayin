@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
 const playableStates = ["VALIDATED"] as const;
 const HLS_PLAYBACK_FLAG = "player.hls.enabled";
@@ -30,9 +31,10 @@ export class WatchService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
     @Inject(FeatureFlagService) private readonly featureFlags: FeatureFlagService,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
-  async getPublicPlayback(slug: string) {
+  async getPublicPlayback(slug: string, countryCode?: string) {
     const video = await this.database.client.video.findUnique({
       where: { slug },
       select: {
@@ -71,6 +73,11 @@ export class WatchService {
       video.channel.status !== "ACTIVE" ||
       video.channel.removedAt
     ) {
+      throw new WatchError("VIDEO_NOT_FOUND", "This AYIN video could not be found.", 404);
+    }
+
+    const availability = await this.videoPolicy.decide(video.id, { countryCode });
+    if (!availability.allowed) {
       throw new WatchError("VIDEO_NOT_FOUND", "This AYIN video could not be found.", 404);
     }
 
@@ -170,6 +177,11 @@ export class WatchService {
       select: { id: true, slug: true, title: true, durationMs: true },
     });
 
+    const allowedRelatedIds = await this.videoPolicy.filterAvailableVideoIds(
+      related.map((item) => item.id),
+      { countryCode },
+    );
+
     const adaptiveSource =
       playbackGeneration && playbackGeneration.renditions.length > 0
         ? {
@@ -211,20 +223,26 @@ export class WatchService {
         saveHook: { action: "WATCH_LATER" as const, available: true },
         commentsSlot: { reserved: true, enabled: video.commentsEnabled },
         externalAdPlacementKeys: ["watch_below_player", "content_detail"],
-        related: related.map((item) => ({
-          id: item.id,
-          title: item.title,
-          href: `/watch/${item.slug}`,
-          durationMs: item.durationMs,
-        })),
+        policy: {
+          maturityLevel: availability.maturityLevel,
+          ageRestriction: availability.ageRestriction,
+        },
+        related: related
+          .filter((item) => allowedRelatedIds.has(item.id))
+          .map((item) => ({
+            id: item.id,
+            title: item.title,
+            href: `/watch/${item.slug}`,
+            durationMs: item.durationMs,
+          })),
       },
       playerPolicy: await this.getPlayerPolicy(),
     };
   }
 
-  async getProgress(accountId: string, videoId: string, profileId?: string) {
+  async getProgress(accountId: string, videoId: string, profileId?: string, countryCode?: string) {
     const profile = await this.resolveProfile(accountId, profileId);
-    await this.assertPlayableVideo(videoId);
+    await this.assertPlayableVideo(videoId, countryCode, profile.isKids);
     const progress = await this.database.client.watchProgress.findUnique({
       where: { profileId_videoId: { profileId: profile.id, videoId } },
       select: {
@@ -244,10 +262,15 @@ export class WatchService {
     };
   }
 
-  async saveProgress(accountId: string, videoId: string, input: SaveWatchProgressInput) {
-    const [profile, video, policy] = await Promise.all([
-      this.resolveProfile(accountId, input.profileId),
-      this.findPlayableVideo(videoId),
+  async saveProgress(
+    accountId: string,
+    videoId: string,
+    input: SaveWatchProgressInput,
+    countryCode?: string,
+  ) {
+    const profile = await this.resolveProfile(accountId, input.profileId);
+    const [video, policy] = await Promise.all([
+      this.findPlayableVideo(videoId, countryCode, profile.isKids),
       this.getPlayerPolicy(),
     ]);
 
@@ -326,12 +349,12 @@ export class WatchService {
     const profile = requestedProfileId
       ? await this.database.client.viewerProfile.findFirst({
           where: { id: requestedProfileId, accountId, deletedAt: null },
-          select: { id: true },
+          select: { id: true, isKids: true },
         })
       : await this.database.client.viewerProfile.findFirst({
           where: { accountId, isDefault: true, deletedAt: null },
           orderBy: { createdAt: "asc" },
-          select: { id: true },
+          select: { id: true, isKids: true },
         });
 
     if (!profile) {
@@ -344,11 +367,15 @@ export class WatchService {
     return profile;
   }
 
-  private async assertPlayableVideo(videoId: string): Promise<void> {
-    await this.findPlayableVideo(videoId);
+  private async assertPlayableVideo(
+    videoId: string,
+    countryCode?: string,
+    isKidsProfile?: boolean,
+  ): Promise<void> {
+    await this.findPlayableVideo(videoId, countryCode, isKidsProfile);
   }
 
-  private async findPlayableVideo(videoId: string) {
+  private async findPlayableVideo(videoId: string, countryCode?: string, isKidsProfile?: boolean) {
     const video = await this.database.client.video.findFirst({
       where: {
         id: videoId,
@@ -374,6 +401,10 @@ export class WatchService {
       },
     });
     if (!video) {
+      throw new WatchError("VIDEO_NOT_FOUND", "This AYIN video could not be found.", 404);
+    }
+    const availability = await this.videoPolicy.decide(video.id, { countryCode, isKidsProfile });
+    if (!availability.allowed) {
       throw new WatchError("VIDEO_NOT_FOUND", "This AYIN video could not be found.", 404);
     }
     return video;

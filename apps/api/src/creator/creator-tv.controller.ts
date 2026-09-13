@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   Inject,
   Param,
@@ -13,6 +14,7 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { CreatorTvLinearService } from "./creator-tv-linear.service.js";
 import { CreatorTvError, CreatorTvService } from "./creator-tv.service.js";
 
@@ -30,11 +32,16 @@ export class PublicCreatorTvController {
   constructor(
     @Inject(CreatorTvService) private readonly creatorTv: CreatorTvService,
     @Inject(CreatorTvLinearService) private readonly linear: CreatorTvLinearService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
   ) {}
 
   @Get(":handle/tv")
-  async getTv(@Param("handle") handle: string) {
-    return runTvOperation(() => this.creatorTv.getPublicTv(handle));
+  async getTv(@Param("handle") handle: string, @Headers() headers: HeaderBag) {
+    return runTvOperation(() =>
+      this.creatorTv.getPublicTv(handle, new Date(), {
+        countryCode: this.trustedRegion.countryFromHeaders(headers),
+      }),
+    );
   }
 
   @Get(":handle/tv/linear")
