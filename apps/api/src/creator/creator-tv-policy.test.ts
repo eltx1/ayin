@@ -25,17 +25,15 @@ describe("Creator TV policy eligibility", () => {
     const database = {
       client: {
         creatorTvChannel: {
-          findUnique: vi
-            .fn()
-            .mockResolvedValue({
-              id: "tv",
-              channelId: "channel",
-              slug: "tv",
-              name: "TV",
-              status: "ACTIVE",
-              createdAt: new Date("2026-09-01T00:00:00.000Z"),
-              channel: { settings: { autoAddPublishedToTv: true, tvAutoScheduleEnabled: true } },
-            }),
+          findUnique: vi.fn().mockResolvedValue({
+            id: "tv",
+            channelId: "channel",
+            slug: "tv",
+            name: "TV",
+            status: "ACTIVE",
+            createdAt: new Date("2026-09-01T00:00:00.000Z"),
+            channel: { settings: { autoAddPublishedToTv: true, tvAutoScheduleEnabled: true } },
+          }),
         },
         video: { findMany: vi.fn().mockResolvedValue([video]) },
         tvScheduleItem: { findMany: vi.fn().mockResolvedValue([]) },
@@ -56,15 +54,13 @@ describe("Creator TV policy eligibility", () => {
       ),
     };
     const channels = {
-      getPublicChannel: vi
-        .fn()
-        .mockResolvedValue({
-          canonicalHandle: "creator",
-          redirectedFrom: null,
-          channel: { id: "channel", handle: "creator", name: "Creator" },
-          appearance: {},
-          creatorTv: { id: "tv" },
-        }),
+      getPublicChannel: vi.fn().mockResolvedValue({
+        canonicalHandle: "creator",
+        redirectedFrom: null,
+        channel: { id: "channel", handle: "creator", name: "Creator" },
+        appearance: {},
+        creatorTv: { id: "tv" },
+      }),
     };
     const adHook = { getBreaks: vi.fn().mockResolvedValue([]) };
     const policy = { filterAvailableVideoIds: vi.fn().mockResolvedValue(new Set<string>()) };
