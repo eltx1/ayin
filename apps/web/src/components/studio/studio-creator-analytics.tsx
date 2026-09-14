@@ -118,30 +118,42 @@ function BreakdownPanel({
 export function StudioCreatorAnalytics() {
   const [days, setDays] = useState(28);
   const [tab, setTab] = useState<AnalyticsTab>("overview");
-  const [data, setData] = useState<CreatorAnalytics | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadState, setLoadState] = useState<{
+    days: number;
+    data: CreatorAnalytics | null;
+    error: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError(null);
     void getStudioAnalytics(days)
       .then((result) => {
-        if (active) setData(result as unknown as CreatorAnalytics);
+        if (active) {
+          setLoadState({
+            days,
+            data: result as unknown as CreatorAnalytics,
+            error: null,
+          });
+        }
       })
       .catch((caught) => {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "Analytics could not be loaded.");
+          setLoadState({
+            days,
+            data: null,
+            error: caught instanceof Error ? caught.message : "Analytics could not be loaded.",
+          });
         }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
   }, [days]);
+
+  const currentLoadState = loadState?.days === days ? loadState : null;
+  const data = currentLoadState?.data ?? null;
+  const error = currentLoadState?.error ?? null;
+  const loading = currentLoadState === null;
 
   const rangeLabel = useMemo(() => {
     if (!data) return "";
