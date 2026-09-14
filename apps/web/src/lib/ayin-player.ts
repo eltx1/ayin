@@ -32,15 +32,25 @@ export interface AyinPlayerRenditionMetadata {
 
 export type AyinPlayerAnalyticsEvent =
   | { type: "play"; videoId: string }
+  | { type: "startup"; videoId: string; durationMs: number }
   | { type: "pause"; videoId: string; positionMs: number }
   | { type: "seek"; videoId: string; positionMs: number }
-  | { type: "buffer"; videoId: string; positionMs: number }
+  | {
+      type: "buffer";
+      videoId: string;
+      positionMs: number;
+      durationMs?: number | undefined;
+    }
   | { type: "progress_checkpoint"; videoId: string; positionMs: number }
   | { type: "complete"; videoId: string }
   | { type: "next"; videoId: string }
   | { type: "error"; videoId: string; message: string }
   | { type: "ad_mode"; videoId: string; active: boolean }
-  | { type: "playback_protocol"; videoId: string; protocol: "HLS" | "MP4" }
+  | {
+      type: "playback_protocol";
+      videoId: string;
+      protocol: "HLS" | "MP4";
+    }
   | {
       type: "caption_change";
       videoId: string;
@@ -48,7 +58,12 @@ export type AyinPlayerAnalyticsEvent =
       language: string | null;
       kind: "CAPTIONS" | "SUBTITLES" | null;
     }
-  | { type: "chapter_seek"; videoId: string; chapterId: string; startMs: number }
+  | {
+      type: "chapter_seek";
+      videoId: string;
+      chapterId: string;
+      startMs: number;
+    }
   | {
       type: "quality_switch";
       videoId: string;
@@ -71,7 +86,9 @@ export interface AyinPlayerAnalytics {
   emit(event: AyinPlayerAnalyticsEvent): void;
 }
 
-export const noopPlayerAnalytics: AyinPlayerAnalytics = { emit: () => undefined };
+export const noopPlayerAnalytics: AyinPlayerAnalytics = {
+  emit: () => undefined,
+};
 
 export interface PublicPlaybackResponse {
   video: {
@@ -110,7 +127,12 @@ export interface PublicPlaybackResponse {
     saveHook: { action: "WATCH_LATER"; available: boolean };
     commentsSlot: { reserved: boolean; enabled: boolean };
     externalAdPlacementKeys: string[];
-    related: Array<{ id: string; title: string; href: string; durationMs: number | null }>;
+    related: Array<{
+      id: string;
+      title: string;
+      href: string;
+      durationMs: number | null;
+    }>;
   };
   playerPolicy: {
     progressSaveIntervalMs: number;

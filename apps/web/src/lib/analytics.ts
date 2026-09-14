@@ -9,6 +9,7 @@ export type AnalyticsEventName =
   | "CONTENT_IMPRESSION"
   | "CONTENT_CLICK"
   | "VIDEO_START"
+  | "VIDEO_STARTUP"
   | "VIDEO_PROGRESS"
   | "VIDEO_COMPLETE"
   | "VIDEO_PAUSE"
@@ -89,10 +90,30 @@ function source(): "WEB" | "PWA" {
 
 function deviceClass(): QueuedEvent["deviceClass"] {
   const width = window.innerWidth;
-  if (window.matchMedia?.("(pointer: coarse) and (min-width: 1100px)").matches) return "TV";
+  if (window.matchMedia?.("(pointer: coarse) and (min-width: 1100px)").matches) {
+    return "TV";
+  }
   if (width < 640) return "MOBILE";
   if (width < 1024) return "TABLET";
   return "DESKTOP";
+}
+
+function trafficSourceCategory(): "DIRECT" | "INTERNAL" | "SEARCH" | "SOCIAL" | "EXTERNAL" {
+  if (!document.referrer) return "DIRECT";
+  try {
+    const referrer = new URL(document.referrer);
+    if (referrer.origin === window.location.origin) return "INTERNAL";
+    const host = referrer.hostname.toLowerCase();
+    if (/(^|\.)(google|bing|duckduckgo|yahoo|baidu|yandex)\./.test(host)) {
+      return "SEARCH";
+    }
+    if (/(^|\.)(facebook|instagram|tiktok|x|twitter|linkedin|reddit|youtube)\./.test(host)) {
+      return "SOCIAL";
+    }
+    return "EXTERNAL";
+  } catch {
+    return "EXTERNAL";
+  }
 }
 
 function bindLifecycle() {
@@ -129,6 +150,10 @@ export function trackAnalyticsEvent(
     source: source(),
     deviceClass: deviceClass(),
     ...input,
+    metadata: {
+      trafficSource: trafficSourceCategory(),
+      ...(input.metadata ?? {}),
+    },
   });
   if (queue.length >= 20) {
     void flushAnalytics();
@@ -180,7 +205,10 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
   return {
     emit(event: AyinPlayerAnalyticsEvent) {
       resetForVideo(event.videoId);
-      const common = { videoId: event.videoId, ...(profileId ? { profileId } : {}) };
+      const common = {
+        videoId: event.videoId,
+        ...(profileId ? { profileId } : {}),
+      };
       switch (event.type) {
         case "playback_protocol":
           protocol = event.protocol;
@@ -191,6 +219,13 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
             metadata: { protocol },
           });
           started = true;
+          break;
+        case "startup":
+          trackAnalyticsEvent("VIDEO_STARTUP", {
+            ...common,
+            durationDeltaMs: Math.max(0, Math.min(3_600_000, Math.round(event.durationMs))),
+            metadata: { protocol },
+          });
           break;
         case "pause":
           trackAnalyticsEvent("VIDEO_PAUSE", {
@@ -211,6 +246,11 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           trackAnalyticsEvent("VIDEO_BUFFER", {
             ...common,
             positionMs: event.positionMs,
+            ...(event.durationMs === undefined
+              ? {}
+              : {
+                  durationDeltaMs: Math.max(0, Math.min(3_600_000, Math.round(event.durationMs))),
+                }),
             metadata: { protocol },
           });
           break;
@@ -273,7 +313,10 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           break;
         }
         case "complete":
-          trackAnalyticsEvent("VIDEO_COMPLETE", { ...common, metadata: { protocol } });
+          trackAnalyticsEvent("VIDEO_COMPLETE", {
+            ...common,
+            metadata: { protocol },
+          });
           break;
         case "error":
           trackAnalyticsEvent("VIDEO_BUFFER", {

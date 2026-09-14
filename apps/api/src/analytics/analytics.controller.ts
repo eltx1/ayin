@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   Inject,
   Post,
@@ -13,6 +14,7 @@ import { z } from "zod";
 
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { type HeaderBag, TrustedRegionService } from "../video-policy/trusted-region.service.js";
 import { analyticsBatchSchema } from "./analytics.schemas.js";
 import { AnalyticsService } from "./analytics.service.js";
 
@@ -29,18 +31,30 @@ const dashboardStaffRoles = [
 
 @Controller("analytics")
 export class PublicAnalyticsController {
-  constructor(@Inject(AnalyticsService) private readonly analytics: AnalyticsService) {}
+  constructor(
+    @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+  ) {}
 
   @Post("events")
-  ingest(@Body() body: unknown) {
+  ingest(@Body() body: unknown, @Headers() headers: HeaderBag) {
     const parsed = analyticsBatchSchema.safeParse(body);
     if (!parsed.success) {
       throw new HttpException(
-        { error: { code: "INVALID_ANALYTICS_BATCH", message: "Invalid analytics batch." } },
+        {
+          error: {
+            code: "INVALID_ANALYTICS_BATCH",
+            message: "Invalid analytics batch.",
+          },
+        },
         400,
       );
     }
-    return this.analytics.ingest(parsed.data.events);
+    const countryCode = this.trustedRegion.countryFromHeaders(headers);
+    return this.analytics.ingest(
+      parsed.data.events,
+      countryCode === undefined ? {} : { countryCode },
+    );
   }
 }
 
@@ -52,7 +66,9 @@ export class CreatorAnalyticsController {
   @Get()
   async metrics(@Req() request: AuthenticatedRequest, @Query("days") rawDays?: string) {
     const parsed = daysSchema.safeParse(rawDays ?? 28);
-    if (!parsed.success) throw new HttpException("Invalid analytics period.", 400);
+    if (!parsed.success) {
+      throw new HttpException("Invalid analytics period.", 400);
+    }
     const metrics = await this.analytics.creatorMetrics(request.ayinAuth.accountId, parsed.data);
     if (!metrics) throw new HttpException("Creator channel not found.", 404);
     return metrics;
@@ -74,7 +90,9 @@ export class AdminAnalyticsController {
   @RequireAdminRoles("OPERATIONS")
   cleanup(@Body() body: unknown) {
     const parsed = cleanupSchema.safeParse(body ?? {});
-    if (!parsed.success) throw new HttpException("Invalid retention configuration.", 400);
+    if (!parsed.success) {
+      throw new HttpException("Invalid retention configuration.", 400);
+    }
     return this.analytics.deleteExpired(parsed.data.retentionDays);
   }
 }

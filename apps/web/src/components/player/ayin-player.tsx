@@ -93,6 +93,8 @@ export function AyinPlayer({
   const protocolRef = useRef<"HLS" | "MP4">("MP4");
   const adActiveRef = useRef(adMode.active);
   const bufferingRef = useRef(false);
+  const startupStartedAtRef = useRef<number | null>(null);
+  const startupReportedForRef = useRef<string | null>(null);
   const lastQualityTelemetryRef = useRef<string | null>(null);
   const suppressPauseTelemetryRef = useRef(false);
   const suppressNextPlayTelemetryRef = useRef(false);
@@ -166,6 +168,8 @@ export function AyinPlayer({
     let startupTimer: number | null = null;
     fallbackUsedRef.current = false;
     bufferingRef.current = false;
+    startupStartedAtRef.current = null;
+    startupReportedForRef.current = null;
     lastQualityTelemetryRef.current = null;
     setSelectedQuality("AUTO");
     setQualities([]);
@@ -615,10 +619,25 @@ export function AyinPlayer({
                 suppressNextPlayTelemetryRef.current = false;
                 return;
               }
+              if (
+                startupReportedForRef.current !== videoId &&
+                startupStartedAtRef.current === null
+              ) {
+                startupStartedAtRef.current = performance.now();
+              }
               analytics.emit({ type: "play", videoId });
             }}
             onPlaying={() => {
               bufferingRef.current = false;
+              const startupStartedAt = startupStartedAtRef.current;
+              if (startupReportedForRef.current !== videoId && startupStartedAt !== null) {
+                startupReportedForRef.current = videoId;
+                analytics.emit({
+                  type: "startup",
+                  videoId,
+                  durationMs: Math.max(0, performance.now() - startupStartedAt),
+                });
+              }
             }}
             onWaiting={reportBuffering}
             onStalled={reportBuffering}

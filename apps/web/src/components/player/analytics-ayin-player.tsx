@@ -8,9 +8,12 @@ import { AdEnabledAyinPlayer } from "./ad-enabled-ayin-player";
 import type { AyinPlayerProps } from "./ayin-player";
 
 export function AnalyticsAyinPlayer(props: AyinPlayerProps) {
-  const analytics = useMemo(() => createPlayerAnalytics(props.profileId), [props.profileId]);
+  const { profileId, videoId } = props;
+  const analytics = useMemo(() => createPlayerAnalytics(profileId), [profileId]);
+
   useEffect(() => {
-    trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId: props.videoId });
-  }, [props.videoId]);
+    trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId });
+  }, [videoId]);
+
   return <AdEnabledAyinPlayer {...props} analytics={analytics} />;
 }
