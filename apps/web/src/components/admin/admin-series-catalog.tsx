@@ -80,11 +80,13 @@ export function AdminSeriesCatalog() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`${apiBaseUrl}${url}`, {
-        credentials: "include",
-        ...init,
-        headers: init.body ? { "content-type": "application/json", ...init.headers } : init.headers,
-      });
+      const requestInit: RequestInit = { ...init, credentials: "include" };
+      if (init.body) {
+        const headers = new Headers(init.headers);
+        headers.set("content-type", "application/json");
+        requestInit.headers = headers;
+      }
+      const response = await fetch(`${apiBaseUrl}${url}`, requestInit);
       if (!response.ok) throw new Error(await readApiError(response));
       await load();
       setMessage(success);
