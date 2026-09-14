@@ -39,10 +39,8 @@ jobs:
       - name: Format changed integration files
         run: pnpm exec prettier --write apps/api/src/watch/watch.service.ts apps/api/src/search/search.service.ts apps/api/src/discovery/discovery.service.ts
 
-      - name: Generate Prisma and typecheck API
-        run: |
-          pnpm --filter @ayin/db db:generate
-          pnpm --filter @ayin/api typecheck
+      - name: Workspace typecheck
+        run: pnpm typecheck
 
       - name: Commit integration patch
         run: |
