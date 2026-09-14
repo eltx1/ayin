@@ -51,6 +51,58 @@ describe("creator analytics aggregation", () => {
       ],
     });
   });
+
+  it("counts all buffer events while treating only non-null devices as measured", async () => {
+    const analyticsCount = vi.fn().mockResolvedValue(0);
+    const analyticsAggregate = vi.fn().mockResolvedValue({
+      _sum: { durationDeltaMs: null },
+      _avg: { durationDeltaMs: null },
+      _count: { durationDeltaMs: 0 },
+    });
+    const analyticsGroupBy = vi.fn().mockResolvedValue([]);
+    const database = {
+      client: {
+        analyticsEvent: {
+          count: analyticsCount,
+          aggregate: analyticsAggregate,
+          groupBy: analyticsGroupBy,
+        },
+        subscription: { count: vi.fn().mockResolvedValue(0) },
+        video: { findMany: vi.fn().mockResolvedValue([]) },
+        adEvent: { groupBy: vi.fn().mockResolvedValue([]) },
+        $queryRaw: vi.fn().mockResolvedValue([]),
+      },
+    };
+    const service = new AnalyticsService(database as never);
+
+    const result = await service.channelMetrics(channelId, 28);
+
+    const bufferQuery = analyticsCount.mock.calls.find(
+      ([query]) => query.where?.eventName === "VIDEO_BUFFER",
+    )?.[0];
+    expect(bufferQuery?.where).toEqual(
+      expect.objectContaining({
+        channelId,
+        eventName: "VIDEO_BUFFER",
+      }),
+    );
+    expect(bufferQuery?.where).not.toHaveProperty("durationDeltaMs");
+
+    const deviceQuery = analyticsGroupBy.mock.calls.find(
+      ([query]) => query.by?.[0] === "deviceClass",
+    )?.[0];
+    expect(deviceQuery?.where?.deviceClass).toEqual({ not: null });
+    expect(result.playbackQuality.buffering).toMatchObject({
+      events: 0,
+      measuredDurationSamples: 0,
+      averageDurationMs: null,
+    });
+    expect(result.devices).toMatchObject({
+      available: false,
+      coverage: 0,
+      items: [],
+    });
+  });
 });
 
 describe("creator analytics access control", () => {
