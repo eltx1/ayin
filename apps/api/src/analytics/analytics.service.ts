@@ -1,6 +1,7 @@
 import type { Prisma } from "@ayin/db";
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { createHmac } from "node:crypto";
+import { isIP } from "node:net";
 
 import { DatabaseService } from "../database/database.service.js";
 import type { AnalyticsEventInput } from "./analytics.schemas.js";
@@ -9,19 +10,27 @@ const DAY_MS = 86_400_000;
 const QUERY_WARN_MS = 750;
 const SENSITIVE_METADATA_KEYS = new Set([
   "ip",
-  "ipAddress",
-  "clientIp",
-  "remoteAddress",
+  "ipaddress",
+  "clientip",
+  "userip",
+  "remoteaddress",
+  "forwardedfor",
   "latitude",
   "longitude",
   "coordinates",
-  "preciseLocation",
+  "preciselocation",
   "referrer",
-  "referrerUrl",
+  "referrerurl",
 ]);
 
 type BreakdownRow = { value: string | null; count: bigint };
-type RetentionRow = { bucket: string; threshold: number; reached: bigint; total: bigint };
+type CountRow = { count: bigint };
+type RetentionRow = {
+  bucket: string;
+  threshold: number;
+  reached: bigint;
+  total: bigint;
+};
 
 function clampDate(date: Date) {
   const now = Date.now();
@@ -32,7 +41,9 @@ function clampDate(date: Date) {
 
 function normalizedCountryCode(value?: string | null) {
   const candidate = value?.trim().toUpperCase();
-  return candidate && /^[A-Z]{2}$/.test(candidate) ? candidate : null;
+  return candidate && candidate !== "XX" && /^[A-Z]{2}$/.test(candidate)
+    ? candidate
+    : null;
 }
 
 function sanitizeMetadata(
@@ -40,14 +51,20 @@ function sanitizeMetadata(
   countryCode?: string | null,
 ): Record<string, string | number | boolean | null> | undefined {
   const safe = Object.fromEntries(
-    Object.entries(metadata ?? {}).filter(([key]) => !SENSITIVE_METADATA_KEYS.has(key)),
+    Object.entries(metadata ?? {}).filter(([key, value]) => {
+      if (SENSITIVE_METADATA_KEYS.has(key.toLowerCase())) return false;
+      return typeof value !== "string" || isIP(value) === 0;
+    }),
   );
   const normalizedCountry = normalizedCountryCode(countryCode);
   if (normalizedCountry) safe.countryCode = normalizedCountry;
   return Object.keys(safe).length ? safe : undefined;
 }
 
-export function normalizeAnalyticsBreakdown(rows: BreakdownRow[], denominator: number) {
+export function normalizeAnalyticsBreakdown(
+  rows: BreakdownRow[],
+  denominator: number,
+) {
   const items = rows
     .filter((row) => row.value)
     .map((row) => ({ value: row.value as string, count: Number(row.count) }));
@@ -68,7 +85,8 @@ export function normalizeRetention(rows: RetentionRow[], views: number) {
       bucket: row.bucket,
       threshold: Number(row.threshold),
       viewers: Number(row.reached),
-      rate: Number(row.total) > 0 ? Number(row.reached) / Number(row.total) : 0,
+      rate:
+        Number(row.total) > 0 ? Number(row.reached) / Number(row.total) : 0,
     })),
   };
 }
@@ -77,11 +95,18 @@ export function normalizeRetention(rows: RetentionRow[], views: number) {
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
 
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+  ) {}
 
-  async ingest(events: AnalyticsEventInput[], context: { countryCode?: string | null } = {}) {
+  async ingest(
+    events: AnalyticsEventInput[],
+    context: { countryCode?: string | null } = {},
+  ) {
     const videoIds = [
-      ...new Set(events.flatMap((event) => (event.videoId ? [event.videoId] : []))),
+      ...new Set(
+        events.flatMap((event) => (event.videoId ? [event.videoId] : [])),
+      ),
     ];
     const videos = videoIds.length
       ? await this.database.client.video.findMany({
@@ -89,9 +114,13 @@ export class AnalyticsService {
           select: { id: true, channelId: true },
         })
       : [];
-    const videoChannels = new Map(videos.map((video) => [video.id, video.channelId]));
+    const videoChannels = new Map(
+      videos.map((video) => [video.id, video.channelId]),
+    );
     const suppliedChannelIds = [
-      ...new Set(events.flatMap((event) => (event.channelId ? [event.channelId] : []))),
+      ...new Set(
+        events.flatMap((event) => (event.channelId ? [event.channelId] : [])),
+      ),
     ];
     const validChannelIds = new Set(
       (
@@ -105,7 +134,9 @@ export class AnalyticsService {
     const data: Prisma.AnalyticsEventCreateManyInput[] = [];
     for (const event of events) {
       if (event.videoId && !videoChannels.has(event.videoId)) continue;
-      const derivedChannelId = event.videoId ? videoChannels.get(event.videoId) : event.channelId;
+      const derivedChannelId = event.videoId
+        ? videoChannels.get(event.videoId)
+        : event.channelId;
       if (
         derivedChannelId &&
         !videoChannels.has(event.videoId ?? "") &&
@@ -120,12 +151,15 @@ export class AnalyticsService {
         eventName: event.eventName,
         occurredAt: clampDate(new Date(event.occurredAt)),
         sessionHash: this.pseudonym(event.sessionId),
-        ...(event.profileId ? { profileHash: this.pseudonym(event.profileId) } : {}),
+        ...(event.profileId
+          ? { profileHash: this.pseudonym(event.profileId) }
+          : {}),
         ...(derivedChannelId ? { channelId: derivedChannelId } : {}),
         ...(event.videoId ? { videoId: event.videoId } : {}),
         source: event.source,
         ...(event.deviceClass ? { deviceClass: event.deviceClass } : {}),
-        ...(event.durationDeltaMs !== undefined && event.durationDeltaMs !== null
+        ...(event.durationDeltaMs !== undefined &&
+        event.durationDeltaMs !== null
           ? { durationDeltaMs: event.durationDeltaMs }
           : {}),
         ...(event.positionMs !== undefined && event.positionMs !== null
@@ -135,12 +169,17 @@ export class AnalyticsService {
       });
     }
 
-    if (!data.length) return { accepted: 0, duplicateOrInvalid: events.length };
+    if (!data.length) {
+      return { accepted: 0, duplicateOrInvalid: events.length };
+    }
     const result = await this.database.client.analyticsEvent.createMany({
       data,
       skipDuplicates: true,
     });
-    return { accepted: result.count, duplicateOrInvalid: events.length - result.count };
+    return {
+      accepted: result.count,
+      duplicateOrInvalid: events.length - result.count,
+    };
   }
 
   async creatorMetrics(accountId: string, days = 28) {
@@ -168,7 +207,7 @@ export class AnalyticsService {
         views,
         completes,
         watch,
-        uniqueSessions,
+        uniqueSessionRows,
         subscribersGained,
         subscribersTotal,
         videoGroups,
@@ -185,7 +224,9 @@ export class AnalyticsService {
         retentionRows,
         adGroups,
       ] = await Promise.all([
-        this.database.client.analyticsEvent.count({ where: { ...where, eventName: "VIDEO_START" } }),
+        this.database.client.analyticsEvent.count({
+          where: { ...where, eventName: "VIDEO_START" },
+        }),
         this.database.client.analyticsEvent.count({
           where: { ...where, eventName: "VIDEO_COMPLETE" },
         }),
@@ -193,18 +234,24 @@ export class AnalyticsService {
           where: { ...where, eventName: "VIDEO_PROGRESS" },
           _sum: { durationDeltaMs: true },
         }),
-        this.database.client.analyticsEvent.findMany({
-          where: { ...where, eventName: "VIDEO_START" },
-          distinct: ["sessionHash"],
-          select: { sessionHash: true },
-        }),
+        this.database.client.$queryRaw<CountRow[]>`
+          SELECT COUNT(DISTINCT "sessionHash")::bigint AS count
+          FROM "AnalyticsEvent"
+          WHERE "channelId" = ${channelId}::uuid
+            AND "occurredAt" >= ${from} AND "occurredAt" < ${to}
+            AND "eventName" = 'VIDEO_START'
+        `,
         this.database.client.subscription.count({
           where: { channelId, createdAt: { gte: from, lt: to } },
         }),
         this.database.client.subscription.count({ where: { channelId } }),
         this.database.client.analyticsEvent.groupBy({
           by: ["videoId"],
-          where: { ...where, eventName: "VIDEO_START", videoId: { not: null } },
+          where: {
+            ...where,
+            eventName: "VIDEO_START",
+            videoId: { not: null },
+          },
           _count: { _all: true },
           orderBy: { _count: { videoId: "desc" } },
           take: 10,
@@ -216,15 +263,27 @@ export class AnalyticsService {
           orderBy: { _count: { deviceClass: "desc" } },
         }),
         this.database.client.analyticsEvent.aggregate({
-          where: { ...where, eventName: "VIDEO_STARTUP", durationDeltaMs: { not: null } },
+          where: {
+            ...where,
+            eventName: "VIDEO_STARTUP",
+            durationDeltaMs: { not: null },
+          },
           _avg: { durationDeltaMs: true },
           _count: { durationDeltaMs: true },
         }),
         this.database.client.analyticsEvent.count({
-          where: { ...where, eventName: "VIDEO_BUFFER", durationDeltaMs: null },
+          where: {
+            ...where,
+            eventName: "VIDEO_BUFFER",
+            durationDeltaMs: null,
+          },
         }),
         this.database.client.analyticsEvent.aggregate({
-          where: { ...where, eventName: "VIDEO_BUFFER", durationDeltaMs: { not: null } },
+          where: {
+            ...where,
+            eventName: "VIDEO_BUFFER",
+            durationDeltaMs: { not: null },
+          },
           _sum: { durationDeltaMs: true },
           _avg: { durationDeltaMs: true },
           _count: { durationDeltaMs: true },
@@ -312,7 +371,9 @@ export class AnalyticsService {
         }),
       ]);
 
-      const videoIds = videoGroups.flatMap((group) => (group.videoId ? [group.videoId] : []));
+      const videoIds = videoGroups.flatMap((group) =>
+        group.videoId ? [group.videoId] : [],
+      );
       const titles = new Map(
         (
           await this.database.client.video.findMany({
@@ -322,26 +383,39 @@ export class AnalyticsService {
         ).map((video) => [video.id, video.title]),
       );
       const watchTimeMs = watch._sum.durationDeltaMs ?? 0;
+      const uniqueViewersApprox = Number(uniqueSessionRows[0]?.count ?? 0n);
       const trafficSources = normalizeAnalyticsBreakdown(trafficRows, views);
       const geography = normalizeAnalyticsBreakdown(geographyRows, views);
       const protocols = normalizeAnalyticsBreakdown(protocolRows, views);
       const retention = normalizeRetention(retentionRows, views);
-      const adCounts = new Map(adGroups.map((row) => [row.eventType, row._count._all]));
+      const adCounts = new Map(
+        adGroups.map((row) => [row.eventType, row._count._all]),
+      );
       const adRequests = adCounts.get("REQUEST") ?? 0;
       const adFills = adCounts.get("FILL") ?? 0;
       const measuredAdTelemetry = adRequests > 0;
+      const deviceSamples = deviceGroups.reduce(
+        (sum, row) => sum + row._count._all,
+        0,
+      );
 
       return {
         periodDays,
-        dateRange: { from: from.toISOString(), to: to.toISOString(), timezone: "UTC" },
+        dateRange: {
+          from: from.toISOString(),
+          to: to.toISOString(),
+          timezone: "UTC",
+        },
         refresh: "query-time" as const,
         freshnessNote:
           "Computed from persisted events at request time. This is not realtime and ingestion can lag.",
         views,
-        uniqueViewersApprox: uniqueSessions.length,
-        uniqueViewerMethod: "Distinct pseudonymous playback sessions; not person-level identity.",
+        uniqueViewersApprox,
+        uniqueViewerMethod:
+          "Distinct pseudonymous playback sessions; not person-level identity.",
         watchTimeMs,
-        averageViewDurationMs: views > 0 ? Math.round(watchTimeMs / views) : 0,
+        averageViewDurationMs:
+          views > 0 ? Math.round(watchTimeMs / views) : 0,
         completionRate: views > 0 ? Math.min(1, completes / views) : 0,
         subscribersGained,
         subscribersTotal,
@@ -349,7 +423,8 @@ export class AnalyticsService {
         trafficSources,
         devices: {
           available: deviceGroups.length > 0,
-          coverage: views > 0 ? Math.min(1, deviceGroups.reduce((sum, row) => sum + row._count._all, 0) / views) : 0,
+          coverage:
+            views > 0 ? Math.min(1, deviceSamples / views) : 0,
           items: deviceGroups.map((row) => ({
             value: row.deviceClass ?? "UNKNOWN",
             count: row._count._all,
@@ -368,12 +443,18 @@ export class AnalyticsService {
         })),
         playbackQuality: {
           available:
-            protocols.available || startup._count.durationDeltaMs > 0 || bufferStarts > 0 || hlsFatal > 0,
+            protocols.available ||
+            startup._count.durationDeltaMs > 0 ||
+            bufferStarts > 0 ||
+            hlsFatal > 0,
           protocols,
           startup: {
             available: startup._count.durationDeltaMs > 0,
             sampleCount: startup._count.durationDeltaMs,
-            averageMs: startup._avg.durationDeltaMs === null ? null : Math.round(startup._avg.durationDeltaMs),
+            averageMs:
+              startup._avg.durationDeltaMs === null
+                ? null
+                : Math.round(startup._avg.durationDeltaMs),
           },
           buffering: {
             events: bufferStarts,
@@ -394,7 +475,8 @@ export class AnalyticsService {
               available: true,
               opportunities: adRequests,
               fills: adFills,
-              fillRate: adRequests > 0 ? Math.min(1, adFills / adRequests) : null,
+              fillRate:
+                adRequests > 0 ? Math.min(1, adFills / adRequests) : null,
               note: "Observed REQUEST/FILL ad events only. No revenue is inferred here.",
             }
           : {
@@ -412,40 +494,60 @@ export class AnalyticsService {
     const now = Date.now();
     const day = new Date(now - DAY_MS);
     const month = new Date(now - 30 * DAY_MS);
-    const [dailySessions, monthlySessions, watch, uploads, tvStarts, adEvents, errors] =
-      await Promise.all([
-        this.database.client.analyticsEvent.findMany({
-          where: { occurredAt: { gte: day } },
-          distinct: ["sessionHash"],
-          select: { sessionHash: true },
-        }),
-        this.database.client.analyticsEvent.findMany({
-          where: { occurredAt: { gte: month } },
-          distinct: ["sessionHash"],
-          select: { sessionHash: true },
-        }),
-        this.database.client.analyticsEvent.aggregate({
-          where: { occurredAt: { gte: month }, eventName: "VIDEO_PROGRESS" },
-          _sum: { durationDeltaMs: true },
-        }),
-        this.database.client.analyticsEvent.count({
-          where: { occurredAt: { gte: month }, eventName: { in: ["UPLOAD_COMPLETE", "PUBLISH"] } },
-        }),
-        this.database.client.analyticsEvent.count({
-          where: { occurredAt: { gte: month }, eventName: "TV_START" },
-        }),
-        this.database.client.analyticsEvent.count({
-          where: {
-            occurredAt: { gte: month },
-            eventName: {
-              in: ["AD_REQUEST", "AD_START", "AD_QUARTILE", "AD_COMPLETE", "AD_CLICK", "AD_ERROR"],
-            },
+    const [
+      dailySessions,
+      monthlySessions,
+      watch,
+      uploads,
+      tvStarts,
+      adEvents,
+      errors,
+    ] = await Promise.all([
+      this.database.client.analyticsEvent.findMany({
+        where: { occurredAt: { gte: day } },
+        distinct: ["sessionHash"],
+        select: { sessionHash: true },
+      }),
+      this.database.client.analyticsEvent.findMany({
+        where: { occurredAt: { gte: month } },
+        distinct: ["sessionHash"],
+        select: { sessionHash: true },
+      }),
+      this.database.client.analyticsEvent.aggregate({
+        where: { occurredAt: { gte: month }, eventName: "VIDEO_PROGRESS" },
+        _sum: { durationDeltaMs: true },
+      }),
+      this.database.client.analyticsEvent.count({
+        where: {
+          occurredAt: { gte: month },
+          eventName: { in: ["UPLOAD_COMPLETE", "PUBLISH"] },
+        },
+      }),
+      this.database.client.analyticsEvent.count({
+        where: { occurredAt: { gte: month }, eventName: "TV_START" },
+      }),
+      this.database.client.analyticsEvent.count({
+        where: {
+          occurredAt: { gte: month },
+          eventName: {
+            in: [
+              "AD_REQUEST",
+              "AD_START",
+              "AD_QUARTILE",
+              "AD_COMPLETE",
+              "AD_CLICK",
+              "AD_ERROR",
+            ],
           },
-        }),
-        this.database.client.analyticsEvent.count({
-          where: { occurredAt: { gte: month }, eventName: { in: ["AD_ERROR", "VIDEO_BUFFER"] } },
-        }),
-      ]);
+        },
+      }),
+      this.database.client.analyticsEvent.count({
+        where: {
+          occurredAt: { gte: month },
+          eventName: { in: ["AD_ERROR", "VIDEO_BUFFER"] },
+        },
+      }),
+    ]);
     const watchTimeMs = watch._sum.durationDeltaMs ?? 0;
     return {
       refresh: "query-time",
@@ -469,23 +571,33 @@ export class AnalyticsService {
     return { deleted: result.count, before, retentionDays: days };
   }
 
-  private async monitoredCreatorQuery<T>(channelId: string, days: number, work: () => Promise<T>) {
+  private async monitoredCreatorQuery<T>(
+    channelId: string,
+    days: number,
+    work: () => Promise<T>,
+  ) {
     const startedAt = Date.now();
     try {
       return await work();
     } finally {
       const durationMs = Date.now() - startedAt;
       if (durationMs >= QUERY_WARN_MS) {
-        this.logger.warn(`creator analytics query slow channel=${channelId} days=${days} durationMs=${durationMs}`);
+        this.logger.warn(
+          `creator analytics query slow channel=${channelId} days=${days} durationMs=${durationMs}`,
+        );
       } else {
-        this.logger.debug(`creator analytics query channel=${channelId} days=${days} durationMs=${durationMs}`);
+        this.logger.debug(
+          `creator analytics query channel=${channelId} days=${days} durationMs=${durationMs}`,
+        );
       }
     }
   }
 
   private pseudonym(value: string) {
     const salt =
-      process.env.ANALYTICS_HASH_SALT ?? process.env.AUTH_TOKEN_SECRET ?? "ayin-local-analytics-v1";
+      process.env.ANALYTICS_HASH_SALT ??
+      process.env.AUTH_TOKEN_SECRET ??
+      "ayin-local-analytics-v1";
     return createHmac("sha256", salt).update(value).digest("hex");
   }
 }
