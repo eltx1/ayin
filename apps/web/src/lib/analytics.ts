@@ -9,6 +9,7 @@ export type AnalyticsEventName =
   | "CONTENT_IMPRESSION"
   | "CONTENT_CLICK"
   | "VIDEO_START"
+  | "VIDEO_STARTUP"
   | "VIDEO_PROGRESS"
   | "VIDEO_COMPLETE"
   | "VIDEO_PAUSE"
@@ -95,6 +96,21 @@ function deviceClass(): QueuedEvent["deviceClass"] {
   return "DESKTOP";
 }
 
+function trafficSourceCategory(): "DIRECT" | "INTERNAL" | "SEARCH" | "SOCIAL" | "EXTERNAL" {
+  if (!document.referrer) return "DIRECT";
+  try {
+    const referrer = new URL(document.referrer);
+    if (referrer.origin === window.location.origin) return "INTERNAL";
+    const host = referrer.hostname.toLowerCase();
+    if (/(^|\.)(google|bing|duckduckgo|yahoo|baidu|yandex)\./.test(host)) return "SEARCH";
+    if (/(^|\.)(facebook|instagram|tiktok|x|twitter|linkedin|reddit|youtube)\./.test(host))
+      return "SOCIAL";
+    return "EXTERNAL";
+  } catch {
+    return "EXTERNAL";
+  }
+}
+
 function bindLifecycle() {
   if (lifecycleBound || typeof window === "undefined") return;
   lifecycleBound = true;
@@ -129,6 +145,7 @@ export function trackAnalyticsEvent(
     source: source(),
     deviceClass: deviceClass(),
     ...input,
+    metadata: { trafficSource: trafficSourceCategory(), ...(input.metadata ?? {}) },
   });
   if (queue.length >= 20) {
     void flushAnalytics();
@@ -192,6 +209,13 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           });
           started = true;
           break;
+        case "startup":
+          trackAnalyticsEvent("VIDEO_STARTUP", {
+            ...common,
+            durationDeltaMs: Math.max(0, Math.min(3_600_000, Math.round(event.durationMs))),
+            metadata: { protocol },
+          });
+          break;
         case "pause":
           trackAnalyticsEvent("VIDEO_PAUSE", {
             ...common,
@@ -211,6 +235,9 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           trackAnalyticsEvent("VIDEO_BUFFER", {
             ...common,
             positionMs: event.positionMs,
+            ...(event.durationMs === undefined
+              ? {}
+              : { durationDeltaMs: Math.max(0, Math.min(3_600_000, Math.round(event.durationMs))) }),
             metadata: { protocol },
           });
           break;
