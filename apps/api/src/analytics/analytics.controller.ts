@@ -14,10 +14,7 @@ import { z } from "zod";
 
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
-import {
-  type HeaderBag,
-  TrustedRegionService,
-} from "../video-policy/trusted-region.service.js";
+import { type HeaderBag, TrustedRegionService } from "../video-policy/trusted-region.service.js";
 import { analyticsBatchSchema } from "./analytics.schemas.js";
 import { AnalyticsService } from "./analytics.service.js";
 
