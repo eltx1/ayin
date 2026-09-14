@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Inject, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
@@ -109,8 +109,11 @@ function parseId(value: string) {
 }
 
 function invalidBody(details: unknown) {
-  const error = new Error("Invalid movie catalog request.") as Error & { status?: number; response?: unknown };
-  error.status = 400;
-  error.response = { error: { code: "INVALID_MOVIE_REQUEST", message: "Movie catalog request is invalid.", details } };
-  return error;
+  return new BadRequestException({
+    error: {
+      code: "INVALID_MOVIE_REQUEST",
+      message: "Movie catalog request is invalid.",
+      details,
+    },
+  });
 }
