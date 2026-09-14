@@ -8,7 +8,10 @@ import { AdEnabledAyinPlayer } from "./ad-enabled-ayin-player";
 import type { AyinPlayerProps } from "./ayin-player";
 
 export function AnalyticsAyinPlayer(props: AyinPlayerProps) {
-  const analytics = useMemo(() => createPlayerAnalytics(props.profileId), [props.profileId]);
+  const analytics = useMemo(
+    () => createPlayerAnalytics(props.profileId),
+    [props.profileId],
+  );
   const startupStartedAt = useRef<number>(0);
   const startupReportedFor = useRef<string | null>(null);
 
@@ -30,5 +33,11 @@ export function AnalyticsAyinPlayer(props: AyinPlayerProps) {
     props.onPlaybackReady?.();
   }, [analytics, props]);
 
-  return <AdEnabledAyinPlayer {...props} analytics={analytics} onPlaybackReady={onPlaybackReady} />;
+  return (
+    <AdEnabledAyinPlayer
+      {...props}
+      analytics={analytics}
+      onPlaybackReady={onPlaybackReady}
+    />
+  );
 }
