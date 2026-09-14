@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { DatabaseModule } from "../database/database.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
+import { SeriesCatalogModule } from "../series-catalog/series-catalog.module.js";
 import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import {
   AYIN_LENS_SEARCH_PROVIDER,
@@ -13,7 +14,7 @@ import { SearchRateLimiter } from "./search-rate-limiter.js";
 import { SearchService } from "./search.service.js";
 
 @Module({
-  imports: [DatabaseModule, PlatformConfigModule, VideoPolicyModule],
+  imports: [DatabaseModule, PlatformConfigModule, SeriesCatalogModule, VideoPolicyModule],
   controllers: [SearchController],
   providers: [
     SearchService,
