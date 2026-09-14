@@ -273,7 +273,11 @@ export class SeriesCatalogService {
       where: { seriesId },
       select: { id: true },
     });
-    assertExactIdSet(existing.map((item) => item.id), orderedIds, "season");
+    assertExactIdSet(
+      existing.map((item) => item.id),
+      orderedIds,
+      "season",
+    );
     await this.database.client.$transaction(
       orderedIds.map((id, index) =>
         this.database.client.seriesSeason.update({
@@ -356,7 +360,11 @@ export class SeriesCatalogService {
       where: { seasonId },
       select: { id: true },
     });
-    assertExactIdSet(existing.map((item) => item.id), orderedIds, "episode");
+    assertExactIdSet(
+      existing.map((item) => item.id),
+      orderedIds,
+      "episode",
+    );
     await this.database.client.$transaction(
       orderedIds.map((id, index) =>
         this.database.client.seriesEpisode.update({
@@ -376,10 +384,19 @@ export class SeriesCatalogService {
     if (!episode) throw catalogError(404, "EPISODE_NOT_FOUND", "This episode does not exist.");
     await this.assertEditableSeries(episode.season.seriesId);
     if (!episode.videoId) {
-      throw catalogError(409, "EPISODE_VIDEO_REQUIRED", "Assign a playable video before publishing.");
+      throw catalogError(
+        409,
+        "EPISODE_VIDEO_REQUIRED",
+        "Assign a playable video before publishing.",
+      );
     }
     const video = await this.getVideo(episode.videoId);
-    if (!video || video.status !== "PUBLISHED" || video.visibility !== "PUBLIC" || video.removedAt) {
+    if (
+      !video ||
+      video.status !== "PUBLISHED" ||
+      video.visibility !== "PUBLIC" ||
+      video.removedAt
+    ) {
       throw catalogError(
         409,
         "EPISODE_VIDEO_NOT_PUBLIC",
@@ -419,13 +436,15 @@ export class SeriesCatalogService {
       episodes: hydrated.seasons.flatMap((season) =>
         season.episodes.map((episode) => ({
           status: episode.status,
-          video: episode.videoId ? hydrated.videoById.get(episode.videoId) ?? null : null,
+          video: episode.videoId ? (hydrated.videoById.get(episode.videoId) ?? null) : null,
           releaseDate: episode.releaseDate,
         })),
       ),
     });
     if (issues.length) {
-      throw catalogError(409, "SERIES_NOT_PUBLISHABLE", "Series is not ready to publish.", { issues });
+      throw catalogError(409, "SERIES_NOT_PUBLISHABLE", "Series is not ready to publish.", {
+        issues,
+      });
     }
     await this.database.client.series.update({
       where: { id: seriesId },
@@ -489,7 +508,11 @@ export class SeriesCatalogService {
               OR: [
                 { title: { contains: normalizedSearch, mode: "insensitive" } },
                 { synopsis: { contains: normalizedSearch, mode: "insensitive" } },
-                { genres: { some: { genre: { name: { contains: normalizedSearch, mode: "insensitive" } } } } },
+                {
+                  genres: {
+                    some: { genre: { name: { contains: normalizedSearch, mode: "insensitive" } } },
+                  },
+                },
               ],
             }
           : {}),
@@ -515,7 +538,8 @@ export class SeriesCatalogService {
       throw catalogError(404, "SERIES_NOT_FOUND", "This series could not be found.");
     }
     const publicSeries = await this.publicShape(await this.hydrate(row), countryCode);
-    if (!publicSeries) throw catalogError(404, "SERIES_NOT_FOUND", "This series could not be found.");
+    if (!publicSeries)
+      throw catalogError(404, "SERIES_NOT_FOUND", "This series could not be found.");
     return publicSeries;
   }
 
@@ -530,13 +554,20 @@ export class SeriesCatalogService {
       select: { videoId: true, season: { select: { seriesId: true } } },
     });
     const seriesIds = [...new Set(matches.map((item) => item.season.seriesId))];
-    const publicSeriesById = new Map<string, Awaited<ReturnType<SeriesCatalogService["publicShape"]>>>();
+    const publicSeriesById = new Map<
+      string,
+      Awaited<ReturnType<SeriesCatalogService["publicShape"]>>
+    >();
     for (const seriesId of seriesIds) {
       const row = await this.database.client.series.findUnique({
         where: { id: seriesId },
         include: seriesInclude,
       });
-      if (row) publicSeriesById.set(seriesId, await this.publicShape(await this.hydrate(row), countryCode));
+      if (row)
+        publicSeriesById.set(
+          seriesId,
+          await this.publicShape(await this.hydrate(row), countryCode),
+        );
     }
     const contexts = new Map<string, ReturnType<typeof toEpisodeContext>>();
     for (const match of matches) {
@@ -568,7 +599,9 @@ export class SeriesCatalogService {
           : [],
       ),
     );
-    const allowed = await this.videoPolicy.filterAvailableVideoIds(episodeVideoIds, { countryCode });
+    const allowed = await this.videoPolicy.filterAvailableVideoIds(episodeVideoIds, {
+      countryCode,
+    });
     const seasons = hydrated.seasons
       .map((season) => ({
         id: season.id,
@@ -669,7 +702,7 @@ export class SeriesCatalogService {
         })),
         episodes: season.episodes.map((episode) => ({
           ...episode,
-          video: episode.videoId ? hydrated.videoById.get(episode.videoId) ?? null : null,
+          video: episode.videoId ? (hydrated.videoById.get(episode.videoId) ?? null) : null,
         })),
       })),
       assetById: undefined,
@@ -737,7 +770,12 @@ export class SeriesCatalogService {
   private normalizeSeries(input: SeriesCatalogInput) {
     const title = input.title.trim();
     const slug = normalizeSeriesSlug(input.slug ?? title);
-    if (!title || !input.synopsis.trim() || !input.maturityRating.trim() || !input.originalLanguage.trim()) {
+    if (
+      !title ||
+      !input.synopsis.trim() ||
+      !input.maturityRating.trim() ||
+      !input.originalLanguage.trim()
+    ) {
       throw catalogError(400, "INVALID_SERIES", "Required series metadata is missing.");
     }
     if (!isSafeSeriesSlug(slug)) {
@@ -759,7 +797,11 @@ export class SeriesCatalogService {
     const seen = new Set<string>();
     return input.map((item) => {
       if (seen.has(item.type)) {
-        throw catalogError(400, "DUPLICATE_ARTWORK_TYPE", "Each artwork type may appear only once.");
+        throw catalogError(
+          400,
+          "DUPLICATE_ARTWORK_TYPE",
+          "Each artwork type may appear only once.",
+        );
       }
       seen.add(item.type);
       return {
@@ -858,8 +900,12 @@ export class SeriesCatalogService {
 
 function toEpisodeContext(
   series: NonNullable<Awaited<ReturnType<SeriesCatalogService["getPublicBySlug"]>>>,
-  season: NonNullable<Awaited<ReturnType<SeriesCatalogService["getPublicBySlug"]>>>["seasons"][number],
-  episode: NonNullable<Awaited<ReturnType<SeriesCatalogService["getPublicBySlug"]>>>["seasons"][number]["episodes"][number],
+  season: NonNullable<
+    Awaited<ReturnType<SeriesCatalogService["getPublicBySlug"]>>
+  >["seasons"][number],
+  episode: NonNullable<
+    Awaited<ReturnType<SeriesCatalogService["getPublicBySlug"]>>
+  >["seasons"][number]["episodes"][number],
 ) {
   const ordered: OrderedEpisode[] = series.seasons.flatMap((itemSeason) =>
     itemSeason.episodes.map((itemEpisode) => ({
@@ -876,14 +922,19 @@ function toEpisodeContext(
   );
   const next = nextCatalogEpisode(ordered, episode.id);
   const nextDetail = next
-    ? series.seasons
+    ? (series.seasons
         .flatMap((itemSeason) =>
           itemSeason.episodes.map((itemEpisode) => ({ season: itemSeason, episode: itemEpisode })),
         )
-        .find((item) => item.episode.id === next.id) ?? null
+        .find((item) => item.episode.id === next.id) ?? null)
     : null;
   return {
-    series: { id: series.id, title: series.title, slug: series.slug, href: `/series/${series.slug}` },
+    series: {
+      id: series.id,
+      title: series.title,
+      slug: series.slug,
+      href: `/series/${series.slug}`,
+    },
     season: { id: season.id, seasonNumber: season.seasonNumber, title: season.title },
     episode,
     nextEpisode: nextDetail
@@ -898,12 +949,12 @@ function toEpisodeContext(
 function assertExactIdSet(existing: string[], ordered: string[], label: string) {
   const expected = [...existing].toSorted();
   const actual = [...new Set(ordered)].toSorted();
-  if (ordered.length !== actual.length || expected.length !== actual.length || expected.some((id, index) => id !== actual[index])) {
-    throw catalogError(
-      400,
-      "INVALID_REORDER",
-      `Reorder must contain every ${label} exactly once.`,
-    );
+  if (
+    ordered.length !== actual.length ||
+    expected.length !== actual.length ||
+    expected.some((id, index) => id !== actual[index])
+  ) {
+    throw catalogError(400, "INVALID_REORDER", `Reorder must contain every ${label} exactly once.`);
   }
 }
 
@@ -923,12 +974,15 @@ function isReadyAsset(asset?: AssetRecord) {
 function isUniqueConstraint(error: unknown) {
   return Boolean(
     error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: string }).code === "P2002",
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002",
   );
 }
 
 function catalogError(status: number, code: string, message: string, details?: unknown) {
-  return new HttpException({ error: { code, message, ...(details === undefined ? {} : { details }) } }, status);
+  return new HttpException(
+    { error: { code, message, ...(details === undefined ? {} : { details }) } },
+    status,
+  );
 }

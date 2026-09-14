@@ -81,8 +81,8 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
           <span className={styles.eyebrow}>Series</span>
           <h1>{series.title}</h1>
           <p className={styles.meta}>
-            {series.releaseYear ?? "AYIN Original"} · {series.maturityRating} · {series.episodeCount}{" "}
-            episodes · {series.originalLanguage.toUpperCase()}
+            {series.releaseYear ?? "AYIN Original"} · {series.maturityRating} ·{" "}
+            {series.episodeCount} episodes · {series.originalLanguage.toUpperCase()}
           </p>
           <p className={styles.genres}>{series.genres.join(" · ")}</p>
           <p className={styles.synopsis}>{series.synopsis}</p>

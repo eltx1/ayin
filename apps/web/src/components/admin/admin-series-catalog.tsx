@@ -63,7 +63,9 @@ export function AdminSeriesCatalog() {
     const timer = window.setTimeout(() => {
       void load().catch((caught) => {
         if (active) {
-          setError(caught instanceof Error ? caught.message : "Series catalog could not be loaded.");
+          setError(
+            caught instanceof Error ? caught.message : "Series catalog could not be loaded.",
+          );
         }
       });
     }, 0);
@@ -239,7 +241,9 @@ export function AdminSeriesCatalog() {
         <div className={styles.cardHeader}>
           <div>
             <strong>Create series draft</strong>
-            <p className={styles.muted}>Reference existing MediaAsset IDs; no media bytes are copied.</p>
+            <p className={styles.muted}>
+              Reference existing MediaAsset IDs; no media bytes are copied.
+            </p>
           </div>
         </div>
         <div className={styles.grid}>
@@ -293,8 +297,8 @@ export function AdminSeriesCatalog() {
               <div>
                 <strong>{series.title}</strong>
                 <p className={styles.muted}>
-                  /{series.slug} · {series.releaseYear ?? "year not set"} · {series.maturityRating} ·{" "}
-                  {series.originalLanguage.toUpperCase()}
+                  /{series.slug} · {series.releaseYear ?? "year not set"} · {series.maturityRating}{" "}
+                  · {series.originalLanguage.toUpperCase()}
                 </p>
               </div>
               <strong>{series.status}</strong>
@@ -349,7 +353,11 @@ export function AdminSeriesCatalog() {
                   </label>
                 </div>
                 <div className={styles.actions}>
-                  <button className={styles.button} disabled={busy === `season-${series.id}`} type="submit">
+                  <button
+                    className={styles.button}
+                    disabled={busy === `season-${series.id}`}
+                    type="submit"
+                  >
                     Add season
                   </button>
                 </div>
@@ -494,7 +502,9 @@ export function AdminSeriesCatalog() {
             ))}
           </article>
         ))}
-        {!items.length ? <p className={styles.muted}>No deliberate series catalog entries yet.</p> : null}
+        {!items.length ? (
+          <p className={styles.muted}>No deliberate series catalog entries yet.</p>
+        ) : null}
       </section>
     </>
   );

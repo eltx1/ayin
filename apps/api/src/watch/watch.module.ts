@@ -9,7 +9,13 @@ import { PublicWatchController, WatchProgressController } from "./watch.controll
 import { WatchService } from "./watch.service.js";
 
 @Module({
-  imports: [AuthModule, DatabaseModule, PlatformConfigModule, SeriesCatalogModule, VideoPolicyModule],
+  imports: [
+    AuthModule,
+    DatabaseModule,
+    PlatformConfigModule,
+    SeriesCatalogModule,
+    VideoPolicyModule,
+  ],
   controllers: [PublicWatchController, WatchProgressController],
   providers: [WatchService],
   exports: [WatchService],

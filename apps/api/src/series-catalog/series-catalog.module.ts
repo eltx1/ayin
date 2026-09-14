@@ -10,7 +10,11 @@ import { SeriesSitemapController } from "./series-sitemap.controller.js";
 
 @Module({
   imports: [AuthModule, AdminModule, VideoPolicyModule],
-  controllers: [PublicSeriesCatalogController, SeriesSitemapController, AdminSeriesCatalogController],
+  controllers: [
+    PublicSeriesCatalogController,
+    SeriesSitemapController,
+    AdminSeriesCatalogController,
+  ],
   providers: [SeriesCatalogService],
   exports: [SeriesCatalogService],
 })

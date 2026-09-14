@@ -92,7 +92,12 @@ export class AdminSeriesCatalogController {
 
   @Get()
   async list(@Query("limit") limitRaw?: string) {
-    const parsed = z.coerce.number().int().min(1).max(100).safeParse(limitRaw ?? 50);
+    const parsed = z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .safeParse(limitRaw ?? 50);
     return { items: await this.catalog.listAdmin(parsed.success ? parsed.data : 50) };
   }
 
@@ -162,7 +167,9 @@ export class AdminSeriesCatalogController {
   async reorderEpisodes(@Param("seasonId") seasonId: string, @Body() body: unknown) {
     const parsed = reorderSchema.safeParse(body);
     if (!parsed.success) throw invalidBody(parsed.error.flatten());
-    return { season: await this.catalog.reorderEpisodes(parseId(seasonId), parsed.data.orderedIds) };
+    return {
+      season: await this.catalog.reorderEpisodes(parseId(seasonId), parsed.data.orderedIds),
+    };
   }
 
   @Patch("episodes/:episodeId")
