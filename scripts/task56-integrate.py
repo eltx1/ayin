@@ -91,7 +91,6 @@ insert_before_next(
     '    ]);',
     '      this.seriesCatalog.listPublic(limit, normalized, context.countryCode),\n',
 )
-# Insert in suggestions only, after its local marker.
 text = search.read_text()
 suggest_start = text.find('      suggestions: [')
 channel_pos = text.find('        ...channels.map((channel) => ({', suggest_start)
@@ -123,7 +122,6 @@ replace_once(
     '    @Inject(HomeRowConfigService) private readonly rows: HomeRowConfigService,\n    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,\n',
     '    @Inject(HomeRowConfigService) private readonly rows: HomeRowConfigService,\n    @Inject(SeriesCatalogService) private readonly seriesCatalog: SeriesCatalogService,\n    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,\n',
 )
-# All three existing Continue Watching call sites have a DiscoveryContext in scope.
 replace_once(
     discovery,
     '      this.loadContinueWatching(profileId, 0, firstPageSize),\n',
@@ -180,6 +178,25 @@ replace_once(
     discovery,
     '    return paged(\n      records.map((record) => ({\n        ...toVideoItem(record.video, "Continue Watching"),\n        progress: {\n          positionMs: record.positionMs,\n          completedAt: record.completedAt?.toISOString() ?? null,\n        },\n      })),\n',
     '    const contexts = await this.seriesCatalog.getPublicContextsForVideos(\n      records.map((record) => record.video.id),\n      countryCode,\n    );\n    return paged(\n      records.map((record) => {\n        const context = contexts.get(record.video.id);\n        return {\n          ...toVideoItem(\n            record.video,\n            context\n              ? `${context.series.title} · S${context.season.seasonNumber} E${context.episode.episodeNumber}`\n              : "Continue Watching",\n          ),\n          ...(context ? { meta: context.episode.title, seriesContext: context } : {}),\n          progress: {\n            positionMs: record.positionMs,\n            completedAt: record.completedAt?.toISOString() ?? null,\n          },\n        };\n      }),\n',
+)
+
+# Existing unit harnesses construct these services directly, so provide the new catalog collaborator.
+search_test = Path("apps/api/src/search/search.service.test.ts")
+text = search_test.read_text()
+needle = '    { filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)) } as never,\n'
+if text.count(needle) != 2:
+    raise SystemExit("unexpected SearchService harness shape")
+text = text.replace(
+    needle,
+    '    { listPublic: vi.fn(async () => []) } as never,\n' + needle,
+)
+search_test.write_text(text)
+
+watch_test = Path("apps/api/src/watch/watch.service.test.ts")
+replace_once(
+    watch_test,
+    '    featureFlags as never,\n    policy as never,\n',
+    '    featureFlags as never,\n    { getPublicContextForVideo: vi.fn().mockResolvedValue(null) } as never,\n    policy as never,\n',
 )
 
 print("Task 56 integrations patched")
