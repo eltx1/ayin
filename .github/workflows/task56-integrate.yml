@@ -37,7 +37,7 @@ jobs:
         run: python3 scripts/task56-integrate.py
 
       - name: Format changed integration files
-        run: pnpm exec prettier --write apps/api/src/watch/watch.service.ts apps/api/src/search/search.service.ts apps/api/src/discovery/discovery.service.ts
+        run: pnpm exec prettier --write apps/api/src/watch/watch.service.ts apps/api/src/watch/watch.service.test.ts apps/api/src/search/search.service.ts apps/api/src/search/search.service.test.ts apps/api/src/discovery/discovery.service.ts
 
       - name: Workspace typecheck
         run: pnpm typecheck
@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/api/src/watch/watch.service.ts apps/api/src/search/search.service.ts apps/api/src/discovery/discovery.service.ts
+          git add apps/api/src/watch/watch.service.ts apps/api/src/watch/watch.service.test.ts apps/api/src/search/search.service.ts apps/api/src/search/search.service.test.ts apps/api/src/discovery/discovery.service.ts
           git diff --cached --quiet && exit 0
           git commit -m "feat(task56): integrate series with watch search and discovery"
           git push origin HEAD:task-56-series-catalog
