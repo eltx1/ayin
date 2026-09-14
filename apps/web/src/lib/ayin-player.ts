@@ -74,24 +74,12 @@ export type AyinPlayerAnalyticsEvent =
   | {
       type: "hls_fatal";
       videoId: string;
-      reason:
-        | "NETWORK"
-        | "MEDIA"
-        | "MANIFEST"
-        | "STARTUP"
-        | "UNSUPPORTED"
-        | "OTHER";
+      reason: "NETWORK" | "MEDIA" | "MANIFEST" | "STARTUP" | "UNSUPPORTED" | "OTHER";
     }
   | {
       type: "fallback_mp4";
       videoId: string;
-      reason:
-        | "NETWORK"
-        | "MEDIA"
-        | "MANIFEST"
-        | "STARTUP"
-        | "UNSUPPORTED"
-        | "OTHER";
+      reason: "NETWORK" | "MEDIA" | "MANIFEST" | "STARTUP" | "UNSUPPORTED" | "OTHER";
     };
 
 export interface AyinPlayerAnalytics {

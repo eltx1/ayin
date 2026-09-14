@@ -78,9 +78,7 @@ describe("creator analytics access control", () => {
     };
     const service = new AnalyticsService(database as never);
     const metrics = { views: 7 } as never;
-    const channelMetrics = vi
-      .spyOn(service, "channelMetrics")
-      .mockResolvedValue(metrics);
+    const channelMetrics = vi.spyOn(service, "channelMetrics").mockResolvedValue(metrics);
 
     await expect(service.creatorMetrics(accountId, 7)).resolves.toBe(metrics);
     expect(channelMetrics).toHaveBeenCalledWith(channelId, 7);
