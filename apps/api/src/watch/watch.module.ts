@@ -3,12 +3,13 @@ import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
+import { SeriesCatalogModule } from "../series-catalog/series-catalog.module.js";
 import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import { PublicWatchController, WatchProgressController } from "./watch.controller.js";
 import { WatchService } from "./watch.service.js";
 
 @Module({
-  imports: [AuthModule, DatabaseModule, PlatformConfigModule, VideoPolicyModule],
+  imports: [AuthModule, DatabaseModule, PlatformConfigModule, SeriesCatalogModule, VideoPolicyModule],
   controllers: [PublicWatchController, WatchProgressController],
   providers: [WatchService],
   exports: [WatchService],
