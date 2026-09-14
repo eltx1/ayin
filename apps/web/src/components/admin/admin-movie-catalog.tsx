@@ -69,9 +69,7 @@ export function AdminMovieCatalog() {
     const timer = window.setTimeout(() => {
       void load().catch((caught) => {
         if (active) {
-          setError(
-            caught instanceof Error ? caught.message : "Movie catalog could not be loaded.",
-          );
+          setError(caught instanceof Error ? caught.message : "Movie catalog could not be loaded.");
         }
       });
     }, 0);
