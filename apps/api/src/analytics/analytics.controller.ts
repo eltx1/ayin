@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   Inject,
   Post,
@@ -32,7 +33,7 @@ export class PublicAnalyticsController {
   constructor(@Inject(AnalyticsService) private readonly analytics: AnalyticsService) {}
 
   @Post("events")
-  ingest(@Body() body: unknown) {
+  ingest(@Body() body: unknown, @Headers("cf-ipcountry") countryCode?: string) {
     const parsed = analyticsBatchSchema.safeParse(body);
     if (!parsed.success) {
       throw new HttpException(
@@ -40,7 +41,7 @@ export class PublicAnalyticsController {
         400,
       );
     }
-    return this.analytics.ingest(parsed.data.events);
+    return this.analytics.ingest(parsed.data.events, { countryCode });
   }
 }
 
