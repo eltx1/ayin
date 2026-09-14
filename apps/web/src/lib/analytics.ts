@@ -1,6 +1,9 @@
 "use client";
 
-import type { AyinPlayerAnalytics, AyinPlayerAnalyticsEvent } from "./ayin-player";
+import type {
+  AyinPlayerAnalytics,
+  AyinPlayerAnalyticsEvent,
+} from "./ayin-player";
 import { apiBaseUrl } from "./api";
 
 export type AnalyticsEventName =
@@ -85,26 +88,44 @@ function sessionId() {
 }
 
 function source(): "WEB" | "PWA" {
-  return window.matchMedia?.("(display-mode: standalone)").matches ? "PWA" : "WEB";
+  return window.matchMedia?.("(display-mode: standalone)").matches
+    ? "PWA"
+    : "WEB";
 }
 
 function deviceClass(): QueuedEvent["deviceClass"] {
   const width = window.innerWidth;
-  if (window.matchMedia?.("(pointer: coarse) and (min-width: 1100px)").matches) return "TV";
+  if (
+    window.matchMedia?.("(pointer: coarse) and (min-width: 1100px)").matches
+  ) {
+    return "TV";
+  }
   if (width < 640) return "MOBILE";
   if (width < 1024) return "TABLET";
   return "DESKTOP";
 }
 
-function trafficSourceCategory(): "DIRECT" | "INTERNAL" | "SEARCH" | "SOCIAL" | "EXTERNAL" {
+function trafficSourceCategory():
+  | "DIRECT"
+  | "INTERNAL"
+  | "SEARCH"
+  | "SOCIAL"
+  | "EXTERNAL" {
   if (!document.referrer) return "DIRECT";
   try {
     const referrer = new URL(document.referrer);
     if (referrer.origin === window.location.origin) return "INTERNAL";
     const host = referrer.hostname.toLowerCase();
-    if (/(^|\.)(google|bing|duckduckgo|yahoo|baidu|yandex)\./.test(host)) return "SEARCH";
-    if (/(^|\.)(facebook|instagram|tiktok|x|twitter|linkedin|reddit|youtube)\./.test(host))
+    if (/(^|\.)(google|bing|duckduckgo|yahoo|baidu|yandex)\./.test(host)) {
+      return "SEARCH";
+    }
+    if (
+      /(^|\.)(facebook|instagram|tiktok|x|twitter|linkedin|reddit|youtube)\./.test(
+        host,
+      )
+    ) {
       return "SOCIAL";
+    }
     return "EXTERNAL";
   } catch {
     return "EXTERNAL";
@@ -145,7 +166,10 @@ export function trackAnalyticsEvent(
     source: source(),
     deviceClass: deviceClass(),
     ...input,
-    metadata: { trafficSource: trafficSourceCategory(), ...(input.metadata ?? {}) },
+    metadata: {
+      trafficSource: trafficSourceCategory(),
+      ...(input.metadata ?? {}),
+    },
   });
   if (queue.length >= 20) {
     void flushAnalytics();
@@ -164,7 +188,10 @@ export async function flushAnalytics(keepalive = false) {
   const payload = JSON.stringify({ events });
   const url = `${apiBaseUrl}/analytics/events`;
   if (keepalive && navigator.sendBeacon) {
-    const sent = navigator.sendBeacon(url, new Blob([payload], { type: "application/json" }));
+    const sent = navigator.sendBeacon(
+      url,
+      new Blob([payload], { type: "application/json" }),
+    );
     if (sent) return;
   }
   try {
@@ -197,7 +224,10 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
   return {
     emit(event: AyinPlayerAnalyticsEvent) {
       resetForVideo(event.videoId);
-      const common = { videoId: event.videoId, ...(profileId ? { profileId } : {}) };
+      const common = {
+        videoId: event.videoId,
+        ...(profileId ? { profileId } : {}),
+      };
       switch (event.type) {
         case "playback_protocol":
           protocol = event.protocol;
@@ -212,7 +242,10 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
         case "startup":
           trackAnalyticsEvent("VIDEO_STARTUP", {
             ...common,
-            durationDeltaMs: Math.max(0, Math.min(3_600_000, Math.round(event.durationMs))),
+            durationDeltaMs: Math.max(
+              0,
+              Math.min(3_600_000, Math.round(event.durationMs)),
+            ),
             metadata: { protocol },
           });
           break;
@@ -237,7 +270,12 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
             positionMs: event.positionMs,
             ...(event.durationMs === undefined
               ? {}
-              : { durationDeltaMs: Math.max(0, Math.min(3_600_000, Math.round(event.durationMs))) }),
+              : {
+                  durationDeltaMs: Math.max(
+                    0,
+                    Math.min(3_600_000, Math.round(event.durationMs)),
+                  ),
+                }),
             metadata: { protocol },
           });
           break;
@@ -289,7 +327,10 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           const delta =
             lastProgressMs === null
               ? Math.min(15_000, event.positionMs)
-              : Math.max(0, Math.min(60_000, event.positionMs - lastProgressMs));
+              : Math.max(
+                  0,
+                  Math.min(60_000, event.positionMs - lastProgressMs),
+                );
           lastProgressMs = event.positionMs;
           trackAnalyticsEvent("VIDEO_PROGRESS", {
             ...common,
@@ -300,7 +341,10 @@ export function createPlayerAnalytics(profileId?: string): AyinPlayerAnalytics {
           break;
         }
         case "complete":
-          trackAnalyticsEvent("VIDEO_COMPLETE", { ...common, metadata: { protocol } });
+          trackAnalyticsEvent("VIDEO_COMPLETE", {
+            ...common,
+            metadata: { protocol },
+          });
           break;
         case "error":
           trackAnalyticsEvent("VIDEO_BUFFER", {
