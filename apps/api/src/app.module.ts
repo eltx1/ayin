@@ -12,6 +12,7 @@ import { DatabaseModule } from "./database/database.module.js";
 import { DiscoveryModule } from "./discovery/discovery.module.js";
 import { LiveModule } from "./live/live.module.js";
 import { MediaModule } from "./media/media.module.js";
+import { MovieCatalogModule } from "./movie-catalog/movie-catalog.module.js";
 import { ObservabilityModule } from "./observability/observability.module.js";
 import { PlatformConfigModule } from "./platform-config/platform-config.module.js";
 import { PrivacyModule } from "./privacy/privacy.module.js";
@@ -41,6 +42,7 @@ import { WatchModule } from "./watch/watch.module.js";
     LiveModule,
     WatchModule,
     DiscoveryModule,
+    MovieCatalogModule,
     SearchModule,
     SeoModule,
     SocialModule,
