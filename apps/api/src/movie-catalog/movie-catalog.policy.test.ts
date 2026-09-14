@@ -20,9 +20,7 @@ function publishableMovie() {
     primaryVideo: { status: "PUBLISHED", visibility: "PUBLIC" },
     genres: [{ slug: "drama" }],
     artwork: [{ type: "POSTER" as const, assetReady: true }],
-    availability: [
-      { territoryCode: "*", rule: "ALLOW" as const, startsAt: null, endsAt: null },
-    ],
+    availability: [{ territoryCode: "*", rule: "ALLOW" as const, startsAt: null, endsAt: null }],
   };
 }
 

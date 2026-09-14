@@ -1,4 +1,15 @@
-import { BadRequestException, Body, Controller, Get, Inject, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
@@ -8,19 +19,29 @@ import { MovieCatalogService } from "./movie-catalog.service.js";
 const uuid = z.string().uuid();
 const artworkType = z.enum(["POSTER", "BACKDROP", "LOGO"]);
 const availabilityRule = z.enum(["ALLOW", "BLOCK"]);
-const artworkSchema = z.object({ type: artworkType, mediaAssetId: uuid, altText: z.string().max(240).nullable().optional() }).strict();
-const availabilitySchema = z.object({
-  territoryCode: z.string().min(1).max(2),
-  rule: availabilityRule,
-  startsAt: z.coerce.date().nullable().optional(),
-  endsAt: z.coerce.date().nullable().optional(),
-  note: z.string().max(240).nullable().optional(),
-}).strict();
-const localizationSchema = z.object({
-  locale: z.string().min(2).max(35),
-  title: z.string().max(200).nullable().optional(),
-  synopsis: z.string().max(20_000).nullable().optional(),
-}).strict();
+const artworkSchema = z
+  .object({
+    type: artworkType,
+    mediaAssetId: uuid,
+    altText: z.string().max(240).nullable().optional(),
+  })
+  .strict();
+const availabilitySchema = z
+  .object({
+    territoryCode: z.string().min(1).max(2),
+    rule: availabilityRule,
+    startsAt: z.coerce.date().nullable().optional(),
+    endsAt: z.coerce.date().nullable().optional(),
+    note: z.string().max(240).nullable().optional(),
+  })
+  .strict();
+const localizationSchema = z
+  .object({
+    locale: z.string().min(2).max(35),
+    title: z.string().max(200).nullable().optional(),
+    synopsis: z.string().max(20_000).nullable().optional(),
+  })
+  .strict();
 const movieFields = {
   title: z.string().min(1).max(200),
   slug: z.string().max(160).optional(),
@@ -38,22 +59,24 @@ const movieFields = {
   localizations: z.array(localizationSchema).max(50).optional(),
 };
 const createSchema = z.object(movieFields).strict();
-const patchSchema = z.object({
-  title: movieFields.title.optional(),
-  slug: movieFields.slug,
-  synopsis: movieFields.synopsis.optional(),
-  releaseDate: movieFields.releaseDate,
-  releaseYear: movieFields.releaseYear.optional(),
-  runtimeMinutes: movieFields.runtimeMinutes.optional(),
-  maturityRating: movieFields.maturityRating.optional(),
-  originalLanguage: movieFields.originalLanguage.optional(),
-  primaryVideoId: movieFields.primaryVideoId,
-  trailerVideoId: movieFields.trailerVideoId,
-  genres: movieFields.genres.optional(),
-  artwork: movieFields.artwork.optional(),
-  availability: movieFields.availability.optional(),
-  localizations: movieFields.localizations,
-}).strict();
+const patchSchema = z
+  .object({
+    title: movieFields.title.optional(),
+    slug: movieFields.slug,
+    synopsis: movieFields.synopsis.optional(),
+    releaseDate: movieFields.releaseDate,
+    releaseYear: movieFields.releaseYear.optional(),
+    runtimeMinutes: movieFields.runtimeMinutes.optional(),
+    maturityRating: movieFields.maturityRating.optional(),
+    originalLanguage: movieFields.originalLanguage.optional(),
+    primaryVideoId: movieFields.primaryVideoId,
+    trailerVideoId: movieFields.trailerVideoId,
+    genres: movieFields.genres.optional(),
+    artwork: movieFields.artwork.optional(),
+    availability: movieFields.availability.optional(),
+    localizations: movieFields.localizations,
+  })
+  .strict();
 
 @Controller("admin/catalog/movies")
 @UseGuards(AuthGuard, AdminGuard)
@@ -63,7 +86,12 @@ export class AdminMovieCatalogController {
 
   @Get()
   async list(@Query("limit") limitRaw?: string) {
-    const parsed = z.coerce.number().int().min(1).max(100).safeParse(limitRaw ?? 50);
+    const parsed = z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .safeParse(limitRaw ?? 50);
     return { items: await this.catalog.listAdmin(parsed.success ? parsed.data : 50) };
   }
 

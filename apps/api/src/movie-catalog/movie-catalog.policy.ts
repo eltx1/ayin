@@ -60,11 +60,18 @@ export function isMovieAvailableInTerritory(
 
   if (territory && territory !== "*") {
     const exact = active.filter((window) => window.territoryCode === territory);
-    if (exact.length > 0) return exact.some((window) => window.rule === "ALLOW") && !exact.some((window) => window.rule === "BLOCK");
+    if (exact.length > 0)
+      return (
+        exact.some((window) => window.rule === "ALLOW") &&
+        !exact.some((window) => window.rule === "BLOCK")
+      );
   }
 
   const global = active.filter((window) => window.territoryCode === "*");
-  return global.some((window) => window.rule === "ALLOW") && !global.some((window) => window.rule === "BLOCK");
+  return (
+    global.some((window) => window.rule === "ALLOW") &&
+    !global.some((window) => window.rule === "BLOCK")
+  );
 }
 
 export function moviePublishIssues(candidate: MoviePublishCandidate, now = new Date()): string[] {
@@ -72,12 +79,15 @@ export function moviePublishIssues(candidate: MoviePublishCandidate, now = new D
   if (!candidate.title.trim()) issues.push("TITLE_REQUIRED");
   if (!isSafeMovieSlug(candidate.slug)) issues.push("SAFE_SLUG_REQUIRED");
   if (!candidate.synopsis.trim()) issues.push("SYNOPSIS_REQUIRED");
-  if (candidate.releaseYear < 1888 || candidate.releaseYear > 2200) issues.push("RELEASE_YEAR_INVALID");
-  if (candidate.runtimeMinutes <= 0 || candidate.runtimeMinutes > 1440) issues.push("RUNTIME_INVALID");
+  if (candidate.releaseYear < 1888 || candidate.releaseYear > 2200)
+    issues.push("RELEASE_YEAR_INVALID");
+  if (candidate.runtimeMinutes <= 0 || candidate.runtimeMinutes > 1440)
+    issues.push("RUNTIME_INVALID");
   if (!candidate.maturityRating.trim()) issues.push("MATURITY_REQUIRED");
   if (!candidate.originalLanguage.trim()) issues.push("ORIGINAL_LANGUAGE_REQUIRED");
   if (candidate.genres.length === 0) issues.push("GENRE_REQUIRED");
-  if (!candidate.artwork.some((item) => item.type === "POSTER" && item.assetReady !== false)) issues.push("POSTER_REQUIRED");
+  if (!candidate.artwork.some((item) => item.type === "POSTER" && item.assetReady !== false))
+    issues.push("POSTER_REQUIRED");
   if (!candidate.primaryVideo) issues.push("PRIMARY_VIDEO_REQUIRED");
   else {
     if (candidate.primaryVideo.status !== "PUBLISHED") issues.push("PRIMARY_VIDEO_NOT_PUBLISHED");

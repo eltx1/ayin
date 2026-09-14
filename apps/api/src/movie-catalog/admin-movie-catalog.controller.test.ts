@@ -8,10 +8,10 @@ import { AdminMovieCatalogController } from "./admin-movie-catalog.controller.js
 
 describe("movie catalog admin authorization", () => {
   it("requires authenticated admin access with the OPERATIONS role", () => {
-    const guards = (Reflect.getMetadata("__guards__", AdminMovieCatalogController) ?? []) as unknown[];
+    const guards = (Reflect.getMetadata("__guards__", AdminMovieCatalogController) ??
+      []) as unknown[];
     const roles = Reflect.getMetadata("ayin.admin.requiredRoles", AdminMovieCatalogController) as
-      | string[]
-      | undefined;
+      string[] | undefined;
 
     expect(guards).toEqual(expect.arrayContaining([AuthGuard, AdminGuard]));
     expect(roles).toEqual(["OPERATIONS"]);
