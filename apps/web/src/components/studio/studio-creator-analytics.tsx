@@ -27,7 +27,12 @@ type CreatorAnalytics = {
   retention: {
     available: boolean;
     coverage: number;
-    buckets: Array<{ bucket: string; threshold: number; viewers: number; rate: number }>;
+    buckets: Array<{
+      bucket: string;
+      threshold: number;
+      viewers: number;
+      rate: number;
+    }>;
   };
   trafficSources: Breakdown;
   devices: Breakdown;
@@ -36,7 +41,11 @@ type CreatorAnalytics = {
   playbackQuality: {
     available: boolean;
     protocols: Breakdown;
-    startup: { available: boolean; sampleCount: number; averageMs: number | null };
+    startup: {
+      available: boolean;
+      sampleCount: number;
+      averageMs: number | null;
+    };
     buffering: {
       events: number;
       measuredDurationSamples: number;
@@ -57,7 +66,12 @@ type CreatorAnalytics = {
   };
 };
 
-type AnalyticsTab = "overview" | "content" | "audience" | "engagement" | "playback";
+type AnalyticsTab =
+  | "overview"
+  | "content"
+  | "audience"
+  | "engagement"
+  | "playback";
 
 const tabs: Array<{ key: AnalyticsTab; label: string }> = [
   { key: "overview", label: "Overview" },
@@ -78,13 +92,23 @@ function duration(ms: number) {
   return minutes > 0 ? `${minutes}m ${remaining}s` : `${remaining}s`;
 }
 
-function BreakdownPanel({ title, breakdown, empty }: { title: string; breakdown: Breakdown; empty: string }) {
+function BreakdownPanel({
+  title,
+  breakdown,
+  empty,
+}: {
+  title: string;
+  breakdown: Breakdown;
+  empty: string;
+}) {
   return (
     <section className={styles.panel}>
       <h2>{title}</h2>
       {breakdown.available ? (
         <>
-          <p className={styles.muted}>Measured coverage: {percent(breakdown.coverage)}</p>
+          <p className={styles.muted}>
+            Measured coverage: {percent(breakdown.coverage)}
+          </p>
           {breakdown.items.map((item) => (
             <p key={item.value}>
               <strong>{item.value}</strong> · {item.count.toLocaleString()}
@@ -114,7 +138,13 @@ export function StudioCreatorAnalytics() {
         if (active) setData(result as unknown as CreatorAnalytics);
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : "Analytics could not be loaded.");
+        if (active) {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Analytics could not be loaded.",
+          );
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -126,8 +156,14 @@ export function StudioCreatorAnalytics() {
 
   const rangeLabel = useMemo(() => {
     if (!data) return "";
-    const format = new Intl.DateTimeFormat(undefined, { year: "numeric", month: "short", day: "numeric" });
-    return `${format.format(new Date(data.dateRange.from))} – ${format.format(new Date(data.dateRange.to))} (${data.dateRange.timezone})`;
+    const format = new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    return `${format.format(new Date(data.dateRange.from))} – ${format.format(
+      new Date(data.dateRange.to),
+    )} (${data.dateRange.timezone})`;
   }, [data]);
 
   if (error) return <p className={styles.error}>{error}</p>;
@@ -141,11 +177,16 @@ export function StudioCreatorAnalytics() {
           <p className={styles.muted}>
             Persisted analytics, not fake realtime. {data?.freshnessNote ?? "Loading measured data…"}
           </p>
-          {data ? <p className={styles.muted}>Date range: {rangeLabel}</p> : null}
+          {data ? (
+            <p className={styles.muted}>Date range: {rangeLabel}</p>
+          ) : null}
         </div>
         <label>
           <span className={styles.muted}>Range </span>
-          <select value={days} onChange={(event) => setDays(Number(event.target.value))}>
+          <select
+            value={days}
+            onChange={(event) => setDays(Number(event.target.value))}
+          >
             <option value={7}>Last 7 days</option>
             <option value={28}>Last 28 days</option>
             <option value={90}>Last 90 days</option>
@@ -167,7 +208,9 @@ export function StudioCreatorAnalytics() {
         ))}
       </nav>
 
-      {loading || !data ? <p className={styles.muted}>Loading measured analytics…</p> : null}
+      {loading || !data ? (
+        <p className={styles.muted}>Loading measured analytics…</p>
+      ) : null}
 
       {!loading && data && tab === "overview" ? (
         <>
@@ -201,7 +244,8 @@ export function StudioCreatorAnalytics() {
             <h2>Data quality</h2>
             <p>{data.uniqueViewerMethod}</p>
             <p className={styles.muted}>
-              Watch time is accumulated from persisted progress checkpoints. Coverage-dependent metrics explicitly show measured coverage.
+              Watch time is accumulated from persisted progress checkpoints.
+              Coverage-dependent metrics explicitly show measured coverage.
             </p>
           </section>
         </>
@@ -217,7 +261,9 @@ export function StudioCreatorAnalytics() {
               </p>
             ))
           ) : (
-            <p className={styles.muted}>No measured video starts exist in this date range.</p>
+            <p className={styles.muted}>
+              No measured video starts exist in this date range.
+            </p>
           )}
         </section>
       ) : null}
@@ -261,15 +307,20 @@ export function StudioCreatorAnalytics() {
             <h2>Audience retention</h2>
             {data.retention.available ? (
               <>
-                <p className={styles.muted}>Eligible-duration coverage: {percent(data.retention.coverage)}</p>
+                <p className={styles.muted}>
+                  Eligible-duration coverage: {percent(data.retention.coverage)}
+                </p>
                 {data.retention.buckets.map((bucket) => (
                   <p key={bucket.bucket}>
-                    <strong>{bucket.bucket}</strong> · {percent(bucket.rate)} · {bucket.viewers.toLocaleString()} sessions
+                    <strong>{bucket.bucket}</strong> · {percent(bucket.rate)} ·{" "}
+                    {bucket.viewers.toLocaleString()} sessions
                   </p>
                 ))}
               </>
             ) : (
-              <p className={styles.muted}>Retention is unavailable until duration-backed progress telemetry exists.</p>
+              <p className={styles.muted}>
+                Retention is unavailable until duration-backed progress telemetry exists.
+              </p>
             )}
           </section>
         </>
@@ -293,7 +344,9 @@ export function StudioCreatorAnalytics() {
             </article>
             <article className={styles.metric}>
               <span className={styles.muted}>Buffer events</span>
-              <strong>{data.playbackQuality.buffering.events.toLocaleString()}</strong>
+              <strong>
+                {data.playbackQuality.buffering.events.toLocaleString()}
+              </strong>
             </article>
             <article className={styles.metric}>
               <span className={styles.muted}>HLS fatal events</span>
@@ -301,14 +354,20 @@ export function StudioCreatorAnalytics() {
             </article>
             <article className={styles.metric}>
               <span className={styles.muted}>MP4 fallbacks</span>
-              <strong>{data.playbackQuality.mp4FallbackEvents.toLocaleString()}</strong>
+              <strong>
+                {data.playbackQuality.mp4FallbackEvents.toLocaleString()}
+              </strong>
             </article>
           </section>
           <section className={styles.panel}>
             <h2>Buffering detail</h2>
-            <p>Events per view: {data.playbackQuality.buffering.eventsPerView.toFixed(3)}</p>
             <p>
-              Measured duration samples: {data.playbackQuality.buffering.measuredDurationSamples.toLocaleString()}
+              Events per view:{" "}
+              {data.playbackQuality.buffering.eventsPerView.toFixed(3)}
+            </p>
+            <p>
+              Measured duration samples:{" "}
+              {data.playbackQuality.buffering.measuredDurationSamples.toLocaleString()}
             </p>
             <p className={styles.muted}>
               {data.playbackQuality.buffering.averageDurationMs === null
@@ -320,9 +379,15 @@ export function StudioCreatorAnalytics() {
             <h2>Ad opportunity / fill telemetry</h2>
             {data.advertising.available ? (
               <p>
-                <strong>{data.advertising.opportunities?.toLocaleString()}</strong> measured requests ·{" "}
+                <strong>{data.advertising.opportunities?.toLocaleString()}</strong>{" "}
+                measured requests ·{" "}
                 <strong>{data.advertising.fills?.toLocaleString()}</strong> fills ·{" "}
-                <strong>{data.advertising.fillRate === null ? "Unavailable" : percent(data.advertising.fillRate)}</strong> fill rate
+                <strong>
+                  {data.advertising.fillRate === null
+                    ? "Unavailable"
+                    : percent(data.advertising.fillRate)}
+                </strong>{" "}
+                fill rate
               </p>
             ) : null}
             <p className={styles.muted}>{data.advertising.note}</p>
