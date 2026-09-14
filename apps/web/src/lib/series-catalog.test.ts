@@ -50,12 +50,12 @@ describe("series catalog SEO", () => {
     const metadata = buildSeriesMetadata(series);
     const jsonLd = buildSeriesJsonLd(series);
 
-    expect(metadata.alternates?.canonical).toBe("https://ayin.tv/series/ayin-series");
+    expect(metadata.alternates?.canonical).toBe("https://ayin.stream/series/ayin-series");
     expect(jsonLd["@type"]).toBe("TVSeries");
     expect(jsonLd.containsSeason[0]?.["@type"]).toBe("TVSeason");
     expect(jsonLd.containsSeason[0]?.episode[0]?.["@type"]).toBe("TVEpisode");
     expect(jsonLd.containsSeason[0]?.episode[0]?.potentialAction.target).toBe(
-      "https://ayin.tv/watch/pilot-video",
+      "https://ayin.stream/watch/pilot-video",
     );
   });
 });
