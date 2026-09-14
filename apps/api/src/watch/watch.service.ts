@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
 const playableStates = ["VALIDATED"] as const;
@@ -31,6 +32,7 @@ export class WatchService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
     @Inject(FeatureFlagService) private readonly featureFlags: FeatureFlagService,
+    @Inject(SeriesCatalogService) private readonly seriesCatalog: SeriesCatalogService,
     @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
@@ -181,6 +183,7 @@ export class WatchService {
       related.map((item) => item.id),
       { countryCode },
     );
+    const seriesContext = await this.seriesCatalog.getPublicContextForVideo(video.id, countryCode);
 
     const adaptiveSource =
       playbackGeneration && playbackGeneration.renditions.length > 0
@@ -219,7 +222,9 @@ export class WatchService {
         chapters,
       },
       detail: {
-        contentType: "CREATOR_VIDEO" as const,
+        contentType: seriesContext ? ("SERIES_EPISODE" as const) : ("CREATOR_VIDEO" as const),
+        seriesContext,
+        nextEpisode: seriesContext?.nextEpisode ?? null,
         saveHook: { action: "WATCH_LATER" as const, available: true },
         commentsSlot: { reserved: true, enabled: video.commentsEnabled },
         externalAdPlacementKeys: ["watch_below_player", "content_detail"],

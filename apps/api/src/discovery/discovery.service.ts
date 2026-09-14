@@ -2,6 +2,7 @@ import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
 const playableAssetStates = ["VALIDATED"] as const;
@@ -46,7 +47,7 @@ const videoCardSelect = {
 
 type VideoCardRecord = Prisma.VideoGetPayload<{ select: typeof videoCardSelect }>;
 
-export type DiscoveryItemType = "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST";
+export type DiscoveryItemType = "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST" | "SERIES";
 export type DiscoveryAvailability = "AVAILABLE" | "EMPTY" | "UNAVAILABLE";
 
 export interface DiscoveryItem {
@@ -124,6 +125,7 @@ export class DiscoveryService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(HomeRowConfigService) private readonly rows: HomeRowConfigService,
+    @Inject(SeriesCatalogService) private readonly seriesCatalog: SeriesCatalogService,
     @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
@@ -221,7 +223,7 @@ export class DiscoveryService {
     }
     const profileId = context.profileId;
     const [continueWatching, myList, watchLater, history, liked, playlists] = await Promise.all([
-      this.loadContinueWatching(profileId, 0, firstPageSize),
+      this.loadContinueWatching(profileId, 0, firstPageSize, context.availabilityCountryCode),
       this.loadMyList(profileId, 0, firstPageSize),
       this.loadWatchLater(profileId, 0, firstPageSize),
       this.loadHistory(profileId, 0, firstPageSize),
@@ -271,7 +273,12 @@ export class DiscoveryService {
     switch (section) {
       case "continue-watching":
         return this.enforcePage(
-          await this.loadContinueWatching(context.profileId, offset, limit),
+          await this.loadContinueWatching(
+            context.profileId,
+            offset,
+            limit,
+            context.availabilityCountryCode,
+          ),
           context,
         );
       case "watch-later":
@@ -356,7 +363,12 @@ export class DiscoveryService {
     switch (row.source) {
       case "CONTINUE_WATCHING":
         return context.profileId
-          ? this.loadContinueWatching(context.profileId, offset, limit)
+          ? this.loadContinueWatching(
+              context.profileId,
+              offset,
+              limit,
+              context.availabilityCountryCode,
+            )
           : emptyPage("Sign in to continue watching across AYIN.", "UNAVAILABLE");
       case "TRENDING_WORLDWIDE":
         return this.loadRankedVideos(daysAgo(7), offset, limit, "Trending Worldwide");
@@ -378,10 +390,7 @@ export class DiscoveryService {
       case "MOVIES":
         return this.loadRecentVideos(offset, limit, undefined, "Movies", "MOVIE");
       case "SERIES":
-        return emptyPage(
-          "AYIN stores optional creator series/episode placeholders, but no first-class catalog relationship exists yet, so discovery will not promote those placeholders as catalog truth.",
-          "UNAVAILABLE",
-        );
+        return this.loadSeries(context, offset, limit);
       case "CREATOR_TV":
         return this.loadCreatorTv(offset, limit);
       case "CREATORS_YOU_FOLLOW":
@@ -395,6 +404,31 @@ export class DiscoveryService {
       default:
         return emptyPage("This discovery source is not available yet.", "UNAVAILABLE");
     }
+  }
+
+  private async loadSeries(
+    context: DiscoveryContext,
+    offset: number,
+    limit: number,
+  ): Promise<DiscoveryPage> {
+    const records = await this.seriesCatalog.listPublic(
+      Math.min(offset + limit + 1, 100),
+      undefined,
+      context.availabilityCountryCode,
+    );
+    const items: DiscoveryItem[] = records.slice(offset).map((series) => ({
+      id: series.id,
+      type: "SERIES",
+      title: series.title,
+      href: `/series/${series.slug}`,
+      kicker: "Series",
+      meta: `${series.episodeCount} episodes`,
+      artworkObjectKey:
+        series.artwork.find((item) => item.type === "POSTER")?.objectKey ??
+        series.artwork.find((item) => item.type === "BACKDROP")?.objectKey ??
+        null,
+    }));
+    return paged(items, offset, limit, "Published AYIN series will appear here.");
   }
 
   private async loadRecentVideos(
@@ -456,6 +490,7 @@ export class DiscoveryService {
     profileId: string,
     offset: number,
     limit: number,
+    countryCode?: string,
   ): Promise<DiscoveryPage> {
     const records = await this.database.client.watchProgress.findMany({
       where: {
@@ -473,14 +508,27 @@ export class DiscoveryService {
         video: { select: videoCardSelect },
       },
     });
+    const contexts = await this.seriesCatalog.getPublicContextsForVideos(
+      records.map((record) => record.video.id),
+      countryCode,
+    );
     return paged(
-      records.map((record) => ({
-        ...toVideoItem(record.video, "Continue Watching"),
-        progress: {
-          positionMs: record.positionMs,
-          completedAt: record.completedAt?.toISOString() ?? null,
-        },
-      })),
+      records.map((record) => {
+        const context = contexts.get(record.video.id);
+        return {
+          ...toVideoItem(
+            record.video,
+            context
+              ? `${context.series.title} · S${context.season.seasonNumber} E${context.episode.episodeNumber}`
+              : "Continue Watching",
+          ),
+          ...(context ? { meta: context.episode.title, seriesContext: context } : {}),
+          progress: {
+            positionMs: record.positionMs,
+            completedAt: record.completedAt?.toISOString() ?? null,
+          },
+        };
+      }),
       offset,
       limit,
       "Start watching a video and it will appear here.",
