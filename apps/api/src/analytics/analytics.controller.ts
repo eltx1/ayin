@@ -30,14 +30,24 @@ const dashboardStaffRoles = [
 
 @Controller("analytics")
 export class PublicAnalyticsController {
-  constructor(@Inject(AnalyticsService) private readonly analytics: AnalyticsService) {}
+  constructor(
+    @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
+  ) {}
 
   @Post("events")
-  ingest(@Body() body: unknown, @Headers("cf-ipcountry") countryCode?: string) {
+  ingest(
+    @Body() body: unknown,
+    @Headers("cf-ipcountry") countryCode?: string,
+  ) {
     const parsed = analyticsBatchSchema.safeParse(body);
     if (!parsed.success) {
       throw new HttpException(
-        { error: { code: "INVALID_ANALYTICS_BATCH", message: "Invalid analytics batch." } },
+        {
+          error: {
+            code: "INVALID_ANALYTICS_BATCH",
+            message: "Invalid analytics batch.",
+          },
+        },
         400,
       );
     }
@@ -48,13 +58,23 @@ export class PublicAnalyticsController {
 @Controller("creator/studio/analytics")
 @UseGuards(AuthGuard)
 export class CreatorAnalyticsController {
-  constructor(@Inject(AnalyticsService) private readonly analytics: AnalyticsService) {}
+  constructor(
+    @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
+  ) {}
 
   @Get()
-  async metrics(@Req() request: AuthenticatedRequest, @Query("days") rawDays?: string) {
+  async metrics(
+    @Req() request: AuthenticatedRequest,
+    @Query("days") rawDays?: string,
+  ) {
     const parsed = daysSchema.safeParse(rawDays ?? 28);
-    if (!parsed.success) throw new HttpException("Invalid analytics period.", 400);
-    const metrics = await this.analytics.creatorMetrics(request.ayinAuth.accountId, parsed.data);
+    if (!parsed.success) {
+      throw new HttpException("Invalid analytics period.", 400);
+    }
+    const metrics = await this.analytics.creatorMetrics(
+      request.ayinAuth.accountId,
+      parsed.data,
+    );
     if (!metrics) throw new HttpException("Creator channel not found.", 404);
     return metrics;
   }
@@ -63,7 +83,9 @@ export class CreatorAnalyticsController {
 @Controller("admin/analytics")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminAnalyticsController {
-  constructor(@Inject(AnalyticsService) private readonly analytics: AnalyticsService) {}
+  constructor(
+    @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
+  ) {}
 
   @Get()
   @RequireAdminRoles(...dashboardStaffRoles)
@@ -75,7 +97,9 @@ export class AdminAnalyticsController {
   @RequireAdminRoles("OPERATIONS")
   cleanup(@Body() body: unknown) {
     const parsed = cleanupSchema.safeParse(body ?? {});
-    if (!parsed.success) throw new HttpException("Invalid retention configuration.", 400);
+    if (!parsed.success) {
+      throw new HttpException("Invalid retention configuration.", 400);
+    }
     return this.analytics.deleteExpired(parsed.data.retentionDays);
   }
 }
