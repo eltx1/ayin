@@ -30,10 +30,13 @@ const dashboardStaffRoles = [
 
 @Controller("analytics")
 export class PublicAnalyticsController {
-  constructor(@Inject(AnalyticsService) private readonly analytics: AnalyticsService) {}
+  constructor(
+    @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+  ) {}
 
   @Post("events")
-  ingest(@Body() body: unknown, @Headers("cf-ipcountry") countryCode?: string) {
+  ingest(@Body() body: unknown, @Headers() headers: HeaderBag) {
     const parsed = analyticsBatchSchema.safeParse(body);
     if (!parsed.success) {
       throw new HttpException(
@@ -46,6 +49,7 @@ export class PublicAnalyticsController {
         400,
       );
     }
+    const countryCode = this.trustedRegion.countryFromHeaders(headers);
     return this.analytics.ingest(
       parsed.data.events,
       countryCode === undefined ? {} : { countryCode },

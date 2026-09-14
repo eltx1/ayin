@@ -191,6 +191,7 @@ export class AnalyticsService {
         videoGroups,
         deviceGroups,
         startup,
+        bufferEvents,
         bufferDuration,
         hlsFatal,
         fallbacks,
@@ -235,7 +236,7 @@ export class AnalyticsService {
         }),
         this.database.client.analyticsEvent.groupBy({
           by: ["deviceClass"],
-          where: { ...where, eventName: "VIDEO_START" },
+          where: { ...where, eventName: "VIDEO_START", deviceClass: { not: null } },
           _count: { _all: true },
           orderBy: { _count: { deviceClass: "desc" } },
         }),
@@ -248,6 +249,9 @@ export class AnalyticsService {
           _avg: { durationDeltaMs: true },
           _count: { durationDeltaMs: true },
         }),
+        this.database.client.analyticsEvent.count({
+          where: { ...where, eventName: "VIDEO_BUFFER" },
+        }),
         this.database.client.analyticsEvent.aggregate({
           where: {
             ...where,
@@ -256,7 +260,7 @@ export class AnalyticsService {
           },
           _sum: { durationDeltaMs: true },
           _avg: { durationDeltaMs: true },
-          _count: { _all: true, durationDeltaMs: true },
+          _count: { durationDeltaMs: true },
         }),
         this.database.client.analyticsEvent.count({
           where: { ...where, eventName: "VIDEO_HLS_FATAL" },
@@ -405,7 +409,7 @@ export class AnalyticsService {
           available:
             protocols.available ||
             startup._count.durationDeltaMs > 0 ||
-            bufferDuration._count._all > 0 ||
+            bufferEvents > 0 ||
             hlsFatal > 0,
           protocols,
           startup: {
@@ -417,14 +421,14 @@ export class AnalyticsService {
                 : Math.round(startup._avg.durationDeltaMs),
           },
           buffering: {
-            events: bufferDuration._count._all,
+            events: bufferEvents,
             measuredDurationSamples: bufferDuration._count.durationDeltaMs,
             totalDurationMs: bufferDuration._sum.durationDeltaMs ?? 0,
             averageDurationMs:
               bufferDuration._avg.durationDeltaMs === null
                 ? null
                 : Math.round(bufferDuration._avg.durationDeltaMs),
-            eventsPerView: views > 0 ? bufferDuration._count._all / views : 0,
+            eventsPerView: views > 0 ? bufferEvents / views : 0,
           },
           hlsFatalEvents: hlsFatal,
           mp4FallbackEvents: fallbacks,
