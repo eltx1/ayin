@@ -1,0 +1,120 @@
+enum MovieCatalogStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum MovieArtworkType {
+  POSTER
+  BACKDROP
+  LOGO
+}
+
+enum MovieAvailabilityRule {
+  ALLOW
+  BLOCK
+}
+
+/// Editorial/catalog identity for a movie. Playable media remains in Video.
+/// primaryVideoId and trailerVideoId intentionally point at existing Video rows;
+/// no media bytes or upload records are copied into the catalog.
+model Movie {
+  id               String             @id @default(uuid()) @db.Uuid
+  title            String             @db.VarChar(200)
+  slug             String             @unique @db.VarChar(160)
+  synopsis         String             @db.Text
+  releaseDate      DateTime?
+  releaseYear      Int
+  runtimeMinutes   Int
+  maturityRating   String             @db.VarChar(32)
+  originalLanguage String             @db.VarChar(16)
+  status           MovieCatalogStatus @default(DRAFT)
+  primaryVideoId   String?            @db.Uuid
+  trailerVideoId   String?            @db.Uuid
+  publishedAt      DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  genres        MovieGenreAssignment[]
+  artwork       MovieArtwork[]
+  localizations MovieLocalization[]
+  availability  MovieAvailability[]
+
+  @@index([status, publishedAt])
+  @@index([releaseYear, status])
+  @@index([primaryVideoId])
+  @@index([trailerVideoId])
+}
+
+model MovieGenre {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique @db.VarChar(80)
+  name      String   @unique @db.VarChar(80)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movies MovieGenreAssignment[]
+}
+
+model MovieGenreAssignment {
+  movieId   String   @db.Uuid
+  genreId   String   @db.Uuid
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  movie Movie      @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  genre MovieGenre @relation(fields: [genreId], references: [id], onDelete: Restrict)
+
+  @@id([movieId, genreId])
+  @@unique([movieId, position])
+  @@index([genreId, movieId])
+}
+
+/// References an existing MediaAsset row. The MediaAsset object/bytes are never duplicated.
+model MovieArtwork {
+  id           String           @id @default(uuid()) @db.Uuid
+  movieId      String           @db.Uuid
+  mediaAssetId String           @db.Uuid
+  type         MovieArtworkType
+  altText      String?          @db.VarChar(240)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([movieId, type])
+  @@index([mediaAssetId])
+}
+
+/// Locale-specific catalog copy is separated from the canonical editorial identity.
+model MovieLocalization {
+  id        String   @id @default(uuid()) @db.Uuid
+  movieId   String   @db.Uuid
+  locale    String   @db.VarChar(35)
+  title     String?  @db.VarChar(200)
+  synopsis  String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([movieId, locale])
+  @@index([locale, movieId])
+}
+
+/// Time- and territory-scoped rights. territoryCode is ISO 3166-1 alpha-2 or "*" for global.
+model MovieAvailability {
+  id            String                @id @default(uuid()) @db.Uuid
+  movieId       String                @db.Uuid
+  territoryCode String                @db.VarChar(2)
+  rule          MovieAvailabilityRule @default(ALLOW)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  note          String?               @db.VarChar(240)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@index([movieId, territoryCode, rule, startsAt, endsAt])
+}

@@ -1,0 +1,148 @@
+.page {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  padding: clamp(5rem, 10vw, 8rem) clamp(1rem, 4vw, 4rem) 4rem;
+  background: #07090d;
+  color: #f7f7f7;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0 0 auto;
+  height: min(68vh, 720px);
+  opacity: 0.42;
+}
+
+.backdrop img {
+  object-fit: cover;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(7, 9, 13, 0.18), #07090d 88%),
+    linear-gradient(90deg, #07090d 0%, rgba(7, 9, 13, 0.25) 68%);
+}
+
+.hero {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(190px, 300px) minmax(0, 720px);
+  gap: clamp(1.5rem, 4vw, 4rem);
+  align-items: end;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.posterWrap {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #161a22;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.poster {
+  object-fit: cover;
+}
+
+.posterFallback {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: #8d95a3;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+.details {
+  padding-bottom: 0.5rem;
+}
+.eyebrow {
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #aeb6c5;
+}
+.details h1 {
+  margin: 0.45rem 0 0.8rem;
+  font-size: clamp(2.5rem, 7vw, 5.4rem);
+  line-height: 0.96;
+  letter-spacing: -0.045em;
+}
+.meta,
+.genres {
+  color: #c5cad3;
+}
+.genres {
+  margin-top: 0.5rem;
+}
+.synopsis {
+  margin: 1.35rem 0 0;
+  max-width: 65ch;
+  color: #eceef2;
+  font-size: clamp(1rem, 1.7vw, 1.18rem);
+  line-height: 1.7;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.8rem;
+}
+.primaryAction,
+.secondaryAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0.75rem 1.2rem;
+  border-radius: 999px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.primaryAction {
+  background: #fff;
+  color: #090b0f;
+}
+.secondaryAction {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding-top: 5rem;
+  }
+  .hero {
+    grid-template-columns: minmax(130px, 42vw) 1fr;
+    gap: 1.1rem;
+    align-items: center;
+  }
+  .details h1 {
+    font-size: clamp(2rem, 9vw, 3.2rem);
+  }
+  .synopsis,
+  .actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .posterWrap {
+    width: min(62vw, 260px);
+  }
+  .synopsis,
+  .actions {
+    grid-column: auto;
+  }
+}
