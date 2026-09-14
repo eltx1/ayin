@@ -65,9 +65,20 @@ export function AdminMovieCatalog() {
   }, []);
 
   useEffect(() => {
-    void load().catch((caught) =>
-      setError(caught instanceof Error ? caught.message : "Movie catalog could not be loaded."),
-    );
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void load().catch((caught) => {
+        if (active) {
+          setError(
+            caught instanceof Error ? caught.message : "Movie catalog could not be loaded.",
+          );
+        }
+      });
+    }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [load]);
 
   async function createMovie(event: React.FormEvent<HTMLFormElement>) {
