@@ -1,11 +1,27 @@
 import type { Prisma } from "@ayin/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { createHmac } from "node:crypto";
 
 import { DatabaseService } from "../database/database.service.js";
 import type { AnalyticsEventInput } from "./analytics.schemas.js";
 
 const DAY_MS = 86_400_000;
+const QUERY_WARN_MS = 750;
+const SENSITIVE_METADATA_KEYS = new Set([
+  "ip",
+  "ipAddress",
+  "clientIp",
+  "remoteAddress",
+  "latitude",
+  "longitude",
+  "coordinates",
+  "preciseLocation",
+  "referrer",
+  "referrerUrl",
+]);
+
+type BreakdownRow = { value: string | null; count: bigint };
+type RetentionRow = { bucket: string; threshold: number; reached: bigint; total: bigint };
 
 function clampDate(date: Date) {
   const now = Date.now();
@@ -14,11 +30,56 @@ function clampDate(date: Date) {
   return new Date(Math.min(Math.max(date.getTime(), min), max));
 }
 
+function normalizedCountryCode(value?: string | null) {
+  const candidate = value?.trim().toUpperCase();
+  return candidate && /^[A-Z]{2}$/.test(candidate) ? candidate : null;
+}
+
+function sanitizeMetadata(
+  metadata: AnalyticsEventInput["metadata"],
+  countryCode?: string | null,
+): Record<string, string | number | boolean | null> | undefined {
+  const safe = Object.fromEntries(
+    Object.entries(metadata ?? {}).filter(([key]) => !SENSITIVE_METADATA_KEYS.has(key)),
+  );
+  const normalizedCountry = normalizedCountryCode(countryCode);
+  if (normalizedCountry) safe.countryCode = normalizedCountry;
+  return Object.keys(safe).length ? safe : undefined;
+}
+
+export function normalizeAnalyticsBreakdown(rows: BreakdownRow[], denominator: number) {
+  const items = rows
+    .filter((row) => row.value)
+    .map((row) => ({ value: row.value as string, count: Number(row.count) }));
+  const measured = items.reduce((total, item) => total + item.count, 0);
+  return {
+    available: measured > 0,
+    coverage: denominator > 0 ? Math.min(1, measured / denominator) : 0,
+    items,
+  };
+}
+
+export function normalizeRetention(rows: RetentionRow[], views: number) {
+  const total = rows.length ? Number(rows[0]?.total ?? 0n) : 0;
+  return {
+    available: total > 0,
+    coverage: views > 0 ? Math.min(1, total / views) : 0,
+    buckets: rows.map((row) => ({
+      bucket: row.bucket,
+      threshold: Number(row.threshold),
+      viewers: Number(row.reached),
+      rate: Number(row.total) > 0 ? Number(row.reached) / Number(row.total) : 0,
+    })),
+  };
+}
+
 @Injectable()
 export class AnalyticsService {
+  private readonly logger = new Logger(AnalyticsService.name);
+
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  async ingest(events: AnalyticsEventInput[]) {
+  async ingest(events: AnalyticsEventInput[], context: { countryCode?: string | null } = {}) {
     const videoIds = [
       ...new Set(events.flatMap((event) => (event.videoId ? [event.videoId] : []))),
     ];
@@ -29,16 +90,13 @@ export class AnalyticsService {
         })
       : [];
     const videoChannels = new Map(videos.map((video) => [video.id, video.channelId]));
+    const suppliedChannelIds = [
+      ...new Set(events.flatMap((event) => (event.channelId ? [event.channelId] : []))),
+    ];
     const validChannelIds = new Set(
       (
         await this.database.client.channel.findMany({
-          where: {
-            id: {
-              in: [
-                ...new Set(events.flatMap((event) => (event.channelId ? [event.channelId] : []))),
-              ],
-            },
-          },
+          where: { id: { in: suppliedChannelIds } },
           select: { id: true },
         })
       ).map((channel) => channel.id),
@@ -55,6 +113,7 @@ export class AnalyticsService {
       ) {
         continue;
       }
+      const metadata = sanitizeMetadata(event.metadata, context.countryCode);
       data.push({
         clientEventId: event.clientEventId,
         schemaVersion: event.schemaVersion,
@@ -72,7 +131,7 @@ export class AnalyticsService {
         ...(event.positionMs !== undefined && event.positionMs !== null
           ? { positionMs: event.positionMs }
           : {}),
-        ...(event.metadata ? { metadata: event.metadata as Prisma.InputJsonValue } : {}),
+        ...(metadata ? { metadata: metadata as Prisma.InputJsonValue } : {}),
       });
     }
 
@@ -99,50 +158,254 @@ export class AnalyticsService {
   }
 
   async channelMetrics(channelId: string, days = 28) {
-    const since = new Date(Date.now() - Math.max(1, Math.min(days, 365)) * DAY_MS);
-    const where = { channelId, occurredAt: { gte: since } };
-    const [views, completes, watch, subscribers, videoGroups] = await Promise.all([
-      this.database.client.analyticsEvent.count({ where: { ...where, eventName: "VIDEO_START" } }),
-      this.database.client.analyticsEvent.count({
-        where: { ...where, eventName: "VIDEO_COMPLETE" },
-      }),
-      this.database.client.analyticsEvent.aggregate({
-        where: { ...where, eventName: "VIDEO_PROGRESS" },
-        _sum: { durationDeltaMs: true },
-      }),
-      this.database.client.subscription.count({ where: { channelId } }),
-      this.database.client.analyticsEvent.groupBy({
-        by: ["videoId"],
-        where: { ...where, eventName: "VIDEO_START", videoId: { not: null } },
-        _count: { _all: true },
-        orderBy: { _count: { videoId: "desc" } },
-        take: 10,
-      }),
-    ]);
-    const videoIds = videoGroups.flatMap((group) => (group.videoId ? [group.videoId] : []));
-    const titles = new Map(
-      (
-        await this.database.client.video.findMany({
-          where: { id: { in: videoIds } },
-          select: { id: true, title: true },
-        })
-      ).map((video) => [video.id, video.title]),
-    );
-    const watchTimeMs = watch._sum.durationDeltaMs ?? 0;
-    return {
-      periodDays: Math.max(1, Math.min(days, 365)),
-      refresh: "query-time",
-      views,
-      watchTimeMs,
-      averageViewDurationMs: views > 0 ? Math.round(watchTimeMs / views) : 0,
-      completionRate: views > 0 ? completes / views : 0,
-      subscribers,
-      topVideos: videoGroups.map((group) => ({
-        videoId: group.videoId as string,
-        title: titles.get(group.videoId as string) ?? "Untitled video",
-        views: group._count._all,
-      })),
-    };
+    const periodDays = Math.max(1, Math.min(days, 365));
+    const to = new Date();
+    const from = new Date(to.getTime() - periodDays * DAY_MS);
+    const where = { channelId, occurredAt: { gte: from, lt: to } };
+
+    return this.monitoredCreatorQuery(channelId, periodDays, async () => {
+      const [
+        views,
+        completes,
+        watch,
+        uniqueSessions,
+        subscribersGained,
+        subscribersTotal,
+        videoGroups,
+        deviceGroups,
+        startup,
+        bufferStarts,
+        bufferDuration,
+        hlsFatal,
+        fallbacks,
+        qualitySwitches,
+        trafficRows,
+        geographyRows,
+        protocolRows,
+        retentionRows,
+        adGroups,
+      ] = await Promise.all([
+        this.database.client.analyticsEvent.count({ where: { ...where, eventName: "VIDEO_START" } }),
+        this.database.client.analyticsEvent.count({
+          where: { ...where, eventName: "VIDEO_COMPLETE" },
+        }),
+        this.database.client.analyticsEvent.aggregate({
+          where: { ...where, eventName: "VIDEO_PROGRESS" },
+          _sum: { durationDeltaMs: true },
+        }),
+        this.database.client.analyticsEvent.findMany({
+          where: { ...where, eventName: "VIDEO_START" },
+          distinct: ["sessionHash"],
+          select: { sessionHash: true },
+        }),
+        this.database.client.subscription.count({
+          where: { channelId, createdAt: { gte: from, lt: to } },
+        }),
+        this.database.client.subscription.count({ where: { channelId } }),
+        this.database.client.analyticsEvent.groupBy({
+          by: ["videoId"],
+          where: { ...where, eventName: "VIDEO_START", videoId: { not: null } },
+          _count: { _all: true },
+          orderBy: { _count: { videoId: "desc" } },
+          take: 10,
+        }),
+        this.database.client.analyticsEvent.groupBy({
+          by: ["deviceClass"],
+          where: { ...where, eventName: "VIDEO_START" },
+          _count: { _all: true },
+          orderBy: { _count: { deviceClass: "desc" } },
+        }),
+        this.database.client.analyticsEvent.aggregate({
+          where: { ...where, eventName: "VIDEO_STARTUP", durationDeltaMs: { not: null } },
+          _avg: { durationDeltaMs: true },
+          _count: { durationDeltaMs: true },
+        }),
+        this.database.client.analyticsEvent.count({
+          where: { ...where, eventName: "VIDEO_BUFFER", durationDeltaMs: null },
+        }),
+        this.database.client.analyticsEvent.aggregate({
+          where: { ...where, eventName: "VIDEO_BUFFER", durationDeltaMs: { not: null } },
+          _sum: { durationDeltaMs: true },
+          _avg: { durationDeltaMs: true },
+          _count: { durationDeltaMs: true },
+        }),
+        this.database.client.analyticsEvent.count({
+          where: { ...where, eventName: "VIDEO_HLS_FATAL" },
+        }),
+        this.database.client.analyticsEvent.count({
+          where: { ...where, eventName: "VIDEO_FALLBACK" },
+        }),
+        this.database.client.analyticsEvent.count({
+          where: { ...where, eventName: "VIDEO_QUALITY_SWITCH" },
+        }),
+        this.database.client.$queryRaw<BreakdownRow[]>`
+          SELECT metadata->>'trafficSource' AS value, COUNT(*)::bigint AS count
+          FROM "AnalyticsEvent"
+          WHERE "channelId" = ${channelId}::uuid
+            AND "occurredAt" >= ${from} AND "occurredAt" < ${to}
+            AND "eventName" = 'VIDEO_START'
+            AND metadata->>'trafficSource' IS NOT NULL
+          GROUP BY metadata->>'trafficSource'
+          ORDER BY count DESC
+          LIMIT 12
+        `,
+        this.database.client.$queryRaw<BreakdownRow[]>`
+          SELECT metadata->>'countryCode' AS value, COUNT(*)::bigint AS count
+          FROM "AnalyticsEvent"
+          WHERE "channelId" = ${channelId}::uuid
+            AND "occurredAt" >= ${from} AND "occurredAt" < ${to}
+            AND "eventName" = 'VIDEO_START'
+            AND metadata->>'countryCode' ~ '^[A-Z]{2}$'
+          GROUP BY metadata->>'countryCode'
+          ORDER BY count DESC
+          LIMIT 20
+        `,
+        this.database.client.$queryRaw<BreakdownRow[]>`
+          SELECT metadata->>'protocol' AS value, COUNT(*)::bigint AS count
+          FROM "AnalyticsEvent"
+          WHERE "channelId" = ${channelId}::uuid
+            AND "occurredAt" >= ${from} AND "occurredAt" < ${to}
+            AND "eventName" = 'VIDEO_START'
+            AND metadata->>'protocol' IN ('HLS', 'MP4')
+          GROUP BY metadata->>'protocol'
+          ORDER BY count DESC
+        `,
+        this.database.client.$queryRaw<RetentionRow[]>`
+          WITH starts AS (
+            SELECT DISTINCT "sessionHash", "videoId"
+            FROM "AnalyticsEvent"
+            WHERE "channelId" = ${channelId}::uuid
+              AND "occurredAt" >= ${from} AND "occurredAt" < ${to}
+              AND "eventName" = 'VIDEO_START' AND "videoId" IS NOT NULL
+          ), progress AS (
+            SELECT "sessionHash", "videoId", MAX("positionMs") AS "maxPositionMs"
+            FROM "AnalyticsEvent"
+            WHERE "channelId" = ${channelId}::uuid
+              AND "occurredAt" >= ${from} AND "occurredAt" < ${to}
+              AND "eventName" = 'VIDEO_PROGRESS'
+              AND "videoId" IS NOT NULL AND "positionMs" IS NOT NULL
+            GROUP BY "sessionHash", "videoId"
+          ), cohort AS (
+            SELECT s."sessionHash", s."videoId", COALESCE(p."maxPositionMs", 0)::double precision AS position,
+                   v."durationMs"::double precision AS duration
+            FROM starts s
+            JOIN "Video" v ON v.id = s."videoId"
+            LEFT JOIN progress p ON p."sessionHash" = s."sessionHash" AND p."videoId" = s."videoId"
+            WHERE v."durationMs" IS NOT NULL AND v."durationMs" > 0
+          )
+          SELECT b.bucket, b.threshold,
+                 SUM(CASE WHEN cohort.position / cohort.duration >= b.threshold THEN 1 ELSE 0 END)::bigint AS reached,
+                 COUNT(*)::bigint AS total
+          FROM cohort
+          CROSS JOIN (VALUES ('Start', 0.0), ('25%', 0.25), ('50%', 0.50), ('75%', 0.75), ('90%+', 0.90)) AS b(bucket, threshold)
+          GROUP BY b.bucket, b.threshold
+          ORDER BY b.threshold
+        `,
+        this.database.client.adEvent.groupBy({
+          by: ["eventType"],
+          where: {
+            occurredAt: { gte: from, lt: to },
+            eventType: { in: ["REQUEST", "FILL"] },
+            video: { channelId },
+          },
+          _count: { _all: true },
+        }),
+      ]);
+
+      const videoIds = videoGroups.flatMap((group) => (group.videoId ? [group.videoId] : []));
+      const titles = new Map(
+        (
+          await this.database.client.video.findMany({
+            where: { id: { in: videoIds } },
+            select: { id: true, title: true },
+          })
+        ).map((video) => [video.id, video.title]),
+      );
+      const watchTimeMs = watch._sum.durationDeltaMs ?? 0;
+      const trafficSources = normalizeAnalyticsBreakdown(trafficRows, views);
+      const geography = normalizeAnalyticsBreakdown(geographyRows, views);
+      const protocols = normalizeAnalyticsBreakdown(protocolRows, views);
+      const retention = normalizeRetention(retentionRows, views);
+      const adCounts = new Map(adGroups.map((row) => [row.eventType, row._count._all]));
+      const adRequests = adCounts.get("REQUEST") ?? 0;
+      const adFills = adCounts.get("FILL") ?? 0;
+      const measuredAdTelemetry = adRequests > 0;
+
+      return {
+        periodDays,
+        dateRange: { from: from.toISOString(), to: to.toISOString(), timezone: "UTC" },
+        refresh: "query-time" as const,
+        freshnessNote:
+          "Computed from persisted events at request time. This is not realtime and ingestion can lag.",
+        views,
+        uniqueViewersApprox: uniqueSessions.length,
+        uniqueViewerMethod: "Distinct pseudonymous playback sessions; not person-level identity.",
+        watchTimeMs,
+        averageViewDurationMs: views > 0 ? Math.round(watchTimeMs / views) : 0,
+        completionRate: views > 0 ? Math.min(1, completes / views) : 0,
+        subscribersGained,
+        subscribersTotal,
+        retention,
+        trafficSources,
+        devices: {
+          available: deviceGroups.length > 0,
+          coverage: views > 0 ? Math.min(1, deviceGroups.reduce((sum, row) => sum + row._count._all, 0) / views) : 0,
+          items: deviceGroups.map((row) => ({
+            value: row.deviceClass ?? "UNKNOWN",
+            count: row._count._all,
+          })),
+        },
+        geography: {
+          ...geography,
+          note: geography.available
+            ? "Country-level only, derived from trusted edge telemetry; no raw IP is stored for analytics."
+            : "Unavailable for this period because reliable country-level edge telemetry was not recorded.",
+        },
+        topVideos: videoGroups.map((group) => ({
+          videoId: group.videoId as string,
+          title: titles.get(group.videoId as string) ?? "Untitled video",
+          views: group._count._all,
+        })),
+        playbackQuality: {
+          available:
+            protocols.available || startup._count.durationDeltaMs > 0 || bufferStarts > 0 || hlsFatal > 0,
+          protocols,
+          startup: {
+            available: startup._count.durationDeltaMs > 0,
+            sampleCount: startup._count.durationDeltaMs,
+            averageMs: startup._avg.durationDeltaMs === null ? null : Math.round(startup._avg.durationDeltaMs),
+          },
+          buffering: {
+            events: bufferStarts,
+            measuredDurationSamples: bufferDuration._count.durationDeltaMs,
+            totalDurationMs: bufferDuration._sum.durationDeltaMs ?? 0,
+            averageDurationMs:
+              bufferDuration._avg.durationDeltaMs === null
+                ? null
+                : Math.round(bufferDuration._avg.durationDeltaMs),
+            eventsPerView: views > 0 ? bufferStarts / views : 0,
+          },
+          hlsFatalEvents: hlsFatal,
+          mp4FallbackEvents: fallbacks,
+          qualitySwitchEvents: qualitySwitches,
+        },
+        advertising: measuredAdTelemetry
+          ? {
+              available: true,
+              opportunities: adRequests,
+              fills: adFills,
+              fillRate: adRequests > 0 ? Math.min(1, adFills / adRequests) : null,
+              note: "Observed REQUEST/FILL ad events only. No revenue is inferred here.",
+            }
+          : {
+              available: false,
+              opportunities: null,
+              fills: null,
+              fillRate: null,
+              note: "No measured ad REQUEST telemetry exists for this period; fill is not estimated.",
+            },
+      };
+    });
   }
 
   async adminMetrics() {
@@ -204,6 +467,20 @@ export class AnalyticsService {
       where: { occurredAt: { lt: before } },
     });
     return { deleted: result.count, before, retentionDays: days };
+  }
+
+  private async monitoredCreatorQuery<T>(channelId: string, days: number, work: () => Promise<T>) {
+    const startedAt = Date.now();
+    try {
+      return await work();
+    } finally {
+      const durationMs = Date.now() - startedAt;
+      if (durationMs >= QUERY_WARN_MS) {
+        this.logger.warn(`creator analytics query slow channel=${channelId} days=${days} durationMs=${durationMs}`);
+      } else {
+        this.logger.debug(`creator analytics query channel=${channelId} days=${days} durationMs=${durationMs}`);
+      }
+    }
   }
 
   private pseudonym(value: string) {
