@@ -1,0 +1,72 @@
+name: Task 56 temporary request-init fixer
+
+on:
+  push:
+    branches:
+      - task-56-series-catalog
+    paths:
+      - .github/workflows/task56-fix-request-init.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-56-series-catalog
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Patch RequestInit handling
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/components/admin/admin-series-catalog.tsx')
+          text = path.read_text()
+          old = '''      const response = await fetch(`${apiBaseUrl}${url}`, {
+                credentials: "include",
+                ...init,
+                headers: init.body ? { "content-type": "application/json", ...init.headers } : init.headers,
+              });'''
+          if old not in text:
+              old = '''      const response = await fetch(`${apiBaseUrl}${url}`, {
+                credentials: "include",
+                ...init,
+                headers: init.body ? { "content-type": "application/json", ...init.headers } : init.headers,
+              });'''
+          # Prettier currently keeps this block at two-space indentation; fall back to exact source fragment.
+          if old not in text:
+              old = '''      const response = await fetch(`${apiBaseUrl}${url}`, {
+        credentials: "include",
+        ...init,
+        headers: init.body ? { "content-type": "application/json", ...init.headers } : init.headers,
+      });'''
+          new = '''      const requestInit: RequestInit = { ...init, credentials: "include" };
+      if (init.body) {
+        const headers = new Headers(init.headers);
+        headers.set("content-type", "application/json");
+        requestInit.headers = headers;
+      }
+      const response = await fetch(`${apiBaseUrl}${url}`, requestInit);'''
+          if old not in text:
+              raise SystemExit('mutate fetch marker not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          pnpm exec prettier --write apps/web/src/components/admin/admin-series-catalog.tsx
+      - name: Workspace typecheck
+        run: pnpm typecheck
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/components/admin/admin-series-catalog.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(task56): type-safe admin catalog requests"
+          git push origin HEAD:task-56-series-catalog
