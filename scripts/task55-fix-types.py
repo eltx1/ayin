@@ -30,12 +30,36 @@ replacements = {
 for old, new in replacements.items():
     s = s.replace(old, new)
 
+explicit_patch = '''export interface MovieCatalogPatch {
+  title?: string | undefined;
+  slug?: string | undefined;
+  synopsis?: string | undefined;
+  releaseDate?: Date | null | undefined;
+  releaseYear?: number | undefined;
+  runtimeMinutes?: number | undefined;
+  maturityRating?: string | undefined;
+  originalLanguage?: string | undefined;
+  primaryVideoId?: string | null | undefined;
+  trailerVideoId?: string | null | undefined;
+  genres?: string[] | undefined;
+  artwork?: MovieArtworkInput[] | undefined;
+  availability?: MovieAvailabilityInput[] | undefined;
+  localizations?: MovieLocalizationInput[] | undefined;
+}
+'''
+s, patch_count = re.subn(
+    r'export interface MovieCatalogPatch extends Partial<[\s\S]*?\n}\n',
+    explicit_patch,
+    s,
+    count=1,
+)
+if patch_count != 1:
+    raise SystemExit(f"MovieCatalogPatch replacement count={patch_count}")
+
 if "type MovieWithRelations = Prisma.MovieGetPayload<" not in s:
-    patch_match = re.search(
-        r'(export interface MovieCatalogPatch extends Partial<[\s\S]*?\n}\n)', s
-    )
+    patch_match = re.search(r'(export interface MovieCatalogPatch \{[\s\S]*?\n}\n)', s)
     if not patch_match:
-        raise SystemExit("MovieCatalogPatch block not found")
+        raise SystemExit("explicit MovieCatalogPatch block not found")
     types = '''
 
 type MovieWithRelations = Prisma.MovieGetPayload<{
