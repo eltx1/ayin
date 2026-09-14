@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { AnalyticsService, normalizeAnalyticsBreakdown, normalizeRetention } from "./analytics.service.js";
+import {
+  AnalyticsService,
+  normalizeAnalyticsBreakdown,
+  normalizeRetention,
+} from "./analytics.service.js";
 
 const accountId = "11111111-1111-4111-8111-111111111111";
 const channelId = "22222222-2222-4222-8222-222222222222";
@@ -74,7 +78,9 @@ describe("creator analytics access control", () => {
     };
     const service = new AnalyticsService(database as never);
     const metrics = { views: 7 } as never;
-    const channelMetrics = vi.spyOn(service, "channelMetrics").mockResolvedValue(metrics);
+    const channelMetrics = vi
+      .spyOn(service, "channelMetrics")
+      .mockResolvedValue(metrics);
 
     await expect(service.creatorMetrics(accountId, 7)).resolves.toBe(metrics);
     expect(channelMetrics).toHaveBeenCalledWith(channelId, 7);
@@ -86,7 +92,9 @@ describe("analytics privacy", () => {
     const createMany = vi.fn().mockResolvedValue({ count: 1 });
     const database = {
       client: {
-        video: { findMany: vi.fn().mockResolvedValue([{ id: videoId, channelId }]) },
+        video: {
+          findMany: vi.fn().mockResolvedValue([{ id: videoId, channelId }]),
+        },
         channel: { findMany: vi.fn().mockResolvedValue([]) },
         analyticsEvent: { createMany },
       },
@@ -116,7 +124,10 @@ describe("analytics privacy", () => {
 
     const written = createMany.mock.calls[0]?.[0]?.data?.[0];
     expect(written.sessionHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(written.metadata).toEqual({ trafficSource: "DIRECT", countryCode: "US" });
+    expect(written.metadata).toEqual({
+      trafficSource: "DIRECT",
+      countryCode: "US",
+    });
     expect(JSON.stringify(written)).not.toContain("203.0.113.10");
   });
 });
