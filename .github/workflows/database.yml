@@ -43,7 +43,7 @@ on:
       - ".github/workflows/synthetic-monitoring.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   quality:
@@ -74,8 +74,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-        with:
-          ref: task-54-creator-analytics-v2
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -92,24 +90,6 @@ jobs:
 
       - name: Audit production dependencies
         run: pnpm audit:prod
-
-      - name: Apply Task 54 formatting
-        run: |
-          pnpm exec prettier --write \
-            apps/api/src/analytics/analytics.controller.ts \
-            apps/api/src/analytics/analytics.service.test.ts \
-            apps/api/src/analytics/analytics.service.ts \
-            apps/web/src/components/player/analytics-ayin-player.tsx \
-            apps/web/src/components/studio/studio-creator-analytics.tsx \
-            apps/web/src/lib/analytics.ts \
-            apps/web/src/lib/ayin-player.ts
-          if ! git diff --quiet --; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add apps/api/src/analytics apps/web/src/components/player/analytics-ayin-player.tsx apps/web/src/components/studio/studio-creator-analytics.tsx apps/web/src/lib/analytics.ts apps/web/src/lib/ayin-player.ts
-            git commit -m "task 54: apply prettier formatting"
-            git push origin HEAD:task-54-creator-analytics-v2
-          fi
 
       - name: Check formatting
         run: pnpm exec prettier --check .

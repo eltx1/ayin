@@ -7,28 +7,37 @@ import { createPlayerAnalytics, trackAnalyticsEvent } from "@/lib/analytics";
 import { AdEnabledAyinPlayer } from "./ad-enabled-ayin-player";
 import type { AyinPlayerProps } from "./ayin-player";
 
+function monotonicNow() {
+  return typeof performance === "undefined" ? 0 : performance.now();
+}
+
 export function AnalyticsAyinPlayer(props: AyinPlayerProps) {
-  const analytics = useMemo(() => createPlayerAnalytics(props.profileId), [props.profileId]);
-  const startupStartedAt = useRef<number>(0);
+  const { onPlaybackReady: forwardPlaybackReady, profileId, videoId } = props;
+  const analytics = useMemo(() => createPlayerAnalytics(profileId), [profileId]);
+  const startupTiming = useRef<{ videoId: string; startedAt: number } | null>(null);
   const startupReportedFor = useRef<string | null>(null);
 
-  useEffect(() => {
-    startupStartedAt.current = performance.now();
+  if (startupTiming.current?.videoId !== videoId) {
+    startupTiming.current = { videoId, startedAt: monotonicNow() };
     startupReportedFor.current = null;
-    trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId: props.videoId });
-  }, [props.videoId]);
+  }
+
+  useEffect(() => {
+    trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId });
+  }, [videoId]);
 
   const onPlaybackReady = useCallback(() => {
-    if (startupReportedFor.current !== props.videoId) {
-      startupReportedFor.current = props.videoId;
+    const timing = startupTiming.current;
+    if (startupReportedFor.current !== videoId && timing?.videoId === videoId) {
+      startupReportedFor.current = videoId;
       analytics.emit({
         type: "startup",
-        videoId: props.videoId,
-        durationMs: Math.max(0, performance.now() - startupStartedAt.current),
+        videoId,
+        durationMs: Math.max(0, monotonicNow() - timing.startedAt),
       });
     }
-    props.onPlaybackReady?.();
-  }, [analytics, props]);
+    forwardPlaybackReady?.();
+  }, [analytics, forwardPlaybackReady, videoId]);
 
   return <AdEnabledAyinPlayer {...props} analytics={analytics} onPlaybackReady={onPlaybackReady} />;
 }
