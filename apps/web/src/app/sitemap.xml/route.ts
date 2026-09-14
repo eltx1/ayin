@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const counts = await getSitemapCounts();
-  const sitemapUrls = [absoluteUrl("/sitemaps/static.xml")];
+  const sitemapUrls = [absoluteUrl("/sitemaps/static.xml"), absoluteUrl("/sitemaps/series.xml")];
 
   for (const kind of ["videos", "channels", "playlists"] as const) {
     const shards = getSitemapShardCount(kind, counts[kind]);
