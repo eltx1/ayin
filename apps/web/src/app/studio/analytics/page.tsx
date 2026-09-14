@@ -1,5 +1,5 @@
-import { StudioSummary } from "@/components/studio/studio-summary";
+import { StudioCreatorAnalytics } from "@/components/studio/studio-creator-analytics";
 
 export default function StudioAnalyticsPage() {
-  return <StudioSummary kind="analytics" />;
+  return <StudioCreatorAnalytics />;
 }
