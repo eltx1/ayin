@@ -20,6 +20,7 @@ import { RecommendationModule } from "./recommendations/recommendation.module.js
 import { RevenueModule } from "./revenue/revenue.module.js";
 import { SearchModule } from "./search/search.module.js";
 import { SeoModule } from "./seo/seo.module.js";
+import { SeriesCatalogModule } from "./series-catalog/series-catalog.module.js";
 import { SocialModule } from "./social/social.module.js";
 import { TrustModule } from "./trust/trust.module.js";
 import { VideoPolicyModule } from "./video-policy/video-policy.module.js";
@@ -43,6 +44,7 @@ import { WatchModule } from "./watch/watch.module.js";
     WatchModule,
     DiscoveryModule,
     MovieCatalogModule,
+    SeriesCatalogModule,
     SearchModule,
     SeoModule,
     SocialModule,
