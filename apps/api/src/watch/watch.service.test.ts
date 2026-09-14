@@ -79,6 +79,7 @@ function harness(input: { hlsEnabled: boolean; generation?: typeof readyGenerati
     database as never,
     settings as never,
     featureFlags as never,
+    { getPublicContextForVideo: vi.fn().mockResolvedValue(null) } as never,
     policy as never,
   );
   return { service, database, generationLookup, featureFlags };

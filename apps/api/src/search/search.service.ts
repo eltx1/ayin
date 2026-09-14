@@ -2,6 +2,7 @@ import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
 import { VIDEO_CATEGORIES } from "../creator/video-metadata.validation.js";
 import {
   VideoPolicyService,
@@ -24,7 +25,7 @@ const publicVideoWhere = {
   },
 } satisfies Prisma.VideoWhereInput;
 
-export type SearchResultType = "VIDEO" | "CHANNEL" | "PLAYLIST" | "CREATOR_TV";
+export type SearchResultType = "VIDEO" | "CHANNEL" | "PLAYLIST" | "CREATOR_TV" | "SERIES";
 
 export interface SearchResult {
   id: string;
@@ -51,6 +52,7 @@ export class SearchError extends Error {
 export class SearchService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(SeriesCatalogService) private readonly seriesCatalog: SeriesCatalogService,
     @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
@@ -79,7 +81,7 @@ export class SearchService {
     });
     const metadataVideoIds = metadataMatches.map((item) => item.videoId);
 
-    const [videos, channels, playlists, televisions] = await Promise.all([
+    const [videos, channels, playlists, televisions, seriesResults] = await Promise.all([
       this.database.client.video.findMany({
         where: {
           AND: [
@@ -162,6 +164,7 @@ export class SearchService {
         take: takePerType,
         select: { id: true, name: true, channel: { select: { handle: true, name: true } } },
       }),
+      this.seriesCatalog.listPublic(takePerType, normalized, context.countryCode),
     ]);
 
     const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
@@ -180,6 +183,18 @@ export class SearchService {
           meta: video.channel.name,
           artworkObjectKey: video.mediaAssets[0]?.r2ObjectKey ?? null,
         })),
+      ...seriesResults.map((series) => ({
+        id: series.id,
+        type: "SERIES" as const,
+        title: series.title,
+        href: `/series/${series.slug}`,
+        kicker: "Series",
+        meta: `${series.episodeCount} episodes`,
+        artworkObjectKey:
+          series.artwork.find((item) => item.type === "POSTER")?.objectKey ??
+          series.artwork.find((item) => item.type === "BACKDROP")?.objectKey ??
+          null,
+      })),
       ...channels.map((channel) => ({
         id: channel.id,
         type: "CHANNEL" as const,
@@ -215,7 +230,7 @@ export class SearchService {
       nextCursor: ranked.length > offset + limit ? encodeCursor(offset + limit) : null,
       emptyMessage:
         items.length === 0
-          ? "No matches yet. Try a creator name, video title, playlist, or Creator TV."
+          ? "No matches yet. Try a series, creator name, video title, playlist, or Creator TV."
           : null,
     };
   }
@@ -223,7 +238,7 @@ export class SearchService {
   async suggest(query: string, requestedLimit = 6, context: VideoPolicyContext = {}) {
     const normalized = normalizeQuery(query);
     const limit = Math.min(Math.max(requestedLimit, 1), 8);
-    const [videos, channels, televisions] = await Promise.all([
+    const [videos, channels, televisions, seriesSuggestions] = await Promise.all([
       this.database.client.video.findMany({
         where: {
           AND: [publicVideoWhere, { title: { startsWith: normalized, mode: "insensitive" } }],
@@ -256,6 +271,7 @@ export class SearchService {
         take: limit,
         select: { id: true, name: true, channel: { select: { handle: true } } },
       }),
+      this.seriesCatalog.listPublic(limit, normalized, context.countryCode),
     ]);
     const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
       videos.map((video) => video.id),
@@ -272,6 +288,12 @@ export class SearchService {
             label: video.title,
             href: `/watch/${video.slug}`,
           })),
+        ...seriesSuggestions.map((series) => ({
+          id: series.id,
+          type: "SERIES" as const,
+          label: series.title,
+          href: `/series/${series.slug}`,
+        })),
         ...channels.map((channel) => ({
           id: channel.id,
           type: "CHANNEL" as const,

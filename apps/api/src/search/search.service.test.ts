@@ -12,6 +12,7 @@ function serviceWith(overrides: Record<string, unknown[]> = {}) {
   };
   return new SearchService(
     { client } as never,
+    { listPublic: vi.fn(async () => []) } as never,
     { filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)) } as never,
   );
 }
@@ -48,6 +49,7 @@ describe("SearchService", () => {
           videoCreatorMetadata: { findMany: vi.fn(async () => []) },
         },
       } as never,
+      { listPublic: vi.fn(async () => []) } as never,
       { filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)) } as never,
     );
 
