@@ -1,39 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { createPlayerAnalytics, trackAnalyticsEvent } from "@/lib/analytics";
 
 import { AdEnabledAyinPlayer } from "./ad-enabled-ayin-player";
 import type { AyinPlayerProps } from "./ayin-player";
 
-function monotonicNow() {
-  return typeof performance === "undefined" ? 0 : performance.now();
-}
-
 export function AnalyticsAyinPlayer(props: AyinPlayerProps) {
   const { onPlaybackReady: forwardPlaybackReady, profileId, videoId } = props;
   const analytics = useMemo(() => createPlayerAnalytics(profileId), [profileId]);
-  const startupTiming = useRef<{ videoId: string; startedAt: number } | null>(null);
+  const startupStartedAt = useRef(0);
   const startupReportedFor = useRef<string | null>(null);
 
-  if (startupTiming.current?.videoId !== videoId) {
-    startupTiming.current = { videoId, startedAt: monotonicNow() };
+  useLayoutEffect(() => {
+    startupStartedAt.current = performance.now();
     startupReportedFor.current = null;
-  }
+  }, [videoId]);
 
   useEffect(() => {
     trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId });
   }, [videoId]);
 
   const onPlaybackReady = useCallback(() => {
-    const timing = startupTiming.current;
-    if (startupReportedFor.current !== videoId && timing?.videoId === videoId) {
+    if (startupReportedFor.current !== videoId) {
       startupReportedFor.current = videoId;
       analytics.emit({
         type: "startup",
         videoId,
-        durationMs: Math.max(0, monotonicNow() - timing.startedAt),
+        durationMs: Math.max(0, performance.now() - startupStartedAt.current),
       });
     }
     forwardPlaybackReady?.();

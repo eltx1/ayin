@@ -149,6 +149,7 @@ export function StudioCreatorAnalytics() {
       year: "numeric",
       month: "short",
       day: "numeric",
+      timeZone: data.dateRange.timezone,
     });
     return `${format.format(new Date(data.dateRange.from))} – ${format.format(
       new Date(data.dateRange.to),
