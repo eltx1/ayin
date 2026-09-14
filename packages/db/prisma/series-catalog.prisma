@@ -1,0 +1,135 @@
+enum SeriesCatalogStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SeriesEpisodeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SeriesArtworkType {
+  POSTER
+  BACKDROP
+  LOGO
+}
+
+/// Editorial identity for a series. Playable media remains in existing Video rows.
+model Series {
+  id               String              @id @default(uuid()) @db.Uuid
+  title            String              @db.VarChar(200)
+  slug             String              @unique @db.VarChar(160)
+  synopsis         String              @db.Text
+  releaseYear      Int?
+  maturityRating   String              @db.VarChar(32)
+  originalLanguage String              @db.VarChar(16)
+  status           SeriesCatalogStatus @default(DRAFT)
+  publishedAt      DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  genres  SeriesGenreAssignment[]
+  artwork SeriesArtwork[]
+  seasons SeriesSeason[]
+
+  @@index([status, publishedAt])
+  @@index([releaseYear, status])
+}
+
+model SeriesGenre {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique @db.VarChar(80)
+  name      String   @unique @db.VarChar(80)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  series SeriesGenreAssignment[]
+}
+
+model SeriesGenreAssignment {
+  seriesId  String   @db.Uuid
+  genreId   String   @db.Uuid
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  series Series      @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  genre  SeriesGenre @relation(fields: [genreId], references: [id], onDelete: Restrict)
+
+  @@id([seriesId, genreId])
+  @@unique([seriesId, position])
+  @@index([genreId, seriesId])
+}
+
+/// References an existing MediaAsset row. No media bytes are copied into the series catalog.
+model SeriesArtwork {
+  id           String            @id @default(uuid()) @db.Uuid
+  seriesId     String            @db.Uuid
+  mediaAssetId String            @db.Uuid
+  type         SeriesArtworkType
+  altText      String?           @db.VarChar(240)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([seriesId, type])
+  @@index([mediaAssetId])
+}
+
+model SeriesSeason {
+  id           String   @id @default(uuid()) @db.Uuid
+  seriesId     String   @db.Uuid
+  seasonNumber Int
+  title        String?  @db.VarChar(200)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  series   Series                @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  artwork  SeriesSeasonArtwork[]
+  episodes SeriesEpisode[]
+
+  @@unique([seriesId, seasonNumber])
+  @@index([seriesId, sortOrder, seasonNumber, id])
+}
+
+/// Optional season-specific artwork referencing existing MediaAsset rows.
+model SeriesSeasonArtwork {
+  id           String            @id @default(uuid()) @db.Uuid
+  seasonId     String            @db.Uuid
+  mediaAssetId String            @db.Uuid
+  type         SeriesArtworkType
+  altText      String?           @db.VarChar(240)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  season SeriesSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, type])
+  @@index([mediaAssetId])
+}
+
+/// Catalog episode identity. videoId deliberately links to an existing playable Video row.
+model SeriesEpisode {
+  id            String              @id @default(uuid()) @db.Uuid
+  seasonId      String              @db.Uuid
+  episodeNumber Int
+  title         String              @db.VarChar(200)
+  synopsis      String              @db.Text
+  sortOrder     Int                 @default(0)
+  releaseDate   DateTime?
+  status        SeriesEpisodeStatus @default(DRAFT)
+  videoId       String?             @db.Uuid
+  publishedAt   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  season SeriesSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, episodeNumber])
+  @@index([seasonId, status, sortOrder, episodeNumber, id])
+  @@index([videoId])
+  @@index([status, publishedAt])
+}
