@@ -46,7 +46,10 @@ export class PublicAnalyticsController {
         400,
       );
     }
-    return this.analytics.ingest(parsed.data.events, { countryCode });
+    return this.analytics.ingest(
+      parsed.data.events,
+      countryCode === undefined ? {} : { countryCode },
+    );
   }
 }
 
