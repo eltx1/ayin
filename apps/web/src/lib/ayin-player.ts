@@ -32,9 +32,10 @@ export interface AyinPlayerRenditionMetadata {
 
 export type AyinPlayerAnalyticsEvent =
   | { type: "play"; videoId: string }
+  | { type: "startup"; videoId: string; durationMs: number }
   | { type: "pause"; videoId: string; positionMs: number }
   | { type: "seek"; videoId: string; positionMs: number }
-  | { type: "buffer"; videoId: string; positionMs: number }
+  | { type: "buffer"; videoId: string; positionMs: number; durationMs?: number | undefined }
   | { type: "progress_checkpoint"; videoId: string; positionMs: number }
   | { type: "complete"; videoId: string }
   | { type: "next"; videoId: string }
