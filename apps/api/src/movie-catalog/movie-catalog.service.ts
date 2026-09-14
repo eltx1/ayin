@@ -1,3 +1,4 @@
+import type { Prisma } from "@ayin/db";
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -15,48 +16,91 @@ import {
 export interface MovieArtworkInput {
   type: MovieArtworkTypeValue;
   mediaAssetId: string;
-  altText?: string | null;
+  altText?: string | null | undefined;
 }
 
 export interface MovieAvailabilityInput {
   territoryCode: string;
   rule: MovieAvailabilityRuleValue;
-  startsAt?: Date | null;
-  endsAt?: Date | null;
-  note?: string | null;
+  startsAt?: Date | null | undefined;
+  endsAt?: Date | null | undefined;
+  note?: string | null | undefined;
 }
 
 export interface MovieLocalizationInput {
   locale: string;
-  title?: string | null;
-  synopsis?: string | null;
+  title?: string | null | undefined;
+  synopsis?: string | null | undefined;
 }
 
 export interface MovieCatalogInput {
   title: string;
-  slug?: string;
+  slug?: string | undefined;
   synopsis: string;
-  releaseDate?: Date | null;
+  releaseDate?: Date | null | undefined;
   releaseYear: number;
   runtimeMinutes: number;
   maturityRating: string;
   originalLanguage: string;
-  primaryVideoId?: string | null;
-  trailerVideoId?: string | null;
+  primaryVideoId?: string | null | undefined;
+  trailerVideoId?: string | null | undefined;
   genres: string[];
   artwork: MovieArtworkInput[];
   availability: MovieAvailabilityInput[];
-  localizations?: MovieLocalizationInput[];
+  localizations?: MovieLocalizationInput[] | undefined;
 }
 
-export interface MovieCatalogPatch extends Partial<
-  Omit<MovieCatalogInput, "genres" | "artwork" | "availability" | "localizations">
-> {
-  genres?: string[];
-  artwork?: MovieArtworkInput[];
-  availability?: MovieAvailabilityInput[];
-  localizations?: MovieLocalizationInput[];
+export interface MovieCatalogPatch {
+  title?: string | undefined;
+  slug?: string | undefined;
+  synopsis?: string | undefined;
+  releaseDate?: Date | null | undefined;
+  releaseYear?: number | undefined;
+  runtimeMinutes?: number | undefined;
+  maturityRating?: string | undefined;
+  originalLanguage?: string | undefined;
+  primaryVideoId?: string | null | undefined;
+  trailerVideoId?: string | null | undefined;
+  genres?: string[] | undefined;
+  artwork?: MovieArtworkInput[] | undefined;
+  availability?: MovieAvailabilityInput[] | undefined;
+  localizations?: MovieLocalizationInput[] | undefined;
 }
+
+type MovieWithRelations = Prisma.MovieGetPayload<{
+  include: {
+    genres: { include: { genre: true } };
+    artwork: true;
+    availability: true;
+    localizations: true;
+  };
+}>;
+
+type HydratedVideo = {
+  id: string;
+  slug: string;
+  title: string;
+  status: string;
+  visibility: string;
+  durationMs: number | null;
+};
+
+type HydratedAsset = {
+  id: string;
+  r2ObjectKey: string;
+  mimeType: string;
+  status: string;
+  width: number | null;
+  height: number | null;
+  removedAt: Date | null;
+};
+
+type HydratedMovie = Omit<MovieWithRelations, "genres" | "artwork"> & {
+  genres: Array<MovieWithRelations["genres"][number]["genre"]>;
+  artwork: Array<MovieWithRelations["artwork"][number] & { asset: HydratedAsset | null }>;
+  primaryVideo: HydratedVideo | null;
+  trailerVideo: HydratedVideo | null;
+};
 
 @Injectable()
 export class MovieCatalogService {
@@ -133,8 +177,8 @@ export class MovieCatalogService {
       ? this.normalizeLocalizations(patch.localizations)
       : undefined;
     await this.assertReferencedMedia(
-      scalar.primaryVideoId ?? current.primaryVideoId,
-      scalar.trailerVideoId ?? current.trailerVideoId,
+      patch.primaryVideoId !== undefined ? patch.primaryVideoId : current.primaryVideoId,
+      patch.trailerVideoId !== undefined ? patch.trailerVideoId : current.trailerVideoId,
       artwork ??
         current.artwork.map((item) => ({
           type: item.type,
@@ -313,9 +357,7 @@ export class MovieCatalogService {
     });
   }
 
-  private async hydrate<T extends Awaited<ReturnType<MovieCatalogService["getAdminRow"]>>>(
-    row: NonNullable<T>,
-  ) {
+  private async hydrate(row: MovieWithRelations): Promise<HydratedMovie> {
     const videoIds = [row.primaryVideoId, row.trailerVideoId].filter((value): value is string =>
       Boolean(value),
     );
@@ -363,10 +405,7 @@ export class MovieCatalogService {
     };
   }
 
-  private isPubliclyAvailable(
-    movie: Awaited<ReturnType<MovieCatalogService["getAdminById"]>>,
-    countryCode?: string | null,
-  ) {
+  private isPubliclyAvailable(movie: HydratedMovie, countryCode?: string | null) {
     return Boolean(
       movie.primaryVideo?.status === "PUBLISHED" &&
       movie.primaryVideo.visibility === "PUBLIC" &&
@@ -397,7 +436,7 @@ export class MovieCatalogService {
   }
 
   private normalizePatch(current: { title: string; slug: string }, patch: MovieCatalogPatch) {
-    const data: Record<string, unknown> = {};
+    const data: Prisma.MovieUncheckedUpdateInput = {};
     if (patch.title !== undefined) data.title = requiredText(patch.title, "title", 200);
     if (patch.slug !== undefined) {
       const slug = normalizeMovieSlug(patch.slug);
@@ -523,7 +562,7 @@ export class MovieCatalogService {
   }
 }
 
-function toPublicMovie(movie: Awaited<ReturnType<MovieCatalogService["getAdminById"]>>) {
+function toPublicMovie(movie: HydratedMovie) {
   return {
     ...toPublicMovieCard(movie),
     synopsis: movie.synopsis,
@@ -553,7 +592,7 @@ function toPublicMovie(movie: Awaited<ReturnType<MovieCatalogService["getAdminBy
   };
 }
 
-function toPublicMovieCard(movie: Awaited<ReturnType<MovieCatalogService["getAdminById"]>>) {
+function toPublicMovieCard(movie: HydratedMovie) {
   return {
     id: movie.id,
     title: movie.title,
@@ -566,9 +605,7 @@ function toPublicMovieCard(movie: Awaited<ReturnType<MovieCatalogService["getAdm
   };
 }
 
-function publicArtwork(
-  item: Awaited<ReturnType<MovieCatalogService["getAdminById"]>>["artwork"][number] | null,
-) {
+function publicArtwork(item: HydratedMovie["artwork"][number] | null) {
   if (!item?.asset || item.asset.status !== "VALIDATED" || item.asset.removedAt) return null;
   return {
     mediaAssetId: item.mediaAssetId,
