@@ -830,7 +830,10 @@ function SeasonEditor({
 }) {
   const [draft, setDraft] = useState<SeasonDraft>(() => fromSeason(season));
 
-  useEffect(() => setDraft(fromSeason(season)), [season]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDraft(fromSeason(season)), 0);
+    return () => window.clearTimeout(timer);
+  }, [season]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1010,7 +1013,10 @@ function EpisodeEditor({
 }) {
   const [draft, setDraft] = useState<EpisodeDraft>(() => fromEpisode(episode));
 
-  useEffect(() => setDraft(fromEpisode(episode)), [episode]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDraft(fromEpisode(episode)), 0);
+    return () => window.clearTimeout(timer);
+  }, [episode]);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
