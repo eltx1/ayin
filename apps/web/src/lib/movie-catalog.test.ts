@@ -7,6 +7,9 @@ const movie: PublicMovie = {
   title: "Ayin Feature",
   slug: "ayin-feature",
   synopsis: "A first-class movie catalog entry with a separate playable video.",
+  shortDescription: "Localized feature description.",
+  locale: "en",
+  availableLocales: [],
   releaseDate: "2026-09-01T00:00:00.000Z",
   releaseYear: 2026,
   runtimeMinutes: 104,
@@ -26,14 +29,26 @@ const movie: PublicMovie = {
 
 describe("movie SEO", () => {
   it("uses the movie catalog URL as canonical rather than the raw video URL", () => {
-    const metadata = buildMovieMetadata(movie);
+    const metadata = buildMovieMetadata(movie, "en");
     expect(metadata.alternates?.canonical).toBe("https://ayin.stream/movies/ayin-feature");
     expect(metadata.title).toContain("Ayin Feature");
+    expect(metadata.description).toBe("Localized feature description.");
     expect(metadata.robots).toMatchObject({ index: true, follow: true });
   });
 
+  it("uses a localized canonical only when the entity has that locale", () => {
+    const localizedMovie = { ...movie, locale: "ar", availableLocales: ["ar"] };
+    const metadata = buildMovieMetadata(localizedMovie, "ar");
+    expect(metadata.alternates?.canonical).toBe("https://ayin.stream/ar/movies/ayin-feature");
+    expect(metadata.alternates?.languages).toMatchObject({
+      en: "https://ayin.stream/movies/ayin-feature",
+      ar: "https://ayin.stream/ar/movies/ayin-feature",
+      "x-default": "https://ayin.stream/movies/ayin-feature",
+    });
+  });
+
   it("emits Movie JSON-LD and keeps playback as a WatchAction", () => {
-    const jsonLd = buildMovieJsonLd(movie);
+    const jsonLd = buildMovieJsonLd(movie, "en");
     expect(jsonLd["@type"]).toBe("Movie");
     expect(jsonLd.url).toBe("https://ayin.stream/movies/ayin-feature");
     expect(jsonLd.duration).toBe("PT104M");
