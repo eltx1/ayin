@@ -2,6 +2,8 @@
 
 import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
+
 import styles from "./content-row.module.css";
 
 interface ContentRowProperties {
@@ -15,14 +17,16 @@ interface ContentRowProperties {
 export function ContentRow({ anchorId, children, eyebrow, rowId, title }: ContentRowProperties) {
   const headingId = useId();
   const scrollerReference = useRef<HTMLDivElement>(null);
+  const { direction, t } = useI18n();
 
-  function scroll(direction: -1 | 1) {
+  function scroll(logicalDirection: -1 | 1) {
     const scroller = scrollerReference.current;
     if (!scroller) return;
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const physicalDirection = direction === "rtl" ? -logicalDirection : logicalDirection;
     scroller.scrollBy({
       behavior: reduceMotion ? "auto" : "smooth",
-      left: scroller.clientWidth * 0.82 * direction,
+      left: scroller.clientWidth * 0.82 * physicalDirection,
     });
   }
 
@@ -41,33 +45,34 @@ export function ContentRow({ anchorId, children, eyebrow, rowId, title }: Conten
     <section aria-labelledby={headingId} className={styles.section} id={anchorId}>
       <div className={styles.heading}>
         <div>
-          {eyebrow ? <p>{eyebrow}</p> : null}
-          <h2 id={headingId}>{title}</h2>
+          {eyebrow ? <p dir="auto">{eyebrow}</p> : null}
+          <h2 dir="auto" id={headingId}>{title}</h2>
         </div>
-        <div aria-label={`${title} carousel controls`} className={styles.controls}>
+        <div aria-label={t("carousel.controls", { title })} className={styles.controls}>
           <button
-            aria-label={`Scroll ${title} left`}
+            aria-label={t("carousel.previous", { title })}
             data-tv-focus-id={`${rowId}-previous`}
             data-tv-focusable="true"
             onClick={() => scroll(-1)}
             type="button"
           >
-            ←
+            <span aria-hidden="true">{direction === "rtl" ? "→" : "←"}</span>
           </button>
           <button
-            aria-label={`Scroll ${title} right`}
+            aria-label={t("carousel.next", { title })}
             data-tv-focus-id={`${rowId}-next`}
             data-tv-focusable="true"
             onClick={() => scroll(1)}
             type="button"
           >
-            →
+            <span aria-hidden="true">{direction === "rtl" ? "←" : "→"}</span>
           </button>
         </div>
       </div>
       <div
-        aria-label={`${title} content`}
+        aria-label={t("carousel.content", { title })}
         className={styles.scroller}
+        dir={direction}
         onKeyDown={onScrollerKeyDown}
         ref={scrollerReference}
         role="region"
