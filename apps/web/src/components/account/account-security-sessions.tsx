@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import styles from "@/app/(viewer)/account/account.module.css";
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { apiBaseUrl, readApiError } from "@/lib/api";
 
 interface AccountSession {
@@ -14,12 +15,6 @@ interface AccountSession {
   createdAt: string;
   lastActiveAt: string;
   expiresAt: string;
-}
-
-function dateLabel(value: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(value),
-  );
 }
 
 async function getSessions() {
@@ -33,6 +28,7 @@ async function getSessions() {
 
 export function AccountSecuritySessions() {
   const router = useRouter();
+  const { formatDate, href, t } = useI18n();
   const [sessions, setSessions] = useState<AccountSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
@@ -46,9 +42,7 @@ export function AccountSecuritySessions() {
         if (active) setSessions(next);
       })
       .catch((caught) => {
-        if (active) {
-          setError(caught instanceof Error ? caught.message : "Sessions could not be loaded.");
-        }
+        if (active) setError(caught instanceof Error ? caught.message : t("account.sessionsLoadError"));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -56,7 +50,7 @@ export function AccountSecuritySessions() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [t]);
 
   async function refreshSessions() {
     setSessions(await getSessions());
@@ -67,23 +61,20 @@ export function AccountSecuritySessions() {
     setError("");
     setMessage("");
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/auth/sessions/${encodeURIComponent(session.id)}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        },
-      );
+      const response = await fetch(`${apiBaseUrl}/auth/sessions/${encodeURIComponent(session.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
       if (!response.ok) throw new Error(await readApiError(response));
       if (session.current) {
-        router.push("/login");
+        router.push(href("/login"));
         router.refresh();
         return;
       }
       await refreshSessions();
-      setMessage("Session revoked.");
+      setMessage(t("account.sessionRevoked"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The session could not be revoked.");
+      setError(caught instanceof Error ? caught.message : t("account.sessionRevokeError"));
     } finally {
       setBusy("");
     }
@@ -101,13 +92,9 @@ export function AccountSecuritySessions() {
       if (!response.ok) throw new Error(await readApiError(response));
       const result = (await response.json()) as { revoked: number };
       await refreshSessions();
-      setMessage(
-        result.revoked === 0
-          ? "No other active sessions were found."
-          : `${result.revoked} other session${result.revoked === 1 ? "" : "s"} revoked.`,
-      );
+      setMessage(result.revoked === 0 ? t("account.sessionsNoneFound") : t("account.sessionsRevoked", { count: result.revoked }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Other sessions could not be revoked.");
+      setError(caught instanceof Error ? caught.message : t("account.sessionsRevokeError"));
     } finally {
       setBusy("");
     }
@@ -121,7 +108,7 @@ export function AccountSecuritySessions() {
     const newPassword = String(data.get("newPassword") ?? "");
     const confirmation = String(data.get("confirmation") ?? "");
     if (newPassword !== confirmation) {
-      setError("New passwords do not match.");
+      setError(t("account.passwordMismatch"));
       return;
     }
     setBusy("password");
@@ -141,9 +128,9 @@ export function AccountSecuritySessions() {
       if (!response.ok) throw new Error(await readApiError(response));
       form.reset();
       await refreshSessions();
-      setMessage("Password updated securely.");
+      setMessage(t("account.passwordUpdated"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The password could not be changed.");
+      setError(caught instanceof Error ? caught.message : t("account.passwordChangeError"));
     } finally {
       setBusy("");
     }
@@ -151,83 +138,56 @@ export function AccountSecuritySessions() {
 
   const current = sessions.find((session) => session.current);
   const others = sessions.filter((session) => !session.current);
+  const dateLabel = (value: string) => formatDate(value, { dateStyle: "medium", timeStyle: "short" });
 
   return (
     <section className={styles.securityCard} aria-labelledby="security-sessions-title">
       <div className={styles.securityHeading}>
         <div>
-          <span className={styles.eyebrow}>Account security</span>
-          <h2 id="security-sessions-title">Security &amp; sessions</h2>
-          <p>Review where your AYIN account is signed in and remove access immediately.</p>
+          <span className={styles.eyebrow}>{t("account.securityEyebrow")}</span>
+          <h2 id="security-sessions-title">{t("account.securityTitle")}</h2>
+          <p>{t("account.securityDescription")}</p>
         </div>
-        <button
-          className={styles.secondaryButton}
-          disabled={busy !== "" || others.length === 0}
-          onClick={() => void revokeOthers()}
-          type="button"
-        >
-          {busy === "others" ? "Revoking…" : "Revoke all other sessions"}
+        <button className={styles.secondaryButton} disabled={busy !== "" || others.length === 0} onClick={() => void revokeOthers()} type="button">
+          {busy === "others" ? t("account.revoking") : t("account.revokeOthers")}
         </button>
       </div>
 
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? <p className={styles.error} dir="auto">{error}</p> : null}
       {message ? <p className={styles.success}>{message}</p> : null}
-      {loading ? <p className={styles.loading}>Loading active sessions…</p> : null}
+      {loading ? <p className={styles.loading}>{t("account.sessionsLoading")}</p> : null}
 
       {!loading && current ? (
         <div className={styles.sessionGroup}>
-          <h3>Current session</h3>
-          <SessionRow session={current} busy={busy} onRevoke={revoke} />
+          <h3>{t("account.currentSession")}</h3>
+          <SessionRow dateLabel={dateLabel} session={current} busy={busy} onRevoke={revoke} />
         </div>
       ) : null}
 
       {!loading ? (
         <div className={styles.sessionGroup}>
-          <h3>Other active sessions</h3>
+          <h3>{t("account.otherSessions")}</h3>
           {others.length ? (
             <div className={styles.sessionList}>
-              {others.map((session) => (
-                <SessionRow key={session.id} session={session} busy={busy} onRevoke={revoke} />
-              ))}
+              {others.map((session) => <SessionRow dateLabel={dateLabel} key={session.id} session={session} busy={busy} onRevoke={revoke} />)}
             </div>
           ) : (
-            <p className={styles.muted}>No other active sessions.</p>
+            <p className={styles.muted}>{t("account.noOtherSessions")}</p>
           )}
         </div>
       ) : null}
 
       <form className={styles.passwordForm} onSubmit={(event) => void changePassword(event)}>
-        <h3>Change password</h3>
-        <label>
-          <span>Current password</span>
-          <input autoComplete="current-password" name="currentPassword" required type="password" />
-        </label>
-        <label>
-          <span>New password</span>
-          <input
-            autoComplete="new-password"
-            minLength={10}
-            name="newPassword"
-            required
-            type="password"
-          />
-        </label>
-        <label>
-          <span>Confirm new password</span>
-          <input
-            autoComplete="new-password"
-            minLength={10}
-            name="confirmation"
-            required
-            type="password"
-          />
-        </label>
+        <h3>{t("account.changePassword")}</h3>
+        <label><span>{t("account.currentPassword")}</span><input autoComplete="current-password" dir="ltr" name="currentPassword" required type="password" /></label>
+        <label><span>{t("account.newPassword")}</span><input autoComplete="new-password" dir="ltr" minLength={10} name="newPassword" required type="password" /></label>
+        <label><span>{t("account.confirmPassword")}</span><input autoComplete="new-password" dir="ltr" minLength={10} name="confirmation" required type="password" /></label>
         <label className={styles.checkLabel}>
           <input defaultChecked name="revokeOtherSessions" type="checkbox" />
-          <span>Revoke all other sessions after changing my password</span>
+          <span>{t("account.revokeAfterPassword")}</span>
         </label>
         <button className={styles.primaryButton} disabled={busy !== ""} type="submit">
-          {busy === "password" ? "Updating…" : "Update password"}
+          {busy === "password" ? t("account.updating") : t("account.updatePassword")}
         </button>
       </form>
     </section>
@@ -238,28 +198,24 @@ function SessionRow({
   session,
   busy,
   onRevoke,
+  dateLabel,
 }: {
   session: AccountSession;
   busy: string;
   onRevoke: (session: AccountSession) => Promise<void>;
+  dateLabel: (value: string) => string;
 }) {
+  const { t } = useI18n();
   return (
     <article className={styles.sessionRow}>
       <div>
-        <strong>{session.deviceLabel}</strong>
-        {session.current ? <span className={styles.currentBadge}>Current</span> : null}
-        <p>Last active {dateLabel(session.lastActiveAt)}</p>
-        <small>
-          Created {dateLabel(session.createdAt)} · Expires {dateLabel(session.expiresAt)}
-        </small>
+        <strong dir="auto">{session.deviceLabel}</strong>
+        {session.current ? <span className={styles.currentBadge}>{t("common.current")}</span> : null}
+        <p>{t("account.lastActive", { date: dateLabel(session.lastActiveAt) })}</p>
+        <small>{t("account.createdExpires", { created: dateLabel(session.createdAt), expires: dateLabel(session.expiresAt) })}</small>
       </div>
-      <button
-        className={styles.dangerButton}
-        disabled={busy !== ""}
-        onClick={() => void onRevoke(session)}
-        type="button"
-      >
-        {busy === session.id ? "Revoking…" : session.current ? "Log out this session" : "Revoke"}
+      <button className={styles.dangerButton} disabled={busy !== ""} onClick={() => void onRevoke(session)} type="button">
+        {busy === session.id ? t("account.revoking") : session.current ? t("account.logoutSession") : t("account.revoke")}
       </button>
     </article>
   );
