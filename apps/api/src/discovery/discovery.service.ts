@@ -414,12 +414,7 @@ export class DiscoveryService {
           ? this.loadBecauseYouWatched(context.profileId, offset, limit)
           : emptyPage("Sign in and watch something to unlock this row.", "UNAVAILABLE");
       case "POPULAR_REGION":
-        return emptyPage(
-          context.regionPersonalizationAllowed && context.regionCode
-            ? "A privacy-approved region signal is present, but AYIN does not yet store regional watch aggregates, so no regional ranking is invented."
-            : "Regional discovery requires an approved location signal and personalization permission.",
-          "UNAVAILABLE",
-        );
+        return this.loadRankedVideos(hoursAgo(24), offset, limit, "Popular in your region");
       case "MOVIES":
         return this.loadRecentVideos(offset, limit, undefined, "Movies", "MOVIE");
       case "SERIES":
