@@ -6,10 +6,7 @@ export interface LocaleResolutionInput {
   acceptLanguage?: string | null;
 }
 
-export type RouteLocaleResolutionInput = Pick<
-  LocaleResolutionInput,
-  "pathname" | "cookieLocale"
->;
+export type RouteLocaleResolutionInput = Pick<LocaleResolutionInput, "pathname" | "cookieLocale">;
 
 function splitPathAndSuffix(input: string): { pathname: string; suffix: string } {
   const match = input.match(/^([^?#]*)(.*)$/);
