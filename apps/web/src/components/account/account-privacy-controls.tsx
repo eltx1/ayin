@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 import styles from "@/app/(viewer)/account/account.module.css";
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { apiBaseUrl, readApiError } from "@/lib/api";
 
 const CONFIRMATION = "DELETE MY AYIN ACCOUNT";
@@ -37,18 +38,15 @@ async function readStatus(): Promise<PrivacyStatus> {
   return (await response.json()) as PrivacyStatus;
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(value),
-  );
-}
-
 export function AccountPrivacyControls() {
+  const { formatDate, locale, t } = useI18n();
   const [status, setStatus] = useState<PrivacyStatus | null>(null);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  const dateLabel = (value: string | null) =>
+    value ? formatDate(value, { dateStyle: "medium", timeStyle: "short" }) : "—";
 
   async function refresh() {
     setStatus(await readStatus());
@@ -61,17 +59,13 @@ export function AccountPrivacyControls() {
         if (active) setStatus(nextStatus);
       },
       (caught) => {
-        if (active) {
-          setError(
-            caught instanceof Error ? caught.message : "Privacy controls could not be loaded.",
-          );
-        }
+        if (active) setError(caught instanceof Error ? caught.message : t("account.privacyLoadError"));
       },
     );
     return () => {
       active = false;
     };
-  }, []);
+  }, [t]);
 
   async function downloadData() {
     setBusy("export");
@@ -94,9 +88,9 @@ export function AccountPrivacyControls() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-      setMessage("Your AYIN data export was prepared for download.");
+      setMessage(t("account.exportReady"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Your data export could not be created.");
+      setError(caught instanceof Error ? caught.message : t("account.exportError"));
     } finally {
       setBusy("");
     }
@@ -122,11 +116,9 @@ export function AccountPrivacyControls() {
       if (!response.ok) throw new Error(await readApiError(response));
       form.reset();
       await refresh();
-      setMessage("Account deletion requested. You can cancel during the grace period.");
+      setMessage(t("account.deletionRequested"));
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Account deletion could not be requested.",
-      );
+      setError(caught instanceof Error ? caught.message : t("account.deletionRequestError"));
     } finally {
       setBusy("");
     }
@@ -143,9 +135,9 @@ export function AccountPrivacyControls() {
       });
       if (!response.ok) throw new Error(await readApiError(response));
       await refresh();
-      setMessage("Deletion request cancelled.");
+      setMessage(t("account.deletionCancelled"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Deletion could not be cancelled.");
+      setError(caught instanceof Error ? caught.message : t("account.cancelDeletionError"));
     } finally {
       setBusy("");
     }
@@ -153,48 +145,36 @@ export function AccountPrivacyControls() {
 
   const active = status?.request;
   const cancellable = active?.state === "REQUESTED" || active?.state === "GRACE_PERIOD";
+  const graceDays = status?.policy.gracePeriodDays ?? 14;
 
   return (
     <section className={styles.securityCard} aria-labelledby="privacy-data-title">
       <div className={styles.securityHeading}>
         <div>
-          <span className={styles.eyebrow}>Privacy controls</span>
-          <h2 id="privacy-data-title">Privacy &amp; data</h2>
-          <p>Download your account data or start the controlled account-deletion lifecycle.</p>
+          <span className={styles.eyebrow}>{t("account.privacyEyebrow")}</span>
+          <h2 id="privacy-data-title">{t("account.privacyTitle")}</h2>
+          <p>{t("account.privacyDescription")}</p>
         </div>
-        <button
-          className={styles.secondaryButton}
-          disabled={busy !== ""}
-          onClick={() => void downloadData()}
-          type="button"
-        >
-          {busy === "export" ? "Preparing…" : "Download my data"}
+        <button className={styles.secondaryButton} disabled={busy !== ""} onClick={() => void downloadData()} type="button">
+          {busy === "export" ? t("account.preparing") : t("account.downloadData")}
         </button>
       </div>
 
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? <p className={styles.error} dir="auto">{error}</p> : null}
       {message ? <p className={styles.success}>{message}</p> : null}
 
       {active ? (
         <div className={styles.sessionGroup}>
-          <h3>Deletion request status</h3>
+          <h3>{t("account.deletionStatus")}</h3>
           <div className={styles.sessionRow}>
             <div>
-              <strong>{active.state.replaceAll("_", " ")}</strong>
-              <p>Requested {formatDate(active.requestedAt)}</p>
-              <small>
-                Grace ends {formatDate(active.graceEndsAt)} · Deactivated{" "}
-                {formatDate(active.deactivatedAt)}
-              </small>
+              <strong dir="auto">{deletionStateLabel(active.state, locale)}</strong>
+              <p>{t("account.requestedAt", { date: dateLabel(active.requestedAt) })}</p>
+              <small>{t("account.graceDeactivated", { grace: dateLabel(active.graceEndsAt), deactivated: dateLabel(active.deactivatedAt) })}</small>
             </div>
             {cancellable ? (
-              <button
-                className={styles.secondaryButton}
-                disabled={busy !== ""}
-                onClick={() => void cancelDeletion()}
-                type="button"
-              >
-                {busy === "cancel" ? "Cancelling…" : "Cancel deletion"}
+              <button className={styles.secondaryButton} disabled={busy !== ""} onClick={() => void cancelDeletion()} type="button">
+                {busy === "cancel" ? t("account.cancelling") : t("account.cancelDeletion")}
               </button>
             ) : null}
           </div>
@@ -202,42 +182,46 @@ export function AccountPrivacyControls() {
       ) : null}
 
       <div className={styles.sessionGroup}>
-        <h3>What deletion does</h3>
+        <h3>{t("account.deletionDoesTitle")}</h3>
         <p className={styles.muted}>
-          AYIN uses a {status?.policy.gracePeriodDays ?? 14}-day grace period. After it ends, the
-          account is deactivated and sessions stop working. After the additional technical recovery
-          window, identity data is anonymized, creator content is removed from publication, and
-          media objects are queued for asynchronous deletion.
+          {locale === "ar"
+            ? `يمنح AYIN فترة سماح مدتها ${graceDays} يومًا. بعد انتهائها يُعطّل الحساب وتتوقف الجلسات. وبعد نافذة الاسترداد التقنية الإضافية تُزال هوية البيانات، ويُسحب محتوى صانع المحتوى من النشر، وتُدرج ملفات الوسائط للحذف غير المتزامن.`
+            : `AYIN uses a ${graceDays}-day grace period. After it ends, the account is deactivated and sessions stop working. After the additional technical recovery window, identity data is anonymized, creator content is removed from publication, and media objects are queued for asynchronous deletion.`}
         </p>
         <p className={styles.muted}>
-          Financial accounting records, fraud/security evidence, moderation evidence and audit
-          records may remain where deleting them would break those records; identity fields are
-          anonymized where appropriate. This describes AYIN&apos;s implemented technical behavior
-          and is not a claim of legal compliance or a statement of every jurisdiction&apos;s
-          retention requirements.
+          {locale === "ar"
+            ? "قد تبقى سجلات المحاسبة المالية وأدلة الاحتيال والأمان والإشراف وسجلات التدقيق عندما يؤدي حذفها إلى الإخلال بهذه السجلات، مع إزالة بيانات الهوية حيثما كان ذلك مناسبًا. يصف هذا السلوك التقني المطبق في AYIN ولا يُعد ادعاءً بالامتثال القانوني أو بيانًا شاملًا لمتطلبات الاحتفاظ في كل ولاية قضائية."
+            : "Financial accounting records, fraud/security evidence, moderation evidence and audit records may remain where deleting them would break those records; identity fields are anonymized where appropriate. This describes AYIN's implemented technical behavior and is not a claim of legal compliance or a statement of every jurisdiction's retention requirements."}
         </p>
       </div>
 
       {!active || active.state === "CANCELLED" ? (
         <form className={styles.passwordForm} onSubmit={(event) => void requestDeletion(event)}>
-          <h3>Request account deletion</h3>
-          <label>
-            <span>Current password</span>
-            <input autoComplete="current-password" name="password" required type="password" />
-          </label>
-          <label>
-            <span>Type {CONFIRMATION}</span>
-            <input autoComplete="off" name="confirmation" required type="text" />
-          </label>
+          <h3>{t("account.requestDeletion")}</h3>
+          <label><span>{t("account.currentPassword")}</span><input autoComplete="current-password" dir="ltr" name="password" required type="password" /></label>
+          <label><span>{t("account.typeConfirmation", { confirmation: CONFIRMATION })}</span><input autoComplete="off" dir="ltr" name="confirmation" required type="text" /></label>
           <p className={styles.muted}>
-            Download your data first if you want a copy. Continuing starts the grace period; it does
-            not immediately erase retained financial, security, moderation or audit history.
+            {locale === "ar"
+              ? "نزّل بياناتك أولًا إذا أردت الاحتفاظ بنسخة. المتابعة تبدأ فترة السماح ولا تمحو فورًا السجلات المالية أو الأمنية أو سجلات الإشراف والتدقيق المطلوب الاحتفاظ بها."
+              : "Download your data first if you want a copy. Continuing starts the grace period; it does not immediately erase retained financial, security, moderation or audit history."}
           </p>
           <button className={styles.dangerButton} disabled={busy !== ""} type="submit">
-            {busy === "delete" ? "Requesting…" : "Request account deletion"}
+            {busy === "delete" ? t("account.requesting") : t("account.requestDeletion")}
           </button>
         </form>
       ) : null}
     </section>
   );
+}
+
+function deletionStateLabel(state: DeletionRequest["state"], locale: "en" | "ar") {
+  if (locale !== "ar") return state.replaceAll("_", " ");
+  const labels: Record<DeletionRequest["state"], string> = {
+    REQUESTED: "تم الطلب",
+    GRACE_PERIOD: "فترة السماح",
+    DEACTIVATED: "تم التعطيل",
+    ANONYMIZED: "أزيلت بيانات الهوية",
+    CANCELLED: "تم الإلغاء",
+  };
+  return labels[state];
 }
