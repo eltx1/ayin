@@ -2,7 +2,7 @@ import type { TranslationKey } from "./en";
 
 export const arMessages = {
   "meta.home.title": "شاهد وابث واكتشف",
-  "meta.home.description": "شاهد الفيديوهات واكتشف صناع المحتوى وابنِ قناتك واستكشف AYIN.",
+  "meta.home.description": "شاهد فيديوهات صناع المحتوى والبث وقوائم التشغيل وتجارب التلفزيون المتصل على AYIN.",
   "nav.home": "الرئيسية",
   "nav.movies": "الأفلام",
   "nav.series": "المسلسلات",
@@ -50,4 +50,9 @@ export const arMessages = {
   "shell.language": "اللغة",
   "shell.english": "English",
   "shell.arabic": "العربية",
+  "session.signIn": "تسجيل الدخول",
+  "session.createAyin": "إنشاء حساب AYIN",
+  "session.ready": "قناتك وAYIN TV جاهزان.",
+  "session.signedInAs": "تم تسجيل الدخول باسم {name}",
+  "session.logOut": "تسجيل الخروج",
 } satisfies Partial<Record<TranslationKey, string>>;
