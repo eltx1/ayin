@@ -17,6 +17,11 @@ export const homeRowSourceSchema = z.enum([
 
 export const homeRowAudienceSchema = z.enum(["ALL", "AUTHENTICATED", "ANONYMOUS"]);
 export const manualItemTypeSchema = z.enum(["VIDEO", "CREATOR_TV", "CHANNEL", "PLAYLIST"]);
+const regionCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z]{2}$/)
+  .transform((value) => value.toUpperCase());
 
 export const homeRowPatchSchema = z.object({
   title: z.string().trim().min(1).max(120).optional(),
@@ -25,6 +30,7 @@ export const homeRowPatchSchema = z.object({
   enabled: z.boolean().optional(),
   maxItems: z.number().int().min(1).max(100).optional(),
   regionPersonalizationRequired: z.boolean().optional(),
+  targetRegions: z.array(regionCodeSchema).max(64).optional(),
   reason: z.string().trim().min(3).max(500),
 });
 
