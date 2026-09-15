@@ -6,6 +6,11 @@ export interface LocaleResolutionInput {
   acceptLanguage?: string | null;
 }
 
+export type RouteLocaleResolutionInput = Pick<
+  LocaleResolutionInput,
+  "pathname" | "cookieLocale"
+>;
+
 function splitPathAndSuffix(input: string): { pathname: string; suffix: string } {
   const match = input.match(/^([^?#]*)(.*)$/);
   return {
@@ -71,6 +76,15 @@ export function resolveLocale({
   if (pathLocale) return pathLocale;
   if (isLocale(cookieLocale)) return cookieLocale;
   return parseAcceptLanguage(acceptLanguage) ?? defaultLocale;
+}
+
+export function resolveRouteLocale({
+  pathname = "/",
+  cookieLocale,
+}: RouteLocaleResolutionInput): Locale {
+  const pathLocale = localeFromPath(pathname || "/");
+  if (pathLocale) return pathLocale;
+  return isLocale(cookieLocale) ? cookieLocale : defaultLocale;
 }
 
 export function isInternalHref(href: string): boolean {
