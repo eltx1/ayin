@@ -96,7 +96,7 @@ export function proxy(request: NextRequest) {
   }
 
   const requestedLocale = request.nextUrl.searchParams.get("lang");
-  if (isLocale(requestedLocale)) {
+  if (isLocale(requestedLocale) && isDocumentNavigation(request)) {
     const target = request.nextUrl.clone();
     target.pathname = localizePath(stripLocalePrefix(pathname), requestedLocale);
     target.searchParams.delete("lang");
