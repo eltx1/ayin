@@ -42,6 +42,28 @@ export class PublicDiscoveryController {
       }),
     );
   }
+  @Get("kids")
+  async kids(@Headers() headers: HeaderBag) {
+    return runDiscovery(() =>
+      this.discovery.getKidsHome({
+        availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers),
+      }),
+    );
+  }
+
+  @Get("kids/rows/:key")
+  async kidsRow(@Param("key") key: string, @Query() query: unknown, @Headers() headers: HeaderBag) {
+    const parsed = parseListQuery(query);
+    return runDiscovery(() =>
+      this.discovery.getKidsRow(
+        key,
+        { availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers) },
+        parsed.cursor,
+        parsed.limit,
+      ),
+    );
+  }
+
   @Get("rows/:key")
   async row(
     @Param("key") key: string,

@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 import type {
   RecommendationContext,
   RecommendationItem,
@@ -46,6 +47,7 @@ export class RecommendationService implements RecommendationServiceContract {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
   async resolveProfile(accountId: string, requestedProfileId?: string) {
@@ -83,6 +85,9 @@ export class RecommendationService implements RecommendationServiceContract {
 
   async getTvSuggestions(profileId: string, context: RecommendationContext = {}) {
     const limit = clamp(context.limit ?? 12, 1, 24);
+    if (await this.isKidsProfile(profileId)) {
+      return { profileId, mode: "SAFE_FALLBACK" as const, items: [] };
+    }
     const signals = await this.loadSignals(profileId);
     const rows = await this.database.client.creatorTvChannel.findMany({
       where: {
@@ -167,10 +172,11 @@ export class RecommendationService implements RecommendationServiceContract {
     input: { limit: number; videoForm?: "CLIP"; relatedToVideoId?: string },
   ) {
     const limit = clamp(input.limit, 1, 48);
-    const [personalizationEnabled, weights, signals] = await Promise.all([
+    const [personalizationEnabled, weights, signals, isKidsProfile] = await Promise.all([
       this.settings.get("recommendationsPersonalizedEnabled") as Promise<boolean>,
       this.loadWeights(),
       this.loadSignals(profileId),
+      this.isKidsProfile(profileId),
     ]);
     const related = input.relatedToVideoId
       ? await this.database.client.video.findFirst({
@@ -208,9 +214,14 @@ export class RecommendationService implements RecommendationServiceContract {
       },
     });
 
-    const personalized = personalizationEnabled && this.hasPersonalSignals(signals);
+    const allowedCandidateIds = await this.videoPolicy.filterAvailableVideoIds(
+      candidates.map((video) => video.id),
+      { isKidsProfile },
+    );
+    const personalized =
+      !isKidsProfile && personalizationEnabled && this.hasPersonalSignals(signals);
     const items = candidates
-      .filter((video) => !signals.excludedVideos.has(video.id))
+      .filter((video) => allowedCandidateIds.has(video.id) && !signals.excludedVideos.has(video.id))
       .map((video) => {
         const followed = signals.subscribedChannels.has(video.channelId);
         const historyAffinity = signals.historyAffinity.get(video.channelId) ?? 0;
@@ -332,6 +343,14 @@ export class RecommendationService implements RecommendationServiceContract {
       completedChannels: new Set(completed.map((row) => row.video.channelId)),
       excludedVideos: new Set(feedback.map((row) => row.videoId)),
     };
+  }
+
+  private async isKidsProfile(profileId: string) {
+    const profile = await this.database.client.viewerProfile.findUnique({
+      where: { id: profileId },
+      select: { isKids: true },
+    });
+    return profile?.isKids === true;
   }
 
   private hasPersonalSignals(signals: ProfileSignals) {

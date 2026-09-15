@@ -5,6 +5,7 @@ import { VideoPolicyService, evaluatePolicy } from "./video-policy.service.js";
 const basePolicy = {
   videoId: "11111111-1111-4111-8111-111111111111",
   maturityLevel: "GENERAL" as const,
+  kidsEligible: true,
   allowedTerritories: ["US", "EG"],
   blockedTerritories: ["GB"],
   rightsExpiresAt: null,
@@ -33,7 +34,7 @@ describe("VideoPolicyService decisions", () => {
     });
   });
 
-  it("allows an active audited admin FORCE_ALLOW to override geo and expiry policy", () => {
+  it("allows an active audited admin FORCE_ALLOW to override geo and expiry policy for ordinary audiences", () => {
     const expired = { ...basePolicy, rightsExpiresAt: new Date("2026-01-01T00:00:00.000Z") };
     expect(
       evaluatePolicy(
@@ -54,11 +55,76 @@ describe("VideoPolicyService decisions", () => {
     ).toMatchObject({ allowed: false, reason: "ADMIN_FORCE_BLOCK" });
   });
 
-  it("uses maturity and age restriction as a kids-profile eligibility hook without claiming compliance", () => {
+  it("allows Kids only when content is explicitly GENERAL, unrestricted and Kids-eligible", () => {
+    expect(
+      evaluatePolicy({ ...basePolicy, allowedTerritories: [], blockedTerritories: [] }, null, {
+        isKidsProfile: true,
+      }),
+    ).toMatchObject({ allowed: true, reason: "AVAILABLE", kidsEligible: true });
+  });
+
+  it("fails closed for unclassified content in Kids contexts", () => {
+    expect(evaluatePolicy(null, null, { isKidsProfile: true })).toMatchObject({
+      allowed: false,
+      reason: "KIDS_PROFILE_RESTRICTED",
+      maturityLevel: null,
+      kidsEligible: false,
+    });
+  });
+
+  it("blocks content that is not explicitly Kids-eligible", () => {
     expect(
       evaluatePolicy(
-        { ...basePolicy, allowedTerritories: [], blockedTerritories: [], maturityLevel: "TEEN" },
+        { ...basePolicy, kidsEligible: false, allowedTerritories: [], blockedTerritories: [] },
         null,
+        { isKidsProfile: true },
+      ),
+    ).toMatchObject({ allowed: false, reason: "KIDS_PROFILE_RESTRICTED" });
+  });
+
+  it("blocks teen and mature content from Kids contexts", () => {
+    for (const maturityLevel of ["TEEN", "MATURE"] as const) {
+      expect(
+        evaluatePolicy(
+          {
+            ...basePolicy,
+            maturityLevel,
+            allowedTerritories: [],
+            blockedTerritories: [],
+          },
+          null,
+          { isKidsProfile: true },
+        ),
+      ).toMatchObject({ allowed: false, reason: "KIDS_PROFILE_RESTRICTED" });
+    }
+  });
+
+  it("blocks age-restricted content from Kids contexts", () => {
+    expect(
+      evaluatePolicy(
+        {
+          ...basePolicy,
+          ageRestriction: "AGE_13_PLUS",
+          allowedTerritories: [],
+          blockedTerritories: [],
+        },
+        null,
+        { isKidsProfile: true },
+      ),
+    ).toMatchObject({ allowed: false, reason: "KIDS_PROFILE_RESTRICTED" });
+  });
+
+  it("does not let FORCE_ALLOW bypass the Kids hard boundary", () => {
+    expect(
+      evaluatePolicy(
+        {
+          ...basePolicy,
+          kidsEligible: false,
+          maturityLevel: "MATURE",
+          allowedTerritories: [],
+          blockedTerritories: [],
+        },
+        { videoId: basePolicy.videoId, disposition: "FORCE_ALLOW", expiresAt: null },
         { isKidsProfile: true },
       ),
     ).toMatchObject({ allowed: false, reason: "KIDS_PROFILE_RESTRICTED" });

@@ -1,0 +1,62 @@
+.page {
+  min-height: 100dvh;
+  padding: clamp(28px, 5vw, 72px) clamp(18px, 5vw, 72px) 72px;
+}
+
+.hero {
+  background:
+    radial-gradient(circle at 12% 20%, rgb(139 24 248 / 20%), transparent 26rem),
+    linear-gradient(145deg, rgb(18 13 36 / 96%), rgb(8 6 18 / 92%));
+  border: 1px solid var(--border-strong);
+  border-radius: 28px;
+  box-shadow: var(--shadow-soft);
+  margin: 0 auto 36px;
+  max-width: 1180px;
+  overflow: hidden;
+  padding: clamp(28px, 5vw, 58px);
+}
+
+.eyebrow {
+  background: var(--brand-gradient);
+  background-clip: text;
+  color: transparent;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: clamp(2.5rem, 7vw, 5.5rem);
+  letter-spacing: -0.055em;
+  line-height: 0.96;
+  margin: 12px 0 18px;
+}
+
+.hero > p {
+  color: var(--muted-strong);
+  font-size: clamp(1rem, 1.5vw, 1.18rem);
+  line-height: 1.65;
+  max-width: 760px;
+}
+
+.policy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.policy span {
+  background: rgb(255 255 255 / 4%);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-strong);
+  font-size: 0.8rem;
+  padding: 8px 12px;
+}
+
+.catalog {
+  margin: 0 auto;
+  max-width: 1280px;
+}

@@ -2,6 +2,7 @@ import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { isKidsSearchResultTypeAllowed, kidsSafeHref } from "../kids/kids-policy.js";
 import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
 import { VIDEO_CATEGORIES } from "../creator/video-metadata.validation.js";
 import {
@@ -178,7 +179,9 @@ export class SearchService {
           id: video.id,
           type: "VIDEO" as const,
           title: video.title,
-          href: `/watch/${video.slug}`,
+          href: context.isKidsProfile
+            ? kidsSafeHref(`/watch/${video.slug}`)
+            : `/watch/${video.slug}`,
           kicker: "Video",
           meta: video.channel.name,
           artworkObjectKey: video.mediaAssets[0]?.r2ObjectKey ?? null,
@@ -223,11 +226,14 @@ export class SearchService {
         artworkObjectKey: null,
       })),
     ];
-    const items = ranked.slice(offset, offset + limit);
+    const eligibleRanked = context.isKidsProfile
+      ? ranked.filter((item) => isKidsSearchResultTypeAllowed(item.type))
+      : ranked;
+    const items = eligibleRanked.slice(offset, offset + limit);
     return {
       query: normalized,
       items,
-      nextCursor: ranked.length > offset + limit ? encodeCursor(offset + limit) : null,
+      nextCursor: eligibleRanked.length > offset + limit ? encodeCursor(offset + limit) : null,
       emptyMessage:
         items.length === 0
           ? "No matches yet. Try a series, creator name, video title, playlist, or Creator TV."
@@ -286,7 +292,9 @@ export class SearchService {
             id: video.id,
             type: "VIDEO" as const,
             label: video.title,
-            href: `/watch/${video.slug}`,
+            href: context.isKidsProfile
+              ? kidsSafeHref(`/watch/${video.slug}`)
+              : `/watch/${video.slug}`,
           })),
         ...seriesSuggestions.map((series) => ({
           id: series.id,
@@ -306,7 +314,9 @@ export class SearchService {
           label: tv.name,
           href: `/c/${tv.channel.handle}/tv`,
         })),
-      ].slice(0, limit),
+      ]
+        .filter((item) => !context.isKidsProfile || isKidsSearchResultTypeAllowed(item.type))
+        .slice(0, limit),
     };
   }
 

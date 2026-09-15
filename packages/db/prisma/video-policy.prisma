@@ -10,10 +10,12 @@ enum VideoPolicyOverrideDisposition {
 }
 
 // Authoritative distribution policy. Absence of a row means the simple AYIN
-// default: worldwide availability, no expiry and no age gate.
+// default for ordinary audiences, but Kids surfaces fail closed and require an
+// explicit Kids-eligible classification.
 model VideoPolicy {
   videoId            String              @id @db.Uuid
   maturityLevel      VideoMaturityLevel?
+  kidsEligible       Boolean             @default(false)
   allowedTerritories String[]            @default([])
   blockedTerritories String[]            @default([])
   rightsExpiresAt    DateTime?
@@ -22,11 +24,13 @@ model VideoPolicy {
   updatedAt          DateTime            @updatedAt
 
   @@index([maturityLevel])
+  @@index([kidsEligible, maturityLevel, ageRestriction])
   @@index([rightsExpiresAt])
 }
 
 // Administrative policy override only. It never overrides Video publication,
-// visibility, channel state or removal state; those remain hard boundaries.
+// visibility, channel state, removal state, or Kids eligibility; those remain
+// hard boundaries.
 model VideoPolicyOverride {
   videoId        String                         @id @db.Uuid
   disposition    VideoPolicyOverrideDisposition

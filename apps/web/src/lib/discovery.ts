@@ -1,6 +1,6 @@
 import { apiBaseUrl, type AyinIdentity, readApiError } from "./api";
 
-export type DiscoveryItemType = "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST";
+export type DiscoveryItemType = "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST" | "SERIES";
 export type DiscoveryAvailability = "AVAILABLE" | "EMPTY" | "UNAVAILABLE";
 
 export interface DiscoveryItem {
@@ -27,6 +27,13 @@ export interface DiscoveryRowData {
 
 export interface DiscoveryHomeResponse {
   rows: DiscoveryRowData[];
+  policy?: {
+    mode: "KIDS";
+    contentEligibility: string;
+    advertising: { inventoryClass: "KIDS"; personalizedTargetingAllowed: false };
+    socialCommunity: { enabled: false };
+    legalReview: { required: true; complianceClaimed: false };
+  };
 }
 
 export interface MyAyinResponse {
@@ -52,6 +59,16 @@ export async function fetchDiscoveryHome(
     `${apiBaseUrl}/${authenticated ? "discovery" : "public/discovery"}/home`,
     { cache: "no-store", credentials: "include", signal: signal ?? null },
   );
+  if (!response.ok) throw new Error(await readApiError(response));
+  return (await response.json()) as DiscoveryHomeResponse;
+}
+
+export async function fetchKidsDiscoveryHome(signal?: AbortSignal): Promise<DiscoveryHomeResponse> {
+  const response = await fetch(`${apiBaseUrl}/public/discovery/kids`, {
+    cache: "no-store",
+    credentials: "include",
+    signal: signal ?? null,
+  });
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as DiscoveryHomeResponse;
 }
