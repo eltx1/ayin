@@ -4,11 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { stripLocalePrefix } from "@/lib/i18n/routing";
+
 import styles from "./app-nav-link.module.css";
 
+function normalizeRoute(pathname: string): string {
+  const normalized = stripLocalePrefix(pathname);
+  if (normalized === "/") return normalized;
+  return normalized.replace(/\/+$/, "");
+}
+
 function isCurrentRoute(pathname: string, href: string): boolean {
-  if (href === "/studio" || href === "/admin") return pathname === href;
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const currentPath = normalizeRoute(pathname);
+  const targetPath = normalizeRoute(href);
+  if (targetPath === "/studio" || targetPath === "/admin") return currentPath === targetPath;
+  return currentPath === targetPath || currentPath.startsWith(`${targetPath}/`);
 }
 
 export function AppNavLink({ children, href }: { children: ReactNode; href: string }) {

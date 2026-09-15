@@ -1,0 +1,30 @@
+.switcher {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-inline: auto;
+  max-width: var(--content-max);
+  padding: 0.6rem clamp(14px, 4vw, 62px) 0;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.link {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted-strong);
+  font-size: 0.78rem;
+  padding: 0.35rem 0.65rem;
+  text-decoration: none;
+}
+
+.link:hover,
+.link:focus-visible,
+.active {
+  border-color: var(--border-strong);
+  color: var(--foreground);
+}

@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
+import { I18nProvider } from "@/components/i18n/i18n-provider";
+import { TvPlatformRuntime } from "@/components/platform/tv-platform-runtime";
 import { InstallUpdateController } from "@/components/pwa/install-update-controller";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
-import { TvPlatformRuntime } from "@/components/platform/tv-platform-runtime";
+import { getTextDirection } from "@/lib/i18n/config";
+import { getRequestLocale } from "@/lib/i18n/server";
 import {
   absoluteUrl,
   AYIN_DEFAULT_DESCRIPTION,
@@ -83,18 +86,22 @@ const siteStructuredData = {
   ],
 };
 
-export default function RootLayout({ children }: RootLayoutProperties) {
+export default async function RootLayout({ children }: RootLayoutProperties) {
+  const locale = await getRequestLocale();
+
   return (
-    <html lang="en">
+    <html dir={getTextDirection(locale)} lang={locale}>
       <body>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: serializeJsonLd(siteStructuredData) }}
-        />
-        <ServiceWorkerRegistration />
-        <InstallUpdateController />
-        <TvPlatformRuntime />
-        {children}
+        <I18nProvider locale={locale}>
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: serializeJsonLd(siteStructuredData) }}
+          />
+          <ServiceWorkerRegistration />
+          <InstallUpdateController />
+          <TvPlatformRuntime />
+          {children}
+        </I18nProvider>
       </body>
     </html>
   );
