@@ -35,7 +35,6 @@ export const arMessages = {
   "shell.signIn": "تسجيل الدخول",
   "shell.createAccount": "إنشاء حساب",
   "shell.browseAyin": "تصفح AYIN",
-  "shell.productBy": "منتج من Horus Media",
   "shell.legalPolicy": "القانون والسياسات",
   "shell.privacy": "الخصوصية",
   "shell.terms": "الشروط",
