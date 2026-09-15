@@ -35,6 +35,7 @@ interface ResourcePickerProps {
   selectedLabel?: string | null;
   disabled?: boolean;
   required?: boolean;
+  allowClear?: boolean;
   onChange: (id: string | null, label: string | null) => void;
 }
 
@@ -45,6 +46,7 @@ export function CatalogResourcePicker({
   selectedLabel,
   disabled = false,
   required = false,
+  allowClear = true,
   onChange,
 }: ResourcePickerProps) {
   const [query, setQuery] = useState("");
@@ -111,14 +113,18 @@ export function CatalogResourcePicker({
             <strong>{selectedLabel || "Selected catalog resource"}</strong>
             <small className={styles.muted}>Selection is stored internally; database IDs are hidden.</small>
           </div>
-          <button
-            className={styles.danger}
-            disabled={disabled}
-            onClick={() => onChange(null, null)}
-            type="button"
-          >
-            Clear
-          </button>
+          {allowClear ? (
+            <button
+              className={styles.danger}
+              disabled={disabled}
+              onClick={() => onChange(null, null)}
+              type="button"
+            >
+              Clear
+            </button>
+          ) : (
+            <span className={styles.statusPill}>Required while published</span>
+          )}
         </div>
       ) : null}
 
