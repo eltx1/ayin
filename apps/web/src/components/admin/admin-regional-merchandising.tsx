@@ -32,7 +32,9 @@ export function AdminRegionalMerchandising() {
       })
       .catch((error) => {
         if (active) {
-          setMessage(error instanceof Error ? error.message : "Regional targets could not be loaded.");
+          setMessage(
+            error instanceof Error ? error.message : "Regional targets could not be loaded.",
+          );
         }
       });
     return () => {
