@@ -2,7 +2,8 @@ import type { TranslationKey } from "./en";
 
 export const arMessages = {
   "meta.home.title": "شاهد وابث واكتشف",
-  "meta.home.description": "شاهد فيديوهات صناع المحتوى والبث وقوائم التشغيل وتجارب التلفزيون المتصل على AYIN.",
+  "meta.home.description":
+    "شاهد فيديوهات صناع المحتوى والبث وقوائم التشغيل وتجارب التلفزيون المتصل على AYIN.",
   "nav.home": "الرئيسية",
   "nav.movies": "الأفلام",
   "nav.series": "المسلسلات",

@@ -1,6 +1,7 @@
 export const enMessages = {
   "meta.home.title": "Watch, Stream & Discover",
-  "meta.home.description": "Watch creator videos, streaming, playlists and connected-TV experiences on AYIN.",
+  "meta.home.description":
+    "Watch creator videos, streaming, playlists and connected-TV experiences on AYIN.",
   "nav.home": "Home",
   "nav.movies": "Movies",
   "nav.series": "Series",

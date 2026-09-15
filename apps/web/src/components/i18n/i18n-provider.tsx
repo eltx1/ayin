@@ -13,10 +13,7 @@ interface I18nContextValue {
   t: (key: TranslationKey, values?: TranslationValues) => string;
   href: (value: string) => string;
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
-  formatDate: (
-    value: Date | number | string,
-    options?: Intl.DateTimeFormatOptions,
-  ) => string;
+  formatDate: (value: Date | number | string, options?: Intl.DateTimeFormatOptions) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);

@@ -8,12 +8,7 @@ import {
   requestLocaleHeader,
   type Locale,
 } from "@/lib/i18n/config";
-import {
-  localeFromPath,
-  localizePath,
-  resolveLocale,
-  stripLocalePrefix,
-} from "@/lib/i18n/routing";
+import { localeFromPath, localizePath, resolveLocale, stripLocalePrefix } from "@/lib/i18n/routing";
 
 const SAFE_TRACE_ID = /^[A-Za-z0-9._:-]{8,128}$/;
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
@@ -87,7 +82,9 @@ export function proxy(request: NextRequest) {
 
   if (isLocaleBypassedPath(pathname)) {
     return decorateResponse(
-      NextResponse.next({ request: { headers: requestHeaders(request, requestId, correlationId) } }),
+      NextResponse.next({
+        request: { headers: requestHeaders(request, requestId, correlationId) },
+      }),
       requestId,
       correlationId,
     );
