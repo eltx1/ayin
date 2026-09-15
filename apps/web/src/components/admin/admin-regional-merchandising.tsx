@@ -3,11 +3,7 @@
 import { useEffect, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import {
-  getAdminProductControls,
-  patchAdminHomeRow,
-  type AdminHomeRow,
-} from "@/lib/admin-product";
+import { getAdminProductControls, patchAdminHomeRow, type AdminHomeRow } from "@/lib/admin-product";
 
 export function AdminRegionalMerchandising() {
   const [rows, setRows] = useState<AdminHomeRow[]>([]);
@@ -20,9 +16,7 @@ export function AdminRegionalMerchandising() {
     const snapshot = await getAdminProductControls();
     setRows(snapshot.rows);
     setDrafts(
-      Object.fromEntries(
-        snapshot.rows.map((row) => [row.id, row.targetRegions.join(", ")]),
-      ),
+      Object.fromEntries(snapshot.rows.map((row) => [row.id, row.targetRegions.join(", ")])),
     );
   }
 
@@ -33,18 +27,12 @@ export function AdminRegionalMerchandising() {
         if (!active) return;
         setRows(snapshot.rows);
         setDrafts(
-          Object.fromEntries(
-            snapshot.rows.map((row) => [row.id, row.targetRegions.join(", ")]),
-          ),
+          Object.fromEntries(snapshot.rows.map((row) => [row.id, row.targetRegions.join(", ")])),
         );
       })
       .catch((error) => {
         if (active) {
-          setMessage(
-            error instanceof Error
-              ? error.message
-              : "Regional targets could not be loaded.",
-          );
+          setMessage(error instanceof Error ? error.message : "Regional targets could not be loaded.");
         }
       });
     return () => {
@@ -59,9 +47,7 @@ export function AdminRegionalMerchandising() {
       .filter(Boolean);
     const invalid = regions.find((region) => !/^[A-Z]{2}$/.test(region));
     if (invalid) {
-      throw new Error(
-        `Invalid region code: ${invalid}. Use two-letter country codes.`,
-      );
+      throw new Error(`Invalid region code: ${invalid}. Use two-letter country codes.`);
     }
     return [...new Set(regions)];
   }
@@ -79,11 +65,7 @@ export function AdminRegionalMerchandising() {
           : `${row.title} is global again.`,
       );
     } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "Regional targets could not be saved.",
-      );
+      setMessage(error instanceof Error ? error.message : "Regional targets could not be saved.");
     } finally {
       setBusy(false);
     }
@@ -93,17 +75,13 @@ export function AdminRegionalMerchandising() {
     <section className={styles.card}>
       <h2>Regional merchandising</h2>
       <p className={styles.muted}>
-        Optional two-letter region targets control where a Home row is merchandised.
-        Leave a row blank to keep it global. AYIN has no default country; targeting
-        uses only trusted coarse region signals and never requires storing viewer IP
-        addresses.
+        Optional two-letter region targets control where a Home row is merchandised. Leave a row
+        blank to keep it global. AYIN has no default country; targeting uses only trusted coarse
+        region signals and never requires storing viewer IP addresses.
       </p>
       <label className={styles.field}>
         <span>Audit reason</span>
-        <input
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-        />
+        <input value={reason} onChange={(event) => setReason(event.target.value)} />
       </label>
       {message ? <p className={styles.muted}>{message}</p> : null}
       <div className={styles.tableWrap}>
