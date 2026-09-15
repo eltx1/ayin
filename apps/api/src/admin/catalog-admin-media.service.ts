@@ -73,8 +73,16 @@ export class CatalogAdminMediaService {
     }
     const decision = await this.videoPolicy.decide(video.id);
     if (!decision.allowed && decision.reason !== "REGION_UNKNOWN") return null;
-    const { mediaAssets: _mediaAssets, ...result } = video;
-    return result;
+    return {
+      id: video.id,
+      title: video.title,
+      slug: video.slug,
+      status: video.status,
+      visibility: video.visibility,
+      durationMs: video.durationMs,
+      removedAt: video.removedAt,
+      channel: video.channel,
+    };
   }
 
   async getArtworkAsset(assetId: string): Promise<CatalogArtworkAsset | null> {
