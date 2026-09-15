@@ -7,6 +7,9 @@ const series: PublicSeries = {
   title: "AYIN Series",
   slug: "ayin-series",
   synopsis: "A first-class series catalog test.",
+  shortDescription: "Localized series description.",
+  locale: "en",
+  availableLocales: [],
   releaseYear: 2026,
   maturityRating: "TV-14",
   originalLanguage: "en",
@@ -19,6 +22,7 @@ const series: PublicSeries = {
       id: "season-1",
       seasonNumber: 1,
       title: "Season One",
+      shortDescription: "Localized season description.",
       sortOrder: 0,
       artwork: [],
       episodes: [
@@ -27,6 +31,7 @@ const series: PublicSeries = {
           episodeNumber: 1,
           title: "Pilot",
           synopsis: "Pilot episode",
+          shortDescription: "Localized episode description.",
           sortOrder: 0,
           releaseDate: null,
           publishedAt: "2026-09-15T00:00:00.000Z",
@@ -47,15 +52,31 @@ const series: PublicSeries = {
 
 describe("series catalog SEO", () => {
   it("uses a canonical series URL and TVSeries structured data", () => {
-    const metadata = buildSeriesMetadata(series);
-    const jsonLd = buildSeriesJsonLd(series);
+    const metadata = buildSeriesMetadata(series, "en");
+    const jsonLd = buildSeriesJsonLd(series, "en");
 
     expect(metadata.alternates?.canonical).toBe("https://ayin.stream/series/ayin-series");
+    expect(metadata.description).toBe("Localized series description.");
     expect(jsonLd["@type"]).toBe("TVSeries");
     expect(jsonLd.containsSeason[0]?.["@type"]).toBe("TVSeason");
+    expect(jsonLd.containsSeason[0]?.description).toBe("Localized season description.");
     expect(jsonLd.containsSeason[0]?.episode[0]?.["@type"]).toBe("TVEpisode");
+    expect(jsonLd.containsSeason[0]?.episode[0]?.description).toBe(
+      "Localized episode description.",
+    );
     expect(jsonLd.containsSeason[0]?.episode[0]?.potentialAction.target).toBe(
       "https://ayin.stream/watch/pilot-video",
     );
+  });
+
+  it("emits Arabic canonical and hreflang only when Arabic metadata exists", () => {
+    const localizedSeries = { ...series, locale: "ar", availableLocales: ["ar"] };
+    const metadata = buildSeriesMetadata(localizedSeries, "ar");
+    expect(metadata.alternates?.canonical).toBe("https://ayin.stream/ar/series/ayin-series");
+    expect(metadata.alternates?.languages).toMatchObject({
+      en: "https://ayin.stream/series/ayin-series",
+      ar: "https://ayin.stream/ar/series/ayin-series",
+      "x-default": "https://ayin.stream/series/ayin-series",
+    });
   });
 });
