@@ -23,18 +23,23 @@ function createService(
       regionTargets: config.regions.map((regionCode) => ({ regionCode })),
     })),
   );
-  const homeRowFindUnique = vi.fn().mockImplementation(({ where }: { where: { key: string } }) => {
-    const config = targetConfigs.find((item) => item.key === where.key);
-    return Promise.resolve(
-      config
-        ? { regionTargets: config.regions.map((regionCode) => ({ regionCode })) }
-        : null,
-    );
-  });
+  const homeRowFindUnique = vi.fn().mockImplementation(
+    ({ where }: { where: { key: string } }) => {
+      const config = targetConfigs.find((item) => item.key === where.key);
+      return Promise.resolve(
+        config
+          ? { regionTargets: config.regions.map((regionCode) => ({ regionCode })) }
+          : null,
+      );
+    },
+  );
   const database = {
     client: {
       regionalDiscoveryAggregate: { findMany: aggregateFindMany },
-      homeRowConfig: { findMany: homeRowFindMany, findUnique: homeRowFindUnique },
+      homeRowConfig: {
+        findMany: homeRowFindMany,
+        findUnique: homeRowFindUnique,
+      },
     },
   } as unknown as DatabaseService;
   return {
@@ -60,7 +65,11 @@ describe("RegionalDiscoveryService", () => {
 
     const ranked = await service.rankItems("de", "POPULAR_CONTENT", videos);
 
-    expect(ranked.map((item) => item.id)).toEqual(["video-c", "video-a", "video-b"]);
+    expect(ranked.map((item) => item.id)).toEqual([
+      "video-c",
+      "video-a",
+      "video-b",
+    ]);
     expect(aggregateFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -113,7 +122,11 @@ describe("RegionalDiscoveryService", () => {
     expect(blocked.reason).toBe("REGION_BLOCKED");
 
     const rightsFiltered = videos.filter((video) => video.id !== "video-a");
-    const ranked = await service.rankItems("DE", "POPULAR_CONTENT", rightsFiltered);
+    const ranked = await service.rankItems(
+      "DE",
+      "POPULAR_CONTENT",
+      rightsFiltered,
+    );
 
     expect(ranked.map((item) => item.id)).not.toContain("video-a");
   });
@@ -124,12 +137,23 @@ describe("RegionalDiscoveryService", () => {
       { key: "global-picks", regions: [] },
     ]);
     const rows = [
-      { key: "regional-picks", source: "EDITOR_PICKS", items: videos.slice(0, 1) },
-      { key: "global-picks", source: "EDITOR_PICKS", items: videos.slice(1, 2) },
+      {
+        key: "regional-picks",
+        source: "EDITOR_PICKS",
+        items: videos.slice(0, 1),
+      },
+      {
+        key: "global-picks",
+        source: "EDITOR_PICKS",
+        items: videos.slice(1, 2),
+      },
     ];
 
     const knownRegion = await service.rankAndTargetRows("DE", true, rows);
-    expect(knownRegion.map((row) => row.key)).toEqual(["regional-picks", "global-picks"]);
+    expect(knownRegion.map((row) => row.key)).toEqual([
+      "regional-picks",
+      "global-picks",
+    ]);
 
     const differentRegion = await service.rankAndTargetRows("JP", true, rows);
     expect(differentRegion.map((row) => row.key)).toEqual(["global-picks"]);
@@ -143,7 +167,10 @@ describe("RegionalDiscoveryService", () => {
       { entityKey: "category:science-fiction", score: 0.9 },
     ]);
 
-    const affinity = await service.categoryAffinity("jp", ["Science Fiction", "Drama"]);
+    const affinity = await service.categoryAffinity("jp", [
+      "Science Fiction",
+      "Drama",
+    ]);
 
     expect(affinity.get("science-fiction")).toBe(0.9);
     expect(aggregateFindMany).toHaveBeenCalledWith(
