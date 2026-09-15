@@ -38,7 +38,7 @@ test("administrator password login requires TOTP enrollment and subsequent MFA c
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Secure your admin account" })).toBeVisible();
-  await expect(page.getByAltText("AYIN authenticator setup QR code")).toBeVisible();
+  await expect(page.getByAltText("Secure your admin account")).toBeVisible();
 
   await page.getByText("Cannot scan the QR code?").click();
   const secret = (await page.locator("details code").textContent())?.trim();
@@ -46,7 +46,7 @@ test("administrator password login requires TOTP enrollment and subsequent MFA c
   await page.getByLabel("Authentication code").fill(generateTotpCode(secret!, totpCounter()));
   await page.getByRole("button", { name: "Enable MFA" }).click();
   await expect(page.getByRole("heading", { name: "Save your recovery codes" })).toBeVisible();
-  await expect(page.getByLabel("Recovery codes").locator("li")).toHaveCount(10);
+  await expect(page.getByLabel("Save your recovery codes").locator("li")).toHaveCount(10);
   await page.getByRole("button", { name: "I have saved these codes" }).click();
   await expect(page).toHaveURL("/");
 
