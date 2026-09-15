@@ -5,7 +5,8 @@ AYIN uses one shared App Router page implementation per route. English is the co
 ## Invariants
 
 - `en` is the fallback for unsupported locales and missing translation keys.
-- Locale resolution priority is explicit URL prefix, persisted `ayin_locale` cookie, `Accept-Language`, then English.
+- Canonical route selection priority is explicit URL prefix, persisted `ayin_locale` cookie, then English.
+- `Accept-Language` is parsed as a locale preference signal, with quality weights and regional tags supported. It does not silently change canonical URLs without an explicit or persisted user choice.
 - `?lang=<locale>` is the explicit locale-switch contract. The proxy persists the choice and redirects to the canonical locale-aware URL.
 - Translation keys are typed from the English resource. Other locale resources are intentionally partial and fall back per key.
 - User-generated titles, descriptions, channel names, comments and other user content are not passed through the UI translator.
