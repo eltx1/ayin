@@ -16,6 +16,11 @@ enum SeriesArtworkType {
   LOGO
 }
 
+enum SeriesAvailabilityRule {
+  ALLOW
+  BLOCK
+}
+
 /// Editorial identity for a series. Playable media remains in existing Video rows.
 model Series {
   id               String              @id @default(uuid()) @db.Uuid
@@ -26,16 +31,19 @@ model Series {
   maturityRating   String              @db.VarChar(32)
   originalLanguage String              @db.VarChar(16)
   status           SeriesCatalogStatus @default(DRAFT)
+  trailerVideoId   String?             @db.Uuid
   publishedAt      DateTime?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
-  genres  SeriesGenreAssignment[]
-  artwork SeriesArtwork[]
-  seasons SeriesSeason[]
+  genres       SeriesGenreAssignment[]
+  artwork      SeriesArtwork[]
+  availability SeriesAvailability[]
+  seasons      SeriesSeason[]
 
   @@index([status, publishedAt])
   @@index([releaseYear, status])
+  @@index([trailerVideoId])
 }
 
 model SeriesGenre {
@@ -78,6 +86,24 @@ model SeriesArtwork {
   @@index([mediaAssetId])
 }
 
+/// Optional time- and territory-scoped availability for the complete series catalog identity.
+/// No rows means the legacy/global behavior remains unchanged; explicit rows narrow availability.
+model SeriesAvailability {
+  id            String                 @id @default(uuid()) @db.Uuid
+  seriesId      String                 @db.Uuid
+  territoryCode String                 @db.VarChar(2)
+  rule          SeriesAvailabilityRule @default(ALLOW)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  note          String?                @db.VarChar(240)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@index([seriesId, territoryCode, rule, startsAt, endsAt])
+}
+
 model SeriesSeason {
   id           String   @id @default(uuid()) @db.Uuid
   seriesId     String   @db.Uuid
@@ -87,11 +113,12 @@ model SeriesSeason {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  series   Series                @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  series   Series                @relation(fields: [seriesId], references: [id], onDelete: Restrict)
   artwork  SeriesSeasonArtwork[]
   episodes SeriesEpisode[]
 
   @@unique([seriesId, seasonNumber])
+  @@unique([seriesId, sortOrder])
   @@index([seriesId, sortOrder, seasonNumber, id])
 }
 
@@ -126,9 +153,10 @@ model SeriesEpisode {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  season SeriesSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  season SeriesSeason @relation(fields: [seasonId], references: [id], onDelete: Restrict)
 
   @@unique([seasonId, episodeNumber])
+  @@unique([seasonId, sortOrder])
   @@index([seasonId, status, sortOrder, episodeNumber, id])
   @@index([videoId])
   @@index([status, publishedAt])
