@@ -38,7 +38,7 @@ jobs:
       WEB_ORIGIN: http://127.0.0.1:3000
       CORS_ORIGIN: http://127.0.0.1:3000
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
-      NEXT_PUBLIC_MEDIA_BASE_URL: http://media.invalid
+      NEXT_PUBLIC_MEDIA_BASE_URL: http://127.0.0.1:3001
       AYIN_E2E_STORAGE: "1"
     steps:
       - uses: actions/checkout@v7
@@ -53,19 +53,32 @@ jobs:
           corepack prepare pnpm@11.24.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Apply Task 58 backend service hardening
+      - name: Apply Task 58 backend and test hardening
         run: |
           python3 scripts/task58-movie-service-patch.py
           python3 scripts/task58-series-service-patch.py
           python3 - <<'PY'
           from pathlib import Path
-          path = Path("apps/api/test/catalog-admin.integration.test.ts")
-          text = path.read_text()
+
+          integration = Path("apps/api/test/catalog-admin.integration.test.ts")
+          text = integration.read_text()
           old = "    expect(auditCount).toBeGreaterThanOrEqual(8);"
           new = "    // Seven successful catalog mutations above are audited; rejected safety checks do not create mutation audit entries.\n    expect(auditCount).toBeGreaterThanOrEqual(7);"
-          if old not in text:
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif "expect(auditCount).toBeGreaterThanOrEqual(7);" not in text:
               raise SystemExit("Task 58 audit expectation anchor not found")
-          path.write_text(text.replace(old, new, 1))
+          integration.write_text(text)
+
+          browser = Path("tests/e2e/catalog-admin.acceptance.spec.ts")
+          text = browser.read_text()
+          old = 'page.getByRole("link", { name: "Watch" })'
+          new = 'page.getByRole("link", { name: "Watch", exact: true })'
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit("Task 58 browser locator anchor not found")
+          browser.write_text(text)
           PY
       - name: Format Task 58 sources
         run: >-
