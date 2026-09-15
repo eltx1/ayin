@@ -1,5 +1,7 @@
 import type { Prisma } from "@ayin/db";
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
+
+import { DatabaseService } from "../database/database.service.js";
 
 export interface AdminAuditInput {
   actorAccountId: string;
@@ -12,6 +14,12 @@ export interface AdminAuditInput {
 
 @Injectable()
 export class AdminAuditLogService {
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+
+  async record(input: AdminAuditInput) {
+    return this.recordInTransaction(this.database.client, input);
+  }
+
   async recordInTransaction(tx: Prisma.TransactionClient, input: AdminAuditInput) {
     return tx.adminAuditLog.create({
       data: {

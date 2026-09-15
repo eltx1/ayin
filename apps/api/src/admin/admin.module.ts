@@ -26,6 +26,7 @@ import { AdminVideoPolicyController } from "./admin-video-policy.controller.js";
 import { AdminVideoPolicyService } from "./admin-video-policy.service.js";
 import { AdminController } from "./admin.controller.js";
 import { AdminGuard } from "./admin.guard.js";
+import { CatalogAdminMediaService } from "./catalog-admin-media.service.js";
 import { ContentSeedingController } from "./content-seeding.controller.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
 
@@ -55,6 +56,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminCommandCenterService,
     AdminGovernanceService,
     AdminProductService,
+    CatalogAdminMediaService,
     ContentSeedingService,
   ],
   exports: [
@@ -65,6 +67,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminCommandCenterService,
     AdminGovernanceService,
     AdminProductService,
+    CatalogAdminMediaService,
     ContentSeedingService,
   ],
 })

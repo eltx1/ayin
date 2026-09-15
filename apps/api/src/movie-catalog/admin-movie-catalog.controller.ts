@@ -8,17 +8,24 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from "@nestjs/common";
 import { z } from "zod";
 
-import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
+import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+} from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { MovieCatalogService } from "./movie-catalog.service.js";
 
 const uuid = z.string().uuid();
 const artworkType = z.enum(["POSTER", "BACKDROP", "LOGO"]);
 const availabilityRule = z.enum(["ALLOW", "BLOCK"]);
+const statusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 const artworkSchema = z
   .object({
     type: artworkType,
@@ -77,22 +84,34 @@ const patchSchema = z
     localizations: movieFields.localizations,
   })
   .strict();
+const listSchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    q: z.string().trim().max(120).optional(),
+    status: statusSchema.optional(),
+  })
+  .strict();
 
 @Controller("admin/catalog/movies")
 @UseGuards(AuthGuard, AdminGuard)
 @RequireAdminRoles("OPERATIONS")
 export class AdminMovieCatalogController {
-  constructor(@Inject(MovieCatalogService) private readonly catalog: MovieCatalogService) {}
+  constructor(
+    @Inject(MovieCatalogService) private readonly catalog: MovieCatalogService,
+    @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
+  ) {}
 
   @Get()
-  async list(@Query("limit") limitRaw?: string) {
-    const parsed = z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(100)
-      .safeParse(limitRaw ?? 50);
-    return { items: await this.catalog.listAdmin(parsed.success ? parsed.data : 50) };
+  async list(@Query() query: unknown) {
+    const parsed = listSchema.safeParse(query);
+    if (!parsed.success) throw invalidBody(parsed.error.flatten());
+    return {
+      items: await this.catalog.listAdmin(
+        parsed.data.limit ?? 50,
+        parsed.data.q,
+        parsed.data.status,
+      ),
+    };
   }
 
   @Get(":movieId")
@@ -101,32 +120,69 @@ export class AdminMovieCatalogController {
   }
 
   @Post()
-  async create(@Body() body: unknown) {
+  async create(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw invalidBody(parsed.error.flatten());
-    return { movie: await this.catalog.create(parsed.data) };
+    const movie = await this.catalog.create(parsed.data);
+    await this.audit.record({
+      actorAccountId: request.ayinAuth.accountId,
+      action: "catalog.movie.create",
+      entityType: "Movie",
+      entityId: movie.id,
+      metadata: { title: movie.title, slug: movie.slug },
+    });
+    return { movie };
   }
 
   @Patch(":movieId")
-  async update(@Param("movieId") movieIdRaw: string, @Body() body: unknown) {
+  async update(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("movieId") movieIdRaw: string,
+    @Body() body: unknown,
+  ) {
     const parsed = patchSchema.safeParse(body);
     if (!parsed.success) throw invalidBody(parsed.error.flatten());
-    return { movie: await this.catalog.update(parseId(movieIdRaw), parsed.data) };
+    const movieId = parseId(movieIdRaw);
+    const movie = await this.catalog.update(movieId, parsed.data);
+    await this.audit.record({
+      actorAccountId: request.ayinAuth.accountId,
+      action: "catalog.movie.update",
+      entityType: "Movie",
+      entityId: movieId,
+      metadata: { fields: Object.keys(parsed.data).sort() },
+    });
+    return { movie };
   }
 
   @Post(":movieId/publish")
-  async publish(@Param("movieId") movieIdRaw: string) {
-    return { movie: await this.catalog.publish(parseId(movieIdRaw)) };
+  async publish(@Req() request: AdminAuthenticatedRequest, @Param("movieId") movieIdRaw: string) {
+    return this.lifecycle(request, parseId(movieIdRaw), "publish");
   }
 
   @Post(":movieId/unpublish")
-  async unpublish(@Param("movieId") movieIdRaw: string) {
-    return { movie: await this.catalog.unpublish(parseId(movieIdRaw)) };
+  async unpublish(@Req() request: AdminAuthenticatedRequest, @Param("movieId") movieIdRaw: string) {
+    return this.lifecycle(request, parseId(movieIdRaw), "unpublish");
   }
 
   @Post(":movieId/archive")
-  async archive(@Param("movieId") movieIdRaw: string) {
-    return { movie: await this.catalog.archive(parseId(movieIdRaw)) };
+  async archive(@Req() request: AdminAuthenticatedRequest, @Param("movieId") movieIdRaw: string) {
+    return this.lifecycle(request, parseId(movieIdRaw), "archive");
+  }
+
+  private async lifecycle(
+    request: AdminAuthenticatedRequest,
+    movieId: string,
+    action: "publish" | "unpublish" | "archive",
+  ) {
+    const movie = await this.catalog[action](movieId);
+    await this.audit.record({
+      actorAccountId: request.ayinAuth.accountId,
+      action: `catalog.movie.${action}`,
+      entityType: "Movie",
+      entityId: movieId,
+      metadata: { title: movie.title, status: movie.status },
+    });
+    return { movie };
   }
 }
 
