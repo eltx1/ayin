@@ -2,12 +2,18 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { I18nProvider } from "@/components/i18n/i18n-provider";
+
 import { ViewerShell } from "./viewer-shell";
 
 describe("AYIN viewer shell", () => {
   it("renders the safe global shell with core navigation before feature flags load", () => {
     const markup = renderToStaticMarkup(
-      createElement(ViewerShell, null, createElement("main", null, "Shell content")),
+      createElement(
+        I18nProvider,
+        { locale: "en" },
+        createElement(ViewerShell, null, createElement("main", null, "Shell content")),
+      ),
     );
 
     expect(markup).toContain("AYIN");
