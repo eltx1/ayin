@@ -57,8 +57,12 @@ export class RegionalDiscoveryService {
     });
     if (!aggregates.length) return items;
 
-    const scores = new Map(aggregates.map((aggregate) => [aggregate.entityKey, aggregate.score]));
-    const finiteScores = aggregates.map((aggregate) => aggregate.score).filter(Number.isFinite);
+    const scores = new Map(
+      aggregates.map((aggregate) => [aggregate.entityKey, aggregate.score]),
+    );
+    const finiteScores = aggregates
+      .map((aggregate) => aggregate.score)
+      .filter(Number.isFinite);
     if (!finiteScores.length) return items;
     const min = Math.min(...finiteScores);
     const max = Math.max(...finiteScores);
@@ -106,7 +110,9 @@ export class RegionalDiscoveryService {
     personalizationAllowed: boolean,
     rows: RegionalRow<T>[],
   ): Promise<RegionalRow<T>[]> {
-    const region = personalizationAllowed ? normalizeRegionCode(regionCode) : undefined;
+    const region = personalizationAllowed
+      ? normalizeRegionCode(regionCode)
+      : undefined;
     const visible = await this.filterMerchandisingRows(region, rows);
     if (!personalizationAllowed || !region) return visible;
 
@@ -123,13 +129,17 @@ export class RegionalDiscoveryService {
     regionCode: string | undefined,
     personalizationAllowed: boolean,
   ): Promise<boolean> {
-    const region = personalizationAllowed ? normalizeRegionCode(regionCode) : undefined;
+    const region = personalizationAllowed
+      ? normalizeRegionCode(regionCode)
+      : undefined;
     const row = await this.database.client.homeRowConfig.findUnique({
       where: { key: rowKey },
       select: { regionTargets: { select: { regionCode: true } } },
     });
     if (!row || row.regionTargets.length === 0) return true;
-    return Boolean(region && row.regionTargets.some((target) => target.regionCode === region));
+    return Boolean(
+      region && row.regionTargets.some((target) => target.regionCode === region),
+    );
   }
 
   async categoryAffinity(
@@ -137,7 +147,9 @@ export class RegionalDiscoveryService {
     categoryKeys: string[],
   ): Promise<Map<string, number>> {
     const region = normalizeRegionCode(regionCode);
-    const categories = [...new Set(categoryKeys.map(normalizeCategoryKey).filter(Boolean))];
+    const categories = [
+      ...new Set(categoryKeys.map(normalizeCategoryKey).filter(Boolean)),
+    ];
     if (!region || !categories.length) return new Map();
 
     const aggregates = await this.database.client.regionalDiscoveryAggregate.findMany({
@@ -153,7 +165,10 @@ export class RegionalDiscoveryService {
     return new Map(
       aggregates
         .filter((aggregate) => Number.isFinite(aggregate.score))
-        .map((aggregate) => [aggregate.entityKey.slice("category:".length), aggregate.score]),
+        .map((aggregate) => [
+          aggregate.entityKey.slice("category:".length),
+          aggregate.score,
+        ]),
     );
   }
 
@@ -185,7 +200,9 @@ export class RegionalDiscoveryService {
     items: T[],
   ): Promise<T[]> {
     const signal = signalForSource(source);
-    return signal ? this.rankItems(regionCode, signal, items) : Promise.resolve(items);
+    return signal
+      ? this.rankItems(regionCode, signal, items)
+      : Promise.resolve(items);
   }
 }
 
@@ -204,8 +221,12 @@ function entityKeyFor(
   signal: Exclude<RegionalDiscoverySignal, "CATEGORY_AFFINITY">,
   item: RegionalRankableItem,
 ): string | null {
-  if (signal === "POPULAR_CONTENT") return item.type === "VIDEO" ? `video:${item.id}` : null;
-  if (signal === "CREATOR_TV") return item.type === "CREATOR_TV" ? `creator-tv:${item.id}` : null;
+  if (signal === "POPULAR_CONTENT") {
+    return item.type === "VIDEO" ? `video:${item.id}` : null;
+  }
+  if (signal === "CREATOR_TV") {
+    return item.type === "CREATOR_TV" ? `creator-tv:${item.id}` : null;
+  }
   if (signal === "CATALOG") {
     if (item.type === "VIDEO") return `video:${item.id}`;
     if (item.type === "SERIES") return `series:${item.id}`;
