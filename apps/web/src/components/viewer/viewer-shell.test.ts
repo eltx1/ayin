@@ -9,9 +9,7 @@ import { ViewerShell } from "./viewer-shell";
 describe("AYIN viewer shell", () => {
   it("renders the safe global shell with core navigation before feature flags load", () => {
     const shell = createElement(ViewerShell, null, createElement("main", null, "Shell content"));
-    const markup = renderToStaticMarkup(
-      createElement(I18nProvider, { children: shell, locale: "en" }),
-    );
+    const markup = renderToStaticMarkup(createElement(I18nProvider, { locale: "en" }, shell));
 
     expect(markup).toContain("AYIN");
     expect(markup).toContain("Home");
