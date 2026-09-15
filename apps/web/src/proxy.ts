@@ -124,7 +124,7 @@ export function proxy(request: NextRequest) {
 
   const locale = resolveLocale({
     pathname,
-    cookieLocale: request.cookies.get(localeCookieName)?.value,
+    cookieLocale: request.cookies.get(localeCookieName)?.value ?? null,
     acceptLanguage: request.headers.get("accept-language"),
   });
 
