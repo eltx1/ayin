@@ -8,7 +8,12 @@ import {
   requestLocaleHeader,
   type Locale,
 } from "@/lib/i18n/config";
-import { localeFromPath, localizePath, resolveLocale, stripLocalePrefix } from "@/lib/i18n/routing";
+import {
+  localeFromPath,
+  localizePath,
+  resolveRouteLocale,
+  stripLocalePrefix,
+} from "@/lib/i18n/routing";
 
 const SAFE_TRACE_ID = /^[A-Za-z0-9._:-]{8,128}$/;
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
@@ -122,10 +127,12 @@ export function proxy(request: NextRequest) {
     return decorateResponse(persistLocale(response, pathLocale), requestId, correlationId);
   }
 
-  const locale = resolveLocale({
+  // Accept-Language is parsed by the i18n preference resolver, but it does not
+  // silently change canonical routes. URL prefixes and persisted user choice
+  // control routing; otherwise English remains the deterministic baseline.
+  const locale = resolveRouteLocale({
     pathname,
     cookieLocale: request.cookies.get(localeCookieName)?.value ?? null,
-    acceptLanguage: request.headers.get("accept-language"),
   });
 
   if (locale !== defaultLocale && isDocumentNavigation(request)) {
