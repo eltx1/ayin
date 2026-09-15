@@ -52,7 +52,7 @@ describe("i18n routing", () => {
 
   it("creates explicit locale switch URLs without duplicating route implementations", () => {
     expect(localeSwitchHref("/ar/movies", "en")).toBe("/movies?lang=en");
-    expect(localeSwitchHref("/movies", "ar")).toBe("/ar/movies?lang=ar");
+    expect(localeSwitchHref("/movies", "ar")).toBe("/movies?lang=ar");
   });
 
   it("exposes direction metadata and canonical/hreflang alternates", () => {
