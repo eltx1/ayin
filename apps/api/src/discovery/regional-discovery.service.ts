@@ -3,7 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 
 export const REGIONAL_DISCOVERY_MIN_COHORT = 50;
-const REGIONAL_DISCOVERY_WEIGHT = 0.6;
+const REGIONAL_DISCOVERY_WEIGHT = 0.8;
 
 export type RegionalDiscoverySignal =
   | "POPULAR_CONTENT"
@@ -14,6 +14,18 @@ export type RegionalDiscoverySignal =
 export interface RegionalRankableItem {
   id: string;
   type: string;
+}
+
+interface RegionalPage<T extends RegionalRankableItem> {
+  items: T[];
+  [key: string]: unknown;
+}
+
+interface RegionalRow<T extends RegionalRankableItem> {
+  key: string;
+  source: string;
+  items: T[];
+  [key: string]: unknown;
 }
 
 @Injectable()
@@ -74,6 +86,52 @@ export class RegionalDiscoveryService {
       .map((entry) => entry.item);
   }
 
+  async rankPage<T extends RegionalRankableItem>(
+    regionCode: string | undefined,
+    personalizationAllowed: boolean,
+    source: string,
+    page: RegionalPage<T>,
+  ): Promise<RegionalPage<T>> {
+    if (!personalizationAllowed) return page;
+    const signal = signalForSource(source);
+    if (!signal) return page;
+    return {
+      ...page,
+      items: await this.rankItems(regionCode, signal, page.items),
+    };
+  }
+
+  async rankAndTargetRows<T extends RegionalRankableItem>(
+    regionCode: string | undefined,
+    personalizationAllowed: boolean,
+    rows: RegionalRow<T>[],
+  ): Promise<RegionalRow<T>[]> {
+    const region = personalizationAllowed ? normalizeRegionCode(regionCode) : undefined;
+    const visible = await this.filterMerchandisingRows(region, rows);
+    if (!personalizationAllowed || !region) return visible;
+
+    return Promise.all(
+      visible.map(async (row) => ({
+        ...row,
+        items: await this.rankItemsForSource(region, row.source, row.items),
+      })),
+    );
+  }
+
+  async isMerchandisingRowAllowed(
+    rowKey: string,
+    regionCode: string | undefined,
+    personalizationAllowed: boolean,
+  ): Promise<boolean> {
+    const region = personalizationAllowed ? normalizeRegionCode(regionCode) : undefined;
+    const row = await this.database.client.homeRowConfig.findUnique({
+      where: { key: rowKey },
+      select: { regionTargets: { select: { regionCode: true } } },
+    });
+    if (!row || row.regionTargets.length === 0) return true;
+    return Boolean(region && row.regionTargets.some((target) => target.regionCode === region));
+  }
+
   async categoryAffinity(
     regionCode: string | undefined,
     categoryKeys: string[],
@@ -98,6 +156,48 @@ export class RegionalDiscoveryService {
         .map((aggregate) => [aggregate.entityKey.slice("category:".length), aggregate.score]),
     );
   }
+
+  private async filterMerchandisingRows<T extends RegionalRankableItem>(
+    regionCode: string | undefined,
+    rows: RegionalRow<T>[],
+  ): Promise<RegionalRow<T>[]> {
+    if (!rows.length) return rows;
+    const configs = await this.database.client.homeRowConfig.findMany({
+      where: { key: { in: rows.map((row) => row.key) } },
+      select: { key: true, regionTargets: { select: { regionCode: true } } },
+    });
+    const targets = new Map(
+      configs.map((config) => [
+        config.key,
+        new Set(config.regionTargets.map((target) => target.regionCode)),
+      ]),
+    );
+    return rows.filter((row) => {
+      const rowTargets = targets.get(row.key);
+      if (!rowTargets || rowTargets.size === 0) return true;
+      return Boolean(regionCode && rowTargets.has(regionCode));
+    });
+  }
+
+  private rankItemsForSource<T extends RegionalRankableItem>(
+    regionCode: string,
+    source: string,
+    items: T[],
+  ): Promise<T[]> {
+    const signal = signalForSource(source);
+    return signal ? this.rankItems(regionCode, signal, items) : Promise.resolve(items);
+  }
+}
+
+function signalForSource(
+  source: string,
+): Exclude<RegionalDiscoverySignal, "CATEGORY_AFFINITY"> | null {
+  if (["TRENDING_WORLDWIDE", "POPULAR_NOW", "POPULAR_REGION"].includes(source)) {
+    return "POPULAR_CONTENT";
+  }
+  if (["MOVIES", "SERIES"].includes(source)) return "CATALOG";
+  if (source === "CREATOR_TV") return "CREATOR_TV";
+  return null;
 }
 
 function entityKeyFor(
@@ -120,5 +220,9 @@ function normalizeRegionCode(regionCode?: string): string | undefined {
 }
 
 function normalizeCategoryKey(categoryKey: string): string {
-  return categoryKey.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return categoryKey
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
