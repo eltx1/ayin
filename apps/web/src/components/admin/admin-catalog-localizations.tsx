@@ -107,30 +107,8 @@ export function AdminCatalogLocalizations() {
     );
   }, [entityType, movies, series]);
 
-  const loadEntities = useCallback(async () => {
-    const [movieResponse, seriesResponse] = await Promise.all([
-      fetch(`${apiBaseUrl}/admin/catalog/movies?limit=100`, {
-        credentials: "include",
-        cache: "no-store",
-      }),
-      fetch(`${apiBaseUrl}/admin/catalog/series?limit=100`, {
-        credentials: "include",
-        cache: "no-store",
-      }),
-    ]);
-    if (!movieResponse.ok) throw new Error(await readApiError(movieResponse));
-    if (!seriesResponse.ok) throw new Error(await readApiError(seriesResponse));
-    const movieBody = (await movieResponse.json()) as { items: MovieRow[] };
-    const seriesBody = (await seriesResponse.json()) as { items: SeriesRow[] };
-    setMovies(movieBody.items);
-    setSeries(seriesBody.items);
-  }, []);
-
   const loadLocalizations = useCallback(async () => {
-    if (!entityId) {
-      setLocalizations([]);
-      return;
-    }
+    if (!entityId) return;
     const params = new URLSearchParams({ entityType, entityId });
     const response = await fetch(`${apiBaseUrl}/admin/catalog/localizations?${params.toString()}`, {
       credentials: "include",
@@ -142,24 +120,71 @@ export function AdminCatalogLocalizations() {
   }, [entityId, entityType]);
 
   useEffect(() => {
-    void loadEntities().catch((caught) =>
-      setError(caught instanceof Error ? caught.message : "Catalog entities could not be loaded."),
-    );
-  }, [loadEntities]);
+    let active = true;
+    async function load() {
+      try {
+        const [movieResponse, seriesResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/admin/catalog/movies?limit=100`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+          fetch(`${apiBaseUrl}/admin/catalog/series?limit=100`, {
+            credentials: "include",
+            cache: "no-store",
+          }),
+        ]);
+        if (!movieResponse.ok) throw new Error(await readApiError(movieResponse));
+        if (!seriesResponse.ok) throw new Error(await readApiError(seriesResponse));
+        const movieBody = (await movieResponse.json()) as { items: MovieRow[] };
+        const seriesBody = (await seriesResponse.json()) as { items: SeriesRow[] };
+        if (!active) return;
+        setMovies(movieBody.items);
+        setSeries(seriesBody.items);
+      } catch (caught) {
+        if (!active) return;
+        setError(caught instanceof Error ? caught.message : "Catalog entities could not be loaded.");
+      }
+    }
+    void load();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
+    if (!entityId) return;
+    let active = true;
+    async function load() {
+      try {
+        const params = new URLSearchParams({ entityType, entityId });
+        const response = await fetch(
+          `${apiBaseUrl}/admin/catalog/localizations?${params.toString()}`,
+          { credentials: "include", cache: "no-store" },
+        );
+        if (!response.ok) throw new Error(await readApiError(response));
+        const body = (await response.json()) as { items: LocalizationRow[] };
+        if (active) setLocalizations(body.items);
+      } catch (caught) {
+        if (!active) return;
+        setError(
+          caught instanceof Error ? caught.message : "Localized metadata could not be loaded.",
+        );
+      }
+    }
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [entityId, entityType]);
+
+  function changeEntityType(next: EntityType) {
+    setEntityType(next);
     setEntityId("");
     setDraft(emptyDraft());
     setLocalizations([]);
-  }, [entityType]);
-
-  useEffect(() => {
-    void loadLocalizations().catch((caught) =>
-      setError(
-        caught instanceof Error ? caught.message : "Localized metadata could not be loaded.",
-      ),
-    );
-  }, [loadLocalizations]);
+    setError(null);
+    setMessage(null);
+  }
 
   function selectLocalization(row: LocalizationRow) {
     setDraft({
@@ -268,7 +293,7 @@ export function AdminCatalogLocalizations() {
             Catalog entity type
             <select
               value={entityType}
-              onChange={(event) => setEntityType(event.target.value as EntityType)}
+              onChange={(event) => changeEntityType(event.target.value as EntityType)}
             >
               <option value="MOVIE">Movie</option>
               <option value="SERIES">Series</option>
@@ -282,7 +307,9 @@ export function AdminCatalogLocalizations() {
               value={entityId}
               onChange={(event) => {
                 setEntityId(event.target.value);
+                setLocalizations([]);
                 setDraft(emptyDraft());
+                setError(null);
                 setMessage(null);
               }}
             >
