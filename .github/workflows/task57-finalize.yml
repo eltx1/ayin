@@ -1,3 +1,4 @@
+# Task 57 temporary final validation; remove before merge.
 name: Task 57 temporary finalizer
 
 on:
@@ -26,8 +27,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: >-
           pnpm exec prettier --write
-          packages/db/prisma/video-policy.prisma
-          packages/db/prisma/migrations/20260915020000_kids_catalog/migration.sql
           packages/db/src/kids-catalog.test.ts
           apps/api/src/video-policy/video-policy.service.ts
           apps/api/src/video-policy/video-policy.service.test.ts
@@ -59,7 +58,7 @@ jobs:
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/db/prisma/video-policy.prisma packages/db/prisma/migrations/20260915020000_kids_catalog/migration.sql packages/db/src/kids-catalog.test.ts apps/api/src/video-policy/video-policy.service.ts apps/api/src/video-policy/video-policy.service.test.ts apps/api/src/admin/admin-video-policy.service.ts apps/api/src/admin/admin-video-policy.controller.ts apps/api/src/admin/admin-video-policy.kids.test.ts apps/api/src/kids/kids-policy.ts apps/api/src/kids/kids-policy.test.ts apps/api/src/kids/kids-leak-regression.test.ts apps/api/src/discovery/discovery.service.ts apps/api/src/discovery/discovery.controller.ts apps/api/src/search/search.service.ts apps/api/src/search/search.controller.ts apps/api/src/recommendations/recommendation.service.ts apps/api/src/recommendations/recommendation.module.ts apps/api/src/recommendations/recommendation.service.test.ts apps/api/src/recommendations/recommendation.kids.test.ts apps/api/src/watch/watch.service.ts apps/api/src/watch/watch.controller.ts apps/web/src/lib/discovery.ts apps/web/src/components/discovery/discovery-home.tsx apps/web/src/components/admin/admin-sidebar.tsx apps/web/src/components/admin/admin-kids-classification.tsx 'apps/web/src/app/(viewer)/kids/page.tsx' 'apps/web/src/app/(viewer)/kids/kids.module.css' apps/web/src/app/admin/kids/page.tsx
+          git add packages/db/src/kids-catalog.test.ts apps/api/src/video-policy/video-policy.service.ts apps/api/src/video-policy/video-policy.service.test.ts apps/api/src/admin/admin-video-policy.service.ts apps/api/src/admin/admin-video-policy.controller.ts apps/api/src/admin/admin-video-policy.kids.test.ts apps/api/src/kids/kids-policy.ts apps/api/src/kids/kids-policy.test.ts apps/api/src/kids/kids-leak-regression.test.ts apps/api/src/discovery/discovery.service.ts apps/api/src/discovery/discovery.controller.ts apps/api/src/search/search.service.ts apps/api/src/search/search.controller.ts apps/api/src/recommendations/recommendation.service.ts apps/api/src/recommendations/recommendation.module.ts apps/api/src/recommendations/recommendation.service.test.ts apps/api/src/recommendations/recommendation.kids.test.ts apps/api/src/watch/watch.service.ts apps/api/src/watch/watch.controller.ts apps/web/src/lib/discovery.ts apps/web/src/components/discovery/discovery-home.tsx apps/web/src/components/admin/admin-sidebar.tsx apps/web/src/components/admin/admin-kids-classification.tsx 'apps/web/src/app/(viewer)/kids/page.tsx' 'apps/web/src/app/(viewer)/kids/kids.module.css' apps/web/src/app/admin/kids/page.tsx
           git diff --cached --quiet && exit 0
           git commit -m "style(task57): format kids catalog implementation"
           git push origin HEAD:task-57-kids-catalog
