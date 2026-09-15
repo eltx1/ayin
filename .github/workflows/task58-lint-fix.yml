@@ -1,0 +1,48 @@
+name: Task 58 final lint correction
+
+on:
+  push:
+    branches:
+      - task-58-catalog-admin
+    paths:
+      - .github/workflows/task58-lint-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-58-catalog-admin
+      - name: Patch intentional server-to-draft synchronization
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('apps/web/src/components/admin/admin-series-catalog.tsx')
+          text = path.read_text()
+          replacements = {
+              '  useEffect(() => setDraft(fromSeason(season)), [season]);': '''  useEffect(() => {
+    const timer = window.setTimeout(() => setDraft(fromSeason(season)), 0);
+    return () => window.clearTimeout(timer);
+  }, [season]);''',
+              '  useEffect(() => setDraft(fromEpisode(episode)), [episode]);': '''  useEffect(() => {
+    const timer = window.setTimeout(() => setDraft(fromEpisode(episode)), 0);
+    return () => window.clearTimeout(timer);
+  }, [episode]);''',
+          }
+          for old, new in replacements.items():
+              if old not in text:
+                  raise SystemExit(f'missing expected lint anchor: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
+      - name: Persist correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/src/components/admin/admin-series-catalog.tsx
+          git commit -m "fix(task58): defer series draft synchronization"
+          git push origin HEAD:task-58-catalog-admin
