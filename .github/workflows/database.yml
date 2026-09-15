@@ -1,27 +1,72 @@
-name: Task 62 core patch probe
+name: Task quality gates
 
 on:
   push:
-    branches: [task-62-format-probe]
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "packages/db/**"
+      - "packages/capacity-testing/**"
+      - "packages/synthetic-monitoring/**"
+      - "deploy/**"
+      - "docs/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/database.yml"
+      - ".github/workflows/security.yml"
+      - ".github/codeql/**"
+      - ".github/workflows/deploy.yml"
+      - ".github/workflows/cloudflare-production.yml"
+      - ".github/workflows/r2-production.yml"
+      - ".github/workflows/capacity-baseline.yml"
+      - ".github/workflows/synthetic-monitoring.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "apps/web/**"
+      - "packages/db/**"
+      - "packages/capacity-testing/**"
+      - "packages/synthetic-monitoring/**"
+      - "deploy/**"
+      - "docs/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".github/workflows/database.yml"
+      - ".github/workflows/security.yml"
+      - ".github/codeql/**"
+      - ".github/workflows/deploy.yml"
+      - ".github/workflows/cloudflare-production.yml"
+      - ".github/workflows/r2-production.yml"
+      - ".github/workflows/capacity-baseline.yml"
+      - ".github/workflows/synthetic-monitoring.yml"
 
 permissions:
   contents: write
 
 jobs:
-  patch:
+  quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out repository
+        uses: actions/checkout@v7
         with:
           ref: task-62-format-probe
-      - uses: actions/setup-node@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
+
       - name: Enable pinned pnpm
         run: |
           corepack enable
           corepack prepare pnpm@11.24.0 --activate
-      - run: pnpm install --frozen-lockfile
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Apply scoped Task 62 fallback patch
         run: |
           python3 <<'PY'
@@ -30,15 +75,6 @@ jobs:
           service = Path('apps/api/src/discovery/discovery.service.ts')
           text = service.read_text()
           old = '''      case "POPULAR_REGION":
-                return emptyPage(
-                  context.regionPersonalizationAllowed && context.regionCode
-                    ? "A privacy-approved region signal is present, but AYIN does not yet store regional watch aggregates, so no regional ranking is invented."
-                    : "Regional discovery requires an approved location signal and personalization permission.",
-                  "UNAVAILABLE",
-                );
-'''
-          if old not in text:
-              old = '''      case "POPULAR_REGION":
         return emptyPage(
           context.regionPersonalizationAllowed && context.regionCode
             ? "A privacy-approved region signal is present, but AYIN does not yet store regional watch aggregates, so no regional ranking is invented."
@@ -56,23 +92,21 @@ jobs:
           test = Path('apps/api/test/discovery.integration.test.ts')
           text = test.read_text()
           anchor = 'const databaseDescribe = testDatabaseUrl ? describe : describe.skip;\n'
-          if 'const edgeToken =' not in text:
-              if anchor not in text:
-                  raise SystemExit('databaseDescribe anchor not found')
-              text = text.replace(
-                  anchor,
-                  anchor + 'const edgeToken = "task-62-edge-token-with-more-than-32-characters";\n',
-                  1,
-              )
+          if anchor not in text:
+              raise SystemExit('databaseDescribe anchor not found')
+          text = text.replace(
+              anchor,
+              anchor + 'const edgeToken = "task-62-edge-token-with-more-than-32-characters";\n',
+              1,
+          )
           env_anchor = '    process.env.WEB_ORIGIN = "http://localhost:3000";\n'
-          if 'process.env.AYIN_INTERNAL_EDGE_TOKEN = edgeToken;' not in text:
-              if env_anchor not in text:
-                  raise SystemExit('WEB_ORIGIN anchor not found')
-              text = text.replace(
-                  env_anchor,
-                  env_anchor + '    process.env.AYIN_INTERNAL_EDGE_TOKEN = edgeToken;\n',
-                  1,
-              )
+          if env_anchor not in text:
+              raise SystemExit('WEB_ORIGIN anchor not found')
+          text = text.replace(
+              env_anchor,
+              env_anchor + '    process.env.AYIN_INTERNAL_EDGE_TOKEN = edgeToken;\n',
+              1,
+          )
           old_test = '''  it("suppresses regional discovery unless both a signal and privacy permission are present", async () => {
     const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });
     expect(
@@ -143,9 +177,11 @@ jobs:
               raise SystemExit('regional integration test anchor not found')
           test.write_text(text.replace(old_test, new_test, 1))
           PY
+
           pnpm exec prettier --write \
             apps/api/src/discovery/discovery.service.ts \
             apps/api/test/discovery.integration.test.ts
+
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add apps/api/src/discovery/discovery.service.ts apps/api/test/discovery.integration.test.ts
