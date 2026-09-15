@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { apiBaseUrl, type AyinIdentity } from "@/lib/api";
 
 import styles from "./page.module.css";
 
 export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
+  const { href, t } = useI18n();
   const [identity, setIdentity] = useState<AyinIdentity | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -51,17 +53,17 @@ export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
           className={styles.secondaryAction}
           data-tv-focus-id="session-sign-in"
           data-tv-focusable="true"
-          href="/login"
+          href={href("/login")}
         >
-          Sign in
+          {t("session.signIn")}
         </Link>
         <Link
           className={styles.primaryAction}
           data-tv-focus-id="session-create-ayin"
           data-tv-focusable="true"
-          href="/register"
+          href={href("/register")}
         >
-          Create AYIN
+          {t("session.createAyin")}
         </Link>
       </div>
     );
@@ -71,10 +73,12 @@ export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
     <div className={styles.sessionCard}>
       {showWelcome ? (
         <p className={styles.readyMessage} role="status">
-          Your AYIN channel and TV are ready.
+          {t("session.ready")}
         </p>
       ) : null}
-      <p className={styles.signedIn}>Signed in as {identity.account.displayName}</p>
+      <p className={styles.signedIn}>
+        {t("session.signedInAs", { name: identity.account.displayName })}
+      </p>
       <div className={styles.identityLine}>
         <span>@{identity.channel.handle}</span>
         <span aria-hidden="true">•</span>
@@ -87,7 +91,7 @@ export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
         onClick={logout}
         type="button"
       >
-        Log out
+        {t("session.logOut")}
       </button>
     </div>
   );
