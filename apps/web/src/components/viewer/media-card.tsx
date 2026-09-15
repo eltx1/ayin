@@ -58,12 +58,12 @@ export function MediaCard({
         ) : (
           <span aria-hidden="true" className={styles.signal} />
         )}
-        {badge ? <span className={styles.badge}>{badge}</span> : null}
+        {badge ? <span className={styles.badge} dir="auto">{badge}</span> : null}
       </div>
       <div className={styles.copy}>
-        {kicker ? <span className={styles.kicker}>{kicker}</span> : null}
-        <strong>{title}</strong>
-        {meta ? <span className={styles.meta}>{meta}</span> : null}
+        {kicker ? <span className={styles.kicker} dir="auto">{kicker}</span> : null}
+        <strong dir="auto">{title}</strong>
+        {meta ? <span className={styles.meta} dir="auto">{meta}</span> : null}
       </div>
     </Link>
   );
