@@ -7,6 +7,7 @@ import {
   localizePath,
   parseAcceptLanguage,
   resolveLocale,
+  resolveRouteLocale,
   stripLocalePrefix,
 } from "./routing";
 import { localizedAlternates } from "./seo";
@@ -28,9 +29,15 @@ describe("i18n locale resolution", () => {
     expect(resolveLocale({ pathname: "/movies", acceptLanguage: "ar-EG,en;q=0.8" })).toBe("ar");
   });
 
-  it("honors Accept-Language quality and regional tags", () => {
+  it("honors Accept-Language quality and regional tags as a preference signal", () => {
     expect(parseAcceptLanguage("en-US;q=0.7, ar-EG;q=0.9")).toBe("ar");
     expect(parseAcceptLanguage("fr-FR, en-GB;q=0.8")).toBe("en");
+  });
+
+  it("keeps canonical route selection on URL, persisted choice, then English", () => {
+    expect(resolveRouteLocale({ pathname: "/ar/movies", cookieLocale: "en" })).toBe("ar");
+    expect(resolveRouteLocale({ pathname: "/movies", cookieLocale: "ar" })).toBe("ar");
+    expect(resolveRouteLocale({ pathname: "/movies" })).toBe("en");
   });
 });
 
