@@ -4,6 +4,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { mediaAssetUrl } from "@/lib/channel";
+import { localizePath } from "@/lib/i18n/routing";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { buildMovieJsonLd, buildMovieMetadata, getPublicMovie } from "@/lib/movie-catalog";
 import { serializeJsonLd } from "@/lib/seo";
 import styles from "./movie.module.css";
@@ -18,33 +20,33 @@ function normalizeSlug(value: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "")
+    .replace(/-{2,}/g, "-")
     .slice(0, 160)
     .replace(/-+$/g, "");
 }
 
 export async function generateMetadata({ params }: MoviePageProps): Promise<Metadata> {
-  const { slug: requested } = await params;
+  const [{ slug: requested }, locale] = await Promise.all([params, getRequestLocale()]);
   const slug = normalizeSlug(requested);
   if (!slug) return { title: "Movie not found | AYIN", robots: { index: false, follow: false } };
-  const movie = await getPublicMovie(slug);
+  const movie = await getPublicMovie(slug, locale);
   return movie
-    ? buildMovieMetadata(movie)
+    ? buildMovieMetadata(movie, locale)
     : { title: "Movie not found | AYIN", robots: { index: false, follow: false } };
 }
 
 export default async function MoviePage({ params }: MoviePageProps) {
-  const { slug: requested } = await params;
+  const [{ slug: requested }, locale] = await Promise.all([params, getRequestLocale()]);
   const canonicalSlug = normalizeSlug(requested);
   if (!canonicalSlug) notFound();
-  if (requested !== canonicalSlug) redirect(`/movies/${canonicalSlug}`);
+  if (requested !== canonicalSlug) redirect(localizePath(`/movies/${canonicalSlug}`, locale));
 
-  const movie = await getPublicMovie(canonicalSlug);
+  const movie = await getPublicMovie(canonicalSlug, locale);
   if (!movie) notFound();
 
   const poster = mediaAssetUrl(movie.poster?.objectKey);
   const backdrop = mediaAssetUrl(movie.backdrop?.objectKey);
-  const jsonLd = buildMovieJsonLd(movie);
+  const jsonLd = buildMovieJsonLd(movie, locale);
 
   return (
     <main className={styles.page}>
@@ -80,12 +82,18 @@ export default async function MoviePage({ params }: MoviePageProps) {
           <p className={styles.synopsis}>{movie.synopsis}</p>
           <div className={styles.actions}>
             {movie.primaryVideo ? (
-              <Link className={styles.primaryAction} href={`/watch/${movie.primaryVideo.slug}`}>
+              <Link
+                className={styles.primaryAction}
+                href={localizePath(`/watch/${movie.primaryVideo.slug}`, locale)}
+              >
                 Watch movie
               </Link>
             ) : null}
             {movie.trailerVideo ? (
-              <Link className={styles.secondaryAction} href={`/watch/${movie.trailerVideo.slug}`}>
+              <Link
+                className={styles.secondaryAction}
+                href={localizePath(`/watch/${movie.trailerVideo.slug}`, locale)}
+              >
                 Watch trailer
               </Link>
             ) : null}
