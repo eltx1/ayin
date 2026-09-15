@@ -6,13 +6,18 @@ import { DatabaseService } from "../database/database.service.js";
 import { adminBadRequest } from "./admin.errors.js";
 import { AdminGuard, RequireAdminRoles } from "./admin.guard.js";
 import { assignableAdminRoles, type AdminRole } from "./admin.roles.js";
+import { CatalogAdminMediaService } from "./catalog-admin-media.service.js";
 
 const directorySearchSchema = z.string().trim().min(2).max(200);
+const catalogSearchSchema = z.string().trim().max(200).optional();
 
 @Controller("admin/operations/directory")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminScopedDirectoryController {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(CatalogAdminMediaService) private readonly catalogMedia: CatalogAdminMediaService,
+  ) {}
 
   @Get("support-assignees")
   @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR", "FINANCE_MANAGER")
@@ -42,6 +47,46 @@ export class AdminScopedDirectoryController {
         ...account,
         roles: rolesByAccount.get(account.id) ?? [],
       })),
+    };
+  }
+
+  @Get("catalog-videos")
+  @RequireAdminRoles("OPERATIONS")
+  async catalogVideos(@Query("query") queryRaw?: string) {
+    const query = this.parseCatalogQuery(queryRaw, "INVALID_CATALOG_VIDEO_SEARCH");
+    return { items: await this.catalogMedia.searchPlayableVideos(query, 25) };
+  }
+
+  @Get("catalog-artwork")
+  @RequireAdminRoles("OPERATIONS")
+  async catalogArtwork(@Query("query") queryRaw?: string) {
+    const query = this.parseCatalogQuery(queryRaw, "INVALID_CATALOG_ARTWORK_SEARCH");
+    return { items: await this.catalogMedia.searchArtwork(query, 25) };
+  }
+
+  @Get("catalog-genres")
+  @RequireAdminRoles("OPERATIONS")
+  async catalogGenres(@Query("query") queryRaw?: string) {
+    const query = this.parseCatalogQuery(queryRaw, "INVALID_CATALOG_GENRE_SEARCH");
+    const [movieGenres, seriesGenres] = await Promise.all([
+      this.database.client.movieGenre.findMany({
+        where: query ? { name: { contains: query, mode: "insensitive" } } : undefined,
+        orderBy: { name: "asc" },
+        take: 30,
+        select: { name: true },
+      }),
+      this.database.client.seriesGenre.findMany({
+        where: query ? { name: { contains: query, mode: "insensitive" } } : undefined,
+        orderBy: { name: "asc" },
+        take: 30,
+        select: { name: true },
+      }),
+    ]);
+    return {
+      items: [...new Set([...movieGenres, ...seriesGenres].map((item) => item.name))]
+        .toSorted((a, b) => a.localeCompare(b))
+        .slice(0, 40)
+        .map((name) => ({ name })),
     };
   }
 
@@ -156,6 +201,12 @@ export class AdminScopedDirectoryController {
     if (!parsed.success) {
       throw adminBadRequest(code, "Enter at least two search characters.");
     }
+    return parsed.data;
+  }
+
+  private parseCatalogQuery(raw: string | undefined, code: string) {
+    const parsed = catalogSearchSchema.safeParse(raw?.trim() || undefined);
+    if (!parsed.success) throw adminBadRequest(code, "Catalog search is invalid.");
     return parsed.data;
   }
 }
