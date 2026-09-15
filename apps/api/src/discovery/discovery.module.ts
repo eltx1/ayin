@@ -6,11 +6,12 @@ import { SeriesCatalogModule } from "../series-catalog/series-catalog.module.js"
 import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import { DiscoveryController, PublicDiscoveryController } from "./discovery.controller.js";
 import { DiscoveryService, HomeRowConfigService } from "./discovery.service.js";
+import { RegionalDiscoveryService } from "./regional-discovery.service.js";
 
 @Module({
   imports: [AuthModule, DatabaseModule, SeriesCatalogModule, VideoPolicyModule],
   controllers: [PublicDiscoveryController, DiscoveryController],
-  providers: [HomeRowConfigService, DiscoveryService],
-  exports: [HomeRowConfigService, DiscoveryService],
+  providers: [HomeRowConfigService, RegionalDiscoveryService, DiscoveryService],
+  exports: [HomeRowConfigService, RegionalDiscoveryService, DiscoveryService],
 })
 export class DiscoveryModule {}
