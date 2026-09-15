@@ -5,6 +5,7 @@ import { AdsModule } from "./ads/ads.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { AppController } from "./app.controller.js";
 import { AuthModule } from "./auth/auth.module.js";
+import { CatalogLocalizationModule } from "./catalog-localization/catalog-localization.module.js";
 import { CommentsModule } from "./comments/comments.module.js";
 import { CommunityModule } from "./community/community.module.js";
 import { CreatorModule } from "./creator/creator.module.js";
@@ -33,6 +34,7 @@ import { WatchModule } from "./watch/watch.module.js";
     ObservabilityModule,
     AuthModule,
     AdminModule,
+    CatalogLocalizationModule,
     AdsModule,
     AnalyticsModule,
     RevenueModule,

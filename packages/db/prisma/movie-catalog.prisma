@@ -87,19 +87,25 @@ model MovieArtwork {
 }
 
 /// Locale-specific catalog copy is separated from the canonical editorial identity.
+/// Artwork overrides reference existing MediaAsset rows and never duplicate media bytes.
 model MovieLocalization {
-  id        String   @id @default(uuid()) @db.Uuid
-  movieId   String   @db.Uuid
-  locale    String   @db.VarChar(35)
-  title     String?  @db.VarChar(200)
-  synopsis  String?  @db.Text
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                   String   @id @default(uuid()) @db.Uuid
+  movieId              String   @db.Uuid
+  locale               String   @db.VarChar(35)
+  title                String?  @db.VarChar(200)
+  synopsis             String?  @db.Text
+  shortDescription     String?  @db.VarChar(500)
+  posterMediaAssetId   String?  @db.Uuid
+  backdropMediaAssetId String?  @db.Uuid
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
 
   @@unique([movieId, locale])
   @@index([locale, movieId])
+  @@index([posterMediaAssetId])
+  @@index([backdropMediaAssetId])
 }
 
 /// Time- and territory-scoped rights. territoryCode is ISO 3166-1 alpha-2 or "*" for global.

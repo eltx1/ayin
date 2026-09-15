@@ -10,7 +10,7 @@ import {
   resolveRouteLocale,
   stripLocalePrefix,
 } from "./routing";
-import { localizedAlternates } from "./seo";
+import { localizedAlternates, localizedEntityAlternates, localizedEntitySitemapLinks } from "./seo";
 import { translate } from "./translator";
 
 describe("i18n locale resolution", () => {
@@ -63,5 +63,19 @@ describe("i18n routing", () => {
     expect(alternates.languages.en).toMatch(/\/movies$/);
     expect(alternates.languages.ar).toMatch(/\/ar\/movies$/);
     expect(alternates.languages["x-default"]).toMatch(/\/movies$/);
+  });
+
+  it("does not advertise entity hreflang routes for locales without localized metadata", () => {
+    const fallback = localizedEntityAlternates("/movies/example", "ar", []);
+    expect(fallback.canonical).toMatch(/\/movies\/example$/);
+    expect(fallback.languages.ar).toBeUndefined();
+    expect(fallback.languages.en).toMatch(/\/movies\/example$/);
+
+    const localized = localizedEntityAlternates("/movies/example", "ar", ["ar"]);
+    expect(localized.canonical).toMatch(/\/ar\/movies\/example$/);
+    expect(localized.languages.ar).toMatch(/\/ar\/movies\/example$/);
+
+    const links = localizedEntitySitemapLinks("/movies/example", ["fr", "ar"]);
+    expect(links.map((link) => link.hreflang)).toEqual(["en", "ar", "x-default"]);
   });
 });

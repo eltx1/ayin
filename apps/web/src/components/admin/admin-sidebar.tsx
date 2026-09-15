@@ -24,6 +24,7 @@ const navigation: AdminNavigationItem[] = [
   { label: "Kids Classification", href: "/admin/kids", roles: ["OPERATIONS", "CONTENT_MODERATOR"] },
   { label: "Movies", href: "/admin/movies", roles: ["OPERATIONS"] },
   { label: "Series", href: "/admin/series", roles: ["OPERATIONS"] },
+  { label: "Localized Metadata", href: "/admin/catalog-localizations", roles: ["OPERATIONS"] },
   { label: "Creator TV", href: "/admin/tv", roles: ["OPERATIONS"] },
   { label: "Moderation", href: "/admin/moderation", roles: ["OPERATIONS", "CONTENT_MODERATOR"] },
   { label: "Trust & Safety", href: "/admin/trust", roles: ["OPERATIONS", "CONTENT_MODERATOR"] },

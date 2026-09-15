@@ -19,8 +19,18 @@ export class SeriesSitemapController {
       },
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       take: 50_000,
-      select: { slug: true, updatedAt: true },
+      select: {
+        slug: true,
+        updatedAt: true,
+        localizations: { select: { locale: true } },
+      },
     });
-    return { items };
+    return {
+      items: items.map((item) => ({
+        slug: item.slug,
+        updatedAt: item.updatedAt,
+        availableLocales: item.localizations.map((localization) => localization.locale),
+      })),
+    };
   }
 }

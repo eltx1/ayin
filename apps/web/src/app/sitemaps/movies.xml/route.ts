@@ -5,20 +5,20 @@ import { xmlEscape, xmlResponse } from "@/lib/sitemap";
 
 export const dynamic = "force-dynamic";
 
-interface SeriesSitemapItem {
+interface MovieSitemapItem {
   slug: string;
   updatedAt: string;
   availableLocales: string[];
 }
 
 export async function GET() {
-  const response = await fetch(`${apiBaseUrl}/public/series-sitemap`, {
+  const response = await fetch(`${apiBaseUrl}/public/movie-sitemap`, {
     next: { revalidate: 900 },
   });
-  if (!response.ok) throw new Error(`Series sitemap feed failed with ${response.status}.`);
-  const body = (await response.json()) as { items: SeriesSitemapItem[] };
+  if (!response.ok) throw new Error(`Movie sitemap feed failed with ${response.status}.`);
+  const body = (await response.json()) as { items: MovieSitemapItem[] };
   const entries = body.items.map((item) => {
-    const path = `/series/${encodeURIComponent(item.slug)}`;
+    const path = `/movies/${encodeURIComponent(item.slug)}`;
     const alternates = localizedEntitySitemapLinks(path, item.availableLocales);
     const alternateXml = alternates
       .map(
