@@ -142,7 +142,9 @@ export function AdminCatalogLocalizations() {
         setSeries(seriesBody.items);
       } catch (caught) {
         if (!active) return;
-        setError(caught instanceof Error ? caught.message : "Catalog entities could not be loaded.");
+        setError(
+          caught instanceof Error ? caught.message : "Catalog entities could not be loaded.",
+        );
       }
     }
     void load();
