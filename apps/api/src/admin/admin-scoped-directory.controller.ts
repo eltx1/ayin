@@ -70,13 +70,13 @@ export class AdminScopedDirectoryController {
     const query = this.parseCatalogQuery(queryRaw, "INVALID_CATALOG_GENRE_SEARCH");
     const [movieGenres, seriesGenres] = await Promise.all([
       this.database.client.movieGenre.findMany({
-        where: query ? { name: { contains: query, mode: "insensitive" } } : undefined,
+        ...(query ? { where: { name: { contains: query, mode: "insensitive" as const } } } : {}),
         orderBy: { name: "asc" },
         take: 30,
         select: { name: true },
       }),
       this.database.client.seriesGenre.findMany({
-        where: query ? { name: { contains: query, mode: "insensitive" } } : undefined,
+        ...(query ? { where: { name: { contains: query, mode: "insensitive" as const } } } : {}),
         orderBy: { name: "asc" },
         take: 30,
         select: { name: true },
