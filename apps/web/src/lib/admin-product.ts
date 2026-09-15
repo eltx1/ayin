@@ -10,6 +10,7 @@ export interface AdminHomeRow {
   position: number;
   maxItems: number;
   regionPersonalizationRequired: boolean;
+  targetRegions: string[];
   manualItems: Array<{ id: string; entityType: string; entityId: string; position: number }>;
 }
 
