@@ -85,8 +85,7 @@ export function AdminKidsClassification() {
     }
   }
 
-  const contradictory =
-    kidsEligible && (maturityLevel !== "GENERAL" || ageRestriction !== "NONE");
+  const contradictory = kidsEligible && (maturityLevel !== "GENERAL" || ageRestriction !== "NONE");
 
   return (
     <div>
@@ -202,8 +201,8 @@ export function AdminKidsClassification() {
         <p className={styles.muted}>
           Kids inventory is tagged for stricter advertising rules and personalized targeting is not
           permitted by this product contract. Community interactions are disabled on the Kids
-          surface. This tooling does not claim legal children&apos;s privacy compliance; dedicated legal
-          review remains required.
+          surface. This tooling does not claim legal children&apos;s privacy compliance; dedicated
+          legal review remains required.
         </p>
       </section>
     </div>

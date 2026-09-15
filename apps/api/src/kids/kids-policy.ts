@@ -1,8 +1,4 @@
-export const KIDS_ALLOWED_DISCOVERY_SOURCES = new Set([
-  "NEW_ON_AYIN",
-  "MOVIES",
-  "RECENTLY_ADDED",
-]);
+export const KIDS_ALLOWED_DISCOVERY_SOURCES = new Set(["NEW_ON_AYIN", "MOVIES", "RECENTLY_ADDED"]);
 
 export function isKidsDiscoverySourceAllowed(source: string): boolean {
   return KIDS_ALLOWED_DISCOVERY_SOURCES.has(source);

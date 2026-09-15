@@ -49,10 +49,12 @@ describe("Kids recommendation boundaries", () => {
       },
     };
     const videoPolicy = {
-      filterAvailableVideoIds: vi.fn(async (_ids: string[], context: { isKidsProfile?: boolean }) => {
-        expect(context.isKidsProfile).toBe(true);
-        return new Set([safeId]);
-      }),
+      filterAvailableVideoIds: vi.fn(
+        async (_ids: string[], context: { isKidsProfile?: boolean }) => {
+          expect(context.isKidsProfile).toBe(true);
+          return new Set([safeId]);
+        },
+      ),
     };
     const service = new RecommendationService(
       database as never,
