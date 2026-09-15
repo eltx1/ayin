@@ -1,6 +1,6 @@
 export const enMessages = {
   "meta.home.title": "Watch, Stream & Discover",
-  "meta.home.description": "Watch videos, discover creators, build your channel and explore AYIN.",
+  "meta.home.description": "Watch creator videos, streaming, playlists and connected-TV experiences on AYIN.",
   "nav.home": "Home",
   "nav.movies": "Movies",
   "nav.series": "Series",
@@ -49,6 +49,11 @@ export const enMessages = {
   "shell.language": "Language",
   "shell.english": "English",
   "shell.arabic": "العربية",
+  "session.signIn": "Sign in",
+  "session.createAyin": "Create AYIN",
+  "session.ready": "Your AYIN channel and TV are ready.",
+  "session.signedInAs": "Signed in as {name}",
+  "session.logOut": "Log out",
 } as const;
 
 export type TranslationKey = keyof typeof enMessages;
