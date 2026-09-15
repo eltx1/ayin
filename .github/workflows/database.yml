@@ -74,113 +74,70 @@ jobs:
 
           service = Path('apps/api/src/discovery/discovery.service.ts')
           text = service.read_text()
-          old = '''      case "POPULAR_REGION":
-        return emptyPage(
-          context.regionPersonalizationAllowed && context.regionCode
-            ? "A privacy-approved region signal is present, but AYIN does not yet store regional watch aggregates, so no regional ranking is invented."
-            : "Regional discovery requires an approved location signal and personalization permission.",
-          "UNAVAILABLE",
-        );
-'''
-          new = '''      case "POPULAR_REGION":
-        return this.loadRankedVideos(hoursAgo(24), offset, limit, "Popular in your region");
-'''
-          if old not in text:
-              raise SystemExit('POPULAR_REGION placeholder anchor not found')
-          service.write_text(text.replace(old, new, 1))
+          start = text.index('      case "POPULAR_REGION":')
+          end = text.index('      case "MOVIES":', start)
+          replacement = '      case "POPULAR_REGION":\n        return this.loadRankedVideos(hoursAgo(24), offset, limit, "Popular in your region");\n'
+          service.write_text(text[:start] + replacement + text[end:])
 
           test = Path('apps/api/test/discovery.integration.test.ts')
           text = test.read_text()
           anchor = 'const databaseDescribe = testDatabaseUrl ? describe : describe.skip;\n'
-          if anchor not in text:
-              raise SystemExit('databaseDescribe anchor not found')
-          text = text.replace(
-              anchor,
-              anchor + 'const edgeToken = "task-62-edge-token-with-more-than-32-characters";\n',
-              1,
-          )
+          text = text.replace(anchor, anchor + 'const edgeToken = "task-62-edge-token-with-more-than-32-characters";\n', 1)
           env_anchor = '    process.env.WEB_ORIGIN = "http://localhost:3000";\n'
-          if env_anchor not in text:
-              raise SystemExit('WEB_ORIGIN anchor not found')
-          text = text.replace(
-              env_anchor,
-              env_anchor + '    process.env.AYIN_INTERNAL_EDGE_TOKEN = edgeToken;\n',
-              1,
-          )
-          old_test = '''  it("suppresses regional discovery unless both a signal and privacy permission are present", async () => {
-    const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });
-    expect(
-      withoutSignal.json().rows.some((row: { key: string }) => row.key === "popular-region"),
-    ).toBe(false);
-
-    const withSignal = await app.inject({
-      method: "GET",
-      url: "/public/discovery/home",
-      headers: {
-        "x-ayin-region": "EU-WEST",
-        "x-ayin-region-personalization": "allow",
-      },
-    });
-    const regional = withSignal
-      .json()
-      .rows.find((row: { key: string }) => row.key === "popular-region") as
-      { availability: string; items: unknown[] } | undefined;
-    expect(regional).toMatchObject({ availability: "UNAVAILABLE", items: [] });
-  });
-'''
-          new_test = '''  it("uses only trusted coarse region signals and falls back to global popularity", async () => {
-    const viewer = await register("Regional Viewer", "task62-regional@example.com");
-    const video = await publishVideo(viewer.user.channel.id, "Global fallback video");
-    await app.inject({
-      method: "PUT",
-      url: `/watch/progress/${video.id}`,
-      headers: { cookie: viewer.cookie },
-      payload: { positionMs: 25_000, durationMs: 100_000 },
-    });
-
-    const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });
-    expect(
-      withoutSignal.json().rows.some((row: { key: string }) => row.key === "popular-region"),
-    ).toBe(false);
-
-    const untrusted = await app.inject({
-      method: "GET",
-      url: "/public/discovery/home",
-      headers: {
-        "x-ayin-region": "DE",
-        "x-ayin-region-personalization": "allow",
-      },
-    });
-    expect(
-      untrusted.json().rows.some((row: { key: string }) => row.key === "popular-region"),
-    ).toBe(false);
-
-    const trusted = await app.inject({
-      method: "GET",
-      url: "/public/discovery/home",
-      headers: {
-        "x-ayin-edge-token": edgeToken,
-        "x-ayin-edge-country": "DE",
-        "x-ayin-region-personalization": "allow",
-      },
-    });
-    const regional = trusted
-      .json()
-      .rows.find((row: { key: string }) => row.key === "popular-region") as
-      | { availability: string; items: Array<{ title: string }> }
-      | undefined;
-    expect(regional?.availability).toBe("AVAILABLE");
-    expect(regional?.items[0]?.title).toBe("Global fallback video");
-  });
-'''
-          if old_test not in text:
-              raise SystemExit('regional integration test anchor not found')
-          test.write_text(text.replace(old_test, new_test, 1))
+          text = text.replace(env_anchor, env_anchor + '    process.env.AYIN_INTERNAL_EDGE_TOKEN = edgeToken;\n', 1)
+          start = text.index('  it("suppresses regional discovery unless both a signal and privacy permission are present"')
+          end = text.index('\n  });', start) + len('\n  });')
+          lines = [
+              '  it("uses only trusted coarse region signals and falls back to global popularity", async () => {',
+              '    const viewer = await register("Regional Viewer", "task62-regional@example.com");',
+              '    const video = await publishVideo(viewer.user.channel.id, "Global fallback video");',
+              '    await app.inject({',
+              '      method: "PUT",',
+              '      url: `/watch/progress/${video.id}`,',
+              '      headers: { cookie: viewer.cookie },',
+              '      payload: { positionMs: 25_000, durationMs: 100_000 },',
+              '    });',
+              '',
+              '    const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });',
+              '    expect(',
+              '      withoutSignal.json().rows.some((row: { key: string }) => row.key === "popular-region"),',
+              '    ).toBe(false);',
+              '',
+              '    const untrusted = await app.inject({',
+              '      method: "GET",',
+              '      url: "/public/discovery/home",',
+              '      headers: {',
+              '        "x-ayin-region": "DE",',
+              '        "x-ayin-region-personalization": "allow",',
+              '      },',
+              '    });',
+              '    expect(',
+              '      untrusted.json().rows.some((row: { key: string }) => row.key === "popular-region"),',
+              '    ).toBe(false);',
+              '',
+              '    const trusted = await app.inject({',
+              '      method: "GET",',
+              '      url: "/public/discovery/home",',
+              '      headers: {',
+              '        "x-ayin-edge-token": edgeToken,',
+              '        "x-ayin-edge-country": "DE",',
+              '        "x-ayin-region-personalization": "allow",',
+              '      },',
+              '    });',
+              '    const regional = trusted',
+              '      .json()',
+              '      .rows.find((row: { key: string }) => row.key === "popular-region") as',
+              '      | { availability: string; items: Array<{ title: string }> }',
+              '      | undefined;',
+              '    expect(regional?.availability).toBe("AVAILABLE");',
+              '    expect(regional?.items[0]?.title).toBe("Global fallback video");',
+              '  });',
+          ]
+          new_test = '\n'.join(lines)
+          test.write_text(text[:start] + new_test + text[end:])
           PY
 
-          pnpm exec prettier --write \
-            apps/api/src/discovery/discovery.service.ts \
-            apps/api/test/discovery.integration.test.ts
+          pnpm exec prettier --write apps/api/src/discovery/discovery.service.ts apps/api/test/discovery.integration.test.ts
 
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
