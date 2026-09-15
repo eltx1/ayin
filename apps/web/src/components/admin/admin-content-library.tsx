@@ -242,7 +242,7 @@ export function AdminContentLibrary({ requestedChannelId = "" }: { requestedChan
             appropriate channel as platform-owned first.
           </p>
         ) : null}
-        <form className={styles.form} onSubmit={submit}>
+        <form className={`${styles.form} ${styles.formGrid}`} onSubmit={submit}>
           <label>
             <span>AYIN-owned channel</span>
             <select
