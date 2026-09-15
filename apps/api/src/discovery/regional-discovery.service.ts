@@ -13,12 +13,12 @@ export interface RegionalRankableItem {
   type: string;
 }
 
-interface RegionalPage<T extends RegionalRankableItem> {
+export interface RegionalPage<T extends RegionalRankableItem> {
   items: T[];
   [key: string]: unknown;
 }
 
-interface RegionalRow<T extends RegionalRankableItem> {
+export interface RegionalRow<T extends RegionalRankableItem> {
   key: string;
   source: string;
   items: T[];
