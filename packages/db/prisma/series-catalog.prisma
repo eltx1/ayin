@@ -36,10 +36,11 @@ model Series {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
-  genres       SeriesGenreAssignment[]
-  artwork      SeriesArtwork[]
-  availability SeriesAvailability[]
-  seasons      SeriesSeason[]
+  genres        SeriesGenreAssignment[]
+  artwork       SeriesArtwork[]
+  availability  SeriesAvailability[]
+  seasons       SeriesSeason[]
+  localizations SeriesLocalization[]
 
   @@index([status, publishedAt])
   @@index([releaseYear, status])
@@ -86,6 +87,27 @@ model SeriesArtwork {
   @@index([mediaAssetId])
 }
 
+/// Locale-specific copy for a Series identity. Artwork override IDs reference existing MediaAsset rows.
+model SeriesLocalization {
+  id                   String   @id @default(uuid()) @db.Uuid
+  seriesId             String   @db.Uuid
+  locale               String   @db.VarChar(35)
+  title                String?  @db.VarChar(200)
+  synopsis             String?  @db.Text
+  shortDescription     String?  @db.VarChar(500)
+  posterMediaAssetId   String?  @db.Uuid
+  backdropMediaAssetId String?  @db.Uuid
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([seriesId, locale])
+  @@index([locale, seriesId])
+  @@index([posterMediaAssetId])
+  @@index([backdropMediaAssetId])
+}
+
 /// Optional time- and territory-scoped availability for the complete series catalog identity.
 /// No rows means the legacy/global behavior remains unchanged; explicit rows narrow availability.
 model SeriesAvailability {
@@ -113,13 +135,29 @@ model SeriesSeason {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  series   Series                @relation(fields: [seriesId], references: [id], onDelete: Restrict)
-  artwork  SeriesSeasonArtwork[]
-  episodes SeriesEpisode[]
+  series        Series                     @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  artwork       SeriesSeasonArtwork[]
+  episodes      SeriesEpisode[]
+  localizations SeriesSeasonLocalization[]
 
   @@unique([seriesId, seasonNumber])
   @@unique([seriesId, sortOrder])
   @@index([seriesId, sortOrder, seasonNumber, id])
+}
+
+model SeriesSeasonLocalization {
+  id               String   @id @default(uuid()) @db.Uuid
+  seasonId         String   @db.Uuid
+  locale           String   @db.VarChar(35)
+  title            String?  @db.VarChar(200)
+  shortDescription String?  @db.VarChar(500)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  season SeriesSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, locale])
+  @@index([locale, seasonId])
 }
 
 /// Optional season-specific artwork referencing existing MediaAsset rows.
@@ -153,11 +191,28 @@ model SeriesEpisode {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
-  season SeriesSeason @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  season        SeriesSeason                @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  localizations SeriesEpisodeLocalization[]
 
   @@unique([seasonId, episodeNumber])
   @@unique([seasonId, sortOrder])
   @@index([seasonId, status, sortOrder, episodeNumber, id])
   @@index([videoId])
   @@index([status, publishedAt])
+}
+
+model SeriesEpisodeLocalization {
+  id               String   @id @default(uuid()) @db.Uuid
+  episodeId        String   @db.Uuid
+  locale           String   @db.VarChar(35)
+  title            String?  @db.VarChar(200)
+  synopsis         String?  @db.Text
+  shortDescription String?  @db.VarChar(500)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  episode SeriesEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@unique([episodeId, locale])
+  @@index([locale, episodeId])
 }
