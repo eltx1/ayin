@@ -29,19 +29,21 @@ export class PublicDiscoveryController {
     @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
   ) {}
+
   @Get("home")
   async home(
-    @Headers("x-ayin-region") regionCode: string | undefined,
     @Headers("x-ayin-region-personalization") regionalPermission: string | undefined,
     @Headers() headers: HeaderBag,
   ) {
+    const countryCode = this.trustedRegion.countryFromHeaders(headers);
     return runDiscovery(() =>
       this.discovery.getHome({
-        ...regionContext(regionCode, regionalPermission),
-        availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers),
+        ...regionContext(countryCode, regionalPermission),
+        availabilityCountryCode: countryCode,
       }),
     );
   }
+
   @Get("kids")
   async kids(@Headers() headers: HeaderBag) {
     return runDiscovery(() =>
@@ -68,17 +70,17 @@ export class PublicDiscoveryController {
   async row(
     @Param("key") key: string,
     @Query() query: unknown,
-    @Headers("x-ayin-region") regionCode: string | undefined,
     @Headers("x-ayin-region-personalization") regionalPermission: string | undefined,
     @Headers() headers: HeaderBag,
   ) {
     const parsed = parseListQuery(query);
+    const countryCode = this.trustedRegion.countryFromHeaders(headers);
     return runDiscovery(() =>
       this.discovery.getRow(
         key,
         {
-          ...regionContext(regionCode, regionalPermission),
-          availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers),
+          ...regionContext(countryCode, regionalPermission),
+          availabilityCountryCode: countryCode,
         },
         parsed.cursor,
         parsed.limit,
@@ -94,48 +96,51 @@ export class DiscoveryController {
     @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
   ) {}
+
   @Get("home")
   async home(
     @Req() request: AuthenticatedRequest,
     @Query() query: unknown,
-    @Headers("x-ayin-region") regionCode: string | undefined,
     @Headers("x-ayin-region-personalization") regionalPermission: string | undefined,
     @Headers() headers: HeaderBag,
   ) {
     const parsed = parseListQuery(query);
+    const countryCode = this.trustedRegion.countryFromHeaders(headers);
     return runDiscovery(() =>
       this.discovery.getHome({
         accountId: request.ayinAuth.accountId,
         profileId: parsed.profileId,
-        ...regionContext(regionCode, regionalPermission),
-        availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers),
+        ...regionContext(countryCode, regionalPermission),
+        availabilityCountryCode: countryCode,
       }),
     );
   }
+
   @Get("rows/:key")
   async row(
     @Req() request: AuthenticatedRequest,
     @Param("key") key: string,
     @Query() query: unknown,
-    @Headers("x-ayin-region") regionCode: string | undefined,
     @Headers("x-ayin-region-personalization") regionalPermission: string | undefined,
     @Headers() headers: HeaderBag,
   ) {
     const parsed = parseListQuery(query);
+    const countryCode = this.trustedRegion.countryFromHeaders(headers);
     return runDiscovery(() =>
       this.discovery.getRow(
         key,
         {
           accountId: request.ayinAuth.accountId,
           profileId: parsed.profileId,
-          ...regionContext(regionCode, regionalPermission),
-          availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers),
+          ...regionContext(countryCode, regionalPermission),
+          availabilityCountryCode: countryCode,
         },
         parsed.cursor,
         parsed.limit,
       ),
     );
   }
+
   @Get("my-ayin")
   async myAyin(
     @Req() request: AuthenticatedRequest,
@@ -151,6 +156,7 @@ export class DiscoveryController {
       ),
     );
   }
+
   @Get("my-ayin/:section")
   async myAyinSection(
     @Req() request: AuthenticatedRequest,
@@ -180,12 +186,14 @@ function parseListQuery(query: unknown) {
     );
   return parsed.data;
 }
+
 function regionContext(regionCode?: string, regionalPermission?: string): DiscoveryContext {
   return {
     ...(regionCode ? { regionCode } : {}),
-    regionPersonalizationAllowed: regionalPermission === "allow",
+    regionPersonalizationAllowed: regionalPermission?.toLowerCase() === "allow",
   };
 }
+
 async function runDiscovery<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
@@ -193,6 +201,7 @@ async function runDiscovery<T>(operation: () => Promise<T>): Promise<T> {
     throw discoveryHttpError(error);
   }
 }
+
 function discoveryHttpError(error: unknown): Error {
   if (error instanceof DiscoveryError)
     return new HttpException(
