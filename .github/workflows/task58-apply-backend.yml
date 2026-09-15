@@ -1,0 +1,48 @@
+name: Task 58 temporary backend apply
+
+on:
+  push:
+    branches:
+      - task-58-catalog-admin
+    paths:
+      - .github/workflows/task58-apply-backend.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-58-catalog-admin
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: |
+          python3 scripts/task58-movie-service-patch.py
+          python3 scripts/task58-series-service-patch.py
+      - run: >-
+          pnpm exec prettier --write
+          apps/api/src/admin/admin-audit-log.service.ts
+          apps/api/src/admin/admin-scoped-directory.controller.ts
+          apps/api/src/admin/catalog-admin-media.service.ts
+          apps/api/src/admin/admin.module.ts
+          apps/api/src/movie-catalog/admin-movie-catalog.controller.ts
+          apps/api/src/movie-catalog/movie-catalog.service.ts
+          apps/api/src/series-catalog/admin-series-catalog.controller.ts
+          apps/api/src/series-catalog/series-catalog.service.ts
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src packages/db/prisma/series-catalog.prisma packages/db/prisma/migrations/20260915165000_catalog_admin_hardening/migration.sql
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(task58): harden catalog administration backend"
+          git push origin HEAD:task-58-catalog-admin
