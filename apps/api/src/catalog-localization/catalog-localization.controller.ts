@@ -24,6 +24,7 @@ import { DatabaseService } from "../database/database.service.js";
 import {
   CatalogLocalizationService,
   type CatalogEntityType,
+  type CatalogLocalizationInput,
 } from "./catalog-localization.service.js";
 
 const entityTypeSchema = z.enum(["MOVIE", "SERIES", "SEASON", "EPISODE"]);
@@ -101,7 +102,7 @@ export class AdminCatalogLocalizationController {
       route.entityType,
       route.entityId,
       route.locale,
-      parsed.data,
+      toLocalizationInput(parsed.data),
     );
     await this.audit.record({
       actorAccountId: request.ayinAuth.accountId,
@@ -160,6 +161,18 @@ export class PublicMovieSitemapController {
       })),
     };
   }
+}
+
+function toLocalizationInput(data: z.infer<typeof writeSchema>): CatalogLocalizationInput {
+  const input: CatalogLocalizationInput = {};
+  if (data.title !== undefined) input.title = data.title;
+  if (data.synopsis !== undefined) input.synopsis = data.synopsis;
+  if (data.shortDescription !== undefined) input.shortDescription = data.shortDescription;
+  if (data.posterMediaAssetId !== undefined) input.posterMediaAssetId = data.posterMediaAssetId;
+  if (data.backdropMediaAssetId !== undefined) {
+    input.backdropMediaAssetId = data.backdropMediaAssetId;
+  }
+  return input;
 }
 
 function parseRoute(entityTypeRaw: string, entityIdRaw: string, localeRaw: string) {
