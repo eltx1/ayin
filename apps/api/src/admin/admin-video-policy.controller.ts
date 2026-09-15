@@ -13,6 +13,14 @@ import { AdminVideoPolicyService } from "./admin-video-policy.service.js";
 
 const videoIdSchema = z.string().uuid();
 const reasonSchema = z.string().trim().min(5).max(1000);
+const classificationSchema = z
+  .object({
+    maturityLevel: z.enum(["GENERAL", "TEEN", "MATURE"]),
+    ageRestriction: z.enum(["NONE", "AGE_13_PLUS", "AGE_18_PLUS"]),
+    kidsEligible: z.boolean(),
+    reason: reasonSchema,
+  })
+  .strict();
 const overrideSchema = z
   .object({
     disposition: z.enum(["FORCE_ALLOW", "FORCE_BLOCK"]),
@@ -33,6 +41,36 @@ export class AdminVideoPolicyController {
   @Get(":videoId")
   async get(@Param("videoId") videoIdRaw: string) {
     return this.policies.get(parseVideoId(videoIdRaw));
+  }
+
+  @Put(":videoId/classification")
+  @RequireAdminStepUp()
+  async setClassification(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("videoId") videoIdRaw: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = classificationSchema.safeParse(body);
+    if (!parsed.success) {
+      throw adminBadRequest(
+        "INVALID_VIDEO_CLASSIFICATION",
+        "Check maturity, age restriction, Kids eligibility and audit reason.",
+      );
+    }
+    if (
+      parsed.data.kidsEligible &&
+      (parsed.data.maturityLevel !== "GENERAL" || parsed.data.ageRestriction !== "NONE")
+    ) {
+      throw adminBadRequest(
+        "INVALID_KIDS_CLASSIFICATION",
+        "Kids-eligible content must be GENERAL with no age restriction.",
+      );
+    }
+    return this.policies.setClassification(
+      request.ayinAuth.accountId,
+      parseVideoId(videoIdRaw),
+      parsed.data,
+    );
   }
 
   @Put(":videoId/override")
