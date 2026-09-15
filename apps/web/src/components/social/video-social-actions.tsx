@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 
@@ -19,6 +21,7 @@ export function VideoSocialActions({
   videoId: string;
   className?: string | undefined;
 }) {
+  const { formatNumber, href, t } = useI18n();
   const [state, setState] = useState<VideoState>({
     reaction: null,
     likeCount: 0,
@@ -27,6 +30,7 @@ export function VideoSocialActions({
   });
   const [busy, setBusy] = useState(false);
   const router = useRouter();
+
   useEffect(() => {
     const controller = new AbortController();
     void fetch(`${apiBaseUrl}/social/videos/${videoId}`, {
@@ -51,7 +55,7 @@ export function VideoSocialActions({
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       if (response.status === 401) {
-        router.push("/login");
+        router.push(href("/login"));
         return null;
       }
       return response;
@@ -59,6 +63,7 @@ export function VideoSocialActions({
       setBusy(false);
     }
   }
+
   async function react(type: "LIKE" | "DISLIKE") {
     const removing = state.reaction === type;
     const response = await request(
@@ -71,14 +76,17 @@ export function VideoSocialActions({
       if (type === "LIKE" && !removing) trackAnalyticsEvent("LIKE", { videoId });
     }
   }
+
   async function save(list: "watch-later" | "my-list", current: boolean) {
     const response = await request(list, current ? "DELETE" : "PUT", current ? undefined : {});
-    if (response?.ok)
+    if (response?.ok) {
       setState((value) => ({
         ...value,
         [list === "watch-later" ? "watchLater" : "myList"]: !current,
       }));
+    }
   }
+
   async function share() {
     const url = window.location.href;
     try {
@@ -89,24 +97,25 @@ export function VideoSocialActions({
       // User cancellation or unavailable clipboard should not affect playback.
     }
   }
+
   return (
-    <div className={className} aria-label="Video actions">
+    <div className={className} aria-label={t("watch.actions")}>
       <button
         aria-pressed={state.reaction === "LIKE"}
         disabled={busy}
         onClick={() => void react("LIKE")}
         type="button"
       >
-        Like · {state.likeCount}
+        {t("watch.like")} · {formatNumber(state.likeCount)}
       </button>
       <button
-        aria-label="Not for me"
+        aria-label={t("watch.notForMe")}
         aria-pressed={state.reaction === "DISLIKE"}
         disabled={busy}
         onClick={() => void react("DISLIKE")}
         type="button"
       >
-        Not for me
+        {t("watch.notForMe")}
       </button>
       <button
         aria-pressed={state.watchLater}
@@ -114,7 +123,7 @@ export function VideoSocialActions({
         onClick={() => void save("watch-later", state.watchLater)}
         type="button"
       >
-        {state.watchLater ? "In Watch Later" : "Watch Later"}
+        {state.watchLater ? t("watch.inWatchLater") : t("watch.watchLater")}
       </button>
       <button
         aria-pressed={state.myList}
@@ -122,10 +131,10 @@ export function VideoSocialActions({
         onClick={() => void save("my-list", state.myList)}
         type="button"
       >
-        {state.myList ? "In My List" : "My List"}
+        {state.myList ? t("watch.inMyList") : t("watch.myList")}
       </button>
       <button disabled={busy} onClick={() => void share()} type="button">
-        Share
+        {t("watch.share")}
       </button>
     </div>
   );

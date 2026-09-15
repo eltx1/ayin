@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 
@@ -16,6 +18,7 @@ export function SubscribeButton({
 }) {
   const [state, setState] = useState({ subscribed: false, subscriberCount: initialCount });
   const router = useRouter();
+  const { formatNumber, href, locale } = useI18n();
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -36,7 +39,7 @@ export function SubscribeButton({
 
   async function toggle() {
     if (signedIn === false) {
-      router.push("/login");
+      router.push(href("/login"));
       return;
     }
     const wasSubscribed = state.subscribed;
@@ -49,7 +52,7 @@ export function SubscribeButton({
         ...(wasSubscribed ? {} : { body: "{}" }),
       });
       if (response.status === 401) {
-        router.push("/login");
+        router.push(href("/login"));
         return;
       }
       if (response.ok) {
@@ -61,6 +64,14 @@ export function SubscribeButton({
     }
   }
 
+  const label = state.subscribed
+    ? locale === "ar"
+      ? "مشترك"
+      : "Subscribed"
+    : locale === "ar"
+      ? "اشتراك"
+      : "Subscribe";
+
   return (
     <button
       className={className}
@@ -69,7 +80,7 @@ export function SubscribeButton({
       onClick={() => void toggle()}
       type="button"
     >
-      {state.subscribed ? "Subscribed" : "Subscribe"} · {state.subscriberCount}
+      {label} · {formatNumber(state.subscriberCount)}
     </button>
   );
 }

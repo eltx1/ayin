@@ -119,12 +119,15 @@ body {
   min-height: 100dvh;
   min-width: 0;
   overflow-x: hidden;
-  padding-left: var(--ayin-safe-left);
-  padding-right: var(--ayin-safe-right);
+  padding-inline: var(--ayin-safe-left) var(--ayin-safe-right);
   text-rendering: optimizeLegibility;
   width: 100%;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
+}
+
+html[dir="rtl"] body {
+  padding-inline: var(--ayin-safe-right) var(--ayin-safe-left);
 }
 
 main,
@@ -252,6 +255,10 @@ p {
     --radius-xl: 28px;
   }
 
+  html[dir="rtl"] {
+    --page-gutter: max(1rem, var(--ayin-safe-right));
+  }
+
   input[type="file"] {
     width: 100%;
   }
@@ -280,14 +287,17 @@ p {
   box-shadow: var(--shadow-elevated), var(--brand-glow);
   display: flex;
   gap: 0.75rem;
+  inset-inline: max(1rem, var(--ayin-safe-left)) max(1rem, var(--ayin-safe-right));
   justify-content: center;
-  left: max(1rem, var(--ayin-safe-left));
   margin-inline: auto;
   max-width: 44rem;
   padding: 0.8rem 1rem;
   position: fixed;
-  right: max(1rem, var(--ayin-safe-right));
   z-index: 1000;
+}
+
+html[dir="rtl"] .pwa-prompt {
+  inset-inline: max(1rem, var(--ayin-safe-right)) max(1rem, var(--ayin-safe-left));
 }
 
 .pwa-prompt button {

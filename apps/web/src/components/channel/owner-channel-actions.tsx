@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { apiBaseUrl, type AyinIdentity } from "@/lib/api";
 
 import styles from "./public-channel.module.css";
 
 export function OwnerChannelActions({ handle }: { handle: string }) {
+  const { href, t } = useI18n();
   const [owner, setOwner] = useState(false);
 
   useEffect(() => {
@@ -30,14 +32,14 @@ export function OwnerChannelActions({ handle }: { handle: string }) {
 
   return (
     <>
-      <Link className={styles.editAction} href="/channel/tv">
-        Manage TV
+      <Link className={styles.editAction} href={href("/channel/tv")}>
+        {t("channel.manageTv")}
       </Link>
-      <Link className={styles.editAction} href="/channel/playlists">
-        Manage playlists
+      <Link className={styles.editAction} href={href("/channel/playlists")}>
+        {t("channel.managePlaylists")}
       </Link>
-      <Link className={styles.editAction} href="/channel/edit">
-        Edit channel
+      <Link className={styles.editAction} href={href("/channel/edit")}>
+        {t("channel.edit")}
       </Link>
     </>
   );

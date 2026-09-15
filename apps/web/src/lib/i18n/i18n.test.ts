@@ -14,9 +14,9 @@ import { localizedAlternates } from "./seo";
 import { translate } from "./translator";
 
 describe("i18n locale resolution", () => {
-  it("falls back to complete English baseline for unsupported locale hints", () => {
+  it("falls back to English for unsupported locale hints and translates supported Arabic", () => {
     expect(resolveLocale({ acceptLanguage: "fr-FR, de;q=0.8" })).toBe(defaultLocale);
-    expect(translate("ar", "shell.productBy")).toBe("A Horus Media product");
+    expect(translate("ar", "shell.productBy")).toBe("منتج من Horus Media");
   });
 
   it("resolves path before persisted cookie before Accept-Language", () => {

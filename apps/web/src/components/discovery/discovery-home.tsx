@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { MediaCardSkeleton } from "@/components/viewer/media-card";
 import {
   fetchDiscoveryHome,
@@ -14,6 +15,7 @@ import { DiscoveryRow } from "./discovery-row";
 import styles from "./discovery.module.css";
 
 export function DiscoveryHome({ kidsMode = false }: { kidsMode?: boolean }) {
+  const { t } = useI18n();
   const [home, setHome] = useState<DiscoveryHomeResponse | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,18 +33,16 @@ export function DiscoveryHome({ kidsMode = false }: { kidsMode?: boolean }) {
         if (!controller.signal.aborted) setHome(response);
       } catch (loadError) {
         if (!controller.signal.aborted) {
-          setError(
-            loadError instanceof Error ? loadError.message : "Could not load AYIN discovery.",
-          );
+          setError(loadError instanceof Error ? loadError.message : t("home.loadError"));
         }
       }
     })();
     return () => controller.abort();
-  }, [kidsMode]);
+  }, [kidsMode, t]);
 
   if (error) {
     return (
-      <section className={styles.authState} role="alert">
+      <section className={styles.authState} dir="auto" role="alert">
         {error}
       </section>
     );
@@ -60,8 +60,9 @@ export function DiscoveryHome({ kidsMode = false }: { kidsMode?: boolean }) {
 }
 
 export function DiscoverySkeleton() {
+  const { t } = useI18n();
   return (
-    <div aria-label="Loading AYIN discovery" className={styles.skeletonRows} role="status">
+    <div aria-label={t("home.loadingAria")} className={styles.skeletonRows} role="status">
       {Array.from({ length: 3 }, (_, rowIndex) => (
         <div className={styles.skeletonRow} key={`discovery-skeleton-${rowIndex}`}>
           <span className={styles.skeletonTitle} />

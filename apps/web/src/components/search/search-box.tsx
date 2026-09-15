@@ -3,20 +3,20 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { apiBaseUrl } from "@/lib/api";
 import { normalizeSearchTerm, type SearchSuggestion } from "@/lib/search";
 
 import styles from "./search.module.css";
 
 export function SearchBox({ initialQuery = "" }: { initialQuery?: string }) {
+  const { href, locale, t } = useI18n();
   const [query, setQuery] = useState(initialQuery);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
 
   useEffect(() => {
     const normalized = normalizeSearchTerm(query);
-    if (normalized.length < 2) {
-      return;
-    }
+    if (normalized.length < 2) return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
@@ -40,33 +40,34 @@ export function SearchBox({ initialQuery = "" }: { initialQuery?: string }) {
 
   return (
     <div className={styles.searchBox}>
-      <form action="/search" role="search">
-        <label htmlFor="ayin-search">Search AYIN</label>
+      <form action={href("/search")} role="search">
+        <label htmlFor="ayin-search">{t("search.label")}</label>
         <div className={styles.searchControls}>
           <input
             autoComplete="off"
+            dir="auto"
             id="ayin-search"
             maxLength={100}
             minLength={2}
             name="q"
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Videos, creators, playlists, TV"
+            placeholder={t("search.placeholder")}
             required
             type="search"
             value={query}
           />
           <button data-tv-focusable="true" type="submit">
-            Search
+            {t("search.button")}
           </button>
         </div>
       </form>
       {visibleSuggestions.length > 0 ? (
-        <ul aria-label="Search suggestions" className={styles.suggestions}>
+        <ul aria-label={t("search.suggestions")} className={styles.suggestions}>
           {visibleSuggestions.map((suggestion) => (
             <li key={`${suggestion.type}-${suggestion.id}`}>
-              <Link data-tv-focusable="true" href={suggestion.href}>
-                <span>{suggestion.label}</span>
-                <small>{suggestion.type.replace("_", " ")}</small>
+              <Link data-tv-focusable="true" href={href(suggestion.href)}>
+                <span dir="auto">{suggestion.label}</span>
+                <small>{suggestionTypeLabel(suggestion.type, locale)}</small>
               </Link>
             </li>
           ))}
@@ -74,4 +75,16 @@ export function SearchBox({ initialQuery = "" }: { initialQuery?: string }) {
       ) : null}
     </div>
   );
+}
+
+function suggestionTypeLabel(type: string, locale: "en" | "ar") {
+  if (locale !== "ar") return type.replace("_", " ");
+  const labels: Record<string, string> = {
+    VIDEO: "فيديو",
+    CHANNEL: "قناة",
+    PLAYLIST: "قائمة تشغيل",
+    CREATOR_TV: "Creator TV",
+    SERIES: "مسلسل",
+  };
+  return labels[type] ?? type.replace("_", " ");
 }

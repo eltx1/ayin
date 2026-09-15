@@ -20,7 +20,7 @@ describe("Task 12 consumer discovery surfaces", () => {
   });
 
   it("keeps large rows lazy and exposes responsive loading states", () => {
-    expect(discoveryRow).toContain("Load more");
+    expect(discoveryRow).toContain('t("common.loadMore")');
     expect(discoveryRow).toContain("MediaCardSkeleton");
     expect(discoveryRow).toContain("nextCursor");
     expect(discoveryRow).toContain("data-tv-focus-id");

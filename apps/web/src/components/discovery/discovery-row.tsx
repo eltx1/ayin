@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { ContentRow } from "@/components/viewer/content-row";
 import {
   MediaCard,
@@ -26,6 +27,7 @@ interface DiscoveryRowProperties {
 }
 
 export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRowProperties) {
+  const { t } = useI18n();
   const [items, setItems] = useState(row.items);
   const [cursor, setCursor] = useState(row.nextCursor);
   const [loading, setLoading] = useState(false);
@@ -43,7 +45,7 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
       setItems((current) => mergeItems(current, page.items));
       setCursor(page.nextCursor);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Could not load more right now.");
+      setError(loadError instanceof Error ? loadError.message : t("home.loadMoreError"));
     } finally {
       setLoading(false);
     }
@@ -61,9 +63,11 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
         ) : (
           <div className={styles.emptyCard} role="status">
             <strong>
-              {row.availability === "UNAVAILABLE" ? "Not available yet" : "Nothing here yet"}
+              {row.availability === "UNAVAILABLE"
+                ? t("common.notAvailableYet")
+                : t("common.nothingHereYet")}
             </strong>
-            <span>{row.emptyMessage}</span>
+            <span dir="auto">{row.emptyMessage}</span>
           </div>
         )}
         {loading
@@ -82,16 +86,16 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
             onClick={() => void loadMore()}
             type="button"
           >
-            {loading ? "Loading…" : "Load more"}
+            {loading ? t("common.loading") : t("common.loadMore")}
           </button>
           {error ? (
-            <span aria-live="polite" className={styles.errorText} role="status">
+            <span aria-live="polite" className={styles.errorText} dir="auto" role="status">
               {error}
             </span>
           ) : null}
         </div>
       ) : error ? (
-        <p aria-live="polite" className={styles.errorText} role="status">
+        <p aria-live="polite" className={styles.errorText} dir="auto" role="status">
           {error}
         </p>
       ) : null}
@@ -100,15 +104,16 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
 }
 
 function DiscoveryCard({ item, variant }: { item: DiscoveryItem; variant: MediaCardVariant }) {
+  const { href, t } = useI18n();
   const progress = item.progress?.positionMs
-    ? `Resume at ${formatPosition(item.progress.positionMs)}`
+    ? t("home.resumeAt", { position: formatPosition(item.progress.positionMs) })
     : null;
   const meta = [item.meta, progress].filter(Boolean).join(" · ");
   const artworkUrl = item.artworkObjectKey ? mediaAssetUrl(item.artworkObjectKey) : null;
   return (
     <MediaCard
       {...(artworkUrl ? { artworkUrl } : {})}
-      href={item.href}
+      href={href(item.href)}
       kicker={item.kicker}
       {...(meta ? { meta } : {})}
       title={item.title}
