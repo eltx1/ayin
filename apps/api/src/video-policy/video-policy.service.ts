@@ -24,6 +24,7 @@ export interface VideoPolicyDecision {
   reason: VideoPolicyDecisionReason;
   maturityLevel: "GENERAL" | "TEEN" | "MATURE" | null;
   ageRestriction: "NONE" | "AGE_13_PLUS" | "AGE_18_PLUS";
+  kidsEligible: boolean;
   rightsExpiresAt: Date | null;
   countryCode: string | null;
   overrideDisposition: "FORCE_ALLOW" | "FORCE_BLOCK" | null;
@@ -32,6 +33,7 @@ export interface VideoPolicyDecision {
 type PolicyRecord = {
   videoId: string;
   maturityLevel: "GENERAL" | "TEEN" | "MATURE" | null;
+  kidsEligible: boolean;
   allowedTerritories: string[];
   blockedTerritories: string[];
   rightsExpiresAt: Date | null;
@@ -93,6 +95,7 @@ export class VideoPolicyService {
       policy: policy
         ? {
             maturityLevel: policy.maturityLevel,
+            kidsEligible: policy.kidsEligible,
             allowedTerritories: policy.allowedTerritories,
             blockedTerritories: policy.blockedTerritories,
             rightsExpiresAt: policy.rightsExpiresAt,
@@ -100,6 +103,7 @@ export class VideoPolicyService {
           }
         : {
             maturityLevel: null,
+            kidsEligible: false,
             allowedTerritories: [],
             blockedTerritories: [],
             rightsExpiresAt: null,
@@ -122,6 +126,7 @@ export function evaluatePolicy(
   const snapshot = {
     maturityLevel: policy?.maturityLevel ?? null,
     ageRestriction: policy?.ageRestriction ?? ("NONE" as const),
+    kidsEligible: policy?.kidsEligible === true,
     rightsExpiresAt: policy?.rightsExpiresAt ?? null,
     countryCode,
     overrideDisposition: activeOverride?.disposition ?? null,
@@ -130,6 +135,21 @@ export function evaluatePolicy(
   if (activeOverride?.disposition === "FORCE_BLOCK") {
     return { allowed: false, reason: "ADMIN_FORCE_BLOCK", ...snapshot };
   }
+
+  // Kids eligibility is a hard product boundary. It is intentionally fail-closed:
+  // unclassified content, mature/teen content, age-gated content, and content that
+  // has not been explicitly marked Kids-eligible are all denied. FORCE_ALLOW does
+  // not bypass this boundary.
+  if (
+    context.isKidsProfile === true &&
+    (!policy ||
+      policy.kidsEligible !== true ||
+      policy.maturityLevel !== "GENERAL" ||
+      policy.ageRestriction !== "NONE")
+  ) {
+    return { allowed: false, reason: "KIDS_PROFILE_RESTRICTED", ...snapshot };
+  }
+
   if (activeOverride?.disposition === "FORCE_ALLOW") {
     return { allowed: true, reason: "ADMIN_FORCE_ALLOW", ...snapshot };
   }
@@ -152,15 +172,6 @@ export function evaluatePolicy(
   }
   if (countryCode && policy?.blockedTerritories.includes(countryCode)) {
     return { allowed: false, reason: "REGION_BLOCKED", ...snapshot };
-  }
-  if (
-    context.isKidsProfile === true &&
-    ((policy?.maturityLevel !== null &&
-      policy?.maturityLevel !== undefined &&
-      policy.maturityLevel !== "GENERAL") ||
-      (policy?.ageRestriction ?? "NONE") !== "NONE")
-  ) {
-    return { allowed: false, reason: "KIDS_PROFILE_RESTRICTED", ...snapshot };
   }
   return { allowed: true, reason: "AVAILABLE", ...snapshot };
 }
