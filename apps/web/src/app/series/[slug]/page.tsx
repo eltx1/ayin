@@ -4,6 +4,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { mediaAssetUrl } from "@/lib/channel";
+import { localizePath } from "@/lib/i18n/routing";
+import { getRequestLocale } from "@/lib/i18n/server";
 import { buildSeriesJsonLd, buildSeriesMetadata, getPublicSeries } from "@/lib/series-catalog";
 import { serializeJsonLd } from "@/lib/seo";
 import styles from "./series.module.css";
@@ -21,27 +23,31 @@ function normalizeSlug(value: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "")
+    .replace(/-{2,}/g, "-")
     .slice(0, 160)
     .replace(/-+$/g, "");
 }
 
 export async function generateMetadata({ params }: SeriesPageProps): Promise<Metadata> {
-  const { slug: requested } = await params;
+  const [{ slug: requested }, locale] = await Promise.all([params, getRequestLocale()]);
   const slug = normalizeSlug(requested);
   if (!slug) return { title: "Series not found | AYIN", robots: { index: false, follow: false } };
-  const series = await getPublicSeries(slug);
+  const series = await getPublicSeries(slug, locale);
   return series
-    ? buildSeriesMetadata(series)
+    ? buildSeriesMetadata(series, locale)
     : { title: "Series not found | AYIN", robots: { index: false, follow: false } };
 }
 
 export default async function SeriesPage({ params, searchParams }: SeriesPageProps) {
-  const [{ slug: requested }, query] = await Promise.all([params, searchParams]);
+  const [{ slug: requested }, query, locale] = await Promise.all([
+    params,
+    searchParams,
+    getRequestLocale(),
+  ]);
   const canonicalSlug = normalizeSlug(requested);
   if (!canonicalSlug) notFound();
-  if (requested !== canonicalSlug) redirect(`/series/${canonicalSlug}`);
-  const series = await getPublicSeries(canonicalSlug);
+  if (requested !== canonicalSlug) redirect(localizePath(`/series/${canonicalSlug}`, locale));
+  const series = await getPublicSeries(canonicalSlug, locale);
   if (!series) notFound();
 
   const requestedSeason = Number(query.season);
@@ -52,7 +58,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
   const backdrop = series.artwork.find((item) => item.type === "BACKDROP");
   const posterUrl = mediaAssetUrl(poster?.objectKey);
   const backdropUrl = mediaAssetUrl(backdrop?.objectKey);
-  const jsonLd = buildSeriesJsonLd(series);
+  const jsonLd = buildSeriesJsonLd(series, locale);
 
   return (
     <main className={styles.page}>
@@ -87,7 +93,10 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
           <p className={styles.genres}>{series.genres.join(" · ")}</p>
           <p className={styles.synopsis}>{series.synopsis}</p>
           {series.firstEpisode ? (
-            <Link className={styles.primaryAction} href={series.firstEpisode.video.href}>
+            <Link
+              className={styles.primaryAction}
+              href={localizePath(series.firstEpisode.video.href, locale)}
+            >
               Start watching
             </Link>
           ) : null}
@@ -100,7 +109,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
             <Link
               aria-current={season.id === selectedSeason.id ? "page" : undefined}
               className={season.id === selectedSeason.id ? styles.seasonActive : styles.seasonLink}
-              href={`/series/${series.slug}?season=${season.seasonNumber}`}
+              href={`${localizePath(`/series/${series.slug}`, locale)}?season=${season.seasonNumber}`}
               key={season.id}
             >
               {season.title ?? `Season ${season.seasonNumber}`}
@@ -116,7 +125,10 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
                 <h3>{episode.title}</h3>
                 <p>{episode.synopsis}</p>
               </div>
-              <Link className={styles.watchLink} href={episode.video.href}>
+              <Link
+                className={styles.watchLink}
+                href={localizePath(episode.video.href, locale)}
+              >
                 Watch
               </Link>
             </article>
