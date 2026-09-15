@@ -3,12 +3,17 @@
 import { useEffect, useState } from "react";
 
 import { MediaCardSkeleton } from "@/components/viewer/media-card";
-import { fetchDiscoveryHome, getIdentity, type DiscoveryHomeResponse } from "@/lib/discovery";
+import {
+  fetchDiscoveryHome,
+  fetchKidsDiscoveryHome,
+  getIdentity,
+  type DiscoveryHomeResponse,
+} from "@/lib/discovery";
 
 import { DiscoveryRow } from "./discovery-row";
 import styles from "./discovery.module.css";
 
-export function DiscoveryHome() {
+export function DiscoveryHome({ kidsMode = false }: { kidsMode?: boolean }) {
   const [home, setHome] = useState<DiscoveryHomeResponse | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -17,10 +22,12 @@ export function DiscoveryHome() {
     const controller = new AbortController();
     void (async () => {
       try {
-        const identity = await getIdentity(controller.signal);
+        const identity = kidsMode ? null : await getIdentity(controller.signal);
         const signedIn = Boolean(identity);
         if (!controller.signal.aborted) setAuthenticated(signedIn);
-        const response = await fetchDiscoveryHome(signedIn, controller.signal);
+        const response = kidsMode
+          ? await fetchKidsDiscoveryHome(controller.signal)
+          : await fetchDiscoveryHome(signedIn, controller.signal);
         if (!controller.signal.aborted) setHome(response);
       } catch (loadError) {
         if (!controller.signal.aborted) {
@@ -31,7 +38,7 @@ export function DiscoveryHome() {
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [kidsMode]);
 
   if (error) {
     return (

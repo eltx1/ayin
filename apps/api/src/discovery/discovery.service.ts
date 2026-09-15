@@ -2,6 +2,11 @@ import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import {
+  KIDS_SURFACE_POLICY,
+  isKidsDiscoverySourceAllowed,
+  kidsSafeHref,
+} from "../kids/kids-policy.js";
 import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
@@ -134,8 +139,9 @@ export class DiscoveryService {
     const rows = await this.rows.listEnabled(Boolean(normalized.profileId));
     const visibleRows = rows.filter(
       (row) =>
-        !row.regionPersonalizationRequired ||
-        (normalized.regionPersonalizationAllowed === true && Boolean(normalized.regionCode)),
+        (!row.regionPersonalizationRequired ||
+          (normalized.regionPersonalizationAllowed === true && Boolean(normalized.regionCode))) &&
+        (!normalized.isKidsProfile || isKidsDiscoverySourceAllowed(row.source)),
     );
 
     return {
@@ -152,6 +158,23 @@ export class DiscoveryService {
         })),
       ),
     };
+  }
+
+  async getKidsHome(context: DiscoveryContext = {}) {
+    const home = await this.getHome({ ...context, isKidsProfile: true });
+    return {
+      policy: KIDS_SURFACE_POLICY,
+      rows: home.rows.map((row) => ({ ...row, nextCursor: null })),
+    };
+  }
+
+  async getKidsRow(
+    key: string,
+    context: DiscoveryContext = {},
+    cursor?: string,
+    requestedLimit?: number,
+  ) {
+    return this.getRow(key, { ...context, isKidsProfile: true }, cursor, requestedLimit);
   }
 
   async getRow(
@@ -309,6 +332,7 @@ export class DiscoveryService {
         regionCode: normalizeRegionCode(context.regionCode),
         regionPersonalizationAllowed: context.regionPersonalizationAllowed === true,
         availabilityCountryCode: context.availabilityCountryCode,
+        isKidsProfile: context.isKidsProfile === true,
       };
     }
     const profile = context.profileId
@@ -350,7 +374,13 @@ export class DiscoveryService {
     });
     return {
       ...page,
-      items: page.items.filter((item) => item.type !== "VIDEO" || allowed.has(item.id)),
+      items: page.items
+        .filter((item) => item.type !== "VIDEO" || allowed.has(item.id))
+        .map((item) =>
+          context.isKidsProfile && item.type === "VIDEO"
+            ? { ...item, href: kidsSafeHref(item.href) }
+            : item,
+        ),
     };
   }
 
@@ -360,6 +390,9 @@ export class DiscoveryService {
     offset: number,
     limit: number,
   ): Promise<DiscoveryPage> {
+    if (context.isKidsProfile && !isKidsDiscoverySourceAllowed(row.source)) {
+      return emptyPage("This discovery source is disabled in Kids contexts.", "UNAVAILABLE");
+    }
     switch (row.source) {
       case "CONTINUE_WATCHING":
         return context.profileId

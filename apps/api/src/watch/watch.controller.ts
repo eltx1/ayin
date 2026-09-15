@@ -44,9 +44,17 @@ export class PublicWatchController {
   ) {}
 
   @Get(":slug/playback")
-  async playback(@Param("slug") slug: string, @Headers() headers: HeaderBag) {
+  async playback(
+    @Param("slug") slug: string,
+    @Query("kids") kids: string | undefined,
+    @Headers() headers: HeaderBag,
+  ) {
     return runWatchOperation(() =>
-      this.watch.getPublicPlayback(slug, this.trustedRegion.countryFromHeaders(headers)),
+      this.watch.getPublicPlayback(
+        slug,
+        this.trustedRegion.countryFromHeaders(headers),
+        kids === "1",
+      ),
     );
   }
 }

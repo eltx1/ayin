@@ -41,6 +41,42 @@ export class SearchController {
       });
     });
   }
+  @Get("kids")
+  async kidsSearch(
+    @Req() request: { ip?: string },
+    @Query() query: unknown,
+    @Headers() headers: HeaderBag,
+  ) {
+    return runSearch(() => {
+      this.rateLimiter.consume(`kids-search:${request.ip ?? "unknown"}`);
+      const parsed = searchSchema.safeParse(query);
+      if (!parsed.success)
+        throw new SearchError("INVALID_SEARCH_QUERY", "The Kids search request is invalid.");
+      return this.searchService.search(parsed.data.q, parsed.data.cursor, parsed.data.limit, {
+        countryCode: this.trustedRegion.countryFromHeaders(headers),
+        isKidsProfile: true,
+      });
+    });
+  }
+
+  @Get("kids/suggestions")
+  async kidsSuggestions(
+    @Req() request: { ip?: string },
+    @Query() query: unknown,
+    @Headers() headers: HeaderBag,
+  ) {
+    return runSearch(() => {
+      this.rateLimiter.consume(`kids-suggest:${request.ip ?? "unknown"}`);
+      const parsed = suggestSchema.safeParse(query);
+      if (!parsed.success)
+        throw new SearchError("INVALID_SEARCH_QUERY", "The Kids suggestion request is invalid.");
+      return this.searchService.suggest(parsed.data.q, parsed.data.limit, {
+        countryCode: this.trustedRegion.countryFromHeaders(headers),
+        isKidsProfile: true,
+      });
+    });
+  }
+
   @Get("lens")
   async lens(
     @Req() request: { ip?: string },

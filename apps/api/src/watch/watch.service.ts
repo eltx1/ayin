@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
+import { kidsSafeHref } from "../kids/kids-policy.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
@@ -36,7 +37,7 @@ export class WatchService {
     @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
-  async getPublicPlayback(slug: string, countryCode?: string) {
+  async getPublicPlayback(slug: string, countryCode?: string, isKidsProfile = false) {
     const video = await this.database.client.video.findUnique({
       where: { slug },
       select: {
@@ -78,7 +79,7 @@ export class WatchService {
       throw new WatchError("VIDEO_NOT_FOUND", "This AYIN video could not be found.", 404);
     }
 
-    const availability = await this.videoPolicy.decide(video.id, { countryCode });
+    const availability = await this.videoPolicy.decide(video.id, { countryCode, isKidsProfile });
     if (!availability.allowed) {
       throw new WatchError("VIDEO_NOT_FOUND", "This AYIN video could not be found.", 404);
     }
@@ -181,9 +182,11 @@ export class WatchService {
 
     const allowedRelatedIds = await this.videoPolicy.filterAvailableVideoIds(
       related.map((item) => item.id),
-      { countryCode },
+      { countryCode, isKidsProfile },
     );
-    const seriesContext = await this.seriesCatalog.getPublicContextForVideo(video.id, countryCode);
+    const seriesContext = isKidsProfile
+      ? null
+      : await this.seriesCatalog.getPublicContextForVideo(video.id, countryCode);
 
     const adaptiveSource =
       playbackGeneration && playbackGeneration.renditions.length > 0
@@ -226,18 +229,22 @@ export class WatchService {
         seriesContext,
         nextEpisode: seriesContext?.nextEpisode ?? null,
         saveHook: { action: "WATCH_LATER" as const, available: true },
-        commentsSlot: { reserved: true, enabled: video.commentsEnabled },
+        commentsSlot: { reserved: true, enabled: isKidsProfile ? false : video.commentsEnabled },
         externalAdPlacementKeys: ["watch_below_player", "content_detail"],
+        adTargetingPolicy: isKidsProfile
+          ? { inventoryClass: "KIDS" as const, personalizedTargetingAllowed: false }
+          : { inventoryClass: "GENERAL" as const, personalizedTargetingAllowed: null },
         policy: {
           maturityLevel: availability.maturityLevel,
           ageRestriction: availability.ageRestriction,
+          kidsEligible: availability.kidsEligible,
         },
         related: related
           .filter((item) => allowedRelatedIds.has(item.id))
           .map((item) => ({
             id: item.id,
             title: item.title,
-            href: `/watch/${item.slug}`,
+            href: isKidsProfile ? kidsSafeHref(`/watch/${item.slug}`) : `/watch/${item.slug}`,
             durationMs: item.durationMs,
           })),
       },

@@ -19,6 +19,7 @@ describe("RecommendationService", () => {
   it("uses safe fallback ordering for a profile without personal signals", async () => {
     const database = {
       client: {
+        viewerProfile: { findUnique: vi.fn(async () => ({ isKids: false })) },
         recommendationProfileState: { findUnique: vi.fn(async () => null) },
         subscription: { findMany: vi.fn(async () => []) },
         watchHistory: { findMany: vi.fn(async () => []) },
@@ -42,7 +43,11 @@ describe("RecommendationService", () => {
         },
       },
     };
-    const service = new RecommendationService(database as never, settings() as never);
+    const service = new RecommendationService(
+      database as never,
+      settings() as never,
+      { filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)) } as never,
+    );
     const result = await service.getHomeRecommendations("31111111-1111-4111-8111-111111111111");
     expect(result.mode).toBe("SAFE_FALLBACK");
     expect(result.items[0]?.reason.code).toBe("SAFE_FALLBACK");
@@ -65,6 +70,7 @@ describe("RecommendationService", () => {
     const excluded = "11111111-1111-4111-8111-111111111111";
     const database = {
       client: {
+        viewerProfile: { findUnique: vi.fn(async () => ({ isKids: false })) },
         recommendationProfileState: { findUnique: vi.fn(async () => null) },
         subscription: {
           findMany: vi.fn(async () => [{ channelId: "21111111-1111-4111-8111-111111111111" }]),
@@ -90,7 +96,11 @@ describe("RecommendationService", () => {
         },
       },
     };
-    const service = new RecommendationService(database as never, settings() as never);
+    const service = new RecommendationService(
+      database as never,
+      settings() as never,
+      { filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)) } as never,
+    );
     const result = await service.getHomeRecommendations("31111111-1111-4111-8111-111111111111");
     expect(result.items).toEqual([]);
   });
