@@ -74,7 +74,9 @@ export function resolveCatalogCopy(
     title: title.value,
     synopsis: synopsis.value,
     shortDescription: shortDescription.value,
-    availableLocales: [...new Set(localizations.map((item) => normalizeCatalogLocale(item.locale)))].sort(),
+    availableLocales: [
+      ...new Set(localizations.map((item) => normalizeCatalogLocale(item.locale))),
+    ].sort(),
     source: {
       title: title.source,
       synopsis: synopsis.source,

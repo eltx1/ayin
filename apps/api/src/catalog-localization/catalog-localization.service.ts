@@ -85,7 +85,9 @@ export class CatalogLocalizationService {
       byMovie.set(row.movieId, current);
     }
     return Promise.all(
-      items.map((item) => this.localizeMovieFromRows(item, byMovie.get(item.id) ?? [], requestedLocale)),
+      items.map((item) =>
+        this.localizeMovieFromRows(item, byMovie.get(item.id) ?? [], requestedLocale),
+      ),
     );
   }
 
@@ -97,13 +99,18 @@ export class CatalogLocalizationService {
     return this.localizeMovieFromRows(item, rows, requestedLocale);
   }
 
-  async localizeSeriesList<T extends LocalizableSeries>(items: T[], requestedLocale?: string | null) {
+  async localizeSeriesList<T extends LocalizableSeries>(
+    items: T[],
+    requestedLocale?: string | null,
+  ) {
     return Promise.all(items.map((item) => this.localizeSeries(item, requestedLocale)));
   }
 
   async localizeSeries<T extends LocalizableSeries>(item: T, requestedLocale?: string | null) {
     const seasonIds = item.seasons.map((season) => season.id);
-    const episodeIds = item.seasons.flatMap((season) => season.episodes.map((episode) => episode.id));
+    const episodeIds = item.seasons.flatMap((season) =>
+      season.episodes.map((episode) => episode.id),
+    );
     const [seriesRows, seasonRows, episodeRows] = await Promise.all([
       this.database.client.seriesLocalization.findMany({
         where: { seriesId: item.id },
@@ -213,16 +220,20 @@ export class CatalogLocalizationService {
     };
   }
 
-  async localizeSeriesContext<T extends {
-    series: { id: string; title: string };
-    season: { id: string; title: string | null };
-    episode: LocalizableEpisode;
-    nextEpisode: (LocalizableEpisode & { seasonNumber?: number }) | null;
-  }>(context: T, requestedLocale?: string | null) {
+  async localizeSeriesContext<
+    T extends {
+      series: { id: string; title: string };
+      season: { id: string; title: string | null };
+      episode: LocalizableEpisode;
+      nextEpisode: (LocalizableEpisode & { seasonNumber?: number }) | null;
+    },
+  >(context: T, requestedLocale?: string | null) {
     const locale = normalizeCatalogLocale(requestedLocale);
     const [seriesRows, seasonRows, episodeRows] = await Promise.all([
       this.database.client.seriesLocalization.findMany({ where: { seriesId: context.series.id } }),
-      this.database.client.seriesSeasonLocalization.findMany({ where: { seasonId: context.season.id } }),
+      this.database.client.seriesSeasonLocalization.findMany({
+        where: { seasonId: context.season.id },
+      }),
       this.database.client.seriesEpisodeLocalization.findMany({
         where: {
           episodeId: {
@@ -339,7 +350,11 @@ export class CatalogLocalizationService {
         });
       case "SEASON":
         if (data.synopsis) {
-          throw localizationError(400, "SEASON_SYNOPSIS_UNSUPPORTED", "Season localization does not store a synopsis.");
+          throw localizationError(
+            400,
+            "SEASON_SYNOPSIS_UNSUPPORTED",
+            "Season localization does not store a synopsis.",
+          );
         }
         return this.database.client.seriesSeasonLocalization.upsert({
           where: { seasonId_locale: { seasonId: entityId, locale } },
@@ -365,16 +380,24 @@ export class CatalogLocalizationService {
     const locale = this.requireLocale(localeRaw);
     switch (entityType) {
       case "MOVIE":
-        await this.database.client.movieLocalization.deleteMany({ where: { movieId: entityId, locale } });
+        await this.database.client.movieLocalization.deleteMany({
+          where: { movieId: entityId, locale },
+        });
         break;
       case "SERIES":
-        await this.database.client.seriesLocalization.deleteMany({ where: { seriesId: entityId, locale } });
+        await this.database.client.seriesLocalization.deleteMany({
+          where: { seriesId: entityId, locale },
+        });
         break;
       case "SEASON":
-        await this.database.client.seriesSeasonLocalization.deleteMany({ where: { seasonId: entityId, locale } });
+        await this.database.client.seriesSeasonLocalization.deleteMany({
+          where: { seasonId: entityId, locale },
+        });
         break;
       case "EPISODE":
-        await this.database.client.seriesEpisodeLocalization.deleteMany({ where: { episodeId: entityId, locale } });
+        await this.database.client.seriesEpisodeLocalization.deleteMany({
+          where: { episodeId: entityId, locale },
+        });
         break;
     }
     return { removed: true, entityType, entityId, locale };
@@ -382,10 +405,12 @@ export class CatalogLocalizationService {
 
   private async localizeMovieFromRows<T extends LocalizableMovie>(
     item: T,
-    rows: Array<CatalogLocalizationCopy & {
-      posterMediaAssetId?: string | null;
-      backdropMediaAssetId?: string | null;
-    }>,
+    rows: Array<
+      CatalogLocalizationCopy & {
+        posterMediaAssetId?: string | null;
+        backdropMediaAssetId?: string | null;
+      }
+    >,
     requestedLocale?: string | null,
   ) {
     const resolved = resolveCatalogCopy(
@@ -500,13 +525,26 @@ export class CatalogLocalizationService {
   private async assertEntity(entityType: CatalogEntityType, entityId: string) {
     const exists =
       entityType === "MOVIE"
-        ? await this.database.client.movie.findUnique({ where: { id: entityId }, select: { id: true } })
+        ? await this.database.client.movie.findUnique({
+            where: { id: entityId },
+            select: { id: true },
+          })
         : entityType === "SERIES"
-          ? await this.database.client.series.findUnique({ where: { id: entityId }, select: { id: true } })
+          ? await this.database.client.series.findUnique({
+              where: { id: entityId },
+              select: { id: true },
+            })
           : entityType === "SEASON"
-            ? await this.database.client.seriesSeason.findUnique({ where: { id: entityId }, select: { id: true } })
-            : await this.database.client.seriesEpisode.findUnique({ where: { id: entityId }, select: { id: true } });
-    if (!exists) throw localizationError(404, "CATALOG_ENTITY_NOT_FOUND", "Catalog entity was not found.");
+            ? await this.database.client.seriesSeason.findUnique({
+                where: { id: entityId },
+                select: { id: true },
+              })
+            : await this.database.client.seriesEpisode.findUnique({
+                where: { id: entityId },
+                select: { id: true },
+              });
+    if (!exists)
+      throw localizationError(404, "CATALOG_ENTITY_NOT_FOUND", "Catalog entity was not found.");
   }
 }
 
@@ -515,7 +553,11 @@ function cleanNullable(value: string | null | undefined, maxLength: number) {
   const clean = value.trim();
   if (!clean) return null;
   if (clean.length > maxLength) {
-    throw localizationError(400, "LOCALIZED_FIELD_TOO_LONG", `Localized field exceeds ${maxLength} characters.`);
+    throw localizationError(
+      400,
+      "LOCALIZED_FIELD_TOO_LONG",
+      `Localized field exceeds ${maxLength} characters.`,
+    );
   }
   return clean;
 }

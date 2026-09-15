@@ -125,10 +125,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
                 <h3>{episode.title}</h3>
                 <p>{episode.synopsis}</p>
               </div>
-              <Link
-                className={styles.watchLink}
-                href={localizePath(episode.video.href, locale)}
-              >
+              <Link className={styles.watchLink} href={localizePath(episode.video.href, locale)}>
                 Watch
               </Link>
             </article>

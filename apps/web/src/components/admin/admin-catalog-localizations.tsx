@@ -132,10 +132,10 @@ export function AdminCatalogLocalizations() {
       return;
     }
     const params = new URLSearchParams({ entityType, entityId });
-    const response = await fetch(
-      `${apiBaseUrl}/admin/catalog/localizations?${params.toString()}`,
-      { credentials: "include", cache: "no-store" },
-    );
+    const response = await fetch(`${apiBaseUrl}/admin/catalog/localizations?${params.toString()}`, {
+      credentials: "include",
+      cache: "no-store",
+    });
     if (!response.ok) throw new Error(await readApiError(response));
     const body = (await response.json()) as { items: LocalizationRow[] };
     setLocalizations(body.items);
@@ -235,7 +235,9 @@ export function AdminCatalogLocalizations() {
       if (draft.locale.toLowerCase() === row.locale.toLowerCase()) setDraft(emptyDraft());
       await loadLocalizations();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Localized metadata could not be removed.");
+      setError(
+        caught instanceof Error ? caught.message : "Localized metadata could not be removed.",
+      );
     } finally {
       setBusy(null);
     }
@@ -264,7 +266,10 @@ export function AdminCatalogLocalizations() {
         <div className={styles.formGrid}>
           <label>
             Catalog entity type
-            <select value={entityType} onChange={(event) => setEntityType(event.target.value as EntityType)}>
+            <select
+              value={entityType}
+              onChange={(event) => setEntityType(event.target.value as EntityType)}
+            >
               <option value="MOVIE">Movie</option>
               <option value="SERIES">Series</option>
               <option value="SEASON">Season</option>
@@ -284,7 +289,8 @@ export function AdminCatalogLocalizations() {
               <option value="">Choose…</option>
               {entityOptions.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.label}{item.parentLabel ? ` — ${item.parentLabel}` : ""}
+                  {item.label}
+                  {item.parentLabel ? ` — ${item.parentLabel}` : ""}
                 </option>
               ))}
             </select>
@@ -297,13 +303,21 @@ export function AdminCatalogLocalizations() {
           <div className={styles.cardHeader}>
             <div>
               <span className={styles.eyebrow}>Existing locales</span>
-              <h2>{localizations.length ? `${localizations.length} localized version${localizations.length === 1 ? "" : "s"}` : "No localized metadata yet"}</h2>
+              <h2>
+                {localizations.length
+                  ? `${localizations.length} localized version${localizations.length === 1 ? "" : "s"}`
+                  : "No localized metadata yet"}
+              </h2>
             </div>
           </div>
           <div className={styles.searchResults}>
             {localizations.map((row) => (
               <div className={styles.searchResult} key={row.locale}>
-                <button className={styles.button} onClick={() => selectLocalization(row)} type="button">
+                <button
+                  className={styles.button}
+                  onClick={() => selectLocalization(row)}
+                  type="button"
+                >
                   {row.locale}
                 </button>
                 <span>{row.title || "Uses primary title"}</span>

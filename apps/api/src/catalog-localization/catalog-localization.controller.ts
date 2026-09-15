@@ -124,11 +124,7 @@ export class AdminCatalogLocalizationController {
     @Param("locale") localeRaw: string,
   ) {
     const route = parseRoute(entityTypeRaw, entityIdRaw, localeRaw);
-    const result = await this.localization.remove(
-      route.entityType,
-      route.entityId,
-      route.locale,
-    );
+    const result = await this.localization.remove(route.entityType, route.entityId, route.locale);
     await this.audit.record({
       actorAccountId: request.ayinAuth.accountId,
       action: "catalog.localization.remove",
