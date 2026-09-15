@@ -25,12 +25,21 @@ export class AdminProductService {
     const [rows, controls] = await Promise.all([
       this.database.client.homeRowConfig.findMany({
         orderBy: [{ position: "asc" }, { key: "asc" }],
-        include: { manualItems: { orderBy: { position: "asc" } } },
+        include: {
+          manualItems: { orderBy: { position: "asc" } },
+          regionTargets: { orderBy: { regionCode: "asc" } },
+        },
       }),
       this.getPublicControls(),
     ]);
 
-    return { rows, controls };
+    return {
+      rows: rows.map((row) => ({
+        ...row,
+        targetRegions: row.regionTargets.map((target) => target.regionCode),
+      })),
+      controls,
+    };
   }
 
   async getPublicControls(): Promise<ProductControls> {
@@ -62,21 +71,41 @@ export class AdminProductService {
     if (input.regionPersonalizationRequired !== undefined) {
       patch.regionPersonalizationRequired = input.regionPersonalizationRequired;
     }
+    if (input.targetRegions !== undefined) {
+      const targetRegions = [...new Set(input.targetRegions)];
+      patch.regionTargets = {
+        deleteMany: {},
+        ...(targetRegions.length
+          ? { create: targetRegions.map((regionCode) => ({ regionCode })) }
+          : {}),
+      };
+    }
 
     const existing = await this.database.client.homeRowConfig.findUnique({ where: { id: rowId } });
     if (!existing) throw adminBadRequest("HOME_ROW_NOT_FOUND", "Home row was not found.");
 
     return this.database.client.$transaction(async (tx) => {
-      const row = await tx.homeRowConfig.update({ where: { id: rowId }, data: patch });
+      const row = await tx.homeRowConfig.update({
+        where: { id: rowId },
+        data: patch,
+        include: { regionTargets: { orderBy: { regionCode: "asc" } } },
+      });
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
         action: "HOME_ROW_UPDATED",
         entityType: "HomeRowConfig",
         entityId: rowId,
         reason,
-        metadata: { key: existing.key, fields: Object.keys(patch) },
+        metadata: {
+          key: existing.key,
+          fields: Object.keys(patch),
+          targetRegions: row.regionTargets.map((target) => target.regionCode),
+        },
       });
-      return row;
+      return {
+        ...row,
+        targetRegions: row.regionTargets.map((target) => target.regionCode),
+      };
     });
   }
 

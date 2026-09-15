@@ -13,6 +13,7 @@ import {
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseDescribe = testDatabaseUrl ? describe : describe.skip;
+const edgeToken = "task-62-edge-token-with-more-than-32-characters";
 
 const storage: MediaStorageAdapter = {
   kind: "r2",
@@ -61,6 +62,7 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     process.env.UPLOAD_SESSION_SECRET = "task-12-upload-secret-with-more-than-32-characters";
     process.env.DATABASE_URL = testDatabaseUrl;
     process.env.WEB_ORIGIN = "http://localhost:3000";
+    process.env.AYIN_INTERNAL_EDGE_TOKEN = edgeToken;
 
     moduleReference = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(MEDIA_STORAGE_ADAPTER)
@@ -269,24 +271,47 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(forbidden.statusCode).toBe(403);
   });
 
-  it("suppresses regional discovery unless both a signal and privacy permission are present", async () => {
+  it("uses only trusted coarse region signals and falls back to global popularity", async () => {
+    const viewer = await register("Regional Viewer", "task62-regional@example.com");
+    const video = await publishVideo(viewer.user.channel.id, "Global fallback video");
+    await app.inject({
+      method: "PUT",
+      url: `/watch/progress/${video.id}`,
+      headers: { cookie: viewer.cookie },
+      payload: { positionMs: 25_000, durationMs: 100_000 },
+    });
+
     const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });
     expect(
       withoutSignal.json().rows.some((row: { key: string }) => row.key === "popular-region"),
     ).toBe(false);
 
-    const withSignal = await app.inject({
+    const untrusted = await app.inject({
       method: "GET",
       url: "/public/discovery/home",
       headers: {
-        "x-ayin-region": "EU-WEST",
+        "x-ayin-region": "DE",
         "x-ayin-region-personalization": "allow",
       },
     });
-    const regional = withSignal
+    expect(untrusted.json().rows.some((row: { key: string }) => row.key === "popular-region")).toBe(
+      false,
+    );
+
+    const trusted = await app.inject({
+      method: "GET",
+      url: "/public/discovery/home",
+      headers: {
+        "x-ayin-edge-token": edgeToken,
+        "x-ayin-edge-country": "DE",
+        "x-ayin-region-personalization": "allow",
+      },
+    });
+    const regional = trusted
       .json()
       .rows.find((row: { key: string }) => row.key === "popular-region") as
-      { availability: string; items: unknown[] } | undefined;
-    expect(regional).toMatchObject({ availability: "UNAVAILABLE", items: [] });
+      { availability: string; items: Array<{ title: string }> } | undefined;
+    expect(regional?.availability).toBe("AVAILABLE");
+    expect(regional?.items[0]?.title).toBe("Global fallback video");
   });
 });
