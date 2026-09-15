@@ -21,21 +21,15 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('apps/web/src/components/admin/admin-series-catalog.tsx')
+          path = Path("apps/web/src/components/admin/admin-series-catalog.tsx")
           text = path.read_text()
-          replacements = {
-              '  useEffect(() => setDraft(fromSeason(season)), [season]);': '''  useEffect(() => {
-    const timer = window.setTimeout(() => setDraft(fromSeason(season)), 0);
-    return () => window.clearTimeout(timer);
-  }, [season]);''',
-              '  useEffect(() => setDraft(fromEpisode(episode)), [episode]);': '''  useEffect(() => {
-    const timer = window.setTimeout(() => setDraft(fromEpisode(episode)), 0);
-    return () => window.clearTimeout(timer);
-  }, [episode]);''',
-          }
-          for old, new in replacements.items():
+          old_season = "  useEffect(() => setDraft(fromSeason(season)), [season]);"
+          new_season = "  useEffect(() => {\n    const timer = window.setTimeout(() => setDraft(fromSeason(season)), 0);\n    return () => window.clearTimeout(timer);\n  }, [season]);"
+          old_episode = "  useEffect(() => setDraft(fromEpisode(episode)), [episode]);"
+          new_episode = "  useEffect(() => {\n    const timer = window.setTimeout(() => setDraft(fromEpisode(episode)), 0);\n    return () => window.clearTimeout(timer);\n  }, [episode]);"
+          for old, new in ((old_season, new_season), (old_episode, new_episode)):
               if old not in text:
-                  raise SystemExit(f'missing expected lint anchor: {old}')
+                  raise SystemExit(f"missing expected lint anchor: {old}")
               text = text.replace(old, new, 1)
           path.write_text(text)
           PY
