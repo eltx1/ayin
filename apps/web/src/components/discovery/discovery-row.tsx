@@ -62,7 +62,11 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
           ))
         ) : (
           <div className={styles.emptyCard} role="status">
-            <strong>{row.availability === "UNAVAILABLE" ? t("common.notAvailableYet") : t("common.nothingHereYet")}</strong>
+            <strong>
+              {row.availability === "UNAVAILABLE"
+                ? t("common.notAvailableYet")
+                : t("common.nothingHereYet")}
+            </strong>
             <span dir="auto">{row.emptyMessage}</span>
           </div>
         )}
@@ -84,10 +88,16 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
           >
             {loading ? t("common.loading") : t("common.loadMore")}
           </button>
-          {error ? <span aria-live="polite" className={styles.errorText} dir="auto" role="status">{error}</span> : null}
+          {error ? (
+            <span aria-live="polite" className={styles.errorText} dir="auto" role="status">
+              {error}
+            </span>
+          ) : null}
         </div>
       ) : error ? (
-        <p aria-live="polite" className={styles.errorText} dir="auto" role="status">{error}</p>
+        <p aria-live="polite" className={styles.errorText} dir="auto" role="status">
+          {error}
+        </p>
       ) : null}
     </div>
   );

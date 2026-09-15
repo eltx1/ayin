@@ -42,7 +42,8 @@ export function AccountSecuritySessions() {
         if (active) setSessions(next);
       })
       .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : t("account.sessionsLoadError"));
+        if (active)
+          setError(caught instanceof Error ? caught.message : t("account.sessionsLoadError"));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -61,10 +62,13 @@ export function AccountSecuritySessions() {
     setError("");
     setMessage("");
     try {
-      const response = await fetch(`${apiBaseUrl}/auth/sessions/${encodeURIComponent(session.id)}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+      const response = await fetch(
+        `${apiBaseUrl}/auth/sessions/${encodeURIComponent(session.id)}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
       if (!response.ok) throw new Error(await readApiError(response));
       if (session.current) {
         router.push(href("/login"));
@@ -92,7 +96,11 @@ export function AccountSecuritySessions() {
       if (!response.ok) throw new Error(await readApiError(response));
       const result = (await response.json()) as { revoked: number };
       await refreshSessions();
-      setMessage(result.revoked === 0 ? t("account.sessionsNoneFound") : t("account.sessionsRevoked", { count: result.revoked }));
+      setMessage(
+        result.revoked === 0
+          ? t("account.sessionsNoneFound")
+          : t("account.sessionsRevoked", { count: result.revoked }),
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("account.sessionsRevokeError"));
     } finally {
@@ -138,7 +146,8 @@ export function AccountSecuritySessions() {
 
   const current = sessions.find((session) => session.current);
   const others = sessions.filter((session) => !session.current);
-  const dateLabel = (value: string) => formatDate(value, { dateStyle: "medium", timeStyle: "short" });
+  const dateLabel = (value: string) =>
+    formatDate(value, { dateStyle: "medium", timeStyle: "short" });
 
   return (
     <section className={styles.securityCard} aria-labelledby="security-sessions-title">
@@ -148,12 +157,21 @@ export function AccountSecuritySessions() {
           <h2 id="security-sessions-title">{t("account.securityTitle")}</h2>
           <p>{t("account.securityDescription")}</p>
         </div>
-        <button className={styles.secondaryButton} disabled={busy !== "" || others.length === 0} onClick={() => void revokeOthers()} type="button">
+        <button
+          className={styles.secondaryButton}
+          disabled={busy !== "" || others.length === 0}
+          onClick={() => void revokeOthers()}
+          type="button"
+        >
           {busy === "others" ? t("account.revoking") : t("account.revokeOthers")}
         </button>
       </div>
 
-      {error ? <p className={styles.error} dir="auto">{error}</p> : null}
+      {error ? (
+        <p className={styles.error} dir="auto">
+          {error}
+        </p>
+      ) : null}
       {message ? <p className={styles.success}>{message}</p> : null}
       {loading ? <p className={styles.loading}>{t("account.sessionsLoading")}</p> : null}
 
@@ -169,7 +187,15 @@ export function AccountSecuritySessions() {
           <h3>{t("account.otherSessions")}</h3>
           {others.length ? (
             <div className={styles.sessionList}>
-              {others.map((session) => <SessionRow dateLabel={dateLabel} key={session.id} session={session} busy={busy} onRevoke={revoke} />)}
+              {others.map((session) => (
+                <SessionRow
+                  dateLabel={dateLabel}
+                  key={session.id}
+                  session={session}
+                  busy={busy}
+                  onRevoke={revoke}
+                />
+              ))}
             </div>
           ) : (
             <p className={styles.muted}>{t("account.noOtherSessions")}</p>
@@ -179,9 +205,38 @@ export function AccountSecuritySessions() {
 
       <form className={styles.passwordForm} onSubmit={(event) => void changePassword(event)}>
         <h3>{t("account.changePassword")}</h3>
-        <label><span>{t("account.currentPassword")}</span><input autoComplete="current-password" dir="ltr" name="currentPassword" required type="password" /></label>
-        <label><span>{t("account.newPassword")}</span><input autoComplete="new-password" dir="ltr" minLength={10} name="newPassword" required type="password" /></label>
-        <label><span>{t("account.confirmPassword")}</span><input autoComplete="new-password" dir="ltr" minLength={10} name="confirmation" required type="password" /></label>
+        <label>
+          <span>{t("account.currentPassword")}</span>
+          <input
+            autoComplete="current-password"
+            dir="ltr"
+            name="currentPassword"
+            required
+            type="password"
+          />
+        </label>
+        <label>
+          <span>{t("account.newPassword")}</span>
+          <input
+            autoComplete="new-password"
+            dir="ltr"
+            minLength={10}
+            name="newPassword"
+            required
+            type="password"
+          />
+        </label>
+        <label>
+          <span>{t("account.confirmPassword")}</span>
+          <input
+            autoComplete="new-password"
+            dir="ltr"
+            minLength={10}
+            name="confirmation"
+            required
+            type="password"
+          />
+        </label>
         <label className={styles.checkLabel}>
           <input defaultChecked name="revokeOtherSessions" type="checkbox" />
           <span>{t("account.revokeAfterPassword")}</span>
@@ -210,12 +265,28 @@ function SessionRow({
     <article className={styles.sessionRow}>
       <div>
         <strong dir="auto">{session.deviceLabel}</strong>
-        {session.current ? <span className={styles.currentBadge}>{t("common.current")}</span> : null}
+        {session.current ? (
+          <span className={styles.currentBadge}>{t("common.current")}</span>
+        ) : null}
         <p>{t("account.lastActive", { date: dateLabel(session.lastActiveAt) })}</p>
-        <small>{t("account.createdExpires", { created: dateLabel(session.createdAt), expires: dateLabel(session.expiresAt) })}</small>
+        <small>
+          {t("account.createdExpires", {
+            created: dateLabel(session.createdAt),
+            expires: dateLabel(session.expiresAt),
+          })}
+        </small>
       </div>
-      <button className={styles.dangerButton} disabled={busy !== ""} onClick={() => void onRevoke(session)} type="button">
-        {busy === session.id ? t("account.revoking") : session.current ? t("account.logoutSession") : t("account.revoke")}
+      <button
+        className={styles.dangerButton}
+        disabled={busy !== ""}
+        onClick={() => void onRevoke(session)}
+        type="button"
+      >
+        {busy === session.id
+          ? t("account.revoking")
+          : session.current
+            ? t("account.logoutSession")
+            : t("account.revoke")}
       </button>
     </article>
   );

@@ -46,7 +46,9 @@ export function ContentRow({ anchorId, children, eyebrow, rowId, title }: Conten
       <div className={styles.heading}>
         <div>
           {eyebrow ? <p dir="auto">{eyebrow}</p> : null}
-          <h2 dir="auto" id={headingId}>{title}</h2>
+          <h2 dir="auto" id={headingId}>
+            {title}
+          </h2>
         </div>
         <div aria-label={t("carousel.controls", { title })} className={styles.controls}>
           <button

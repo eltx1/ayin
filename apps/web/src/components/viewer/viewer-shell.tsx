@@ -281,25 +281,49 @@ export function ViewerShell({ children }: ViewerShellProperties) {
         <div className={styles.accountActions}>
           {identity ? (
             <>
-              <Link className={styles.channelAction} data-tv-focus-id="notifications" data-tv-focusable="true" href={href("/notifications")}>
+              <Link
+                className={styles.channelAction}
+                data-tv-focus-id="notifications"
+                data-tv-focusable="true"
+                href={href("/notifications")}
+              >
                 {t("shell.notifications")}
               </Link>
-              <Link className={styles.channelAction} data-tv-focus-id="account" data-tv-focusable="true" href={href("/account")}>
+              <Link
+                className={styles.channelAction}
+                data-tv-focus-id="account"
+                data-tv-focusable="true"
+                href={href("/account")}
+              >
                 {t("shell.account")}
               </Link>
-              <Link className={styles.channelAction} data-tv-focus-id="my-channel" data-tv-focusable="true" href={href(`/c/${identity.channel.handle}`)}>
+              <Link
+                className={styles.channelAction}
+                data-tv-focus-id="my-channel"
+                data-tv-focusable="true"
+                href={href(`/c/${identity.channel.handle}`)}
+              >
                 {t("shell.myChannel")}
               </Link>
             </>
           ) : null}
-          <Link className={styles.joinAction} data-tv-focus-id={identity ? "create-upload" : "join-ayin"} data-tv-focusable="true" href={href(createHref)}>
+          <Link
+            className={styles.joinAction}
+            data-tv-focus-id={identity ? "create-upload" : "join-ayin"}
+            data-tv-focusable="true"
+            href={href(createHref)}
+          >
             {identity ? t("shell.createUpload") : t("shell.join")}
           </Link>
         </div>
 
         <div className={styles.mobileHeaderActions}>
           {identity ? (
-            <Link className={styles.mobileIconButton} href={href("/notifications")} aria-label={t("shell.notifications")}>
+            <Link
+              className={styles.mobileIconButton}
+              href={href("/notifications")}
+              aria-label={t("shell.notifications")}
+            >
               <MobileIcon name="bell" />
             </Link>
           ) : null}
@@ -317,19 +341,33 @@ export function ViewerShell({ children }: ViewerShellProperties) {
       </header>
 
       {mobileMenuOpen ? (
-        <aside className={styles.mobileMenuPanel} id="ayin-mobile-menu" onClick={(event) => {
-          if (event.target instanceof Element && event.target.closest("a")) setMobileMenuOpen(false);
-        }}>
+        <aside
+          className={styles.mobileMenuPanel}
+          id="ayin-mobile-menu"
+          onClick={(event) => {
+            if (event.target instanceof Element && event.target.closest("a"))
+              setMobileMenuOpen(false);
+          }}
+        >
           <div className={styles.mobileMenuHeader}>
             <div>
-              <strong dir="auto">{identity ? identity.account.displayName : t("shell.explore")}</strong>
-              <span dir="auto">{identity ? `@${identity.channel.handle}` : t("shell.watchCreateDiscover")}</span>
+              <strong dir="auto">
+                {identity ? identity.account.displayName : t("shell.explore")}
+              </strong>
+              <span dir="auto">
+                {identity ? `@${identity.channel.handle}` : t("shell.watchCreateDiscover")}
+              </span>
             </div>
-            <button type="button" onClick={() => setMobileMenuOpen(false)}>{t("shell.close")}</button>
+            <button type="button" onClick={() => setMobileMenuOpen(false)}>
+              {t("shell.close")}
+            </button>
           </div>
 
           {identity ? (
-            <nav aria-label={t("shell.accountCreatorNavigation")} className={styles.mobileAccountGrid}>
+            <nav
+              aria-label={t("shell.accountCreatorNavigation")}
+              className={styles.mobileAccountGrid}
+            >
               <Link href={href("/account")}>{t("shell.account")}</Link>
               <Link href={href("/my-ayin")}>{t("nav.myAyin")}</Link>
               <Link href={href("/studio")}>{t("shell.creatorStudio")}</Link>
@@ -351,14 +389,23 @@ export function ViewerShell({ children }: ViewerShellProperties) {
 
           <div className={styles.mobileMenuDivider} />
           <nav aria-label={t("shell.browseAyin")} className={styles.mobileProductNavigation}>
-            <NavigationLinks flags={flags} items={navigation} pathname={pathname} surface="mobile-menu" />
+            <NavigationLinks
+              flags={flags}
+              items={navigation}
+              pathname={pathname}
+              surface="mobile-menu"
+            />
           </nav>
         </aside>
       ) : null}
 
       {announcement?.enabled && announcement.text ? (
         <div className={styles.announcement} dir="auto" role="status">
-          {announcement.href ? <Link href={href(announcement.href)}>{announcement.text}</Link> : announcement.text}
+          {announcement.href ? (
+            <Link href={href(announcement.href)}>{announcement.text}</Link>
+          ) : (
+            announcement.text
+          )}
         </div>
       ) : null}
 
@@ -371,19 +418,39 @@ export function ViewerShell({ children }: ViewerShellProperties) {
         </div>
         <nav aria-label={t("shell.legalPolicy")} className={footerStyles.links}>
           {legalNavigation.map((item) => (
-            <Link href={href(item.href)} key={item.href}>{t(item.key)}</Link>
+            <Link href={href(item.href)} key={item.href}>
+              {t(item.key)}
+            </Link>
           ))}
         </nav>
-        <p className={footerStyles.copyright}>© {new Date().getFullYear()} AYIN. {t("shell.allRightsReserved")}</p>
+        <p className={footerStyles.copyright}>
+          © {new Date().getFullYear()} AYIN. {t("shell.allRightsReserved")}
+        </p>
       </footer>
 
       {productControls?.deviceVisibility.mobile !== false ? (
         <nav aria-label={t("shell.mobileNavigation")} className={styles.mobileNavigation}>
           <MobileTab href="/" icon="home" label={t("nav.home")} pathname={pathname} />
           <MobileTab href="/search" icon="search" label={t("nav.search")} pathname={pathname} />
-          <MobileTab href={createHref} icon="create" label={t("shell.create")} pathname={pathname} primary />
-          <MobileTab href={videosHref} icon="videos" label={t("shell.videos")} pathname={pathname} />
-          <MobileTab href={channelHref} icon="channel" label={t("shell.channel")} pathname={pathname} />
+          <MobileTab
+            href={createHref}
+            icon="create"
+            label={t("shell.create")}
+            pathname={pathname}
+            primary
+          />
+          <MobileTab
+            href={videosHref}
+            icon="videos"
+            label={t("shell.videos")}
+            pathname={pathname}
+          />
+          <MobileTab
+            href={channelHref}
+            icon="channel"
+            label={t("shell.channel")}
+            pathname={pathname}
+          />
         </nav>
       ) : null}
     </TvFocusScope>

@@ -31,7 +31,11 @@ export default async function StudioLayout({ children }: { children: ReactNode }
     <div className={styles.shell}>
       <div className={styles.frame}>
         <aside className={styles.sidebar}>
-          <Link aria-label={t("studio.aria")} className={styles.brand} href={localizePath("/studio", locale)}>
+          <Link
+            aria-label={t("studio.aria")}
+            className={styles.brand}
+            href={localizePath("/studio", locale)}
+          >
             <span className={styles.brandLogo}>
               <Image alt="" height={72} priority src="/brand/ayin-logo.png" width={72} />
             </span>

@@ -100,19 +100,42 @@ export function VideoSocialActions({
 
   return (
     <div className={className} aria-label={t("watch.actions")}>
-      <button aria-pressed={state.reaction === "LIKE"} disabled={busy} onClick={() => void react("LIKE")} type="button">
+      <button
+        aria-pressed={state.reaction === "LIKE"}
+        disabled={busy}
+        onClick={() => void react("LIKE")}
+        type="button"
+      >
         {t("watch.like")} · {formatNumber(state.likeCount)}
       </button>
-      <button aria-label={t("watch.notForMe")} aria-pressed={state.reaction === "DISLIKE"} disabled={busy} onClick={() => void react("DISLIKE")} type="button">
+      <button
+        aria-label={t("watch.notForMe")}
+        aria-pressed={state.reaction === "DISLIKE"}
+        disabled={busy}
+        onClick={() => void react("DISLIKE")}
+        type="button"
+      >
         {t("watch.notForMe")}
       </button>
-      <button aria-pressed={state.watchLater} disabled={busy} onClick={() => void save("watch-later", state.watchLater)} type="button">
+      <button
+        aria-pressed={state.watchLater}
+        disabled={busy}
+        onClick={() => void save("watch-later", state.watchLater)}
+        type="button"
+      >
         {state.watchLater ? t("watch.inWatchLater") : t("watch.watchLater")}
       </button>
-      <button aria-pressed={state.myList} disabled={busy} onClick={() => void save("my-list", state.myList)} type="button">
+      <button
+        aria-pressed={state.myList}
+        disabled={busy}
+        onClick={() => void save("my-list", state.myList)}
+        type="button"
+      >
         {state.myList ? t("watch.inMyList") : t("watch.myList")}
       </button>
-      <button disabled={busy} onClick={() => void share()} type="button">{t("watch.share")}</button>
+      <button disabled={busy} onClick={() => void share()} type="button">
+        {t("watch.share")}
+      </button>
     </div>
   );
 }

@@ -54,7 +54,11 @@ export default async function SearchPage({
       {error ? <EmptyState description={error} title={t("search.unavailable")} /> : null}
       {results?.items.length === 0 ? (
         <EmptyState
-          description={locale === "ar" ? t("search.tryAnother") : results.emptyMessage ?? t("search.tryAnother")}
+          description={
+            locale === "ar"
+              ? t("search.tryAnother")
+              : (results.emptyMessage ?? t("search.tryAnother"))
+          }
           title={t("search.noResults")}
         />
       ) : null}
@@ -79,7 +83,10 @@ export default async function SearchPage({
             <Link
               className={styles.more}
               data-tv-focusable="true"
-              href={localizePath(`/search?q=${encodeURIComponent(results.query)}&cursor=${encodeURIComponent(results.nextCursor)}`, locale)}
+              href={localizePath(
+                `/search?q=${encodeURIComponent(results.query)}&cursor=${encodeURIComponent(results.nextCursor)}`,
+                locale,
+              )}
             >
               {t("search.moreResults")}
             </Link>
@@ -87,7 +94,10 @@ export default async function SearchPage({
         </section>
       ) : null}
       {!results && !error ? (
-        <EmptyState description={t("search.discoverDescription")} title={t("search.discoverTitle")} />
+        <EmptyState
+          description={t("search.discoverDescription")}
+          title={t("search.discoverTitle")}
+        />
       ) : null}
     </main>
   );

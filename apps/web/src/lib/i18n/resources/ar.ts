@@ -80,7 +80,8 @@ export const arMessages = {
   "carousel.next": "عرض العناصر التالية في {title}",
   "carousel.content": "محتوى قسم {title}",
   "search.metaTitle": "البحث",
-  "search.metaDescription": "ابحث عن الفيديوهات وصنّاع المحتوى وقوائم التشغيل وCreator TV على AYIN.",
+  "search.metaDescription":
+    "ابحث عن الفيديوهات وصنّاع المحتوى وقوائم التشغيل وCreator TV على AYIN.",
   "search.eyebrow": "اعثر على ما يستحق المشاهدة",
   "search.title": "البحث في AYIN",
   "search.label": "البحث في AYIN",
@@ -95,7 +96,8 @@ export const arMessages = {
   "search.resultsAria": "نتائج البحث عن {query}",
   "search.moreResults": "مزيد من النتائج",
   "search.discoverTitle": "ماذا ستكتشف؟",
-  "search.discoverDescription": "ابحث في الفيديوهات وصنّاع المحتوى وقوائم التشغيل العامة وCreator TV.",
+  "search.discoverDescription":
+    "ابحث في الفيديوهات وصنّاع المحتوى وقوائم التشغيل العامة وCreator TV.",
   "watch.unavailable": "الفيديو غير متاح",
   "watch.loadError": "تعذّر تحميل هذا الفيديو الآن.",
   "watch.deliveryError": "خدمة توصيل وسائط AYIN غير مهيأة لهذا الجهاز.",
@@ -178,7 +180,8 @@ export const arMessages = {
   "auth.cookiesNotice": "إشعار ملفات تعريف الارتباط والإعلانات",
   "auth.mfaEnabled": "تم تفعيل التحقق بخطوتين",
   "auth.recoveryTitle": "احفظ رموز الاسترداد",
-  "auth.recoveryIntro": "احفظ هذه الرموز ذات الاستخدام الواحد في مدير كلمات مرور. لن يعرضها AYIN مرة أخرى.",
+  "auth.recoveryIntro":
+    "احفظ هذه الرموز ذات الاستخدام الواحد في مدير كلمات مرور. لن يعرضها AYIN مرة أخرى.",
   "auth.savedCodes": "حفظت رموز الاسترداد",
   "auth.adminSecurity": "أمان حساب الإدارة",
   "auth.secureAdmin": "أمّن حساب الإدارة",
@@ -217,7 +220,8 @@ export const arMessages = {
   "account.earningsDescription": "تابع رصيدك وجاهزية الدفع وسجل المدفوعات.",
   "account.securityEyebrow": "أمان الحساب",
   "account.securityTitle": "الأمان والجلسات",
-  "account.securityDescription": "راجع الأجهزة التي سجلت الدخول إلى حساب AYIN واسحب الوصول فورًا عند الحاجة.",
+  "account.securityDescription":
+    "راجع الأجهزة التي سجلت الدخول إلى حساب AYIN واسحب الوصول فورًا عند الحاجة.",
   "account.revokeOthers": "إنهاء جميع الجلسات الأخرى",
   "account.revoking": "جارٍ الإنهاء…",
   "account.sessionsLoading": "جارٍ تحميل الجلسات النشطة…",
@@ -246,7 +250,8 @@ export const arMessages = {
   "account.revoke": "إنهاء",
   "account.privacyEyebrow": "إعدادات الخصوصية",
   "account.privacyTitle": "الخصوصية والبيانات",
-  "account.privacyDescription": "نزّل بيانات حسابك أو ابدأ إجراءات حذف الحساب الخاضعة لفترة السماح.",
+  "account.privacyDescription":
+    "نزّل بيانات حسابك أو ابدأ إجراءات حذف الحساب الخاضعة لفترة السماح.",
   "account.downloadData": "تنزيل بياناتي",
   "account.preparing": "جارٍ التجهيز…",
   "account.exportReady": "تم تجهيز نسخة بيانات AYIN للتنزيل.",

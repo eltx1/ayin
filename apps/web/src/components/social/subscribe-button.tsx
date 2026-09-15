@@ -65,11 +65,21 @@ export function SubscribeButton({
   }
 
   const label = state.subscribed
-    ? locale === "ar" ? "مشترك" : "Subscribed"
-    : locale === "ar" ? "اشتراك" : "Subscribe";
+    ? locale === "ar"
+      ? "مشترك"
+      : "Subscribed"
+    : locale === "ar"
+      ? "اشتراك"
+      : "Subscribe";
 
   return (
-    <button className={className} data-tv-focusable="true" disabled={busy} onClick={() => void toggle()} type="button">
+    <button
+      className={className}
+      data-tv-focusable="true"
+      disabled={busy}
+      onClick={() => void toggle()}
+      type="button"
+    >
       {label} · {formatNumber(state.subscriberCount)}
     </button>
   );

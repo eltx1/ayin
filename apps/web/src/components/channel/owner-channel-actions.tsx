@@ -32,9 +32,15 @@ export function OwnerChannelActions({ handle }: { handle: string }) {
 
   return (
     <>
-      <Link className={styles.editAction} href={href("/channel/tv")}>{t("channel.manageTv")}</Link>
-      <Link className={styles.editAction} href={href("/channel/playlists")}>{t("channel.managePlaylists")}</Link>
-      <Link className={styles.editAction} href={href("/channel/edit")}>{t("channel.edit")}</Link>
+      <Link className={styles.editAction} href={href("/channel/tv")}>
+        {t("channel.manageTv")}
+      </Link>
+      <Link className={styles.editAction} href={href("/channel/playlists")}>
+        {t("channel.managePlaylists")}
+      </Link>
+      <Link className={styles.editAction} href={href("/channel/edit")}>
+        {t("channel.edit")}
+      </Link>
     </>
   );
 }

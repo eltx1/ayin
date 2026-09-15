@@ -151,7 +151,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
             <h1>{t("auth.recoveryTitle")}</h1>
             <p className={styles.intro}>{t("auth.recoveryIntro")}</p>
             <ul className={styles.recoveryCodes} aria-label={t("auth.recoveryTitle")} dir="ltr">
-              {recoveryCodes.map((code) => <li key={code}>{code}</li>)}
+              {recoveryCodes.map((code) => (
+                <li key={code}>{code}</li>
+              ))}
             </ul>
             <button className={styles.primary} onClick={finishLogin} type="button">
               {t("auth.savedCodes")}
@@ -164,7 +166,13 @@ export function AuthForm({ mode }: { mode: Mode }) {
             <p className={styles.intro}>{enrollment ? t("auth.scanQr") : t("auth.enterCode")}</p>
             {enrollment ? (
               <div className={styles.provisioning}>
-                <Image alt={t("auth.secureAdmin")} height={240} src={enrollment.qrCodeDataUrl} unoptimized width={240} />
+                <Image
+                  alt={t("auth.secureAdmin")}
+                  height={240}
+                  src={enrollment.qrCodeDataUrl}
+                  unoptimized
+                  width={240}
+                />
                 <details>
                   <summary>{t("auth.cannotScan")}</summary>
                   <p>{t("auth.manualKey")}</p>
@@ -174,7 +182,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
             ) : null}
             <form className={styles.form} onSubmit={submitMfa}>
               <label>
-                <span>{enrollment ? t("auth.authenticationCode") : t("auth.authenticationRecoveryCode")}</span>
+                <span>
+                  {enrollment ? t("auth.authenticationCode") : t("auth.authenticationRecoveryCode")}
+                </span>
                 <input
                   autoComplete="one-time-code"
                   dir="ltr"
@@ -184,27 +194,55 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   required
                 />
               </label>
-              {error ? <p className={styles.error} dir="auto" role="alert">{error}</p> : null}
+              {error ? (
+                <p className={styles.error} dir="auto" role="alert">
+                  {error}
+                </p>
+              ) : null}
               <button className={styles.primary} disabled={submitting} type="submit">
-                {submitting ? t("auth.verifying") : enrollment ? t("auth.enableMfa") : t("auth.verify")}
+                {submitting
+                  ? t("auth.verifying")
+                  : enrollment
+                    ? t("auth.enableMfa")
+                    : t("auth.verify")}
               </button>
             </form>
           </>
         ) : (
           <>
-            <p className={styles.eyebrow}>{registering ? t("auth.joinAyin") : t("auth.welcomeBack")}</p>
+            <p className={styles.eyebrow}>
+              {registering ? t("auth.joinAyin") : t("auth.welcomeBack")}
+            </p>
             <h1>{registering ? t("auth.createTitle") : t("auth.signInTitle")}</h1>
-            <p className={styles.intro}>{registering ? t("auth.registerIntro") : t("auth.signInIntro")}</p>
+            <p className={styles.intro}>
+              {registering ? t("auth.registerIntro") : t("auth.signInIntro")}
+            </p>
             <form className={styles.form} onSubmit={submit}>
               {registering ? (
                 <label>
                   <span>{t("auth.name")}</span>
-                  <input autoComplete="name" dir="auto" maxLength={120} minLength={2} name="name" placeholder={t("auth.namePlaceholder")} required />
+                  <input
+                    autoComplete="name"
+                    dir="auto"
+                    maxLength={120}
+                    minLength={2}
+                    name="name"
+                    placeholder={t("auth.namePlaceholder")}
+                    required
+                  />
                 </label>
               ) : null}
               <label>
                 <span>{t("auth.email")}</span>
-                <input autoComplete="email" dir="ltr" inputMode="email" name="email" placeholder={t("auth.emailPlaceholder")} required type="email" />
+                <input
+                  autoComplete="email"
+                  dir="ltr"
+                  inputMode="email"
+                  name="email"
+                  placeholder={t("auth.emailPlaceholder")}
+                  required
+                  type="email"
+                />
               </label>
               <label>
                 <span>{t("auth.password")}</span>
@@ -214,31 +252,47 @@ export function AuthForm({ mode }: { mode: Mode }) {
                   maxLength={128}
                   minLength={registering ? 10 : undefined}
                   name="password"
-                  placeholder={registering ? t("auth.newPasswordPlaceholder") : t("auth.passwordPlaceholder")}
+                  placeholder={
+                    registering ? t("auth.newPasswordPlaceholder") : t("auth.passwordPlaceholder")
+                  }
                   required
                   type="password"
                 />
               </label>
               {!registering ? (
-                <p className={styles.switcher}><Link href={href("/forgot-password")}>{t("auth.forgotPassword")}</Link></p>
+                <p className={styles.switcher}>
+                  <Link href={href("/forgot-password")}>{t("auth.forgotPassword")}</Link>
+                </p>
               ) : null}
-              {error ? <p className={styles.error} dir="auto" role="alert">{error}</p> : null}
+              {error ? (
+                <p className={styles.error} dir="auto" role="alert">
+                  {error}
+                </p>
+              ) : null}
               {registering ? (
                 <p className={styles.switcher}>
-                  {t("auth.legalPrefix")} <Link href={href("/terms")}>{t("auth.termsOfService")}</Link>،{" "}
+                  {t("auth.legalPrefix")}{" "}
+                  <Link href={href("/terms")}>{t("auth.termsOfService")}</Link>،{" "}
                   <Link href={href("/creator-terms")}>{t("auth.creatorRightsTerms")}</Link>،{" "}
-                  <Link href={href("/community-guidelines")}>{t("shell.communityGuidelines")}</Link>، {t("auth.andAcknowledge")} {" "}
+                  <Link href={href("/community-guidelines")}>{t("shell.communityGuidelines")}</Link>
+                  ، {t("auth.andAcknowledge")}{" "}
                   <Link href={href("/privacy")}>{t("auth.privacyPolicy")}</Link> و{" "}
                   <Link href={href("/cookies")}>{t("auth.cookiesNotice")}</Link>.
                 </p>
               ) : null}
               <button className={styles.primary} disabled={submitting} type="submit">
-                {submitting ? t("auth.pleaseWait") : registering ? t("auth.createAccount") : t("auth.signIn")}
+                {submitting
+                  ? t("auth.pleaseWait")
+                  : registering
+                    ? t("auth.createAccount")
+                    : t("auth.signIn")}
               </button>
             </form>
             <p className={styles.switcher}>
-              {registering ? t("auth.alreadyHaveAyin") : t("auth.newToAyin")} {" "}
-              <Link href={href(registering ? "/login" : "/register")}>{registering ? t("auth.signIn") : t("auth.createAccount")}</Link>
+              {registering ? t("auth.alreadyHaveAyin") : t("auth.newToAyin")}{" "}
+              <Link href={href(registering ? "/login" : "/register")}>
+                {registering ? t("auth.signIn") : t("auth.createAccount")}
+              </Link>
             </p>
           </>
         )}

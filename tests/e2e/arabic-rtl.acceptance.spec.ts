@@ -39,7 +39,9 @@ test("Arabic auth and search surfaces use RTL with localized viewer chrome", asy
   await expect(page.getByRole("link", { name: "الرئيسية" })).toBeVisible();
 });
 
-test("Arabic watch page preserves mixed-content direction and LTR media semantics", async ({ page }) => {
+test("Arabic watch page preserves mixed-content direction and LTR media semantics", async ({
+  page,
+}) => {
   await page.goto(`/ar/watch/${catalog.movieVideoSlug}`);
 
   await expect(page.locator("html")).toHaveAttribute("lang", "ar");

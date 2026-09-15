@@ -59,7 +59,8 @@ export function AccountPrivacyControls() {
         if (active) setStatus(nextStatus);
       },
       (caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : t("account.privacyLoadError"));
+        if (active)
+          setError(caught instanceof Error ? caught.message : t("account.privacyLoadError"));
       },
     );
     return () => {
@@ -155,12 +156,21 @@ export function AccountPrivacyControls() {
           <h2 id="privacy-data-title">{t("account.privacyTitle")}</h2>
           <p>{t("account.privacyDescription")}</p>
         </div>
-        <button className={styles.secondaryButton} disabled={busy !== ""} onClick={() => void downloadData()} type="button">
+        <button
+          className={styles.secondaryButton}
+          disabled={busy !== ""}
+          onClick={() => void downloadData()}
+          type="button"
+        >
           {busy === "export" ? t("account.preparing") : t("account.downloadData")}
         </button>
       </div>
 
-      {error ? <p className={styles.error} dir="auto">{error}</p> : null}
+      {error ? (
+        <p className={styles.error} dir="auto">
+          {error}
+        </p>
+      ) : null}
       {message ? <p className={styles.success}>{message}</p> : null}
 
       {active ? (
@@ -170,10 +180,20 @@ export function AccountPrivacyControls() {
             <div>
               <strong dir="auto">{deletionStateLabel(active.state, locale)}</strong>
               <p>{t("account.requestedAt", { date: dateLabel(active.requestedAt) })}</p>
-              <small>{t("account.graceDeactivated", { grace: dateLabel(active.graceEndsAt), deactivated: dateLabel(active.deactivatedAt) })}</small>
+              <small>
+                {t("account.graceDeactivated", {
+                  grace: dateLabel(active.graceEndsAt),
+                  deactivated: dateLabel(active.deactivatedAt),
+                })}
+              </small>
             </div>
             {cancellable ? (
-              <button className={styles.secondaryButton} disabled={busy !== ""} onClick={() => void cancelDeletion()} type="button">
+              <button
+                className={styles.secondaryButton}
+                disabled={busy !== ""}
+                onClick={() => void cancelDeletion()}
+                type="button"
+              >
                 {busy === "cancel" ? t("account.cancelling") : t("account.cancelDeletion")}
               </button>
             ) : null}
@@ -198,8 +218,20 @@ export function AccountPrivacyControls() {
       {!active || active.state === "CANCELLED" ? (
         <form className={styles.passwordForm} onSubmit={(event) => void requestDeletion(event)}>
           <h3>{t("account.requestDeletion")}</h3>
-          <label><span>{t("account.currentPassword")}</span><input autoComplete="current-password" dir="ltr" name="password" required type="password" /></label>
-          <label><span>{t("account.typeConfirmation", { confirmation: CONFIRMATION })}</span><input autoComplete="off" dir="ltr" name="confirmation" required type="text" /></label>
+          <label>
+            <span>{t("account.currentPassword")}</span>
+            <input
+              autoComplete="current-password"
+              dir="ltr"
+              name="password"
+              required
+              type="password"
+            />
+          </label>
+          <label>
+            <span>{t("account.typeConfirmation", { confirmation: CONFIRMATION })}</span>
+            <input autoComplete="off" dir="ltr" name="confirmation" required type="text" />
+          </label>
           <p className={styles.muted}>
             {locale === "ar"
               ? "نزّل بياناتك أولًا إذا أردت الاحتفاظ بنسخة. المتابعة تبدأ فترة السماح ولا تمحو فورًا السجلات المالية أو الأمنية أو سجلات الإشراف والتدقيق المطلوب الاحتفاظ بها."

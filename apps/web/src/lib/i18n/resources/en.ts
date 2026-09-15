@@ -217,7 +217,8 @@ export const enMessages = {
   "account.earningsDescription": "Track your balance, payment readiness and payout history.",
   "account.securityEyebrow": "Account security",
   "account.securityTitle": "Security & sessions",
-  "account.securityDescription": "Review where your AYIN account is signed in and remove access immediately.",
+  "account.securityDescription":
+    "Review where your AYIN account is signed in and remove access immediately.",
   "account.revokeOthers": "Revoke all other sessions",
   "account.revoking": "Revoking…",
   "account.sessionsLoading": "Loading active sessions…",
@@ -246,7 +247,8 @@ export const enMessages = {
   "account.revoke": "Revoke",
   "account.privacyEyebrow": "Privacy controls",
   "account.privacyTitle": "Privacy & data",
-  "account.privacyDescription": "Download your account data or start the controlled account-deletion lifecycle.",
+  "account.privacyDescription":
+    "Download your account data or start the controlled account-deletion lifecycle.",
   "account.downloadData": "Download my data",
   "account.preparing": "Preparing…",
   "account.exportReady": "Your AYIN data export was prepared for download.",
@@ -259,7 +261,8 @@ export const enMessages = {
   "account.cancelling": "Cancelling…",
   "account.deletionCancelled": "Deletion request cancelled.",
   "account.cancelDeletionError": "Deletion could not be cancelled.",
-  "account.deletionRequested": "Account deletion requested. You can cancel during the grace period.",
+  "account.deletionRequested":
+    "Account deletion requested. You can cancel during the grace period.",
   "account.deletionRequestError": "Account deletion could not be requested.",
   "account.deletionDoesTitle": "What deletion does",
   "account.requestDeletion": "Request account deletion",

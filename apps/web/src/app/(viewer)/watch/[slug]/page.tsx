@@ -90,7 +90,16 @@ export default async function WatchPage({ params }: WatchPageProperties) {
   const captions = data.video.captions.flatMap((track) => {
     const src = mediaAssetUrl(track.objectKey);
     return src
-      ? [{ id: track.id, src, label: track.label, language: track.language, kind: track.kind, default: track.default }]
+      ? [
+          {
+            id: track.id,
+            src,
+            label: track.label,
+            language: track.language,
+            kind: track.kind,
+            default: track.default,
+          },
+        ]
       : [];
   });
 
@@ -99,7 +108,10 @@ export default async function WatchPage({ params }: WatchPageProperties) {
   return (
     <main className={styles.page}>
       {structuredData ? (
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }} />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
+        />
       ) : null}
       <AnalyticsAyinPlayer
         adaptiveSourceUrl={adaptiveSourceUrl}
@@ -120,7 +132,11 @@ export default async function WatchPage({ params }: WatchPageProperties) {
           {data.video.description ? <p dir="auto">{data.video.description}</p> : null}
           <VideoSocialActions className={styles.actions} videoId={data.video.id} />
         </div>
-        <Link className={styles.channel} dir="auto" href={localizePath(`/c/${encodeURIComponent(data.video.channel.handle)}`, locale)}>
+        <Link
+          className={styles.channel}
+          dir="auto"
+          href={localizePath(`/c/${encodeURIComponent(data.video.channel.handle)}`, locale)}
+        >
           {data.video.channel.name} · <bdi dir="ltr">@{data.video.channel.handle}</bdi>
         </Link>
       </section>
@@ -132,7 +148,9 @@ export default async function WatchPage({ params }: WatchPageProperties) {
             {data.detail.related.map((item) => (
               <Link data-tv-focusable="true" href={localizePath(item.href, locale)} key={item.id}>
                 <strong dir="auto">{item.title}</strong>
-                {item.durationMs ? <span>{t("watch.minutes", { count: Math.ceil(item.durationMs / 60_000) })}</span> : null}
+                {item.durationMs ? (
+                  <span>{t("watch.minutes", { count: Math.ceil(item.durationMs / 60_000) })}</span>
+                ) : null}
               </Link>
             ))}
           </div>
