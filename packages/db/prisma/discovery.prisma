@@ -26,6 +26,13 @@ enum HomeManualItemType {
   PLAYLIST
 }
 
+enum RegionalDiscoverySignal {
+  POPULAR_CONTENT
+  CATALOG
+  CREATOR_TV
+  CATEGORY_AFFINITY
+}
+
 model HomeRowConfig {
   id                            String          @id @default(uuid()) @db.Uuid
   key                           String          @unique @db.VarChar(80)
@@ -39,7 +46,8 @@ model HomeRowConfig {
   createdAt                     DateTime        @default(now())
   updatedAt                     DateTime        @updatedAt
 
-  manualItems HomeRowManualItem[]
+  manualItems   HomeRowManualItem[]
+  regionTargets HomeRowRegionTarget[]
 
   @@index([enabled, position])
   @@index([audience, enabled, position])
@@ -59,4 +67,30 @@ model HomeRowManualItem {
   @@unique([rowId, position])
   @@unique([rowId, entityType, entityId])
   @@index([entityType, entityId])
+}
+
+model HomeRowRegionTarget {
+  id         String   @id @default(uuid()) @db.Uuid
+  rowId      String   @db.Uuid
+  regionCode String   @db.VarChar(2)
+  createdAt  DateTime @default(now())
+
+  row HomeRowConfig @relation(fields: [rowId], references: [id], onDelete: Cascade)
+
+  @@unique([rowId, regionCode])
+  @@index([regionCode, rowId])
+}
+
+model RegionalDiscoveryAggregate {
+  id         String                  @id @default(uuid()) @db.Uuid
+  regionCode String                  @db.VarChar(2)
+  signal     RegionalDiscoverySignal
+  entityKey  String                  @db.VarChar(200)
+  score      Float
+  cohortSize Int
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  @@unique([regionCode, signal, entityKey])
+  @@index([regionCode, signal, cohortSize, score])
 }
