@@ -27,7 +27,9 @@ test("Task 58 published Movie and Series reach the public catalog experience", a
 
   await test.step("published Movie exposes playable feature and trailer", async () => {
     await page.goto(`/movies/${catalog.movieSlug}`);
-    await expect(page.getByRole("heading", { level: 1, name: "Catalog E2E Published Movie" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Catalog E2E Published Movie" }),
+    ).toBeVisible();
     await expect(page.getByText("E2E Drama")).toBeVisible();
     await expect(page.getByRole("link", { name: "Watch movie" })).toHaveAttribute(
       "href",
@@ -41,15 +43,20 @@ test("Task 58 published Movie and Series reach the public catalog experience", a
 
   await test.step("published Series exposes ordered Season and playable Episode", async () => {
     await page.goto(`/series/${catalog.seriesSlug}`);
-    await expect(page.getByRole("heading", { level: 1, name: "Catalog E2E Published Series" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Launch Season" })).toHaveAttribute("aria-current", "page");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Catalog E2E Published Series" }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Launch Season" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     await expect(page.getByRole("heading", { level: 3, name: "Pilot" })).toBeVisible();
     await expect(page.getByText("E2E Technology")).toBeVisible();
     await expect(page.getByRole("link", { name: "Start watching" })).toHaveAttribute(
       "href",
       `/watch/${catalog.episodeVideoSlug}`,
     );
-    await expect(page.getByRole("link", { name: "Watch" })).toHaveAttribute(
+    await expect(page.getByRole("link", { name: "Watch", exact: true })).toHaveAttribute(
       "href",
       `/watch/${catalog.episodeVideoSlug}`,
     );

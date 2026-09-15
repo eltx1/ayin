@@ -175,10 +175,7 @@ export class AdminSeriesCatalogController {
   }
 
   @Post(":seriesId/unpublish")
-  async unpublish(
-    @Req() request: AdminAuthenticatedRequest,
-    @Param("seriesId") seriesId: string,
-  ) {
+  async unpublish(@Req() request: AdminAuthenticatedRequest, @Param("seriesId") seriesId: string) {
     const id = parseId(seriesId);
     const series = await this.catalog.unpublishSeries(id);
     await this.record(request, "catalog.series.unpublish", "Series", id, { title: series.title });

@@ -160,10 +160,7 @@ export class AdminMovieCatalogController {
   }
 
   @Post(":movieId/unpublish")
-  async unpublish(
-    @Req() request: AdminAuthenticatedRequest,
-    @Param("movieId") movieIdRaw: string,
-  ) {
+  async unpublish(@Req() request: AdminAuthenticatedRequest, @Param("movieId") movieIdRaw: string) {
     return this.lifecycle(request, parseId(movieIdRaw), "unpublish");
   }
 

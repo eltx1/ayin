@@ -117,7 +117,8 @@ try {
     data: {
       title: "Catalog E2E Published Series",
       slug: seriesSlug,
-      synopsis: "A published Series with a Season and playable Episode for Task 58 browser acceptance.",
+      synopsis:
+        "A published Series with a Season and playable Episode for Task 58 browser acceptance.",
       releaseYear: 2026,
       maturityRating: "TV-14",
       originalLanguage: "en",

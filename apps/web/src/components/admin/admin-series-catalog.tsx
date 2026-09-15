@@ -116,12 +116,7 @@ type EpisodeDraft = {
   video: ResourceSelection;
 };
 
-type Mutate = (
-  key: string,
-  url: string,
-  init: RequestInit,
-  success: string,
-) => Promise<boolean>;
+type Mutate = (key: string, url: string, init: RequestInit, success: string) => Promise<boolean>;
 
 const emptyArtwork = (): ArtworkSelections => ({
   POSTER: { id: null, label: null },
@@ -193,7 +188,7 @@ export function AdminSeriesCatalog() {
   }, [load]);
 
   const editing = useMemo(
-    () => (editingId ? items.find((item) => item.id === editingId) ?? null : null),
+    () => (editingId ? (items.find((item) => item.id === editingId) ?? null) : null),
     [editingId, items],
   );
 
@@ -314,7 +309,11 @@ export function AdminSeriesCatalog() {
             <span className={styles.eyebrow}>{editing ? "Edit series" : "Create draft"}</span>
             <h2>{editing?.title ?? "New series"}</h2>
           </div>
-          {editing ? <ValidationBadge validation={editing.validation} /> : <span className={styles.statusPill}>DRAFT</span>}
+          {editing ? (
+            <ValidationBadge validation={editing.validation} />
+          ) : (
+            <span className={styles.statusPill}>DRAFT</span>
+          )}
         </div>
 
         {editing?.validation.issues.length ? (
@@ -600,7 +599,8 @@ export function AdminSeriesCatalog() {
                   <div>
                     <strong>{season.title || `Season ${season.seasonNumber}`}</strong>
                     <p className={styles.muted}>
-                      Season {season.seasonNumber} · catalog position {seasonIndex + 1} · {season.episodes.length} episodes
+                      Season {season.seasonNumber} · catalog position {seasonIndex + 1} ·{" "}
+                      {season.episodes.length} episodes
                     </p>
                   </div>
                   <div className={styles.actions}>
@@ -669,7 +669,10 @@ export function AdminSeriesCatalog() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as typeof status)}
+          >
             <option value="">All statuses</option>
             <option value="DRAFT">Draft</option>
             <option value="PUBLISHED">Published</option>
@@ -694,15 +697,26 @@ export function AdminSeriesCatalog() {
                   <td>
                     <strong>{series.title}</strong>
                     <div className={styles.muted}>
-                      /{series.slug} · {series.releaseYear ?? "year unset"} · {series.originalLanguage.toUpperCase()}
+                      /{series.slug} · {series.releaseYear ?? "year unset"} ·{" "}
+                      {series.originalLanguage.toUpperCase()}
                     </div>
                   </td>
-                  <td><span className={styles.statusPill}>{series.status}</span></td>
-                  <td><ValidationBadge validation={series.validation} /></td>
-                  <td>{series.seasons.length}</td>
-                  <td>{series.seasons.reduce((total, season) => total + season.episodes.length, 0)}</td>
                   <td>
-                    <button className={styles.button} type="button" onClick={() => beginEdit(series)}>
+                    <span className={styles.statusPill}>{series.status}</span>
+                  </td>
+                  <td>
+                    <ValidationBadge validation={series.validation} />
+                  </td>
+                  <td>{series.seasons.length}</td>
+                  <td>
+                    {series.seasons.reduce((total, season) => total + season.episodes.length, 0)}
+                  </td>
+                  <td>
+                    <button
+                      className={styles.button}
+                      type="button"
+                      onClick={() => beginEdit(series)}
+                    >
                       Manage
                     </button>
                   </td>
@@ -710,7 +724,9 @@ export function AdminSeriesCatalog() {
               ))}
               {!items.length ? (
                 <tr>
-                  <td colSpan={6} className={styles.muted}>No series match these filters.</td>
+                  <td colSpan={6} className={styles.muted}>
+                    No series match these filters.
+                  </td>
                 </tr>
               ) : null}
             </tbody>
@@ -721,7 +737,15 @@ export function AdminSeriesCatalog() {
   );
 }
 
-function NewSeasonForm({ series, mutate, busy }: { series: SeriesRow; mutate: Mutate; busy: string | null }) {
+function NewSeasonForm({
+  series,
+  mutate,
+  busy,
+}: {
+  series: SeriesRow;
+  mutate: Mutate;
+  busy: string | null;
+}) {
   const [draft, setDraft] = useState<SeasonDraft>(emptySeasonDraft);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -753,11 +777,22 @@ function NewSeasonForm({ series, mutate, busy }: { series: SeriesRow; mutate: Mu
       <div className={styles.formGrid}>
         <label>
           Season number
-          <input min="0" required type="number" value={draft.seasonNumber} onChange={(event) => setDraft({ ...draft, seasonNumber: event.target.value })} />
+          <input
+            min="0"
+            required
+            type="number"
+            value={draft.seasonNumber}
+            onChange={(event) => setDraft({ ...draft, seasonNumber: event.target.value })}
+          />
         </label>
         <label>
           Title
-          <input maxLength={200} placeholder="Optional" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+          <input
+            maxLength={200}
+            placeholder="Optional"
+            value={draft.title}
+            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+          />
         </label>
         <div className={styles.fullField}>
           <CatalogResourcePicker
@@ -765,11 +800,17 @@ function NewSeasonForm({ series, mutate, busy }: { series: SeriesRow; mutate: Mu
             label="Season poster"
             selectedLabel={draft.artwork.POSTER.label}
             value={draft.artwork.POSTER.id}
-            onChange={(id, label) => setDraft({ ...draft, artwork: { ...draft.artwork, POSTER: { id, label } } })}
+            onChange={(id, label) =>
+              setDraft({ ...draft, artwork: { ...draft.artwork, POSTER: { id, label } } })
+            }
           />
         </div>
         <div className={`${styles.actions} ${styles.fullField}`}>
-          <button className={styles.button} disabled={busy === `create-season:${series.id}`} type="submit">
+          <button
+            className={styles.button}
+            disabled={busy === `create-season:${series.id}`}
+            type="submit"
+          >
             Add season
           </button>
         </div>
@@ -778,7 +819,15 @@ function NewSeasonForm({ series, mutate, busy }: { series: SeriesRow; mutate: Mu
   );
 }
 
-function SeasonEditor({ season, mutate, busy }: { season: SeasonRow; mutate: Mutate; busy: string | null }) {
+function SeasonEditor({
+  season,
+  mutate,
+  busy,
+}: {
+  season: SeasonRow;
+  mutate: Mutate;
+  busy: string | null;
+}) {
   const [draft, setDraft] = useState<SeasonDraft>(() => fromSeason(season));
 
   useEffect(() => setDraft(fromSeason(season)), [season]);
@@ -804,11 +853,21 @@ function SeasonEditor({ season, mutate, busy }: { season: SeasonRow; mutate: Mut
     <form className={styles.formGrid} onSubmit={submit}>
       <label>
         Season number
-        <input min="0" required type="number" value={draft.seasonNumber} onChange={(event) => setDraft({ ...draft, seasonNumber: event.target.value })} />
+        <input
+          min="0"
+          required
+          type="number"
+          value={draft.seasonNumber}
+          onChange={(event) => setDraft({ ...draft, seasonNumber: event.target.value })}
+        />
       </label>
       <label>
         Season title
-        <input maxLength={200} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+        <input
+          maxLength={200}
+          value={draft.title}
+          onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+        />
       </label>
       {(["POSTER", "BACKDROP", "LOGO"] as const).map((type) => (
         <div className={styles.fullField} key={type}>
@@ -817,12 +876,18 @@ function SeasonEditor({ season, mutate, busy }: { season: SeasonRow; mutate: Mut
             label={`Season ${titleCase(type)}`}
             selectedLabel={draft.artwork[type].label}
             value={draft.artwork[type].id}
-            onChange={(id, label) => setDraft({ ...draft, artwork: { ...draft.artwork, [type]: { id, label } } })}
+            onChange={(id, label) =>
+              setDraft({ ...draft, artwork: { ...draft.artwork, [type]: { id, label } } })
+            }
           />
         </div>
       ))}
       <div className={`${styles.actions} ${styles.fullField}`}>
-        <button className={styles.button} disabled={busy === `save-season:${season.id}`} type="submit">
+        <button
+          className={styles.button}
+          disabled={busy === `save-season:${season.id}`}
+          type="submit"
+        >
           Save season metadata
         </button>
       </div>
@@ -830,7 +895,15 @@ function SeasonEditor({ season, mutate, busy }: { season: SeasonRow; mutate: Mut
   );
 }
 
-function NewEpisodeForm({ season, mutate, busy }: { season: SeasonRow; mutate: Mutate; busy: string | null }) {
+function NewEpisodeForm({
+  season,
+  mutate,
+  busy,
+}: {
+  season: SeasonRow;
+  mutate: Mutate;
+  busy: string | null;
+}) {
   const [draft, setDraft] = useState<EpisodeDraft>(emptyEpisodeDraft);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -858,25 +931,46 @@ function NewEpisodeForm({ season, mutate, busy }: { season: SeasonRow; mutate: M
       <div className={styles.cardHeader}>
         <div>
           <strong>Add episode</strong>
-          <p className={styles.muted}>Draft episodes may omit playback; publication requires a playable Video.</p>
+          <p className={styles.muted}>
+            Draft episodes may omit playback; publication requires a playable Video.
+          </p>
         </div>
       </div>
       <div className={styles.formGrid}>
         <label>
           Episode number
-          <input min="0" required type="number" value={draft.episodeNumber} onChange={(event) => setDraft({ ...draft, episodeNumber: event.target.value })} />
+          <input
+            min="0"
+            required
+            type="number"
+            value={draft.episodeNumber}
+            onChange={(event) => setDraft({ ...draft, episodeNumber: event.target.value })}
+          />
         </label>
         <label>
           Title
-          <input maxLength={200} required value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+          <input
+            maxLength={200}
+            required
+            value={draft.title}
+            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+          />
         </label>
         <label>
           Release date
-          <input type="datetime-local" value={draft.releaseDate} onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })} />
+          <input
+            type="datetime-local"
+            value={draft.releaseDate}
+            onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
+          />
         </label>
         <label className={styles.fullField}>
           Synopsis
-          <textarea required value={draft.synopsis} onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })} />
+          <textarea
+            required
+            value={draft.synopsis}
+            onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
+          />
         </label>
         <div className={styles.fullField}>
           <CatalogResourcePicker
@@ -888,7 +982,11 @@ function NewEpisodeForm({ season, mutate, busy }: { season: SeasonRow; mutate: M
           />
         </div>
         <div className={`${styles.actions} ${styles.fullField}`}>
-          <button className={styles.button} disabled={busy === `create-episode:${season.id}`} type="submit">
+          <button
+            className={styles.button}
+            disabled={busy === `create-episode:${season.id}`}
+            type="submit"
+          >
             Add episode draft
           </button>
         </div>
@@ -959,9 +1057,12 @@ function EpisodeEditor({
     <article className={styles.card}>
       <div className={styles.cardHeader}>
         <div>
-          <strong>E{episode.episodeNumber} · {episode.title}</strong>
+          <strong>
+            E{episode.episodeNumber} · {episode.title}
+          </strong>
           <p className={styles.muted}>
-            {episode.status} · catalog position {episodeIndex + 1} · {episode.video?.title ?? "playback not assigned"}
+            {episode.status} · catalog position {episodeIndex + 1} ·{" "}
+            {episode.video?.title ?? "playback not assigned"}
           </p>
         </div>
         <ValidationBadge validation={episode.validation} />
@@ -972,19 +1073,38 @@ function EpisodeEditor({
       <form className={styles.formGrid} onSubmit={save}>
         <label>
           Episode number
-          <input min="0" required type="number" value={draft.episodeNumber} onChange={(event) => setDraft({ ...draft, episodeNumber: event.target.value })} />
+          <input
+            min="0"
+            required
+            type="number"
+            value={draft.episodeNumber}
+            onChange={(event) => setDraft({ ...draft, episodeNumber: event.target.value })}
+          />
         </label>
         <label>
           Title
-          <input maxLength={200} required value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+          <input
+            maxLength={200}
+            required
+            value={draft.title}
+            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+          />
         </label>
         <label>
           Release date
-          <input type="datetime-local" value={draft.releaseDate} onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })} />
+          <input
+            type="datetime-local"
+            value={draft.releaseDate}
+            onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
+          />
         </label>
         <label className={styles.fullField}>
           Synopsis
-          <textarea required value={draft.synopsis} onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })} />
+          <textarea
+            required
+            value={draft.synopsis}
+            onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
+          />
         </label>
         <div className={styles.fullField}>
           <CatalogResourcePicker
@@ -997,7 +1117,11 @@ function EpisodeEditor({
           />
         </div>
         <div className={`${styles.actions} ${styles.fullField}`}>
-          <button className={styles.button} disabled={busy === `save-episode:${episode.id}`} type="submit">
+          <button
+            className={styles.button}
+            disabled={busy === `save-episode:${episode.id}`}
+            type="submit"
+          >
             Save episode
           </button>
           <button
@@ -1012,7 +1136,10 @@ function EpisodeEditor({
           <button
             aria-label={`Move ${episode.title} down`}
             className={styles.button}
-            disabled={episodeIndex === season.episodes.length - 1 || busy === `reorder-episodes:${season.id}`}
+            disabled={
+              episodeIndex === season.episodes.length - 1 ||
+              busy === `reorder-episodes:${season.id}`
+            }
             type="button"
             onClick={() => void move(1)}
           >
@@ -1029,7 +1156,12 @@ function EpisodeEditor({
             </button>
           ) : null}
           {episode.status === "PUBLISHED" ? (
-            <button className={styles.danger} disabled={Boolean(busy)} type="button" onClick={() => void lifecycle("unpublish")}>
+            <button
+              className={styles.danger}
+              disabled={Boolean(busy)}
+              type="button"
+              onClick={() => void lifecycle("unpublish")}
+            >
               Unpublish episode
             </button>
           ) : null}
@@ -1057,7 +1189,9 @@ function fromSeries(series: SeriesRow): SeriesDraft {
     originalLanguage: series.originalLanguage,
     trailer: {
       id: series.trailerVideoId,
-      label: series.trailerVideo ? `${series.trailerVideo.title} · /${series.trailerVideo.slug}` : null,
+      label: series.trailerVideo
+        ? `${series.trailerVideo.title} · /${series.trailerVideo.slug}`
+        : null,
     },
     genres: series.genres.map((genre) => genre.name).join(", "),
     artwork: artworkSelections(series.artwork),
@@ -1135,7 +1269,8 @@ function artworkSelections(rows: ArtworkRow[]): ArtworkSelections {
 
 function artworkLabel(row: ArtworkRow) {
   const objectName = row.asset?.r2ObjectKey.split("/").at(-1) ?? titleCase(row.type);
-  const dimensions = row.asset?.width && row.asset.height ? ` · ${row.asset.width}×${row.asset.height}` : "";
+  const dimensions =
+    row.asset?.width && row.asset.height ? ` · ${row.asset.width}×${row.asset.height}` : "";
   return `${objectName}${dimensions}`;
 }
 
@@ -1154,7 +1289,14 @@ function updateAvailability(
 }
 
 function csv(value: string) {
-  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function titleCase(value: string) {

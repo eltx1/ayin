@@ -128,7 +128,7 @@ export function AdminMovieCatalog() {
   }, [load]);
 
   const editing = useMemo(
-    () => (editingId ? items.find((item) => item.id === editingId) ?? null : null),
+    () => (editingId ? (items.find((item) => item.id === editingId) ?? null) : null),
     [editingId, items],
   );
 
@@ -169,7 +169,9 @@ export function AdminMovieCatalog() {
         credentials: "include",
       });
       if (!response.ok) throw new Error(await readApiError(response));
-      setMessage(`Movie ${action === "publish" ? "published" : action === "unpublish" ? "unpublished" : "archived"}.`);
+      setMessage(
+        `Movie ${action === "publish" ? "published" : action === "unpublish" ? "unpublished" : "archived"}.`,
+      );
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : `Movie could not ${action}.`);
@@ -200,7 +202,8 @@ export function AdminMovieCatalog() {
           <span className={styles.eyebrow}>Catalog operations</span>
           <h1>Movies</h1>
           <p className={styles.muted}>
-            Draft, validate and publish movie identities without exposing database IDs or unsafe media.
+            Draft, validate and publish movie identities without exposing database IDs or unsafe
+            media.
           </p>
         </div>
         <button className={styles.button} onClick={beginCreate} type="button">
@@ -217,7 +220,11 @@ export function AdminMovieCatalog() {
             <span className={styles.eyebrow}>{editing ? "Edit movie" : "Create draft"}</span>
             <h2>{editing?.title ?? "New movie"}</h2>
           </div>
-          {editing ? <ValidationBadge validation={editing.validation} /> : <span className={styles.statusPill}>DRAFT</span>}
+          {editing ? (
+            <ValidationBadge validation={editing.validation} />
+          ) : (
+            <span className={styles.statusPill}>DRAFT</span>
+          )}
         </div>
         {editing?.validation.issues.length ? (
           <div className={styles.error}>Validation: {editing.validation.issues.join(" · ")}</div>
@@ -225,39 +232,88 @@ export function AdminMovieCatalog() {
         <form className={styles.formGrid} onSubmit={save}>
           <label>
             Title
-            <input required maxLength={200} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+            <input
+              required
+              maxLength={200}
+              value={draft.title}
+              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+            />
           </label>
           <label>
             Slug
-            <input maxLength={160} placeholder="generated from title when blank" value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: event.target.value })} />
+            <input
+              maxLength={160}
+              placeholder="generated from title when blank"
+              value={draft.slug}
+              onChange={(event) => setDraft({ ...draft, slug: event.target.value })}
+            />
           </label>
           <label className={styles.fullField}>
             Synopsis
-            <textarea required value={draft.synopsis} onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })} />
+            <textarea
+              required
+              value={draft.synopsis}
+              onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
+            />
           </label>
           <label>
             Release year
-            <input min="1888" max="2200" required type="number" value={draft.releaseYear} onChange={(event) => setDraft({ ...draft, releaseYear: event.target.value })} />
+            <input
+              min="1888"
+              max="2200"
+              required
+              type="number"
+              value={draft.releaseYear}
+              onChange={(event) => setDraft({ ...draft, releaseYear: event.target.value })}
+            />
           </label>
           <label>
             Runtime (minutes)
-            <input min="1" max="1440" required type="number" value={draft.runtimeMinutes} onChange={(event) => setDraft({ ...draft, runtimeMinutes: event.target.value })} />
+            <input
+              min="1"
+              max="1440"
+              required
+              type="number"
+              value={draft.runtimeMinutes}
+              onChange={(event) => setDraft({ ...draft, runtimeMinutes: event.target.value })}
+            />
           </label>
           <label>
             Release date
-            <input type="date" value={draft.releaseDate} onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })} />
+            <input
+              type="date"
+              value={draft.releaseDate}
+              onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
+            />
           </label>
           <label>
             Maturity
-            <input required maxLength={32} placeholder="PG-13" value={draft.maturityRating} onChange={(event) => setDraft({ ...draft, maturityRating: event.target.value })} />
+            <input
+              required
+              maxLength={32}
+              placeholder="PG-13"
+              value={draft.maturityRating}
+              onChange={(event) => setDraft({ ...draft, maturityRating: event.target.value })}
+            />
           </label>
           <label>
             Original language
-            <input required maxLength={16} placeholder="en" value={draft.originalLanguage} onChange={(event) => setDraft({ ...draft, originalLanguage: event.target.value })} />
+            <input
+              required
+              maxLength={16}
+              placeholder="en"
+              value={draft.originalLanguage}
+              onChange={(event) => setDraft({ ...draft, originalLanguage: event.target.value })}
+            />
           </label>
           <label>
             Genres / categories
-            <input required placeholder="Drama, Mystery" value={draft.genres} onChange={(event) => setDraft({ ...draft, genres: event.target.value })} />
+            <input
+              required
+              placeholder="Drama, Mystery"
+              value={draft.genres}
+              onChange={(event) => setDraft({ ...draft, genres: event.target.value })}
+            />
           </label>
           <div className={styles.fullField}>
             <CatalogResourcePicker
@@ -266,7 +322,9 @@ export function AdminMovieCatalog() {
               required
               value={draft.primaryVideoId}
               selectedLabel={draft.primaryVideoLabel}
-              onChange={(id, label) => setDraft({ ...draft, primaryVideoId: id, primaryVideoLabel: label })}
+              onChange={(id, label) =>
+                setDraft({ ...draft, primaryVideoId: id, primaryVideoLabel: label })
+              }
             />
           </div>
           <div className={styles.fullField}>
@@ -275,7 +333,9 @@ export function AdminMovieCatalog() {
               label="Trailer"
               value={draft.trailerVideoId}
               selectedLabel={draft.trailerVideoLabel}
-              onChange={(id, label) => setDraft({ ...draft, trailerVideoId: id, trailerVideoLabel: label })}
+              onChange={(id, label) =>
+                setDraft({ ...draft, trailerVideoId: id, trailerVideoLabel: label })
+              }
             />
           </div>
           {(["POSTER", "BACKDROP", "LOGO"] as const).map((type) => (
@@ -299,7 +359,9 @@ export function AdminMovieCatalog() {
             <div className={styles.cardHeader}>
               <div>
                 <strong>Availability</strong>
-                <p className={styles.muted}>Use * for global rights or a two-letter territory code.</p>
+                <p className={styles.muted}>
+                  Use * for global rights or a two-letter territory code.
+                </p>
               </div>
               <button
                 className={styles.button}
@@ -321,29 +383,73 @@ export function AdminMovieCatalog() {
               <div className={styles.formGrid} key={`${index}-${rule.territoryCode}`}>
                 <label>
                   Territory
-                  <input maxLength={2} value={rule.territoryCode} onChange={(event) => updateAvailability(setDraft, draft, index, { territoryCode: event.target.value.toUpperCase() })} />
+                  <input
+                    maxLength={2}
+                    value={rule.territoryCode}
+                    onChange={(event) =>
+                      updateAvailability(setDraft, draft, index, {
+                        territoryCode: event.target.value.toUpperCase(),
+                      })
+                    }
+                  />
                 </label>
                 <label>
                   Rule
-                  <select value={rule.rule} onChange={(event) => updateAvailability(setDraft, draft, index, { rule: event.target.value as AvailabilityRule })}>
+                  <select
+                    value={rule.rule}
+                    onChange={(event) =>
+                      updateAvailability(setDraft, draft, index, {
+                        rule: event.target.value as AvailabilityRule,
+                      })
+                    }
+                  >
                     <option value="ALLOW">Allow</option>
                     <option value="BLOCK">Block</option>
                   </select>
                 </label>
                 <label>
                   Starts
-                  <input type="datetime-local" value={rule.startsAt} onChange={(event) => updateAvailability(setDraft, draft, index, { startsAt: event.target.value })} />
+                  <input
+                    type="datetime-local"
+                    value={rule.startsAt}
+                    onChange={(event) =>
+                      updateAvailability(setDraft, draft, index, { startsAt: event.target.value })
+                    }
+                  />
                 </label>
                 <label>
                   Ends
-                  <input type="datetime-local" value={rule.endsAt} onChange={(event) => updateAvailability(setDraft, draft, index, { endsAt: event.target.value })} />
+                  <input
+                    type="datetime-local"
+                    value={rule.endsAt}
+                    onChange={(event) =>
+                      updateAvailability(setDraft, draft, index, { endsAt: event.target.value })
+                    }
+                  />
                 </label>
                 <label className={styles.fullField}>
                   Note
-                  <input maxLength={240} value={rule.note} onChange={(event) => updateAvailability(setDraft, draft, index, { note: event.target.value })} />
+                  <input
+                    maxLength={240}
+                    value={rule.note}
+                    onChange={(event) =>
+                      updateAvailability(setDraft, draft, index, { note: event.target.value })
+                    }
+                  />
                 </label>
                 <div className={`${styles.actions} ${styles.fullField}`}>
-                  <button className={styles.danger} type="button" onClick={() => setDraft({ ...draft, availability: draft.availability.filter((_, itemIndex) => itemIndex !== index) })}>
+                  <button
+                    className={styles.danger}
+                    type="button"
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        availability: draft.availability.filter(
+                          (_, itemIndex) => itemIndex !== index,
+                        ),
+                      })
+                    }
+                  >
                     Remove rule
                   </button>
                 </div>
@@ -357,16 +463,31 @@ export function AdminMovieCatalog() {
             {editing ? (
               <>
                 {editing.status === "PUBLISHED" ? (
-                  <button className={styles.danger} disabled={Boolean(busy)} type="button" onClick={() => void lifecycle(editing, "unpublish")}>
+                  <button
+                    className={styles.danger}
+                    disabled={Boolean(busy)}
+                    type="button"
+                    onClick={() => void lifecycle(editing, "unpublish")}
+                  >
                     Unpublish
                   </button>
                 ) : editing.status === "DRAFT" ? (
-                  <button className={styles.button} disabled={Boolean(busy) || !editing.validation.publishable} type="button" onClick={() => void lifecycle(editing, "publish")}>
+                  <button
+                    className={styles.button}
+                    disabled={Boolean(busy) || !editing.validation.publishable}
+                    type="button"
+                    onClick={() => void lifecycle(editing, "publish")}
+                  >
                     Publish
                   </button>
                 ) : null}
                 {editing.status === "DRAFT" ? (
-                  <button className={styles.danger} disabled={Boolean(busy)} type="button" onClick={() => void lifecycle(editing, "archive")}>
+                  <button
+                    className={styles.danger}
+                    disabled={Boolean(busy)}
+                    type="button"
+                    onClick={() => void lifecycle(editing, "archive")}
+                  >
                     Archive
                   </button>
                 ) : null}
@@ -385,8 +506,15 @@ export function AdminMovieCatalog() {
           <span className={styles.statusPill}>{items.length} results</span>
         </div>
         <div className={styles.toolbar}>
-          <input placeholder="Search title, slug, synopsis or genre…" value={query} onChange={(event) => setQuery(event.target.value)} />
-          <select value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
+          <input
+            placeholder="Search title, slug, synopsis or genre…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as typeof status)}
+          >
             <option value="">All statuses</option>
             <option value="DRAFT">Draft</option>
             <option value="PUBLISHED">Published</option>
@@ -399,17 +527,25 @@ export function AdminMovieCatalog() {
               <div className={styles.cardHeader}>
                 <div>
                   <strong>{movie.title}</strong>
-                  <p className={styles.muted}>/{movie.slug} · {movie.releaseYear} · {movie.runtimeMinutes} min · {movie.originalLanguage.toUpperCase()}</p>
+                  <p className={styles.muted}>
+                    /{movie.slug} · {movie.releaseYear} · {movie.runtimeMinutes} min ·{" "}
+                    {movie.originalLanguage.toUpperCase()}
+                  </p>
                 </div>
                 <ValidationBadge validation={movie.validation} />
               </div>
               <p>{movie.genres.map((genre) => genre.name).join(" · ") || "No genres"}</p>
               <p className={styles.muted}>
-                Primary: {movie.primaryVideo ? `${movie.primaryVideo.title} (${movie.primaryVideo.slug})` : "Not assigned"}
+                Primary:{" "}
+                {movie.primaryVideo
+                  ? `${movie.primaryVideo.title} (${movie.primaryVideo.slug})`
+                  : "Not assigned"}
               </p>
               <div className={styles.actions}>
                 <span className={styles.statusPill}>{movie.status}</span>
-                <button className={styles.button} type="button" onClick={() => beginEdit(movie)}>Edit</button>
+                <button className={styles.button} type="button" onClick={() => beginEdit(movie)}>
+                  Edit
+                </button>
               </div>
             </article>
           ))}
@@ -422,7 +558,9 @@ export function AdminMovieCatalog() {
 function ValidationBadge({ validation }: { validation: Validation }) {
   return (
     <span className={styles.statusPill} title={validation.issues.join(", ")}>
-      {validation.status === "READY" ? "Ready" : `${validation.issues.length} validation issue${validation.issues.length === 1 ? "" : "s"}`}
+      {validation.status === "READY"
+        ? "Ready"
+        : `${validation.issues.length} validation issue${validation.issues.length === 1 ? "" : "s"}`}
     </span>
   );
 }
@@ -432,7 +570,9 @@ function fromMovie(movie: MovieRow): Draft {
   for (const item of movie.artwork) {
     artwork[item.type] = {
       id: item.mediaAssetId,
-      label: item.asset ? `${item.type} · ${item.asset.r2ObjectKey.split("/").at(-1) ?? "image"}` : item.type,
+      label: item.asset
+        ? `${item.type} · ${item.asset.r2ObjectKey.split("/").at(-1) ?? "image"}`
+        : item.type,
     };
   }
   return {
@@ -445,9 +585,13 @@ function fromMovie(movie: MovieRow): Draft {
     maturityRating: movie.maturityRating,
     originalLanguage: movie.originalLanguage,
     primaryVideoId: movie.primaryVideoId,
-    primaryVideoLabel: movie.primaryVideo ? `${movie.primaryVideo.title} · ${movie.primaryVideo.slug}` : null,
+    primaryVideoLabel: movie.primaryVideo
+      ? `${movie.primaryVideo.title} · ${movie.primaryVideo.slug}`
+      : null,
     trailerVideoId: movie.trailerVideoId,
-    trailerVideoLabel: movie.trailerVideo ? `${movie.trailerVideo.title} · ${movie.trailerVideo.slug}` : null,
+    trailerVideoLabel: movie.trailerVideo
+      ? `${movie.trailerVideo.title} · ${movie.trailerVideo.slug}`
+      : null,
     genres: movie.genres.map((genre) => genre.name).join(", "),
     artwork,
     availability: movie.availability.map((item) => ({
@@ -473,8 +617,12 @@ function toPayload(draft: Draft) {
     primaryVideoId: draft.primaryVideoId,
     trailerVideoId: draft.trailerVideoId,
     genres: splitGenres(draft.genres),
-    artwork: (Object.entries(draft.artwork) as Array<[ArtworkType, Draft["artwork"][ArtworkType]]>).flatMap(([type, item]) =>
-      item.id ? [{ type, mediaAssetId: item.id, altText: `${draft.title} ${type.toLowerCase()}` }] : [],
+    artwork: (
+      Object.entries(draft.artwork) as Array<[ArtworkType, Draft["artwork"][ArtworkType]]>
+    ).flatMap(([type, item]) =>
+      item.id
+        ? [{ type, mediaAssetId: item.id, altText: `${draft.title} ${type.toLowerCase()}` }]
+        : [],
     ),
     availability: draft.availability.map((item) => ({
       territoryCode: item.territoryCode,
@@ -487,7 +635,14 @@ function toPayload(draft: Draft) {
 }
 
 function splitGenres(value: string) {
-  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function toLocalDateTime(value: string | null) {

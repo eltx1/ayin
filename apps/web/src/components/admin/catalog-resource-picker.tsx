@@ -111,7 +111,9 @@ export function CatalogResourcePicker({
         <div className={styles.searchResult}>
           <div>
             <strong>{selectedLabel || "Selected catalog resource"}</strong>
-            <small className={styles.muted}>Selection is stored internally; database IDs are hidden.</small>
+            <small className={styles.muted}>
+              Selection is stored internally; database IDs are hidden.
+            </small>
           </div>
           {allowClear ? (
             <button
@@ -132,7 +134,9 @@ export function CatalogResourcePicker({
         aria-label={`Search ${label}`}
         disabled={disabled}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder={kind === "video" ? "Search title, slug or channel…" : "Search asset, video or channel…"}
+        placeholder={
+          kind === "video" ? "Search title, slug or channel…" : "Search asset, video or channel…"
+        }
         value={query}
       />
       {loading ? <span className={styles.muted}>Searching…</span> : null}
