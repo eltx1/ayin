@@ -432,7 +432,12 @@ export class SearchService {
 
 export function normalizeSearchQuery(query: string): string {
   const normalizedInput = query.normalize("NFKC");
-  if (/[\u0000-\u001f\u007f]/u.test(normalizedInput)) {
+  if (
+    Array.from(normalizedInput).some((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint <= 0x1f || codePoint === 0x7f;
+    })
+  ) {
     throw new SearchError(
       "INVALID_SEARCH_QUERY",
       "Search terms contain unsupported control characters.",
