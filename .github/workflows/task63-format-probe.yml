@@ -6,7 +6,7 @@ on:
       - task-63-trending-engine
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
@@ -22,28 +22,25 @@ jobs:
           corepack prepare pnpm@11.24.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Format Task 63 files
-        run: >-
-          pnpm exec prettier --write
-          apps/api/src/discovery/discovery.controller.ts
-          apps/api/src/discovery/discovery.module.ts
-          apps/api/src/discovery/trending-engine.test.ts
-          apps/api/src/discovery/trending-engine.ts
-          apps/api/src/discovery/trending.service.ts
-          packages/db/src/trending.test.mjs
-      - name: Stage formatted files
+      - name: Format Task 63 files and remove probe
         run: |
-          mkdir -p task63-format/apps/api/src/discovery
-          mkdir -p task63-format/packages/db/src
-          cp apps/api/src/discovery/discovery.controller.ts task63-format/apps/api/src/discovery/
-          cp apps/api/src/discovery/discovery.module.ts task63-format/apps/api/src/discovery/
-          cp apps/api/src/discovery/trending-engine.test.ts task63-format/apps/api/src/discovery/
-          cp apps/api/src/discovery/trending-engine.ts task63-format/apps/api/src/discovery/
-          cp apps/api/src/discovery/trending.service.ts task63-format/apps/api/src/discovery/
-          cp packages/db/src/trending.test.mjs task63-format/packages/db/src/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: task63-formatted
-          path: task63-format
-          if-no-files-found: error
-          retention-days: 1
+          pnpm exec prettier --write \
+            apps/api/src/discovery/discovery.controller.ts \
+            apps/api/src/discovery/discovery.module.ts \
+            apps/api/src/discovery/trending-engine.test.ts \
+            apps/api/src/discovery/trending-engine.ts \
+            apps/api/src/discovery/trending.service.ts \
+            packages/db/src/trending.test.mjs
+          git rm .github/workflows/task63-format-probe.yml
+      - name: Commit exact formatter output
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/discovery/discovery.controller.ts \
+            apps/api/src/discovery/discovery.module.ts \
+            apps/api/src/discovery/trending-engine.test.ts \
+            apps/api/src/discovery/trending-engine.ts \
+            apps/api/src/discovery/trending.service.ts \
+            packages/db/src/trending.test.mjs
+          git commit -m "Format Task 63 sources"
+          git push origin HEAD:task-63-trending-engine
