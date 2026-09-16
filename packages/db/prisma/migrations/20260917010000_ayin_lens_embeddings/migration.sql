@@ -18,14 +18,14 @@ CREATE TABLE "CatalogSearchEmbedding" (
       CHECK ("dimensions" > 0 AND cardinality("embedding") = "dimensions")
 );
 
-CREATE UNIQUE INDEX "CatalogSearchEmbedding_entityType_entityId_provider_model_version_key"
+CREATE UNIQUE INDEX "CatalogEmbedding_entity_provider_model_version_key"
 ON "CatalogSearchEmbedding"("entityType", "entityId", "providerKey", "model", "modelVersion");
 
-CREATE INDEX "CatalogSearchEmbedding_provider_model_version_dimensions_embeddedAt_idx"
+CREATE INDEX "CatalogEmbedding_provider_model_scan_idx"
 ON "CatalogSearchEmbedding"("providerKey", "model", "modelVersion", "dimensions", "embeddedAt");
 
-CREATE INDEX "CatalogSearchEmbedding_entityType_entityId_idx"
+CREATE INDEX "CatalogEmbedding_entity_idx"
 ON "CatalogSearchEmbedding"("entityType", "entityId");
 
-CREATE INDEX "CatalogSearchEmbedding_contentHash_idx"
+CREATE INDEX "CatalogEmbedding_hash_idx"
 ON "CatalogSearchEmbedding"("contentHash");
