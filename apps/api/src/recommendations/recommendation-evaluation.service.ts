@@ -87,7 +87,10 @@ export class RecommendationEvaluationService {
   }
 
   async exportObservedDataset(versionIds: string[], days = 14, limit = 500) {
-    const versions = [...new Set(versionIds.map((value) => value.trim()).filter(Boolean))].slice(0, 8);
+    const versions = [...new Set(versionIds.map((value) => value.trim()).filter(Boolean))].slice(
+      0,
+      8,
+    );
     if (!versions.length) return { versions: [], telemetryCoverage: 0, exposures: [] };
     const from = new Date(Date.now() - clamp(days, 1, 90) * DAY_MS);
     const exposures = await this.database.client.recommendationExposure.findMany({
@@ -136,7 +139,13 @@ export class RecommendationEvaluationService {
       if (exposureEvents.length) attributed += 1;
       const outcomes = new Map<
         string,
-        { videoId: string; impression: boolean; clicked: boolean; watchTimeMs: number; completed: boolean }
+        {
+          videoId: string;
+          impression: boolean;
+          clicked: boolean;
+          watchTimeMs: number;
+          completed: boolean;
+        }
       >();
       for (const event of exposureEvents) {
         if (!event.videoId) continue;

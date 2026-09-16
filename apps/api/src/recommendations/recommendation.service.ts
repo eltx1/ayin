@@ -184,7 +184,10 @@ export class RecommendationService implements RecommendationServiceContract {
           } satisfies RankingDebugItem,
         };
       })
-      .sort((left, right) => right.item.score - left.item.score || left.item.id.localeCompare(right.item.id))
+      .sort(
+        (left, right) =>
+          right.item.score - left.item.score || left.item.id.localeCompare(right.item.id),
+      )
       .slice(0, limit);
     return this.attachTvExposure({
       profileId,

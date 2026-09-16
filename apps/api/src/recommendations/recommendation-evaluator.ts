@@ -111,7 +111,8 @@ export function evaluateRecommendationVersion(
     evaluatedPositions += ranked.length;
 
     const explicitRelevant = new Set(evaluationCase.relevantVideoIds ?? []);
-    const relevant = explicitRelevant.size > 0 ? explicitRelevant : observedRelevant(evaluationCase);
+    const relevant =
+      explicitRelevant.size > 0 ? explicitRelevant : observedRelevant(evaluationCase);
     const hits = ranked.filter((videoId) => relevant.has(videoId)).length;
     precision += hits / ranked.length;
     recall += relevant.size > 0 ? hits / relevant.size : 0;
@@ -202,11 +203,14 @@ export function assessRecommendationRelease(
   const blockers: string[] = [];
   if (delta.precisionProxy < guardrails.minimumPrecisionDelta) blockers.push("precisionProxy");
   if (delta.recallProxy < guardrails.minimumRecallDelta) blockers.push("recallProxy");
-  if (delta.watchTimeRelevance < guardrails.minimumWatchTimeDelta) blockers.push("watchTimeRelevance");
+  if (delta.watchTimeRelevance < guardrails.minimumWatchTimeDelta)
+    blockers.push("watchTimeRelevance");
   if (delta.completionRate < guardrails.minimumCompletionDelta) blockers.push("completionRate");
   if (delta.diversity < guardrails.minimumDiversityDelta) blockers.push("diversity");
-  if (delta.creatorDiversity < guardrails.minimumCreatorDiversityDelta) blockers.push("creatorDiversity");
-  if (delta.catalogDiversity < guardrails.minimumCatalogDiversityDelta) blockers.push("catalogDiversity");
+  if (delta.creatorDiversity < guardrails.minimumCreatorDiversityDelta)
+    blockers.push("creatorDiversity");
+  if (delta.catalogDiversity < guardrails.minimumCatalogDiversityDelta)
+    blockers.push("catalogDiversity");
   if (delta.novelty < guardrails.minimumNoveltyDelta) blockers.push("novelty");
   if (delta.repeatedItemRate > guardrails.maximumRepeatedItemRateIncrease) {
     blockers.push("repeatedItemRate");

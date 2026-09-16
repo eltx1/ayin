@@ -31,7 +31,11 @@ describe("recommendation evaluation", () => {
 
   it("blocks a watch-time-only ranking when creator and catalog diversity collapse", () => {
     const baseline = evaluateRecommendationVersion(recommendationEvaluationFixture, "baseline", 4);
-    const watchOnly = evaluateRecommendationVersion(recommendationEvaluationFixture, "watch-only", 4);
+    const watchOnly = evaluateRecommendationVersion(
+      recommendationEvaluationFixture,
+      "watch-only",
+      4,
+    );
     const assessment = assessRecommendationRelease(baseline, watchOnly);
 
     expect(watchOnly.watchTimeRelevance).toBeGreaterThan(baseline.watchTimeRelevance);

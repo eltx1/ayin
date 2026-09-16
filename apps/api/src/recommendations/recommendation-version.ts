@@ -41,12 +41,12 @@ export function allocateRecommendationVariant(
         variant.weightBps > 10_000,
     )
   ) {
-    throw new Error("Recommendation experiment weights must be positive integers totaling 10000 bps.");
+    throw new Error(
+      "Recommendation experiment weights must be positive integers totaling 10000 bps.",
+    );
   }
 
-  const digest = createHash("sha256")
-    .update(`${experimentKey}\u0000${allocationKey}`)
-    .digest();
+  const digest = createHash("sha256").update(`${experimentKey}\u0000${allocationKey}`).digest();
   const bucket = digest.readUInt32BE(0) % 10_000;
   let cursor = 0;
   for (const variant of variants) {
