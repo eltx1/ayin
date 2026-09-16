@@ -16,8 +16,8 @@ model CatalogSearchEmbedding {
   embeddedAt      DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  @@unique([entityType, entityId, providerKey, model, modelVersion])
-  @@index([providerKey, model, modelVersion, dimensions, embeddedAt])
-  @@index([entityType, entityId])
-  @@index([contentHash])
+  @@unique([entityType, entityId, providerKey, model, modelVersion], map: "CatalogEmbedding_entity_provider_model_version_key")
+  @@index([providerKey, model, modelVersion, dimensions, embeddedAt], map: "CatalogEmbedding_provider_model_scan_idx")
+  @@index([entityType, entityId], map: "CatalogEmbedding_entity_idx")
+  @@index([contentHash], map: "CatalogEmbedding_hash_idx")
 }
