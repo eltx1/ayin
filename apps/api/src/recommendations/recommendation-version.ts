@@ -22,7 +22,8 @@ export function recommendationVersionId<T extends object>(algorithmId: string, c
 /**
  * Future A/B boundary only. Production recommendation serving does not call
  * this function in Task 66. A later experiment system can supply a stable,
- * non-PII allocation key and an explicit variant plan.
+ * non-PII allocation key and an explicit variant plan. Assignment persistence,
+ * consent and statistical rollout policy remain responsibilities of that future layer.
  */
 export function allocateRecommendationVariant(
   allocationKey: string,
