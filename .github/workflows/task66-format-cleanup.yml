@@ -1,0 +1,39 @@
+name: Task 66 format cleanup
+
+on:
+  push:
+    branches:
+      - task-66-recommendation-evaluation
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply repository Prettier and remove temporary workflow
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/recommendations/recommendation-evaluation.fixture.ts \
+            apps/api/src/recommendations/recommendation-evaluation.service.ts \
+            apps/api/src/recommendations/recommendation-evaluator.test.ts \
+            apps/api/src/recommendations/recommendation-evaluator.ts \
+            apps/api/src/recommendations/recommendation-version.ts \
+            apps/api/src/recommendations/recommendation.service.ts
+          git rm .github/workflows/task66-format-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/recommendations
+          git commit -m "Format Task 66 sources"
+          git push origin HEAD:task-66-recommendation-evaluation
