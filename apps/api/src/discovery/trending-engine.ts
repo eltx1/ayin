@@ -43,6 +43,7 @@ export interface TrendingScopeSelection {
   candidates: TrendingScoredCandidate[];
 }
 
+// Inputs are audience-qualified aggregates; this layer never ranks by raw view count alone.
 export function scoreTrendingCandidates(
   metrics: TrendingRawMetrics[],
   config: TrendingConfig,
