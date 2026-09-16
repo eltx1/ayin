@@ -189,9 +189,10 @@ export class RegionalDiscoveryService {
 function signalForSource(
   source: string,
 ): Exclude<RegionalDiscoverySignal, "CATEGORY_AFFINITY"> | null {
-  if (["TRENDING_WORLDWIDE", "POPULAR_NOW", "POPULAR_REGION"].includes(source)) {
-    return "POPULAR_CONTENT";
-  }
+  // Task 63 owns TRENDING_WORLDWIDE and POPULAR_REGION end-to-end using real
+  // analytics. Keep the older regional aggregate boost only for non-trending
+  // popularity so it cannot contaminate the global trending surface.
+  if (source === "POPULAR_NOW") return "POPULAR_CONTENT";
   if (["MOVIES", "SERIES"].includes(source)) return "CATALOG";
   if (source === "CREATOR_TV") return "CREATOR_TV";
   return null;

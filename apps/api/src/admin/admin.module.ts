@@ -21,6 +21,8 @@ import { AdminProductController, PublicProductController } from "./admin-product
 import { AdminProductService } from "./admin-product.service.js";
 import { AdminScopedDirectoryController } from "./admin-scoped-directory.controller.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
+import { AdminTrendingController } from "./admin-trending.controller.js";
+import { AdminTrendingService } from "./admin-trending.service.js";
 import { AdminVideoMetadataController } from "./admin-video-metadata.controller.js";
 import { AdminVideoPolicyController } from "./admin-video-policy.controller.js";
 import { AdminVideoPolicyService } from "./admin-video-policy.service.js";
@@ -43,6 +45,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminScopedDirectoryController,
     SupportTicketController,
     AdminProductController,
+    AdminTrendingController,
     PublicProductController,
     ContentSeedingController,
   ],
@@ -56,6 +59,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminCommandCenterService,
     AdminGovernanceService,
     AdminProductService,
+    AdminTrendingService,
     CatalogAdminMediaService,
     ContentSeedingService,
   ],
@@ -67,6 +71,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminCommandCenterService,
     AdminGovernanceService,
     AdminProductService,
+    AdminTrendingService,
     CatalogAdminMediaService,
     ContentSeedingService,
   ],
