@@ -63,6 +63,7 @@ export const trendingConfigSchema = z
 
 export type TrendingConfig = z.infer<typeof trendingConfigSchema>;
 
+// Defaults deliberately require a larger regional cohort than the global surface.
 export const defaultTrendingConfig: TrendingConfig = {
   windowHours: 72,
   recentHours: 6,
