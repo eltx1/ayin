@@ -1,4 +1,4 @@
--- Task 64: PostgreSQL-native search quality and bounded autocomplete.
+-- Task 64 Search V2: PostgreSQL-native search quality and bounded autocomplete.
 -- pg_trgm provides typo tolerance and indexed LIKE support without an external search cluster.
 -- Runtime search queries use bounded candidate limits and escaped prefix patterns only.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
