@@ -32,7 +32,7 @@ describe("Task 64 PostgreSQL search V2", () => {
     expect(postgresSearch).toContain("plainto_tsquery('simple'");
     expect(postgresSearch).toContain("similarity(lower(");
     expect(postgresSearch).toContain("LIMIT ${limit}");
-    expect(postgresSearch).not.toMatch(/LIKE\s+['\"`]%/i);
+    expect(postgresSearch).not.toMatch(/LIKE\s+['"`]%/i);
     expect(postgresSearch).not.toMatch(/elasticsearch|opensearch|meilisearch/i);
   });
 
