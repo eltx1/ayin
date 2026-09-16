@@ -12,7 +12,7 @@ export interface SearchLanguageSelection {
 const supportedLanguageBases = new Set<SearchLanguage>(["ar", "en"]);
 const arabicScript = /\p{Script=Arabic}/u;
 const latinScript = /\p{Script=Latin}/u;
-const arabicSearchNoise = /[ـًٌٍَُِّْٰ]/g;
+const arabicSearchNoise = /(?:ـ|ً|ٌ|ٍ|َ|ُ|ِ|ّ|ْ|ٰ)/gu;
 const arabicAlefVariants = /[أإآٱ]/g;
 
 export function resolveSearchLanguage(
