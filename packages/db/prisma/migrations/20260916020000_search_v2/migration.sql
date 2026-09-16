@@ -1,5 +1,6 @@
 -- Task 64: PostgreSQL-native search quality and bounded autocomplete.
 -- pg_trgm provides typo tolerance and indexed LIKE support without an external search cluster.
+-- Runtime search queries use bounded candidate limits and escaped prefix patterns only.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- Video title: exact/prefix, typo tolerance, and language-neutral full text.
