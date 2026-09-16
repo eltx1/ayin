@@ -1,0 +1,51 @@
+name: Task 64 control-character fix
+
+on:
+  push:
+    branches: [task-64-search-v2]
+    paths:
+      - .github/workflows/task64-fix-control.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Replace control regex and format
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('apps/api/src/search/search.service.ts')
+          text = path.read_text()
+          old = '''  if (/[\\u0000-\\u001f\\u007f]/u.test(normalizedInput)) {'''
+          new = '''  if (
+            Array.from(normalizedInput).some((character) => {
+              const codePoint = character.codePointAt(0) ?? 0;
+              return codePoint <= 0x1f || codePoint === 0x7f;
+            })
+          ) {'''
+          if old not in text:
+              raise SystemExit('target snippet not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          pnpm exec prettier --write apps/api/src/search/search.service.ts
+          git rm .github/workflows/task64-fix-control.yml
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/search/search.service.ts
+          git commit -m 'Fix Task 64 control-character validation'
+          git push origin HEAD:task-64-search-v2
