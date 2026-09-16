@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
-  new URL("../prisma/migrations/20260916030000_language_aware_search/migration.sql", import.meta.url),
+  new URL(
+    "../prisma/migrations/20260916030000_language_aware_search/migration.sql",
+    import.meta.url,
+  ),
   "utf8",
 );
 const languageSearch = readFileSync(
@@ -33,6 +36,8 @@ describe("Task 65 language-aware search", () => {
     expect(languageSearch).toContain("originalLanguage");
     expect(languageSearch).toContain("SeriesLocalization");
     expect(languageSearch).toContain("MovieLocalization");
-    expect(languageSearch).not.toMatch(/openai|anthropic|gemini|embedding|fetch\(|axios|third-party/i);
+    expect(languageSearch).not.toMatch(
+      /openai|anthropic|gemini|embedding|fetch\(|axios|third-party/i,
+    );
   });
 });

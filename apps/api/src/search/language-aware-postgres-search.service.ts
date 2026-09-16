@@ -43,11 +43,20 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
     super(languageDatabase);
   }
 
-  override async searchCandidates(query: string, requestedPerType = 32): Promise<SearchCandidate[]> {
+  override async searchCandidates(
+    query: string,
+    requestedPerType = 32,
+  ): Promise<SearchCandidate[]> {
     const selection = resolveSearchLanguage(query, this.languageContext.currentUiLocale());
     const [base, languageAware] = await Promise.all([
       super.searchCandidates(query, requestedPerType),
-      this.languageCandidates(query, selection.matchQuery, selection.preferredLanguage, selection.uiLanguage, requestedPerType),
+      this.languageCandidates(
+        query,
+        selection.matchQuery,
+        selection.preferredLanguage,
+        selection.uiLanguage,
+        requestedPerType,
+      ),
     ]);
     return mergeCandidates(base, languageAware);
   }
@@ -64,10 +73,7 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
     const fuzzy = Array.from(query).length >= 3;
     const useEnglish = preferredLanguage === "en";
     const useArabic = preferredLanguage === "ar";
-    const limit = Math.min(
-      Math.max(requestedPerType, 1) * 6,
-      maxLanguageCandidates,
-    );
+    const limit = Math.min(Math.max(requestedPerType, 1) * 6, maxLanguageCandidates);
 
     const rows = await this.languageDatabase.client.$queryRaw<LanguageCandidateRow[]>(Prisma.sql`
       WITH candidates AS (
@@ -437,7 +443,10 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
   }
 }
 
-function mergeCandidates(base: SearchCandidate[], languageAware: SearchCandidate[]): SearchCandidate[] {
+function mergeCandidates(
+  base: SearchCandidate[],
+  languageAware: SearchCandidate[],
+): SearchCandidate[] {
   const merged = new Map<string, SearchCandidate>();
   for (const candidate of [...base, ...languageAware]) {
     const key = `${candidate.type}:${candidate.id}`;
