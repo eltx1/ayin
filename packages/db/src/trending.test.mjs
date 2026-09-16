@@ -15,8 +15,7 @@ describe("Task 63 trending engine schema", () => {
     expect(analytics).toContain("components    Json");
     expect(analytics).toContain("@@unique([scopeKey, videoId])");
 
-    const snapshot =
-      analytics.match(/model TrendingScoreSnapshot \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const snapshot = analytics.match(/model TrendingScoreSnapshot \{[\s\S]*?\n\}/)?.[0] ?? "";
     expect(snapshot).not.toMatch(/sessionHash|profileHash|accountId|ipAddress|rawIp/i);
   });
 

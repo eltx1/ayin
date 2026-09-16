@@ -5,7 +5,10 @@ import {
   selectTrendingScope,
   type TrendingRawMetrics,
 } from "./trending-engine.js";
-import { defaultTrendingConfig, trendingConfigSchema } from "../platform-config/trending-settings.js";
+import {
+  defaultTrendingConfig,
+  trendingConfigSchema,
+} from "../platform-config/trending-settings.js";
 
 const metric = (
   videoId: string,
@@ -52,13 +55,8 @@ describe("Task 63 trending engine offline fixtures", () => {
       defaultTrendingConfig.minAudienceGlobal,
     );
 
-    expect(ranked.map((candidate) => candidate.videoId)).toEqual([
-      "recent-growth",
-      "stale-large",
-    ]);
-    expect(ranked[0]?.components.velocity).toBeGreaterThan(
-      ranked[1]?.components.velocity ?? 0,
-    );
+    expect(ranked.map((candidate) => candidate.videoId)).toEqual(["recent-growth", "stale-large"]);
+    expect(ranked[0]?.components.velocity).toBeGreaterThan(ranked[1]?.components.velocity ?? 0);
   });
 
   it("does not let a tiny repeated-session spam loop dominate", () => {

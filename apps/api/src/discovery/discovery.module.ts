@@ -12,17 +12,7 @@ import { TrendingService } from "./trending.service.js";
 @Module({
   imports: [AuthModule, DatabaseModule, SeriesCatalogModule, VideoPolicyModule],
   controllers: [PublicDiscoveryController, DiscoveryController],
-  providers: [
-    HomeRowConfigService,
-    RegionalDiscoveryService,
-    TrendingService,
-    DiscoveryService,
-  ],
-  exports: [
-    HomeRowConfigService,
-    RegionalDiscoveryService,
-    TrendingService,
-    DiscoveryService,
-  ],
+  providers: [HomeRowConfigService, RegionalDiscoveryService, TrendingService, DiscoveryService],
+  exports: [HomeRowConfigService, RegionalDiscoveryService, TrendingService, DiscoveryService],
 })
 export class DiscoveryModule {}

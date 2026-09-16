@@ -50,11 +50,7 @@ export class PublicDiscoveryController {
       const trendingRows = await this.trending.applyRows(home.rows, context);
       return {
         ...home,
-        rows: await this.regionalDiscovery.rankAndTargetRows(
-          countryCode,
-          allowed,
-          trendingRows,
-        ),
+        rows: await this.regionalDiscovery.rankAndTargetRows(countryCode, allowed, trendingRows),
       };
     });
   }
@@ -86,19 +82,8 @@ export class PublicDiscoveryController {
         availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers),
         isKidsProfile: true,
       };
-      const page = await this.discovery.getKidsRow(
-        key,
-        context,
-        parsed.cursor,
-        parsed.limit,
-      );
-      return this.trending.applyPage(
-        page.source,
-        page,
-        context,
-        parsed.cursor,
-        parsed.limit,
-      );
+      const page = await this.discovery.getKidsRow(key, context, parsed.cursor, parsed.limit);
+      return this.trending.applyPage(page.source, page, context, parsed.cursor, parsed.limit);
     });
   }
 
@@ -120,12 +105,7 @@ export class PublicDiscoveryController {
       if (!(await this.regionalDiscovery.isMerchandisingRowAllowed(key, countryCode, allowed))) {
         throw new DiscoveryError("ROW_NOT_FOUND", "This AYIN discovery row is not available.", 404);
       }
-      const page = await this.discovery.getRow(
-        key,
-        context,
-        parsed.cursor,
-        parsed.limit,
-      );
+      const page = await this.discovery.getRow(key, context, parsed.cursor, parsed.limit);
       const trendingPage = await this.trending.applyPage(
         page.source,
         page,
@@ -174,11 +154,7 @@ export class DiscoveryController {
       const trendingRows = await this.trending.applyRows(home.rows, context);
       return {
         ...home,
-        rows: await this.regionalDiscovery.rankAndTargetRows(
-          countryCode,
-          allowed,
-          trendingRows,
-        ),
+        rows: await this.regionalDiscovery.rankAndTargetRows(countryCode, allowed, trendingRows),
       };
     });
   }
@@ -204,12 +180,7 @@ export class DiscoveryController {
       if (!(await this.regionalDiscovery.isMerchandisingRowAllowed(key, countryCode, allowed))) {
         throw new DiscoveryError("ROW_NOT_FOUND", "This AYIN discovery row is not available.", 404);
       }
-      const page = await this.discovery.getRow(
-        key,
-        context,
-        parsed.cursor,
-        parsed.limit,
-      );
+      const page = await this.discovery.getRow(key, context, parsed.cursor, parsed.limit);
       const trendingPage = await this.trending.applyPage(
         page.source,
         page,

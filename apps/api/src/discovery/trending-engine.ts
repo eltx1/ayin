@@ -140,11 +140,7 @@ export function selectTrendingScope(
   config: TrendingConfig,
 ): TrendingScopeSelection {
   if (regionalMetrics) {
-    const regional = scoreTrendingCandidates(
-      regionalMetrics,
-      config,
-      config.minAudienceRegional,
-    );
+    const regional = scoreTrendingCandidates(regionalMetrics, config, config.minAudienceRegional);
     if (regional.length > 0) {
       return { scope: "REGIONAL", regionalApplied: true, candidates: regional };
     }

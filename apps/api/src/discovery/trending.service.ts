@@ -166,11 +166,7 @@ export class TrendingService {
         ? {
             scope: "GLOBAL" as const,
             regionalApplied: false,
-            candidates: scoreTrendingCandidates(
-              globalMetrics,
-              config,
-              config.minAudienceGlobal,
-            ),
+            candidates: scoreTrendingCandidates(globalMetrics, config, config.minAudienceGlobal),
           }
         : selectTrendingScope(globalMetrics, regionalMetrics, config);
 
@@ -181,11 +177,7 @@ export class TrendingService {
       selection = {
         scope: "GLOBAL",
         regionalApplied: false,
-        candidates: scoreTrendingCandidates(
-          globalMetrics,
-          config,
-          config.minAudienceGlobal,
-        ),
+        candidates: scoreTrendingCandidates(globalMetrics, config, config.minAudienceGlobal),
       };
       label = "Trending Worldwide";
       items = await this.itemsForCandidates(selection.candidates, label, context);
