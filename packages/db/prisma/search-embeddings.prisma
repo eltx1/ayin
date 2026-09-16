@@ -1,0 +1,23 @@
+/// Cached semantic embeddings for public catalog identities only.
+/// Task 67 deliberately stores provider/model/version and a bounded PostgreSQL array instead of
+/// introducing an external vector cluster. Runtime policy hydration still decides eligibility.
+model CatalogSearchEmbedding {
+  id              String   @id @default(uuid()) @db.Uuid
+  entityType      String   @db.VarChar(16)
+  entityId        String   @db.Uuid
+  slug            String?  @db.VarChar(160)
+  providerKey     String   @db.VarChar(80)
+  model           String   @db.VarChar(120)
+  modelVersion    String   @db.VarChar(80)
+  dimensions      Int
+  embedding       Float[]
+  contentHash     String   @db.VarChar(64)
+  sourceUpdatedAt DateTime
+  embeddedAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([entityType, entityId, providerKey, model, modelVersion])
+  @@index([providerKey, model, modelVersion, dimensions, embeddedAt])
+  @@index([entityType, entityId])
+  @@index([contentHash])
+}
