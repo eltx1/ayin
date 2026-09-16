@@ -15,14 +15,12 @@ export interface RegionalRankableItem {
 
 export interface RegionalPage<T extends RegionalRankableItem> {
   items: T[];
-  [key: string]: unknown;
 }
 
 export interface RegionalRow<T extends RegionalRankableItem> {
   key: string;
   source: string;
   items: T[];
-  [key: string]: unknown;
 }
 
 @Injectable()
