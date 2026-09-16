@@ -106,6 +106,7 @@ describe("LensSearchService", () => {
     const result = await service.searchLens("deep space");
     expect(embeddings.semanticCandidates).not.toHaveBeenCalled();
     expect(result.mode).toBe("LEXICAL_FALLBACK");
+    if (result.mode !== "LEXICAL_FALLBACK") throw new Error("Expected lexical fallback");
     expect(result.fallbackReason).toBe("kill-switch");
   });
 
@@ -114,6 +115,7 @@ describe("LensSearchService", () => {
     const result = await service.searchLens("deep space");
     expect(embeddings.semanticCandidates).not.toHaveBeenCalled();
     expect(result.mode).toBe("LEXICAL_FALLBACK");
+    if (result.mode !== "LEXICAL_FALLBACK") throw new Error("Expected lexical fallback");
     expect(result.fallbackReason).toBe("provider-unconfigured");
   });
 
@@ -127,6 +129,7 @@ describe("LensSearchService", () => {
     expect(embeddings.semanticCandidates).toHaveBeenCalledWith("deep space");
     expect(hydrator.hydrate).toHaveBeenCalledWith(expect.any(Array), { countryCode: "US" });
     expect(result.mode).toBe("HYBRID");
+    if (result.mode !== "HYBRID") throw new Error("Expected hybrid result");
     expect(result.rankingVersion).toBe("ayin-lens-hybrid-v1");
     expect(result.items.map((item) => item.id)).toContain("semantic");
   });
@@ -140,6 +143,7 @@ describe("LensSearchService", () => {
     });
     const result = await service.searchLens("deep space");
     expect(result.mode).toBe("LEXICAL_FALLBACK");
+    if (result.mode !== "LEXICAL_FALLBACK") throw new Error("Expected lexical fallback");
     expect(result.fallbackReason).toBe("semantic-unavailable");
     expect(result.items).toEqual([lexicalItem]);
   });
