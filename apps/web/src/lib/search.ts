@@ -1,6 +1,6 @@
 export interface SearchItem {
   id: string;
-  type: "VIDEO" | "CHANNEL" | "PLAYLIST" | "CREATOR_TV";
+  type: "VIDEO" | "CHANNEL" | "PLAYLIST" | "CREATOR_TV" | "SERIES" | "MOVIE";
   title: string;
   href: string;
   kicker: string;
@@ -17,7 +17,7 @@ export interface SearchResponse {
 
 export interface SearchSuggestion {
   id: string;
-  type: "VIDEO" | "CHANNEL" | "CREATOR_TV";
+  type: "VIDEO" | "CHANNEL" | "PLAYLIST" | "CREATOR_TV" | "SERIES" | "MOVIE";
   label: string;
   href: string;
 }
