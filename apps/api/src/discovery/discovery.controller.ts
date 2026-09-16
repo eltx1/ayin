@@ -15,6 +15,7 @@ import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { DiscoveryError, DiscoveryService, type DiscoveryContext } from "./discovery.service.js";
 import { RegionalDiscoveryService } from "./regional-discovery.service.js";
+import { TrendingService } from "./trending.service.js";
 
 const listQuerySchema = z
   .object({
@@ -29,6 +30,7 @@ export class PublicDiscoveryController {
   constructor(
     @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
     @Inject(RegionalDiscoveryService) private readonly regionalDiscovery: RegionalDiscoveryService,
+    @Inject(TrendingService) private readonly trending: TrendingService,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
   ) {}
 
@@ -39,14 +41,16 @@ export class PublicDiscoveryController {
   ) {
     const countryCode = this.trustedRegion.countryFromHeaders(headers);
     const allowed = regionalPermissionAllowed(regionalPermission);
+    const context = {
+      ...regionContext(countryCode, regionalPermission),
+      availabilityCountryCode: countryCode,
+    };
     return runDiscovery(async () => {
-      const home = await this.discovery.getHome({
-        ...regionContext(countryCode, regionalPermission),
-        availabilityCountryCode: countryCode,
-      });
+      const home = await this.discovery.getHome(context);
+      const trendingRows = await this.trending.applyRows(home.rows, context);
       return {
         ...home,
-        rows: await this.regionalDiscovery.rankAndTargetRows(countryCode, allowed, home.rows),
+        rows: await this.regionalDiscovery.rankAndTargetRows(countryCode, allowed, trendingRows),
       };
     });
   }
@@ -54,12 +58,15 @@ export class PublicDiscoveryController {
   @Get("kids")
   async kids(@Headers() headers: HeaderBag) {
     return runDiscovery(async () => {
-      const home = await this.discovery.getKidsHome({
+      const context = {
         availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers),
-      });
+        isKidsProfile: true,
+      };
+      const home = await this.discovery.getKidsHome(context);
+      const trendingRows = await this.trending.applyRows(home.rows, context);
       return {
         ...home,
-        rows: await this.regionalDiscovery.rankAndTargetRows(undefined, false, home.rows),
+        rows: await this.regionalDiscovery.rankAndTargetRows(undefined, false, trendingRows),
       };
     });
   }
@@ -71,12 +78,12 @@ export class PublicDiscoveryController {
       if (!(await this.regionalDiscovery.isMerchandisingRowAllowed(key, undefined, false))) {
         throw new DiscoveryError("ROW_NOT_FOUND", "This AYIN discovery row is not available.", 404);
       }
-      return this.discovery.getKidsRow(
-        key,
-        { availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers) },
-        parsed.cursor,
-        parsed.limit,
-      );
+      const context = {
+        availabilityCountryCode: this.trustedRegion.countryFromHeaders(headers),
+        isKidsProfile: true,
+      };
+      const page = await this.discovery.getKidsRow(key, context, parsed.cursor, parsed.limit);
+      return this.trending.applyPage(page.source, page, context, parsed.cursor, parsed.limit);
     });
   }
 
@@ -90,20 +97,28 @@ export class PublicDiscoveryController {
     const parsed = parseListQuery(query);
     const countryCode = this.trustedRegion.countryFromHeaders(headers);
     const allowed = regionalPermissionAllowed(regionalPermission);
+    const context = {
+      ...regionContext(countryCode, regionalPermission),
+      availabilityCountryCode: countryCode,
+    };
     return runDiscovery(async () => {
       if (!(await this.regionalDiscovery.isMerchandisingRowAllowed(key, countryCode, allowed))) {
         throw new DiscoveryError("ROW_NOT_FOUND", "This AYIN discovery row is not available.", 404);
       }
-      const page = await this.discovery.getRow(
-        key,
-        {
-          ...regionContext(countryCode, regionalPermission),
-          availabilityCountryCode: countryCode,
-        },
+      const page = await this.discovery.getRow(key, context, parsed.cursor, parsed.limit);
+      const trendingPage = await this.trending.applyPage(
+        page.source,
+        page,
+        context,
         parsed.cursor,
         parsed.limit,
       );
-      return this.regionalDiscovery.rankPage(countryCode, allowed, page.source, page);
+      return this.regionalDiscovery.rankPage(
+        countryCode,
+        allowed,
+        trendingPage.source,
+        trendingPage,
+      );
     });
   }
 }
@@ -114,6 +129,7 @@ export class DiscoveryController {
   constructor(
     @Inject(DiscoveryService) private readonly discovery: DiscoveryService,
     @Inject(RegionalDiscoveryService) private readonly regionalDiscovery: RegionalDiscoveryService,
+    @Inject(TrendingService) private readonly trending: TrendingService,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
   ) {}
 
@@ -127,16 +143,18 @@ export class DiscoveryController {
     const parsed = parseListQuery(query);
     const countryCode = this.trustedRegion.countryFromHeaders(headers);
     const allowed = regionalPermissionAllowed(regionalPermission);
+    const context = {
+      accountId: request.ayinAuth.accountId,
+      profileId: parsed.profileId,
+      ...regionContext(countryCode, regionalPermission),
+      availabilityCountryCode: countryCode,
+    };
     return runDiscovery(async () => {
-      const home = await this.discovery.getHome({
-        accountId: request.ayinAuth.accountId,
-        profileId: parsed.profileId,
-        ...regionContext(countryCode, regionalPermission),
-        availabilityCountryCode: countryCode,
-      });
+      const home = await this.discovery.getHome(context);
+      const trendingRows = await this.trending.applyRows(home.rows, context);
       return {
         ...home,
-        rows: await this.regionalDiscovery.rankAndTargetRows(countryCode, allowed, home.rows),
+        rows: await this.regionalDiscovery.rankAndTargetRows(countryCode, allowed, trendingRows),
       };
     });
   }
@@ -152,22 +170,30 @@ export class DiscoveryController {
     const parsed = parseListQuery(query);
     const countryCode = this.trustedRegion.countryFromHeaders(headers);
     const allowed = regionalPermissionAllowed(regionalPermission);
+    const context = {
+      accountId: request.ayinAuth.accountId,
+      profileId: parsed.profileId,
+      ...regionContext(countryCode, regionalPermission),
+      availabilityCountryCode: countryCode,
+    };
     return runDiscovery(async () => {
       if (!(await this.regionalDiscovery.isMerchandisingRowAllowed(key, countryCode, allowed))) {
         throw new DiscoveryError("ROW_NOT_FOUND", "This AYIN discovery row is not available.", 404);
       }
-      const page = await this.discovery.getRow(
-        key,
-        {
-          accountId: request.ayinAuth.accountId,
-          profileId: parsed.profileId,
-          ...regionContext(countryCode, regionalPermission),
-          availabilityCountryCode: countryCode,
-        },
+      const page = await this.discovery.getRow(key, context, parsed.cursor, parsed.limit);
+      const trendingPage = await this.trending.applyPage(
+        page.source,
+        page,
+        context,
         parsed.cursor,
         parsed.limit,
       );
-      return this.regionalDiscovery.rankPage(countryCode, allowed, page.source, page);
+      return this.regionalDiscovery.rankPage(
+        countryCode,
+        allowed,
+        trendingPage.source,
+        trendingPage,
+      );
     });
   }
 

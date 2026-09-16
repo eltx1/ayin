@@ -271,14 +271,34 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(forbidden.statusCode).toBe(403);
   });
 
-  it("uses only trusted coarse region signals and falls back to global popularity", async () => {
+  it("uses only trusted coarse region signals and falls back to worldwide trending below the regional cohort", async () => {
     const viewer = await register("Regional Viewer", "task62-regional@example.com");
     const video = await publishVideo(viewer.user.channel.id, "Global fallback video");
-    await app.inject({
-      method: "PUT",
-      url: `/watch/progress/${video.id}`,
-      headers: { cookie: viewer.cookie },
-      payload: { positionMs: 25_000, durationMs: 100_000 },
+    const countries = ["DE", "FR", "JP", "BR", "CA"];
+    const occurredAt = new Date();
+    await prisma.analyticsEvent.createMany({
+      data: countries.flatMap((countryCode, index) => {
+        const sessionHash = (index + 1).toString(16).padStart(64, "0");
+        return [
+          {
+            clientEventId: `task63-global-start-${index}`,
+            eventName: "VIDEO_START",
+            occurredAt,
+            sessionHash,
+            videoId: video.id,
+            metadata: { countryCode },
+          },
+          {
+            clientEventId: `task63-global-progress-${index}`,
+            eventName: "VIDEO_PROGRESS",
+            occurredAt,
+            sessionHash,
+            videoId: video.id,
+            durationDeltaMs: 10_000,
+            metadata: { countryCode },
+          },
+        ];
+      }),
     });
 
     const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });
@@ -310,7 +330,8 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     const regional = trusted
       .json()
       .rows.find((row: { key: string }) => row.key === "popular-region") as
-      { availability: string; items: Array<{ title: string }> } | undefined;
+      { title: string; availability: string; items: Array<{ title: string }> } | undefined;
+    expect(regional?.title).toBe("Trending Worldwide");
     expect(regional?.availability).toBe("AVAILABLE");
     expect(regional?.items[0]?.title).toBe("Global fallback video");
   });
