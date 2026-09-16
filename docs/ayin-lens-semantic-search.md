@@ -14,6 +14,8 @@ The kill switch defaults to **on**. The production `SearchModule` registers only
 
 If any condition is false, the provider is unavailable, the provider budget is exhausted, the semantic cache has no policy-eligible hits, or a provider call fails, `/public/search/lens` returns the normal Search V2 lexical results.
 
+**Release invariant:** the normal Search V2 lexical result set is computed first and remains the fallback authority before any semantic augmentation is attempted. A semantic outage, empty cache, disabled flag, kill switch, or provider failure therefore cannot make AYIN search depend on an external AI service.
+
 ## What may be embedded
 
 The catalog refresh path reads only public catalog metadata needed to describe a result:
