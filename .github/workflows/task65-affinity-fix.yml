@@ -1,0 +1,67 @@
+name: Task 65 affinity fix
+
+on:
+  push:
+    branches:
+      - task-65-language-aware-search
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-65-language-aware-search
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Apply bounded content-language affinity after relevance merge
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/api/src/search/language-aware-postgres-search.service.ts')
+          text = path.read_text()
+          old = '''    return mergeCandidates(base, languageAware);\n  }\n\n  private async languageCandidates('''
+          new = '''    const merged = mergeCandidates(base, languageAware);\n    return this.applyContentLanguageAffinity(merged, selection.preferredLanguage);\n  }\n\n  private async applyContentLanguageAffinity(\n    candidates: SearchCandidate[],\n    preferredLanguage: \"ar\" | \"en\" | \"und\",\n  ): Promise<SearchCandidate[]> {\n    if (preferredLanguage === \"und\" || candidates.length === 0) return candidates;\n\n    const videoIds = candidates.filter((item) => item.type === \"VIDEO\").map((item) => item.id);\n    const seriesIds = candidates.filter((item) => item.type === \"SERIES\").map((item) => item.id);\n    const movieIds = candidates.filter((item) => item.type === \"MOVIE\").map((item) => item.id);\n\n    const [videoMetadata, series, movies] = await Promise.all([\n      videoIds.length\n        ? this.languageDatabase.client.videoCreatorMetadata.findMany({\n            where: { videoId: { in: videoIds } },\n            select: { videoId: true, primaryLanguage: true },\n          })\n        : [],\n      seriesIds.length\n        ? this.languageDatabase.client.series.findMany({\n            where: { id: { in: seriesIds } },\n            select: { id: true, originalLanguage: true },\n          })\n        : [],\n      movieIds.length\n        ? this.languageDatabase.client.movie.findMany({\n            where: { id: { in: movieIds } },\n            select: { id: true, originalLanguage: true },\n          })\n        : [],\n    ]);\n\n    const affinity = new Set<string>();\n    for (const item of videoMetadata) {\n      if (languageBase(item.primaryLanguage) === preferredLanguage) affinity.add(`VIDEO:${item.videoId}`);\n    }\n    for (const item of series) {\n      if (languageBase(item.originalLanguage) === preferredLanguage) affinity.add(`SERIES:${item.id}`);\n    }\n    for (const item of movies) {\n      if (languageBase(item.originalLanguage) === preferredLanguage) affinity.add(`MOVIE:${item.id}`);\n    }\n\n    return candidates\n      .map((candidate) =>\n        affinity.has(`${candidate.type}:${candidate.id}`)\n          ? { ...candidate, score: candidate.score + 8 }\n          : candidate,\n      )\n      .toSorted(\n        (a, b) => b.score - a.score || a.type.localeCompare(b.type) || a.id.localeCompare(b.id),\n      );\n  }\n\n  private async languageCandidates('''
+          if old not in text:
+              raise SystemExit('searchCandidates insertion point not found')
+          text = text.replace(old, new, 1)
+
+          blocks = [
+          '''\n            + CASE\n                WHEN ${preferredLanguage} <> 'und'\n                  AND lower(split_part(coalesce(vm.\"primaryLanguage\", ''), '-', 1)) = ${preferredLanguage}\n                  THEN 8 ELSE 0\n              END''',
+          '''\n            + CASE\n                WHEN ${preferredLanguage} <> 'und'\n                  AND lower(split_part(s.\"originalLanguage\", '-', 1)) = ${preferredLanguage}\n                  THEN 8 ELSE 0\n              END''',
+          '''\n            + CASE\n                WHEN ${preferredLanguage} <> 'und'\n                  AND lower(split_part(m.\"originalLanguage\", '-', 1)) = ${preferredLanguage}\n                  THEN 8 ELSE 0\n              END''',
+          ]
+          for block in blocks:
+              if block not in text:
+                  raise SystemExit('expected inline affinity block not found')
+              text = text.replace(block, '', 1)
+
+          suffix = '''\nfunction languageBase(value: string | null | undefined): string | undefined {\n  return value?.trim().replaceAll(\"_\", \"-\").split(\"-\")[0]?.toLocaleLowerCase();\n}\n'''
+          marker = '''\nfunction mergeCandidates(\n'''
+          if marker not in text:
+              raise SystemExit('mergeCandidates marker not found')
+          text = text.replace(marker, suffix + marker, 1)
+          path.write_text(text)
+          PY
+          pnpm exec prettier --write apps/api/src/search/language-aware-postgres-search.service.ts
+      - name: Commit patch if needed
+        run: |
+          if git diff --quiet; then
+            echo "Affinity scoring already patched."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api/src/search/language-aware-postgres-search.service.ts
+          git commit -m "Preserve content language affinity after relevance merge"
+          git push origin HEAD:task-65-language-aware-search
