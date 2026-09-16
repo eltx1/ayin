@@ -1,0 +1,44 @@
+name: Task 65 format probe
+
+on:
+  push:
+    branches:
+      - task-65-language-aware-search
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-65-language-aware-search
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format Task 65 files
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/search/language-aware-postgres-search.service.ts \
+            packages/db/src/language-aware-search.test.mjs
+      - name: Commit formatting if needed
+        run: |
+          if git diff --quiet; then
+            echo "Task 65 files already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/search/language-aware-postgres-search.service.ts \
+            packages/db/src/language-aware-search.test.mjs
+          git commit -m "Format Task 65 search files"
+          git push origin HEAD:task-65-language-aware-search
