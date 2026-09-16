@@ -168,9 +168,7 @@ export class LensSemanticHydratorService {
 
     const popularityIds = [
       ...new Set(
-        hydrated.flatMap((entry) =>
-          entry.popularityVideoId ? [entry.popularityVideoId] : [],
-        ),
+        hydrated.flatMap((entry) => (entry.popularityVideoId ? [entry.popularityVideoId] : [])),
       ),
     ];
     const snapshots = popularityIds.length
@@ -191,9 +189,7 @@ export class LensSemanticHydratorService {
     return hydrated.map((entry) => ({
       ...entry.hit,
       productScore: normalizedProductScore(
-        entry.popularityVideoId
-          ? popularityByVideo.get(entry.popularityVideoId)
-          : undefined,
+        entry.popularityVideoId ? popularityByVideo.get(entry.popularityVideoId) : undefined,
         maxScore,
       ),
     }));

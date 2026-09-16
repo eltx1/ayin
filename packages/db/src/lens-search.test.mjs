@@ -2,12 +2,12 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-const schema = readFileSync(
-  new URL("../prisma/search-embeddings.prisma", import.meta.url),
-  "utf8",
-);
+const schema = readFileSync(new URL("../prisma/search-embeddings.prisma", import.meta.url), "utf8");
 const migration = readFileSync(
-  new URL("../prisma/migrations/20260917010000_ayin_lens_embeddings/migration.sql", import.meta.url),
+  new URL(
+    "../prisma/migrations/20260917010000_ayin_lens_embeddings/migration.sql",
+    import.meta.url,
+  ),
   "utf8",
 );
 
@@ -26,7 +26,7 @@ describe("Task 67 AYIN Lens embedding storage", () => {
 
   it("uses bounded PostgreSQL array storage and selective indexes without requiring pgvector", () => {
     expect(migration).toContain('"embedding" DOUBLE PRECISION[] NOT NULL');
-    expect(migration).toContain("cardinality(\"embedding\") = \"dimensions\"");
+    expect(migration).toContain('cardinality("embedding") = "dimensions"');
     expect(migration).toContain('"CatalogEmbedding_provider_model_scan_idx"');
     expect(migration).not.toMatch(/CREATE EXTENSION.*vector|USING\s+(ivfflat|hnsw)/i);
   });

@@ -12,12 +12,14 @@ const lexicalItem = {
   artworkObjectKey: null,
 };
 
-function build(input: {
-  enabled?: boolean;
-  killSwitch?: boolean;
-  configured?: boolean;
-  semanticError?: boolean;
-} = {}) {
+function build(
+  input: {
+    enabled?: boolean;
+    killSwitch?: boolean;
+    configured?: boolean;
+    semanticError?: boolean;
+  } = {},
+) {
   const search = {
     search: vi.fn(async () => ({
       query: "deep space",
@@ -39,9 +41,7 @@ function build(input: {
       ? vi.fn(async () => {
           throw new Error("provider down");
         })
-      : vi.fn(async () => [
-          { id: "semantic", type: "VIDEO", slug: "semantic", similarity: 0.96 },
-        ]),
+      : vi.fn(async () => [{ id: "semantic", type: "VIDEO", slug: "semantic", similarity: 0.96 }]),
   };
   const hydrator = {
     hydrate: vi.fn(async () => [
@@ -89,7 +89,11 @@ function build(input: {
 
 describe("LensSearchService", () => {
   it("always preserves lexical Search V2 when the semantic feature is disabled", async () => {
-    const { service, search, embeddings } = build({ enabled: false, killSwitch: false, configured: true });
+    const { service, search, embeddings } = build({
+      enabled: false,
+      killSwitch: false,
+      configured: true,
+    });
     const result = await service.searchLens("deep space");
     expect(search.search).toHaveBeenCalledTimes(1);
     expect(embeddings.semanticCandidates).not.toHaveBeenCalled();

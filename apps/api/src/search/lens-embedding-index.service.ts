@@ -139,7 +139,8 @@ export class LensEmbeddingIndexService {
       existing.map((item) => [`${item.entityType}:${item.entityId}`, item.contentHash] as const),
     );
     const changed = documents.filter(
-      (document) => cachedHash.get(`${document.entityType}:${document.entityId}`) !== document.contentHash,
+      (document) =>
+        cachedHash.get(`${document.entityType}:${document.entityId}`) !== document.contentHash,
     );
 
     let embedded = 0;
@@ -259,7 +260,13 @@ export class LensEmbeddingIndexService {
           localizations: {
             orderBy: { locale: "asc" },
             take: 6,
-            select: { locale: true, title: true, synopsis: true, shortDescription: true, updatedAt: true },
+            select: {
+              locale: true,
+              title: true,
+              synopsis: true,
+              shortDescription: true,
+              updatedAt: true,
+            },
           },
           genres: {
             orderBy: { position: "asc" },
@@ -282,7 +289,13 @@ export class LensEmbeddingIndexService {
           localizations: {
             orderBy: { locale: "asc" },
             take: 6,
-            select: { locale: true, title: true, synopsis: true, shortDescription: true, updatedAt: true },
+            select: {
+              locale: true,
+              title: true,
+              synopsis: true,
+              shortDescription: true,
+              updatedAt: true,
+            },
           },
           genres: {
             orderBy: { position: "asc" },
@@ -345,7 +358,10 @@ export class LensEmbeddingIndexService {
               item.shortDescription,
             ]),
           ],
-          maxDate(movie.updatedAt, movie.localizations.map((item) => item.updatedAt)),
+          maxDate(
+            movie.updatedAt,
+            movie.localizations.map((item) => item.updatedAt),
+          ),
           maxTextChars,
         ),
       );
@@ -368,7 +384,10 @@ export class LensEmbeddingIndexService {
               localized.shortDescription,
             ]),
           ],
-          maxDate(item.updatedAt, item.localizations.map((localized) => localized.updatedAt)),
+          maxDate(
+            item.updatedAt,
+            item.localizations.map((localized) => localized.updatedAt),
+          ),
           maxTextChars,
         ),
       );
