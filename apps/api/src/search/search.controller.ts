@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { LensSearchService } from "./lens-search.service.js";
+import { SearchLanguageContextService } from "./search-language-context.service.js";
 import { SearchRateLimiter } from "./search-rate-limiter.js";
 import { SearchError, SearchService } from "./search.service.js";
 
@@ -27,6 +28,8 @@ export class SearchController {
     @Inject(LensSearchService) private readonly lensSearch: LensSearchService,
     @Inject(SearchRateLimiter) private readonly rateLimiter: SearchRateLimiter,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+    @Inject(SearchLanguageContextService)
+    private readonly languageContext: SearchLanguageContextService,
   ) {}
 
   @Get()
@@ -35,15 +38,17 @@ export class SearchController {
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
-    return runSearch(() => {
-      this.rateLimiter.consume(`search:${request.ip ?? "unknown"}`);
-      const parsed = searchSchema.safeParse(query);
-      if (!parsed.success)
-        throw new SearchError("INVALID_SEARCH_QUERY", "The search request is invalid.");
-      return this.searchService.search(parsed.data.q, parsed.data.cursor, parsed.data.limit, {
-        countryCode: this.trustedRegion.countryFromHeaders(headers),
-      });
-    });
+    return runSearch(() =>
+      this.languageContext.run(uiLocaleFromHeaders(headers), "search", () => {
+        this.rateLimiter.consume(`search:${request.ip ?? "unknown"}`);
+        const parsed = searchSchema.safeParse(query);
+        if (!parsed.success)
+          throw new SearchError("INVALID_SEARCH_QUERY", "The search request is invalid.");
+        return this.searchService.search(parsed.data.q, parsed.data.cursor, parsed.data.limit, {
+          countryCode: this.trustedRegion.countryFromHeaders(headers),
+        });
+      }),
+    );
   }
 
   @Get("kids")
@@ -52,16 +57,18 @@ export class SearchController {
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
-    return runSearch(() => {
-      this.rateLimiter.consume(`kids-search:${request.ip ?? "unknown"}`);
-      const parsed = searchSchema.safeParse(query);
-      if (!parsed.success)
-        throw new SearchError("INVALID_SEARCH_QUERY", "The Kids search request is invalid.");
-      return this.searchService.search(parsed.data.q, parsed.data.cursor, parsed.data.limit, {
-        countryCode: this.trustedRegion.countryFromHeaders(headers),
-        isKidsProfile: true,
-      });
-    });
+    return runSearch(() =>
+      this.languageContext.run(uiLocaleFromHeaders(headers), "kids-search", () => {
+        this.rateLimiter.consume(`kids-search:${request.ip ?? "unknown"}`);
+        const parsed = searchSchema.safeParse(query);
+        if (!parsed.success)
+          throw new SearchError("INVALID_SEARCH_QUERY", "The Kids search request is invalid.");
+        return this.searchService.search(parsed.data.q, parsed.data.cursor, parsed.data.limit, {
+          countryCode: this.trustedRegion.countryFromHeaders(headers),
+          isKidsProfile: true,
+        });
+      }),
+    );
   }
 
   @Get("kids/suggestions")
@@ -70,16 +77,18 @@ export class SearchController {
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
-    return runSearch(() => {
-      this.rateLimiter.consume(`kids-suggest:${request.ip ?? "unknown"}`);
-      const parsed = suggestSchema.safeParse(query);
-      if (!parsed.success)
-        throw new SearchError("INVALID_SEARCH_QUERY", "The Kids suggestion request is invalid.");
-      return this.searchService.suggest(parsed.data.q, parsed.data.limit, {
-        countryCode: this.trustedRegion.countryFromHeaders(headers),
-        isKidsProfile: true,
-      });
-    });
+    return runSearch(() =>
+      this.languageContext.run(uiLocaleFromHeaders(headers), "kids-suggest", () => {
+        this.rateLimiter.consume(`kids-suggest:${request.ip ?? "unknown"}`);
+        const parsed = suggestSchema.safeParse(query);
+        if (!parsed.success)
+          throw new SearchError("INVALID_SEARCH_QUERY", "The Kids suggestion request is invalid.");
+        return this.searchService.suggest(parsed.data.q, parsed.data.limit, {
+          countryCode: this.trustedRegion.countryFromHeaders(headers),
+          isKidsProfile: true,
+        });
+      }),
+    );
   }
 
   @Get("lens")
@@ -88,15 +97,17 @@ export class SearchController {
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
-    return runSearch(() => {
-      this.rateLimiter.consume(`lens:${request.ip ?? "unknown"}`);
-      const parsed = searchSchema.safeParse(query);
-      if (!parsed.success)
-        throw new SearchError("INVALID_SEARCH_QUERY", "The Lens search request is invalid.");
-      return this.lensSearch.searchLens(parsed.data.q, parsed.data.limit, {
-        countryCode: this.trustedRegion.countryFromHeaders(headers),
-      });
-    });
+    return runSearch(() =>
+      this.languageContext.run(uiLocaleFromHeaders(headers), "lens", () => {
+        this.rateLimiter.consume(`lens:${request.ip ?? "unknown"}`);
+        const parsed = searchSchema.safeParse(query);
+        if (!parsed.success)
+          throw new SearchError("INVALID_SEARCH_QUERY", "The Lens search request is invalid.");
+        return this.lensSearch.searchLens(parsed.data.q, parsed.data.limit, {
+          countryCode: this.trustedRegion.countryFromHeaders(headers),
+        });
+      }),
+    );
   }
 
   @Get("suggestions")
@@ -105,15 +116,17 @@ export class SearchController {
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
-    return runSearch(() => {
-      this.rateLimiter.consume(`suggest:${request.ip ?? "unknown"}`);
-      const parsed = suggestSchema.safeParse(query);
-      if (!parsed.success)
-        throw new SearchError("INVALID_SEARCH_QUERY", "The suggestion request is invalid.");
-      return this.searchService.suggest(parsed.data.q, parsed.data.limit, {
-        countryCode: this.trustedRegion.countryFromHeaders(headers),
-      });
-    });
+    return runSearch(() =>
+      this.languageContext.run(uiLocaleFromHeaders(headers), "suggest", () => {
+        this.rateLimiter.consume(`suggest:${request.ip ?? "unknown"}`);
+        const parsed = suggestSchema.safeParse(query);
+        if (!parsed.success)
+          throw new SearchError("INVALID_SEARCH_QUERY", "The suggestion request is invalid.");
+        return this.searchService.suggest(parsed.data.q, parsed.data.limit, {
+          countryCode: this.trustedRegion.countryFromHeaders(headers),
+        });
+      }),
+    );
   }
 }
 
@@ -128,4 +141,9 @@ async function runSearch<T>(operation: () => Promise<T>): Promise<T> {
       );
     throw error instanceof Error ? error : new Error("Unexpected search error.");
   }
+}
+
+function uiLocaleFromHeaders(headers: HeaderBag): string | undefined {
+  const value = headers["x-ayin-locale"];
+  return Array.isArray(value) ? value[0] : value;
 }
