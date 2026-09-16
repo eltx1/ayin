@@ -21,6 +21,7 @@ export function resolveSearchLanguage(
 ): SearchLanguageSelection {
   const queryLanguage = detectSearchLanguage(query);
   const uiLanguage = languageFromLocale(uiLocale);
+  // This selects matching/affinity behavior only; exact relevance remains language-neutral.
   const preferredLanguage = queryLanguage !== "und" ? queryLanguage : uiLanguage;
   return {
     queryLanguage,
