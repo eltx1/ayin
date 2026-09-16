@@ -39,3 +39,19 @@ model TrendingScoreSnapshot {
   @@index([scopeKey, score])
   @@index([sampledAt])
 }
+
+model RecommendationExposure {
+  id          String   @id @default(uuid()) @db.Uuid
+  versionId   String   @db.VarChar(120)
+  algorithmId String   @db.VarChar(120)
+  surface     String   @db.VarChar(32)
+  mode        String   @db.VarChar(32)
+  rankingSize Int
+  itemIds     Json
+  components  Json
+  createdAt   DateTime @default(now())
+
+  @@index([versionId, createdAt])
+  @@index([surface, createdAt])
+  @@index([createdAt])
+}

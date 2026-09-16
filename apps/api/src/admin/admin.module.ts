@@ -4,6 +4,7 @@ import { AuthModule } from "../auth/auth.module.js";
 import { CreatorModule } from "../creator/creator.module.js";
 import { MediaModule } from "../media/media.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
+import { RecommendationModule } from "../recommendations/recommendation.module.js";
 import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
@@ -19,6 +20,7 @@ import { AdminMediaProcessingController } from "./admin-media-processing.control
 import { AdminObservabilityController } from "./admin-observability.controller.js";
 import { AdminProductController, PublicProductController } from "./admin-product.controller.js";
 import { AdminProductService } from "./admin-product.service.js";
+import { AdminRecommendationEvaluationController } from "./admin-recommendation-evaluation.controller.js";
 import { AdminScopedDirectoryController } from "./admin-scoped-directory.controller.js";
 import { AdminSettingsService } from "./admin-settings.service.js";
 import { AdminTrendingController } from "./admin-trending.controller.js";
@@ -33,7 +35,14 @@ import { ContentSeedingController } from "./content-seeding.controller.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
 
 @Module({
-  imports: [AuthModule, CreatorModule, MediaModule, PlatformConfigModule, VideoPolicyModule],
+  imports: [
+    AuthModule,
+    CreatorModule,
+    MediaModule,
+    PlatformConfigModule,
+    RecommendationModule,
+    VideoPolicyModule,
+  ],
   controllers: [
     AdminController,
     AdminControlController,
@@ -42,6 +51,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminGovernanceController,
     AdminMediaProcessingController,
     AdminObservabilityController,
+    AdminRecommendationEvaluationController,
     AdminScopedDirectoryController,
     SupportTicketController,
     AdminProductController,
