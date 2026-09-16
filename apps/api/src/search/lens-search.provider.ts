@@ -1,23 +1,48 @@
 import { Injectable } from "@nestjs/common";
 
-import type { SearchResult } from "./search.service.js";
+export const AYIN_LENS_EMBEDDING_PROVIDER = Symbol("AYIN_LENS_EMBEDDING_PROVIDER");
 
-export const AYIN_LENS_SEARCH_PROVIDER = Symbol("AYIN_LENS_SEARCH_PROVIDER");
+export type EmbeddingPurpose = "QUERY" | "CATALOG";
 
-export interface AyinLensSearchProvider {
+export interface EmbeddingProviderInfo {
+  providerKey: string;
+  model: string;
+  modelVersion: string;
+  dimensions: number;
+}
+
+export interface EmbeddingInput {
+  key: string;
+  text: string;
+}
+
+export interface EmbeddingOutput {
+  key: string;
+  values: number[];
+}
+
+export interface AyinLensEmbeddingProvider {
   isConfigured(): boolean;
-  search(query: string, limit: number): Promise<SearchResult[]>;
+  info(): EmbeddingProviderInfo;
+  embed(inputs: readonly EmbeddingInput[], purpose: EmbeddingPurpose): Promise<EmbeddingOutput[]>;
 }
 
 @Injectable()
-export class UnconfiguredAyinLensSearchProvider implements AyinLensSearchProvider {
+export class UnconfiguredAyinLensEmbeddingProvider implements AyinLensEmbeddingProvider {
   isConfigured() {
     return false;
   }
 
-  async search(query: string, limit: number): Promise<SearchResult[]> {
-    void query;
-    void limit;
-    return [];
+  info(): EmbeddingProviderInfo {
+    return {
+      providerKey: "unconfigured",
+      model: "unconfigured",
+      modelVersion: "unconfigured",
+      dimensions: 0,
+    };
+  }
+
+  async embed(): Promise<EmbeddingOutput[]> {
+    throw new Error("AYIN Lens embedding provider is not configured.");
   }
 }
