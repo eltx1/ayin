@@ -5,12 +5,13 @@ import { DatabaseModule } from "../database/database.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import { RecommendationController } from "./recommendation.controller.js";
+import { RecommendationEvaluationService } from "./recommendation-evaluation.service.js";
 import { RecommendationService } from "./recommendation.service.js";
 
 @Module({
   imports: [AuthModule, DatabaseModule, PlatformConfigModule, VideoPolicyModule],
   controllers: [RecommendationController],
-  providers: [RecommendationService],
-  exports: [RecommendationService],
+  providers: [RecommendationService, RecommendationEvaluationService],
+  exports: [RecommendationService, RecommendationEvaluationService],
 })
 export class RecommendationModule {}
