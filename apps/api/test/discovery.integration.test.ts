@@ -271,72 +271,68 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(forbidden.statusCode).toBe(403);
   });
 
-  it(
-    "uses only trusted coarse region signals and falls back to worldwide trending below the regional cohort",
-    async () => {
-      const viewer = await register("Regional Viewer", "task62-regional@example.com");
-      const video = await publishVideo(viewer.user.channel.id, "Global fallback video");
-      const countries = ["DE", "FR", "JP", "BR", "CA"];
-      const occurredAt = new Date();
-      await prisma.analyticsEvent.createMany({
-        data: countries.flatMap((countryCode, index) => {
-          const sessionHash = (index + 1).toString(16).padStart(64, "0");
-          return [
-            {
-              clientEventId: `task63-global-start-${index}`,
-              eventName: "VIDEO_START",
-              occurredAt,
-              sessionHash,
-              videoId: video.id,
-              metadata: { countryCode },
-            },
-            {
-              clientEventId: `task63-global-progress-${index}`,
-              eventName: "VIDEO_PROGRESS",
-              occurredAt,
-              sessionHash,
-              videoId: video.id,
-              durationDeltaMs: 10_000,
-              metadata: { countryCode },
-            },
-          ];
-        }),
-      });
+  it("uses only trusted coarse region signals and falls back to worldwide trending below the regional cohort", async () => {
+    const viewer = await register("Regional Viewer", "task62-regional@example.com");
+    const video = await publishVideo(viewer.user.channel.id, "Global fallback video");
+    const countries = ["DE", "FR", "JP", "BR", "CA"];
+    const occurredAt = new Date();
+    await prisma.analyticsEvent.createMany({
+      data: countries.flatMap((countryCode, index) => {
+        const sessionHash = (index + 1).toString(16).padStart(64, "0");
+        return [
+          {
+            clientEventId: `task63-global-start-${index}`,
+            eventName: "VIDEO_START",
+            occurredAt,
+            sessionHash,
+            videoId: video.id,
+            metadata: { countryCode },
+          },
+          {
+            clientEventId: `task63-global-progress-${index}`,
+            eventName: "VIDEO_PROGRESS",
+            occurredAt,
+            sessionHash,
+            videoId: video.id,
+            durationDeltaMs: 10_000,
+            metadata: { countryCode },
+          },
+        ];
+      }),
+    });
 
-      const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });
-      expect(
-        withoutSignal.json().rows.some((row: { key: string }) => row.key === "popular-region"),
-      ).toBe(false);
+    const withoutSignal = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    expect(
+      withoutSignal.json().rows.some((row: { key: string }) => row.key === "popular-region"),
+    ).toBe(false);
 
-      const untrusted = await app.inject({
-        method: "GET",
-        url: "/public/discovery/home",
-        headers: {
-          "x-ayin-region": "DE",
-          "x-ayin-region-personalization": "allow",
-        },
-      });
-      expect(
-        untrusted.json().rows.some((row: { key: string }) => row.key === "popular-region"),
-      ).toBe(false);
+    const untrusted = await app.inject({
+      method: "GET",
+      url: "/public/discovery/home",
+      headers: {
+        "x-ayin-region": "DE",
+        "x-ayin-region-personalization": "allow",
+      },
+    });
+    expect(untrusted.json().rows.some((row: { key: string }) => row.key === "popular-region")).toBe(
+      false,
+    );
 
-      const trusted = await app.inject({
-        method: "GET",
-        url: "/public/discovery/home",
-        headers: {
-          "x-ayin-edge-token": edgeToken,
-          "x-ayin-edge-country": "DE",
-          "x-ayin-region-personalization": "allow",
-        },
-      });
-      const regional = trusted
-        .json()
-        .rows.find((row: { key: string }) => row.key === "popular-region") as
-        | { title: string; availability: string; items: Array<{ title: string }> }
-        | undefined;
-      expect(regional?.title).toBe("Trending Worldwide");
-      expect(regional?.availability).toBe("AVAILABLE");
-      expect(regional?.items[0]?.title).toBe("Global fallback video");
-    },
-  );
+    const trusted = await app.inject({
+      method: "GET",
+      url: "/public/discovery/home",
+      headers: {
+        "x-ayin-edge-token": edgeToken,
+        "x-ayin-edge-country": "DE",
+        "x-ayin-region-personalization": "allow",
+      },
+    });
+    const regional = trusted
+      .json()
+      .rows.find((row: { key: string }) => row.key === "popular-region") as
+      { title: string; availability: string; items: Array<{ title: string }> } | undefined;
+    expect(regional?.title).toBe("Trending Worldwide");
+    expect(regional?.availability).toBe("AVAILABLE");
+    expect(regional?.items[0]?.title).toBe("Global fallback video");
+  });
 });
