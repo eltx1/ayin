@@ -38,7 +38,10 @@ export default async function SearchPage({
     const endpoint = new URL(`${apiBaseUrl}/public/search`);
     endpoint.searchParams.set("q", query);
     if (params.cursor) endpoint.searchParams.set("cursor", params.cursor);
-    const response = await fetch(endpoint, { cache: "no-store" });
+    const response = await fetch(endpoint, {
+      cache: "no-store",
+      headers: { "x-ayin-locale": locale },
+    });
     if (response.ok) results = (await response.json()) as SearchResponse;
     else error = t("search.unavailableDescription");
   }
