@@ -22,7 +22,10 @@ export function SearchBox({ initialQuery = "" }: { initialQuery?: string }) {
       try {
         const response = await fetch(
           `${apiBaseUrl}/public/search/suggestions?q=${encodeURIComponent(normalized)}`,
-          { signal: controller.signal },
+          {
+            headers: { "x-ayin-locale": locale },
+            signal: controller.signal,
+          },
         );
         if (!response.ok) return;
         const body = (await response.json()) as { suggestions: SearchSuggestion[] };
@@ -35,7 +38,7 @@ export function SearchBox({ initialQuery = "" }: { initialQuery?: string }) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [locale, query]);
   const visibleSuggestions = normalizeSearchTerm(query).length >= 2 ? suggestions : [];
 
   return (
