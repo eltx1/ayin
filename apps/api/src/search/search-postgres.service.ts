@@ -4,12 +4,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 
 export type SearchCandidateType =
-  | "VIDEO"
-  | "CHANNEL"
-  | "PLAYLIST"
-  | "CREATOR_TV"
-  | "SERIES"
-  | "MOVIE";
+  "VIDEO" | "CHANNEL" | "PLAYLIST" | "CREATOR_TV" | "SERIES" | "MOVIE";
 
 export interface SearchCandidate {
   id: string;
@@ -58,7 +53,10 @@ export class PostgresSearchService {
     const limit = Math.min(Math.max(requestedLimit, 1), 8);
     const candidates = await this.searchCandidates(query, Math.min(limit * 3, 24));
     const strongPrefixCandidates = candidates.filter((candidate) => candidate.score >= 60);
-    return (strongPrefixCandidates.length ? strongPrefixCandidates : candidates).slice(0, limit * 4);
+    return (strongPrefixCandidates.length ? strongPrefixCandidates : candidates).slice(
+      0,
+      limit * 4,
+    );
   }
 
   private videoCandidates(query: string, prefix: string, fuzzy: boolean, limit: number) {

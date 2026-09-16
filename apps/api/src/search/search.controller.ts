@@ -14,7 +14,10 @@ const searchSchema = z
   })
   .strict();
 const suggestSchema = z
-  .object({ q: z.string().min(1).max(100), limit: z.coerce.number().int().min(1).max(8).optional() })
+  .object({
+    q: z.string().min(1).max(100),
+    limit: z.coerce.number().int().min(1).max(8).optional(),
+  })
   .strict();
 
 @Controller("public/search")

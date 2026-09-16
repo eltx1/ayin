@@ -137,7 +137,10 @@ export class SearchService {
 
   private async metadataCandidates(query: string, limit: number): Promise<VideoMetadataSignal[]> {
     const normalizedTag = query.toLocaleLowerCase();
-    const categoryToken = query.trim().toUpperCase().replace(/[\s&-]+/g, "_");
+    const categoryToken = query
+      .trim()
+      .toUpperCase()
+      .replace(/[\s&-]+/g, "_");
     const category = VIDEO_CATEGORIES.find((value) => value === categoryToken);
     return this.database.client.videoCreatorMetadata.findMany({
       where: {
@@ -158,7 +161,9 @@ export class SearchService {
       ? candidates.filter((candidate) => isKidsSearchResultTypeAllowed(candidate.type))
       : candidates;
     const ids = (type: SearchCandidateType) =>
-      eligibleCandidates.filter((candidate) => candidate.type === type).map((candidate) => candidate.id);
+      eligibleCandidates
+        .filter((candidate) => candidate.type === type)
+        .map((candidate) => candidate.id);
     const videoIds = ids("VIDEO");
     const channelIds = ids("CHANNEL");
     const playlistIds = ids("PLAYLIST");
@@ -227,18 +232,22 @@ export class SearchService {
             })
           : [],
         Promise.allSettled(
-          seriesCandidates.slice(0, maxPageSize).map((candidate) =>
-            candidate.slug
-              ? this.seriesCatalog.getPublicBySlug(candidate.slug, context.countryCode)
-              : Promise.resolve(null),
-          ),
+          seriesCandidates
+            .slice(0, maxPageSize)
+            .map((candidate) =>
+              candidate.slug
+                ? this.seriesCatalog.getPublicBySlug(candidate.slug, context.countryCode)
+                : Promise.resolve(null),
+            ),
         ),
         Promise.all(
-          movieCandidates.slice(0, maxPageSize).map((candidate) =>
-            candidate.slug
-              ? this.movieCatalog.getPublicBySlug(candidate.slug, context.countryCode)
-              : Promise.resolve(null),
-          ),
+          movieCandidates
+            .slice(0, maxPageSize)
+            .map((candidate) =>
+              candidate.slug
+                ? this.movieCatalog.getPublicBySlug(candidate.slug, context.countryCode)
+                : Promise.resolve(null),
+            ),
         ),
         videoIds.length
           ? this.database.client.videoCreatorMetadata.findMany({
@@ -258,10 +267,14 @@ export class SearchService {
     const televisionById = new Map(televisions.map((tv) => [tv.id, tv]));
     const seriesById = new Map(
       seriesSettled.flatMap((settled) =>
-        settled.status === "fulfilled" && settled.value ? [[settled.value.id, settled.value] as const] : [],
+        settled.status === "fulfilled" && settled.value
+          ? [[settled.value.id, settled.value] as const]
+          : [],
       ),
     );
-    const movieById = new Map(movies.flatMap((movie) => (movie ? [[movie.id, movie] as const] : [])));
+    const movieById = new Map(
+      movies.flatMap((movie) => (movie ? [[movie.id, movie] as const] : [])),
+    );
     const metadataByVideo = new Map(metadata.map((item) => [item.videoId, item]));
 
     const hydrated = eligibleCandidates.flatMap<RankedResult>((candidate) => {
@@ -386,7 +399,9 @@ export class SearchService {
 
     if (!includePopularity) return sortRanked(hydrated);
     const popularityIds = [
-      ...new Set(hydrated.flatMap((entry) => (entry.popularityVideoId ? [entry.popularityVideoId] : []))),
+      ...new Set(
+        hydrated.flatMap((entry) => (entry.popularityVideoId ? [entry.popularityVideoId] : [])),
+      ),
     ];
     if (!popularityIds.length) return sortRanked(hydrated);
     const snapshots = await this.database.client.trendingScoreSnapshot.findMany({
@@ -398,7 +413,9 @@ export class SearchService {
       select: { videoId: true, score: true },
     });
     const maxScore = Math.max(0, ...snapshots.map((snapshot) => Math.max(0, snapshot.score)));
-    const popularityByVideo = new Map(snapshots.map((snapshot) => [snapshot.videoId, snapshot.score]));
+    const popularityByVideo = new Map(
+      snapshots.map((snapshot) => [snapshot.videoId, snapshot.score]),
+    );
     return sortRanked(
       hydrated.map((entry) => ({
         ...entry,
@@ -416,17 +433,15 @@ export class SearchService {
 export function normalizeSearchQuery(query: string): string {
   const normalizedInput = query.normalize("NFKC");
   if (/[\u0000-\u001f\u007f]/u.test(normalizedInput)) {
-    throw new SearchError("INVALID_SEARCH_QUERY", "Search terms contain unsupported control characters.");
+    throw new SearchError(
+      "INVALID_SEARCH_QUERY",
+      "Search terms contain unsupported control characters.",
+    );
   }
   const normalized = normalizedInput.replaceAll(/\s+/g, " ").trim();
   const length = Array.from(normalized).length;
   const tokens = normalized ? normalized.split(" ") : [];
-  if (
-    length < 2 ||
-    length > 100 ||
-    tokens.length > 12 ||
-    !/[\p{L}\p{N}]/u.test(normalized)
-  ) {
+  if (length < 2 || length > 100 || tokens.length > 12 || !/[\p{L}\p{N}]/u.test(normalized)) {
     throw new SearchError(
       "INVALID_SEARCH_QUERY",
       "Search terms must contain 2 to 100 characters and no more than 12 words.",
@@ -439,7 +454,9 @@ function mergeMetadataCandidates(
   lexical: SearchCandidate[],
   metadata: VideoMetadataSignal[],
 ): SearchCandidate[] {
-  const byKey = new Map(lexical.map((candidate) => [`${candidate.type}:${candidate.id}`, candidate]));
+  const byKey = new Map(
+    lexical.map((candidate) => [`${candidate.type}:${candidate.id}`, candidate]),
+  );
   for (const item of metadata) {
     const key = `VIDEO:${item.videoId}`;
     if (!byKey.has(key)) {
@@ -449,7 +466,10 @@ function mergeMetadataCandidates(
   return [...byKey.values()];
 }
 
-function metadataSignalScore(query: string, metadata?: Omit<VideoMetadataSignal, "videoId">): number {
+function metadataSignalScore(
+  query: string,
+  metadata?: Omit<VideoMetadataSignal, "videoId">,
+): number {
   if (!metadata) return 0;
   const normalized = query.toLocaleLowerCase();
   const tags = metadata.tags.map((tag) => tag.normalize("NFKC").toLocaleLowerCase());

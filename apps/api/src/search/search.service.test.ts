@@ -40,8 +40,9 @@ function serviceWith(fixture: Fixture = {}) {
     ),
   };
   const movieCatalog = {
-    getPublicBySlug: vi.fn(async (slug: string) =>
-      (fixture.movies ?? []).find((item) => (item as { slug?: string }).slug === slug) ?? null,
+    getPublicBySlug: vi.fn(
+      async (slug: string) =>
+        (fixture.movies ?? []).find((item) => (item as { slug?: string }).slug === slug) ?? null,
     ),
   };
   const videoPolicy = {
@@ -121,8 +122,9 @@ describe("SearchService", () => {
     await expect(service.search("x".repeat(101))).rejects.toMatchObject({
       code: "INVALID_SEARCH_QUERY",
     });
-    await expect(service.search("one two three four five six seven eight nine ten eleven twelve thirteen"))
-      .rejects.toMatchObject({ code: "INVALID_SEARCH_QUERY" });
+    await expect(
+      service.search("one two three four five six seven eight nine ten eleven twelve thirteen"),
+    ).rejects.toMatchObject({ code: "INVALID_SEARCH_QUERY" });
     await expect(service.search("film\u0000drop")).rejects.toMatchObject({
       code: "INVALID_SEARCH_QUERY",
     });
@@ -167,9 +169,7 @@ describe("SearchService", () => {
     const { service } = serviceWith({
       candidates: [videoCandidate("plain", 60), videoCandidate("tagged", 60)],
       video: [video("plain", "Plain"), video("tagged", "Tagged")],
-      metadata: [
-        { videoId: "tagged", tags: ["space"], category: "SCIENCE_TECHNOLOGY" },
-      ],
+      metadata: [{ videoId: "tagged", tags: ["space"], category: "SCIENCE_TECHNOLOGY" }],
     });
     const result = await service.search("space");
     expect(result.items[0]?.id).toBe("tagged");
