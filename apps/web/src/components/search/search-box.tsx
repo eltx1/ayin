@@ -85,6 +85,7 @@ function suggestionTypeLabel(type: string, locale: "en" | "ar") {
     PLAYLIST: "قائمة تشغيل",
     CREATOR_TV: "Creator TV",
     SERIES: "مسلسل",
+    MOVIE: "فيلم",
   };
   return labels[type] ?? type.replace("_", " ");
 }

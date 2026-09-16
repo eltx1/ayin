@@ -8,13 +8,16 @@ import { SearchError, SearchService } from "./search.service.js";
 
 const searchSchema = z
   .object({
-    q: z.string(),
+    q: z.string().min(1).max(100),
     cursor: z.string().max(100).optional(),
     limit: z.coerce.number().int().min(1).max(24).optional(),
   })
   .strict();
 const suggestSchema = z
-  .object({ q: z.string(), limit: z.coerce.number().int().min(1).max(8).optional() })
+  .object({
+    q: z.string().min(1).max(100),
+    limit: z.coerce.number().int().min(1).max(8).optional(),
+  })
   .strict();
 
 @Controller("public/search")
@@ -25,6 +28,7 @@ export class SearchController {
     @Inject(SearchRateLimiter) private readonly rateLimiter: SearchRateLimiter,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
   ) {}
+
   @Get()
   async search(
     @Req() request: { ip?: string },
@@ -41,6 +45,7 @@ export class SearchController {
       });
     });
   }
+
   @Get("kids")
   async kidsSearch(
     @Req() request: { ip?: string },
@@ -93,6 +98,7 @@ export class SearchController {
       });
     });
   }
+
   @Get("suggestions")
   async suggestions(
     @Req() request: { ip?: string },
@@ -110,6 +116,7 @@ export class SearchController {
     });
   }
 }
+
 async function runSearch<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
