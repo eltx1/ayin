@@ -58,7 +58,64 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
         requestedPerType,
       ),
     ]);
-    return mergeCandidates(base, languageAware);
+    const merged = mergeCandidates(base, languageAware);
+    return this.applyContentLanguageAffinity(merged, selection.preferredLanguage);
+  }
+
+  private async applyContentLanguageAffinity(
+    candidates: SearchCandidate[],
+    preferredLanguage: "ar" | "en" | "und",
+  ): Promise<SearchCandidate[]> {
+    if (preferredLanguage === "und" || candidates.length === 0) return candidates;
+
+    const videoIds = candidates.filter((item) => item.type === "VIDEO").map((item) => item.id);
+    const seriesIds = candidates.filter((item) => item.type === "SERIES").map((item) => item.id);
+    const movieIds = candidates.filter((item) => item.type === "MOVIE").map((item) => item.id);
+
+    const [videoMetadata, series, movies] = await Promise.all([
+      videoIds.length
+        ? this.languageDatabase.client.videoCreatorMetadata.findMany({
+            where: { videoId: { in: videoIds } },
+            select: { videoId: true, primaryLanguage: true },
+          })
+        : [],
+      seriesIds.length
+        ? this.languageDatabase.client.series.findMany({
+            where: { id: { in: seriesIds } },
+            select: { id: true, originalLanguage: true },
+          })
+        : [],
+      movieIds.length
+        ? this.languageDatabase.client.movie.findMany({
+            where: { id: { in: movieIds } },
+            select: { id: true, originalLanguage: true },
+          })
+        : [],
+    ]);
+
+    const affinity = new Set<string>();
+    for (const item of videoMetadata) {
+      if (languageBase(item.primaryLanguage) === preferredLanguage)
+        affinity.add(`VIDEO:${item.videoId}`);
+    }
+    for (const item of series) {
+      if (languageBase(item.originalLanguage) === preferredLanguage)
+        affinity.add(`SERIES:${item.id}`);
+    }
+    for (const item of movies) {
+      if (languageBase(item.originalLanguage) === preferredLanguage)
+        affinity.add(`MOVIE:${item.id}`);
+    }
+
+    return candidates
+      .map((candidate) =>
+        affinity.has(`${candidate.type}:${candidate.id}`)
+          ? { ...candidate, score: candidate.score + 8 }
+          : candidate,
+      )
+      .toSorted(
+        (a, b) => b.score - a.score || a.type.localeCompare(b.type) || a.id.localeCompare(b.id),
+      );
   }
 
   private async languageCandidates(
@@ -105,11 +162,6 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
                 ) * 30
               ELSE 0
             END
-            + CASE
-                WHEN ${preferredLanguage} <> 'und'
-                  AND lower(split_part(coalesce(vm."primaryLanguage", ''), '-', 1)) = ${preferredLanguage}
-                  THEN 8 ELSE 0
-              END
             + CASE WHEN ${useArabic}::boolean AND ${fuzzy}::boolean
                 THEN similarity(ayin_arabic_search_normalize(v."title"), ${matchQuery}) * 18
                 ELSE 0 END
@@ -249,11 +301,6 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
                 ) * 28
               ELSE 0
             END
-            + CASE
-                WHEN ${preferredLanguage} <> 'und'
-                  AND lower(split_part(s."originalLanguage", '-', 1)) = ${preferredLanguage}
-                  THEN 8 ELSE 0
-              END
           )::double precision
         FROM "Series" s
         WHERE s."status" = 'PUBLISHED'
@@ -348,11 +395,6 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
                 ) * 28
               ELSE 0
             END
-            + CASE
-                WHEN ${preferredLanguage} <> 'und'
-                  AND lower(split_part(m."originalLanguage", '-', 1)) = ${preferredLanguage}
-                  THEN 8 ELSE 0
-              END
           )::double precision
         FROM "Movie" m
         WHERE m."status" = 'PUBLISHED'
@@ -441,6 +483,10 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
       ];
     });
   }
+}
+
+function languageBase(value: string | null | undefined): string | undefined {
+  return value?.trim().replaceAll("_", "-").split("-")[0]?.toLocaleLowerCase();
 }
 
 function mergeCandidates(
