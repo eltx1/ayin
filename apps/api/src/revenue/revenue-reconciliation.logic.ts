@@ -1,12 +1,7 @@
 import { createHash } from "node:crypto";
 
 export type ReconciliationStatus =
-  | "MATCHED"
-  | "UNMATCHED"
-  | "DUPLICATE"
-  | "CORRECTED"
-  | "FINALIZED"
-  | "ANOMALOUS";
+  "MATCHED" | "UNMATCHED" | "DUPLICATE" | "CORRECTED" | "FINALIZED" | "ANOMALOUS";
 
 export interface ReconciliationSnapshot {
   state: "ESTIMATED" | "FINAL";

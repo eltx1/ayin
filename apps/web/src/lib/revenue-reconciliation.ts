@@ -1,12 +1,7 @@
 import { apiBaseUrl, readApiError } from "./api";
 
 export type RevenueReconciliationStatus =
-  | "MATCHED"
-  | "UNMATCHED"
-  | "DUPLICATE"
-  | "CORRECTED"
-  | "FINALIZED"
-  | "ANOMALOUS";
+  "MATCHED" | "UNMATCHED" | "DUPLICATE" | "CORRECTED" | "FINALIZED" | "ANOMALOUS";
 
 export interface RevenueReconciliationCapabilities {
   adapter: string;
@@ -77,10 +72,7 @@ export type RevenueReconciliationImportInput = {
   periodEnd: string;
   currency: string;
   state: "ESTIMATED" | "FINAL";
-} & (
-  | { format: "CSV"; csv: string }
-  | { format: "STRUCTURED"; rows: RevenueReportRowInput[] }
-);
+} & ({ format: "CSV"; csv: string } | { format: "STRUCTURED"; rows: RevenueReportRowInput[] });
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {

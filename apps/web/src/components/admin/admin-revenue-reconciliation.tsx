@@ -162,9 +162,8 @@ export function AdminRevenueReconciliation() {
             <span className={styles.eyebrow}>External Revenue Reconciliation</span>
             <h2>Validated source reports → immutable creator ledger</h2>
             <p className={styles.muted}>
-              Provider-neutral reconciliation records every report and source row. Historical
-              ledger amounts are never overwritten; corrections and finalization append new ledger
-              effects.
+              Provider-neutral reconciliation records every report and source row. Historical ledger
+              amounts are never overwritten; corrections and finalization append new ledger effects.
             </p>
           </div>
           <span className={styles.statusPill}>
@@ -242,7 +241,10 @@ export function AdminRevenueReconciliation() {
           </label>
           <label>
             Import format
-            <select value={format} onChange={(event) => setFormat(event.target.value as ImportFormat)}>
+            <select
+              value={format}
+              onChange={(event) => setFormat(event.target.value as ImportFormat)}
+            >
               <option value="CSV">CSV</option>
               <option value="STRUCTURED">Structured JSON</option>
             </select>

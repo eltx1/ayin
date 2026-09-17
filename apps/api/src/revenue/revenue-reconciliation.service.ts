@@ -320,9 +320,7 @@ export class RevenueReconciliationService {
     const parsed = revenueReconciliationReportQuerySchema.parse(query);
     const where: Prisma.RevenueSourceReportWhereInput = {
       ...(parsed.source ? { source: parsed.source } : {}),
-      ...(parsed.status
-        ? { rows: { some: { reconciliationStatus: parsed.status } } }
-        : {}),
+      ...(parsed.status ? { rows: { some: { reconciliationStatus: parsed.status } } } : {}),
     };
     const [total, items] = await Promise.all([
       this.database.client.revenueSourceReport.count({ where }),
@@ -371,7 +369,10 @@ export class RevenueReconciliationService {
     const channel = row.channelId
       ? await tx.channel.findUnique({ where: { id: row.channelId }, select: { id: true } })
       : row.channelHandle
-        ? await tx.channel.findUnique({ where: { handle: row.channelHandle }, select: { id: true } })
+        ? await tx.channel.findUnique({
+            where: { handle: row.channelHandle },
+            select: { id: true },
+          })
         : null;
     if (channelRefSupplied && !channel) {
       return {

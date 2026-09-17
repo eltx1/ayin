@@ -35,7 +35,11 @@ export interface RevenueReportingAdapter {
 }
 
 function normalizedHeader(value: string) {
-  return value.replace(/^\uFEFF/, "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  return value
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function parseCsvRecords(csv: string): string[][] {
@@ -158,8 +162,7 @@ export class ManualRevenueReportingAdapter implements RevenueReportingAdapter {
 
   normalize(input: unknown): NormalizedRevenueReport {
     const parsed = revenueReportImportSchema.parse(input);
-    const rows =
-      parsed.format === "CSV" ? parseRevenueReportCsv(parsed.csv!) : parsed.rows ?? [];
+    const rows = parsed.format === "CSV" ? parseRevenueReportCsv(parsed.csv!) : (parsed.rows ?? []);
     if (rows.length === 0) throw new Error("REVENUE_REPORT_EMPTY");
     return {
       source: parsed.source,
