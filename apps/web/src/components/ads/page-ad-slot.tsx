@@ -2,7 +2,11 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 
-import { mountGooglePublisherTagSlot } from "@/lib/google-gpt-page-ad-service";
+import { getAdvertisingConsentSnapshot } from "@/lib/advertising-consent";
+import {
+  GptRuntimeError,
+  mountGooglePublisherTagSlot,
+} from "@/lib/google-gpt-page-ad-service";
 import {
   detectPageAdDevice,
   fetchPageAdDecision,
@@ -27,6 +31,18 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
     let active = true;
     const requestId = crypto.randomUUID();
     const sessionId = getPageAdSessionId();
+
+    const showHouseFallback = async (fallback: HousePageAdDemand | null) => {
+      if (!fallback || !active) return;
+      setHouse(fallback);
+      await recordPageAdEvent({
+        key: placementKey,
+        eventType: "IMPRESSION",
+        requestId,
+        sessionId,
+        provider: "HOUSE",
+      });
+    };
 
     const start = async () => {
       if (started) return;
@@ -66,6 +82,7 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
           adUnitPath: decision.demand.adUnitPath,
           sizes: decision.sizes,
           responsive: decision.responsive,
+          consent: getAdvertisingConsentSnapshot(),
           onRender: (filled) => {
             if (!active) return;
             if (filled) {
@@ -85,30 +102,34 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
               });
               return;
             }
+
+            // Google documents that slotRenderEnded(isEmpty=true) can represent either
+            // legitimate no-fill or a network failure, so AYIN deliberately keeps it ambiguous.
+            void recordPageAdEvent({
+              key: placementKey,
+              eventType: "ERROR",
+              requestId,
+              sessionId,
+              provider: "GOOGLE_GPT",
+              errorCode: "GPT_EMPTY_OR_NETWORK_FAILURE",
+            });
             setShowGpt(false);
-            if (decision.fallback) {
-              setHouse(decision.fallback);
-              void recordPageAdEvent({
-                key: placementKey,
-                eventType: "IMPRESSION",
-                requestId,
-                sessionId,
-                provider: "HOUSE",
-              });
-            }
+            void showHouseFallback(decision.fallback);
           },
         });
-      } catch {
+      } catch (error) {
         setShowGpt(false);
-        if (decision.fallback) setHouse(decision.fallback);
+        const errorCode =
+          error instanceof GptRuntimeError ? error.diagnosticCode : "GPT_RUNTIME_FAILURE";
         void recordPageAdEvent({
           key: placementKey,
           eventType: "ERROR",
           requestId,
           sessionId,
           provider: "GOOGLE_GPT",
-          errorCode: "GPT_LOAD_FAILED",
+          errorCode,
         });
+        await showHouseFallback(decision.fallback);
       }
     };
 
