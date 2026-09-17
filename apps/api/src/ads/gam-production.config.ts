@@ -29,6 +29,7 @@ const environmentSchema = z.object({
   ),
   GAM_TEST_MODE: z.enum(["0", "1"]).default("1"),
   GAM_PRODUCTION_ENABLED: z.enum(["0", "1"]).default("0"),
+  GAM_KILL_SWITCH: z.enum(["0", "1"]).default("0"),
   GAM_ADS_TXT_RELATIONSHIP: z.preprocess(
     emptyStringToUndefined,
     z.enum(["DIRECT", "RESELLER"]).optional(),
@@ -42,6 +43,7 @@ export interface GamProductionConfig {
   displayAdUnitPrefix: string | null;
   testMode: boolean;
   productionEnabled: boolean;
+  killSwitch: boolean;
   adsTxtRelationship: "DIRECT" | "RESELLER" | null;
   complete: boolean;
 }
@@ -64,6 +66,7 @@ export function loadGamProductionConfig(
   );
   const productionEnabled = parsed.GAM_PRODUCTION_ENABLED === "1";
   const testMode = parsed.GAM_TEST_MODE === "1";
+  const killSwitch = parsed.GAM_KILL_SWITCH === "1";
 
   if (productionEnabled && !complete) {
     throw new Error(
@@ -84,6 +87,7 @@ export function loadGamProductionConfig(
     displayAdUnitPrefix: parsed.GAM_DISPLAY_AD_UNIT_PREFIX ?? null,
     testMode,
     productionEnabled,
+    killSwitch,
     adsTxtRelationship: parsed.GAM_ADS_TXT_RELATIONSHIP ?? null,
     complete,
   };
