@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { GamProductionService, type GamVideoSlot } from "./gam-production.service.js";
 import { resolveVideoAdPolicy } from "./video-ad-policy.js";
 
 export const videoAdSettingsSchema = z.object({
@@ -64,6 +65,7 @@ export const adEventSchema = z.object({
   requestId: z.string().trim().min(1).max(120).nullable().optional(),
   sessionId: z.string().trim().min(1).max(120).nullable().optional(),
   provider: z.enum(["GOOGLE_IMA"]),
+  source: z.enum(["GOOGLE_AD_MANAGER", "EXTERNAL_VAST", "HOUSE"]).nullable().optional(),
   errorCode: z.string().trim().max(120).nullable().optional(),
 });
 
@@ -74,6 +76,7 @@ export class VideoAdService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
+    @Inject(GamProductionService) private readonly gam: GamProductionService,
   ) {}
 
   async getSettings(): Promise<VideoAdSettings> {
@@ -164,7 +167,7 @@ export class VideoAdService {
 
     const video = await this.database.client.video.findFirst({
       where: { id: videoId, status: "PUBLISHED", visibility: { in: ["PUBLIC", "UNLISTED"] } },
-      select: { id: true, channelId: true, durationMs: true },
+      select: { id: true, channelId: true, slug: true, durationMs: true },
     });
     if (!video) return { enabled: false, reason: "VIDEO_NOT_ELIGIBLE" as const };
 
@@ -178,14 +181,43 @@ export class VideoAdService {
     const resolved = resolveVideoAdPolicy(settings, channelOverride, videoOverride);
     if (!resolved.enabled) return { enabled: false, reason: "CONTENT_OVERRIDE_DISABLED" as const };
 
-    const tagUrl =
-      resolved.vastTagUrl ?? settings.externalVastTagUrl ?? this.houseTagUrl(origin, settings);
-    if (!tagUrl) return { enabled: false, reason: "NO_AD_SOURCE_CONFIGURED" as const };
+    const explicitTagUrl = resolved.vastTagUrl ?? settings.externalVastTagUrl;
+    let source: "GOOGLE_AD_MANAGER" | "EXTERNAL_VAST" | "HOUSE" | null = null;
+    let tagUrl: string | null = explicitTagUrl;
+    let tagUrls: Partial<Record<GamVideoSlot, string>> | undefined;
+
+    if (explicitTagUrl) {
+      source = "EXTERNAL_VAST";
+    } else {
+      const descriptionUrl = this.watchUrl(origin, video.slug);
+      if (descriptionUrl) {
+        const [preRoll, midRoll, postRoll] = await Promise.all([
+          this.gam.buildVideoTagUrl({ descriptionUrl, slot: "PRE_ROLL" }),
+          this.gam.buildVideoTagUrl({ descriptionUrl, slot: "MID_ROLL" }),
+          this.gam.buildVideoTagUrl({ descriptionUrl, slot: "POST_ROLL" }),
+        ]);
+        if (preRoll && midRoll && postRoll) {
+          source = "GOOGLE_AD_MANAGER";
+          tagUrl = preRoll;
+          tagUrls = { PRE_ROLL: preRoll, MID_ROLL: midRoll, POST_ROLL: postRoll };
+        }
+      }
+    }
+
+    if (!tagUrl) {
+      tagUrl = this.houseTagUrl(origin, settings);
+      if (tagUrl) source = "HOUSE";
+    }
+    if (!tagUrl || !source) {
+      return { enabled: false, reason: "NO_AD_SOURCE_CONFIGURED" as const };
+    }
 
     return {
       enabled: true as const,
       provider: resolved.provider,
+      source,
       tagUrl,
+      ...(tagUrls ? { tagUrls } : {}),
       preRollEnabled: resolved.preRollEnabled,
       midRollEnabled:
         resolved.midRollEnabled && (video.durationMs ?? 0) >= resolved.midRollEverySec * 1000,
@@ -220,15 +252,15 @@ export class VideoAdService {
         entityType = "Channel";
         entityId = target.channelId;
       } else {
-        const videoId = target.videoId as string;
-        await tx.video.findUniqueOrThrow({ where: { id: videoId } });
+        const targetVideoId = target.videoId as string;
+        await tx.video.findUniqueOrThrow({ where: { id: targetVideoId } });
         row = await tx.videoAdOverride.upsert({
-          where: { videoId },
+          where: { videoId: targetVideoId },
           update: writeData,
-          create: { videoId, ...writeData },
+          create: { videoId: targetVideoId, ...writeData },
         });
         entityType = "Video";
-        entityId = videoId;
+        entityId = targetVideoId;
       }
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
@@ -254,10 +286,10 @@ export class VideoAdService {
         entityType = "Channel";
         entityId = target.channelId;
       } else {
-        const videoId = target.videoId as string;
-        result = await tx.videoAdOverride.deleteMany({ where: { videoId } });
+        const targetVideoId = target.videoId as string;
+        result = await tx.videoAdOverride.deleteMany({ where: { videoId: targetVideoId } });
         entityType = "Video";
-        entityId = videoId;
+        entityId = targetVideoId;
       }
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
@@ -292,6 +324,7 @@ export class VideoAdService {
         sessionId: input.sessionId ?? null,
         metadata: {
           provider: input.provider,
+          ...(input.source ? { source: input.source } : {}),
           ...(input.errorCode ? { errorCode: input.errorCode } : {}),
         },
       },
@@ -322,7 +355,16 @@ export class VideoAdService {
 
   private houseTagUrl(origin: string | null, settings: VideoAdSettings) {
     if (!settings.houseCreativeUrl || !origin) return null;
-    return `${origin.replace(/\/$/, "")}/ads/house/vast`;
+    return `${origin.replace(/\/$/u, "")}/ads/house/vast`;
+  }
+
+  private watchUrl(origin: string | null, slug: string) {
+    if (!origin) return null;
+    try {
+      return new URL(`/watch/${encodeURIComponent(slug)}`, origin).toString();
+    } catch {
+      return null;
+    }
   }
 
   private xml(value: string) {

@@ -1,7 +1,9 @@
 import { trackAnalyticsEvent } from "./analytics";
 import { apiBaseUrl } from "./api";
+import type { AdvertisingConsentSnapshot } from "./advertising-consent";
 
 export type VideoAdSlot = "PRE_ROLL" | "MID_ROLL" | "POST_ROLL";
+export type VideoAdSource = "GOOGLE_AD_MANAGER" | "EXTERNAL_VAST" | "HOUSE";
 export type VideoAdEventType =
   | "REQUEST"
   | "FILL"
@@ -17,7 +19,9 @@ export type VideoAdEventType =
 export interface VideoAdDecision {
   enabled: true;
   provider: "GOOGLE_IMA";
+  source: VideoAdSource;
   tagUrl: string;
+  tagUrls?: Partial<Record<VideoAdSlot, string>>;
   preRollEnabled: boolean;
   midRollEnabled: boolean;
   postRollEnabled: boolean;
@@ -49,6 +53,7 @@ export interface VideoAdService {
     tagUrl: string,
     callbacks: VideoAdCallbacks,
     playbackIntent?: VideoAdPlaybackIntent,
+    consent?: AdvertisingConsentSnapshot,
   ): Promise<void>;
   contentComplete(): void;
   destroy(): void;
@@ -90,6 +95,7 @@ export async function recordVideoAdEvent(input: {
   requestId: string;
   sessionId: string;
   provider: "GOOGLE_IMA";
+  source?: VideoAdSource;
   errorCode?: string;
 }) {
   const analyticsName =
@@ -114,6 +120,7 @@ export async function recordVideoAdEvent(input: {
       metadata: {
         slot: input.slot,
         provider: input.provider,
+        ...(input.source ? { source: input.source } : {}),
         eventType: input.eventType,
         ...(input.errorCode ? { errorCode: input.errorCode } : {}),
       },

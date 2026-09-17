@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { z } from "zod";
 
 import { DatabaseService } from "../database/database.service.js";
+import { GamProductionService } from "./gam-production.service.js";
 import {
   isPageAdEligible,
   type PageAdContext,
@@ -66,7 +67,10 @@ export type PageAdEventInput = z.infer<typeof pageAdEventSchema>;
 
 @Injectable()
 export class PageAdService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(GamProductionService) private readonly gam: GamProductionService,
+  ) {}
 
   async getSettings(): Promise<PageAdSettings> {
     const row = await this.database.client.platformSetting.findUnique({
@@ -142,7 +146,7 @@ export class PageAdService {
       };
     }
 
-    if (!settings.googleGptEnabled || !config.demand.adUnitPath) {
+    const fallback = () => {
       if (config.fallback === "HOUSE" && house) {
         return {
           enabled: true as const,
@@ -154,7 +158,24 @@ export class PageAdService {
           fallback: null,
         };
       }
-      return { enabled: false as const, reason: "GPT_NOT_CONFIGURED" };
+      return null;
+    };
+
+    if (!settings.googleGptEnabled || !config.demand.adUnitPath) {
+      return fallback() ?? { enabled: false as const, reason: "GPT_NOT_CONFIGURED" };
+    }
+
+    const gamState = await this.gam.requestState();
+    if (!gamState.enabled) {
+      return fallback() ?? { enabled: false as const, reason: gamState.reason };
+    }
+    if (!this.gam.isDisplayAdUnitAllowed(config.demand.adUnitPath)) {
+      return (
+        fallback() ?? {
+          enabled: false as const,
+          reason: "GPT_AD_UNIT_OUTSIDE_CONFIGURED_PREFIX" as const,
+        }
+      );
     }
 
     return {
