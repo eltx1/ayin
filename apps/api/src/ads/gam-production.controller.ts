@@ -9,8 +9,9 @@ const contextSchema = z.object({
   channelId: z.string().uuid().nullable().optional(),
   videoId: z.string().uuid().nullable().optional(),
   deviceClass: z.enum(["MOBILE", "TABLET", "DESKTOP", "TV", "UNKNOWN"]),
-  sessionId: z.string().trim().min(8).max(120),
-  consentMode: z.enum(["PERSONALIZED", "NON_PERSONALIZED", "LIMITED_ADS"]),
+  consentMode: z
+    .enum(["PERSONALIZED", "NON_PERSONALIZED", "LIMITED_ADS"])
+    .default("LIMITED_ADS"),
   childDirected: z.enum(["0", "1"]).optional(),
   underAgeOfConsent: z.enum(["0", "1"]).optional(),
 });
@@ -26,7 +27,6 @@ export class GamClientConfigurationController {
       channelId: parsed.channelId ?? null,
       videoId: parsed.videoId ?? null,
       deviceClass: parsed.deviceClass,
-      sessionId: parsed.sessionId,
       consentMode: parsed.consentMode,
       childDirected: parsed.childDirected === "1",
       underAgeOfConsent: parsed.underAgeOfConsent === "1",
