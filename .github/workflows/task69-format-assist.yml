@@ -1,0 +1,51 @@
+name: Task 69 format assist
+
+on:
+  push:
+    branches:
+      - task-69-revenue-reconciliation
+    paths:
+      - ".github/workflows/task69-format-assist.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-69-revenue-reconciliation
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format Task 69 files
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/revenue/revenue-reconciliation.logic.ts \
+            apps/api/src/revenue/revenue-reconciliation.service.ts \
+            apps/api/src/revenue/revenue-reporting.adapter.ts \
+            apps/web/src/components/admin/admin-revenue-reconciliation.tsx \
+            apps/web/src/lib/revenue-reconciliation.ts
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/revenue/revenue-reconciliation.logic.ts \
+            apps/api/src/revenue/revenue-reconciliation.service.ts \
+            apps/api/src/revenue/revenue-reporting.adapter.ts \
+            apps/web/src/components/admin/admin-revenue-reconciliation.tsx \
+            apps/web/src/lib/revenue-reconciliation.ts
+          git commit -m "Format Task 69 reconciliation files"
+          git push origin HEAD:task-69-revenue-reconciliation
