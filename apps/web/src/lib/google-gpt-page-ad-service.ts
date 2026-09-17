@@ -21,7 +21,10 @@ interface GptSlotRenderEvent extends GptSlotEvent {
 }
 
 interface GptPubAdsService {
-  addEventListener(type: string, listener: (event: GptSlotEvent | GptSlotRenderEvent) => void): void;
+  addEventListener(
+    type: string,
+    listener: (event: GptSlotEvent | GptSlotRenderEvent) => void,
+  ): void;
   removeEventListener(
     type: string,
     listener: (event: GptSlotEvent | GptSlotRenderEvent) => void,
@@ -99,7 +102,11 @@ export function loadGooglePublisherTag(consent: AdvertisingConsentSnapshot) {
     }
 
     const script = existingScript ?? document.createElement("script");
-    if (existingScript && existingScript.src !== requestedSource && requestedSource === GPT_LIMITED_SRC) {
+    if (
+      existingScript &&
+      existingScript.src !== requestedSource &&
+      requestedSource === GPT_LIMITED_SRC
+    ) {
       reject(new GptRuntimeError("GPT_LIMITED_ADS_REQUIRES_LIMITED_SCRIPT"));
       return;
     }
