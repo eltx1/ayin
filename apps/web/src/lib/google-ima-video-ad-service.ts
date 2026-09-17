@@ -1,3 +1,4 @@
+import type { AdvertisingConsentSnapshot } from "./advertising-consent";
 import type {
   VideoAdCallbacks,
   VideoAdPlaybackIntent,
@@ -6,6 +7,7 @@ import type {
 } from "./video-ads";
 
 const IMA_SDK_URL = "https://imasdk.googleapis.com/js/sdkloader/ima3.js";
+const IMA_SDK_TIMEOUT_MS = 10_000;
 
 interface ImaAdsRequest {
   adTagUrl: string;
@@ -69,23 +71,81 @@ type ImaWindow = Window & { google?: { ima?: ImaNamespace } };
 
 let sdkPromise: Promise<ImaNamespace> | null = null;
 
+export class ImaRuntimeError extends Error {
+  constructor(readonly diagnosticCode: string) {
+    super(diagnosticCode);
+    this.name = "ImaRuntimeError";
+  }
+}
+
+export function classifyImaErrorCode(code: number | null | undefined) {
+  if (code === 1009 || code === 303) return `IMA_NO_FILL_${code}`;
+  return `IMA_TECHNICAL_${code ?? "UNKNOWN"}`;
+}
+
+export function applyGoogleImaConsent(tagUrl: string, consent: AdvertisingConsentSnapshot) {
+  let parsed: URL;
+  try {
+    parsed = new URL(tagUrl);
+  } catch {
+    return tagUrl;
+  }
+  if (!isGoogleAdTagHost(parsed.hostname)) return tagUrl;
+  if (consent.mode === "LIMITED_ADS") {
+    parsed.searchParams.set("ltd", "1");
+    parsed.searchParams.delete("npa");
+  } else if (consent.mode === "NON_PERSONALIZED") {
+    parsed.searchParams.set("npa", "1");
+    parsed.searchParams.delete("ltd");
+  } else {
+    parsed.searchParams.delete("npa");
+    parsed.searchParams.delete("ltd");
+  }
+  return parsed.toString();
+}
+
 async function loadImaSdk(): Promise<ImaNamespace> {
   const existing = (window as ImaWindow).google?.ima;
   if (existing) return existing;
   if (!sdkPromise) {
     sdkPromise = new Promise<ImaNamespace>((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = IMA_SDK_URL;
-      script.async = true;
-      script.addEventListener("load", () => {
-        const ima = (window as ImaWindow).google?.ima;
-        if (ima) resolve(ima);
-        else reject(new Error("Google IMA SDK loaded without its runtime namespace."));
-      });
-      script.addEventListener("error", () =>
-        reject(new Error("Google IMA SDK could not be loaded.")),
+      const existingScript = document.querySelector<HTMLScriptElement>(`script[src="${IMA_SDK_URL}"]`);
+      const script = existingScript ?? document.createElement("script");
+      let timeout: number | null = window.setTimeout(() => {
+        timeout = null;
+        reject(new ImaRuntimeError("IMA_SDK_LOAD_TIMEOUT"));
+      }, IMA_SDK_TIMEOUT_MS);
+      const clear = () => {
+        if (timeout !== null) window.clearTimeout(timeout);
+        timeout = null;
+      };
+      script.addEventListener(
+        "load",
+        () => {
+          clear();
+          const ima = (window as ImaWindow).google?.ima;
+          if (ima) resolve(ima);
+          else reject(new ImaRuntimeError("IMA_SDK_NAMESPACE_MISSING"));
+        },
+        { once: true },
       );
-      document.head.append(script);
+      script.addEventListener(
+        "error",
+        () => {
+          clear();
+          reject(new ImaRuntimeError("IMA_SDK_LOAD_FAILED"));
+        },
+        { once: true },
+      );
+      if (!existingScript) {
+        script.src = IMA_SDK_URL;
+        script.async = true;
+        script.crossOrigin = "anonymous";
+        document.head.append(script);
+      }
+    }).catch((error) => {
+      sdkPromise = null;
+      throw error;
     });
   }
   return sdkPromise;
@@ -116,8 +176,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
     this.destroy();
     const existing = (window as ImaWindow).google?.ima;
     if (existing) {
-      // Keep AdDisplayContainer.initialize() synchronous when the SDK was preloaded.
-      // Mobile IMA requires this call to remain in the direct user-gesture stack.
+      // Mobile IMA requires AdDisplayContainer.initialize() to stay in the direct user gesture.
       this.attach(existing, container, contentVideo);
       return;
     }
@@ -131,29 +190,30 @@ export class GoogleImaVideoAdService implements VideoAdService {
     tagUrl: string,
     callbacks: VideoAdCallbacks,
     playbackIntent?: VideoAdPlaybackIntent,
+    consent?: AdvertisingConsentSnapshot,
   ): Promise<void> {
     const ima = this.ima;
     const loader = this.adsLoader;
     const content = this.contentVideo;
     const container = this.container;
-    if (!ima || !loader || !content || !container) throw new Error("IMA is not initialized.");
+    if (!ima || !loader || !content || !container) throw new ImaRuntimeError("IMA_NOT_INITIALIZED");
 
     callbacks.onEvent("REQUEST");
     return new Promise<void>((resolve, reject) => {
       let settled = false;
       const fail = (error: unknown) => {
-        const imaError = error as ImaErrorEvent;
+        const imaError = error as Partial<ImaErrorEvent>;
         const detail = imaError.getError?.();
-        callbacks.onEvent(
-          "ERROR",
-          String(detail?.getErrorCode?.() ?? detail?.toString?.() ?? "IMA_ERROR"),
-        );
+        const code = detail?.getErrorCode?.();
+        const diagnosticCode =
+          error instanceof ImaRuntimeError ? error.diagnosticCode : classifyImaErrorCode(code);
+        callbacks.onEvent("ERROR", diagnosticCode);
         this.adsManager?.destroy();
         this.adsManager = null;
         callbacks.onContentResume();
         if (!settled) {
           settled = true;
-          reject(error instanceof Error ? error : new Error("IMA ad error."));
+          reject(new ImaRuntimeError(diagnosticCode));
         }
       };
 
@@ -199,7 +259,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
       });
 
       const request = new ima.AdsRequest();
-      request.adTagUrl = tagUrl;
+      request.adTagUrl = consent ? applyGoogleImaConsent(tagUrl, consent) : tagUrl;
       request.linearAdSlotWidth = Math.max(container.clientWidth, 640);
       request.linearAdSlotHeight = Math.max(container.clientHeight, 360);
       request.nonLinearAdSlotWidth = Math.max(container.clientWidth, 640);
@@ -239,4 +299,9 @@ export class GoogleImaVideoAdService implements VideoAdService {
     this.displayContainer.initialize();
     this.initialized = true;
   }
+}
+
+function isGoogleAdTagHost(hostname: string) {
+  const normalized = hostname.toLowerCase();
+  return normalized === "securepubads.g.doubleclick.net" || normalized.endsWith(".doubleclick.net");
 }
