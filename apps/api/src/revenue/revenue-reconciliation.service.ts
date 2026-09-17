@@ -229,7 +229,7 @@ export class RevenueReconciliationService {
                   periodStart: previous.report.periodStart,
                   periodEnd: previous.report.periodEnd,
                   currency: previous.report.currency,
-                  state: previous.state,
+                  state: previous.state === "FINAL" ? "FINAL" : "ESTIMATED",
                 },
                 channelId: previous.channelId!,
                 videoId: previous.videoId,
