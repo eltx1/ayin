@@ -3,6 +3,20 @@
 // VARCHAR + CHECK constraints so future provider adapters can be introduced
 // without a PostgreSQL enum migration.
 
+enum RevenueReportImportFormat {
+  STRUCTURED
+  CSV
+}
+
+enum RevenueReconciliationStatus {
+  MATCHED
+  UNMATCHED
+  DUPLICATE
+  CORRECTED
+  FINALIZED
+  ANOMALOUS
+}
+
 model CreatorPayoutProfile {
   id                   String   @id @default(uuid()) @db.Uuid
   channelId            String   @unique @db.Uuid
@@ -45,4 +59,63 @@ model RevenueDispute {
   @@index([channelId, status, createdAt])
   @@index([status, createdAt])
   @@index([payoutId])
+}
+
+model RevenueSourceReport {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  source              String                    @db.VarChar(80)
+  sourceReportId      String                    @db.VarChar(160)
+  periodStart         DateTime
+  periodEnd           DateTime
+  currency            String                    @db.Char(3)
+  state               EarningsEntryState
+  importFormat        RevenueReportImportFormat
+  importedByAccountId String?                   @db.Uuid
+  totalRows           Int                       @default(0)
+  matchedRows         Int                       @default(0)
+  unmatchedRows       Int                       @default(0)
+  duplicateRows       Int                       @default(0)
+  correctedRows       Int                       @default(0)
+  finalizedRows       Int                       @default(0)
+  anomalousRows       Int                       @default(0)
+  createdAt           DateTime                  @default(now())
+
+  rows RevenueSourceReportRow[]
+
+  @@unique([source, sourceReportId])
+  @@index([source, createdAt])
+  @@index([periodStart, periodEnd])
+  @@index([createdAt])
+}
+
+model RevenueSourceReportRow {
+  id                   String                      @id @default(uuid()) @db.Uuid
+  reportId             String                      @db.Uuid
+  rowNumber            Int
+  source               String                      @db.VarChar(80)
+  externalRowId        String                      @db.VarChar(160)
+  channelRef           String?                     @db.VarChar(160)
+  videoRef             String?                     @db.VarChar(200)
+  contentRef           String?                     @db.VarChar(200)
+  channelId            String?                     @db.Uuid
+  videoId              String?                     @db.Uuid
+  grossAmount          Decimal                     @db.Decimal(20, 6)
+  creatorAmount        Decimal?                    @db.Decimal(20, 6)
+  currency             String                      @db.Char(3)
+  state                EarningsEntryState
+  reconciliationStatus RevenueReconciliationStatus
+  ledgerEntryId        String?                     @db.Uuid
+  priorRowId           String?                     @db.Uuid
+  reason               String?                     @db.VarChar(500)
+  memo                 String?                     @db.VarChar(500)
+  createdAt            DateTime                    @default(now())
+
+  report RevenueSourceReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, rowNumber])
+  @@index([source, externalRowId, createdAt])
+  @@index([reportId, reconciliationStatus])
+  @@index([channelId, createdAt])
+  @@index([videoId, createdAt])
+  @@index([ledgerEntryId])
 }
