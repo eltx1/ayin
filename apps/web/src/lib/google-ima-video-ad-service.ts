@@ -86,7 +86,10 @@ export function classifyImaErrorCode(code: number | null | undefined) {
   return `IMA_TECHNICAL_${code ?? "UNKNOWN"}`;
 }
 
-export function applyGoogleImaConsent(tagUrl: string, consent: AdvertisingConsentSnapshot) {
+export function applyGoogleImaConsent(
+  tagUrl: string,
+  consent: AdvertisingConsentSnapshot,
+) {
   let parsed: URL;
   try {
     parsed = new URL(tagUrl);
@@ -112,7 +115,9 @@ async function loadImaSdk(): Promise<ImaNamespace> {
   if (existing) return existing;
   if (!sdkPromise) {
     sdkPromise = new Promise<ImaNamespace>((resolve, reject) => {
-      const existingScript = document.querySelector<HTMLScriptElement>(`script[src="${IMA_SDK_URL}"]`);
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        `script[src="${IMA_SDK_URL}"]`,
+      );
       const script = existingScript ?? document.createElement("script");
       let timeout: number | null = window.setTimeout(() => {
         timeout = null;
@@ -199,7 +204,9 @@ export class GoogleImaVideoAdService implements VideoAdService {
     const loader = this.adsLoader;
     const content = this.contentVideo;
     const container = this.container;
-    if (!ima || !loader || !content || !container) throw new ImaRuntimeError("IMA_NOT_INITIALIZED");
+    if (!ima || !loader || !content || !container) {
+      throw new ImaRuntimeError("IMA_NOT_INITIALIZED");
+    }
 
     callbacks.onEvent("REQUEST");
     return new Promise<void>((resolve) => {
@@ -311,5 +318,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
 
 function isGoogleAdTagHost(hostname: string) {
   const normalized = hostname.toLowerCase();
-  return normalized === "securepubads.g.doubleclick.net" || normalized.endsWith(".doubleclick.net");
+  return (
+    normalized === "securepubads.g.doubleclick.net" || normalized.endsWith(".doubleclick.net")
+  );
 }
