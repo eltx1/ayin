@@ -8,7 +8,7 @@ describe("validateAuthorizedSellerText", () => {
       "OWNERDOMAIN=ayin.stream",
       "MANAGERDOMAIN=manager.example, US",
       "INVENTORYPARTNERDOMAIN=partner.example",
-      "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0",
+      "google.com, pub-1234567890123456, DIRECT",
       "exchange.example, seller-42, RESELLER",
     ].join("\n");
 
