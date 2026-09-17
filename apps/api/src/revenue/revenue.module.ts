@@ -16,14 +16,27 @@ import {
   PAYOUT_PROVIDER_ADAPTER,
   type PayoutProviderAdapter,
 } from "./payout-provider.adapter.js";
+import { RevenueReconciliationController } from "./revenue-reconciliation.controller.js";
+import { RevenueReconciliationService } from "./revenue-reconciliation.service.js";
+import {
+  ManualRevenueReportingAdapter,
+  REVENUE_REPORTING_ADAPTER,
+  type RevenueReportingAdapter,
+} from "./revenue-reporting.adapter.js";
 import { AdminRevenueController, CreatorRevenueController } from "./revenue.controller.js";
 import { RevenueService } from "./revenue.service.js";
 
 @Module({
   imports: [DatabaseModule, AuthModule, AdminModule],
-  controllers: [CreatorRevenueController, AdminRevenueController, AdminPayoutDestinationController],
+  controllers: [
+    CreatorRevenueController,
+    AdminRevenueController,
+    RevenueReconciliationController,
+    AdminPayoutDestinationController,
+  ],
   providers: [
     RevenueService,
+    RevenueReconciliationService,
     CreatorFinanceRepository,
     CreatorFinanceService,
     CreatorMonetizationAnalyticsService,
@@ -32,10 +45,16 @@ import { RevenueService } from "./revenue.service.js";
     AdminPayoutCreationService,
     AdminPayoutDestinationService,
     ManualPayoutProviderAdapter,
+    ManualRevenueReportingAdapter,
     {
       provide: PAYOUT_PROVIDER_ADAPTER,
       inject: [ManualPayoutProviderAdapter],
       useFactory: (adapter: ManualPayoutProviderAdapter): PayoutProviderAdapter => adapter,
+    },
+    {
+      provide: REVENUE_REPORTING_ADAPTER,
+      inject: [ManualRevenueReportingAdapter],
+      useFactory: (adapter: ManualRevenueReportingAdapter): RevenueReportingAdapter => adapter,
     },
   ],
   exports: [
