@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AdvertisingConsentSnapshot } from "./advertising-consent";
-import {
-  gptPrivacySettingsForConsent,
-  gptScriptUrlForConsent,
-} from "./google-gpt-page-ad-service";
+import { gptPrivacySettingsForConsent, gptScriptUrlForConsent } from "./google-gpt-page-ad-service";
 import { applyGoogleImaConsent, classifyImaErrorCode } from "./google-ima-video-ad-service";
 
 const limited: AdvertisingConsentSnapshot = {

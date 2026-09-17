@@ -86,10 +86,7 @@ export function classifyImaErrorCode(code: number | null | undefined) {
   return `IMA_TECHNICAL_${code ?? "UNKNOWN"}`;
 }
 
-export function applyGoogleImaConsent(
-  tagUrl: string,
-  consent: AdvertisingConsentSnapshot,
-) {
+export function applyGoogleImaConsent(tagUrl: string, consent: AdvertisingConsentSnapshot) {
   let parsed: URL;
   try {
     parsed = new URL(tagUrl);
@@ -271,10 +268,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
       });
 
       const request = new ima.AdsRequest();
-      request.adTagUrl = applyGoogleImaConsent(
-        tagUrl,
-        consent ?? getAdvertisingConsentSnapshot(),
-      );
+      request.adTagUrl = applyGoogleImaConsent(tagUrl, consent ?? getAdvertisingConsentSnapshot());
       request.linearAdSlotWidth = Math.max(container.clientWidth, 640);
       request.linearAdSlotHeight = Math.max(container.clientHeight, 360);
       request.nonLinearAdSlotWidth = Math.max(container.clientWidth, 640);
@@ -318,7 +312,5 @@ export class GoogleImaVideoAdService implements VideoAdService {
 
 function isGoogleAdTagHost(hostname: string) {
   const normalized = hostname.toLowerCase();
-  return (
-    normalized === "securepubads.g.doubleclick.net" || normalized.endsWith(".doubleclick.net")
-  );
+  return normalized === "securepubads.g.doubleclick.net" || normalized.endsWith(".doubleclick.net");
 }

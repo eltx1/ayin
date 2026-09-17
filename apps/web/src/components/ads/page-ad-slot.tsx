@@ -3,10 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import { getAdvertisingConsentSnapshot } from "@/lib/advertising-consent";
-import {
-  GptRuntimeError,
-  mountGooglePublisherTagSlot,
-} from "@/lib/google-gpt-page-ad-service";
+import { GptRuntimeError, mountGooglePublisherTagSlot } from "@/lib/google-gpt-page-ad-service";
 import {
   detectPageAdDevice,
   fetchPageAdDecision,

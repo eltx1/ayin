@@ -2,10 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { AdvertisingControlService } from "./advertising-control.service.js";
-import {
-  loadGamProductionConfig,
-  type GamProductionConfig,
-} from "./gam-production.config.js";
+import { loadGamProductionConfig, type GamProductionConfig } from "./gam-production.config.js";
 
 export const GAM_PRODUCTION_CONFIG = Symbol("GAM_PRODUCTION_CONFIG");
 
@@ -92,10 +89,7 @@ export class GamProductionService {
       adsTxtConfigured: Boolean(this.config.publisherId && this.config.adsTxtRelationship),
       requestEnabled,
       readyForLiveRequests:
-        this.config.complete &&
-        this.config.productionEnabled &&
-        !this.config.testMode &&
-        !killed,
+        this.config.complete && this.config.productionEnabled && !this.config.testMode && !killed,
       runtimeWindowMinutes: 60,
       runtime,
     };
@@ -197,10 +191,7 @@ export function buildGamVideoTagUrl(
   return url.toString();
 }
 
-export function isConfiguredDisplayAdUnitPath(
-  config: GamProductionConfig,
-  adUnitPath: string,
-) {
+export function isConfiguredDisplayAdUnitPath(config: GamProductionConfig, adUnitPath: string) {
   const prefix = config.displayAdUnitPrefix?.replace(/\/$/u, "");
   if (!prefix) return false;
   return adUnitPath === prefix || adUnitPath.startsWith(`${prefix}/`);
@@ -221,8 +212,7 @@ export function classifyGamRuntimeEvents(events: RuntimeEvent[]) {
     const metadata = objectRecord(event.metadata);
     const provider = typeof metadata?.provider === "string" ? metadata.provider : null;
     const errorCode = typeof metadata?.errorCode === "string" ? metadata.errorCode : null;
-    const target =
-      provider === "GOOGLE_IMA" ? ima : provider === "GOOGLE_GPT" ? gpt : null;
+    const target = provider === "GOOGLE_IMA" ? ima : provider === "GOOGLE_GPT" ? gpt : null;
     if (!target) continue;
 
     target.lastEventAt ??= event.occurredAt.toISOString();
@@ -233,10 +223,7 @@ export function classifyGamRuntimeEvents(events: RuntimeEvent[]) {
     target.lastErrorCode ??= errorCode;
     if (provider === "GOOGLE_IMA" && errorCode?.startsWith("IMA_NO_FILL_")) {
       target.noFill += 1;
-    } else if (
-      provider === "GOOGLE_GPT" &&
-      errorCode === "GPT_EMPTY_OR_NETWORK_FAILURE"
-    ) {
+    } else if (provider === "GOOGLE_GPT" && errorCode === "GPT_EMPTY_OR_NETWORK_FAILURE") {
       target.ambiguousEmpty += 1;
     } else {
       target.technicalErrors += 1;
