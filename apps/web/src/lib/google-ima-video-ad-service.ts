@@ -1,4 +1,7 @@
-import type { AdvertisingConsentSnapshot } from "./advertising-consent";
+import {
+  getAdvertisingConsentSnapshot,
+  type AdvertisingConsentSnapshot,
+} from "./advertising-consent";
 import type {
   VideoAdCallbacks,
   VideoAdPlaybackIntent,
@@ -199,7 +202,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
     if (!ima || !loader || !content || !container) throw new ImaRuntimeError("IMA_NOT_INITIALIZED");
 
     callbacks.onEvent("REQUEST");
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>((resolve) => {
       let settled = false;
       const fail = (error: unknown) => {
         const imaError = error as Partial<ImaErrorEvent>;
@@ -213,7 +216,9 @@ export class GoogleImaVideoAdService implements VideoAdService {
         callbacks.onContentResume();
         if (!settled) {
           settled = true;
-          reject(new ImaRuntimeError(diagnosticCode));
+          // IMA/VAST failures are handled failures: content resumes and the caller must not
+          // emit a second generic error for the same ad request.
+          resolve();
         }
       };
 
@@ -259,7 +264,10 @@ export class GoogleImaVideoAdService implements VideoAdService {
       });
 
       const request = new ima.AdsRequest();
-      request.adTagUrl = consent ? applyGoogleImaConsent(tagUrl, consent) : tagUrl;
+      request.adTagUrl = applyGoogleImaConsent(
+        tagUrl,
+        consent ?? getAdvertisingConsentSnapshot(),
+      );
       request.linearAdSlotWidth = Math.max(container.clientWidth, 640);
       request.linearAdSlotHeight = Math.max(container.clientHeight, 360);
       request.nonLinearAdSlotWidth = Math.max(container.clientWidth, 640);
