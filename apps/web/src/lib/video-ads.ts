@@ -95,7 +95,7 @@ export async function recordVideoAdEvent(input: {
   requestId: string;
   sessionId: string;
   provider: "GOOGLE_IMA";
-  source: VideoAdSource;
+  source?: VideoAdSource;
   errorCode?: string;
 }) {
   const analyticsName =
@@ -120,7 +120,7 @@ export async function recordVideoAdEvent(input: {
       metadata: {
         slot: input.slot,
         provider: input.provider,
-        source: input.source,
+        ...(input.source ? { source: input.source } : {}),
         eventType: input.eventType,
         ...(input.errorCode ? { errorCode: input.errorCode } : {}),
       },
