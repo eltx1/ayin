@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
-import { DatabaseService } from "../database/database.service.js";
+import type { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
+import type { DatabaseService } from "../database/database.service.js";
 import { RevenueReconciliationService } from "./revenue-reconciliation.service.js";
 import { ManualRevenueReportingAdapter } from "./revenue-reporting.adapter.js";
 
