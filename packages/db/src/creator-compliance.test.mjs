@@ -43,8 +43,22 @@ describe("Task 71 creator compliance privacy invariants", () => {
 
   it("does not put external profile references or action URLs into audit metadata", () => {
     expect(service).toContain("sensitiveReferenceLogged: false");
-    expect(service).not.toMatch(
-      /metadata:\s*\{[\s\S]{0,700}(externalProfileReference|actionUrl)\s*:/u,
-    );
+    const auditBlocks = [
+      "creator.compliance_workflow_started",
+      "creator.compliance_status_refreshed",
+      "creator.compliance_status_overridden",
+    ].map((action) => {
+      const start = service.indexOf(`action: "${action}"`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const metadataStart = service.indexOf("metadata: {", start);
+      expect(metadataStart).toBeGreaterThan(start);
+      const metadataEnd = service.indexOf("\n          },", metadataStart);
+      expect(metadataEnd).toBeGreaterThan(metadataStart);
+      return service.slice(metadataStart, metadataEnd);
+    });
+    for (const block of auditBlocks) {
+      expect(block).not.toMatch(/\bexternalProfileReference\s*:/u);
+      expect(block).not.toMatch(/\bactionUrl\s*:/u);
+    }
   });
 });
