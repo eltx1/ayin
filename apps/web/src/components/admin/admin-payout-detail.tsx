@@ -81,14 +81,23 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
 
   useEffect(() => {
     let active = true;
-    void load().catch((error) => {
-      if (active)
-        setMessage(error instanceof Error ? error.message : "Payout could not be loaded.");
-    });
+    void Promise.all([
+      payoutFetch<PayoutDetail>(`/admin/revenue/payouts/${encodeURIComponent(payoutId)}`),
+      getPayoutProviderTransfer(payoutId),
+    ])
+      .then(([nextDetail, nextProvider]) => {
+        if (!active) return;
+        setDetail(nextDetail);
+        setProvider(nextProvider);
+      })
+      .catch((error) => {
+        if (active)
+          setMessage(error instanceof Error ? error.message : "Payout could not be loaded.");
+      });
     return () => {
       active = false;
     };
-  }, [load]);
+  }, [payoutId]);
 
   async function reveal() {
     if (reason.trim().length < 8) return;
