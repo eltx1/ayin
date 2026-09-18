@@ -68,11 +68,7 @@ function complianceState(required: boolean, value: string) {
   return required ? profileState(value) : "Not required";
 }
 
-function payoutDestinationState(input: {
-  required: boolean;
-  configured: boolean;
-  status: string;
-}) {
+function payoutDestinationState(input: { required: boolean; configured: boolean; status: string }) {
   if (!input.required && input.configured) return "Saved";
   if (!input.required && !input.configured) return "Not set";
   return profileState(input.status);
@@ -378,9 +374,8 @@ export function AccountRevenue() {
           ) : null}
         </div>
         <p className={styles.muted}>
-          AYIN does not ask you to upload identity documents or tax IDs into this payout page.
-          When an approved external verification service is configured, its workflow is used
-          instead.
+          AYIN does not ask you to upload identity documents or tax IDs into this payout page. When
+          an approved external verification service is configured, its workflow is used instead.
         </p>
       </section>
 

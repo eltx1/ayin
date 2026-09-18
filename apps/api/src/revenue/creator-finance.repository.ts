@@ -6,11 +6,7 @@ import { DatabaseService } from "../database/database.service.js";
 
 export type PayoutProvider = string;
 export type CreatorComplianceStatus =
-  | "NOT_STARTED"
-  | "PENDING"
-  | "VERIFIED"
-  | "REQUIRES_ACTION"
-  | "REJECTED";
+  "NOT_STARTED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION" | "REJECTED";
 export type IdentityVerificationStatus = CreatorComplianceStatus;
 export type TaxVerificationStatus = CreatorComplianceStatus;
 export type RevenueDisputeCategory = "EARNINGS" | "PAYOUT" | "OTHER";

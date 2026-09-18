@@ -12,7 +12,6 @@ import {
   creatorComplianceStepSchema,
 } from "./creator-compliance.schemas.js";
 
-
 const STATUSES = new Set<CreatorComplianceStatus>([
   "NOT_STARTED",
   "PENDING",
@@ -58,8 +57,7 @@ export class CreatorComplianceService {
     const identityReady = !requirements.identityRequired || identityStatus === "VERIFIED";
     const taxReady = !requirements.taxRequired || taxStatus === "VERIFIED";
     const destinationReady =
-      !requirements.payoutDestinationVerificationRequired ||
-      payoutDestinationStatus === "VERIFIED";
+      !requirements.payoutDestinationVerificationRequired || payoutDestinationStatus === "VERIFIED";
 
     const actionsRequired: string[] = [];
     if (!identityReady) actionsRequired.push(this.identityAction(identityStatus));
@@ -99,7 +97,9 @@ export class CreatorComplianceService {
       payoutDestination: {
         status: payoutDestinationStatus,
         required: requirements.payoutDestinationVerificationRequired,
-        configured: Boolean(profile?.destinationEncrypted || profile?.providerDestinationTokenEncrypted),
+        configured: Boolean(
+          profile?.destinationEncrypted || profile?.providerDestinationTokenEncrypted,
+        ),
         masked: profile?.destinationMask ?? null,
       },
       payoutComplianceEligible: identityReady && taxReady && destinationReady,
@@ -202,9 +202,7 @@ export class CreatorComplianceService {
       throw new Error("COMPLIANCE_PROVIDER_REFERENCE_MISSING");
     }
 
-    const externalProfileReference = decryptPayoutDestination(
-      profile.complianceReferenceEncrypted,
-    );
+    const externalProfileReference = decryptPayoutDestination(profile.complianceReferenceEncrypted);
     const snapshot = await this.adapter.retrieveStatus({
       context: {
         channelId: channel.id,
@@ -310,14 +308,16 @@ export class CreatorComplianceService {
   }
 
   private identityAction(status: CreatorComplianceStatus) {
-    if (status === "REJECTED") return "Identity check could not be verified. Review the requested action.";
+    if (status === "REJECTED")
+      return "Identity check could not be verified. Review the requested action.";
     if (status === "REQUIRES_ACTION") return "Complete the requested identity check action.";
     if (status === "PENDING") return "Identity check is still being reviewed.";
     return "Complete identity verification before payout.";
   }
 
   private taxAction(status: CreatorComplianceStatus) {
-    if (status === "REJECTED") return "Tax information could not be accepted. Review the requested action.";
+    if (status === "REJECTED")
+      return "Tax information could not be accepted. Review the requested action.";
     if (status === "REQUIRES_ACTION") return "Complete the requested tax information action.";
     if (status === "PENDING") return "Tax information is still being reviewed.";
     return "Complete the required tax information before payout.";

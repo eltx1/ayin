@@ -79,9 +79,7 @@ import { RevenueService } from "./revenue.service.js";
     {
       provide: CREATOR_COMPLIANCE_ADAPTER,
       inject: [DisabledCreatorComplianceAdapter],
-      useFactory: (
-        adapter: DisabledCreatorComplianceAdapter,
-      ): CreatorComplianceAdapter => adapter,
+      useFactory: (adapter: DisabledCreatorComplianceAdapter): CreatorComplianceAdapter => adapter,
     },
     {
       provide: PAYOUT_PROVIDER_ADAPTER,

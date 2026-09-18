@@ -3,11 +3,7 @@ import { Injectable } from "@nestjs/common";
 export const CREATOR_COMPLIANCE_ADAPTER = Symbol("CREATOR_COMPLIANCE_ADAPTER");
 
 export type CreatorComplianceStatus =
-  | "NOT_STARTED"
-  | "PENDING"
-  | "VERIFIED"
-  | "REQUIRES_ACTION"
-  | "REJECTED";
+  "NOT_STARTED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION" | "REJECTED";
 
 export interface CreatorComplianceRequirements {
   identityRequired: boolean;
@@ -62,7 +58,10 @@ export interface CreatorComplianceAdapter {
 }
 
 export class CreatorComplianceProviderError extends Error {
-  constructor(readonly code: string, message = code) {
+  constructor(
+    readonly code: string,
+    message = code,
+  ) {
     super(message);
     this.name = "CreatorComplianceProviderError";
   }

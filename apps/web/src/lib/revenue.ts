@@ -2,11 +2,7 @@ import { apiBaseUrl, readApiError } from "./api";
 
 export type PayoutProvider = string;
 export type CreatorComplianceStatus =
-  | "NOT_STARTED"
-  | "PENDING"
-  | "VERIFIED"
-  | "REQUIRES_ACTION"
-  | "REJECTED";
+  "NOT_STARTED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION" | "REJECTED";
 
 export interface CreatorComplianceView {
   channelId: string;

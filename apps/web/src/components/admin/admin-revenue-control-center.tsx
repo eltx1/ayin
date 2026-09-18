@@ -99,11 +99,10 @@ export function AdminRevenueControlCenter() {
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [reason, setReason] = useState("");
-  const [complianceField, setComplianceField] = useState<
-    "IDENTITY" | "TAX" | "PAYOUT_DESTINATION"
-  >("IDENTITY");
-  const [complianceStatus, setComplianceStatus] =
-    useState<CreatorComplianceStatus>("NOT_STARTED");
+  const [complianceField, setComplianceField] = useState<"IDENTITY" | "TAX" | "PAYOUT_DESTINATION">(
+    "IDENTITY",
+  );
+  const [complianceStatus, setComplianceStatus] = useState<CreatorComplianceStatus>("NOT_STARTED");
   const [complianceReason, setComplianceReason] = useState("");
   const [importDraft, setImportDraft] = useState<RevenueImportDraft>(() => emptyImport());
 
@@ -197,7 +196,9 @@ export function AdminRevenueControlCenter() {
     try {
       await Promise.all([loadContracts(channel.id), loadCompliance(channel.id)]);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Channel finance data could not be loaded.");
+      setMessage(
+        error instanceof Error ? error.message : "Channel finance data could not be loaded.",
+      );
     } finally {
       setBusy(false);
     }
@@ -404,9 +405,7 @@ export function AdminRevenueControlCenter() {
                 Payout compliance:{" "}
                 {compliance.payoutComplianceEligible ? "Eligible" : "Not eligible yet"}
               </strong>
-              <p className={styles.muted}>
-                Requirement source: {compliance.requirements.source}
-              </p>
+              <p className={styles.muted}>Requirement source: {compliance.requirements.source}</p>
             </div>
             {compliance.actionsRequired.length ? (
               <div className={styles.cardInset}>

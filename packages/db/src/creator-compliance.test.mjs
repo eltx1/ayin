@@ -18,13 +18,7 @@ const adapter = readFileSync(
 
 describe("Task 71 creator compliance privacy invariants", () => {
   it("normalizes all three workflows to the requested status vocabulary", () => {
-    for (const status of [
-      "NOT_STARTED",
-      "PENDING",
-      "VERIFIED",
-      "REQUIRES_ACTION",
-      "REJECTED",
-    ]) {
+    for (const status of ["NOT_STARTED", "PENDING", "VERIFIED", "REQUIRES_ACTION", "REJECTED"]) {
       expect(migration).toContain(status);
     }
     expect(schema).toContain("payoutDestinationStatus");
@@ -49,6 +43,8 @@ describe("Task 71 creator compliance privacy invariants", () => {
 
   it("does not put external profile references or action URLs into audit metadata", () => {
     expect(service).toContain("sensitiveReferenceLogged: false");
-    expect(service).not.toMatch(/metadata:\s*\{[\s\S]{0,700}(externalProfileReference|actionUrl)\s*:/u);
+    expect(service).not.toMatch(
+      /metadata:\s*\{[\s\S]{0,700}(externalProfileReference|actionUrl)\s*:/u,
+    );
   });
 });
