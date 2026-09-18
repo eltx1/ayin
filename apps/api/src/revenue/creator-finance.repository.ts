@@ -4,7 +4,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 
-export type PayoutProvider = "MANUAL" | "BANK_TRANSFER" | "PAYPAL" | "PAYONEER" | "WISE";
+export type PayoutProvider = string;
 export type IdentityVerificationStatus = "NOT_STARTED" | "PENDING" | "VERIFIED" | "REJECTED";
 export type TaxVerificationStatus = "NOT_PROVIDED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION";
 export type RevenueDisputeCategory = "EARNINGS" | "PAYOUT" | "OTHER";
@@ -18,6 +18,8 @@ export interface CreatorPayoutProfileRow {
   provider: PayoutProvider;
   destinationEncrypted: string | null;
   destinationMask: string | null;
+  providerDestinationTokenEncrypted: string | null;
+  providerDestinationVerifiedAt: Date | null;
   countryCode: string | null;
   identityStatus: IdentityVerificationStatus;
   taxStatus: TaxVerificationStatus;
@@ -57,7 +59,8 @@ export class CreatorFinanceRepository {
     const rows = await this.database.client.$queryRaw<CreatorPayoutProfileRow[]>`
       SELECT
         "id", "channelId", "legalName", "preferredCurrency", "provider",
-        "destinationEncrypted", "destinationMask", "countryCode",
+        "destinationEncrypted", "destinationMask",
+        "providerDestinationTokenEncrypted", "providerDestinationVerifiedAt", "countryCode",
         "identityStatus", "taxStatus", "createdAt", "updatedAt"
       FROM "CreatorPayoutProfile"
       WHERE "channelId" = ${channelId}::uuid
@@ -96,7 +99,8 @@ export class CreatorFinanceRepository {
         "updatedAt" = EXCLUDED."updatedAt"
       RETURNING
         "id", "channelId", "legalName", "preferredCurrency", "provider",
-        "destinationEncrypted", "destinationMask", "countryCode",
+        "destinationEncrypted", "destinationMask",
+        "providerDestinationTokenEncrypted", "providerDestinationVerifiedAt", "countryCode",
         "identityStatus", "taxStatus", "createdAt", "updatedAt"
     `;
     const profile = rows[0];

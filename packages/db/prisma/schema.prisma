@@ -1043,13 +1043,14 @@ model Payout {
   amount            Decimal      @db.Decimal(20, 6)
   currency          String       @db.Char(3)
   externalReference String?      @db.VarChar(255)
-  provider          String       @default("MANUAL") @db.VarChar(32)
+  provider          String       @default("MANUAL") @db.VarChar(64)
   requestSource     String       @default("ADMIN") @db.VarChar(16)
   paymentProfileId             String?      @db.Uuid
   destinationEncryptedSnapshot String?      @db.Text
   destinationMaskSnapshot      String?      @db.VarChar(120)
   legalNameSnapshot            String?      @db.VarChar(160)
   countryCodeSnapshot          String?      @db.Char(2)
+  providerDestinationTokenEncryptedSnapshot String? @db.Text
   requestedAt                  DateTime     @default(now())
   processedAt       DateTime?
   paidAt            DateTime?
@@ -1061,6 +1062,7 @@ model Payout {
   paymentProfile CreatorPayoutProfile? @relation(fields: [paymentProfileId], references: [id], onDelete: SetNull)
   ledgerEntries  EarningsLedgerEntry[]
   disputes       RevenueDispute[]
+  providerTransfer PayoutProviderTransfer?
 
   @@index([channelId, status, requestedAt])
   @@index([status, requestedAt])

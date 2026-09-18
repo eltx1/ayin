@@ -38,7 +38,7 @@ async function bootstrap(): Promise<void> {
       trustProxy: "127.0.0.1",
       bodyLimit: 1024 * 1024,
     }),
-    { bufferLogs: true },
+    { bufferLogs: true, rawBody: true },
   );
 
   const logger = app.get(StructuredLoggerService);

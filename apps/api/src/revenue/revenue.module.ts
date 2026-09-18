@@ -12,10 +12,21 @@ import { CreatorMonetizationAnalyticsService } from "./creator-monetization-anal
 import { CreatorMonetizationNotificationService } from "./creator-monetization-notification.service.js";
 import { CreatorRevenueCurrencyViewService } from "./creator-revenue-currency-view.service.js";
 import {
+  DisabledExternalPayoutProviderAdapter,
+  EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
+  type ExternalPayoutProviderAdapter,
+} from "./external-payout-provider.adapter.js";
+import {
   ManualPayoutProviderAdapter,
   PAYOUT_PROVIDER_ADAPTER,
   type PayoutProviderAdapter,
 } from "./payout-provider.adapter.js";
+import {
+  AdminPayoutProviderController,
+  AdminPayoutProviderTransferController,
+  PayoutProviderWebhookController,
+} from "./payout-provider.controller.js";
+import { PayoutProviderTransferService } from "./payout-provider-transfer.service.js";
 import { RevenueReconciliationController } from "./revenue-reconciliation.controller.js";
 import { RevenueReconciliationService } from "./revenue-reconciliation.service.js";
 import {
@@ -33,6 +44,9 @@ import { RevenueService } from "./revenue.service.js";
     AdminRevenueController,
     RevenueReconciliationController,
     AdminPayoutDestinationController,
+    AdminPayoutProviderController,
+    AdminPayoutProviderTransferController,
+    PayoutProviderWebhookController,
   ],
   providers: [
     RevenueService,
@@ -44,12 +58,20 @@ import { RevenueService } from "./revenue.service.js";
     CreatorRevenueCurrencyViewService,
     AdminPayoutCreationService,
     AdminPayoutDestinationService,
+    PayoutProviderTransferService,
     ManualPayoutProviderAdapter,
+    DisabledExternalPayoutProviderAdapter,
     ManualRevenueReportingAdapter,
     {
       provide: PAYOUT_PROVIDER_ADAPTER,
       inject: [ManualPayoutProviderAdapter],
       useFactory: (adapter: ManualPayoutProviderAdapter): PayoutProviderAdapter => adapter,
+    },
+    {
+      provide: EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
+      inject: [DisabledExternalPayoutProviderAdapter],
+      useFactory: (adapter: DisabledExternalPayoutProviderAdapter): ExternalPayoutProviderAdapter =>
+        adapter,
     },
     {
       provide: REVENUE_REPORTING_ADAPTER,

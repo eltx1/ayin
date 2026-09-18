@@ -17,15 +17,30 @@ enum RevenueReconciliationStatus {
   ANOMALOUS
 }
 
+enum PayoutProviderTransferState {
+  READY
+  SUBMITTING
+  SUBMISSION_UNKNOWN
+  SUBMITTED
+  PROCESSING
+  CANCEL_REQUESTED
+  COMPLETED
+  FAILED
+  CANCELLED
+  UNKNOWN
+}
+
 model CreatorPayoutProfile {
   id                   String   @id @default(uuid()) @db.Uuid
   channelId            String   @unique @db.Uuid
   legalName            String   @db.VarChar(160)
   preferredCurrency    String   @db.Char(3)
-  provider             String   @default("MANUAL") @db.VarChar(32)
-  destinationEncrypted String?  @db.Text
-  destinationMask      String?  @db.VarChar(120)
-  countryCode          String?  @db.Char(2)
+  provider             String   @default("MANUAL") @db.VarChar(64)
+  destinationEncrypted                String?   @db.Text
+  destinationMask                     String?   @db.VarChar(120)
+  providerDestinationTokenEncrypted   String?   @db.Text
+  providerDestinationVerifiedAt       DateTime?
+  countryCode                         String?   @db.Char(2)
   identityStatus       String   @default("NOT_STARTED") @db.VarChar(24)
   taxStatus            String   @default("NOT_PROVIDED") @db.VarChar(24)
   createdAt            DateTime @default(now())
@@ -118,4 +133,52 @@ model RevenueSourceReportRow {
   @@index([channelId, createdAt])
   @@index([videoId, createdAt])
   @@index([ledgerEntryId])
+}
+
+
+model PayoutProviderTransfer {
+  id                       String                      @id @default(uuid()) @db.Uuid
+  payoutId                 String                      @unique @db.Uuid
+  provider                 String                      @db.VarChar(64)
+  idempotencyKey           String                      @unique @db.VarChar(200)
+  state                    PayoutProviderTransferState @default(READY)
+  externalTransferId       String?                     @db.VarChar(255)
+  providerResponseState    String?                     @db.VarChar(120)
+  submitAttempts           Int                         @default(0)
+  statusAttempts           Int                         @default(0)
+  cancelAttempts           Int                         @default(0)
+  nextRetryAt              DateTime?
+  lastErrorCode            String?                     @db.VarChar(160)
+  lastErrorMessage         String?                     @db.VarChar(1000)
+  submittedAt              DateTime?
+  lastCheckedAt            DateTime?
+  completedAt              DateTime?
+  cancelledAt              DateTime?
+  createdAt                DateTime                    @default(now())
+  updatedAt                DateTime                    @updatedAt
+
+  payout Payout                @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+  events PayoutProviderEvent[]
+
+  @@unique([provider, externalTransferId])
+  @@index([state, nextRetryAt])
+  @@index([provider, state, updatedAt])
+}
+
+model PayoutProviderEvent {
+  id                 String   @id @default(uuid()) @db.Uuid
+  transferId         String?  @db.Uuid
+  provider           String   @db.VarChar(64)
+  externalEventId    String   @db.VarChar(255)
+  eventType          String   @db.VarChar(120)
+  providerState      String?  @db.VarChar(120)
+  verified           Boolean  @default(false)
+  payloadSha256      String   @db.Char(64)
+  receivedAt         DateTime @default(now())
+  processedAt        DateTime?
+
+  transfer PayoutProviderTransfer? @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalEventId])
+  @@index([transferId, receivedAt])
 }

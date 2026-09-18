@@ -2,6 +2,10 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import {
+  EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
+  type ExternalPayoutProviderAdapter,
+} from "./external-payout-provider.adapter.js";
 import { formatMoneyMicros, parseMoneyMicros } from "./money.js";
 import { payoutCreateSchema } from "./revenue.schemas.js";
 import { RevenueService } from "./revenue.service.js";
@@ -14,6 +18,8 @@ export class AdminPayoutCreationService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
     @Inject(RevenueService) private readonly revenue: RevenueService,
+    @Inject(EXTERNAL_PAYOUT_PROVIDER_ADAPTER)
+    private readonly externalProvider: ExternalPayoutProviderAdapter,
   ) {}
 
   async create(actorAccountId: string, raw: unknown) {
@@ -23,7 +29,6 @@ export class AdminPayoutCreationService {
       channelId: data.channelId,
       currency: data.currency,
       requestSource: "ADMIN",
-      expectedProvider: "MANUAL",
     });
   }
 
@@ -47,7 +52,7 @@ export class AdminPayoutCreationService {
     channelId: string;
     currency?: string | undefined;
     requestSource: PayoutRequestSource;
-    expectedProvider: string;
+    expectedProvider?: string | undefined;
   }) {
     const settings = await this.revenue.getSettings();
     const threshold = BigInt(settings.payoutThresholdMicros);
@@ -55,17 +60,33 @@ export class AdminPayoutCreationService {
     return this.database.client.$transaction(async (tx) => {
       await tx.channel.findUniqueOrThrow({ where: { id: input.channelId } });
 
-      // The payout profile is deliberately read inside the same transaction that creates the
-      // payout and reserves its ledger entries. This prevents an active payout from ever existing
-      // without an immutable beneficiary snapshot if the process is interrupted between writes.
       const profile = await tx.creatorPayoutProfile.findUnique({
         where: { channelId: input.channelId },
       });
-      if (!profile?.destinationEncrypted || !profile.destinationMask || !profile.legalName) {
+      if (!profile?.destinationMask || !profile.legalName) {
         throw new Error("PAYOUT_PROFILE_INCOMPLETE");
       }
-      if (profile.provider !== input.expectedProvider) {
+      if (input.expectedProvider && profile.provider !== input.expectedProvider) {
         throw new Error("PAYOUT_PROVIDER_NOT_CONNECTED");
+      }
+
+      const externalCapabilities = this.externalProvider.capabilities();
+      const manualProvider = profile.provider === "MANUAL";
+      if (manualProvider) {
+        if (!profile.destinationEncrypted) throw new Error("PAYOUT_PROFILE_INCOMPLETE");
+      } else {
+        if (
+          !externalCapabilities.connected ||
+          !externalCapabilities.productionEnabled ||
+          !externalCapabilities.idempotentSubmission ||
+          !externalCapabilities.supportsDestinationTokenization ||
+          externalCapabilities.provider !== profile.provider
+        ) {
+          throw new Error("PAYOUT_PROVIDER_NOT_CONNECTED");
+        }
+        if (!profile.providerDestinationTokenEncrypted || !profile.providerDestinationVerifiedAt) {
+          throw new Error("PAYOUT_PROVIDER_DESTINATION_NOT_VERIFIED");
+        }
       }
 
       const data = payoutCreateSchema.parse({
@@ -109,10 +130,18 @@ export class AdminPayoutCreationService {
           provider: profile.provider,
           requestSource: input.requestSource,
           paymentProfileId: profile.id,
-          destinationEncryptedSnapshot: profile.destinationEncrypted,
+          ...(manualProvider && profile.destinationEncrypted
+            ? { destinationEncryptedSnapshot: profile.destinationEncrypted }
+            : {}),
           destinationMaskSnapshot: profile.destinationMask,
           legalNameSnapshot: profile.legalName,
           countryCodeSnapshot: profile.countryCode,
+          ...(!manualProvider && profile.providerDestinationTokenEncrypted
+            ? {
+                providerDestinationTokenEncryptedSnapshot:
+                  profile.providerDestinationTokenEncrypted,
+              }
+            : {}),
         },
       });
 
@@ -139,12 +168,13 @@ export class AdminPayoutCreationService {
           entryCount: entries.length,
           requestSource: input.requestSource,
           paymentProfileId: profile.id,
+          provider: profile.provider,
           beneficiarySnapshotted: true,
+          tokenizedProviderDestination: Boolean(payout.providerDestinationTokenEncryptedSnapshot),
+          rawDestinationSnapshotted: Boolean(payout.destinationEncryptedSnapshot),
         },
       });
 
-      // Encrypted beneficiary material never leaves this transaction through an ordinary API
-      // response. Only the dedicated audited reveal endpoint is allowed to decrypt a snapshot.
       return {
         id: payout.id,
         channelId: payout.channelId,
@@ -164,7 +194,9 @@ export class AdminPayoutCreationService {
         failureReason: payout.failureReason,
         createdAt: payout.createdAt,
         updatedAt: payout.updatedAt,
-        paymentIntegration: "NOT_CONFIGURED" as const,
+        paymentIntegration: manualProvider
+          ? ("NOT_CONFIGURED" as const)
+          : ("PROVIDER_READY" as const),
       };
     });
   }
