@@ -82,7 +82,8 @@ export class DisabledCreatorComplianceAdapter implements CreatorComplianceAdapte
     };
   }
 
-  async requirements(_context: CreatorComplianceContext): Promise<CreatorComplianceRequirements> {
+  async requirements(context: CreatorComplianceContext): Promise<CreatorComplianceRequirements> {
+    void context;
     return {
       identityRequired: false,
       taxRequired: false,
@@ -99,24 +100,27 @@ export class DisabledCreatorComplianceAdapter implements CreatorComplianceAdapte
     );
   }
 
-  async startIdentity(_input: {
+  async startIdentity(input: {
     context: CreatorComplianceContext;
     externalProfileReference: string | null;
   }): Promise<CreatorComplianceWorkflowResult> {
+    void input;
     return this.unavailable();
   }
 
-  async startTax(_input: {
+  async startTax(input: {
     context: CreatorComplianceContext;
     externalProfileReference: string | null;
   }): Promise<CreatorComplianceWorkflowResult> {
+    void input;
     return this.unavailable();
   }
 
-  async retrieveStatus(_input: {
+  async retrieveStatus(input: {
     context: CreatorComplianceContext;
     externalProfileReference: string;
   }): Promise<CreatorComplianceProviderSnapshot> {
+    void input;
     return this.unavailable();
   }
 }
