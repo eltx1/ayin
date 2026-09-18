@@ -291,7 +291,7 @@ export class CreatorFinanceService {
         },
       });
       return {
-        payout: submitted.payout,
+        payout: { ...submitted.payout, channelId: channel.id },
         requestSource: "CREATOR",
         provider: externalCapabilities.provider,
         destinationMask: payout.destinationMaskSnapshot,
