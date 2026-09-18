@@ -1,0 +1,57 @@
+name: Task 71 format assist
+
+on:
+  push:
+    branches:
+      - task-71-creator-compliance
+    paths:
+      - ".github/workflows/task71-format-assist.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-71-creator-compliance
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format Task 71 files
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/revenue/creator-compliance.adapter.ts \
+            apps/api/src/revenue/creator-compliance.service.ts \
+            apps/api/src/revenue/creator-finance.repository.ts \
+            apps/api/src/revenue/revenue.module.ts \
+            apps/web/src/components/account/account-revenue.tsx \
+            apps/web/src/components/admin/admin-revenue-control-center.tsx \
+            apps/web/src/lib/revenue.ts \
+            packages/db/src/creator-compliance.test.mjs
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/revenue/creator-compliance.adapter.ts \
+            apps/api/src/revenue/creator-compliance.service.ts \
+            apps/api/src/revenue/creator-finance.repository.ts \
+            apps/api/src/revenue/revenue.module.ts \
+            apps/web/src/components/account/account-revenue.tsx \
+            apps/web/src/components/admin/admin-revenue-control-center.tsx \
+            apps/web/src/lib/revenue.ts \
+            packages/db/src/creator-compliance.test.mjs
+          git commit -m "Format Task 71 creator compliance files"
+          git push origin HEAD:task-71-creator-compliance
