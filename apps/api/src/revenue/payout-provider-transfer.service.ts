@@ -208,7 +208,8 @@ export class PayoutProviderTransferService {
         legalName: claimed.payout.legalNameSnapshot ?? "",
         countryCode: claimed.payout.countryCodeSnapshot,
       });
-      if (!result.externalTransferId.trim()) throw new Error("PAYOUT_PROVIDER_TRANSFER_ID_REQUIRED");
+      if (!result.externalTransferId.trim())
+        throw new Error("PAYOUT_PROVIDER_TRANSFER_ID_REQUIRED");
 
       return this.database.client.$transaction(async (tx) => {
         const current = await tx.payoutProviderTransfer.findUniqueOrThrow({
@@ -258,7 +259,12 @@ export class PayoutProviderTransferService {
         return this.safeResult(payout, transfer);
       });
     } catch (error) {
-      await this.recordSubmissionFailure(actorAccountId, claimed.payout.id, claimed.transfer.id, error);
+      await this.recordSubmissionFailure(
+        actorAccountId,
+        claimed.payout.id,
+        claimed.transfer.id,
+        error,
+      );
       throw error;
     }
   }
@@ -363,10 +369,7 @@ export class PayoutProviderTransferService {
       const current = await tx.payoutProviderTransfer.findUniqueOrThrow({
         where: { id: transfer.id },
       });
-      assertProviderTransferTransition(
-        current.state as ProviderTransferState,
-        "CANCEL_REQUESTED",
-      );
+      assertProviderTransferTransition(current.state as ProviderTransferState, "CANCEL_REQUESTED");
       const updated = await tx.payoutProviderTransfer.update({
         where: { id: current.id },
         data: {
@@ -551,7 +554,12 @@ export class PayoutProviderTransferService {
     payout: {
       amount: unknown;
       currency: string;
-      ledgerEntries: Array<{ state: string; type: string; amount: unknown; payoutId: string | null }>;
+      ledgerEntries: Array<{
+        state: string;
+        type: string;
+        amount: unknown;
+        payoutId: string | null;
+      }>;
     },
     thresholdMicros: bigint,
   ) {
@@ -731,7 +739,10 @@ export class PayoutProviderTransferService {
             failureReason: null,
           },
         });
-      } else if ((nextState === "FAILED" || nextState === "CANCELLED") && payout.status !== "PAID") {
+      } else if (
+        (nextState === "FAILED" || nextState === "CANCELLED") &&
+        payout.status !== "PAID"
+      ) {
         payout = await tx.payout.update({
           where: { id: payout.id },
           data: {
@@ -747,10 +758,7 @@ export class PayoutProviderTransferService {
           where: { payoutId: payout.id },
           data: { payoutId: null },
         });
-      } else if (
-        !isTerminalProviderTransferState(nextState) &&
-        payout.status === "PENDING"
-      ) {
+      } else if (!isTerminalProviderTransferState(nextState) && payout.status === "PENDING") {
         payout = await tx.payout.update({
           where: { id: payout.id },
           data: { status: "PROCESSING", processedAt: now },
@@ -791,7 +799,13 @@ export class PayoutProviderTransferService {
   }
 
   private safeResult(
-    payout: { id: string; status: string; amount: unknown; currency: string; externalReference: string | null },
+    payout: {
+      id: string;
+      status: string;
+      amount: unknown;
+      currency: string;
+      externalReference: string | null;
+    },
     transfer: {
       id: string;
       state: unknown;

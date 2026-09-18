@@ -1,14 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Header,
-  Inject,
-  Param,
-  Post,
-  Req,
-  UseGuards,
-} from "@nestjs/common";
+import { Body, Controller, Get, Header, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
 
 import { AdminGuard, RequireAdminRoles, RequireAdminStepUp } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";

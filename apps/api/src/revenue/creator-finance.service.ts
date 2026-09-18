@@ -75,19 +75,19 @@ export class CreatorFinanceService {
     const externalCapabilities = this.externalPayoutProvider.capabilities();
     const externalProfileReady = Boolean(
       profile &&
-        profile.provider === externalCapabilities.provider &&
-        externalCapabilities.connected &&
-        externalCapabilities.productionEnabled &&
-        externalCapabilities.idempotentSubmission &&
-        externalCapabilities.supportsDestinationTokenization &&
-        profile.providerDestinationTokenEncrypted &&
-        profile.providerDestinationVerifiedAt,
+      profile.provider === externalCapabilities.provider &&
+      externalCapabilities.connected &&
+      externalCapabilities.productionEnabled &&
+      externalCapabilities.idempotentSubmission &&
+      externalCapabilities.supportsDestinationTokenization &&
+      profile.providerDestinationTokenEncrypted &&
+      profile.providerDestinationVerifiedAt,
     );
     const manualProfileReady = Boolean(
       profile &&
-        profile.provider === this.payoutProvider.kind &&
-        this.payoutProvider.connected &&
-        profile.destinationEncrypted,
+      profile.provider === this.payoutProvider.kind &&
+      this.payoutProvider.connected &&
+      profile.destinationEncrypted,
     );
     const profileReady = Boolean(
       profile?.legalName && profile.destinationMask && (manualProfileReady || externalProfileReady),

@@ -70,9 +70,8 @@ import { RevenueService } from "./revenue.service.js";
     {
       provide: EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
       inject: [DisabledExternalPayoutProviderAdapter],
-      useFactory: (
-        adapter: DisabledExternalPayoutProviderAdapter,
-      ): ExternalPayoutProviderAdapter => adapter,
+      useFactory: (adapter: DisabledExternalPayoutProviderAdapter): ExternalPayoutProviderAdapter =>
+        adapter,
     },
     {
       provide: REVENUE_REPORTING_ADAPTER,

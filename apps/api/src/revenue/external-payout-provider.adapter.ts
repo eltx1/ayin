@@ -5,12 +5,7 @@ import { Injectable } from "@nestjs/common";
 export const EXTERNAL_PAYOUT_PROVIDER_ADAPTER = Symbol("EXTERNAL_PAYOUT_PROVIDER_ADAPTER");
 
 export type NormalizedProviderTransferState =
-  | "PENDING"
-  | "PROCESSING"
-  | "COMPLETED"
-  | "FAILED"
-  | "CANCELLED"
-  | "UNKNOWN";
+  "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "UNKNOWN";
 
 export interface ExternalPayoutProviderCapabilities {
   provider: string;
@@ -104,7 +99,10 @@ export function verifyHmacSha256Signature(
   rawBody: Buffer,
   signature: string,
 ): boolean {
-  const supplied = signature.trim().replace(/^sha256=/i, "").toLowerCase();
+  const supplied = signature
+    .trim()
+    .replace(/^sha256=/i, "")
+    .toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(supplied)) return false;
   const expected = createHmac("sha256", secret).update(rawBody).digest();
   const received = Buffer.from(supplied, "hex");

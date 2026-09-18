@@ -37,8 +37,8 @@ describe("Task 70 payout provider persistence and safety", () => {
   });
 
   it("keeps the default external adapter production-disabled", () => {
-    expect(adapter).toContain('productionEnabled: false');
-    expect(adapter).toContain('connected: false');
+    expect(adapter).toContain("productionEnabled: false");
+    expect(adapter).toContain("connected: false");
     expect(adapter).toContain("PAYOUT_PROVIDER_NOT_CONFIGURED");
   });
 

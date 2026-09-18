@@ -170,9 +170,7 @@ export class AdminPayoutCreationService {
           paymentProfileId: profile.id,
           provider: profile.provider,
           beneficiarySnapshotted: true,
-          tokenizedProviderDestination: Boolean(
-            payout.providerDestinationTokenEncryptedSnapshot,
-          ),
+          tokenizedProviderDestination: Boolean(payout.providerDestinationTokenEncryptedSnapshot),
           rawDestinationSnapshotted: Boolean(payout.destinationEncryptedSnapshot),
         },
       });
@@ -196,7 +194,9 @@ export class AdminPayoutCreationService {
         failureReason: payout.failureReason,
         createdAt: payout.createdAt,
         updatedAt: payout.updatedAt,
-        paymentIntegration: manualProvider ? ("NOT_CONFIGURED" as const) : ("PROVIDER_READY" as const),
+        paymentIntegration: manualProvider
+          ? ("NOT_CONFIGURED" as const)
+          : ("PROVIDER_READY" as const),
       };
     });
   }

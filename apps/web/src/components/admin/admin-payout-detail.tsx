@@ -141,8 +141,7 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
   const mayCancel =
     detail?.provider !== "MANUAL" &&
     (detail?.status === "PENDING" ||
-      (providerReady &&
-        !["COMPLETED", "FAILED", "CANCELLED"].includes(transferState)));
+      (providerReady && !["COMPLETED", "FAILED", "CANCELLED"].includes(transferState)));
 
   return (
     <div className={styles.grid}>
