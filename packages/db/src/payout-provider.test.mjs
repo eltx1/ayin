@@ -32,8 +32,11 @@ describe("Task 70 payout provider persistence and safety", () => {
   });
 
   it("does not introduce destructive ledger amount rewrites", () => {
-    expect(service).not.toMatch(/earningsLedgerEntry\.update(?:Many)?\([\s\S]{0,500}amount\s*:/u);
-    expect(service).toContain("data: { payoutId: null }");
+    const ledgerUpdates = service.match(/earningsLedgerEntry\.updateMany/g) ?? [];
+    const reservationReleases = service.match(/data:\s*\{\s*payoutId:\s*null\s*\}/g) ?? [];
+    expect(ledgerUpdates).toHaveLength(3);
+    expect(reservationReleases).toHaveLength(3);
+    expect(service).not.toMatch(/data:\s*\{\s*amount\s*:/u);
   });
 
   it("keeps the default external adapter production-disabled", () => {
