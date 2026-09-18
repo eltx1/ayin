@@ -5,8 +5,14 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 
 export type PayoutProvider = string;
-export type IdentityVerificationStatus = "NOT_STARTED" | "PENDING" | "VERIFIED" | "REJECTED";
-export type TaxVerificationStatus = "NOT_PROVIDED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION";
+export type CreatorComplianceStatus =
+  | "NOT_STARTED"
+  | "PENDING"
+  | "VERIFIED"
+  | "REQUIRES_ACTION"
+  | "REJECTED";
+export type IdentityVerificationStatus = CreatorComplianceStatus;
+export type TaxVerificationStatus = CreatorComplianceStatus;
 export type RevenueDisputeCategory = "EARNINGS" | "PAYOUT" | "OTHER";
 export type RevenueDisputeStatus = "OPEN" | "REVIEWING" | "RESOLVED" | "REJECTED";
 
@@ -23,6 +29,9 @@ export interface CreatorPayoutProfileRow {
   countryCode: string | null;
   identityStatus: IdentityVerificationStatus;
   taxStatus: TaxVerificationStatus;
+  payoutDestinationStatus: CreatorComplianceStatus;
+  complianceProvider: string | null;
+  complianceLastCheckedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,7 +70,8 @@ export class CreatorFinanceRepository {
         "id", "channelId", "legalName", "preferredCurrency", "provider",
         "destinationEncrypted", "destinationMask",
         "providerDestinationTokenEncrypted", "providerDestinationVerifiedAt", "countryCode",
-        "identityStatus", "taxStatus", "createdAt", "updatedAt"
+        "identityStatus", "taxStatus", "payoutDestinationStatus",
+        "complianceProvider", "complianceLastCheckedAt", "createdAt", "updatedAt"
       FROM "CreatorPayoutProfile"
       WHERE "channelId" = ${channelId}::uuid
       LIMIT 1
@@ -101,7 +111,8 @@ export class CreatorFinanceRepository {
         "id", "channelId", "legalName", "preferredCurrency", "provider",
         "destinationEncrypted", "destinationMask",
         "providerDestinationTokenEncrypted", "providerDestinationVerifiedAt", "countryCode",
-        "identityStatus", "taxStatus", "createdAt", "updatedAt"
+        "identityStatus", "taxStatus", "payoutDestinationStatus",
+        "complianceProvider", "complianceLastCheckedAt", "createdAt", "updatedAt"
     `;
     const profile = rows[0];
     if (!profile) throw new Error("PAYOUT_PROFILE_SAVE_FAILED");

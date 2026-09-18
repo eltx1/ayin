@@ -18,6 +18,7 @@ export interface AdminComplianceChannel {
     preferredCurrency: string;
     identityStatus: string;
     taxStatus: string;
+    payoutDestinationStatus: string;
   };
 }
 
@@ -30,6 +31,7 @@ export interface AdminRevenueChannelTarget {
     preferredCurrency: string;
     identityStatus: string;
     taxStatus: string;
+    payoutDestinationStatus: string;
   };
 }
 

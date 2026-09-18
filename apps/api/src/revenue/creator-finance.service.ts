@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { AdminPayoutCreationService } from "./admin-payout-creation.service.js";
+import { CreatorComplianceService } from "./creator-compliance.service.js";
 import { encryptPayoutDestination, maskPayoutDestination } from "./creator-finance.crypto.js";
 import {
   EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
@@ -53,16 +54,19 @@ export class CreatorFinanceService {
     private readonly externalPayoutProvider: ExternalPayoutProviderAdapter,
     @Inject(PayoutProviderTransferService)
     private readonly providerTransfers: PayoutProviderTransferService,
+    @Inject(CreatorComplianceService)
+    private readonly compliance: CreatorComplianceService,
   ) {}
 
   async overview(accountId: string) {
     const base = await this.revenue.creatorRevenue(accountId);
     if (!base) return null;
 
-    const [settings, profile, ledger] = await Promise.all([
+    const [settings, profile, ledger, compliance] = await Promise.all([
       this.revenue.getSettings(),
       this.finance.getProfile(base.channel.id),
       this.revenue.searchLedger({ channelId: base.channel.id, page: 1, take: 10 }),
+      this.compliance.statusForChannel(base.channel.id),
     ]);
 
     const finalizedMicros = moneyToMicros(base.finalizedRevenue);
@@ -99,18 +103,38 @@ export class CreatorFinanceService {
         ? 100
         : Number(((availableMicros > 0n ? availableMicros : 0n) * 10_000n) / thresholdMicros) / 100;
 
+    const payoutActionsRequired = [
+      ...(!profileReady ? ["Complete your payout details."] : []),
+      ...(!providerReady ? ["Choose an available payout method."] : []),
+      ...(!thresholdMet ? ["Reach the minimum payout amount."] : []),
+      ...(openPayout ? ["Wait for your current payout request to finish."] : []),
+      ...compliance.actionsRequired,
+    ];
+    const payoutEligible =
+      profileReady &&
+      thresholdMet &&
+      !openPayout &&
+      providerReady &&
+      compliance.payoutComplianceEligible;
+
     return {
       ...base,
       payouts: base.payouts.map((payout) => toSafePayoutView(payout)),
       onHoldForPayout: microsToMoney(onHoldMicros > 0n ? onHoldMicros : 0n),
       payoutThreshold: microsToMoney(thresholdMicros),
       payoutProgressPercent: Math.min(100, Math.max(0, progress)),
-      canRequestPayout: profileReady && thresholdMet && !openPayout && providerReady,
+      canRequestPayout: payoutEligible,
       payoutReadiness: {
         profileReady,
         thresholdMet,
         openPayout,
         providerReady,
+        complianceReady: compliance.payoutComplianceEligible,
+      },
+      compliance,
+      payoutEligibility: {
+        eligible: payoutEligible,
+        actionsRequired: payoutActionsRequired,
       },
       paymentProfile: this.serializeProfile(profile),
       recentLedger: ledger.items,
@@ -193,11 +217,18 @@ export class CreatorFinanceService {
           legalName: input.legalName,
           preferredCurrency: input.preferredCurrency,
           provider: input.provider,
-          ...(encrypted !== null ? { destinationEncrypted: encrypted, destinationMask: mask } : {}),
           ...(providerChanged
             ? {
                 providerDestinationTokenEncrypted: null,
                 providerDestinationVerifiedAt: null,
+                payoutDestinationStatus: "NOT_STARTED",
+              }
+            : {}),
+          ...(encrypted !== null
+            ? {
+                destinationEncrypted: encrypted,
+                destinationMask: mask,
+                payoutDestinationStatus: "PENDING",
               }
             : {}),
           countryCode: input.countryCode ?? null,
@@ -211,6 +242,7 @@ export class CreatorFinanceService {
           destinationMask: mask,
           providerDestinationTokenEncrypted: null,
           providerDestinationVerifiedAt: null,
+          payoutDestinationStatus: encrypted ? "PENDING" : "NOT_STARTED",
           countryCode: input.countryCode ?? null,
         },
       });
@@ -225,7 +257,11 @@ export class CreatorFinanceService {
             channelId: channel.id,
             provider: profile.provider,
             preferredCurrency: profile.preferredCurrency,
-            destinationConfigured: Boolean(profile.destinationEncrypted),
+            destinationConfigured: Boolean(
+              profile.destinationEncrypted || profile.providerDestinationTokenEncrypted,
+            ),
+            payoutDestinationStatus: profile.payoutDestinationStatus,
+            sensitiveDestinationLogged: false,
           },
         },
       });
@@ -460,6 +496,9 @@ export class CreatorFinanceService {
       countryCode: profile.countryCode,
       identityStatus: profile.identityStatus,
       taxStatus: profile.taxStatus,
+      payoutDestinationStatus: profile.payoutDestinationStatus,
+      complianceProvider: profile.complianceProvider,
+      complianceLastCheckedAt: profile.complianceLastCheckedAt,
       hasDestination: Boolean(
         profile.destinationEncrypted || profile.providerDestinationTokenEncrypted,
       ),

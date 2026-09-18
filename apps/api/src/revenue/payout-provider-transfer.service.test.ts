@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { DatabaseService } from "../database/database.service.js";
+import type { CreatorComplianceService } from "./creator-compliance.service.js";
 import type { ExternalPayoutProviderAdapter } from "./external-payout-provider.adapter.js";
 import { PayoutProviderTransferService } from "./payout-provider-transfer.service.js";
 import type { RevenueService } from "./revenue.service.js";
@@ -28,6 +29,7 @@ describe("PayoutProviderTransferService safety", () => {
       {} as DatabaseService,
       {} as RevenueService,
       provider,
+      {} as CreatorComplianceService,
     );
     await expect(
       service.submit("807f3fd3-bdb4-48d4-9f77-d99cce4aff1f", "payout-id", {
@@ -59,6 +61,7 @@ describe("PayoutProviderTransferService safety", () => {
       {} as DatabaseService,
       {} as RevenueService,
       provider,
+      {} as CreatorComplianceService,
     );
     expect(service.capabilities()).toMatchObject({
       paidConfirmation: "STATUS_OR_VERIFIED_WEBHOOK_ONLY",
