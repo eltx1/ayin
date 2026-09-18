@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
 import { apiBaseUrl, readApiError } from "@/lib/api";
+import {
+  cancelPayoutAtProvider,
+  getPayoutProviderTransfer,
+  refreshPayoutProviderStatus,
+  submitPayoutToProvider,
+  type PayoutProviderTransferView,
+} from "@/lib/payout-provider";
 
 type PayoutDetail = {
   payoutId: string;
@@ -57,25 +64,31 @@ function displayDate(value: string | null) {
 
 export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
   const [detail, setDetail] = useState<PayoutDetail | null>(null);
+  const [provider, setProvider] = useState<PayoutProviderTransferView | null>(null);
   const [revealed, setRevealed] = useState<RevealedDestination | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
+  const load = useCallback(async () => {
+    const [nextDetail, nextProvider] = await Promise.all([
+      payoutFetch<PayoutDetail>(`/admin/revenue/payouts/${encodeURIComponent(payoutId)}`),
+      getPayoutProviderTransfer(payoutId),
+    ]);
+    setDetail(nextDetail);
+    setProvider(nextProvider);
+  }, [payoutId]);
+
   useEffect(() => {
     let active = true;
-    void payoutFetch<PayoutDetail>(`/admin/revenue/payouts/${encodeURIComponent(payoutId)}`)
-      .then((value) => {
-        if (active) setDetail(value);
-      })
-      .catch((error) => {
-        if (active)
-          setMessage(error instanceof Error ? error.message : "Payout could not be loaded.");
-      });
+    void load().catch((error) => {
+      if (active)
+        setMessage(error instanceof Error ? error.message : "Payout could not be loaded.");
+    });
     return () => {
       active = false;
     };
-  }, [payoutId]);
+  }, [load]);
 
   async function reveal() {
     if (reason.trim().length < 8) return;
@@ -95,15 +108,51 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
     }
   }
 
+  async function providerAction(
+    action: (payoutId: string, reason: string) => Promise<PayoutProviderTransferView>,
+    success: string,
+  ) {
+    if (reason.trim().length < 8) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await action(payoutId, reason.trim());
+      setMessage(success);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Provider action failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const providerReady = Boolean(
+    provider?.capabilities.connected && provider.capabilities.productionEnabled,
+  );
+  const transferState = provider?.transfer?.state ?? "NOT_CREATED";
+  const maySubmit =
+    detail?.provider !== "MANUAL" &&
+    providerReady &&
+    (detail?.status === "PENDING" || transferState === "SUBMISSION_UNKNOWN");
+  const mayRefresh =
+    providerReady &&
+    Boolean(provider?.transfer?.externalTransferId) &&
+    !["COMPLETED", "FAILED", "CANCELLED"].includes(transferState);
+  const mayCancel =
+    detail?.provider !== "MANUAL" &&
+    (detail?.status === "PENDING" ||
+      (providerReady &&
+        !["COMPLETED", "FAILED", "CANCELLED"].includes(transferState)));
+
   return (
     <div className={styles.grid}>
       <header className={styles.header}>
         <div>
           <span className={styles.eyebrow}>Finance Operations</span>
-          <h1>Manual payout detail</h1>
+          <h1>Payout detail</h1>
           <p className={styles.muted}>
-            Safe payout context with an explicit, audited reveal boundary for actionable destination
-            instructions.
+            Manual payout controls and provider-managed transfer diagnostics share the same
+            immutable payout record. Provider submission never marks a payout paid.
           </p>
         </div>
         <Link className={styles.button} href="/admin/revenue">
@@ -161,6 +210,100 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
           </section>
 
           <section className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div>
+                <h2>External payout provider</h2>
+                <p className={styles.muted}>
+                  Provider state is separate from AYIN payout state. PAID is only written after a
+                  confirmed provider completion from status retrieval or a verified webhook.
+                </p>
+              </div>
+              <span className={styles.statusPill}>
+                {providerReady ? "Production enabled" : "Production disabled"}
+              </span>
+            </div>
+            <div className={styles.grid}>
+              <p>
+                <strong>Configured adapter:</strong>{" "}
+                {provider?.capabilities.provider ?? "Unavailable"}
+              </p>
+              <p>
+                <strong>Transfer state:</strong> {transferState}
+              </p>
+              <p>
+                <strong>External transfer ID:</strong>{" "}
+                {provider?.transfer?.externalTransferId ?? "—"}
+              </p>
+              <p>
+                <strong>Provider response state:</strong>{" "}
+                {provider?.transfer?.providerResponseState ?? "—"}
+              </p>
+              <p>
+                <strong>Attempts:</strong> submit {provider?.transfer?.submitAttempts ?? 0} · status{" "}
+                {provider?.transfer?.statusAttempts ?? 0} · cancel{" "}
+                {provider?.transfer?.cancelAttempts ?? 0}
+              </p>
+              <p>
+                <strong>Next safe retry:</strong>{" "}
+                {provider?.transfer?.nextRetryAt
+                  ? new Date(provider.transfer.nextRetryAt).toLocaleString()
+                  : "—"}
+              </p>
+            </div>
+            {!providerReady ? (
+              <p className={styles.muted}>
+                No approved external provider/account is configured. AYIN will not submit a real
+                transfer until a provider adapter is connected and explicitly production-enabled.
+              </p>
+            ) : null}
+            <textarea
+              aria-label="Provider action reason"
+              minLength={8}
+              placeholder="Mandatory finance reason for provider action"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+            <div className={styles.actions}>
+              <button
+                className={styles.button}
+                disabled={busy || !maySubmit || reason.trim().length < 8}
+                type="button"
+                onClick={() =>
+                  void providerAction(
+                    submitPayoutToProvider,
+                    "Payout submission was acknowledged; payment remains unconfirmed.",
+                  )
+                }
+              >
+                Submit / safe retry
+              </button>
+              <button
+                className={styles.button}
+                disabled={busy || !mayRefresh || reason.trim().length < 8}
+                type="button"
+                onClick={() =>
+                  void providerAction(
+                    refreshPayoutProviderStatus,
+                    "Provider transfer status refreshed.",
+                  )
+                }
+              >
+                Refresh provider status
+              </button>
+              <button
+                className={styles.danger}
+                disabled={busy || !mayCancel || reason.trim().length < 8}
+                type="button"
+                onClick={() =>
+                  void providerAction(cancelPayoutAtProvider, "Provider cancellation processed.")
+                }
+              >
+                Cancel through provider
+              </button>
+            </div>
+          </section>
+
+          <section className={styles.card}>
             <h2>Beneficiary</h2>
             <p>
               <strong>Legal name:</strong> {detail.paymentProfile?.legalName ?? "Not configured"}
@@ -173,8 +316,9 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
               <strong>Country / region:</strong> {detail.paymentProfile?.countryCode ?? "—"}
             </p>
             <p className={styles.muted}>
-              Full destination instructions are never included in ordinary payout APIs. Revealing
-              them requires finance permission, a reason and creates an audit-log entry.
+              Full destination instructions are never included in ordinary payout APIs. External
+              provider automation uses only a provider-issued token stored encrypted when
+              tokenization is supported.
             </p>
 
             {detail.destinationRevealAllowed ? (
@@ -197,7 +341,7 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
               </div>
             ) : (
               <p className={styles.muted}>
-                Destination reveal is unavailable for this payout status or provider.
+                Raw destination reveal is unavailable for this payout status or provider.
               </p>
             )}
           </section>

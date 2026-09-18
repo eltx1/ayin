@@ -1,6 +1,6 @@
 import { apiBaseUrl, readApiError } from "./api";
 
-export type PayoutProvider = "MANUAL" | "BANK_TRANSFER" | "PAYPAL" | "PAYONEER" | "WISE";
+export type PayoutProvider = string;
 
 export interface CreatorPaymentProfile {
   id: string;
@@ -13,6 +13,7 @@ export interface CreatorPaymentProfile {
   identityStatus: "NOT_STARTED" | "PENDING" | "VERIFIED" | "REJECTED";
   taxStatus: "NOT_PROVIDED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION";
   hasDestination: boolean;
+  providerDestinationVerifiedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -264,6 +265,16 @@ export function getAdminPayouts(params = new URLSearchParams()) {
       currency: string;
       externalReference?: string | null;
       failureReason?: string | null;
+      provider: string;
+      providerTransfer?: {
+        state: string;
+        externalTransferId: string | null;
+        providerResponseState: string | null;
+        submitAttempts: number;
+        statusAttempts: number;
+        cancelAttempts: number;
+        nextRetryAt: string | null;
+      } | null;
       requestedAt: string;
       processedAt?: string | null;
       paidAt?: string | null;
@@ -291,8 +302,13 @@ export function getAdminFinanceSummary() {
     processingPayouts: number;
     openDisputes: number;
     pendingValue: Array<{ currency: string; amount: string }>;
-    mode: "MANUAL_PAYOUT";
-    externalProvidersConnected: false;
+    mode: "MANUAL_PAYOUT" | "PROVIDER_AND_MANUAL_PAYOUT";
+    externalProvidersConnected: boolean;
+    externalProvider: {
+      provider: string;
+      connected: boolean;
+      productionEnabled: boolean;
+    };
   }>("/admin/revenue/finance-summary");
 }
 

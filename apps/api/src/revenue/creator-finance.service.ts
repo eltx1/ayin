@@ -4,11 +4,16 @@ import { DatabaseService } from "../database/database.service.js";
 import { AdminPayoutCreationService } from "./admin-payout-creation.service.js";
 import { encryptPayoutDestination, maskPayoutDestination } from "./creator-finance.crypto.js";
 import {
+  EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
+  type ExternalPayoutProviderAdapter,
+} from "./external-payout-provider.adapter.js";
+import {
   CreatorFinanceRepository,
   type CreatorPayoutProfileRow,
   type RevenueDisputeStatus,
 } from "./creator-finance.repository.js";
 import { PAYOUT_PROVIDER_ADAPTER, type PayoutProviderAdapter } from "./payout-provider.adapter.js";
+import { PayoutProviderTransferService } from "./payout-provider-transfer.service.js";
 import { toSafePayoutView } from "./payout-safe-view.js";
 import {
   creatorPayoutRequestSchema,
@@ -44,6 +49,10 @@ export class CreatorFinanceService {
     @Inject(AdminPayoutCreationService)
     private readonly payoutCreation: AdminPayoutCreationService,
     @Inject(PAYOUT_PROVIDER_ADAPTER) private readonly payoutProvider: PayoutProviderAdapter,
+    @Inject(EXTERNAL_PAYOUT_PROVIDER_ADAPTER)
+    private readonly externalPayoutProvider: ExternalPayoutProviderAdapter,
+    @Inject(PayoutProviderTransferService)
+    private readonly providerTransfers: PayoutProviderTransferService,
   ) {}
 
   async overview(accountId: string) {
@@ -63,13 +72,28 @@ export class CreatorFinanceService {
     const openPayout = base.payouts.some(
       (payout) => payout.status === "PENDING" || payout.status === "PROCESSING",
     );
+    const externalCapabilities = this.externalPayoutProvider.capabilities();
+    const externalProfileReady = Boolean(
+      profile &&
+        profile.provider === externalCapabilities.provider &&
+        externalCapabilities.connected &&
+        externalCapabilities.productionEnabled &&
+        externalCapabilities.idempotentSubmission &&
+        externalCapabilities.supportsDestinationTokenization &&
+        profile.providerDestinationTokenEncrypted &&
+        profile.providerDestinationVerifiedAt,
+    );
+    const manualProfileReady = Boolean(
+      profile &&
+        profile.provider === this.payoutProvider.kind &&
+        this.payoutProvider.connected &&
+        profile.destinationEncrypted,
+    );
     const profileReady = Boolean(
-      profile?.legalName && profile.destinationEncrypted && profile.destinationMask,
+      profile?.legalName && profile.destinationMask && (manualProfileReady || externalProfileReady),
     );
     const thresholdMet = thresholdMicros <= 0n || availableMicros >= thresholdMicros;
-    const providerReady = Boolean(
-      profile && profile.provider === this.payoutProvider.kind && this.payoutProvider.connected,
-    );
+    const providerReady = Boolean(manualProfileReady || externalProfileReady);
     const progress =
       thresholdMicros <= 0n
         ? 100
@@ -91,9 +115,15 @@ export class CreatorFinanceService {
       paymentProfile: this.serializeProfile(profile),
       recentLedger: ledger.items,
       providerConnection: {
-        activeProvider: this.payoutProvider.kind,
+        activeProvider: profile?.provider ?? this.payoutProvider.kind,
         manualPayoutEnabled: this.payoutProvider.kind === "MANUAL" && this.payoutProvider.connected,
-        externalProvidersConnected: false,
+        externalProvidersConnected:
+          externalCapabilities.connected && externalCapabilities.productionEnabled,
+        externalProvider: {
+          provider: externalCapabilities.provider,
+          connected: externalCapabilities.connected,
+          productionEnabled: externalCapabilities.productionEnabled,
+        },
       },
     };
   }
@@ -109,16 +139,50 @@ export class CreatorFinanceService {
     const channel = await this.creatorChannel(accountId);
     if (!channel) throw new Error("CREATOR_CHANNEL_NOT_FOUND");
 
+    const externalCapabilities = this.externalPayoutProvider.capabilities();
+    const configuredExternalProfile =
+      input.provider === externalCapabilities.provider &&
+      externalCapabilities.connected &&
+      externalCapabilities.productionEnabled;
+    if (input.provider !== "MANUAL" && !configuredExternalProfile) {
+      throw new Error("PAYOUT_PROVIDER_NOT_CONNECTED");
+    }
+    const tokenizedExternalProfile =
+      configuredExternalProfile && externalCapabilities.supportsDestinationTokenization;
+    if (tokenizedExternalProfile && input.destination) {
+      throw new Error("PAYOUT_PROVIDER_USE_TOKENIZED_DESTINATION");
+    }
+
     const encrypted = input.destination ? encryptPayoutDestination(input.destination) : null;
     const mask = input.destination ? maskPayoutDestination(input.destination) : null;
 
     const saved = await this.database.client.$transaction(async (tx) => {
       const existing = await tx.creatorPayoutProfile.findUnique({
         where: { channelId: channel.id },
-        select: { destinationEncrypted: true },
+        select: {
+          provider: true,
+          destinationEncrypted: true,
+          providerDestinationTokenEncrypted: true,
+        },
       });
-      if (!encrypted && !existing?.destinationEncrypted) {
+      const providerChanged = Boolean(existing && existing.provider !== input.provider);
+      const reusableManualDestination =
+        input.provider === "MANUAL" &&
+        existing?.provider === "MANUAL" &&
+        existing.destinationEncrypted;
+      const reusableExternalToken =
+        !providerChanged && Boolean(existing?.providerDestinationTokenEncrypted);
+      if (
+        !tokenizedExternalProfile &&
+        !encrypted &&
+        !reusableManualDestination &&
+        input.provider === "MANUAL"
+      ) {
         throw new Error("PAYOUT_DESTINATION_REQUIRED");
+      }
+      if (tokenizedExternalProfile && !reusableExternalToken && !existing) {
+        // The profile can be created before provider-side token verification. Payout readiness
+        // remains false until verifyDestination stores the encrypted provider token.
       }
 
       // Beneficiary details and their audit row are one atomic finance mutation. Any failure in
@@ -130,6 +194,12 @@ export class CreatorFinanceService {
           preferredCurrency: input.preferredCurrency,
           provider: input.provider,
           ...(encrypted !== null ? { destinationEncrypted: encrypted, destinationMask: mask } : {}),
+          ...(providerChanged
+            ? {
+                providerDestinationTokenEncrypted: null,
+                providerDestinationVerifiedAt: null,
+              }
+            : {}),
           countryCode: input.countryCode ?? null,
         },
         create: {
@@ -139,6 +209,8 @@ export class CreatorFinanceService {
           provider: input.provider,
           destinationEncrypted: encrypted,
           destinationMask: mask,
+          providerDestinationTokenEncrypted: null,
+          providerDestinationVerifiedAt: null,
           countryCode: input.countryCode ?? null,
         },
       });
@@ -168,10 +240,23 @@ export class CreatorFinanceService {
     const channel = await this.creatorChannel(accountId);
     if (!channel) throw new Error("CREATOR_CHANNEL_NOT_FOUND");
     const profile = await this.finance.getProfile(channel.id);
-    if (!profile?.destinationEncrypted || !profile.destinationMask || !profile.legalName) {
+    if (!profile?.destinationMask || !profile.legalName) {
       throw new Error("PAYOUT_PROFILE_INCOMPLETE");
     }
-    if (profile.provider !== this.payoutProvider.kind || !this.payoutProvider.connected) {
+    const externalCapabilities = this.externalPayoutProvider.capabilities();
+    const manualProviderReady =
+      profile.provider === this.payoutProvider.kind &&
+      this.payoutProvider.connected &&
+      Boolean(profile.destinationEncrypted);
+    const externalProviderReady =
+      profile.provider === externalCapabilities.provider &&
+      externalCapabilities.connected &&
+      externalCapabilities.productionEnabled &&
+      externalCapabilities.idempotentSubmission &&
+      externalCapabilities.supportsDestinationTokenization &&
+      Boolean(profile.providerDestinationTokenEncrypted) &&
+      Boolean(profile.providerDestinationVerifiedAt);
+    if (!manualProviderReady && !externalProviderReady) {
       throw new Error("PAYOUT_PROVIDER_NOT_CONNECTED");
     }
 
@@ -179,10 +264,39 @@ export class CreatorFinanceService {
       actorAccountId: accountId,
       channelId: channel.id,
       ...(input.currency ? { requestedCurrency: input.currency } : {}),
-      expectedProvider: this.payoutProvider.kind,
+      expectedProvider: profile.provider,
     });
     if (!payout.destinationMaskSnapshot) {
       throw new Error("PAYOUT_PROFILE_INCOMPLETE");
+    }
+
+    if (externalProviderReady) {
+      const submitted = await this.providerTransfers.submit(accountId, payout.id, {
+        reason: "Creator requested payout through the configured external provider.",
+      });
+      await this.database.client.adminAuditLog.create({
+        data: {
+          actorAccountId: accountId,
+          action: "creator.payout_requested",
+          entityType: "Payout",
+          entityId: payout.id,
+          metadata: {
+            channelId: channel.id,
+            currency: payout.currency,
+            provider: externalCapabilities.provider,
+            providerMode: "EXTERNAL_PROVIDER",
+            paymentProfileId: payout.paymentProfileId,
+            payoutStatus: submitted.payout.status,
+          },
+        },
+      });
+      return {
+        payout: submitted.payout,
+        requestSource: "CREATOR",
+        provider: externalCapabilities.provider,
+        destinationMask: payout.destinationMaskSnapshot,
+        paymentIntegration: "EXTERNAL_PROVIDER" as const,
+      };
     }
 
     const handoff = await this.payoutProvider.createHandoff({
@@ -314,13 +428,23 @@ export class CreatorFinanceService {
         ORDER BY "currency"
       `,
     ]);
+    const externalCapabilities = this.externalPayoutProvider.capabilities();
     return {
       pendingPayouts: pending,
       processingPayouts: processing,
       openDisputes: Number(disputes[0]?.count ?? 0n),
       pendingValue,
-      mode: "MANUAL_PAYOUT",
-      externalProvidersConnected: false,
+      mode:
+        externalCapabilities.connected && externalCapabilities.productionEnabled
+          ? ("PROVIDER_AND_MANUAL_PAYOUT" as const)
+          : ("MANUAL_PAYOUT" as const),
+      externalProvidersConnected:
+        externalCapabilities.connected && externalCapabilities.productionEnabled,
+      externalProvider: {
+        provider: externalCapabilities.provider,
+        connected: externalCapabilities.connected,
+        productionEnabled: externalCapabilities.productionEnabled,
+      },
     };
   }
 
@@ -336,7 +460,10 @@ export class CreatorFinanceService {
       countryCode: profile.countryCode,
       identityStatus: profile.identityStatus,
       taxStatus: profile.taxStatus,
-      hasDestination: Boolean(profile.destinationEncrypted),
+      hasDestination: Boolean(
+        profile.destinationEncrypted || profile.providerDestinationTokenEncrypted,
+      ),
+      providerDestinationVerifiedAt: profile.providerDestinationVerifiedAt,
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
@@ -669,15 +670,22 @@ export function AdminRevenueControlCenter() {
         <div className={styles.grid}>
           {payouts?.items.map((payout) => {
             const action = payoutActionFor(payoutActions, payout.id);
-            const mutable = payout.status === "PENDING" || payout.status === "PROCESSING";
+            const providerManaged = payout.provider !== "MANUAL";
+            const mutable =
+              !providerManaged && (payout.status === "PENDING" || payout.status === "PROCESSING");
             return (
               <article className={styles.cardInset} key={payout.id}>
                 <div className={styles.cardHeader}>
                   <div>
                     <strong>{payout.channel.name}</strong> · @{payout.channel.handle}
                     <p>
-                      {payout.currency} {payout.amount} · {payout.status}
+                      {payout.currency} {payout.amount} · {payout.status} · {payout.provider}
                     </p>
+                    {payout.providerTransfer ? (
+                      <p className={styles.muted}>
+                        Provider transfer: {payout.providerTransfer.state}
+                      </p>
+                    ) : null}
                     <p className={styles.muted}>
                       Requested {new Date(payout.requestedAt).toLocaleString()}
                     </p>
@@ -686,6 +694,20 @@ export function AdminRevenueControlCenter() {
                     <span className={styles.muted}>Ref: {payout.externalReference}</span>
                   ) : null}
                 </div>
+                <div className={styles.actions}>
+                  <Link
+                    className={styles.button}
+                    href={`/admin/revenue/payouts/${encodeURIComponent(payout.id)}`}
+                  >
+                    Payout detail
+                  </Link>
+                </div>
+                {providerManaged ? (
+                  <p className={styles.muted}>
+                    Provider-managed payout. Submit, status, cancellation and confirmed completion
+                    are handled from payout detail; manual PAID transitions are disabled.
+                  </p>
+                ) : null}
                 {mutable ? (
                   <div className={styles.grid}>
                     <textarea

@@ -431,6 +431,9 @@ export class RevenueService {
     const data = payoutStatusSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
       const current = await tx.payout.findUniqueOrThrow({ where: { id: payoutId } });
+      if (current.provider !== "MANUAL") {
+        throw new Error("PAYOUT_PROVIDER_MANAGED_STATUS");
+      }
       this.assertPayoutTransition(current.status, data.status);
       const now = new Date();
       const payout = await tx.payout.update({
@@ -483,7 +486,20 @@ export class RevenueService {
       this.database.client.payout.count({ where }),
       this.database.client.payout.findMany({
         where,
-        include: { channel: { select: { name: true, handle: true } } },
+        include: {
+          channel: { select: { name: true, handle: true } },
+          providerTransfer: {
+            select: {
+              state: true,
+              externalTransferId: true,
+              providerResponseState: true,
+              submitAttempts: true,
+              statusAttempts: true,
+              cancelAttempts: true,
+              nextRetryAt: true,
+            },
+          },
+        },
         orderBy: [{ requestedAt: "desc" }],
         skip: (page - 1) * take,
         take,

@@ -107,7 +107,14 @@ export const payoutProfileSchema = z
   .object({
     legalName: z.string().trim().min(2).max(160),
     preferredCurrency: currencySchema,
-    provider: z.enum(["MANUAL", "BANK_TRANSFER", "PAYPAL", "PAYONEER", "WISE"]).default("MANUAL"),
+    provider: z
+      .string()
+      .trim()
+      .min(2)
+      .max(64)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .transform((value) => value.toUpperCase())
+      .default("MANUAL"),
     destination: z.string().trim().min(4).max(1500).optional(),
     countryCode: countryCodeSchema.nullable().optional(),
   })
