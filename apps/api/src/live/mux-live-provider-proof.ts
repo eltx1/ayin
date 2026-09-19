@@ -166,11 +166,10 @@ function parseMuxLiveStream(payload: unknown): MuxLiveStreamData {
   if (typeof id !== "string" || !id.trim() || typeof streamKey !== "string" || !streamKey.trim()) {
     throw new Error("MUX_PROOF_INVALID_RESPONSE");
   }
-  return {
-    id,
-    stream_key: streamKey,
-    ...(Array.isArray(playbackIds)
-      ? { playback_ids: playbackIds as MuxLiveStreamData["playback_ids"] }
-      : {}),
-  };
+  const normalizedPlaybackIds = Array.isArray(playbackIds)
+    ? (playbackIds as NonNullable<MuxLiveStreamData["playback_ids"]>)
+    : null;
+  return normalizedPlaybackIds
+    ? { id, stream_key: streamKey, playback_ids: normalizedPlaybackIds }
+    : { id, stream_key: streamKey };
 }
