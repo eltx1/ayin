@@ -1,0 +1,47 @@
+name: Task 72 format assist
+
+on:
+  push:
+    branches:
+      - task-72-live-provider-decision
+    paths:
+      - ".github/workflows/task72-format-assist.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-72-live-provider-decision
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format Task 72 files
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/live/mux-live-provider-proof.test.ts \
+            apps/api/src/live/mux-live-provider-proof.ts \
+            docs/ADR_0072_LIVE_PROVIDER.md
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/live/mux-live-provider-proof.test.ts \
+            apps/api/src/live/mux-live-provider-proof.ts \
+            docs/ADR_0072_LIVE_PROVIDER.md
+          git commit -m "Format Task 72 live provider files"
+          git push origin HEAD:task-72-live-provider-decision
