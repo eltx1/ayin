@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  muxTask72ProofExitCode,
   muxTask72ProofRequestBody,
   runMuxTask72ControlPlaneProof,
 } from "./mux-live-provider-proof.js";
@@ -13,6 +14,11 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("Mux Task 72 control-plane proof", () => {
+  it("returns a non-zero process status when the real proof is not verified", () => {
+    expect(muxTask72ProofExitCode("BLOCKED")).toBe(1);
+    expect(muxTask72ProofExitCode("VERIFIED")).toBe(0);
+  });
+
   it("does not touch the network without credentials", async () => {
     const fetchImpl = vi.fn();
     await expect(runMuxTask72ControlPlaneProof({}, fetchImpl)).resolves.toEqual({

@@ -83,3 +83,4 @@ pnpm --filter @ayin/api run proof:live-provider
 ```
 
 Without credentials and the explicit opt-in, the proof performs no network request.
+The proof command also exits non-zero unless the result is `VERIFIED`, so CI or operator scripts cannot mistake a blocked proof for a successful provider verification.
