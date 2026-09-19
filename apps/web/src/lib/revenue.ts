@@ -1,6 +1,45 @@
 import { apiBaseUrl, readApiError } from "./api";
 
 export type PayoutProvider = string;
+export type CreatorComplianceStatus =
+  "NOT_STARTED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION" | "REJECTED";
+
+export interface CreatorComplianceView {
+  channelId: string;
+  provider: {
+    name: string;
+    connected: boolean;
+    productionEnabled: boolean;
+    externalIdentityWorkflow: boolean;
+    externalTaxWorkflow: boolean;
+  };
+  requirements: {
+    identityRequired: boolean;
+    taxRequired: boolean;
+    payoutDestinationVerificationRequired: boolean;
+    source: "NONE" | "PROVIDER" | "APPROVED_LEGAL_CONFIGURATION";
+    version: string | null;
+  };
+  identity: {
+    status: CreatorComplianceStatus;
+    required: boolean;
+    actionAvailable: boolean;
+  };
+  tax: {
+    status: CreatorComplianceStatus;
+    required: boolean;
+    actionAvailable: boolean;
+  };
+  payoutDestination: {
+    status: CreatorComplianceStatus;
+    required: boolean;
+    configured: boolean;
+    masked: string | null;
+  };
+  payoutComplianceEligible: boolean;
+  actionsRequired: string[];
+  lastCheckedAt: string | null;
+}
 
 export interface CreatorPaymentProfile {
   id: string;
@@ -10,8 +49,11 @@ export interface CreatorPaymentProfile {
   provider: PayoutProvider;
   destinationMask: string | null;
   countryCode: string | null;
-  identityStatus: "NOT_STARTED" | "PENDING" | "VERIFIED" | "REJECTED";
-  taxStatus: "NOT_PROVIDED" | "PENDING" | "VERIFIED" | "REQUIRES_ACTION";
+  identityStatus: CreatorComplianceStatus;
+  taxStatus: CreatorComplianceStatus;
+  payoutDestinationStatus: CreatorComplianceStatus;
+  complianceProvider: string | null;
+  complianceLastCheckedAt: string | null;
   hasDestination: boolean;
   providerDestinationVerifiedAt?: string | null;
   createdAt: string;
@@ -53,12 +95,23 @@ export interface CreatorRevenueOverview {
     thresholdMet: boolean;
     openPayout: boolean;
     providerReady: boolean;
+    complianceReady: boolean;
+  };
+  compliance: CreatorComplianceView;
+  payoutEligibility: {
+    eligible: boolean;
+    actionsRequired: string[];
   };
   paymentProfile: CreatorPaymentProfile | null;
   providerConnection: {
-    activeProvider: "MANUAL";
+    activeProvider: string;
     manualPayoutEnabled: boolean;
     externalProvidersConnected: boolean;
+    externalProvider: {
+      provider: string;
+      connected: boolean;
+      productionEnabled: boolean;
+    };
   };
   byVideo: Array<{ videoId: string; title: string; estimated: string; finalized: string }>;
   byPeriod: Array<{ period: string; estimated: string; finalized: string }>;
@@ -168,6 +221,53 @@ export function updateCreatorPaymentProfile(input: {
 }) {
   return revenueFetch<CreatorPaymentProfile>("/creator/studio/revenue/payment-profile", {
     method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export function getCreatorCompliance() {
+  return revenueFetch<CreatorComplianceView>("/creator/studio/revenue/compliance");
+}
+
+export function startCreatorCompliance(step: "IDENTITY" | "TAX") {
+  return revenueFetch<{
+    step: "IDENTITY" | "TAX";
+    status: CreatorComplianceStatus;
+    actionUrl: string | null;
+  }>("/creator/studio/revenue/compliance/start", {
+    method: "POST",
+    body: JSON.stringify({ step }),
+  });
+}
+
+export function refreshCreatorCompliance() {
+  return revenueFetch<CreatorComplianceView>("/creator/studio/revenue/compliance/refresh", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export function getAdminCreatorCompliance(channelId: string) {
+  return revenueFetch<CreatorComplianceView>(
+    `/admin/revenue/channels/${encodeURIComponent(channelId)}/compliance`,
+  );
+}
+
+export function overrideAdminCreatorCompliance(
+  channelId: string,
+  input: {
+    field: "IDENTITY" | "TAX" | "PAYOUT_DESTINATION";
+    status: CreatorComplianceStatus;
+    reason: string;
+  },
+) {
+  return revenueFetch<{
+    profileId: string;
+    field: string;
+    status: CreatorComplianceStatus;
+    compliance: CreatorComplianceView;
+  }>(`/admin/revenue/channels/${encodeURIComponent(channelId)}/compliance`, {
+    method: "PATCH",
     body: JSON.stringify(input),
   });
 }

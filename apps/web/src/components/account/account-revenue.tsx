@@ -8,7 +8,9 @@ import {
   downloadCreatorStatement,
   getCreatorRevenue,
   getCreatorRevenueDisputes,
+  refreshCreatorCompliance,
   requestCreatorPayout,
+  startCreatorCompliance,
   updateCreatorPaymentProfile,
   type CreatorRevenueOverview,
   type RevenueDispute,
@@ -54,9 +56,22 @@ function friendlyPayoutStatus(status: string) {
 }
 
 function profileState(value: string | undefined) {
-  if (!value || value === "NOT_STARTED" || value === "NOT_PROVIDED") return "Not completed";
+  if (!value || value === "NOT_STARTED") return "Not started";
   if (value === "REQUIRES_ACTION") return "Action needed";
-  return value.charAt(0) + value.slice(1).toLowerCase();
+  if (value === "REJECTED") return "Needs review";
+  if (value === "PENDING") return "In review";
+  if (value === "VERIFIED") return "Complete";
+  return value.replaceAll("_", " ").toLowerCase();
+}
+
+function complianceState(required: boolean, value: string) {
+  return required ? profileState(value) : "Not required";
+}
+
+function payoutDestinationState(input: { required: boolean; configured: boolean; status: string }) {
+  if (!input.required && input.configured) return "Saved";
+  if (!input.required && !input.configured) return "Not set";
+  return profileState(input.status);
 }
 
 export function AccountRevenue() {
@@ -125,6 +140,28 @@ export function AccountRevenue() {
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Your change could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function beginCompliance(step: "IDENTITY" | "TAX") {
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await startCreatorCompliance(step);
+      if (result.actionUrl) {
+        window.location.assign(result.actionUrl);
+        return;
+      }
+      setMessage(
+        step === "IDENTITY"
+          ? "Your identity check status was updated."
+          : "Your tax information status was updated.",
+      );
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "This compliance action is unavailable.");
     } finally {
       setBusy(false);
     }
@@ -206,8 +243,8 @@ export function AccountRevenue() {
           </button>
           {!canRequest ? (
             <p className={styles.muted}>
-              Complete your payment details and reach the minimum payout before requesting a
-              withdrawal. Only one payout request can be active at a time.
+              Complete the actions shown below before requesting a withdrawal. Only finalized
+              eligible earnings can be paid, and only one payout request can be active at a time.
             </p>
           ) : null}
         </section>
@@ -242,6 +279,105 @@ export function AccountRevenue() {
           </button>
         </section>
       </div>
+
+      <section className={styles.panel} style={{ marginTop: 18 }}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2>Payout eligibility</h2>
+            <p className={styles.muted}>
+              These checks are shown separately so you can see exactly what, if anything, still
+              needs attention before a payout.
+            </p>
+          </div>
+          <span className={styles.statusPill}>
+            {overview.payoutEligibility.eligible ? "Ready" : "Action needed"}
+          </span>
+        </div>
+        <ul className={styles.list}>
+          <li>
+            <span>Identity check</span>
+            <strong>
+              {complianceState(
+                overview.compliance.identity.required,
+                overview.compliance.identity.status,
+              )}
+            </strong>
+          </li>
+          <li>
+            <span>Tax information</span>
+            <strong>
+              {complianceState(overview.compliance.tax.required, overview.compliance.tax.status)}
+            </strong>
+          </li>
+          <li>
+            <span>Payout destination</span>
+            <strong>
+              {payoutDestinationState({
+                required: overview.compliance.payoutDestination.required,
+                configured: overview.compliance.payoutDestination.configured,
+                status: overview.compliance.payoutDestination.status,
+              })}
+            </strong>
+          </li>
+          <li>
+            <span>Payout eligibility</span>
+            <strong>{overview.payoutEligibility.eligible ? "Ready" : "Not ready yet"}</strong>
+          </li>
+        </ul>
+        {overview.payoutEligibility.actionsRequired.length ? (
+          <ul className={styles.list}>
+            {overview.payoutEligibility.actionsRequired.map((action) => (
+              <li key={action}>
+                <span>{action}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className={styles.muted}>There are no outstanding payout actions right now.</p>
+        )}
+        <div className={styles.actions}>
+          {overview.compliance.identity.actionAvailable ? (
+            <button
+              className={styles.secondary}
+              disabled={busy}
+              type="button"
+              onClick={() => void beginCompliance("IDENTITY")}
+            >
+              Continue identity check
+            </button>
+          ) : null}
+          {overview.compliance.tax.actionAvailable ? (
+            <button
+              className={styles.secondary}
+              disabled={busy}
+              type="button"
+              onClick={() => void beginCompliance("TAX")}
+            >
+              Continue tax information
+            </button>
+          ) : null}
+          {overview.compliance.provider.connected &&
+          overview.compliance.provider.productionEnabled ? (
+            <button
+              className={styles.secondary}
+              disabled={busy}
+              type="button"
+              onClick={() =>
+                void act(
+                  () => refreshCreatorCompliance(),
+                  "Your payout eligibility status was refreshed.",
+                )
+              }
+            >
+              Refresh status
+            </button>
+          ) : null}
+        </div>
+        <p className={styles.muted}>
+          AYIN does not ask you to upload identity documents or tax IDs into this payout page. When
+          an approved external verification service is configured, its workflow is used instead.
+        </p>
+      </section>
 
       <section className={styles.panel} style={{ marginTop: 18 }}>
         <div className={styles.cardHeader}>

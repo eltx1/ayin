@@ -41,8 +41,12 @@ model CreatorPayoutProfile {
   providerDestinationTokenEncrypted   String?   @db.Text
   providerDestinationVerifiedAt       DateTime?
   countryCode                         String?   @db.Char(2)
-  identityStatus       String   @default("NOT_STARTED") @db.VarChar(24)
-  taxStatus            String   @default("NOT_PROVIDED") @db.VarChar(24)
+  identityStatus                     String   @default("NOT_STARTED") @db.VarChar(24)
+  taxStatus                          String   @default("NOT_STARTED") @db.VarChar(24)
+  payoutDestinationStatus            String   @default("NOT_STARTED") @db.VarChar(24)
+  complianceProvider                 String?  @db.VarChar(64)
+  complianceReferenceEncrypted       String?  @db.Text
+  complianceLastCheckedAt            DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 

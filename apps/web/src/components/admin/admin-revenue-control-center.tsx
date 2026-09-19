@@ -17,16 +17,20 @@ import {
 import {
   addRevenueAdjustment,
   createChannelContract,
+  getAdminCreatorCompliance,
   getAdminFinanceSummary,
   getAdminLedger,
   getAdminPayouts,
   getAdminRevenueDisputes,
   getAdminRevenueSettings,
+  overrideAdminCreatorCompliance,
   updateAdminRevenueDispute,
   updateAdminRevenueSettings,
   updatePayoutStatus,
   type AdminRevenueDispute,
   type AdminRevenueSettings,
+  type CreatorComplianceStatus,
+  type CreatorComplianceView,
 } from "@/lib/revenue";
 
 type LedgerData = Awaited<ReturnType<typeof getAdminLedger>>;
@@ -84,6 +88,7 @@ export function AdminRevenueControlCenter() {
   const [finance, setFinance] = useState<FinanceSummary | null>(null);
   const [disputes, setDisputes] = useState<AdminRevenueDispute[]>([]);
   const [contracts, setContracts] = useState<AdminChannelContract[]>([]);
+  const [compliance, setCompliance] = useState<CreatorComplianceView | null>(null);
   const [defaultShareBps, setDefaultShareBps] = useState<number | null>(null);
 
   const [channelQuery, setChannelQuery] = useState("");
@@ -94,6 +99,11 @@ export function AdminRevenueControlCenter() {
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [reason, setReason] = useState("");
+  const [complianceField, setComplianceField] = useState<"IDENTITY" | "TAX" | "PAYOUT_DESTINATION">(
+    "IDENTITY",
+  );
+  const [complianceStatus, setComplianceStatus] = useState<CreatorComplianceStatus>("NOT_STARTED");
+  const [complianceReason, setComplianceReason] = useState("");
   const [importDraft, setImportDraft] = useState<RevenueImportDraft>(() => emptyImport());
 
   const [ledgerChannelId, setLedgerChannelId] = useState("");
@@ -135,6 +145,10 @@ export function AdminRevenueControlCenter() {
     setDefaultShareBps(data.defaultRevenueShareBps);
   }, []);
 
+  const loadCompliance = useCallback(async (channelId: string) => {
+    setCompliance(await getAdminCreatorCompliance(channelId));
+  }, []);
+
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
@@ -147,7 +161,9 @@ export function AdminRevenueControlCenter() {
       await action();
       setMessage(success);
       await load();
-      if (selectedChannel) await loadContracts(selectedChannel.id);
+      if (selectedChannel) {
+        await Promise.all([loadContracts(selectedChannel.id), loadCompliance(selectedChannel.id)]);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Revenue change was not saved.");
     } finally {
@@ -178,9 +194,11 @@ export function AdminRevenueControlCenter() {
     setBusy(true);
     setMessage("");
     try {
-      await loadContracts(channel.id);
+      await Promise.all([loadContracts(channel.id), loadCompliance(channel.id)]);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Channel contracts could not be loaded.");
+      setMessage(
+        error instanceof Error ? error.message : "Channel finance data could not be loaded.",
+      );
     } finally {
       setBusy(false);
     }
@@ -337,8 +355,9 @@ export function AdminRevenueControlCenter() {
           {selectedChannel ? (
             <p className={styles.muted}>
               Identity {selectedChannel.payoutProfile?.identityStatus ?? "NOT_STARTED"} · Tax{" "}
-              {selectedChannel.payoutProfile?.taxStatus ?? "NOT_PROVIDED"} · Preferred currency{" "}
-              {selectedChannel.payoutProfile?.preferredCurrency ?? "not set"}
+              {selectedChannel.payoutProfile?.taxStatus ?? "NOT_STARTED"} · Destination{" "}
+              {selectedChannel.payoutProfile?.payoutDestinationStatus ?? "NOT_STARTED"} · Preferred
+              currency {selectedChannel.payoutProfile?.preferredCurrency ?? "not set"}
             </p>
           ) : (
             <p className={styles.muted}>
@@ -346,6 +365,121 @@ export function AdminRevenueControlCenter() {
             </p>
           )}
         </div>
+      </section>
+
+      <section className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2>Creator payout compliance</h2>
+            <p className={styles.muted}>
+              Status-only view. Identity documents, tax identifiers, bank data and external
+              verification links are intentionally not exposed here.
+            </p>
+          </div>
+          <span className={styles.statusPill}>
+            {compliance?.payoutComplianceEligible ? "Compliance ready" : "Review needed"}
+          </span>
+        </div>
+        {selectedChannel && compliance ? (
+          <div className={styles.grid}>
+            <div className={styles.cardInset}>
+              <strong>Identity: {compliance.identity.status}</strong>
+              <p className={styles.muted}>
+                {compliance.identity.required ? "Required by configured workflow" : "Not required"}
+              </p>
+            </div>
+            <div className={styles.cardInset}>
+              <strong>Tax information: {compliance.tax.status}</strong>
+              <p className={styles.muted}>
+                {compliance.tax.required ? "Required by configured workflow" : "Not required"}
+              </p>
+            </div>
+            <div className={styles.cardInset}>
+              <strong>Payout destination: {compliance.payoutDestination.status}</strong>
+              <p className={styles.muted}>
+                {compliance.payoutDestination.masked ?? "No destination configured"}
+              </p>
+            </div>
+            <div className={styles.cardInset}>
+              <strong>
+                Payout compliance:{" "}
+                {compliance.payoutComplianceEligible ? "Eligible" : "Not eligible yet"}
+              </strong>
+              <p className={styles.muted}>Requirement source: {compliance.requirements.source}</p>
+            </div>
+            {compliance.actionsRequired.length ? (
+              <div className={styles.cardInset}>
+                <strong>Creator actions required</strong>
+                {compliance.actionsRequired.map((item) => (
+                  <p className={styles.muted} key={item}>
+                    {item}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+            <div className={styles.formGrid}>
+              <label>
+                Override field
+                <select
+                  value={complianceField}
+                  onChange={(event) =>
+                    setComplianceField(
+                      event.target.value as "IDENTITY" | "TAX" | "PAYOUT_DESTINATION",
+                    )
+                  }
+                >
+                  <option value="IDENTITY">Identity check</option>
+                  <option value="TAX">Tax information</option>
+                  <option value="PAYOUT_DESTINATION">Payout destination</option>
+                </select>
+              </label>
+              <label>
+                Override status
+                <select
+                  value={complianceStatus}
+                  onChange={(event) =>
+                    setComplianceStatus(event.target.value as CreatorComplianceStatus)
+                  }
+                >
+                  <option value="NOT_STARTED">Not started</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="VERIFIED">Verified</option>
+                  <option value="REQUIRES_ACTION">Requires action</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+              </label>
+              <textarea
+                aria-label="Compliance override reason"
+                minLength={8}
+                placeholder="Mandatory reason for this audited override"
+                value={complianceReason}
+                onChange={(event) => setComplianceReason(event.target.value)}
+              />
+              <button
+                className={styles.danger}
+                disabled={busy || complianceReason.trim().length < 8}
+                type="button"
+                onClick={() =>
+                  void act(
+                    () =>
+                      overrideAdminCreatorCompliance(selectedChannel.id, {
+                        field: complianceField,
+                        status: complianceStatus,
+                        reason: complianceReason.trim(),
+                      }),
+                    "Compliance status override saved and audited.",
+                  )
+                }
+              >
+                Apply audited override
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className={styles.muted}>
+            Select a creator channel to review payout compliance status.
+          </p>
+        )}
       </section>
 
       <section className={styles.card}>

@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { CreatorComplianceService } from "./creator-compliance.service.js";
 import { decryptPayoutDestination, encryptPayoutDestination } from "./creator-finance.crypto.js";
 import {
   EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
@@ -37,6 +38,8 @@ export class PayoutProviderTransferService {
     @Inject(RevenueService) private readonly revenue: RevenueService,
     @Inject(EXTERNAL_PAYOUT_PROVIDER_ADAPTER)
     private readonly provider: ExternalPayoutProviderAdapter,
+    @Inject(CreatorComplianceService)
+    private readonly compliance: CreatorComplianceService,
   ) {}
 
   capabilities() {
@@ -86,6 +89,12 @@ export class PayoutProviderTransferService {
     if (!capabilities.supportsDestinationTokenization) {
       throw new Error("PAYOUT_PROVIDER_TOKENIZATION_REQUIRED");
     }
+
+    const payoutContext = await this.database.client.payout.findUniqueOrThrow({
+      where: { id: payoutId },
+      select: { channelId: true },
+    });
+    await this.compliance.assertPayoutEligible(payoutContext.channelId);
 
     const settings = await this.revenue.getSettings();
     const thresholdMicros = BigInt(settings.payoutThresholdMicros);
@@ -425,6 +434,7 @@ export class PayoutProviderTransferService {
         data: {
           providerDestinationTokenEncrypted: encryptPayoutDestination(input.destinationToken),
           providerDestinationVerifiedAt: new Date(),
+          payoutDestinationStatus: "VERIFIED",
           destinationMask,
         },
       });
@@ -440,6 +450,7 @@ export class PayoutProviderTransferService {
             destinationMask,
             tokenStoredEncrypted: true,
             rawDestinationStored: false,
+            payoutDestinationStatus: "VERIFIED",
           },
         },
       });

@@ -6,6 +6,16 @@ import { DatabaseModule } from "../database/database.module.js";
 import { AdminPayoutCreationService } from "./admin-payout-creation.service.js";
 import { AdminPayoutDestinationController } from "./admin-payout-destination.controller.js";
 import { AdminPayoutDestinationService } from "./admin-payout-destination.service.js";
+import {
+  CREATOR_COMPLIANCE_ADAPTER,
+  DisabledCreatorComplianceAdapter,
+  type CreatorComplianceAdapter,
+} from "./creator-compliance.adapter.js";
+import {
+  AdminCreatorComplianceController,
+  CreatorComplianceController,
+} from "./creator-compliance.controller.js";
+import { CreatorComplianceService } from "./creator-compliance.service.js";
 import { CreatorFinanceRepository } from "./creator-finance.repository.js";
 import { CreatorFinanceService } from "./creator-finance.service.js";
 import { CreatorMonetizationAnalyticsService } from "./creator-monetization-analytics.service.js";
@@ -41,7 +51,9 @@ import { RevenueService } from "./revenue.service.js";
   imports: [DatabaseModule, AuthModule, AdminModule],
   controllers: [
     CreatorRevenueController,
+    CreatorComplianceController,
     AdminRevenueController,
+    AdminCreatorComplianceController,
     RevenueReconciliationController,
     AdminPayoutDestinationController,
     AdminPayoutProviderController,
@@ -51,6 +63,7 @@ import { RevenueService } from "./revenue.service.js";
   providers: [
     RevenueService,
     RevenueReconciliationService,
+    CreatorComplianceService,
     CreatorFinanceRepository,
     CreatorFinanceService,
     CreatorMonetizationAnalyticsService,
@@ -61,7 +74,13 @@ import { RevenueService } from "./revenue.service.js";
     PayoutProviderTransferService,
     ManualPayoutProviderAdapter,
     DisabledExternalPayoutProviderAdapter,
+    DisabledCreatorComplianceAdapter,
     ManualRevenueReportingAdapter,
+    {
+      provide: CREATOR_COMPLIANCE_ADAPTER,
+      inject: [DisabledCreatorComplianceAdapter],
+      useFactory: (adapter: DisabledCreatorComplianceAdapter): CreatorComplianceAdapter => adapter,
+    },
     {
       provide: PAYOUT_PROVIDER_ADAPTER,
       inject: [ManualPayoutProviderAdapter],
@@ -81,6 +100,7 @@ import { RevenueService } from "./revenue.service.js";
   ],
   exports: [
     RevenueService,
+    CreatorComplianceService,
     CreatorFinanceService,
     CreatorMonetizationAnalyticsService,
     CreatorMonetizationNotificationService,

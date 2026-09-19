@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { CreatorComplianceService } from "./creator-compliance.service.js";
 import {
   EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
   type ExternalPayoutProviderAdapter,
@@ -20,6 +21,8 @@ export class AdminPayoutCreationService {
     @Inject(RevenueService) private readonly revenue: RevenueService,
     @Inject(EXTERNAL_PAYOUT_PROVIDER_ADAPTER)
     private readonly externalProvider: ExternalPayoutProviderAdapter,
+    @Inject(CreatorComplianceService)
+    private readonly compliance: CreatorComplianceService,
   ) {}
 
   async create(actorAccountId: string, raw: unknown) {
@@ -56,6 +59,7 @@ export class AdminPayoutCreationService {
   }) {
     const settings = await this.revenue.getSettings();
     const threshold = BigInt(settings.payoutThresholdMicros);
+    await this.compliance.assertPayoutEligible(input.channelId);
 
     return this.database.client.$transaction(async (tx) => {
       await tx.channel.findUniqueOrThrow({ where: { id: input.channelId } });
