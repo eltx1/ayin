@@ -27,10 +27,7 @@ describe("Mux Task 72 control-plane proof", () => {
   it("requires an explicit proof opt-in even when credentials exist", async () => {
     const fetchImpl = vi.fn();
     await expect(
-      runMuxTask72ControlPlaneProof(
-        { MUX_TOKEN_ID: "id", MUX_TOKEN_SECRET: "secret" },
-        fetchImpl,
-      ),
+      runMuxTask72ControlPlaneProof({ MUX_TOKEN_ID: "id", MUX_TOKEN_SECRET: "secret" }, fetchImpl),
     ).resolves.toMatchObject({
       status: "BLOCKED",
       reason: "MUX_PROOF_NOT_OPTED_IN",
@@ -43,22 +40,28 @@ describe("Mux Task 72 control-plane proof", () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(
-        jsonResponse({
-          data: {
-            id: "live-proof-1",
-            stream_key: "initial-secret-key",
-            playback_ids: [{ id: "playback-proof-1", policy: "public" }],
+        jsonResponse(
+          {
+            data: {
+              id: "live-proof-1",
+              stream_key: "initial-secret-key",
+              playback_ids: [{ id: "playback-proof-1", policy: "public" }],
+            },
           },
-        }, 201),
+          201,
+        ),
       )
       .mockResolvedValueOnce(
-        jsonResponse({
-          data: {
-            id: "live-proof-1",
-            stream_key: "rotated-secret-key",
-            playback_ids: [{ id: "playback-proof-1", policy: "public" }],
+        jsonResponse(
+          {
+            data: {
+              id: "live-proof-1",
+              stream_key: "rotated-secret-key",
+              playback_ids: [{ id: "playback-proof-1", policy: "public" }],
+            },
           },
-        }, 201),
+          201,
+        ),
       )
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 

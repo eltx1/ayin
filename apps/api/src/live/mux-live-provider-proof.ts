@@ -48,7 +48,9 @@ export function muxTask72ProofRequestBody() {
   } as const;
 }
 
-export function muxTask72ProofEligibility(environment: MuxProofEnvironment):
+export function muxTask72ProofEligibility(
+  environment: MuxProofEnvironment,
+):
   | { eligible: true; tokenId: string; tokenSecret: string }
   | { eligible: false; reason: "MUX_CREDENTIALS_UNAVAILABLE" | "MUX_PROOF_NOT_OPTED_IN" } {
   const tokenId = environment.MUX_TOKEN_ID?.trim();
@@ -167,6 +169,8 @@ function parseMuxLiveStream(payload: unknown): MuxLiveStreamData {
   return {
     id,
     stream_key: streamKey,
-    ...(Array.isArray(playbackIds) ? { playback_ids: playbackIds as MuxLiveStreamData["playback_ids"] } : {}),
+    ...(Array.isArray(playbackIds)
+      ? { playback_ids: playbackIds as MuxLiveStreamData["playback_ids"] }
+      : {}),
   };
 }

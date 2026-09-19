@@ -27,31 +27,31 @@ architecture assessment, not vendor claims.
 
 ## Decision criteria and weights
 
-| Criterion | Weight |
-| --- | ---: |
-| RTMPS/SRT ingest + OBS fit | 12 |
-| Playback latency | 12 |
-| Autoscaling + global CDN | 10 |
-| Recording, webhook lifecycle, key rotation | 12 |
-| API maturity + operability | 10 |
-| Advertising + Google IMA/DAI path | 12 |
-| DRM/content-security roadmap | 8 |
-| Analytics/observability | 7 |
-| Cost model + minimum commitments | 8 |
-| VOD handoff + vendor portability | 9 |
-| **Total** | **100** |
+| Criterion                                  |  Weight |
+| ------------------------------------------ | ------: |
+| RTMPS/SRT ingest + OBS fit                 |      12 |
+| Playback latency                           |      12 |
+| Autoscaling + global CDN                   |      10 |
+| Recording, webhook lifecycle, key rotation |      12 |
+| API maturity + operability                 |      10 |
+| Advertising + Google IMA/DAI path          |      12 |
+| DRM/content-security roadmap               |       8 |
+| Analytics/observability                    |       7 |
+| Cost model + minimum commitments           |       8 |
+| VOD handoff + vendor portability           |       9 |
+| **Total**                                  | **100** |
 
 Each candidate is scored from 0 to 5. Weighted total is
 `sum(weight × score / 5)`.
 
 ## Weighted decision matrix
 
-| Candidate | Ingest | Latency | Scale/CDN | Lifecycle | API | Ads | DRM | Analytics | Cost | Portability | Weighted |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| **Mux Video** | 5.0 | 4.5 | 5.0 | 5.0 | 5.0 | 4.0 | 5.0 | 5.0 | 4.5 | 4.0 | **93.8** |
-| Amazon IVS | 5.0 | 5.0 | 5.0 | 4.5 | 4.5 | 4.5 | 1.0 | 4.5 | 3.0 | 2.5 | **81.8** |
-| Bitmovin Live Encoder | 5.0 | 4.0 | 3.0 | 3.5 | 5.0 | 5.0 | 5.0 | 5.0 | 1.5 | 3.5 | **81.7** |
-| Cloudflare Stream | 5.0 | 3.5 | 5.0 | 4.5 | 4.0 | 2.5 | 2.0 | 4.0 | 5.0 | 4.0 | **79.2** |
+| Candidate             | Ingest | Latency | Scale/CDN | Lifecycle | API | Ads | DRM | Analytics | Cost | Portability | Weighted |
+| --------------------- | -----: | ------: | --------: | --------: | --: | --: | --: | --------: | ---: | ----------: | -------: |
+| **Mux Video**         |    5.0 |     4.5 |       5.0 |       5.0 | 5.0 | 4.0 | 5.0 |       5.0 |  4.5 |         4.0 | **93.8** |
+| Amazon IVS            |    5.0 |     5.0 |       5.0 |       4.5 | 4.5 | 4.5 | 1.0 |       4.5 |  3.0 |         2.5 | **81.8** |
+| Bitmovin Live Encoder |    5.0 |     4.0 |       3.0 |       3.5 | 5.0 | 5.0 | 5.0 |       5.0 |  1.5 |         3.5 | **81.7** |
+| Cloudflare Stream     |    5.0 |     3.5 |       5.0 |       4.5 | 4.0 | 2.5 | 2.0 |       4.0 |  5.0 |         4.0 | **79.2** |
 
 The result is deliberately not a cheapest-price ranking. Cloudflare has the simplest low list-price
 model but does not win because AYIN's roadmap also values ad architecture, DRM, analytics,
@@ -324,6 +324,7 @@ Mux becomes the selected control plane, but AYIN should limit lock-in by:
 ## Official sources reviewed
 
 Mux:
+
 - https://www.mux.com/docs/guides/configure-broadcast-software
 - https://www.mux.com/docs/guides/reduce-live-stream-latency
 - https://www.mux.com/docs/guides/start-live-streaming
@@ -338,6 +339,7 @@ Mux:
 - https://www.mux.com/pricing
 
 Amazon IVS:
+
 - https://docs.aws.amazon.com/ivs/latest/LowLatencyUserGuide/what-is.html
 - https://docs.aws.amazon.com/ivs/latest/LowLatencyUserGuide/record-to-s3.html
 - https://docs.aws.amazon.com/ivs/latest/LowLatencyUserGuide/eventbridge.html
@@ -347,6 +349,7 @@ Amazon IVS:
 - https://aws.amazon.com/ivs/faqs/
 
 Cloudflare Stream:
+
 - https://developers.cloudflare.com/stream/stream-live/
 - https://developers.cloudflare.com/stream/stream-live/start-stream-live/
 - https://developers.cloudflare.com/stream/stream-live/webhooks/
@@ -355,12 +358,14 @@ Cloudflare Stream:
 - https://developers.cloudflare.com/stream/viewing-videos/securing-your-stream/
 
 Bitmovin:
+
 - https://bitmovin.com/live-encoding-live-streaming
 - https://bitmovin.com/live-encoding-live-streaming/live-monetization
 - https://bitmovin.com/pricing/
 - https://legal.bitmovin.com/legal/emcm
 
 Google Ad Manager DAI:
+
 - https://support.google.com/admanager/answer/13049537
 - https://support.google.com/admanager/answer/13049027
 - https://support.google.com/admanager/answer/7506166
