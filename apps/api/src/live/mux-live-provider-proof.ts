@@ -22,6 +22,10 @@ export type MuxProofResult =
       playbackIdPresent: true;
     };
 
+export function muxTask72ProofExitCode(status: MuxProofResult["status"]): 0 | 1 {
+  return status === "VERIFIED" ? 0 : 1;
+}
+
 interface MuxLiveStreamData {
   id: string;
   stream_key: string;
