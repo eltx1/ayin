@@ -2,6 +2,7 @@
 
 - **Status:** Accepted for implementation planning; production connection remains unverified and disabled.
 - **Decision date:** 2026-09-19
+- **Revalidated:** 2026-09-20 against current official vendor documentation; decision unchanged.
 - **Task:** AYIN Task 72
 - **Selected provider:** Mux Video
 - **Fallback provider:** Amazon Interactive Video Service (Amazon IVS Low-Latency Streaming)
@@ -22,8 +23,8 @@ and Cloudflare Stream generate provider-side broadcast credentials. Task 73 ther
 small provider-contract revision so a provider can return one-time broadcast credentials while
 AYIN stores only a hash.
 
-Research below uses current official documentation reviewed on 2026-09-19. Scores are an AYIN
-architecture assessment, not vendor claims.
+Research below uses current official documentation reviewed on 2026-09-19 and revalidated on
+2026-09-20. Scores are an AYIN architecture assessment, not vendor claims.
 
 ## Decision criteria and weights
 
@@ -220,6 +221,8 @@ are present:
 - `MUX_TOKEN_ID`
 - `MUX_TOKEN_SECRET`
 - `MUX_TASK72_PROOF=1`
+
+The proof CLI exits non-zero for `BLOCKED` results and zero only for `VERIFIED`, so automation cannot treat missing credentials or missing opt-in as a successful provider proof.
 
 When explicitly enabled, it creates a Mux **test** live stream, verifies a playback ID, resets the
 stream key, verifies that the key changed, then deletes the proof resource. It never returns or logs
