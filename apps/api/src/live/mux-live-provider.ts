@@ -430,7 +430,9 @@ export function normalizeMuxWebhook(
     rawType,
     occurredAt,
     playable: kind === "PLAYABLE",
-    fatal: rawType === "video.asset.errored",
+    fatal:
+      rawType === "video.asset.errored" ||
+      rawType === "video.asset.static_rendition.errored",
     activeAssetId,
     recording,
   };
