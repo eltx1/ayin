@@ -96,7 +96,10 @@ export interface LiveIngestProvider {
   retrieveStatus(providerStreamId: string): Promise<LiveProviderStatus>;
   stop(providerStreamId: string | null): Promise<void>;
   discard(providerStreamId: string): Promise<void>;
-  verifyWebhook(\n    rawBody: string | Buffer,\n    signatureHeader: string | undefined,\n  ): LiveProviderWebhookEvent;
+  verifyWebhook(
+    rawBody: string | Buffer,
+    signatureHeader: string | undefined,
+  ): LiveProviderWebhookEvent;
   diagnostics(): LiveProviderDiagnostics;
 }
 
