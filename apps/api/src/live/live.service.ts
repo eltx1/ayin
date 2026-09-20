@@ -3,7 +3,6 @@ import { Inject, Injectable } from "@nestjs/common";
 import type { LiveStream, Prisma } from "@ayin/db";
 
 import { DatabaseService } from "../database/database.service.js";
-import { LiveRecordingHandoffService } from "./live-recording-handoff.service.js";
 import {
   LIVE_INGEST_PROVIDER,
   type LiveIngestProvider,
@@ -35,8 +34,6 @@ export class LiveService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(LIVE_INGEST_PROVIDER) private readonly provider: LiveIngestProvider,
-    @Inject(LiveRecordingHandoffService)
-    private readonly recordingHandoff: LiveRecordingHandoffService,
   ) {}
 
   async studioStreams(accountId: string) {
@@ -534,7 +531,7 @@ export class LiveService {
 
   private async handleRecordingReady(stream: LiveStream, event: LiveProviderWebhookEvent) {
     const recording = event.recording;
-    if (!recording?.downloadUrl) {
+    if (!recording?.downloadUrl || !recording.renditionName) {
       throw new LiveError(
         "LIVE_RECORDING_DOWNLOAD_UNAVAILABLE",
         "Mux reported a ready recording without a downloadable static rendition.",
@@ -542,7 +539,7 @@ export class LiveService {
       );
     }
 
-    const claim = await this.database.client.$transaction(
+    return this.database.client.$transaction(
       async (transaction) => {
         await this.acquireProviderMutationLock(transaction, stream.id);
         const current = await transaction.liveStream.findUnique({ where: { id: stream.id } });
@@ -554,28 +551,15 @@ export class LiveService {
           current.recordingHandoffStatus === "READY" &&
           current.recordingProviderDeletedAt
         ) {
-          return { mode: "ignore" as const, stream: current };
-        }
-        if (
-          sameAsset &&
-          current.recordingHandoffStatus === "CLEANUP_PENDING" &&
-          current.recordingR2ObjectKey &&
-          current.recordingMediaAssetId
-        ) {
-          return { mode: "cleanup" as const, stream: current };
+          return { ignored: true, stream: current };
         }
         if (
           current.recordingHandoffStatus !== "FAILED" &&
+          current.recordingHandoffStatus !== "CLEANUP_PENDING" &&
           this.isStaleProviderEvent(current, event)
         ) {
-          return { mode: "ignore" as const, stream: current };
+          return { ignored: true, stream: current };
         }
-
-        const handoffFresh =
-          current.recordingHandoffStatus === "COPYING" &&
-          current.recordingHandoffStartedAt &&
-          current.recordingHandoffStartedAt.getTime() > Date.now() - 15 * 60 * 1000;
-        if (handoffFresh) return { mode: "ignore" as const, stream: current };
 
         const updated = await transaction.liveStream.update({
           where: { id: current.id },
@@ -583,94 +567,22 @@ export class LiveService {
             providerLastEventAt: event.occurredAt,
             providerLastEventId: event.eventId,
             providerRecordingAssetId: recording.providerAssetId,
-            recordingHandoffStatus: "COPYING",
-            recordingHandoffStartedAt: new Date(),
-            recordingHandoffError: null,
+            recordingProviderDownloadUrl: recording.downloadUrl,
+            recordingRenditionName: recording.renditionName,
+            ...(current.recordingHandoffStatus === "READY" ||
+            current.recordingHandoffStatus === "CLEANUP_PENDING"
+              ? {}
+              : {
+                  recordingHandoffStatus: "WAITING",
+                  recordingHandoffStartedAt: null,
+                  recordingHandoffError: null,
+                }),
           },
         });
-        return { mode: "copy" as const, stream: updated };
+        return { ignored: false, stream: updated };
       },
       { timeout: 30_000 },
     );
-
-    if (claim.mode === "ignore") return { ignored: true, stream: claim.stream };
-
-    let copiedStream = claim.stream;
-    if (claim.mode === "copy") {
-      try {
-        const copied = await this.recordingHandoff.copy({
-          streamId: stream.id,
-          channelId: stream.channelId,
-          providerAssetId: recording.providerAssetId,
-          downloadUrl: recording.downloadUrl,
-        });
-
-        copiedStream = await this.database.client.$transaction(async (transaction) => {
-          const mediaAsset = await transaction.mediaAsset.upsert({
-            where: { r2ObjectKey: copied.r2ObjectKey },
-            create: {
-              channelId: stream.channelId,
-              kind: "SOURCE_VIDEO",
-              status: "UPLOADED",
-              r2ObjectKey: copied.r2ObjectKey,
-              mimeType: "video/mp4",
-              sizeBytes: BigInt(copied.sizeBytes),
-            },
-            update: {
-              status: "UPLOADED",
-              sizeBytes: BigInt(copied.sizeBytes),
-              removedAt: null,
-            },
-          });
-          return transaction.liveStream.update({
-            where: { id: stream.id },
-            data: {
-              providerRecordingAssetId: recording.providerAssetId,
-              recordingHandoffStatus: "CLEANUP_PENDING",
-              recordingR2ObjectKey: copied.r2ObjectKey,
-              recordingMediaAssetId: mediaAsset.id,
-              recordingHandoffAt: new Date(),
-              recordingHandoffError: null,
-            },
-          });
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message.slice(0, 500) : "Recording handoff failed.";
-        await this.database.client.liveStream.update({
-          where: { id: stream.id },
-          data: {
-            recordingHandoffStatus: "FAILED",
-            recordingHandoffError: message,
-          },
-        });
-        throw new LiveError("LIVE_RECORDING_HANDOFF_FAILED", message, 502);
-      }
-    }
-
-    try {
-      await this.provider.deleteRecordingAsset(recording.providerAssetId);
-      const updated = await this.database.client.liveStream.update({
-        where: { id: stream.id },
-        data: {
-          recordingHandoffStatus: "READY",
-          recordingProviderDeletedAt: new Date(),
-          recordingHandoffError: null,
-        },
-      });
-      return { ignored: false, stream: updated };
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message.slice(0, 500) : "Mux recording cleanup failed.";
-      const updated = await this.database.client.liveStream.update({
-        where: { id: stream.id },
-        data: {
-          recordingHandoffStatus: "CLEANUP_PENDING",
-          recordingHandoffError: message,
-        },
-      });
-      void updated;
-      this.throwProviderError(error);
-    }
   }
 
   private isStaleProviderEvent(stream: LiveStream, event: LiveProviderWebhookEvent) {
