@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { LiveStream } from "@ayin/db";
 
 import type { DatabaseService } from "../database/database.service.js";
-import type { LiveRecordingHandoffService } from "./live-recording-handoff.service.js";
 import {
   type LiveIngestProvider,
   type LiveProviderStatus,
@@ -157,20 +156,10 @@ function statusFixture(state: LiveProviderStatus["state"], playable = false): Li
   };
 }
 
-function recordingHandoffFixture() {
-  return {
-    copy: vi.fn(async () => ({
-      r2ObjectKey: "channels/channel-1/live/stream-1/recordings/asset-1.mp4",
-      sizeBytes: 1024,
-    })),
-  } as unknown as LiveRecordingHandoffService;
-}
-
-
 describe("LiveService provider evidence policy", () => {
   it("does not mark a session LIVE when Mux has not confirmed playable output", async () => {
     const { database, update } = databaseFixture();
-    const service = new LiveService(database, providerFixture(statusFixture("CONNECTED")), recordingHandoffFixture());
+    const service = new LiveService(database, providerFixture(statusFixture("CONNECTED")));
 
     await expect(service.setState("account-1", "stream-1", "LIVE")).rejects.toMatchObject({
       code: "LIVE_PROVIDER_NOT_PLAYABLE",
@@ -185,7 +174,7 @@ describe("LiveService provider evidence policy", () => {
 
   it("marks a session LIVE only after provider PLAYABLE evidence", async () => {
     const { database, update } = databaseFixture();
-    const service = new LiveService(database, providerFixture(statusFixture("PLAYABLE", true)), recordingHandoffFixture());
+    const service = new LiveService(database, providerFixture(statusFixture("PLAYABLE", true)));
 
     const result = await service.setState("account-1", "stream-1", "LIVE");
 
@@ -204,7 +193,7 @@ describe("LiveService provider evidence policy", () => {
     const { database, queryRaw } = databaseFixture();
     queryRaw.mockResolvedValue([{ locked: false }]);
     const provider = providerFixture(statusFixture("IDLE"));
-    const service = new LiveService(database, provider, recordingHandoffFixture());
+    const service = new LiveService(database, provider);
 
     await expect(service.rotateKey("account-1", "stream-1")).rejects.toMatchObject({
       code: "LIVE_PROVIDER_OPERATION_IN_PROGRESS",
@@ -226,7 +215,7 @@ describe("LiveService provider evidence policy", () => {
     });
     update.mockRejectedValueOnce(new Error("database write failed"));
     const provider = providerFixture(statusFixture("IDLE"));
-    const service = new LiveService(database, provider, recordingHandoffFixture());
+    const service = new LiveService(database, provider);
 
     await expect(service.provision("account-1", "stream-1")).rejects.toThrow(
       "database write failed",
@@ -256,7 +245,7 @@ describe("LiveService provider evidence policy", () => {
       activeAssetId: "asset-1",
       recording: null,
     }));
-    const service = new LiveService(database, provider, recordingHandoffFixture());
+    const service = new LiveService(database, provider);
 
     const result = await service.handleProviderWebhook("{}", "signed");
 
@@ -264,8 +253,8 @@ describe("LiveService provider evidence policy", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("hands a ready Mux recording to R2 and deletes the provider asset", async () => {
-    const { database, findFirst, findUnique, mediaAssetUpsert, update } = databaseFixture();
+  it("enqueues a ready Mux recording without blocking the webhook on file transfer", async () => {
+    const { database, findFirst, findUnique, update } = databaseFixture();
     const current = {
       ...baseStream,
       status: "ENDED" as const,
@@ -291,25 +280,22 @@ describe("LiveService provider evidence policy", () => {
         renditionName: "highest.mp4",
       },
     }));
-    const handoff = recordingHandoffFixture();
-    const service = new LiveService(database, provider, handoff);
+    const service = new LiveService(database, provider);
 
     const result = await service.handleProviderWebhook("{}", "signed");
 
     expect(result.ignored).toBe(false);
-    expect(handoff.copy).toHaveBeenCalledWith({
-      streamId: "stream-1",
-      channelId: "channel-1",
-      providerAssetId: "asset-1",
-      downloadUrl: "https://stream.mux.com/playback/highest.mp4",
-    });
-    expect(mediaAssetUpsert).toHaveBeenCalled();
-    expect(provider.deleteRecordingAsset).toHaveBeenCalledWith("asset-1");
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ recordingHandoffStatus: "READY" }),
+        data: expect.objectContaining({
+          providerRecordingAssetId: "asset-1",
+          recordingProviderDownloadUrl: "https://stream.mux.com/playback/highest.mp4",
+          recordingRenditionName: "highest.mp4",
+          recordingHandoffStatus: "WAITING",
+        }),
       }),
     );
+    expect(provider.deleteRecordingAsset).not.toHaveBeenCalled();
   });
 
   it("persists only a hash of the one-time provider stream key", async () => {
@@ -325,7 +311,7 @@ describe("LiveService provider evidence policy", () => {
       playbackUrl: null,
     };
     findFirst.mockResolvedValue(unprovisioned);
-    const service = new LiveService(database, provider, recordingHandoffFixture());
+    const service = new LiveService(database, provider);
 
     const result = await service.provision("account-1", "stream-1");
     const expectedHash = createHash("sha256").update("raw-one-time-stream-key").digest("hex");
