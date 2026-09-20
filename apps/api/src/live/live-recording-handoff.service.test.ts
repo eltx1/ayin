@@ -75,6 +75,7 @@ describe("live recording R2 handoff", () => {
       return new Response(null, { status: 404 });
     });
 
+    const progress = vi.fn(async () => undefined);
     const result = await copyLiveRecordingToStorage(
       storage,
       configFixture(),
@@ -85,6 +86,7 @@ describe("live recording R2 handoff", () => {
         downloadUrl: "https://stream.mux.com/playback/highest.mp4",
       },
       fetchImpl,
+      progress,
     );
 
     expect(result).toEqual({
@@ -92,6 +94,8 @@ describe("live recording R2 handoff", () => {
       sizeBytes: 10,
     });
     expect(uploadedParts).toEqual([1, 2, 3]);
+    expect(progress).toHaveBeenCalledTimes(3);
+    expect(progress).toHaveBeenLastCalledWith(10);
     expect(storage.completeMultipartUpload).toHaveBeenCalledWith({
       key: result.r2ObjectKey,
       uploadId: "upload-1",
