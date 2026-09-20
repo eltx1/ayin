@@ -136,7 +136,7 @@ describe("MuxLiveIngestProvider", () => {
     expect(JSON.stringify(status)).not.toContain("one-time-srt-passphrase");
   });
 
-  it("rotates credentials once and disables the provider resource on stop", async () => {
+  it("rotates credentials, disables on stop, and supports compensating deletion", async () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(
@@ -148,7 +148,8 @@ describe("MuxLiveIngestProvider", () => {
           201,
         ),
       )
-      .mockResolvedValueOnce(jsonResponse({ data: {} }));
+      .mockResolvedValueOnce(jsonResponse({ data: {} }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const provider = new MuxLiveIngestProvider(enabledEnvironment, fetchImpl);
 
     const rotated = await provider.rotateKey("mux-live-1");
@@ -163,6 +164,12 @@ describe("MuxLiveIngestProvider", () => {
       "https://api.mux.com/video/v1/live-streams/mux-live-1/disable",
     );
     expect(fetchImpl.mock.calls[1]?.[1]?.method).toBe("PUT");
+
+    await expect(provider.discard("mux-live-1")).resolves.toBeUndefined();
+    expect(fetchImpl.mock.calls[2]?.[0]).toBe(
+      "https://api.mux.com/video/v1/live-streams/mux-live-1",
+    );
+    expect(fetchImpl.mock.calls[2]?.[1]?.method).toBe("DELETE");
   });
 
   it("verifies signed raw webhook bodies and normalizes the live lifecycle", () => {
