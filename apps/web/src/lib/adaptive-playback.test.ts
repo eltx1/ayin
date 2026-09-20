@@ -48,6 +48,7 @@ class FakeHls {
   }
 
   static last: FakeHls | null = null;
+  static lastConfig: Record<string, unknown> | null = null;
 
   levels = [
     { width: 640, height: 360, bitrate: 800_000 },
@@ -60,8 +61,9 @@ class FakeHls {
   destroyed = false;
   private listeners = new Map<string, Array<(...args: unknown[]) => void>>();
 
-  constructor() {
+  constructor(config?: Record<string, unknown>) {
     FakeHls.last = this;
+    FakeHls.lastConfig = config ?? null;
   }
 
   on(event: string, callback: (...args: unknown[]) => void) {
@@ -95,6 +97,7 @@ class FakeHls {
 
 afterEach(() => {
   FakeHls.last = null;
+  FakeHls.lastConfig = null;
   vi.unstubAllGlobals();
 });
 
@@ -174,6 +177,29 @@ describe("AYIN adaptive playback abstraction", () => {
     hls.emit(FakeHls.Events.ERROR, { fatal: true, type: "networkError", details: "fragLoadError" });
     expect(fatal).toHaveBeenCalledOnce();
     expect(fatal).toHaveBeenCalledWith("NETWORK");
+  });
+
+  it("uses live-specific sync and bounded loader retry policy for LIVE mode", async () => {
+    vi.stubGlobal("window", {
+      Hls: FakeHls,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await startAdaptiveHlsPlayback({
+      video: new FakeVideo(false) as never,
+      hlsUrl: "https://media.ayin.test/live.m3u8",
+      mode: "LIVE",
+    });
+
+    expect(FakeHls.lastConfig).toMatchObject({
+      maxBufferLength: 15,
+      liveSyncDurationCount: 3,
+      liveMaxLatencyDurationCount: 10,
+      maxLiveSyncPlaybackRate: 1.2,
+      manifestLoadingMaxRetry: 2,
+      levelLoadingMaxRetry: 2,
+    });
   });
 
   it("surfaces recoverable manifest refresh failures without declaring the stream fatal", async () => {
