@@ -1,25 +1,32 @@
-import { readFileSync } from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
-import { LIVE_PROVIDER_DECISION } from "./live-provider-decision.js";
 import { UnconfiguredLiveIngestProvider } from "./live-provider.js";
+import { selectLiveIngestProvider } from "./live.module.js";
+import { MuxLiveIngestProvider } from "./mux-live-provider.js";
 
-describe("Task 72 live provider production safety", () => {
-  it("keeps the runtime module wired to the unconfigured adapter", () => {
-    const moduleSource = readFileSync(new URL("./live.module.ts", import.meta.url), "utf8");
-    expect(moduleSource).toContain("UnconfiguredLiveIngestProvider");
-    expect(moduleSource).toContain(
-      "{ provide: LIVE_INGEST_PROVIDER, useExisting: UnconfiguredLiveIngestProvider }",
-    );
-    expect(moduleSource).not.toContain("MuxLiveIngestProvider");
+describe("Task 73 live provider production safety", () => {
+  it("falls back to the unconfigured provider unless every production gate is present", () => {
+    const fallback = new UnconfiguredLiveIngestProvider();
+    const mux = new MuxLiveIngestProvider({
+      MUX_TOKEN_ID: "token-id",
+      MUX_TOKEN_SECRET: "token-secret",
+      MUX_WEBHOOK_SIGNING_SECRET: "webhook-secret",
+    });
+
+    expect(mux.configured).toBe(false);
+    expect(selectLiveIngestProvider(mux, fallback)).toBe(fallback);
   });
 
-  it("does not claim production is connected", () => {
-    const provider = new UnconfiguredLiveIngestProvider();
-    expect(provider.configured).toBe(false);
-    expect(provider.key).toBe("unconfigured");
-    expect(LIVE_PROVIDER_DECISION.productionConnected).toBe(false);
-    expect(LIVE_PROVIDER_DECISION.productionBehaviorChanged).toBe(false);
+  it("selects Mux only when API credentials, webhook verification, and enable flag exist", () => {
+    const fallback = new UnconfiguredLiveIngestProvider();
+    const mux = new MuxLiveIngestProvider({
+      MUX_TOKEN_ID: "token-id",
+      MUX_TOKEN_SECRET: "token-secret",
+      MUX_WEBHOOK_SIGNING_SECRET: "webhook-secret",
+      MUX_LIVE_PRODUCTION_ENABLED: "1",
+    });
+
+    expect(mux.configured).toBe(true);
+    expect(selectLiveIngestProvider(mux, fallback)).toBe(mux);
   });
 });
