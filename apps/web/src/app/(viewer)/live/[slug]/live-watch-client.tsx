@@ -81,6 +81,9 @@ export function LiveWatchClient({ slug }: { slug: string }) {
         });
         if (!response.ok) {
           if (response.status === 404) {
+            setStream(null);
+            setMessages([]);
+            chatLoadedRef.current = null;
             setStatus("This live session is unavailable.");
             return;
           }
