@@ -38,6 +38,7 @@ const baseStream: LiveStream = {
   recordingRenditionName: null,
   recordingHandoffAttempt: 0,
   recordingHandoffStartedAt: null,
+  recordingHandoffHeartbeatAt: null,
   recordingHandoffAt: null,
   recordingProviderDeletedAt: null,
   recordingHandoffError: null,
