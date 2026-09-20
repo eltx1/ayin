@@ -275,6 +275,37 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await expect(page.getByText("Live edge")).toBeVisible();
   });
 
+  test("sustained native-HLS stall enters the bounded reconnect path", async ({ page }) => {
+    await installLiveHarness(page, true);
+    await page.route("**/live/task-74", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(liveFixture("LIVE")),
+      });
+    });
+    await page.route("**/live/task-74/chat", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+    });
+
+    await page.goto("/live/task-74");
+    await expect(page.locator("video")).toHaveAttribute(
+      "src",
+      "https://stream.mux.com/task-74.m3u8",
+    );
+    const before = await state(page);
+
+    await page.locator("video").evaluate((video) => video.dispatchEvent(new Event("waiting")));
+    await expect(page.getByText("Reconnecting to live stream…"), { timeout: 14_000 }).toBeVisible();
+    await expect
+      .poll(async () => (await state(page)).loadCalls, { timeout: 17_000 })
+      .toBeGreaterThan(before.loadCalls);
+  });
+
   test("native HLS is paused and unloaded when the provider becomes terminal", async ({ page }) => {
     await installLiveHarness(page, true);
     let requestCount = 0;
