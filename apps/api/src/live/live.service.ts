@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
+import type { LiveStream } from "@ayin/db";
 
 import { DatabaseService } from "../database/database.service.js";
 import {
@@ -366,7 +367,7 @@ export class LiveService {
   }
 
   private async applyProviderEvidence(
-    stream: Awaited<ReturnType<LiveService["ownedStream"]>>,
+    stream: LiveStream,
     evidence: LiveProviderStatus,
   ) {
     if (evidence.playable) {
@@ -406,7 +407,7 @@ export class LiveService {
   }
 
   private async applyWebhookEvent(
-    stream: Awaited<ReturnType<LiveService["ownedStream"]>>,
+    stream: LiveStream,
     event: LiveProviderWebhookEvent,
   ) {
     if (event.kind === "PLAYABLE") {
