@@ -47,9 +47,12 @@ model LiveStream {
   providerLastEventId       String?                    @db.VarChar(255)
   providerRecordingAssetId  String?                    @db.VarChar(255)
   recordingHandoffStatus    LiveRecordingHandoffStatus @default(NONE)
-  recordingR2ObjectKey      String?                    @db.VarChar(1024)
-  recordingMediaAssetId     String?                    @db.Uuid
-  recordingHandoffStartedAt DateTime?
+  recordingR2ObjectKey       String?                    @db.VarChar(1024)
+  recordingMediaAssetId      String?                    @db.Uuid
+  recordingProviderDownloadUrl String?                  @db.Text
+  recordingRenditionName     String?                    @db.VarChar(255)
+  recordingHandoffAttempt    Int                        @default(0)
+  recordingHandoffStartedAt  DateTime?
   recordingHandoffAt        DateTime?
   recordingProviderDeletedAt DateTime?
   recordingHandoffError     String?                    @db.VarChar(500)
