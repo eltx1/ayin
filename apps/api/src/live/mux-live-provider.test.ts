@@ -62,9 +62,7 @@ describe("MuxLiveIngestProvider", () => {
     });
     expect(controlOnly.configured).toBe(true);
     expect(controlOnly.diagnostics().productionEnabled).toBe(false);
-    expect(controlOnly.diagnostics().missingConfiguration).toEqual([
-      "MUX_LIVE_PRODUCTION_ENABLED",
-    ]);
+    expect(controlOnly.diagnostics().missingConfiguration).toEqual(["MUX_LIVE_PRODUCTION_ENABLED"]);
 
     const enabled = new MuxLiveIngestProvider(enabledEnvironment);
     expect(enabled.configured).toBe(true);

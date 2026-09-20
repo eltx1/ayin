@@ -68,10 +68,7 @@ describe("LiveRecordingWorkerService", () => {
     } as unknown as LiveIngestProvider;
     const handoff = {
       copy: vi.fn(
-        async (
-          _input: unknown,
-          onProgress?: (uploadedBytes: number) => Promise<void>,
-        ) => {
+        async (_input: unknown, onProgress?: (uploadedBytes: number) => Promise<void>) => {
           await onProgress?.(512);
           return {
             r2ObjectKey:

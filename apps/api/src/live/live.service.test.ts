@@ -280,24 +280,22 @@ describe("LiveService provider evidence policy", () => {
     findFirst.mockResolvedValue(current);
     findUnique.mockResolvedValue(current);
     const provider = providerFixture(statusFixture("IDLE"));
-    provider.verifyWebhook = vi.fn(
-      (): LiveProviderWebhookEvent => ({
-        eventId: "rendition-ready-1",
-        providerStreamId: null,
-        kind: "RECORDING_READY",
-        rawType: "video.asset.static_rendition.ready",
-        occurredAt: new Date("2026-09-20T02:10:00.000Z"),
-        playable: false,
-        fatal: false,
-        activeAssetId: "asset-1",
-        recording: {
-          providerAssetId: "asset-1",
-          ayinStreamId: null,
-          downloadUrl: null,
-          renditionName: "highest.mp4",
-        },
-      }),
-    );
+    provider.verifyWebhook = vi.fn((): LiveProviderWebhookEvent => ({
+      eventId: "rendition-ready-1",
+      providerStreamId: null,
+      kind: "RECORDING_READY",
+      rawType: "video.asset.static_rendition.ready",
+      occurredAt: new Date("2026-09-20T02:10:00.000Z"),
+      playable: false,
+      fatal: false,
+      activeAssetId: "asset-1",
+      recording: {
+        providerAssetId: "asset-1",
+        ayinStreamId: null,
+        downloadUrl: null,
+        renditionName: "highest.mp4",
+      },
+    }));
     const service = new LiveService(database, provider);
 
     const result = await service.handleProviderWebhook("{}", "signed");
