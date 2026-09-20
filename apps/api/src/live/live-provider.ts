@@ -95,7 +95,7 @@ export interface LiveIngestProvider {
   rotateKey(providerStreamId: string): Promise<LiveProvisionResult>;
   retrieveStatus(providerStreamId: string): Promise<LiveProviderStatus>;
   stop(providerStreamId: string | null): Promise<void>;
-  verifyWebhook(rawBody: string | Buffer, signatureHeader: string | undefined): LiveProviderWebhookEvent;
+  verifyWebhook(\n    rawBody: string | Buffer,\n    signatureHeader: string | undefined,\n  ): LiveProviderWebhookEvent;
   diagnostics(): LiveProviderDiagnostics;
 }
 
