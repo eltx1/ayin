@@ -112,6 +112,7 @@ describe("MuxLiveIngestProvider", () => {
       reconnect_window: 60,
       new_asset_settings: {
         playback_policies: ["public"],
+        video_quality: "plus",
         static_renditions: [{ resolution: "highest" }],
         meta: { external_id: "ayin-stream-1" },
       },
