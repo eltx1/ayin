@@ -31,7 +31,8 @@ function terminalStatus(status: LivePlayerStreamStatus): boolean {
 }
 
 function waitingCopy(stream: Stream): string {
-  if (stream.status === "SCHEDULED") return "This live stream is scheduled and has not started yet.";
+  if (stream.status === "SCHEDULED")
+    return "This live stream is scheduled and has not started yet.";
   if (stream.status === "READY") return "The encoder is ready. Waiting for playable live output…";
   if (stream.status === "DRAFT") return "This live stream has not started yet.";
   return "Waiting for live output…";

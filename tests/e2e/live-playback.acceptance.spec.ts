@@ -148,9 +148,7 @@ async function installLiveHarness(page: Page, nativeHls = false) {
 }
 
 async function state(page: Page): Promise<HarnessState> {
-  return page.evaluate(
-    () => (window as unknown as { __liveTask74: HarnessState }).__liveTask74,
-  );
+  return page.evaluate(() => (window as unknown as { __liveTask74: HarnessState }).__liveTask74);
 }
 
 test.describe.serial("Task 74 live playback hardening", () => {
@@ -206,7 +204,9 @@ test.describe.serial("Task 74 live playback hardening", () => {
         details: "manifestLoadError",
       });
     });
-    await expect.poll(async () => (await state(page)).hlsConstructed, { timeout: 5_000 }).toBeGreaterThan(2);
+    await expect
+      .poll(async () => (await state(page)).hlsConstructed, { timeout: 5_000 })
+      .toBeGreaterThan(2);
     await page.waitForTimeout(3_200);
     expect(analytics).toContain("LIVE_PLAY_START");
     expect(analytics).toContain("LIVE_STARTUP");
@@ -261,7 +261,9 @@ test.describe.serial("Task 74 live playback hardening", () => {
     });
 
     await page.goto("/live/task-74");
-    await expect(page.getByText("The encoder is ready. Waiting for playable live output…")).toBeVisible();
+    await expect(
+      page.getByText("The encoder is ready. Waiting for playable live output…"),
+    ).toBeVisible();
     expect((await state(page)).hlsConstructed).toBe(0);
 
     status = "LIVE";

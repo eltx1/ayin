@@ -4,13 +4,7 @@ export const LIVE_EDGE_THRESHOLD_SECONDS = 3;
 const LIVE_RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000] as const;
 
 export type LiveReconnectReason =
-  | "NETWORK"
-  | "MANIFEST"
-  | "MEDIA"
-  | "STARTUP"
-  | "UNSUPPORTED"
-  | "OFFLINE"
-  | "OTHER";
+  "NETWORK" | "MANIFEST" | "MEDIA" | "STARTUP" | "UNSUPPORTED" | "OFFLINE" | "OTHER";
 
 export interface LiveEdgeSnapshot {
   seekableStartSeconds: number | null;

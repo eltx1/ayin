@@ -29,13 +29,7 @@ import {
 import styles from "./live-ayin-player.module.css";
 
 export type LivePlayerStreamStatus =
-  | "DRAFT"
-  | "SCHEDULED"
-  | "READY"
-  | "LIVE"
-  | "ENDED"
-  | "CANCELLED"
-  | "FAILED";
+  "DRAFT" | "SCHEDULED" | "READY" | "LIVE" | "ENDED" | "CANCELLED" | "FAILED";
 
 export interface LiveAyinPlayerProps {
   streamId: string;
@@ -130,7 +124,9 @@ export function LiveAyinPlayer({
         channelId,
         ...(input.durationDeltaMs === undefined
           ? {}
-          : { durationDeltaMs: Math.max(0, Math.min(3_600_000, Math.round(input.durationDeltaMs))) }),
+          : {
+              durationDeltaMs: Math.max(0, Math.min(3_600_000, Math.round(input.durationDeltaMs))),
+            }),
         metadata: { liveStreamId: streamId, ...(input.metadata ?? {}) },
       });
     },
@@ -254,7 +250,9 @@ export function LiveAyinPlayer({
     sessionRef.current = null;
     setPlaying(false);
     setConnectionState("IDLE");
-    setMessage(status === "ENDED" ? "This live stream has ended." : "This live stream is unavailable.");
+    setMessage(
+      status === "ENDED" ? "This live stream has ended." : "This live stream is unavailable.",
+    );
     if (startedRef.current) emit("LIVE_PLAY_COMPLETE", { metadata: { reason } });
     emit("LIVE_END", { metadata: { reason } });
   }, [emit, flushDuration, status]);
@@ -293,10 +291,7 @@ export function LiveAyinPlayer({
 
     let connect: (reason?: AyinHlsFailureReason | "OFFLINE") => Promise<void>;
 
-    const scheduleReconnect = (
-      reason: AyinHlsFailureReason | "OFFLINE",
-      immediate = false,
-    ) => {
+    const scheduleReconnect = (reason: AyinHlsFailureReason | "OFFLINE", immediate = false) => {
       if (cancelled || reconnectTimer !== null || fatalReportedRef.current) return;
       if (navigator.onLine === false) {
         setConnectionState("OFFLINE");
@@ -580,13 +575,7 @@ export function LiveAyinPlayer({
           onKeyDown={onStageKeyDown}
           tabIndex={0}
         >
-          <video
-            className={styles.video}
-            muted={muted}
-            playsInline
-            ref={videoRef}
-            title={title}
-          >
+          <video className={styles.video} muted={muted} playsInline ref={videoRef} title={title}>
             {captions.map((track) => (
               <track
                 default={track.default}
@@ -611,11 +600,7 @@ export function LiveAyinPlayer({
             <div className={styles.status} aria-live="polite">
               <p>{message}</p>
               {connectionState === "FATAL" ? (
-                <button
-                  data-tv-focusable="true"
-                  onClick={retry}
-                  type="button"
-                >
+                <button data-tv-focusable="true" onClick={retry} type="button">
                   Try again
                 </button>
               ) : null}
@@ -659,11 +644,7 @@ export function LiveAyinPlayer({
               {muted ? "Unmute" : "Mute"}
             </button>
             {showGoLive ? (
-              <button
-                data-tv-focusable="true"
-                onClick={() => void goLive()}
-                type="button"
-              >
+              <button data-tv-focusable="true" onClick={() => void goLive()} type="button">
                 Go live
               </button>
             ) : (
@@ -685,11 +666,7 @@ export function LiveAyinPlayer({
               </span>
             ) : null}
             <span className={styles.spacer} />
-            <button
-              data-tv-focusable="true"
-              onClick={() => void toggleFullscreen()}
-              type="button"
-            >
+            <button data-tv-focusable="true" onClick={() => void toggleFullscreen()} type="button">
               Fullscreen
             </button>
           </div>
