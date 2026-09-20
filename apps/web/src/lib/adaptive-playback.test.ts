@@ -209,11 +209,12 @@ describe("AYIN adaptive playback abstraction", () => {
       clearTimeout,
     });
     const recoverable = vi.fn();
+    const recovered = vi.fn();
     const fatal = vi.fn();
     await startAdaptiveHlsPlayback({
       video: new FakeVideo(false) as never,
       hlsUrl: "https://media.ayin.test/live.m3u8",
-      callbacks: { onRecoverable: recoverable, onFatal: fatal },
+      callbacks: { onRecoverable: recoverable, onRecovered: recovered, onFatal: fatal },
     });
 
     FakeHls.last!.emit(FakeHls.Events.ERROR, {
@@ -223,6 +224,9 @@ describe("AYIN adaptive playback abstraction", () => {
     });
 
     expect(recoverable).toHaveBeenCalledWith("MANIFEST");
+    expect(recovered).not.toHaveBeenCalled();
+    FakeHls.last!.emit(FakeHls.Events.FRAG_BUFFERED);
+    expect(recovered).toHaveBeenCalledTimes(1);
     expect(fatal).not.toHaveBeenCalled();
   });
 
