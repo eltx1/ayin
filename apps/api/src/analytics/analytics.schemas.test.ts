@@ -41,6 +41,33 @@ describe("analytics contracts", () => {
     },
   );
 
+  it.each([
+    "LIVE_PLAY_START",
+    "LIVE_STARTUP",
+    "LIVE_REBUFFER",
+    "LIVE_RECONNECT",
+    "LIVE_FATAL_ERROR",
+    "LIVE_DURATION",
+    "LIVE_END",
+  ] as const)("accepts live playback event %s", (eventName) => {
+    const parsed = analyticsEventSchema.parse({
+      ...event,
+      clientEventId: crypto.randomUUID(),
+      eventName,
+      videoId: undefined,
+      channelId: "00000000-0000-4000-8000-000000000010",
+      positionMs: undefined,
+      durationDeltaMs:
+        eventName === "LIVE_STARTUP" ||
+        eventName === "LIVE_REBUFFER" ||
+        eventName === "LIVE_DURATION"
+          ? 1_250
+          : undefined,
+      metadata: { liveStreamId: "00000000-0000-4000-8000-000000000011" },
+    });
+    expect(parsed.eventName).toBe(eventName);
+  });
+
   it("rejects unbounded noisy progress deltas", () => {
     expect(() => analyticsEventSchema.parse({ ...event, durationDeltaMs: 3_600_001 })).toThrow();
   });
