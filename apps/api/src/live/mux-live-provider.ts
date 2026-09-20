@@ -203,7 +203,7 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
       ...missingControlConfiguration,
       ...(this.environment.MUX_LIVE_PRODUCTION_ENABLED === "1"
         ? []
-        : ["MUX_LIVE_PRODUCTION_ENABLED=1"]),
+        : ["MUX_LIVE_PRODUCTION_ENABLED"]),
     ];
     const capabilities = this.capabilities();
     return {
