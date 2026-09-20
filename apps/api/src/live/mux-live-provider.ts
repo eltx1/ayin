@@ -81,6 +81,9 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
         playback_policies: ["public"],
         latency_mode: "low",
         reconnect_window: 60,
+        meta: {
+          external_id: input.streamId,
+        },
         new_asset_settings: {
           playback_policies: ["public"],
           meta: {
@@ -134,6 +137,13 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
       `/live-streams/${encodeURIComponent(providerStreamId)}/disable`,
       { method: "PUT" },
     );
+  }
+
+  async discard(providerStreamId: string): Promise<void> {
+    this.assertConfigured();
+    await this.requestJson(`/live-streams/${encodeURIComponent(providerStreamId)}`, {
+      method: "DELETE",
+    });
   }
 
   verifyWebhook(
