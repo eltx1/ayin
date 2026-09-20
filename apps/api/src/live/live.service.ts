@@ -681,6 +681,7 @@ export class LiveService {
   }
 
   private async applyProviderEvidence(stream: LiveStream, evidence: LiveProviderStatus) {
+    const observedAt = new Date();
     if (evidence.playable) {
       if (stream.status === "ENDED" || stream.status === "CANCELLED") return stream;
       return this.database.client.liveStream.update({
@@ -688,7 +689,9 @@ export class LiveService {
         data: {
           status: "LIVE",
           playbackUrl: evidence.playbackUrl ?? stream.playbackUrl,
-          startedAt: stream.startedAt ?? new Date(),
+          startedAt: stream.startedAt ?? observedAt,
+          providerLastEventAt: observedAt,
+          providerLastEventId: null,
           ...(evidence.activeAssetId
             ? {
                 providerRecordingAssetId: evidence.activeAssetId,
@@ -711,7 +714,9 @@ export class LiveService {
         data: {
           status: "ENDED",
           playbackUrl: evidence.playbackUrl ?? stream.playbackUrl,
-          endedAt: stream.endedAt ?? new Date(),
+          endedAt: stream.endedAt ?? observedAt,
+          providerLastEventAt: observedAt,
+          providerLastEventId: null,
         },
       });
     }
@@ -719,10 +724,20 @@ export class LiveService {
     if (evidence.playbackUrl && evidence.playbackUrl !== stream.playbackUrl) {
       return this.database.client.liveStream.update({
         where: { id: stream.id },
-        data: { playbackUrl: evidence.playbackUrl },
+        data: {
+          playbackUrl: evidence.playbackUrl,
+          providerLastEventAt: observedAt,
+          providerLastEventId: null,
+        },
       });
     }
-    return stream;
+    return this.database.client.liveStream.update({
+      where: { id: stream.id },
+      data: {
+        providerLastEventAt: observedAt,
+        providerLastEventId: null,
+      },
+    });
   }
 
   private async creatorChannel(accountId: string) {
