@@ -14,7 +14,15 @@ export type LiveProviderEvidenceState =
   | "UNKNOWN";
 
 export type LiveProviderWebhookKind =
-  "CONNECTED" | "STARTED" | "PLAYABLE" | "DISCONNECTED" | "ENDED" | "ERROR" | "IGNORED";
+  | "CONNECTED"
+  | "STARTED"
+  | "PLAYABLE"
+  | "DISCONNECTED"
+  | "ENDED"
+  | "RECORDING_FINALIZED"
+  | "RECORDING_READY"
+  | "ERROR"
+  | "IGNORED";
 
 export interface LiveProvisionRequest {
   streamId: string;
@@ -51,6 +59,13 @@ export interface LiveProviderStatus {
   activeAssetId: string | null;
 }
 
+export interface LiveProviderRecording {
+  providerAssetId: string;
+  ayinStreamId: string | null;
+  downloadUrl: string | null;
+  renditionName: string | null;
+}
+
 export interface LiveProviderWebhookEvent {
   eventId: string;
   providerStreamId: string | null;
@@ -59,6 +74,8 @@ export interface LiveProviderWebhookEvent {
   occurredAt: Date;
   playable: boolean;
   fatal: boolean;
+  activeAssetId: string | null;
+  recording: LiveProviderRecording | null;
 }
 
 export interface LiveProviderCapabilities {
@@ -90,6 +107,7 @@ export interface LiveIngestProvider {
   retrieveStatus(providerStreamId: string): Promise<LiveProviderStatus>;
   stop(providerStreamId: string | null): Promise<void>;
   discard(providerStreamId: string): Promise<void>;
+  deleteRecordingAsset(providerAssetId: string): Promise<void>;
   verifyWebhook(
     rawBody: string | Buffer,
     signatureHeader: string | undefined,
@@ -129,6 +147,10 @@ export class UnconfiguredLiveIngestProvider implements LiveIngestProvider {
   }
 
   async discard(): Promise<void> {
+    throw new LiveProviderUnavailableError();
+  }
+
+  async deleteRecordingAsset(): Promise<void> {
     throw new LiveProviderUnavailableError();
   }
 
