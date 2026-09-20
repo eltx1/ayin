@@ -10,6 +10,8 @@ CREATE TYPE "LiveRecordingHandoffStatus" AS ENUM (
 ALTER TABLE "LiveStream"
 ADD COLUMN "providerLastEventAt" TIMESTAMP(3),
 ADD COLUMN "providerLastEventId" VARCHAR(255),
+ADD COLUMN "recordingLastEventAt" TIMESTAMP(3),
+ADD COLUMN "recordingLastEventId" VARCHAR(255),
 ADD COLUMN "providerRecordingAssetId" VARCHAR(255),
 ADD COLUMN "recordingHandoffStatus" "LiveRecordingHandoffStatus" NOT NULL DEFAULT 'NONE',
 ADD COLUMN "recordingR2ObjectKey" VARCHAR(1024),
