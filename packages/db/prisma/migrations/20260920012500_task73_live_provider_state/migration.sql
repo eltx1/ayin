@@ -20,6 +20,7 @@ ADD COLUMN "recordingProviderDownloadUrl" TEXT,
 ADD COLUMN "recordingRenditionName" VARCHAR(255),
 ADD COLUMN "recordingHandoffAttempt" INTEGER NOT NULL DEFAULT 0,
 ADD COLUMN "recordingHandoffStartedAt" TIMESTAMP(3),
+ADD COLUMN "recordingHandoffHeartbeatAt" TIMESTAMP(3),
 ADD COLUMN "recordingHandoffAt" TIMESTAMP(3),
 ADD COLUMN "recordingProviderDeletedAt" TIMESTAMP(3),
 ADD COLUMN "recordingHandoffError" VARCHAR(500);
