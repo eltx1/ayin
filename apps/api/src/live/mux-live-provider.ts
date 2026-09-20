@@ -5,6 +5,7 @@ import {
   type LiveIngestProvider,
   type LiveProviderCapabilities,
   type LiveProviderDiagnostics,
+  type LiveProviderRecording,
   type LiveProviderStatus,
   type LiveProviderWebhookEvent,
   LiveProviderOperationError,
@@ -129,6 +130,24 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
       playbackUrl: live.playbackId ? muxPlaybackUrl(live.playbackId) : null,
       activeAssetId: live.activeAssetId,
     };
+  }
+
+  async retrieveRecording(
+    providerAssetId: string,
+    renditionName: string,
+  ): Promise<LiveProviderRecording> {
+    this.assertConfigured();
+    if (!providerAssetId || !renditionName) {
+      throw new LiveProviderOperationError(
+        "MUX_RECORDING_ID_REQUIRED",
+        "A provider asset ID and rendition name are required to retrieve a live recording.",
+      );
+    }
+    const payload = await this.requestJson(
+      `/assets/${encodeURIComponent(providerAssetId)}`,
+      { method: "GET" },
+    );
+    return parseMuxRecordingAsset(payload, providerAssetId, renditionName);
   }
 
   async stop(providerStreamId: string | null): Promise<void> {
@@ -386,17 +405,23 @@ export function normalizeMuxWebhook(
       : {};
   const kind = muxWebhookKind(rawType);
   const liveEvent = rawType.startsWith("video.live_stream.");
-  const providerStreamId =
-    liveEvent && typeof data.id === "string" ? data.id : null;
-  const activeAssetId =
-    typeof data.active_asset_id === "string"
+  const staticRenditionEvent = rawType.startsWith("video.asset.static_rendition.");
+  const assetEvent = rawType.startsWith("video.asset.");
+  const providerStreamId = liveEvent && typeof data.id === "string" ? data.id : null;
+  const activeAssetId = staticRenditionEvent
+    ? typeof data.asset_id === "string"
+      ? data.asset_id
+      : null
+    : typeof data.active_asset_id === "string"
       ? data.active_asset_id
-      : rawType.startsWith("video.asset.") && typeof data.id === "string"
+      : assetEvent && typeof data.id === "string"
         ? data.id
         : null;
-  const recording = rawType.startsWith("video.asset.")
-    ? muxRecordingFromWebhook(data, kind === "RECORDING_READY")
-    : null;
+  const recording = staticRenditionEvent
+    ? muxStaticRenditionFromWebhook(data)
+    : assetEvent
+      ? muxAssetRecordingFromWebhook(data)
+      : null;
   const occurredAt = muxWebhookDate(envelope.created_at, nowMilliseconds);
   return {
     eventId,
@@ -506,9 +531,8 @@ function muxWebhookKind(type: string): LiveProviderWebhookEvent["kind"] {
   }
 }
 
-function muxRecordingFromWebhook(
+function muxAssetRecordingFromWebhook(
   data: Record<string, unknown>,
-  requireDownload: boolean,
 ): LiveProviderWebhookEvent["recording"] {
   const providerAssetId = typeof data.id === "string" ? data.id : "";
   if (!providerAssetId) return null;
@@ -518,43 +542,93 @@ function muxRecordingFromWebhook(
       ? (data.meta as Record<string, unknown>)
       : {};
   const ayinStreamId = typeof meta.external_id === "string" ? meta.external_id : null;
-  if (!requireDownload) {
-    return {
-      providerAssetId,
-      ayinStreamId,
-      downloadUrl: null,
-      renditionName: null,
-    };
-  }
-
-  const playbackId = publicPlaybackId(data.playback_ids);
-  const staticRenditions =
-    data.static_renditions && typeof data.static_renditions === "object"
-      ? (data.static_renditions as Record<string, unknown>)
-      : {};
-  const files = Array.isArray(staticRenditions.files) ? staticRenditions.files : [];
-  let renditionName: string | null = null;
-  for (const item of files) {
-    if (!item || typeof item !== "object") continue;
-    const file = item as Record<string, unknown>;
-    if (
-      file.status === "ready" &&
-      file.ext === "mp4" &&
-      file.resolution === "highest" &&
-      typeof file.name === "string"
-    ) {
-      renditionName = file.name;
-      break;
-    }
-  }
-
   return {
     providerAssetId,
     ayinStreamId,
-    downloadUrl:
-      playbackId && renditionName
-        ? `${MUX_HLS_ORIGIN}/${encodeURIComponent(playbackId)}/${encodeURIComponent(renditionName)}`
-        : null,
+    downloadUrl: null,
+    renditionName: null,
+  };
+}
+
+function muxStaticRenditionFromWebhook(
+  data: Record<string, unknown>,
+): LiveProviderWebhookEvent["recording"] {
+  const providerAssetId = typeof data.asset_id === "string" ? data.asset_id : "";
+  if (!providerAssetId) return null;
+  const renditionName =
+    data.status === "ready" &&
+    data.ext === "mp4" &&
+    typeof data.name === "string" &&
+    data.name.toLowerCase().endsWith(".mp4")
+      ? data.name
+      : null;
+  return {
+    providerAssetId,
+    ayinStreamId: null,
+    downloadUrl: null,
+    renditionName,
+  };
+}
+
+function parseMuxRecordingAsset(
+  payload: unknown,
+  expectedAssetId: string,
+  renditionName: string,
+): LiveProviderRecording {
+  if (!payload || typeof payload !== "object") {
+    throw new LiveProviderOperationError(
+      "MUX_INVALID_RESPONSE",
+      "Mux returned an invalid recording asset response.",
+    );
+  }
+  const data = (payload as MuxEnvelope).data;
+  if (!data || typeof data !== "object") {
+    throw new LiveProviderOperationError(
+      "MUX_INVALID_RESPONSE",
+      "Mux returned an invalid recording asset response.",
+    );
+  }
+  const record = data as Record<string, unknown>;
+  const id = typeof record.id === "string" ? record.id : "";
+  if (!id || id !== expectedAssetId) {
+    throw new LiveProviderOperationError(
+      "MUX_RECORDING_ASSET_MISMATCH",
+      "Mux returned a recording asset that did not match the requested asset.",
+    );
+  }
+
+  const playbackId = publicPlaybackId(record.playback_ids);
+  const staticRenditions =
+    record.static_renditions && typeof record.static_renditions === "object"
+      ? (record.static_renditions as Record<string, unknown>)
+      : {};
+  const files = Array.isArray(staticRenditions.files) ? staticRenditions.files : [];
+  const readyRendition = files.some((item) => {
+    if (!item || typeof item !== "object") return false;
+    const file = item as Record<string, unknown>;
+    return (
+      file.status === "ready" &&
+      file.ext === "mp4" &&
+      file.name === renditionName
+    );
+  });
+  if (!playbackId || !readyRendition) {
+    throw new LiveProviderOperationError(
+      "MUX_RECORDING_NOT_READY",
+      "Mux recording metadata is not ready for AYIN handoff.",
+    );
+  }
+
+  const meta =
+    record.meta && typeof record.meta === "object"
+      ? (record.meta as Record<string, unknown>)
+      : {};
+  return {
+    providerAssetId: id,
+    ayinStreamId: typeof meta.external_id === "string" ? meta.external_id : null,
+    downloadUrl: `${MUX_HLS_ORIGIN}/${encodeURIComponent(playbackId)}/${encodeURIComponent(
+      renditionName,
+    )}`,
     renditionName,
   };
 }
