@@ -153,23 +153,26 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
   async stop(providerStreamId: string | null): Promise<void> {
     if (!providerStreamId) return;
     this.assertConfigured();
-    await this.requestJson(`/live-streams/${encodeURIComponent(providerStreamId)}/disable`, {
-      method: "PUT",
-    });
+    await this.requestControlIdempotently(
+      `/live-streams/${encodeURIComponent(providerStreamId)}/disable`,
+      { method: "PUT" },
+    );
   }
 
   async discard(providerStreamId: string): Promise<void> {
     this.assertConfigured();
-    await this.requestJson(`/live-streams/${encodeURIComponent(providerStreamId)}`, {
-      method: "DELETE",
-    });
+    await this.requestControlIdempotently(
+      `/live-streams/${encodeURIComponent(providerStreamId)}`,
+      { method: "DELETE" },
+    );
   }
 
   async deleteRecordingAsset(providerAssetId: string): Promise<void> {
     this.assertConfigured();
-    await this.requestJson(`/assets/${encodeURIComponent(providerAssetId)}`, {
-      method: "DELETE",
-    });
+    await this.requestControlIdempotently(
+      `/assets/${encodeURIComponent(providerAssetId)}`,
+      { method: "DELETE" },
+    );
   }
 
   verifyWebhook(
@@ -241,6 +244,17 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
       playbackUrl: muxPlaybackUrl(live.playbackId),
       encoder: muxEncoderConfiguration(live.streamKey, live.srtPassphrase),
     };
+  }
+
+  private async requestControlIdempotently(path: string, init: RequestInit): Promise<void> {
+    try {
+      await this.requestJson(path, init);
+    } catch (error) {
+      if (error instanceof LiveProviderOperationError && error.providerStatusCode === 404) {
+        return;
+      }
+      throw error;
+    }
   }
 
   private async requestJson(path: string, init: RequestInit): Promise<unknown> {
