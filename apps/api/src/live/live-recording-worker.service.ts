@@ -50,8 +50,14 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
             {
               recordingHandoffStatus: "COPYING",
               recordingProviderDownloadUrl: { not: null },
-              recordingHandoffStartedAt: { lt: staleBefore },
               recordingHandoffAttempt: { lt: MAX_ATTEMPTS },
+              OR: [
+                { recordingHandoffHeartbeatAt: { lt: staleBefore } },
+                {
+                  recordingHandoffHeartbeatAt: null,
+                  recordingHandoffStartedAt: { lt: staleBefore },
+                },
+              ],
             },
             {
               recordingHandoffStatus: "CLEANUP_PENDING",
@@ -85,15 +91,26 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
           { recordingHandoffStatus: { in: ["WAITING", "FAILED"] } },
           {
             recordingHandoffStatus: "COPYING",
-            recordingHandoffStartedAt: {
-              lt: new Date(Date.now() - STALE_COPY_AFTER_MS),
-            },
+            OR: [
+              {
+                recordingHandoffHeartbeatAt: {
+                  lt: new Date(Date.now() - STALE_COPY_AFTER_MS),
+                },
+              },
+              {
+                recordingHandoffHeartbeatAt: null,
+                recordingHandoffStartedAt: {
+                  lt: new Date(Date.now() - STALE_COPY_AFTER_MS),
+                },
+              },
+            ],
           },
         ],
       },
       data: {
         recordingHandoffStatus: "COPYING",
         recordingHandoffStartedAt: new Date(),
+        recordingHandoffHeartbeatAt: new Date(),
         recordingHandoffAttempt: { increment: 1 },
         recordingHandoffError: null,
       },
@@ -106,12 +123,20 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
     }
 
     try {
-      const copied = await this.handoff.copy({
-        streamId: stream.id,
-        channelId: stream.channelId,
-        providerAssetId: stream.providerRecordingAssetId,
-        downloadUrl: stream.recordingProviderDownloadUrl,
-      });
+      const copied = await this.handoff.copy(
+        {
+          streamId: stream.id,
+          channelId: stream.channelId,
+          providerAssetId: stream.providerRecordingAssetId,
+          downloadUrl: stream.recordingProviderDownloadUrl,
+        },
+        async () => {
+          await this.database.client.liveStream.updateMany({
+            where: { id: stream.id, recordingHandoffStatus: "COPYING" },
+            data: { recordingHandoffHeartbeatAt: new Date() },
+          });
+        },
+      );
 
       const persisted = await this.database.client.$transaction(async (transaction) => {
         const channelSettings = await transaction.channelSettings.findUnique({
@@ -170,6 +195,7 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
             recordingR2ObjectKey: copied.r2ObjectKey,
             recordingMediaAssetId: mediaAsset.id,
             recordingHandoffAt: new Date(),
+            recordingHandoffHeartbeatAt: new Date(),
             recordingHandoffError: null,
           },
         });
@@ -186,6 +212,7 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
         where: { id: stream.id },
         data: {
           recordingHandoffStatus: "CLEANUP_PENDING",
+          recordingHandoffHeartbeatAt: null,
           recordingHandoffError: null,
         },
       });
@@ -196,6 +223,7 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
         where: { id: stream.id },
         data: {
           recordingHandoffStatus: "FAILED",
+          recordingHandoffHeartbeatAt: null,
           recordingHandoffError: message,
         },
       });
@@ -215,6 +243,7 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
           recordingHandoffStatus: "READY",
           recordingProviderDeletedAt: new Date(),
           recordingProviderDownloadUrl: null,
+          recordingHandoffHeartbeatAt: null,
           recordingHandoffError: null,
         },
       });
@@ -223,6 +252,7 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
         where: { id: streamId },
         data: {
           recordingHandoffStatus: "CLEANUP_PENDING",
+          recordingHandoffHeartbeatAt: null,
           recordingHandoffError: safeErrorMessage(error, "Mux recording cleanup failed."),
         },
       });
