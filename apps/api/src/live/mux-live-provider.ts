@@ -60,7 +60,7 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
   ) {}
 
   get configured(): boolean {
-    return this.missingConfiguration().length === 0;
+    return this.missingControlConfiguration().length === 0;
   }
 
   capabilities(): LiveProviderCapabilities {
@@ -74,7 +74,7 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
   }
 
   async provision(input: LiveProvisionRequest): Promise<LiveProvisionResult> {
-    this.assertConfigured();
+    this.assertProvisioningEnabled();
     const payload = await this.requestJson("/live-streams", {
       method: "POST",
       body: JSON.stringify({
@@ -96,7 +96,7 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
   }
 
   async rotateKey(providerStreamId: string): Promise<LiveProvisionResult> {
-    this.assertConfigured();
+    this.assertProvisioningEnabled();
     if (!providerStreamId) {
       throw new LiveProviderOperationError(
         "MUX_STREAM_ID_REQUIRED",
@@ -170,11 +170,17 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
   }
 
   diagnostics(): LiveProviderDiagnostics {
-    const missingConfiguration = this.missingConfiguration();
+    const missingControlConfiguration = this.missingControlConfiguration();
+    const missingConfiguration = [
+      ...missingControlConfiguration,
+      ...(this.environment.MUX_LIVE_PRODUCTION_ENABLED === "1"
+        ? []
+        : ["MUX_LIVE_PRODUCTION_ENABLED=1"]),
+    ];
     const capabilities = this.capabilities();
     return {
       key: this.key,
-      configured: missingConfiguration.length === 0,
+      configured: missingControlConfiguration.length === 0,
       productionEnabled: this.environment.MUX_LIVE_PRODUCTION_ENABLED === "1",
       apiCredentialsConfigured: Boolean(
         this.environment.MUX_TOKEN_ID?.trim() && this.environment.MUX_TOKEN_SECRET?.trim(),
@@ -237,24 +243,30 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
     return (await response.json()) as unknown;
   }
 
-  private missingConfiguration(): string[] {
+  private missingControlConfiguration(): string[] {
     const missing: string[] = [];
     if (!this.environment.MUX_TOKEN_ID?.trim()) missing.push("MUX_TOKEN_ID");
     if (!this.environment.MUX_TOKEN_SECRET?.trim()) missing.push("MUX_TOKEN_SECRET");
     if (!this.environment.MUX_WEBHOOK_SIGNING_SECRET?.trim()) {
       missing.push("MUX_WEBHOOK_SIGNING_SECRET");
     }
-    if (this.environment.MUX_LIVE_PRODUCTION_ENABLED !== "1") {
-      missing.push("MUX_LIVE_PRODUCTION_ENABLED=1");
-    }
     return missing;
   }
 
   private assertConfigured(): void {
-    const missing = this.missingConfiguration();
+    const missing = this.missingControlConfiguration();
     if (missing.length > 0) {
       throw new LiveProviderUnavailableError(
-        `Mux live provider is not enabled; missing configuration: ${missing.join(", ")}.`,
+        `Mux live control is unavailable; missing configuration: ${missing.join(", ")}.`,
+      );
+    }
+  }
+
+  private assertProvisioningEnabled(): void {
+    this.assertConfigured();
+    if (this.environment.MUX_LIVE_PRODUCTION_ENABLED !== "1") {
+      throw new LiveProviderUnavailableError(
+        "Mux live provisioning is disabled by MUX_LIVE_PRODUCTION_ENABLED.",
       );
     }
   }
