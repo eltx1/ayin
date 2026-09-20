@@ -111,8 +111,9 @@ describe("LiveRecordingWorkerService", () => {
     );
     expect(provider.deleteRecordingAsset).toHaveBeenCalledWith("mux-asset-1");
 
-    const cleanupOrder = (provider.deleteRecordingAsset as ReturnType<typeof vi.fn>).mock
-      .invocationCallOrder[0];
+    const cleanupOrder = (
+      provider.deleteRecordingAsset as ReturnType<typeof vi.fn>
+    ).mock.invocationCallOrder[0];
     const enqueueOrder = (
       processingLifecycle.enqueueUploadedAsset as ReturnType<typeof vi.fn>
     ).mock.invocationCallOrder[0];
