@@ -101,9 +101,14 @@ export function LiveAyinPlayer({
   });
   const defaultCaptionId = useMemo(
     () => captions.find((track) => track.default)?.id ?? null,
-    [captions],
+    [captions, streamId],
   );
-  const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(defaultCaptionId);
+  const [captionSelection, setCaptionSelection] = useState<{
+    streamId: string;
+    trackId: string | null;
+  }>({ streamId, trackId: defaultCaptionId });
+  const selectedCaptionId =
+    captionSelection.streamId === streamId ? captionSelection.trackId : defaultCaptionId;
 
   const emit = useCallback(
     (
@@ -200,7 +205,7 @@ export function LiveAyinPlayer({
   const selectCaption = useCallback(
     (trackId: string | null) => {
       const video = videoRef.current;
-      setSelectedCaptionId(trackId);
+      setCaptionSelection({ streamId, trackId });
       if (!video) return;
       for (let index = 0; index < video.textTracks.length; index += 1) {
         const track = video.textTracks[index];
@@ -223,24 +228,6 @@ export function LiveAyinPlayer({
     onAdContainerReady?.(adContainerRef.current);
     return () => onAdContainerReady?.(null);
   }, [onAdContainerReady]);
-
-  useEffect(() => {
-    setSelectedCaptionId(defaultCaptionId);
-  }, [defaultCaptionId, streamId]);
-
-  useEffect(() => {
-    reconnectAttemptRef.current = 0;
-    startedRef.current = false;
-    endedReportedRef.current = false;
-    fatalReportedRef.current = false;
-    firstConnectStartedAtRef.current = null;
-    bufferStartedAtRef.current = null;
-    durationSegmentStartedAtRef.current = null;
-    setConnectionState("IDLE");
-    setPlaying(false);
-    setAutoplayBlocked(false);
-    setMessage(null);
-  }, [streamId]);
 
   useEffect(() => {
     const reason = terminalEndReason(status);
@@ -299,8 +286,6 @@ export function LiveAyinPlayer({
       emit("LIVE_FATAL_ERROR", { metadata: { reason } });
     };
 
-    let connect: (reason?: AyinHlsFailureReason | "OFFLINE") => Promise<void>;
-
     const scheduleReconnect = (reason: AyinHlsFailureReason | "OFFLINE", immediate = false) => {
       if (cancelled || reconnectTimer !== null || fatalReportedRef.current) return;
       if (navigator.onLine === false) {
@@ -332,7 +317,7 @@ export function LiveAyinPlayer({
       }, delayMs);
     };
 
-    connect = async (reason) => {
+    async function connect(reason?: AyinHlsFailureReason | "OFFLINE") {
       if (cancelled || connecting || fatalReportedRef.current || navigator.onLine === false) return;
       connecting = true;
       clearStartupWatchdog();
@@ -395,7 +380,7 @@ export function LiveAyinPlayer({
       } finally {
         connecting = false;
       }
-    };
+    }
 
     const onPlaying = () => {
       if (cancelled) return;
