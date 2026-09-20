@@ -95,7 +95,25 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
         },
       }),
     });
-    return this.provisionResult(parseMuxLiveStream(payload, true));
+    const createdResourceId = muxEnvelopeResourceId(payload);
+    try {
+      return this.provisionResult(parseMuxLiveStream(payload, true));
+    } catch (error) {
+      if (createdResourceId) {
+        try {
+          await this.requestControlIdempotently(
+            `/live-streams/${encodeURIComponent(createdResourceId)}`,
+            { method: "DELETE" },
+          );
+        } catch {
+          throw new LiveProviderOperationError(
+            "MUX_PROVISION_CLEANUP_REQUIRED",
+            `Mux live stream ${createdResourceId} was created but its response was invalid and automatic cleanup failed.`,
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   async rotateKey(providerStreamId: string): Promise<LiveProvisionResult> {
@@ -446,6 +464,14 @@ export function normalizeMuxWebhook(
     activeAssetId,
     recording,
   };
+}
+
+function muxEnvelopeResourceId(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const data = (payload as MuxEnvelope).data;
+  if (!data || typeof data !== "object") return null;
+  const id = (data as Record<string, unknown>).id;
+  return typeof id === "string" && id.trim() ? id : null;
 }
 
 function parseMuxLiveStream(payload: unknown, requireSecrets: boolean): MuxLiveStreamData {
