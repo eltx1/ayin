@@ -86,6 +86,7 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
         },
         new_asset_settings: {
           playback_policies: ["public"],
+          static_renditions: [{ resolution: "highest" }],
           meta: {
             external_id: input.streamId,
           },
@@ -141,6 +142,13 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
   async discard(providerStreamId: string): Promise<void> {
     this.assertConfigured();
     await this.requestJson(`/live-streams/${encodeURIComponent(providerStreamId)}`, {
+      method: "DELETE",
+    });
+  }
+
+  async deleteRecordingAsset(providerAssetId: string): Promise<void> {
+    this.assertConfigured();
+    await this.requestJson(`/assets/${encodeURIComponent(providerAssetId)}`, {
       method: "DELETE",
     });
   }
@@ -376,8 +384,20 @@ export function normalizeMuxWebhook(
     envelope.data && typeof envelope.data === "object"
       ? (envelope.data as Record<string, unknown>)
       : {};
-  const providerStreamId = typeof data.id === "string" ? data.id : null;
   const kind = muxWebhookKind(rawType);
+  const liveEvent = rawType.startsWith("video.live_stream.");
+  const providerStreamId =
+    liveEvent && typeof data.id === "string" ? data.id : null;
+  const activeAssetId =
+    typeof data.active_asset_id === "string"
+      ? data.active_asset_id
+      : rawType.startsWith("video.asset.") && typeof data.id === "string"
+        ? data.id
+        : null;
+  const recording =
+    kind === "RECORDING_FINALIZED" || kind === "RECORDING_READY"
+      ? muxRecordingFromWebhook(data, kind === "RECORDING_READY")
+      : null;
   const occurredAt = muxWebhookDate(envelope.created_at, nowMilliseconds);
   return {
     eventId,
@@ -386,7 +406,9 @@ export function normalizeMuxWebhook(
     rawType,
     occurredAt,
     playable: kind === "PLAYABLE",
-    fatal: false,
+    fatal: rawType === "video.asset.errored",
+    activeAssetId,
+    recording,
   };
 }
 
@@ -472,11 +494,70 @@ function muxWebhookKind(type: string): LiveProviderWebhookEvent["kind"] {
     case "video.live_stream.disabled":
     case "video.live_stream.deleted":
       return "ENDED";
+    case "video.asset.live_stream_completed":
+      return "RECORDING_FINALIZED";
+    case "video.asset.static_rendition.ready":
+      return "RECORDING_READY";
     case "video.live_stream.warning":
+    case "video.asset.errored":
+    case "video.asset.static_rendition.errored":
       return "ERROR";
     default:
       return "IGNORED";
   }
+}
+
+function muxRecordingFromWebhook(
+  data: Record<string, unknown>,
+  requireDownload: boolean,
+): LiveProviderWebhookEvent["recording"] {
+  const providerAssetId = typeof data.id === "string" ? data.id : "";
+  if (!providerAssetId) return null;
+
+  const meta =
+    data.meta && typeof data.meta === "object"
+      ? (data.meta as Record<string, unknown>)
+      : {};
+  const ayinStreamId = typeof meta.external_id === "string" ? meta.external_id : null;
+  if (!requireDownload) {
+    return {
+      providerAssetId,
+      ayinStreamId,
+      downloadUrl: null,
+      renditionName: null,
+    };
+  }
+
+  const playbackId = publicPlaybackId(data.playback_ids);
+  const staticRenditions =
+    data.static_renditions && typeof data.static_renditions === "object"
+      ? (data.static_renditions as Record<string, unknown>)
+      : {};
+  const files = Array.isArray(staticRenditions.files) ? staticRenditions.files : [];
+  let renditionName: string | null = null;
+  for (const item of files) {
+    if (!item || typeof item !== "object") continue;
+    const file = item as Record<string, unknown>;
+    if (
+      file.status === "ready" &&
+      file.ext === "mp4" &&
+      file.resolution === "highest" &&
+      typeof file.name === "string"
+    ) {
+      renditionName = file.name;
+      break;
+    }
+  }
+
+  return {
+    providerAssetId,
+    ayinStreamId,
+    downloadUrl:
+      playbackId && renditionName
+        ? `${MUX_HLS_ORIGIN}/${encodeURIComponent(playbackId)}/${encodeURIComponent(renditionName)}`
+        : null,
+    renditionName,
+  };
 }
 
 function muxWebhookDate(value: unknown, nowMilliseconds: number): Date {
