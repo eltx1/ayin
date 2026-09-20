@@ -52,7 +52,7 @@ describe("MuxLiveIngestProvider", () => {
     });
     expect(disabled.diagnostics().missingConfiguration).toEqual([
       "MUX_WEBHOOK_SIGNING_SECRET",
-      "MUX_LIVE_PRODUCTION_ENABLED=1",
+      "MUX_LIVE_PRODUCTION_ENABLED",
     ]);
 
     const controlOnly = new MuxLiveIngestProvider({
@@ -63,7 +63,7 @@ describe("MuxLiveIngestProvider", () => {
     expect(controlOnly.configured).toBe(true);
     expect(controlOnly.diagnostics().productionEnabled).toBe(false);
     expect(controlOnly.diagnostics().missingConfiguration).toEqual([
-      "MUX_LIVE_PRODUCTION_ENABLED=1",
+      "MUX_LIVE_PRODUCTION_ENABLED",
     ]);
 
     const enabled = new MuxLiveIngestProvider(enabledEnvironment);
