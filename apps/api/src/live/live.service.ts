@@ -506,11 +506,25 @@ export class LiveService {
         await this.acquireProviderMutationLock(transaction, streamId);
         const stream = await transaction.liveStream.findUnique({ where: { id: streamId } });
         if (!stream) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
-        if (this.isStaleProviderEvent(stream, event)) return { ignored: true, stream };
+        const recordingEvent = Boolean(event.recording);
+        if (
+          recordingEvent
+            ? this.isStaleRecordingEvent(stream, event)
+            : this.isStaleProviderEvent(stream, event)
+        ) {
+          return { ignored: true, stream };
+        }
 
         const data: Prisma.LiveStreamUpdateInput = {
-          providerLastEventAt: event.occurredAt,
-          providerLastEventId: event.eventId,
+          ...(recordingEvent
+            ? {
+                recordingLastEventAt: event.occurredAt,
+                recordingLastEventId: event.eventId,
+              }
+            : {
+                providerLastEventAt: event.occurredAt,
+                providerLastEventId: event.eventId,
+              }),
           ...(event.activeAssetId
             ? {
                 providerRecordingAssetId: event.activeAssetId,
@@ -584,7 +598,7 @@ export class LiveService {
         if (
           current.recordingHandoffStatus !== "FAILED" &&
           current.recordingHandoffStatus !== "CLEANUP_PENDING" &&
-          this.isStaleProviderEvent(current, event)
+          this.isStaleRecordingEvent(current, event)
         ) {
           return { ignored: true, stream: current };
         }
@@ -592,8 +606,8 @@ export class LiveService {
         const updated = await transaction.liveStream.update({
           where: { id: current.id },
           data: {
-            providerLastEventAt: event.occurredAt,
-            providerLastEventId: event.eventId,
+            recordingLastEventAt: event.occurredAt,
+            recordingLastEventId: event.eventId,
             providerRecordingAssetId: recording.providerAssetId,
             recordingProviderDownloadUrl: recording.downloadUrl,
             recordingRenditionName: recording.renditionName,
@@ -618,6 +632,14 @@ export class LiveService {
     return Boolean(
       stream.providerLastEventAt &&
       event.occurredAt.getTime() < stream.providerLastEventAt.getTime(),
+    );
+  }
+
+  private isStaleRecordingEvent(stream: LiveStream, event: LiveProviderWebhookEvent) {
+    if (stream.recordingLastEventId === event.eventId) return true;
+    return Boolean(
+      stream.recordingLastEventAt &&
+        event.occurredAt.getTime() < stream.recordingLastEventAt.getTime(),
     );
   }
 
@@ -734,6 +756,8 @@ type PublicLiveStream = Omit<
   | "streamKeyHash"
   | "providerLastEventAt"
   | "providerLastEventId"
+  | "recordingLastEventAt"
+  | "recordingLastEventId"
   | "providerRecordingAssetId"
   | "recordingHandoffStatus"
   | "recordingR2ObjectKey"
@@ -752,6 +776,8 @@ function stripSecretHash(stream: LiveStream): PublicLiveStream {
     streamKeyHash,
     providerLastEventAt,
     providerLastEventId,
+    recordingLastEventAt,
+    recordingLastEventId,
     providerRecordingAssetId,
     recordingHandoffStatus,
     recordingR2ObjectKey,
@@ -768,6 +794,8 @@ function stripSecretHash(stream: LiveStream): PublicLiveStream {
   void streamKeyHash;
   void providerLastEventAt;
   void providerLastEventId;
+  void recordingLastEventAt;
+  void recordingLastEventId;
   void providerRecordingAssetId;
   void recordingHandoffStatus;
   void recordingR2ObjectKey;
