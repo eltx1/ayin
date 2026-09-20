@@ -106,18 +106,16 @@ describe("MuxLiveIngestProvider", () => {
   });
 
   it("never exposes provider secrets from status synchronization", async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(
-        jsonResponse(
-          liveStreamFixture({
-            status: "active",
-            active_asset_id: "asset-live-1",
-            connected: true,
-            recording: true,
-          }),
-        ),
-      );
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse(
+        liveStreamFixture({
+          status: "active",
+          active_asset_id: "asset-live-1",
+          connected: true,
+          recording: true,
+        }),
+      ),
+    );
     const provider = new MuxLiveIngestProvider(enabledEnvironment, fetchImpl);
 
     const status = await provider.retrieveStatus("mux-live-1");
@@ -185,11 +183,7 @@ describe("MuxLiveIngestProvider", () => {
       .update(`${timestamp}.${body}`)
       .digest("hex");
 
-    const provider = new MuxLiveIngestProvider(
-      enabledEnvironment,
-      vi.fn(),
-      () => now,
-    );
+    const provider = new MuxLiveIngestProvider(enabledEnvironment, vi.fn(), () => now);
     expect(provider.verifyWebhook(body, `t=${timestamp},v1=${signature}`)).toMatchObject({
       eventId: "event-active-1",
       providerStreamId: "mux-live-1",
