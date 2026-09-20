@@ -34,8 +34,11 @@ export class LiveRecordingHandoffService {
     @Inject(MEDIA_STORAGE_CONFIG) private readonly config: MediaStorageConfig,
   ) {}
 
-  async copy(input: LiveRecordingHandoffInput): Promise<LiveRecordingHandoffResult> {
-    return copyLiveRecordingToStorage(this.storage, this.config, input);
+  async copy(
+    input: LiveRecordingHandoffInput,
+    onProgress?: (uploadedBytes: number) => Promise<void>,
+  ): Promise<LiveRecordingHandoffResult> {
+    return copyLiveRecordingToStorage(this.storage, this.config, input, fetch, onProgress);
   }
 }
 
@@ -44,6 +47,7 @@ export async function copyLiveRecordingToStorage(
   config: MediaStorageConfig,
   input: LiveRecordingHandoffInput,
   fetchImpl: FetchLike = fetch,
+  onProgress?: (uploadedBytes: number) => Promise<void>,
 ): Promise<LiveRecordingHandoffResult> {
   assertHandoffStorage(storage, config);
   const source = validateMuxRecordingUrl(input.downloadUrl);
@@ -108,6 +112,7 @@ export async function copyLiveRecordingToStorage(
     if (!etag) throw new Error("R2 recording handoff part did not return an ETag.");
     parts.push({ partNumber, etag });
     totalBytes += bytes.byteLength;
+    await onProgress?.(totalBytes);
     partNumber += 1;
     partBuffer = Buffer.allocUnsafe(config.partSizeBytes);
     partLength = 0;
