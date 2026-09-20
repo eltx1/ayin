@@ -176,6 +176,30 @@ describe("AYIN adaptive playback abstraction", () => {
     expect(fatal).toHaveBeenCalledWith("NETWORK");
   });
 
+  it("surfaces recoverable manifest refresh failures without declaring the stream fatal", async () => {
+    vi.stubGlobal("window", {
+      Hls: FakeHls,
+      setTimeout,
+      clearTimeout,
+    });
+    const recoverable = vi.fn();
+    const fatal = vi.fn();
+    await startAdaptiveHlsPlayback({
+      video: new FakeVideo(false) as never,
+      hlsUrl: "https://media.ayin.test/live.m3u8",
+      callbacks: { onRecoverable: recoverable, onFatal: fatal },
+    });
+
+    FakeHls.last!.emit(FakeHls.Events.ERROR, {
+      fatal: false,
+      type: "networkError",
+      details: "manifestLoadError",
+    });
+
+    expect(recoverable).toHaveBeenCalledWith("MANIFEST");
+    expect(fatal).not.toHaveBeenCalled();
+  });
+
   it("treats a malformed/unloadable manifest as fatal instead of retry-looping", async () => {
     vi.stubGlobal("window", {
       Hls: FakeHls,
