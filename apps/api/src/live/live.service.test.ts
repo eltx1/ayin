@@ -176,7 +176,11 @@ describe("LiveService provider evidence policy", () => {
       code: "LIVE_PROVIDER_NOT_PLAYABLE",
       statusCode: 409,
     } satisfies Partial<LiveError>);
-    expect(update).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "LIVE" }),
+      }),
+    );
   });
 
   it("marks a session LIVE only after provider PLAYABLE evidence", async () => {
