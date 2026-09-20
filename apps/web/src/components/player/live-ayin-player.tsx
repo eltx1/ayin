@@ -101,7 +101,7 @@ export function LiveAyinPlayer({
   });
   const defaultCaptionId = useMemo(
     () => captions.find((track) => track.default)?.id ?? null,
-    [captions, streamId],
+    [captions],
   );
   const [captionSelection, setCaptionSelection] = useState<{
     streamId: string;
