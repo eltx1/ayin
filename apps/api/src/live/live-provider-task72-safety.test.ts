@@ -5,7 +5,18 @@ import { selectLiveIngestProvider } from "./live.module.js";
 import { MuxLiveIngestProvider } from "./mux-live-provider.js";
 
 describe("Task 73 live provider production safety", () => {
-  it("falls back to the unconfigured provider unless every production gate is present", () => {
+  it("falls back when Mux control credentials or webhook verification are incomplete", () => {
+    const fallback = new UnconfiguredLiveIngestProvider();
+    const mux = new MuxLiveIngestProvider({
+      MUX_TOKEN_ID: "token-id",
+      MUX_TOKEN_SECRET: "token-secret",
+    });
+
+    expect(mux.configured).toBe(false);
+    expect(selectLiveIngestProvider(mux, fallback)).toBe(fallback);
+  });
+
+  it("keeps Mux control available when the new-stream kill switch is off", () => {
     const fallback = new UnconfiguredLiveIngestProvider();
     const mux = new MuxLiveIngestProvider({
       MUX_TOKEN_ID: "token-id",
@@ -13,12 +24,12 @@ describe("Task 73 live provider production safety", () => {
       MUX_WEBHOOK_SIGNING_SECRET: "webhook-secret",
     });
 
-    expect(mux.configured).toBe(false);
-    expect(selectLiveIngestProvider(mux, fallback)).toBe(fallback);
+    expect(mux.configured).toBe(true);
+    expect(mux.diagnostics().productionEnabled).toBe(false);
+    expect(selectLiveIngestProvider(mux, fallback)).toBe(mux);
   });
 
-  it("selects Mux only when API credentials, webhook verification, and enable flag exist", () => {
-    const fallback = new UnconfiguredLiveIngestProvider();
+  it("enables new provisioning only with the explicit production flag", () => {
     const mux = new MuxLiveIngestProvider({
       MUX_TOKEN_ID: "token-id",
       MUX_TOKEN_SECRET: "token-secret",
@@ -27,6 +38,7 @@ describe("Task 73 live provider production safety", () => {
     });
 
     expect(mux.configured).toBe(true);
-    expect(selectLiveIngestProvider(mux, fallback)).toBe(mux);
+    expect(mux.diagnostics().productionEnabled).toBe(true);
+    expect(mux.diagnostics().missingConfiguration).toEqual([]);
   });
 });
