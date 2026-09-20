@@ -62,16 +62,16 @@ rejects missing, forged, or stale signatures before processing an event.
 
 Normalized lifecycle handling:
 
-| Mux event | AYIN evidence | State effect |
-| --- | --- | --- |
-| `video.live_stream.connected` | `CONNECTED` | Does not mark LIVE |
-| `video.live_stream.recording` | `STARTED` | Does not mark LIVE |
-| `video.live_stream.active` | `PLAYABLE` | Marks LIVE if not already ended/cancelled |
-| `video.live_stream.disconnected` | `DISCONNECTED` | Keeps the existing state during reconnect window |
-| `video.live_stream.idle` | `ENDED` | Ends an active session |
-| `video.live_stream.disabled` | `ENDED` | Ends the session |
-| `video.live_stream.deleted` | `ENDED` | Ends the session |
-| `video.live_stream.warning` | `ERROR` | Recorded as provider error evidence; warning is non-fatal |
+| Mux event                        | AYIN evidence  | State effect                                              |
+| -------------------------------- | -------------- | --------------------------------------------------------- |
+| `video.live_stream.connected`    | `CONNECTED`    | Does not mark LIVE                                        |
+| `video.live_stream.recording`    | `STARTED`      | Does not mark LIVE                                        |
+| `video.live_stream.active`       | `PLAYABLE`     | Marks LIVE if not already ended/cancelled                 |
+| `video.live_stream.disconnected` | `DISCONNECTED` | Keeps the existing state during reconnect window          |
+| `video.live_stream.idle`         | `ENDED`        | Ends an active session                                    |
+| `video.live_stream.disabled`     | `ENDED`        | Ends the session                                          |
+| `video.live_stream.deleted`      | `ENDED`        | Ends the session                                          |
+| `video.live_stream.warning`      | `ERROR`        | Recorded as provider error evidence; warning is non-fatal |
 
 Manual `LIVE` requests also call Mux status synchronization first and return
 `LIVE_PROVIDER_NOT_PLAYABLE` until provider evidence is playable.
