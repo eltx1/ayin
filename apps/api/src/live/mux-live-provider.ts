@@ -87,6 +87,7 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
         },
         new_asset_settings: {
           playback_policies: ["public"],
+          video_quality: "plus",
           static_renditions: [{ resolution: "highest" }],
           meta: {
             external_id: input.streamId,
