@@ -67,11 +67,19 @@ describe("LiveRecordingWorkerService", () => {
       deleteRecordingAsset: vi.fn(async () => undefined),
     } as unknown as LiveIngestProvider;
     const handoff = {
-      copy: vi.fn(async () => ({
-        r2ObjectKey:
-          "channels/00000000-0000-4000-8000-000000000002/live/00000000-0000-4000-8000-000000000001/recordings/mux-asset-1.mp4",
-        sizeBytes: 1024,
-      })),
+      copy: vi.fn(
+        async (
+          _input: unknown,
+          onProgress?: (uploadedBytes: number) => Promise<void>,
+        ) => {
+          await onProgress?.(512);
+          return {
+            r2ObjectKey:
+              "channels/00000000-0000-4000-8000-000000000002/live/00000000-0000-4000-8000-000000000001/recordings/mux-asset-1.mp4",
+            sizeBytes: 1024,
+          };
+        },
+      ),
     } as unknown as LiveRecordingHandoffService;
     const processingLifecycle = {
       enqueueUploadedAsset: vi.fn(async () => ({ id: "processing-job-1" })),
@@ -102,6 +110,12 @@ describe("LiveRecordingWorkerService", () => {
     );
     expect(processingLifecycle.enqueueUploadedAsset).toHaveBeenCalledWith(
       "00000000-0000-4000-8000-000000000004",
+    );
+    expect(database.client.liveStream.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: stream.id, recordingHandoffStatus: "COPYING" },
+        data: { recordingHandoffHeartbeatAt: expect.any(Date) },
+      }),
     );
     expect(provider.deleteRecordingAsset).toHaveBeenCalledWith("mux-asset-1");
 
