@@ -28,8 +28,7 @@
     "test": "corepack pnpm --recursive --if-present run test",
     "test:e2e": "playwright test",
     "test:integration": "corepack pnpm --filter @ayin/db run test:integration && corepack pnpm --filter @ayin/api run test:integration",
-    "typecheck": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run typecheck && corepack pnpm --filter @ayin/web run typecheck",
-    "prepare": "prettier --write apps/api/src/live/live-provider.ts apps/api/src/live/live.service.test.ts apps/api/src/live/live.service.ts apps/api/src/live/mux-live-provider.test.ts apps/api/src/live/mux-live-provider.ts apps/api/test/mux-live-provider.integration.test.ts docs/LIVE_STREAMING.md && git diff -- apps/api/src/live/live-provider.ts apps/api/src/live/live.service.test.ts apps/api/src/live/live.service.ts apps/api/src/live/mux-live-provider.test.ts apps/api/src/live/mux-live-provider.ts apps/api/test/mux-live-provider.integration.test.ts docs/LIVE_STREAMING.md"
+    "typecheck": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run typecheck && corepack pnpm --filter @ayin/web run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "9.39.2",
