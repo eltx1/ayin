@@ -36,7 +36,7 @@ interface MuxLiveStreamData {
   id: string;
   streamKey?: string;
   srtPassphrase?: string;
-  status?: string;
+  status: string | undefined;
   playbackId: string | null;
   activeAssetId: string | null;
   connected: boolean;
@@ -133,10 +133,9 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
   async stop(providerStreamId: string | null): Promise<void> {
     if (!providerStreamId) return;
     this.assertConfigured();
-    await this.requestJson(
-      `/live-streams/${encodeURIComponent(providerStreamId)}/disable`,
-      { method: "PUT" },
-    );
+    await this.requestJson(`/live-streams/${encodeURIComponent(providerStreamId)}/disable`, {
+      method: "PUT",
+    });
   }
 
   async discard(providerStreamId: string): Promise<void> {
@@ -180,9 +179,7 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
       apiCredentialsConfigured: Boolean(
         this.environment.MUX_TOKEN_ID?.trim() && this.environment.MUX_TOKEN_SECRET?.trim(),
       ),
-      webhookVerificationConfigured: Boolean(
-        this.environment.MUX_WEBHOOK_SIGNING_SECRET?.trim(),
-      ),
+      webhookVerificationConfigured: Boolean(this.environment.MUX_WEBHOOK_SIGNING_SECRET?.trim()),
       missingConfiguration,
       ingestProtocols: [...capabilities.ingestProtocols],
       playbackProtocols: [...capabilities.playbackProtocols],
@@ -383,11 +380,17 @@ export function normalizeMuxWebhook(
 
 function parseMuxLiveStream(payload: unknown, requireSecrets: boolean): MuxLiveStreamData {
   if (!payload || typeof payload !== "object") {
-    throw new LiveProviderOperationError("MUX_INVALID_RESPONSE", "Mux returned an invalid response.");
+    throw new LiveProviderOperationError(
+      "MUX_INVALID_RESPONSE",
+      "Mux returned an invalid response.",
+    );
   }
   const data = (payload as MuxEnvelope).data;
   if (!data || typeof data !== "object") {
-    throw new LiveProviderOperationError("MUX_INVALID_RESPONSE", "Mux returned an invalid response.");
+    throw new LiveProviderOperationError(
+      "MUX_INVALID_RESPONSE",
+      "Mux returned an invalid response.",
+    );
   }
   const record = data as Record<string, unknown>;
   const id = typeof record.id === "string" ? record.id : "";
@@ -395,7 +398,10 @@ function parseMuxLiveStream(payload: unknown, requireSecrets: boolean): MuxLiveS
   const srtPassphrase =
     typeof record.srt_passphrase === "string" ? record.srt_passphrase : undefined;
   if (!id || (requireSecrets && !streamKey)) {
-    throw new LiveProviderOperationError("MUX_INVALID_RESPONSE", "Mux returned an invalid live stream.");
+    throw new LiveProviderOperationError(
+      "MUX_INVALID_RESPONSE",
+      "Mux returned an invalid live stream.",
+    );
   }
 
   const playbackId = publicPlaybackId(record.playback_ids);
@@ -405,8 +411,7 @@ function parseMuxLiveStream(payload: unknown, requireSecrets: boolean): MuxLiveS
     ...(srtPassphrase ? { srtPassphrase } : {}),
     status: typeof record.status === "string" ? record.status : undefined,
     playbackId,
-    activeAssetId:
-      typeof record.active_asset_id === "string" ? record.active_asset_id : null,
+    activeAssetId: typeof record.active_asset_id === "string" ? record.active_asset_id : null,
     connected: record.connected === true,
     recording: record.recording === true,
   };
