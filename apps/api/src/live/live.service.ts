@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
-import type { LiveStream } from "@ayin/db";
+import type { LiveStream, Prisma } from "@ayin/db";
 
 import { DatabaseService } from "../database/database.service.js";
 import {
@@ -64,63 +64,99 @@ export class LiveService {
   }
 
   async provision(accountId: string, streamId: string) {
-    const stream = await this.ownedStream(accountId, streamId);
+    const channel = await this.creatorChannel(accountId);
     this.assertProviderConfigured();
-    if (stream.providerStreamId) {
-      throw new LiveError(
-        "LIVE_ALREADY_PROVISIONED",
-        "This live session already has a provider resource. Rotate credentials instead.",
-        409,
-      );
-    }
+    let createdProviderStreamId: string | null = null;
 
     try {
-      const provisioned = await this.provider.provision({
-        streamId: stream.id,
-        channelId: stream.channelId,
-        title: stream.title,
-      });
-      const updated = await this.database.client.liveStream.update({
-        where: { id: stream.id },
-        data: {
-          providerKey: provisioned.providerKey,
-          providerStreamId: provisioned.providerStreamId,
-          ingestEndpoint: provisioned.ingestEndpoint,
-          playbackUrl: provisioned.playbackUrl,
-          streamKeyHash: hashKey(provisioned.encoder.rtmps.streamKey),
-          status: "READY",
+      return await this.database.client.$transaction(
+        async (transaction) => {
+          await this.acquireProviderMutationLock(transaction, streamId);
+          const stream = await transaction.liveStream.findFirst({
+            where: { id: streamId, channelId: channel.id },
+          });
+          if (!stream) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
+          if (stream.providerStreamId) {
+            throw new LiveError(
+              "LIVE_ALREADY_PROVISIONED",
+              "This live session already has a provider resource. Rotate credentials instead.",
+              409,
+            );
+          }
+
+          const provisioned = await this.provider.provision({
+            streamId: stream.id,
+            channelId: stream.channelId,
+            title: stream.title,
+          });
+          createdProviderStreamId = provisioned.providerStreamId;
+
+          const updated = await transaction.liveStream.update({
+            where: { id: stream.id },
+            data: {
+              providerKey: provisioned.providerKey,
+              providerStreamId: provisioned.providerStreamId,
+              ingestEndpoint: provisioned.ingestEndpoint,
+              playbackUrl: provisioned.playbackUrl,
+              streamKeyHash: hashKey(provisioned.encoder.rtmps.streamKey),
+              status: "READY",
+            },
+          });
+          return { stream: stripSecretHash(updated), encoder: provisioned.encoder };
         },
-      });
-      return { stream: stripSecretHash(updated), encoder: provisioned.encoder };
+        { timeout: 30_000 },
+      );
     } catch (error) {
+      if (createdProviderStreamId) {
+        try {
+          await this.provider.discard(createdProviderStreamId);
+        } catch {
+          throw new LiveError(
+            "LIVE_PROVIDER_CLEANUP_REQUIRED",
+            `Mux resource ${createdProviderStreamId} was created but AYIN could not persist or clean it up. Operator cleanup is required before retrying.`,
+            502,
+          );
+        }
+      }
       this.throwProviderError(error);
     }
   }
 
   async rotateKey(accountId: string, streamId: string) {
-    const stream = await this.ownedStream(accountId, streamId);
+    const channel = await this.creatorChannel(accountId);
     this.assertProviderConfigured();
-    if (!stream.providerStreamId) {
-      throw new LiveError(
-        "LIVE_PROVIDER_RESOURCE_MISSING",
-        "Provision this live session before rotating its credentials.",
-        409,
-      );
-    }
 
     try {
-      const provisioned = await this.provider.rotateKey(stream.providerStreamId);
-      const updated = await this.database.client.liveStream.update({
-        where: { id: stream.id },
-        data: {
-          providerKey: provisioned.providerKey,
-          providerStreamId: provisioned.providerStreamId,
-          ingestEndpoint: provisioned.ingestEndpoint,
-          playbackUrl: provisioned.playbackUrl,
-          streamKeyHash: hashKey(provisioned.encoder.rtmps.streamKey),
+      return await this.database.client.$transaction(
+        async (transaction) => {
+          await this.acquireProviderMutationLock(transaction, streamId);
+          const stream = await transaction.liveStream.findFirst({
+            where: { id: streamId, channelId: channel.id },
+          });
+          if (!stream) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
+          if (!stream.providerStreamId) {
+            throw new LiveError(
+              "LIVE_PROVIDER_RESOURCE_MISSING",
+              "Provision this live session before rotating its credentials.",
+              409,
+            );
+          }
+
+          const provisioned = await this.provider.rotateKey(stream.providerStreamId);
+          const updated = await transaction.liveStream.update({
+            where: { id: stream.id },
+            data: {
+              providerKey: provisioned.providerKey,
+              providerStreamId: provisioned.providerStreamId,
+              ingestEndpoint: provisioned.ingestEndpoint,
+              playbackUrl: provisioned.playbackUrl,
+              streamKeyHash: hashKey(provisioned.encoder.rtmps.streamKey),
+            },
+          });
+          return { stream: stripSecretHash(updated), encoder: provisioned.encoder };
         },
-      });
-      return { stream: stripSecretHash(updated), encoder: provisioned.encoder };
+        { timeout: 30_000 },
+      );
     } catch (error) {
       this.throwProviderError(error);
     }
@@ -344,6 +380,23 @@ export class LiveService {
 
   providerStatus() {
     return this.provider.diagnostics();
+  }
+
+  private async acquireProviderMutationLock(
+    transaction: Prisma.TransactionClient,
+    streamId: string,
+  ) {
+    const lockKey = `ayin-live-provider:${streamId}`;
+    const rows = await transaction.$queryRaw<Array<{ locked: boolean }>>`
+      SELECT pg_try_advisory_xact_lock(hashtextextended(${lockKey}, 0)) AS locked
+    `;
+    if (!rows[0]?.locked) {
+      throw new LiveError(
+        "LIVE_PROVIDER_OPERATION_IN_PROGRESS",
+        "Another provider credential operation is already in progress for this live session.",
+        409,
+      );
+    }
   }
 
   private assertProviderConfigured() {
