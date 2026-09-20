@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { apiBaseUrl } from "@/lib/api";
 import { trackAnalyticsEvent } from "@/lib/analytics";
+import { startAdaptiveHlsPlayback } from "@/lib/adaptive-playback";
 
 type Stream = {
   id: string;
@@ -24,6 +25,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState("");
   const [status, setStatus] = useState("Loading live session…");
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -57,6 +59,33 @@ export function LiveWatchClient({ slug }: { slug: string }) {
     };
   }, [slug]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || stream?.status !== "LIVE" || !stream.playbackUrl) return;
+
+    let cancelled = false;
+    let session: Awaited<ReturnType<typeof startAdaptiveHlsPlayback>> = null;
+    void startAdaptiveHlsPlayback({
+      video,
+      hlsUrl: stream.playbackUrl,
+      callbacks: {
+        onFatal: () => {
+          if (!cancelled) setStatus("Live playback is temporarily unavailable.");
+        },
+      },
+    }).then((next) => {
+      if (cancelled) next?.destroy();
+      else session = next;
+    });
+
+    return () => {
+      cancelled = true;
+      session?.destroy();
+      video.removeAttribute("src");
+      video.load();
+    };
+  }, [stream?.playbackUrl, stream?.status]);
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!body.trim() || !stream) return;
@@ -86,7 +115,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
           {stream.description ? <p>{stream.description}</p> : null}
           {stream.status === "LIVE" && stream.playbackUrl ? (
             <video
-              src={stream.playbackUrl}
+              ref={videoRef}
               controls
               autoPlay
               muted

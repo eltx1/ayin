@@ -164,6 +164,21 @@ if (webApiUrl && !webApiUrl.pathname.endsWith("/")) {
   fail("web.env: NEXT_PUBLIC_API_BASE_URL must not include an API path prefix");
 }
 
+const muxFlag = apiEnv.MUX_LIVE_PRODUCTION_ENABLED?.trim();
+if (muxFlag && !["0", "1"].includes(muxFlag)) {
+  fail("api.env: MUX_LIVE_PRODUCTION_ENABLED must be 0 or 1");
+}
+const muxKeys = ["MUX_TOKEN_ID", "MUX_TOKEN_SECRET", "MUX_WEBHOOK_SIGNING_SECRET"];
+const muxConfiguredCount = muxKeys.filter((key) => Boolean(apiEnv[key]?.trim())).length;
+if (muxConfiguredCount > 0 && muxConfiguredCount !== muxKeys.length) {
+  fail("api.env: Mux control-plane credentials must be configured together");
+}
+if (muxFlag === "1") {
+  for (const key of muxKeys) {
+    requireValue(apiEnv, key, "api.env");
+  }
+}
+
 const gamProductionEnabled = apiEnv.GAM_PRODUCTION_ENABLED === "1";
 if (gamProductionEnabled) {
   for (const key of [

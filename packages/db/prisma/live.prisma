@@ -8,6 +8,15 @@ enum LiveStreamStatus {
   FAILED
 }
 
+enum LiveRecordingHandoffStatus {
+  NONE
+  WAITING
+  COPYING
+  READY
+  CLEANUP_PENDING
+  FAILED
+}
+
 enum LiveChatMessageStatus {
   PUBLISHED
   HIDDEN
@@ -33,8 +42,24 @@ model LiveStream {
   providerStreamId   String?          @db.VarChar(255)
   streamKeyHash      String?          @db.VarChar(128)
   ingestEndpoint     String?          @db.Text
-  playbackUrl        String?          @db.Text
-  scheduledStartAt   DateTime?
+  playbackUrl              String?                    @db.Text
+  providerLastEventAt       DateTime?
+  providerLastEventId       String?                    @db.VarChar(255)
+  recordingLastEventAt      DateTime?
+  recordingLastEventId      String?                    @db.VarChar(255)
+  providerRecordingAssetId  String?                    @db.VarChar(255)
+  recordingHandoffStatus    LiveRecordingHandoffStatus @default(NONE)
+  recordingR2ObjectKey       String?                    @db.VarChar(1024)
+  recordingMediaAssetId      String?                    @db.Uuid
+  recordingProviderDownloadUrl String?                  @db.Text
+  recordingRenditionName     String?                    @db.VarChar(255)
+  recordingHandoffAttempt    Int                        @default(0)
+  recordingHandoffStartedAt  DateTime?
+  recordingHandoffHeartbeatAt DateTime?
+  recordingHandoffAt        DateTime?
+  recordingProviderDeletedAt DateTime?
+  recordingHandoffError     String?                    @db.VarChar(500)
+  scheduledStartAt          DateTime?
   startedAt          DateTime?
   endedAt            DateTime?
   chatEnabled        Boolean          @default(true)
@@ -44,6 +69,9 @@ model LiveStream {
 
   @@index([channelId, status, scheduledStartAt])
   @@index([status, scheduledStartAt])
+  @@index([providerKey, providerStreamId])
+  @@index([providerRecordingAssetId])
+  @@index([recordingHandoffStatus, updatedAt])
 }
 
 model LiveChatMessage {

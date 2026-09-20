@@ -1,10 +1,14 @@
 import { createHash, randomBytes } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
+import type { LiveStream, Prisma } from "@ayin/db";
 
 import { DatabaseService } from "../database/database.service.js";
 import {
   LIVE_INGEST_PROVIDER,
   type LiveIngestProvider,
+  type LiveProviderStatus,
+  type LiveProviderWebhookEvent,
+  LiveProviderOperationError,
   LiveProviderUnavailableError,
 } from "./live-provider.js";
 
@@ -60,78 +64,283 @@ export class LiveService {
   }
 
   async provision(accountId: string, streamId: string) {
-    const stream = await this.ownedStream(accountId, streamId);
-    if (!this.provider.configured)
-      throw new LiveError(
-        "LIVE_PROVIDER_UNCONFIGURED",
-        "Live ingest/transcoding requires a configured provider; R2 remains VOD storage only.",
-        503,
-      );
-    const streamKey = randomBytes(30).toString("base64url");
+    const channel = await this.creatorChannel(accountId);
+    this.assertProviderProvisioningEnabled();
+    let createdProviderStreamId: string | null = null;
+
     try {
-      const provisioned = await this.provider.provision({
-        streamId: stream.id,
-        channelId: stream.channelId,
-        title: stream.title,
-        streamKey,
-      });
-      const updated = await this.database.client.liveStream.update({
-        where: { id: stream.id },
-        data: {
-          providerKey: provisioned.providerKey,
-          providerStreamId: provisioned.providerStreamId,
-          ingestEndpoint: provisioned.ingestEndpoint,
-          playbackUrl: provisioned.playbackUrl,
-          streamKeyHash: hashKey(streamKey),
-          status: "READY",
+      return await this.database.client.$transaction(
+        async (transaction) => {
+          await this.acquireProviderMutationLock(transaction, streamId);
+          const stream = await transaction.liveStream.findFirst({
+            where: { id: streamId, channelId: channel.id },
+          });
+          if (!stream) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
+          if (stream.providerStreamId) {
+            throw new LiveError(
+              "LIVE_ALREADY_PROVISIONED",
+              "This live session already has a provider resource. Rotate credentials instead.",
+              409,
+            );
+          }
+
+          const provisioned = await this.provider.provision({
+            streamId: stream.id,
+            channelId: stream.channelId,
+            title: stream.title,
+          });
+          createdProviderStreamId = provisioned.providerStreamId;
+
+          const updated = await transaction.liveStream.update({
+            where: { id: stream.id },
+            data: {
+              providerKey: provisioned.providerKey,
+              providerStreamId: provisioned.providerStreamId,
+              ingestEndpoint: provisioned.ingestEndpoint,
+              playbackUrl: provisioned.playbackUrl,
+              streamKeyHash: hashKey(provisioned.encoder.rtmps.streamKey),
+              status: "READY",
+            },
+          });
+          return { stream: stripSecretHash(updated), encoder: provisioned.encoder };
         },
-      });
-      return { stream: stripSecretHash(updated), streamKey };
+        { timeout: 30_000 },
+      );
     } catch (error) {
-      if (error instanceof LiveProviderUnavailableError)
-        throw new LiveError("LIVE_PROVIDER_UNCONFIGURED", error.message, 503);
-      throw error;
+      if (createdProviderStreamId) {
+        try {
+          await this.provider.discard(createdProviderStreamId);
+        } catch {
+          throw new LiveError(
+            "LIVE_PROVIDER_CLEANUP_REQUIRED",
+            `Mux resource ${createdProviderStreamId} was created but AYIN could not persist or clean it up. Operator cleanup is required before retrying.`,
+            502,
+          );
+        }
+      }
+      this.throwProviderError(error);
     }
   }
 
   async rotateKey(accountId: string, streamId: string) {
+    const channel = await this.creatorChannel(accountId);
+    this.assertProviderProvisioningEnabled();
+
+    try {
+      return await this.database.client.$transaction(
+        async (transaction) => {
+          await this.acquireProviderMutationLock(transaction, streamId);
+          const stream = await transaction.liveStream.findFirst({
+            where: { id: streamId, channelId: channel.id },
+          });
+          if (!stream) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
+          if (!stream.providerStreamId) {
+            throw new LiveError(
+              "LIVE_PROVIDER_RESOURCE_MISSING",
+              "Provision this live session before rotating its credentials.",
+              409,
+            );
+          }
+
+          const provisioned = await this.provider.rotateKey(stream.providerStreamId);
+          const updated = await transaction.liveStream.update({
+            where: { id: stream.id },
+            data: {
+              providerKey: provisioned.providerKey,
+              providerStreamId: provisioned.providerStreamId,
+              ingestEndpoint: provisioned.ingestEndpoint,
+              playbackUrl: provisioned.playbackUrl,
+              streamKeyHash: hashKey(provisioned.encoder.rtmps.streamKey),
+            },
+          });
+          return { stream: stripSecretHash(updated), encoder: provisioned.encoder };
+        },
+        { timeout: 30_000 },
+      );
+    } catch (error) {
+      this.throwProviderError(error);
+    }
+  }
+
+  async syncProviderStatus(accountId: string, streamId: string) {
     const stream = await this.ownedStream(accountId, streamId);
-    if (!this.provider.configured)
-      throw new LiveError("LIVE_PROVIDER_UNCONFIGURED", "Live provider is not configured.", 503);
-    const streamKey = randomBytes(30).toString("base64url");
-    const provisioned = await this.provider.rotateKey({
-      streamId: stream.id,
-      channelId: stream.channelId,
-      title: stream.title,
-      streamKey,
-    });
-    const updated = await this.database.client.liveStream.update({
-      where: { id: stream.id },
-      data: {
-        providerKey: provisioned.providerKey,
-        providerStreamId: provisioned.providerStreamId,
-        ingestEndpoint: provisioned.ingestEndpoint,
-        playbackUrl: provisioned.playbackUrl,
-        streamKeyHash: hashKey(streamKey),
-      },
-    });
-    return { stream: stripSecretHash(updated), streamKey };
+    this.assertProviderConfigured();
+    if (!stream.providerStreamId) {
+      throw new LiveError(
+        "LIVE_PROVIDER_RESOURCE_MISSING",
+        "Provision this live session before synchronizing provider status.",
+        409,
+      );
+    }
+
+    try {
+      const evidence = await this.provider.retrieveStatus(stream.providerStreamId);
+      const updated = await this.applyProviderEvidence(stream, evidence);
+      return { stream: stripSecretHash(updated), evidence };
+    } catch (error) {
+      this.throwProviderError(error);
+    }
+  }
+
+  async providerDiagnostics(accountId: string, streamId: string) {
+    const stream = await this.ownedStream(accountId, streamId);
+    const provider = this.provider.diagnostics();
+    if (!stream.providerStreamId || !this.provider.configured) {
+      return {
+        provider,
+        stream: {
+          id: stream.id,
+          status: stream.status,
+          providerStreamId: stream.providerStreamId,
+          playbackUrl: stream.playbackUrl,
+          providerRecordingAssetId: stream.providerRecordingAssetId,
+          recordingHandoffStatus: stream.recordingHandoffStatus,
+          recordingMediaAssetId: stream.recordingMediaAssetId,
+          recordingR2ObjectKey: stream.recordingR2ObjectKey,
+          recordingProviderDeletedAt: stream.recordingProviderDeletedAt,
+          recordingHandoffError: stream.recordingHandoffError,
+        },
+        evidence: null,
+      };
+    }
+
+    try {
+      const evidence = await this.provider.retrieveStatus(stream.providerStreamId);
+      return {
+        provider,
+        stream: {
+          id: stream.id,
+          status: stream.status,
+          providerStreamId: stream.providerStreamId,
+          playbackUrl: stream.playbackUrl,
+          providerRecordingAssetId: stream.providerRecordingAssetId,
+          recordingHandoffStatus: stream.recordingHandoffStatus,
+          recordingMediaAssetId: stream.recordingMediaAssetId,
+          recordingR2ObjectKey: stream.recordingR2ObjectKey,
+          recordingProviderDeletedAt: stream.recordingProviderDeletedAt,
+          recordingHandoffError: stream.recordingHandoffError,
+        },
+        evidence,
+      };
+    } catch (error) {
+      this.throwProviderError(error);
+    }
+  }
+
+  async handleProviderWebhook(rawBody: string | Buffer, signatureHeader: string | undefined) {
+    this.assertProviderConfigured();
+    let event: LiveProviderWebhookEvent;
+    try {
+      event = this.provider.verifyWebhook(rawBody, signatureHeader);
+    } catch (error) {
+      if (
+        error instanceof LiveProviderOperationError &&
+        error.code.startsWith("MUX_WEBHOOK_SIGNATURE_")
+      ) {
+        throw new LiveError("LIVE_WEBHOOK_SIGNATURE_INVALID", error.message, 401);
+      }
+      this.throwProviderError(error);
+    }
+
+    if (event.kind === "IGNORED") {
+      return { accepted: true, ignored: true, eventId: event.eventId, event: event.kind };
+    }
+
+    let stream = await this.findStreamForProviderEvent(event);
+
+    if (event.kind === "RECORDING_READY") {
+      const recording = event.recording;
+      if (!recording?.providerAssetId || !recording.renditionName) {
+        throw new LiveError(
+          "LIVE_RECORDING_METADATA_INVALID",
+          "Mux reported a ready recording without an asset ID or rendition name.",
+          502,
+        );
+      }
+
+      if (
+        stream &&
+        (this.isStaleRecordingEvent(stream, event) ||
+          (stream.providerRecordingAssetId === recording.providerAssetId &&
+            stream.recordingHandoffStatus === "READY" &&
+            Boolean(stream.recordingProviderDeletedAt)))
+      ) {
+        return {
+          accepted: true,
+          ignored: true,
+          eventId: event.eventId,
+          event: event.kind,
+          stream: stripSecretHash(stream),
+        };
+      }
+
+      try {
+        const enriched = await this.provider.retrieveRecording(
+          recording.providerAssetId,
+          recording.renditionName,
+        );
+        event = {
+          ...event,
+          activeAssetId: enriched.providerAssetId,
+          recording: enriched,
+        };
+      } catch (error) {
+        this.throwProviderError(error);
+      }
+      stream ??= await this.findStreamForProviderEvent(event);
+    }
+
+    if (!stream) {
+      return { accepted: true, ignored: true, eventId: event.eventId, event: event.kind };
+    }
+
+    if (event.kind === "RECORDING_READY") {
+      const result = await this.handleRecordingReady(stream, event);
+      return {
+        accepted: true,
+        ignored: result.ignored,
+        eventId: event.eventId,
+        event: event.kind,
+        stream: stripSecretHash(result.stream),
+      };
+    }
+
+    const result = await this.applyOrderedWebhookEvent(stream.id, event);
+    return {
+      accepted: true,
+      ignored: result.ignored,
+      eventId: event.eventId,
+      event: event.kind,
+      stream: stripSecretHash(result.stream),
+    };
   }
 
   async setState(accountId: string, streamId: string, status: "LIVE" | "ENDED" | "CANCELLED") {
+    if (status === "LIVE") {
+      const synced = await this.syncProviderStatus(accountId, streamId);
+      if (synced.stream.status !== "LIVE") {
+        throw new LiveError(
+          "LIVE_PROVIDER_NOT_PLAYABLE",
+          "The provider has not yet confirmed a playable live output.",
+          409,
+        );
+      }
+      return synced.stream;
+    }
+
     const stream = await this.ownedStream(accountId, streamId);
-    if (status === "LIVE" && (!stream.playbackUrl || stream.providerKey === "unconfigured"))
-      throw new LiveError(
-        "LIVE_PLAYBACK_UNAVAILABLE",
-        "A configured playback output is required.",
-        409,
-      );
-    if (status === "ENDED") await this.provider.stop(stream.providerStreamId);
+    if (stream.providerStreamId) {
+      this.assertProviderConfigured();
+      try {
+        await this.provider.stop(stream.providerStreamId);
+      } catch (error) {
+        this.throwProviderError(error);
+      }
+    }
     const updated = await this.database.client.liveStream.update({
       where: { id: stream.id },
       data: {
         status,
-        ...(status === "LIVE" ? { startedAt: new Date() } : {}),
         ...(status === "ENDED" ? { endedAt: new Date() } : {}),
       },
     });
@@ -231,7 +440,286 @@ export class LiveService {
   }
 
   providerStatus() {
-    return { key: this.provider.key, configured: this.provider.configured };
+    return this.provider.diagnostics();
+  }
+
+  private async acquireProviderMutationLock(
+    transaction: Prisma.TransactionClient,
+    streamId: string,
+  ) {
+    const lockKey = `ayin-live-provider:${streamId}`;
+    const rows = await transaction.$queryRaw<Array<{ locked: boolean }>>`
+      SELECT pg_try_advisory_xact_lock(hashtextextended(${lockKey}, 0)) AS locked
+    `;
+    if (!rows[0]?.locked) {
+      throw new LiveError(
+        "LIVE_PROVIDER_OPERATION_IN_PROGRESS",
+        "Another provider credential operation is already in progress for this live session.",
+        409,
+      );
+    }
+  }
+
+  private assertProviderProvisioningEnabled() {
+    this.assertProviderConfigured();
+    if (!this.provider.diagnostics().productionEnabled) {
+      throw new LiveError(
+        "LIVE_PROVIDER_PROVISIONING_DISABLED",
+        "New live provisioning and credential rotation are disabled by the provider kill switch.",
+        503,
+      );
+    }
+  }
+
+  private assertProviderConfigured() {
+    if (!this.provider.configured) {
+      throw new LiveError(
+        "LIVE_PROVIDER_UNCONFIGURED",
+        "Live ingest/transcoding requires a configured provider; R2 remains VOD storage only.",
+        503,
+      );
+    }
+  }
+
+  private throwProviderError(error: unknown): never {
+    if (error instanceof LiveProviderUnavailableError) {
+      throw new LiveError("LIVE_PROVIDER_UNCONFIGURED", error.message, 503);
+    }
+    if (error instanceof LiveProviderOperationError) {
+      throw new LiveError("LIVE_PROVIDER_REQUEST_FAILED", error.message, 502);
+    }
+    throw error;
+  }
+
+  private async findStreamForProviderEvent(event: LiveProviderWebhookEvent) {
+    if (event.providerStreamId) {
+      return this.database.client.liveStream.findFirst({
+        where: {
+          providerKey: this.provider.key,
+          providerStreamId: event.providerStreamId,
+        },
+      });
+    }
+    if (event.recording?.ayinStreamId) {
+      return this.database.client.liveStream.findFirst({
+        where: {
+          id: event.recording.ayinStreamId,
+          providerKey: this.provider.key,
+        },
+      });
+    }
+    if (event.recording?.providerAssetId) {
+      return this.database.client.liveStream.findFirst({
+        where: {
+          providerKey: this.provider.key,
+          providerRecordingAssetId: event.recording.providerAssetId,
+        },
+      });
+    }
+    return null;
+  }
+
+  private async applyOrderedWebhookEvent(streamId: string, event: LiveProviderWebhookEvent) {
+    return this.database.client.$transaction(
+      async (transaction) => {
+        await this.acquireProviderMutationLock(transaction, streamId);
+        const stream = await transaction.liveStream.findUnique({ where: { id: streamId } });
+        if (!stream) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
+        const recordingEvent = Boolean(event.recording);
+        if (
+          recordingEvent
+            ? this.isStaleRecordingEvent(stream, event)
+            : this.isStaleProviderEvent(stream, event)
+        ) {
+          return { ignored: true, stream };
+        }
+
+        const data: Prisma.LiveStreamUpdateInput = {
+          ...(recordingEvent
+            ? {
+                recordingLastEventAt: event.occurredAt,
+                recordingLastEventId: event.eventId,
+              }
+            : {
+                providerLastEventAt: event.occurredAt,
+                providerLastEventId: event.eventId,
+              }),
+          ...(event.activeAssetId
+            ? {
+                providerRecordingAssetId: event.activeAssetId,
+                ...(stream.recordingHandoffStatus === "NONE"
+                  ? { recordingHandoffStatus: "WAITING" as const }
+                  : {}),
+              }
+            : {}),
+        };
+
+        if (
+          event.kind === "PLAYABLE" &&
+          stream.status !== "ENDED" &&
+          stream.status !== "CANCELLED"
+        ) {
+          data.status = "LIVE";
+          data.startedAt = stream.startedAt ?? event.occurredAt;
+        } else if (event.kind === "ENDED" && stream.status !== "CANCELLED") {
+          data.status = "ENDED";
+          data.endedAt = stream.endedAt ?? event.occurredAt;
+        } else if (event.kind === "RECORDING_FINALIZED" && event.recording) {
+          data.providerRecordingAssetId = event.recording.providerAssetId;
+          if (
+            stream.recordingHandoffStatus !== "READY" &&
+            stream.recordingHandoffStatus !== "CLEANUP_PENDING"
+          ) {
+            data.recordingHandoffStatus = "WAITING";
+          }
+        } else if (event.kind === "ERROR" && event.fatal && event.recording) {
+          data.providerRecordingAssetId = event.recording.providerAssetId;
+          data.recordingHandoffStatus = "FAILED";
+          data.recordingHandoffError = "Mux recording asset processing failed.";
+        } else if (event.kind === "ERROR" && event.fatal) {
+          data.status = "FAILED";
+        }
+
+        const updated = await transaction.liveStream.update({
+          where: { id: stream.id },
+          data,
+        });
+        return { ignored: false, stream: updated };
+      },
+      { timeout: 30_000 },
+    );
+  }
+
+  private async handleRecordingReady(stream: LiveStream, event: LiveProviderWebhookEvent) {
+    const recording = event.recording;
+    if (!recording?.downloadUrl || !recording.renditionName) {
+      throw new LiveError(
+        "LIVE_RECORDING_DOWNLOAD_UNAVAILABLE",
+        "Mux reported a ready recording without a downloadable static rendition.",
+        502,
+      );
+    }
+
+    return this.database.client.$transaction(
+      async (transaction) => {
+        await this.acquireProviderMutationLock(transaction, stream.id);
+        const current = await transaction.liveStream.findUnique({ where: { id: stream.id } });
+        if (!current) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
+
+        const sameAsset = current.providerRecordingAssetId === recording.providerAssetId;
+        if (
+          sameAsset &&
+          current.recordingHandoffStatus === "READY" &&
+          current.recordingProviderDeletedAt
+        ) {
+          return { ignored: true, stream: current };
+        }
+        if (
+          current.recordingHandoffStatus !== "FAILED" &&
+          current.recordingHandoffStatus !== "CLEANUP_PENDING" &&
+          this.isStaleRecordingEvent(current, event)
+        ) {
+          return { ignored: true, stream: current };
+        }
+
+        const updated = await transaction.liveStream.update({
+          where: { id: current.id },
+          data: {
+            recordingLastEventAt: event.occurredAt,
+            recordingLastEventId: event.eventId,
+            providerRecordingAssetId: recording.providerAssetId,
+            recordingProviderDownloadUrl: recording.downloadUrl,
+            recordingRenditionName: recording.renditionName,
+            ...(current.recordingHandoffStatus === "READY" ||
+            current.recordingHandoffStatus === "CLEANUP_PENDING"
+              ? {}
+              : {
+                  recordingHandoffStatus: "WAITING",
+                  recordingHandoffStartedAt: null,
+                  recordingHandoffError: null,
+                }),
+          },
+        });
+        return { ignored: false, stream: updated };
+      },
+      { timeout: 30_000 },
+    );
+  }
+
+  private isStaleProviderEvent(stream: LiveStream, event: LiveProviderWebhookEvent) {
+    if (stream.providerLastEventId === event.eventId) return true;
+    return Boolean(
+      stream.providerLastEventAt &&
+      event.occurredAt.getTime() < stream.providerLastEventAt.getTime(),
+    );
+  }
+
+  private isStaleRecordingEvent(stream: LiveStream, event: LiveProviderWebhookEvent) {
+    if (stream.recordingLastEventId === event.eventId) return true;
+    return Boolean(
+      stream.recordingLastEventAt &&
+      event.occurredAt.getTime() < stream.recordingLastEventAt.getTime(),
+    );
+  }
+
+  private async applyProviderEvidence(stream: LiveStream, evidence: LiveProviderStatus) {
+    const observedAt = new Date();
+    if (evidence.playable) {
+      if (stream.status === "ENDED" || stream.status === "CANCELLED") return stream;
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          status: "LIVE",
+          playbackUrl: evidence.playbackUrl ?? stream.playbackUrl,
+          startedAt: stream.startedAt ?? observedAt,
+          providerLastEventAt: observedAt,
+          providerLastEventId: null,
+          ...(evidence.activeAssetId
+            ? {
+                providerRecordingAssetId: evidence.activeAssetId,
+                ...(stream.recordingHandoffStatus === "NONE"
+                  ? { recordingHandoffStatus: "WAITING" as const }
+                  : {}),
+              }
+            : {}),
+        },
+      });
+    }
+
+    const providerEnded =
+      evidence.state === "ENDED" ||
+      evidence.state === "DISABLED" ||
+      (evidence.state === "IDLE" && Boolean(stream.startedAt));
+    if (providerEnded && stream.status !== "CANCELLED") {
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          status: "ENDED",
+          playbackUrl: evidence.playbackUrl ?? stream.playbackUrl,
+          endedAt: stream.endedAt ?? observedAt,
+          providerLastEventAt: observedAt,
+          providerLastEventId: null,
+        },
+      });
+    }
+
+    if (evidence.playbackUrl && evidence.playbackUrl !== stream.playbackUrl) {
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          playbackUrl: evidence.playbackUrl,
+          providerLastEventAt: observedAt,
+          providerLastEventId: null,
+        },
+      });
+    }
+    return this.database.client.liveStream.update({
+      where: { id: stream.id },
+      data: {
+        providerLastEventAt: observedAt,
+        providerLastEventId: null,
+      },
+    });
   }
 
   private async creatorChannel(accountId: string) {
@@ -282,10 +770,64 @@ function hashKey(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function stripSecretHash<T extends { streamKeyHash: string | null }>(
-  stream: T,
-): Omit<T, "streamKeyHash"> {
-  const { streamKeyHash, ...safe } = stream;
+type PublicLiveStream = Omit<
+  LiveStream,
+  | "streamKeyHash"
+  | "providerLastEventAt"
+  | "providerLastEventId"
+  | "recordingLastEventAt"
+  | "recordingLastEventId"
+  | "providerRecordingAssetId"
+  | "recordingHandoffStatus"
+  | "recordingR2ObjectKey"
+  | "recordingMediaAssetId"
+  | "recordingProviderDownloadUrl"
+  | "recordingRenditionName"
+  | "recordingHandoffAttempt"
+  | "recordingHandoffStartedAt"
+  | "recordingHandoffHeartbeatAt"
+  | "recordingHandoffAt"
+  | "recordingProviderDeletedAt"
+  | "recordingHandoffError"
+>;
+
+function stripSecretHash(stream: LiveStream): PublicLiveStream {
+  const {
+    streamKeyHash,
+    providerLastEventAt,
+    providerLastEventId,
+    recordingLastEventAt,
+    recordingLastEventId,
+    providerRecordingAssetId,
+    recordingHandoffStatus,
+    recordingR2ObjectKey,
+    recordingMediaAssetId,
+    recordingProviderDownloadUrl,
+    recordingRenditionName,
+    recordingHandoffAttempt,
+    recordingHandoffStartedAt,
+    recordingHandoffHeartbeatAt,
+    recordingHandoffAt,
+    recordingProviderDeletedAt,
+    recordingHandoffError,
+    ...safe
+  } = stream;
   void streamKeyHash;
+  void providerLastEventAt;
+  void providerLastEventId;
+  void recordingLastEventAt;
+  void recordingLastEventId;
+  void providerRecordingAssetId;
+  void recordingHandoffStatus;
+  void recordingR2ObjectKey;
+  void recordingMediaAssetId;
+  void recordingProviderDownloadUrl;
+  void recordingRenditionName;
+  void recordingHandoffAttempt;
+  void recordingHandoffStartedAt;
+  void recordingHandoffHeartbeatAt;
+  void recordingHandoffAt;
+  void recordingProviderDeletedAt;
+  void recordingHandoffError;
   return safe;
 }
