@@ -14,13 +14,7 @@ export type LiveProviderEvidenceState =
   | "UNKNOWN";
 
 export type LiveProviderWebhookKind =
-  | "CONNECTED"
-  | "STARTED"
-  | "PLAYABLE"
-  | "DISCONNECTED"
-  | "ENDED"
-  | "ERROR"
-  | "IGNORED";
+  "CONNECTED" | "STARTED" | "PLAYABLE" | "DISCONNECTED" | "ENDED" | "ERROR" | "IGNORED";
 
 export interface LiveProvisionRequest {
   streamId: string;
