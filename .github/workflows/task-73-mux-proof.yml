@@ -51,8 +51,14 @@ jobs:
           fi
           echo "Task 73 credential prerequisite is present."
 
-      - name: Install dependencies
+      - name: Install dependencies for real provider proof
+        if: github.event_name == 'workflow_dispatch'
         run: pnpm install --frozen-lockfile
 
       - name: Run Mux test-mode control-plane proof
+        if: github.event_name == 'workflow_dispatch'
         run: pnpm --filter @ayin/api run proof:live-provider
+
+      - name: Record PR acceptance mode
+        if: github.event_name == 'pull_request'
+        run: echo "Task 73 PR acceptance uses deterministic adapter fixtures; real Mux live-create proof remains a manual deployment gate."
