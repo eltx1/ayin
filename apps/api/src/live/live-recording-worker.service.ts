@@ -1,6 +1,7 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { MediaProcessingLifecycleService } from "../media/media-processing-lifecycle.service.js";
 import { LIVE_INGEST_PROVIDER, type LiveIngestProvider } from "./live-provider.js";
 import { LiveRecordingHandoffService } from "./live-recording-handoff.service.js";
 
@@ -18,6 +19,8 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
     @Inject(LIVE_INGEST_PROVIDER) private readonly provider: LiveIngestProvider,
     @Inject(LiveRecordingHandoffService)
     private readonly handoff: LiveRecordingHandoffService,
+    @Inject(MediaProcessingLifecycleService)
+    private readonly processingLifecycle: MediaProcessingLifecycleService,
   ) {}
 
   onModuleInit(): void {
@@ -110,10 +113,39 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
         downloadUrl: stream.recordingProviderDownloadUrl,
       });
 
-      await this.database.client.$transaction(async (transaction) => {
+      const persisted = await this.database.client.$transaction(async (transaction) => {
+        const channelSettings = await transaction.channelSettings.findUnique({
+          where: { channelId: stream.channelId },
+          select: { defaultCommentsEnabled: true, defaultVideoVisibility: true },
+        });
+        const vodSlug = liveRecordingVodSlug(stream.slug, stream.id);
+        const existingVideo = await transaction.video.findUnique({
+          where: { slug: vodSlug },
+          select: { id: true, channelId: true },
+        });
+        if (existingVideo && existingVideo.channelId !== stream.channelId) {
+          throw new Error("Live recording VOD slug is already owned by another channel.");
+        }
+        const video =
+          existingVideo ??
+          (await transaction.video.create({
+            data: {
+              channelId: stream.channelId,
+              slug: vodSlug,
+              title: stream.title,
+              description: stream.description,
+              status: "UPLOADING",
+              visibility: channelSettings?.defaultVideoVisibility ?? "PUBLIC",
+              commentsEnabled: channelSettings?.defaultCommentsEnabled ?? true,
+              videoForm: "LONG_FORM",
+            },
+            select: { id: true, channelId: true },
+          }));
+
         const mediaAsset = await transaction.mediaAsset.upsert({
           where: { r2ObjectKey: copied.r2ObjectKey },
           create: {
+            videoId: video.id,
             channelId: stream.channelId,
             kind: "SOURCE_VIDEO",
             status: "UPLOADED",
@@ -122,7 +154,11 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
             sizeBytes: BigInt(copied.sizeBytes),
           },
           update: {
+            videoId: video.id,
+            channelId: stream.channelId,
+            kind: "SOURCE_VIDEO",
             status: "UPLOADED",
+            mimeType: "video/mp4",
             sizeBytes: BigInt(copied.sizeBytes),
             removedAt: null,
           },
@@ -130,13 +166,28 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
         await transaction.liveStream.update({
           where: { id: stream.id },
           data: {
-            recordingHandoffStatus: "CLEANUP_PENDING",
+            recordingHandoffStatus: "COPYING",
             recordingR2ObjectKey: copied.r2ObjectKey,
             recordingMediaAssetId: mediaAsset.id,
             recordingHandoffAt: new Date(),
             recordingHandoffError: null,
           },
         });
+        return { mediaAssetId: mediaAsset.id };
+      });
+
+      const processing = await this.processingLifecycle.enqueueUploadedAsset(
+        persisted.mediaAssetId,
+      );
+      if (!processing) {
+        throw new Error("AYIN could not enqueue the handed-off live recording for VOD processing.");
+      }
+      await this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          recordingHandoffStatus: "CLEANUP_PENDING",
+          recordingHandoffError: null,
+        },
       });
       await this.cleanupProviderAsset(stream.id, stream.providerRecordingAssetId);
     } catch (error) {
@@ -181,4 +232,12 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
 
 function safeErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message.slice(0, 500) : fallback;
+}
+
+
+function liveRecordingVodSlug(streamSlug: string, streamId: string): string {
+  const suffix = `-replay-${streamId}`;
+  const maximumBaseLength = Math.max(1, 160 - suffix.length);
+  const base = streamSlug.slice(0, maximumBaseLength).replace(/-+$/g, "") || "live";
+  return `${base}${suffix}`.slice(0, 160);
 }
