@@ -14,5 +14,6 @@ describe("live ingest provider boundary", () => {
     await expect(provider.retrieveStatus()).rejects.toBeInstanceOf(LiveProviderUnavailableError);
     expect(() => provider.verifyWebhook()).toThrow(LiveProviderUnavailableError);
     await expect(provider.stop()).resolves.toBeUndefined();
+    await expect(provider.discard()).rejects.toBeInstanceOf(LiveProviderUnavailableError);
   });
 });
