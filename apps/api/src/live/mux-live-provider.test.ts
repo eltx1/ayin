@@ -271,6 +271,25 @@ describe("MuxLiveIngestProvider", () => {
     ).toBe("ERROR");
     expect(
       normalizeMuxWebhook({
+        id: "rendition-error",
+        type: "video.asset.static_rendition.errored",
+        data: {
+          id: "rendition-1",
+          asset_id: "asset-1",
+          status: "errored",
+          name: "highest.mp4",
+        },
+      }),
+    ).toMatchObject({
+      kind: "ERROR",
+      fatal: true,
+      activeAssetId: "asset-1",
+      recording: {
+        providerAssetId: "asset-1",
+      },
+    });
+    expect(
+      normalizeMuxWebhook({
         id: "recording-complete",
         type: "video.asset.live_stream_completed",
         data: {
