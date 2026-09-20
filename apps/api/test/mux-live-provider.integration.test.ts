@@ -103,9 +103,7 @@ describe("Mux live provider deterministic integration", () => {
     const signature = createHmac("sha256", environment.MUX_WEBHOOK_SIGNING_SECRET)
       .update(`${timestamp}.${webhookBody}`)
       .digest("hex");
-    expect(
-      provider.verifyWebhook(webhookBody, `t=${timestamp},v1=${signature}`),
-    ).toMatchObject({
+    expect(provider.verifyWebhook(webhookBody, `t=${timestamp},v1=${signature}`)).toMatchObject({
       providerStreamId: "mux-fixture-1",
       kind: "PLAYABLE",
       playable: true,
