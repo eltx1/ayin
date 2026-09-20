@@ -148,6 +148,35 @@ the one-time key. Until the Mux account allows Live and that proof succeeds, kee
 `MUX_LIVE_PRODUCTION_ENABLED=0`; the merged adapter can still verify webhooks and control existing
 resources when credentials are configured, but it will not create new live streams.
 
+## Task 74 playback hardening
+
+AYIN uses a live-specific player state machine rather than applying VOD progress/seek semantics to
+provider live manifests.
+
+- HLS playback uses native HLS where the browser supports it and the bundled hls.js path elsewhere.
+- A pure live session has no VOD scrubber, chapter seeking, playback-rate control, or persisted watch
+  position. Resuming pure live playback returns to the current live edge.
+- Live-edge state is derived from the active media seekable range. AYIN shows an approximate
+  "behind live" indication only when the viewer is meaningfully behind the edge.
+- Automatic reconnect uses a bounded backoff budget: 1s, 2s, 4s, 8s, 15s, then 30s. Exhausting the
+  budget produces a fatal state and requires an explicit viewer retry; there is no infinite
+  reconnect loop.
+- Browser offline/online transitions, fatal manifest refresh failures, fatal media/network errors,
+  and unexpected media-ended events while the provider still reports LIVE all enter the same
+  bounded recovery path.
+- The public live page polls AYIN's provider-backed stream state while a session is not terminal.
+  READY/SCHEDULED streams do not request the HLS manifest before provider evidence has promoted the
+  stream to LIVE.
+- Provider ENDED/CANCELLED/FAILED state stops reconnect and records a terminal playback end reason.
+- DVR controls are not exposed merely because HLS presents a seekable window. A future provider must
+  explicitly supply a supported DVR window before AYIN exposes DVR UI.
+- Optional caption tracks, fullscreen controls, TV focus navigation, the existing IMA client-break
+  hook, live chat, and moderation boundaries remain intact.
+
+Live playback analytics include playback start, startup latency, measured rebuffer duration,
+reconnect attempts/reasons, exhausted fatal errors, sampled live viewing duration, and terminal end
+reason.
+
 ## Advertising
 
 The live response continues to expose AYIN's existing client-side `IMA_CLIENT_BREAK` boundary.
