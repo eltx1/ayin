@@ -8,6 +8,7 @@ import type { DatabaseService } from "../database/database.service.js";
 import {
   type LiveIngestProvider,
   type LiveProviderStatus,
+  type LiveProviderWebhookEvent,
   LiveProviderUnavailableError,
 } from "./live-provider.js";
 import { type LiveError, LiveService } from "./live.service.js";
@@ -31,6 +32,9 @@ const baseStream: LiveStream = {
   recordingHandoffStatus: "NONE",
   recordingR2ObjectKey: null,
   recordingMediaAssetId: null,
+  recordingProviderDownloadUrl: null,
+  recordingRenditionName: null,
+  recordingHandoffAttempt: 0,
   recordingHandoffStartedAt: null,
   recordingHandoffAt: null,
   recordingProviderDeletedAt: null,
@@ -123,6 +127,12 @@ function providerFixture(status: LiveProviderStatus): LiveIngestProvider {
       throw new LiveProviderUnavailableError();
     }),
     retrieveStatus: vi.fn(async () => status),
+    retrieveRecording: vi.fn(async (providerAssetId: string, renditionName: string) => ({
+      providerAssetId,
+      ayinStreamId: "stream-1",
+      downloadUrl: `https://stream.mux.com/playback/${renditionName}`,
+      renditionName,
+    })),
     stop: vi.fn(async () => undefined),
     discard: vi.fn(async () => undefined),
     deleteRecordingAsset: vi.fn(async () => undefined),
@@ -234,17 +244,19 @@ describe("LiveService provider evidence policy", () => {
     findFirst.mockResolvedValue(current);
     findUnique.mockResolvedValue(current);
     const provider = providerFixture(statusFixture("PLAYABLE", true));
-    provider.verifyWebhook = vi.fn(() => ({
-      eventId: "older-idle",
+    provider.verifyWebhook = vi.fn(
+      (): LiveProviderWebhookEvent => ({
+        eventId: "older-idle",
       providerStreamId: "mux-live-1",
       kind: "ENDED",
       rawType: "video.live_stream.idle",
       occurredAt: new Date("2026-09-20T01:59:00.000Z"),
       playable: false,
       fatal: false,
-      activeAssetId: "asset-1",
-      recording: null,
-    }));
+        activeAssetId: "asset-1",
+        recording: null,
+      }),
+    );
     const service = new LiveService(database, provider);
 
     const result = await service.handleProviderWebhook("{}", "signed");
@@ -264,8 +276,9 @@ describe("LiveService provider evidence policy", () => {
     findFirst.mockResolvedValue(current);
     findUnique.mockResolvedValue(current);
     const provider = providerFixture(statusFixture("IDLE"));
-    provider.verifyWebhook = vi.fn(() => ({
-      eventId: "rendition-ready-1",
+    provider.verifyWebhook = vi.fn(
+      (): LiveProviderWebhookEvent => ({
+        eventId: "rendition-ready-1",
       providerStreamId: null,
       kind: "RECORDING_READY",
       rawType: "video.asset.static_rendition.ready",
@@ -273,13 +286,14 @@ describe("LiveService provider evidence policy", () => {
       playable: false,
       fatal: false,
       activeAssetId: "asset-1",
-      recording: {
-        providerAssetId: "asset-1",
-        ayinStreamId: "stream-1",
-        downloadUrl: "https://stream.mux.com/playback/highest.mp4",
-        renditionName: "highest.mp4",
-      },
-    }));
+        recording: {
+          providerAssetId: "asset-1",
+          ayinStreamId: null,
+          downloadUrl: null,
+          renditionName: "highest.mp4",
+        },
+      }),
+    );
     const service = new LiveService(database, provider);
 
     const result = await service.handleProviderWebhook("{}", "signed");
