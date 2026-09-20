@@ -31,6 +31,7 @@ export interface AyinAdaptivePlaybackCallbacks {
       }) => void)
     | undefined;
   onRecoverable?: ((reason: AyinHlsFailureReason) => void) | undefined;
+  onRecovered?: (() => void) | undefined;
   onFatal?: ((reason: AyinHlsFailureReason) => void) | undefined;
 }
 
@@ -198,6 +199,7 @@ export async function startAdaptiveHlsPlayback(input: {
   let fatalReported = false;
   let networkRecoveries = 0;
   let mediaRecoveries = 0;
+  let recovering = false;
   let renditions: AyinPlaybackRendition[] = [];
   let manualSelection = false;
 
@@ -219,6 +221,10 @@ export async function startAdaptiveHlsPlayback(input: {
   hls.on(Hls.Events.FRAG_BUFFERED, () => {
     networkRecoveries = 0;
     mediaRecoveries = 0;
+    if (recovering) {
+      recovering = false;
+      callbacks.onRecovered?.();
+    }
   });
   hls.on(Hls.Events.LEVEL_SWITCHED, (...args: unknown[]) => {
     if (destroyed) return;
@@ -235,17 +241,20 @@ export async function startAdaptiveHlsPlayback(input: {
     const data = (args.at(-1) ?? {}) as HlsErrorData;
     const reason = classifyHlsFailure(data);
     if (!data.fatal) {
+      recovering = true;
       callbacks.onRecoverable?.(reason);
       return;
     }
     if (reason === "NETWORK" && networkRecoveries < 2) {
       networkRecoveries += 1;
+      recovering = true;
       callbacks.onRecoverable?.(reason);
       hls.startLoad();
       return;
     }
     if (reason === "MEDIA" && mediaRecoveries < 2) {
       mediaRecoveries += 1;
+      recovering = true;
       callbacks.onRecoverable?.(reason);
       hls.recoverMediaError();
       return;
