@@ -37,6 +37,7 @@ function databaseFixture() {
     ...baseStream,
     ...input.data,
   }));
+  const findFirst = vi.fn(async () => ({ ...baseStream }));
   return {
     database: {
       client: {
@@ -46,11 +47,12 @@ function databaseFixture() {
           })),
         },
         liveStream: {
-          findFirst: vi.fn(async () => ({ ...baseStream })),
+          findFirst,
           update,
         },
       },
     } as unknown as DatabaseService,
+    findFirst,
     update,
   };
 }
@@ -143,7 +145,7 @@ describe("LiveService provider evidence policy", () => {
   });
 
   it("persists only a hash of the one-time provider stream key", async () => {
-    const { database, update } = databaseFixture();
+    const { database, findFirst, update } = databaseFixture();
     const provider = providerFixture(statusFixture("IDLE"));
     const unprovisioned = {
       ...baseStream,
@@ -154,9 +156,7 @@ describe("LiveService provider evidence policy", () => {
       ingestEndpoint: null,
       playbackUrl: null,
     };
-    (
-      database.client.liveStream.findFirst as unknown as ReturnType<typeof vi.fn>
-    ).mockResolvedValue(unprovisioned);
+    findFirst.mockResolvedValue(unprovisioned);
     const service = new LiveService(database, provider);
 
     const result = await service.provision("account-1", "stream-1");
