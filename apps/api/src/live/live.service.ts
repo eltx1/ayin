@@ -65,7 +65,7 @@ export class LiveService {
 
   async provision(accountId: string, streamId: string) {
     const channel = await this.creatorChannel(accountId);
-    this.assertProviderConfigured();
+    this.assertProviderProvisioningEnabled();
     let createdProviderStreamId: string | null = null;
 
     try {
@@ -124,7 +124,7 @@ export class LiveService {
 
   async rotateKey(accountId: string, streamId: string) {
     const channel = await this.creatorChannel(accountId);
-    this.assertProviderConfigured();
+    this.assertProviderProvisioningEnabled();
 
     try {
       return await this.database.client.$transaction(
@@ -395,6 +395,17 @@ export class LiveService {
         "LIVE_PROVIDER_OPERATION_IN_PROGRESS",
         "Another provider credential operation is already in progress for this live session.",
         409,
+      );
+    }
+  }
+
+  private assertProviderProvisioningEnabled() {
+    this.assertProviderConfigured();
+    if (!this.provider.diagnostics().productionEnabled) {
+      throw new LiveError(
+        "LIVE_PROVIDER_PROVISIONING_DISABLED",
+        "New live provisioning and credential rotation are disabled by the provider kill switch.",
+        503,
       );
     }
   }
