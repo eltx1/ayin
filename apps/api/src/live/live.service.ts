@@ -359,6 +359,10 @@ export class LiveService {
       ...stripSecretHash(stream),
       channel,
       adBreakHook: stream.adBreaksEnabled ? "IMA_CLIENT_BREAK" : null,
+      // Task 74: do not infer DVR or captions from a generic HLS seekable range.
+      // Mux Task 73 did not advertise either capability, so pure-live semantics stay explicit.
+      dvrWindowSeconds: null,
+      captions: [],
     };
   }
 
