@@ -192,6 +192,19 @@ describe("MuxLiveIngestProvider", () => {
     expect(fetchImpl.mock.calls[3]?.[1]?.method).toBe("DELETE");
   });
 
+  it("treats already-missing provider resources as successful cleanup", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: { type: "not_found" } }, 404))
+      .mockResolvedValueOnce(jsonResponse({ error: { type: "not_found" } }, 404))
+      .mockResolvedValueOnce(jsonResponse({ error: { type: "not_found" } }, 404));
+    const provider = new MuxLiveIngestProvider(enabledEnvironment, fetchImpl);
+
+    await expect(provider.stop("already-gone-live")).resolves.toBeUndefined();
+    await expect(provider.discard("already-gone-live")).resolves.toBeUndefined();
+    await expect(provider.deleteRecordingAsset("already-gone-asset")).resolves.toBeUndefined();
+  });
+
   it("keeps stop and status control available when new provisioning is killed", async () => {
     const controlEnvironment = {
       MUX_TOKEN_ID: "id",
