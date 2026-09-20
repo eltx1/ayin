@@ -248,6 +248,7 @@ export function LiveAyinPlayer({
     if (status !== "LIVE" || !playbackUrl) return;
     const video = videoRef.current;
     if (!video) return;
+    const liveVideo: HTMLVideoElement = video;
 
     let cancelled = false;
     let reconnectTimer: number | null = null;
@@ -334,7 +335,7 @@ export function LiveAyinPlayer({
       let fatalDelivered = false;
       try {
         const next = await startAdaptiveHlsPlayback({
-          video,
+          video: liveVideo,
           hlsUrl: playbackUrl,
           mode: "LIVE",
           callbacks: {
@@ -343,9 +344,9 @@ export function LiveAyinPlayer({
               clearStartupWatchdog();
               setMessage(null);
               updateEdge();
-              if (startedRef.current || reason) moveToLiveEdge(video);
+              if (startedRef.current || reason) moveToLiveEdge(liveVideo);
               if (autoPlay && !adActiveRef.current) {
-                void video.play().catch(() => setAutoplayBlocked(true));
+                void liveVideo.play().catch(() => setAutoplayBlocked(true));
               }
             },
             onRecoverable: (recoveringReason) => {
