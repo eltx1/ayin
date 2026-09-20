@@ -236,6 +236,12 @@ export function LiveAyinPlayer({
     flushDuration(false);
     sessionRef.current?.destroy();
     sessionRef.current = null;
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
     if (startedRef.current) {
       emit("LIVE_PLAY_COMPLETE", { metadata: { reason } });
       emit("LIVE_END", { metadata: { reason } });
@@ -357,6 +363,13 @@ export function LiveAyinPlayer({
                   ? "Refreshing live stream…"
                   : "Recovering live playback…",
               );
+            },
+            onRecovered: () => {
+              if (cancelled) return;
+              setMessage(null);
+              if (startedRef.current && !liveVideo.paused) {
+                setConnectionState("PLAYING");
+              }
             },
             onFatal: (fatalReason) => {
               fatalDelivered = true;
