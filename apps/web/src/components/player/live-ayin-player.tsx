@@ -213,7 +213,7 @@ export function LiveAyinPlayer({
         if (track) track.mode = source?.id === trackId ? "showing" : "disabled";
       }
     },
-    [captions],
+    [captions, streamId],
   );
 
   const toggleCaptions = useCallback(() => {
@@ -236,11 +236,6 @@ export function LiveAyinPlayer({
     flushDuration(false);
     sessionRef.current?.destroy();
     sessionRef.current = null;
-    setPlaying(false);
-    setConnectionState("IDLE");
-    setMessage(
-      status === "ENDED" ? "This live stream has ended." : "This live stream is unavailable.",
-    );
     if (startedRef.current) {
       emit("LIVE_PLAY_COMPLETE", { metadata: { reason } });
       emit("LIVE_END", { metadata: { reason } });
@@ -341,6 +336,7 @@ export function LiveAyinPlayer({
         const next = await startAdaptiveHlsPlayback({
           video,
           hlsUrl: playbackUrl,
+          mode: "LIVE",
           callbacks: {
             onReady: () => {
               if (cancelled) return;
@@ -560,6 +556,14 @@ export function LiveAyinPlayer({
 
   const latencyLabel = usefulLiveLatencyLabel(edge);
   const terminal = terminalEndReason(status);
+  const terminalMessage =
+    status === "ENDED"
+      ? "This live stream has ended."
+      : terminal
+        ? "This live stream is unavailable."
+        : null;
+  const visibleMessage = terminalMessage ?? message;
+  const effectivePlaying = terminal ? false : playing;
   const controlsLocked = adMode.active && adMode.controlsLocked !== false;
   const showGoLive = status === "LIVE" && !edge.atLiveEdge;
 
@@ -570,7 +574,7 @@ export function LiveAyinPlayer({
         className={styles.player}
         data-live-player="true"
         data-live-state={terminal ? "ENDED" : connectionState}
-        data-playing={playing}
+        data-playing={effectivePlaying}
         ref={rootRef}
       >
         <div
@@ -603,10 +607,10 @@ export function LiveAyinPlayer({
             {latencyLabel ? <span className={styles.latency}>{latencyLabel}</span> : null}
           </div>
 
-          {message ? (
+          {visibleMessage ? (
             <div className={styles.status} aria-live="polite">
-              <p>{message}</p>
-              {connectionState === "FATAL" ? (
+              <p>{visibleMessage}</p>
+              {!terminal && connectionState === "FATAL" ? (
                 <button data-tv-focusable="true" onClick={retry} type="button">
                   Try again
                 </button>
@@ -634,13 +638,13 @@ export function LiveAyinPlayer({
 
           <div className={styles.controls}>
             <button
-              aria-label={playing ? "Pause live" : "Play live"}
+              aria-label={effectivePlaying ? "Pause live" : "Play live"}
               data-tv-focusable="true"
               disabled={status !== "LIVE" || controlsLocked}
               onClick={() => void togglePlay()}
               type="button"
             >
-              {playing ? "Pause" : "Play"}
+              {effectivePlaying ? "Pause" : "Play"}
             </button>
             <button
               aria-label={muted ? "Unmute" : "Mute"}
