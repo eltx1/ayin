@@ -55,6 +55,7 @@ model LiveStream {
   recordingRenditionName     String?                    @db.VarChar(255)
   recordingHandoffAttempt    Int                        @default(0)
   recordingHandoffStartedAt  DateTime?
+  recordingHandoffHeartbeatAt DateTime?
   recordingHandoffAt        DateTime?
   recordingProviderDeletedAt DateTime?
   recordingHandoffError     String?                    @db.VarChar(500)
