@@ -101,7 +101,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
         }
         void loadChat(next.id);
         if (!terminalStatus(next.status)) schedule(STREAM_REFRESH_MS);
-      } catch (error) {
+      } catch {
         if (controller.signal.aborted || stopped) return;
         const delay = STREAM_REFRESH_FAILURE_DELAYS_MS[failureAttempt] ?? null;
         if (delay === null) {
@@ -166,6 +166,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
             stream.status === "CANCELLED" ||
             stream.status === "FAILED") ? (
             <LiveAyinPlayer
+              key={stream.id}
               autoPlay
               captions={stream.captions ?? []}
               channelId={stream.channel.id}
