@@ -394,10 +394,9 @@ export function normalizeMuxWebhook(
       : rawType.startsWith("video.asset.") && typeof data.id === "string"
         ? data.id
         : null;
-  const recording =
-    kind === "RECORDING_FINALIZED" || kind === "RECORDING_READY"
-      ? muxRecordingFromWebhook(data, kind === "RECORDING_READY")
-      : null;
+  const recording = rawType.startsWith("video.asset.")
+    ? muxRecordingFromWebhook(data, kind === "RECORDING_READY")
+    : null;
   const occurredAt = muxWebhookDate(envelope.created_at, nowMilliseconds);
   return {
     eventId,
