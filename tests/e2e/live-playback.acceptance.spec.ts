@@ -275,9 +275,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await expect(page.getByText("Live edge")).toBeVisible();
   });
 
-  test("native HLS is paused and unloaded when the provider becomes terminal", async ({
-    page,
-  }) => {
+  test("native HLS is paused and unloaded when the provider becomes terminal", async ({ page }) => {
     await installLiveHarness(page, true);
     let requestCount = 0;
     await page.route("**/live/task-74", async (route) => {
@@ -305,7 +303,9 @@ test.describe.serial("Task 74 live playback hardening", () => {
 
     await expect(page.getByText("This live stream has ended."), { timeout: 8_000 }).toBeVisible();
     await expect(page.locator("video")).not.toHaveAttribute("src", /.+/);
-    await expect.poll(async () => (await state(page)).pauseCalls).toBeGreaterThan(before.pauseCalls);
+    await expect
+      .poll(async () => (await state(page)).pauseCalls)
+      .toBeGreaterThan(before.pauseCalls);
     await expect.poll(async () => (await state(page)).loadCalls).toBeGreaterThan(before.loadCalls);
   });
 
@@ -373,7 +373,9 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await expect(page.locator('[data-live-player="true"]')).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
 
-    await expect(page.getByText("This live session is unavailable."), { timeout: 8_000 }).toBeVisible();
+    await expect(page.getByText("This live session is unavailable."), {
+      timeout: 8_000,
+    }).toBeVisible();
     await expect(page.locator('[data-live-player="true"]')).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
   });
