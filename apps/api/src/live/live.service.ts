@@ -514,7 +514,11 @@ export class LiveService {
           ) {
             data.recordingHandoffStatus = "WAITING";
           }
-        } else if (event.kind === "ERROR" && event.fatal && !event.recording) {
+        } else if (event.kind === "ERROR" && event.fatal && event.recording) {
+          data.providerRecordingAssetId = event.recording.providerAssetId;
+          data.recordingHandoffStatus = "FAILED";
+          data.recordingHandoffError = "Mux recording asset processing failed.";
+        } else if (event.kind === "ERROR" && event.fatal) {
           data.status = "FAILED";
         }
 
