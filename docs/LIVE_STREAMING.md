@@ -1,86 +1,122 @@
-# AYIN live streaming foundation
+# AYIN live streaming
 
-Task 34 adds the repository-side live product boundary without changing the VOD architecture.
-Task 72 selects the intended production provider architecture without enabling production traffic.
+Task 34 established the provider-neutral live product boundary. Task 72 selected **Mux Video** as
+the implementation target with Amazon IVS as the fallback candidate. Task 73 implements the Mux
+adapter without changing AYIN's R2-based VOD source-of-truth architecture.
 
-## Architecture
+## Runtime architecture
 
-AYIN's existing R2 media path remains the source/storage path for uploaded VOD MP4 assets. R2
-object storage is **not** treated as a live ingest, transcoding, packaging or origin service.
+`LiveIngestProvider` owns provider-issued broadcast credentials and the provider lifecycle. AYIN
+stores only:
 
-Live sessions are represented by `LiveStream` records with scheduled lifecycle state, provider
-identifiers, playback/ingest descriptors, chat policy and client-side ad-break eligibility.
-`LiveChatMessage` and `LiveModerationAction` provide a bounded live-chat and moderation audit
-model.
+- the provider key and provider live-stream ID;
+- the non-secret RTMPS ingest endpoint;
+- the HLS playback URL;
+- a SHA-256 hash of the current stream key for internal security/audit semantics.
 
-`LiveIngestProvider` is the provider-neutral boundary. Production implementations must provision
-an actual ingest/transcoding service and return its ingest endpoint and playback URL. The default
-adapter remains deliberately unconfigured and returns no fake stream.
+AYIN does **not** persist the raw Mux stream key, SRT passphrase, or constructed SRT URL. Provision
+and rotate responses return the encoder credentials once to Creator Studio and subsequent status,
+list, diagnostics, and public responses do not return them.
 
-The Task 34 interface currently has AYIN generate a stream key before provider provisioning. Task 72
-found that the selected managed provider, Mux Video, generates its broadcast key in the provider
-control plane. **Task 72 does not change the running interface or production behavior.** Task 73 must
-revise the adapter contract so provider-issued keys/passphrases can be returned once to the creator
-while AYIN stores only non-reversible hashes.
+The Mux provider is selected only when all production gates are present:
 
-## Task 72 provider decision
+- `MUX_TOKEN_ID`
+- `MUX_TOKEN_SECRET`
+- `MUX_WEBHOOK_SIGNING_SECRET`
+- `MUX_LIVE_PRODUCTION_ENABLED=1`
 
-The detailed ADR is `docs/ADR_0072_LIVE_PROVIDER.md`.
-
-- selected implementation target: **Mux Video**
-- fallback: **Amazon IVS Low-Latency Streaming**
-- production provider connected: **no**
-- real provider proof completed: **no — Mux credentials are not available in the task environment**
-- safe test-mode proof harness: available, opt-in only
-- current runtime adapter: **UnconfiguredLiveIngestProvider**
-
-The decision was based on a weighted review of ingest, latency, scaling/CDN, lifecycle, API
-maturity, advertising/Google paths, DRM, analytics, cost/commitments and portability. It was not
-based on the lowest advertised unit price.
+If any gate is missing, the runtime selects `UnconfiguredLiveIngestProvider` and provider
+operations fail closed rather than creating a fake stream.
 
 ## Creator workflow
 
-Current Task 34 runtime behavior remains:
+1. Create or schedule a live session in Creator Studio.
+2. Provision the session. AYIN creates one Mux Live Stream and returns:
+   - RTMPS server: `rtmps://global-live.mux.com:443/app`
+   - a one-time stream key
+   - an SRT URL when Mux supplies an SRT passphrase
+   - the HLS playback URL
+3. Copy the one-time encoder credentials into OBS or another supported encoder.
+4. Start the encoder and synchronize status, or allow the signed Mux webhook to update AYIN.
+5. AYIN does **not** mark the session `LIVE` merely because an encoder connected or recording
+   started. The session becomes `LIVE` only after Mux reports `video.live_stream.active` or the
+   Mux API reports `status=active`, which is the provider evidence that playback is available.
+6. Rotate credentials through the dedicated rotation action when required. The replacement secret
+   is shown once and the stored hash is replaced.
+7. End or cancel the session through AYIN. AYIN disables the Mux live stream so the encoder is
+   disconnected and new ingest is rejected.
 
-1. Create or schedule a live session in Studio.
-2. Provision the session only after a real live provider is configured.
-3. Copy the one-time broadcast credentials into the encoder.
-4. Move the session to `LIVE` only when a provider playback output exists.
-5. End the session through AYIN so the provider stop hook can execute.
+Creator Studio displays the RTMPS server separately from the one-time stream key so it can be pasted
+directly into OBS Custom Streaming Server settings. The optional SRT URL is displayed as a single
+one-time value.
 
-Task 73 will adapt step 3 to provider-generated Mux credentials and validate SRT/RTMPS with a real
-encoder before production enablement.
+## Provider lifecycle and webhooks
 
-Chat can be disabled/enabled per stream. Creator moderation can hide or remove individual messages
-and records a moderation action.
+Mux webhooks are accepted at:
 
-## Advertising and analytics
+`POST /webhooks/mux`
 
-The public live response exposes an `IMA_CLIENT_BREAK` hook only when the stream allows ad breaks.
-This preserves the existing client-side Google IMA integration boundary. Mux has official Google
-IMA client-side guidance, but Task 72 does **not** claim Google Ad Manager DAI is production-ready.
+The API is configured with Nest/Fastify raw-body support. AYIN verifies the `mux-signature` against
+the raw request body and `MUX_WEBHOOK_SIGNING_SECRET`, uses a five-minute timestamp tolerance, and
+rejects missing, forged, or stale signatures before processing an event.
 
-Google DAI remains a separate proof because current Google documentation requires specific
-HLS/DASH and live ad-break signaling behavior, including SCTE-35/cue handling. Task 73 must leave DAI
-disabled until that path is verified.
+Normalized lifecycle handling:
 
-Live analytics event names cover page view, playback start/complete, chat and ad-break opportunity.
-Mux Data may supplement these signals later but does not replace AYIN-owned analytics.
+| Mux event | AYIN evidence | State effect |
+| --- | --- | --- |
+| `video.live_stream.connected` | `CONNECTED` | Does not mark LIVE |
+| `video.live_stream.recording` | `STARTED` | Does not mark LIVE |
+| `video.live_stream.active` | `PLAYABLE` | Marks LIVE if not already ended/cancelled |
+| `video.live_stream.disconnected` | `DISCONNECTED` | Keeps the existing state during reconnect window |
+| `video.live_stream.idle` | `ENDED` | Ends an active session |
+| `video.live_stream.disabled` | `ENDED` | Ends the session |
+| `video.live_stream.deleted` | `ENDED` | Ends the session |
+| `video.live_stream.warning` | `ERROR` | Recorded as provider error evidence; warning is non-fatal |
 
-## External prerequisite
+Manual `LIVE` requests also call Mux status synchronization first and return
+`LIVE_PROVIDER_NOT_PLAYABLE` until provider evidence is playable.
 
-The vendor decision is complete, but production verification remains externally blocked until AYIN
-has real Mux credentials and completes the Task 73 encoder/player lifecycle proof. No production
-Mux stream, account connection, Google DAI integration, or production ad fill is claimed by Task 72.
+## Operational diagnostics
 
-For the optional test-mode control-plane proof:
+Authenticated creators/operators can synchronize a specific session with:
 
-```bash
-MUX_TOKEN_ID=... \
-MUX_TOKEN_SECRET=... \
-MUX_TASK72_PROOF=1 \
-pnpm --filter @ayin/api run proof:live-provider
-```
+`POST /studio/live/:id/sync`
 
-Without credentials and the explicit opt-in, the proof performs no network request.
-The proof command also exits non-zero unless the result is `VERIFIED`, so CI or operator scripts cannot mistake a blocked proof for a successful provider verification.
+Safe diagnostics are available at:
+
+`GET /studio/live/:id/diagnostics`
+
+Diagnostics expose provider readiness, enabled protocols, missing configuration **names**, current
+provider evidence, provider resource ID, and playback URL. They never return API token values,
+webhook secrets, stream keys, SRT passphrases, authorization headers, or provider response bodies.
+
+Provider HTTP errors are reduced to a sanitized status/code and do not surface Mux response bodies,
+because successful Mux live-resource responses can contain broadcast secrets.
+
+## Testing
+
+Task 73 includes deterministic provider integration coverage that exercises the real adapter code
+against a Mux-shaped HTTP fixture:
+
+- provision;
+- HLS/RTMPS/SRT encoder configuration;
+- provider status synchronization;
+- playable evidence;
+- stream-key rotation;
+- signed webhook verification and replay-window enforcement;
+- stop/disable;
+- safe status responses with no stream-key/passphrase leakage.
+
+Unit coverage also verifies that AYIN does not mark a session LIVE on connected-only evidence and
+that the only persisted stream-key value is its SHA-256 hash.
+
+These deterministic fixtures satisfy CI without requiring production credentials or creating billable
+resources. A deployment can additionally run the Task 72 Mux test-mode control-plane proof when an
+operator explicitly supplies the test credentials and opt-in flag.
+
+## Advertising
+
+The live response continues to expose AYIN's existing client-side `IMA_CLIENT_BREAK` boundary.
+Task 73 does not enable or claim Google Ad Manager DAI. DAI remains a separate integration/proof
+because its live manifest conditioning and cue/SCTE-35 requirements are outside the Mux provider
+adapter lifecycle implemented here.
