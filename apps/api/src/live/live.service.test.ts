@@ -38,6 +38,19 @@ function databaseFixture() {
     ...input.data,
   }));
   const findFirst = vi.fn(async () => ({ ...baseStream }));
+  const queryRaw = vi.fn(async () => [{ locked: true }]);
+  const transactionClient = {
+    liveStream: {
+      findFirst,
+      update,
+    },
+    $queryRaw: queryRaw,
+  };
+  const transaction = vi.fn(
+    async (
+      operation: (client: typeof transactionClient) => Promise<unknown>,
+    ) => operation(transactionClient),
+  );
   return {
     database: {
       client: {
@@ -50,9 +63,12 @@ function databaseFixture() {
           findFirst,
           update,
         },
+        $transaction: transaction,
       },
     } as unknown as DatabaseService,
     findFirst,
+    queryRaw,
+    transaction,
     update,
   };
 }
@@ -85,6 +101,7 @@ function providerFixture(status: LiveProviderStatus): LiveIngestProvider {
     }),
     retrieveStatus: vi.fn(async () => status),
     stop: vi.fn(async () => undefined),
+    discard: vi.fn(async () => undefined),
     verifyWebhook: vi.fn(() => {
       throw new LiveProviderUnavailableError();
     }),
@@ -142,6 +159,40 @@ describe("LiveService provider evidence policy", () => {
         }),
       }),
     );
+  });
+
+  it("rejects overlapping provider credential operations before calling Mux", async () => {
+    const { database, queryRaw } = databaseFixture();
+    queryRaw.mockResolvedValue([{ locked: false }]);
+    const provider = providerFixture(statusFixture("IDLE"));
+    const service = new LiveService(database, provider);
+
+    await expect(service.rotateKey("account-1", "stream-1")).rejects.toMatchObject({
+      code: "LIVE_PROVIDER_OPERATION_IN_PROGRESS",
+      statusCode: 409,
+    });
+    expect(provider.rotateKey).not.toHaveBeenCalled();
+  });
+
+  it("deletes a newly created Mux resource if the database write cannot be committed", async () => {
+    const { database, findFirst, update } = databaseFixture();
+    findFirst.mockResolvedValue({
+      ...baseStream,
+      status: "DRAFT",
+      providerKey: "unconfigured",
+      providerStreamId: null,
+      streamKeyHash: null,
+      ingestEndpoint: null,
+      playbackUrl: null,
+    });
+    update.mockRejectedValueOnce(new Error("database write failed"));
+    const provider = providerFixture(statusFixture("IDLE"));
+    const service = new LiveService(database, provider);
+
+    await expect(service.provision("account-1", "stream-1")).rejects.toThrow(
+      "database write failed",
+    );
+    expect(provider.discard).toHaveBeenCalledWith("mux-live-1");
   });
 
   it("persists only a hash of the one-time provider stream key", async () => {
