@@ -294,12 +294,37 @@ describe("MuxLiveIngestProvider", () => {
         id: "rendition-ready",
         type: "video.asset.static_rendition.ready",
         data: {
+          id: "rendition-1",
+          asset_id: "asset-1",
+          status: "ready",
+          ext: "mp4",
+          resolution: "highest",
+          name: "highest.mp4",
+        },
+      }),
+    ).toMatchObject({
+      kind: "RECORDING_READY",
+      activeAssetId: "asset-1",
+      recording: {
+        providerAssetId: "asset-1",
+        ayinStreamId: null,
+        renditionName: "highest.mp4",
+        downloadUrl: null,
+      },
+    });
+  });
+
+  it("resolves a ready static rendition through the parent Mux asset", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(
+      jsonResponse({
+        data: {
           id: "asset-1",
           meta: { external_id: "ayin-stream-1" },
           playback_ids: [{ id: "asset-playback-1", policy: "public" }],
           static_renditions: {
             files: [
               {
+                id: "rendition-1",
                 status: "ready",
                 ext: "mp4",
                 resolution: "highest",
@@ -309,15 +334,19 @@ describe("MuxLiveIngestProvider", () => {
           },
         },
       }),
-    ).toMatchObject({
-      kind: "RECORDING_READY",
-      recording: {
-        providerAssetId: "asset-1",
-        ayinStreamId: "ayin-stream-1",
-        renditionName: "highest.mp4",
-        downloadUrl: "https://stream.mux.com/asset-playback-1/highest.mp4",
-      },
+    );
+    const provider = new MuxLiveIngestProvider(enabledEnvironment, fetchImpl);
+
+    await expect(provider.retrieveRecording("asset-1", "highest.mp4")).resolves.toEqual({
+      providerAssetId: "asset-1",
+      ayinStreamId: "ayin-stream-1",
+      renditionName: "highest.mp4",
+      downloadUrl: "https://stream.mux.com/asset-playback-1/highest.mp4",
     });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api.mux.com/video/v1/assets/asset-1",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 
   it("rejects forged and stale webhook signatures", () => {
