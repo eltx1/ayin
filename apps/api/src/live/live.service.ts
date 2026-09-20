@@ -543,26 +543,28 @@ export class LiveService {
         await this.acquireProviderMutationLock(transaction, stream.id);
         const current = await transaction.liveStream.findUnique({ where: { id: stream.id } });
         if (!current) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
-        if (this.isStaleProviderEvent(current, event)) {
-          return { mode: "ignore" as const, stream: current };
-        }
 
         const sameAsset = current.providerRecordingAssetId === recording.providerAssetId;
         if (
           sameAsset &&
-          (current.recordingHandoffStatus === "READY" ||
-            current.recordingHandoffStatus === "CLEANUP_PENDING") &&
+          current.recordingHandoffStatus === "READY" &&
+          current.recordingProviderDeletedAt
+        ) {
+          return { mode: "ignore" as const, stream: current };
+        }
+        if (
+          sameAsset &&
+          current.recordingHandoffStatus === "CLEANUP_PENDING" &&
           current.recordingR2ObjectKey &&
           current.recordingMediaAssetId
         ) {
-          const updated = await transaction.liveStream.update({
-            where: { id: current.id },
-            data: {
-              providerLastEventAt: event.occurredAt,
-              providerLastEventId: event.eventId,
-            },
-          });
-          return { mode: "cleanup" as const, stream: updated };
+          return { mode: "cleanup" as const, stream: current };
+        }
+        if (
+          current.recordingHandoffStatus !== "FAILED" &&
+          this.isStaleProviderEvent(current, event)
+        ) {
+          return { mode: "ignore" as const, stream: current };
         }
 
         const handoffFresh =
@@ -683,6 +685,14 @@ export class LiveService {
           status: "LIVE",
           playbackUrl: evidence.playbackUrl ?? stream.playbackUrl,
           startedAt: stream.startedAt ?? new Date(),
+          ...(evidence.activeAssetId
+            ? {
+                providerRecordingAssetId: evidence.activeAssetId,
+                ...(stream.recordingHandoffStatus === "NONE"
+                  ? { recordingHandoffStatus: "WAITING" as const }
+                  : {}),
+              }
+            : {}),
         },
       });
     }
