@@ -246,6 +246,8 @@ export class LiveService {
       return { accepted: true, ignored: true, eventId: event.eventId, event: event.kind };
     }
 
+    let stream = await this.findStreamForProviderEvent(event);
+
     if (event.kind === "RECORDING_READY") {
       const recording = event.recording;
       if (!recording?.providerAssetId || !recording.renditionName) {
@@ -255,6 +257,23 @@ export class LiveService {
           502,
         );
       }
+
+      if (
+        stream &&
+        (this.isStaleRecordingEvent(stream, event) ||
+          (stream.providerRecordingAssetId === recording.providerAssetId &&
+            stream.recordingHandoffStatus === "READY" &&
+            Boolean(stream.recordingProviderDeletedAt)))
+      ) {
+        return {
+          accepted: true,
+          ignored: true,
+          eventId: event.eventId,
+          event: event.kind,
+          stream: stripSecretHash(stream),
+        };
+      }
+
       try {
         const enriched = await this.provider.retrieveRecording(
           recording.providerAssetId,
@@ -268,9 +287,9 @@ export class LiveService {
       } catch (error) {
         this.throwProviderError(error);
       }
+      stream ??= await this.findStreamForProviderEvent(event);
     }
 
-    const stream = await this.findStreamForProviderEvent(event);
     if (!stream) {
       return { accepted: true, ignored: true, eventId: event.eventId, event: event.kind };
     }
