@@ -521,7 +521,11 @@ export class LiveService {
             : {}),
         };
 
-        if (event.kind === "PLAYABLE" && stream.status !== "ENDED" && stream.status !== "CANCELLED") {
+        if (
+          event.kind === "PLAYABLE" &&
+          stream.status !== "ENDED" &&
+          stream.status !== "CANCELLED"
+        ) {
           data.status = "LIVE";
           data.startedAt = stream.startedAt ?? event.occurredAt;
         } else if (event.kind === "ENDED" && stream.status !== "CANCELLED") {
@@ -612,7 +616,8 @@ export class LiveService {
   private isStaleProviderEvent(stream: LiveStream, event: LiveProviderWebhookEvent) {
     if (stream.providerLastEventId === event.eventId) return true;
     return Boolean(
-      stream.providerLastEventAt && event.occurredAt.getTime() < stream.providerLastEventAt.getTime(),
+      stream.providerLastEventAt &&
+      event.occurredAt.getTime() < stream.providerLastEventAt.getTime(),
     );
   }
 

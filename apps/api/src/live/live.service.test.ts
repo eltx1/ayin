@@ -244,19 +244,17 @@ describe("LiveService provider evidence policy", () => {
     findFirst.mockResolvedValue(current);
     findUnique.mockResolvedValue(current);
     const provider = providerFixture(statusFixture("PLAYABLE", true));
-    provider.verifyWebhook = vi.fn(
-      (): LiveProviderWebhookEvent => ({
-        eventId: "older-idle",
+    provider.verifyWebhook = vi.fn((): LiveProviderWebhookEvent => ({
+      eventId: "older-idle",
       providerStreamId: "mux-live-1",
       kind: "ENDED",
       rawType: "video.live_stream.idle",
       occurredAt: new Date("2026-09-20T01:59:00.000Z"),
       playable: false,
       fatal: false,
-        activeAssetId: "asset-1",
-        recording: null,
-      }),
-    );
+      activeAssetId: "asset-1",
+      recording: null,
+    }));
     const service = new LiveService(database, provider);
 
     const result = await service.handleProviderWebhook("{}", "signed");
@@ -276,9 +274,8 @@ describe("LiveService provider evidence policy", () => {
     findFirst.mockResolvedValue(current);
     findUnique.mockResolvedValue(current);
     const provider = providerFixture(statusFixture("IDLE"));
-    provider.verifyWebhook = vi.fn(
-      (): LiveProviderWebhookEvent => ({
-        eventId: "rendition-ready-1",
+    provider.verifyWebhook = vi.fn((): LiveProviderWebhookEvent => ({
+      eventId: "rendition-ready-1",
       providerStreamId: null,
       kind: "RECORDING_READY",
       rawType: "video.asset.static_rendition.ready",
@@ -286,14 +283,13 @@ describe("LiveService provider evidence policy", () => {
       playable: false,
       fatal: false,
       activeAssetId: "asset-1",
-        recording: {
-          providerAssetId: "asset-1",
-          ayinStreamId: null,
-          downloadUrl: null,
-          renditionName: "highest.mp4",
-        },
-      }),
-    );
+      recording: {
+        providerAssetId: "asset-1",
+        ayinStreamId: null,
+        downloadUrl: null,
+        renditionName: "highest.mp4",
+      },
+    }));
     const service = new LiveService(database, provider);
 
     const result = await service.handleProviderWebhook("{}", "signed");

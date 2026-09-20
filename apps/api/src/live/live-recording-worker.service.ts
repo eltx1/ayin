@@ -1,10 +1,7 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
-import {
-  LIVE_INGEST_PROVIDER,
-  type LiveIngestProvider,
-} from "./live-provider.js";
+import { LIVE_INGEST_PROVIDER, type LiveIngestProvider } from "./live-provider.js";
 import { LiveRecordingHandoffService } from "./live-recording-handoff.service.js";
 
 const POLL_INTERVAL_MS = 30_000;
@@ -101,11 +98,7 @@ export class LiveRecordingWorkerService implements OnModuleInit, OnModuleDestroy
     if (claimed.count !== 1) return;
 
     const stream = await this.database.client.liveStream.findUnique({ where: { id: streamId } });
-    if (
-      !stream ||
-      !stream.providerRecordingAssetId ||
-      !stream.recordingProviderDownloadUrl
-    ) {
+    if (!stream || !stream.providerRecordingAssetId || !stream.recordingProviderDownloadUrl) {
       return;
     }
 

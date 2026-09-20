@@ -105,10 +105,7 @@ export interface LiveIngestProvider {
   provision(input: LiveProvisionRequest): Promise<LiveProvisionResult>;
   rotateKey(providerStreamId: string): Promise<LiveProvisionResult>;
   retrieveStatus(providerStreamId: string): Promise<LiveProviderStatus>;
-  retrieveRecording(
-    providerAssetId: string,
-    renditionName: string,
-  ): Promise<LiveProviderRecording>;
+  retrieveRecording(providerAssetId: string, renditionName: string): Promise<LiveProviderRecording>;
   stop(providerStreamId: string | null): Promise<void>;
   discard(providerStreamId: string): Promise<void>;
   deleteRecordingAsset(providerAssetId: string): Promise<void>;

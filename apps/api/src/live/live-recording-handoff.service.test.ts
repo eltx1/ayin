@@ -44,13 +44,11 @@ describe("live recording R2 handoff", () => {
       listParts: vi.fn(async (): Promise<ExistingUploadPart[]> => []),
       completeMultipartUpload: vi.fn(async () => ({ etag: '"complete"' })),
       abortMultipartUpload: vi.fn(async () => undefined),
-      headObject: vi.fn(
-        async (): Promise<StoredObjectMetadata> => ({
-          sizeBytes: uploadedBytes,
-          contentType: "video/mp4",
-          etag: '"complete"',
-        }),
-      ),
+      headObject: vi.fn(async (): Promise<StoredObjectMetadata> => ({
+        sizeBytes: uploadedBytes,
+        contentType: "video/mp4",
+        etag: '"complete"',
+      })),
       deleteObject: vi.fn(async () => undefined),
       deletePrefix: vi.fn(async () => undefined),
       listMultipartUploads: vi.fn(async (): Promise<AbandonedMultipartUpload[]> => []),

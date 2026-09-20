@@ -143,10 +143,9 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
         "A provider asset ID and rendition name are required to retrieve a live recording.",
       );
     }
-    const payload = await this.requestJson(
-      `/assets/${encodeURIComponent(providerAssetId)}`,
-      { method: "GET" },
-    );
+    const payload = await this.requestJson(`/assets/${encodeURIComponent(providerAssetId)}`, {
+      method: "GET",
+    });
     return parseMuxRecordingAsset(payload, providerAssetId, renditionName);
   }
 
@@ -538,9 +537,7 @@ function muxAssetRecordingFromWebhook(
   if (!providerAssetId) return null;
 
   const meta =
-    data.meta && typeof data.meta === "object"
-      ? (data.meta as Record<string, unknown>)
-      : {};
+    data.meta && typeof data.meta === "object" ? (data.meta as Record<string, unknown>) : {};
   const ayinStreamId = typeof meta.external_id === "string" ? meta.external_id : null;
   return {
     providerAssetId,
@@ -606,11 +603,7 @@ function parseMuxRecordingAsset(
   const readyRendition = files.some((item) => {
     if (!item || typeof item !== "object") return false;
     const file = item as Record<string, unknown>;
-    return (
-      file.status === "ready" &&
-      file.ext === "mp4" &&
-      file.name === renditionName
-    );
+    return file.status === "ready" && file.ext === "mp4" && file.name === renditionName;
   });
   if (!playbackId || !readyRendition) {
     throw new LiveProviderOperationError(
@@ -620,9 +613,7 @@ function parseMuxRecordingAsset(
   }
 
   const meta =
-    record.meta && typeof record.meta === "object"
-      ? (record.meta as Record<string, unknown>)
-      : {};
+    record.meta && typeof record.meta === "object" ? (record.meta as Record<string, unknown>) : {};
   return {
     providerAssetId: id,
     ayinStreamId: typeof meta.external_id === "string" ? meta.external_id : null,

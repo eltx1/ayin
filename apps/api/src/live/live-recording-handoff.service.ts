@@ -119,10 +119,7 @@ export async function copyLiveRecordingToStorage(
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
       let offset = 0;
       while (offset < bytes.byteLength) {
-        const copyLength = Math.min(
-          config.partSizeBytes - partLength,
-          bytes.byteLength - offset,
-        );
+        const copyLength = Math.min(config.partSizeBytes - partLength, bytes.byteLength - offset);
         bytes.copy(partBuffer, partLength, offset, offset + copyLength);
         partLength += copyLength;
         offset += copyLength;

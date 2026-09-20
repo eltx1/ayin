@@ -187,9 +187,7 @@ describe("MuxLiveIngestProvider", () => {
     expect(fetchImpl.mock.calls[2]?.[1]?.method).toBe("DELETE");
 
     await expect(provider.deleteRecordingAsset("mux-asset-1")).resolves.toBeUndefined();
-    expect(fetchImpl.mock.calls[3]?.[0]).toBe(
-      "https://api.mux.com/video/v1/assets/mux-asset-1",
-    );
+    expect(fetchImpl.mock.calls[3]?.[0]).toBe("https://api.mux.com/video/v1/assets/mux-asset-1");
     expect(fetchImpl.mock.calls[3]?.[1]?.method).toBe("DELETE");
   });
 
