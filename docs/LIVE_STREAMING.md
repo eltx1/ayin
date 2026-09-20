@@ -18,15 +18,17 @@ AYIN does **not** persist the raw Mux stream key, SRT passphrase, or constructed
 and rotate responses return the encoder credentials once to Creator Studio and subsequent status,
 list, diagnostics, and public responses do not return them.
 
-The Mux provider is selected only when all production gates are present:
+The Mux control-plane adapter is selected when all three control credentials are present:
 
 - `MUX_TOKEN_ID`
 - `MUX_TOKEN_SECRET`
 - `MUX_WEBHOOK_SIGNING_SECRET`
-- `MUX_LIVE_PRODUCTION_ENABLED=1`
 
-If any gate is missing, the runtime selects `UnconfiguredLiveIngestProvider` and provider
-operations fail closed rather than creating a fake stream.
+`MUX_LIVE_PRODUCTION_ENABLED=1` is a separate creation/rotation kill switch. Turning that flag
+off blocks new Mux resources and credential rotation, but AYIN deliberately retains authenticated
+status, stop/delete, recording cleanup, and signed-webhook control for resources that already exist.
+If the three control credentials are incomplete, the runtime falls back to
+`UnconfiguredLiveIngestProvider` and fails closed.
 
 ## Creator workflow
 
@@ -76,6 +78,30 @@ Normalized lifecycle handling:
 Manual `LIVE` requests also call Mux status synchronization first and return
 `LIVE_PROVIDER_NOT_PLAYABLE` until provider evidence is playable.
 
+## Post-live recording handoff
+
+Each Mux live session creates a Mux asset with a requested `highest` static MP4 rendition. AYIN
+treats Mux as temporary live/recording infrastructure rather than the long-term VOD source of truth.
+
+Signed Mux asset events are ordered/deduplicated with the persisted provider event ID and timestamp.
+The Static Renditions API sends `video.asset.static_rendition.ready` with the individual rendition
+payload, so AYIN uses its `asset_id` and rendition name to retrieve the parent Mux asset before
+constructing the download URL. The API response must confirm a public playback ID and a ready MP4
+rendition before handoff begins.
+
+The background handoff worker then:
+
+1. streams the Mux MP4 directly into a bounded multipart R2 upload without buffering the complete
+   recording in API memory or local disk;
+2. verifies the completed R2 object size;
+3. creates an AYIN VOD draft for the channel and links the R2 source `MediaAsset`;
+4. enqueues that source through AYIN's existing media-processing pipeline;
+5. only after the VOD processing job is safely queued, deletes the temporary Mux recording asset.
+
+The worker is retryable, detects stale copying attempts, caps retry attempts, and keeps
+`CLEANUP_PENDING` when Mux cleanup fails so a copied recording is not lost or recopied merely
+because provider deletion failed.
+
 ## Operational diagnostics
 
 Authenticated creators/operators can synchronize a specific session with:
@@ -110,9 +136,13 @@ against a Mux-shaped HTTP fixture:
 Unit coverage also verifies that AYIN does not mark a session LIVE on connected-only evidence and
 that the only persisted stream-key value is its SHA-256 hash.
 
-These deterministic fixtures satisfy CI without requiring production credentials or creating billable
-resources. A deployment can additionally run the Task 72 Mux test-mode control-plane proof when an
-operator explicitly supplies the test credentials and opt-in flag.
+Deterministic fixtures keep ordinary CI repeatable, but Task 73 also has a credential-gated real Mux
+control-plane proof. The real proof is intentionally a required acceptance signal rather than a
+substitute fixture: it creates a Mux test live stream, verifies returned ingest/playback identifiers,
+rotates the provider stream key, disables the stream, and deletes the test resource without logging
+the one-time key. Mux currently exposes live streaming only on paid plans; test live streams are free
+to run on an eligible paid account, but a Free-plan organization cannot pass the real live-create
+gate.
 
 ## Advertising
 
