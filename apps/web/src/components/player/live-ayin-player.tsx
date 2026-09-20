@@ -287,7 +287,11 @@ export function LiveAyinPlayer({
     const reportFatal = (reason: string) => {
       if (cancelled || fatalReportedRef.current) return;
       fatalReportedRef.current = true;
+      connecting = false;
+      attemptGuard.invalidate();
       clearReconnectTimer();
+      clearStartupWatchdog();
+      clearStallWatchdog();
       sessionRef.current?.destroy();
       sessionRef.current = null;
       flushDuration(false);
@@ -402,11 +406,13 @@ export function LiveAyinPlayer({
         }
         sessionRef.current = next;
         if (!next && !fatalDelivered) {
+          connecting = false;
           attemptGuard.invalidate();
           scheduleReconnect("UNSUPPORTED");
         }
       } catch {
         if (!cancelled && !fatalDelivered && attemptGuard.isCurrent(generation)) {
+          connecting = false;
           attemptGuard.invalidate();
           scheduleReconnect("OTHER");
         }
@@ -489,6 +495,7 @@ export function LiveAyinPlayer({
       clearReconnectTimer();
       clearStableTimer();
       clearStallWatchdog();
+      connecting = false;
       attemptGuard.invalidate();
       sessionRef.current?.destroy();
       sessionRef.current = null;
