@@ -28,6 +28,8 @@ const baseStream: LiveStream = {
   playbackUrl: "https://stream.mux.com/playback-1.m3u8",
   providerLastEventAt: null,
   providerLastEventId: null,
+  recordingLastEventAt: null,
+  recordingLastEventId: null,
   providerRecordingAssetId: null,
   recordingHandoffStatus: "NONE",
   recordingR2ObjectKey: null,
@@ -261,6 +263,54 @@ describe("LiveService provider evidence policy", () => {
 
     expect(result.ignored).toBe(true);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("does not let a newer live lifecycle clock suppress an independent recording event", async () => {
+    const { database, findFirst, findUnique, update } = databaseFixture();
+    const current = {
+      ...baseStream,
+      status: "ENDED" as const,
+      providerLastEventAt: new Date("2026-09-20T02:20:00.000Z"),
+      providerLastEventId: "newer-live-idle",
+      recordingLastEventAt: new Date("2026-09-20T02:00:00.000Z"),
+      recordingLastEventId: "recording-finalized",
+      providerRecordingAssetId: "asset-1",
+      recordingHandoffStatus: "WAITING" as const,
+    };
+    findFirst.mockResolvedValue(current);
+    findUnique.mockResolvedValue(current);
+    const provider = providerFixture(statusFixture("IDLE"));
+    provider.verifyWebhook = vi.fn(
+      (): LiveProviderWebhookEvent => ({
+        eventId: "rendition-ready-cross-clock",
+        providerStreamId: null,
+        kind: "RECORDING_READY",
+        rawType: "video.asset.static_rendition.ready",
+        occurredAt: new Date("2026-09-20T02:10:00.000Z"),
+        playable: false,
+        fatal: false,
+        activeAssetId: "asset-1",
+        recording: {
+          providerAssetId: "asset-1",
+          ayinStreamId: null,
+          downloadUrl: null,
+          renditionName: "highest.mp4",
+        },
+      }),
+    );
+    const service = new LiveService(database, provider);
+
+    const result = await service.handleProviderWebhook("{}", "signed");
+
+    expect(result.ignored).toBe(false);
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          recordingLastEventId: "rendition-ready-cross-clock",
+          recordingProviderDownloadUrl: "https://stream.mux.com/playback/highest.mp4",
+        }),
+      }),
+    );
   });
 
   it("enqueues a ready Mux recording without blocking the webhook on file transfer", async () => {
