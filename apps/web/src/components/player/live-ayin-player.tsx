@@ -19,6 +19,7 @@ import {
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import type { AyinCaptionTrack, AyinPlayerAdModeState } from "@/lib/ayin-player";
 import {
+  createLiveAttemptGuard,
   type LiveEdgeSnapshot,
   liveEdgeSnapshot,
   liveReconnectDelayMs,
@@ -51,6 +52,7 @@ type ConnectionState = "IDLE" | "CONNECTING" | "PLAYING" | "RECOVERING" | "OFFLI
 
 const STABLE_PLAYBACK_RESET_MS = 10_000;
 const LIVE_STARTUP_WATCHDOG_MS = 12_000;
+const LIVE_STALL_WATCHDOG_MS = 12_000;
 const LIVE_DURATION_SAMPLE_MS = 30_000;
 
 function terminalEndReason(status: LivePlayerStreamStatus): string | null {
@@ -260,8 +262,10 @@ export function LiveAyinPlayer({
     let reconnectTimer: number | null = null;
     let stableTimer: number | null = null;
     let startupWatchdog: number | null = null;
+    let stallWatchdog: number | null = null;
     let durationTimer: number | null = null;
     let connecting = false;
+    const attemptGuard = createLiveAttemptGuard();
 
     const clearReconnectTimer = () => {
       if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
@@ -274,6 +278,10 @@ export function LiveAyinPlayer({
     const clearStartupWatchdog = () => {
       if (startupWatchdog !== null) window.clearTimeout(startupWatchdog);
       startupWatchdog = null;
+    };
+    const clearStallWatchdog = () => {
+      if (stallWatchdog !== null) window.clearTimeout(stallWatchdog);
+      stallWatchdog = null;
     };
 
     const reportFatal = (reason: string) => {
@@ -321,8 +329,10 @@ export function LiveAyinPlayer({
 
     async function connect(reason?: AyinHlsFailureReason | "OFFLINE") {
       if (cancelled || connecting || fatalReportedRef.current || navigator.onLine === false) return;
+      const generation = attemptGuard.begin();
       connecting = true;
       clearStartupWatchdog();
+      clearStallWatchdog();
       sessionRef.current?.destroy();
       sessionRef.current = null;
       setConnectionState(reason ? "RECOVERING" : "CONNECTING");
@@ -332,6 +342,8 @@ export function LiveAyinPlayer({
 
       startupWatchdog = window.setTimeout(() => {
         startupWatchdog = null;
+        if (!attemptGuard.isCurrent(generation)) return;
+        attemptGuard.invalidate();
         connecting = false;
         sessionRef.current?.destroy();
         sessionRef.current = null;
@@ -346,7 +358,7 @@ export function LiveAyinPlayer({
           mode: "LIVE",
           callbacks: {
             onReady: () => {
-              if (cancelled) return;
+              if (cancelled || !attemptGuard.isCurrent(generation)) return;
               clearStartupWatchdog();
               setMessage(null);
               updateEdge();
@@ -356,7 +368,7 @@ export function LiveAyinPlayer({
               }
             },
             onRecoverable: (recoveringReason) => {
-              if (cancelled) return;
+              if (cancelled || !attemptGuard.isCurrent(generation)) return;
               setConnectionState("RECOVERING");
               setMessage(
                 recoveringReason === "MANIFEST"
@@ -365,30 +377,41 @@ export function LiveAyinPlayer({
               );
             },
             onRecovered: () => {
-              if (cancelled) return;
+              if (cancelled || !attemptGuard.isCurrent(generation)) return;
               setMessage(null);
               if (startedRef.current && !liveVideo.paused) {
                 setConnectionState("PLAYING");
               }
             },
             onFatal: (fatalReason) => {
+              if (!attemptGuard.isCurrent(generation)) return;
               fatalDelivered = true;
+              attemptGuard.invalidate();
               clearStartupWatchdog();
+              clearStallWatchdog();
               connecting = false;
+              sessionRef.current?.destroy();
+              sessionRef.current = null;
               scheduleReconnect(fatalReason);
             },
           },
         });
-        if (cancelled) {
+        if (cancelled || !attemptGuard.isCurrent(generation)) {
           next?.destroy();
           return;
         }
         sessionRef.current = next;
-        if (!next && !fatalDelivered) scheduleReconnect("UNSUPPORTED");
+        if (!next && !fatalDelivered) {
+          attemptGuard.invalidate();
+          scheduleReconnect("UNSUPPORTED");
+        }
       } catch {
-        if (!cancelled && !fatalDelivered) scheduleReconnect("OTHER");
+        if (!cancelled && !fatalDelivered && attemptGuard.isCurrent(generation)) {
+          attemptGuard.invalidate();
+          scheduleReconnect("OTHER");
+        }
       } finally {
-        connecting = false;
+        if (attemptGuard.isCurrent(generation)) connecting = false;
       }
     }
 
@@ -422,6 +445,7 @@ export function LiveAyinPlayer({
       }
 
       clearStableTimer();
+      clearStallWatchdog();
       stableTimer = window.setTimeout(() => {
         reconnectAttemptRef.current = 0;
         fatalReportedRef.current = false;
@@ -429,26 +453,43 @@ export function LiveAyinPlayer({
     };
 
     const onPause = () => {
+      clearStableTimer();
+      clearStallWatchdog();
       setPlaying(false);
       flushDuration(false);
     };
 
     const onWaiting = () => {
+      clearStableTimer();
       if (startedRef.current && bufferStartedAtRef.current === null) {
         bufferStartedAtRef.current = performance.now();
       }
       flushDuration(false);
+      if (startedRef.current && stallWatchdog === null) {
+        stallWatchdog = window.setTimeout(() => {
+          stallWatchdog = null;
+          attemptGuard.invalidate();
+          sessionRef.current?.destroy();
+          sessionRef.current = null;
+          scheduleReconnect("NETWORK");
+        }, LIVE_STALL_WATCHDOG_MS);
+      }
     };
 
     const onEnded = () => {
+      clearStableTimer();
+      clearStallWatchdog();
       setPlaying(false);
       flushDuration(false);
+      attemptGuard.invalidate();
       scheduleReconnect("OTHER");
     };
 
     const onOffline = () => {
       clearReconnectTimer();
       clearStableTimer();
+      clearStallWatchdog();
+      attemptGuard.invalidate();
       sessionRef.current?.destroy();
       sessionRef.current = null;
       setConnectionState("OFFLINE");
@@ -492,6 +533,8 @@ export function LiveAyinPlayer({
       clearReconnectTimer();
       clearStableTimer();
       clearStartupWatchdog();
+      clearStallWatchdog();
+      attemptGuard.invalidate();
       if (durationTimer !== null) window.clearInterval(durationTimer);
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("pause", onPause);
