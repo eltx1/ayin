@@ -48,6 +48,7 @@ export function muxTask72ProofRequestBody() {
     playback_policies: ["public"],
     new_asset_settings: {
       playback_policies: ["public"],
+      video_quality: "plus",
     },
   } as const;
 }
