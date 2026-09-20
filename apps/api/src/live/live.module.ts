@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
+import { MediaModule } from "../media/media.module.js";
 import {
   MuxLiveWebhookController,
   PublicLiveController,
@@ -13,6 +14,7 @@ import {
   UnconfiguredLiveIngestProvider,
 } from "./live-provider.js";
 import { MuxLiveIngestProvider } from "./mux-live-provider.js";
+import { LiveRecordingHandoffService } from "./live-recording-handoff.service.js";
 import { LiveService } from "./live.service.js";
 
 export function selectLiveIngestProvider(
@@ -23,10 +25,11 @@ export function selectLiveIngestProvider(
 }
 
 @Module({
-  imports: [AuthModule, DatabaseModule],
+  imports: [AuthModule, DatabaseModule, MediaModule],
   controllers: [PublicLiveController, StudioLiveController, MuxLiveWebhookController],
   providers: [
     LiveService,
+    LiveRecordingHandoffService,
     UnconfiguredLiveIngestProvider,
     {
       provide: MuxLiveIngestProvider,
