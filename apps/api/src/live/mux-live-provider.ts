@@ -161,18 +161,16 @@ export class MuxLiveIngestProvider implements LiveIngestProvider {
 
   async discard(providerStreamId: string): Promise<void> {
     this.assertConfigured();
-    await this.requestControlIdempotently(
-      `/live-streams/${encodeURIComponent(providerStreamId)}`,
-      { method: "DELETE" },
-    );
+    await this.requestControlIdempotently(`/live-streams/${encodeURIComponent(providerStreamId)}`, {
+      method: "DELETE",
+    });
   }
 
   async deleteRecordingAsset(providerAssetId: string): Promise<void> {
     this.assertConfigured();
-    await this.requestControlIdempotently(
-      `/assets/${encodeURIComponent(providerAssetId)}`,
-      { method: "DELETE" },
-    );
+    await this.requestControlIdempotently(`/assets/${encodeURIComponent(providerAssetId)}`, {
+      method: "DELETE",
+    });
   }
 
   verifyWebhook(
@@ -444,9 +442,7 @@ export function normalizeMuxWebhook(
     rawType,
     occurredAt,
     playable: kind === "PLAYABLE",
-    fatal:
-      rawType === "video.asset.errored" ||
-      rawType === "video.asset.static_rendition.errored",
+    fatal: rawType === "video.asset.errored" || rawType === "video.asset.static_rendition.errored",
     activeAssetId,
     recording,
   };

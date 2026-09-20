@@ -56,9 +56,8 @@ describe("LiveRecordingWorkerService", () => {
           findUnique: vi.fn(async () => stream),
           update: liveUpdate,
         },
-        $transaction: vi.fn(
-          async (operation: (tx: typeof transactionClient) => Promise<unknown>) =>
-            operation(transactionClient),
+        $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<unknown>) =>
+          operation(transactionClient),
         ),
       },
     } as unknown as DatabaseService;
@@ -78,12 +77,7 @@ describe("LiveRecordingWorkerService", () => {
       enqueueUploadedAsset: vi.fn(async () => ({ id: "processing-job-1" })),
     } as unknown as MediaProcessingLifecycleService;
 
-    const worker = new LiveRecordingWorkerService(
-      database,
-      provider,
-      handoff,
-      processingLifecycle,
-    );
+    const worker = new LiveRecordingWorkerService(database, provider, handoff, processingLifecycle);
 
     await worker.runOnce();
 
@@ -111,12 +105,10 @@ describe("LiveRecordingWorkerService", () => {
     );
     expect(provider.deleteRecordingAsset).toHaveBeenCalledWith("mux-asset-1");
 
-    const cleanupOrder = (
-      provider.deleteRecordingAsset as ReturnType<typeof vi.fn>
-    ).mock.invocationCallOrder[0];
-    const enqueueOrder = (
-      processingLifecycle.enqueueUploadedAsset as ReturnType<typeof vi.fn>
-    ).mock.invocationCallOrder[0];
+    const cleanupOrder = (provider.deleteRecordingAsset as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
+    const enqueueOrder = (processingLifecycle.enqueueUploadedAsset as ReturnType<typeof vi.fn>).mock
+      .invocationCallOrder[0];
     expect(enqueueOrder).toBeLessThan(cleanupOrder ?? Number.POSITIVE_INFINITY);
   });
 });

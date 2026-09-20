@@ -639,7 +639,7 @@ export class LiveService {
     if (stream.recordingLastEventId === event.eventId) return true;
     return Boolean(
       stream.recordingLastEventAt &&
-        event.occurredAt.getTime() < stream.recordingLastEventAt.getTime(),
+      event.occurredAt.getTime() < stream.recordingLastEventAt.getTime(),
     );
   }
 
