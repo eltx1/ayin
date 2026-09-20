@@ -30,6 +30,7 @@ export interface AyinAdaptivePlaybackCallbacks {
         automatic: boolean;
       }) => void)
     | undefined;
+  onRecoverable?: ((reason: AyinHlsFailureReason) => void) | undefined;
   onFatal?: ((reason: AyinHlsFailureReason) => void) | undefined;
 }
 
@@ -218,15 +219,20 @@ export async function startAdaptiveHlsPlayback(input: {
   hls.on(Hls.Events.ERROR, (...args: unknown[]) => {
     if (destroyed || fatalReported) return;
     const data = (args.at(-1) ?? {}) as HlsErrorData;
-    if (!data.fatal) return;
     const reason = classifyHlsFailure(data);
+    if (!data.fatal) {
+      callbacks.onRecoverable?.(reason);
+      return;
+    }
     if (reason === "NETWORK" && networkRecoveries < 2) {
       networkRecoveries += 1;
+      callbacks.onRecoverable?.(reason);
       hls.startLoad();
       return;
     }
     if (reason === "MEDIA" && mediaRecoveries < 2) {
       mediaRecoveries += 1;
+      callbacks.onRecoverable?.(reason);
       hls.recoverMediaError();
       return;
     }
