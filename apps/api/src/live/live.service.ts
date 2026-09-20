@@ -5,6 +5,9 @@ import { DatabaseService } from "../database/database.service.js";
 import {
   LIVE_INGEST_PROVIDER,
   type LiveIngestProvider,
+  type LiveProviderStatus,
+  type LiveProviderWebhookEvent,
+  LiveProviderOperationError,
   LiveProviderUnavailableError,
 } from "./live-provider.js";
 
@@ -61,19 +64,20 @@ export class LiveService {
 
   async provision(accountId: string, streamId: string) {
     const stream = await this.ownedStream(accountId, streamId);
-    if (!this.provider.configured)
+    this.assertProviderConfigured();
+    if (stream.providerStreamId) {
       throw new LiveError(
-        "LIVE_PROVIDER_UNCONFIGURED",
-        "Live ingest/transcoding requires a configured provider; R2 remains VOD storage only.",
-        503,
+        "LIVE_ALREADY_PROVISIONED",
+        "This live session already has a provider resource. Rotate credentials instead.",
+        409,
       );
-    const streamKey = randomBytes(30).toString("base64url");
+    }
+
     try {
       const provisioned = await this.provider.provision({
         streamId: stream.id,
         channelId: stream.channelId,
         title: stream.title,
-        streamKey,
       });
       const updated = await this.database.client.liveStream.update({
         where: { id: stream.id },
@@ -82,56 +86,163 @@ export class LiveService {
           providerStreamId: provisioned.providerStreamId,
           ingestEndpoint: provisioned.ingestEndpoint,
           playbackUrl: provisioned.playbackUrl,
-          streamKeyHash: hashKey(streamKey),
+          streamKeyHash: hashKey(provisioned.encoder.rtmps.streamKey),
           status: "READY",
         },
       });
-      return { stream: stripSecretHash(updated), streamKey };
+      return { stream: stripSecretHash(updated), encoder: provisioned.encoder };
     } catch (error) {
-      if (error instanceof LiveProviderUnavailableError)
-        throw new LiveError("LIVE_PROVIDER_UNCONFIGURED", error.message, 503);
-      throw error;
+      this.throwProviderError(error);
     }
   }
 
   async rotateKey(accountId: string, streamId: string) {
     const stream = await this.ownedStream(accountId, streamId);
-    if (!this.provider.configured)
-      throw new LiveError("LIVE_PROVIDER_UNCONFIGURED", "Live provider is not configured.", 503);
-    const streamKey = randomBytes(30).toString("base64url");
-    const provisioned = await this.provider.rotateKey({
-      streamId: stream.id,
-      channelId: stream.channelId,
-      title: stream.title,
-      streamKey,
-    });
-    const updated = await this.database.client.liveStream.update({
-      where: { id: stream.id },
-      data: {
-        providerKey: provisioned.providerKey,
-        providerStreamId: provisioned.providerStreamId,
-        ingestEndpoint: provisioned.ingestEndpoint,
-        playbackUrl: provisioned.playbackUrl,
-        streamKeyHash: hashKey(streamKey),
+    this.assertProviderConfigured();
+    if (!stream.providerStreamId) {
+      throw new LiveError(
+        "LIVE_PROVIDER_RESOURCE_MISSING",
+        "Provision this live session before rotating its credentials.",
+        409,
+      );
+    }
+
+    try {
+      const provisioned = await this.provider.rotateKey(stream.providerStreamId);
+      const updated = await this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          providerKey: provisioned.providerKey,
+          providerStreamId: provisioned.providerStreamId,
+          ingestEndpoint: provisioned.ingestEndpoint,
+          playbackUrl: provisioned.playbackUrl,
+          streamKeyHash: hashKey(provisioned.encoder.rtmps.streamKey),
+        },
+      });
+      return { stream: stripSecretHash(updated), encoder: provisioned.encoder };
+    } catch (error) {
+      this.throwProviderError(error);
+    }
+  }
+
+  async syncProviderStatus(accountId: string, streamId: string) {
+    const stream = await this.ownedStream(accountId, streamId);
+    this.assertProviderConfigured();
+    if (!stream.providerStreamId) {
+      throw new LiveError(
+        "LIVE_PROVIDER_RESOURCE_MISSING",
+        "Provision this live session before synchronizing provider status.",
+        409,
+      );
+    }
+
+    try {
+      const evidence = await this.provider.retrieveStatus(stream.providerStreamId);
+      const updated = await this.applyProviderEvidence(stream, evidence);
+      return { stream: stripSecretHash(updated), evidence };
+    } catch (error) {
+      this.throwProviderError(error);
+    }
+  }
+
+  async providerDiagnostics(accountId: string, streamId: string) {
+    const stream = await this.ownedStream(accountId, streamId);
+    const provider = this.provider.diagnostics();
+    if (!stream.providerStreamId || !this.provider.configured) {
+      return {
+        provider,
+        stream: {
+          id: stream.id,
+          status: stream.status,
+          providerStreamId: stream.providerStreamId,
+          playbackUrl: stream.playbackUrl,
+        },
+        evidence: null,
+      };
+    }
+
+    try {
+      const evidence = await this.provider.retrieveStatus(stream.providerStreamId);
+      return {
+        provider,
+        stream: {
+          id: stream.id,
+          status: stream.status,
+          providerStreamId: stream.providerStreamId,
+          playbackUrl: stream.playbackUrl,
+        },
+        evidence,
+      };
+    } catch (error) {
+      this.throwProviderError(error);
+    }
+  }
+
+  async handleProviderWebhook(rawBody: string | Buffer, signatureHeader: string | undefined) {
+    this.assertProviderConfigured();
+    let event: LiveProviderWebhookEvent;
+    try {
+      event = this.provider.verifyWebhook(rawBody, signatureHeader);
+    } catch (error) {
+      if (
+        error instanceof LiveProviderOperationError &&
+        error.code.startsWith("MUX_WEBHOOK_SIGNATURE_")
+      ) {
+        throw new LiveError("LIVE_WEBHOOK_SIGNATURE_INVALID", error.message, 401);
+      }
+      this.throwProviderError(error);
+    }
+
+    if (event.kind === "IGNORED" || !event.providerStreamId) {
+      return { accepted: true, ignored: true, eventId: event.eventId, event: event.kind };
+    }
+
+    const stream = await this.database.client.liveStream.findFirst({
+      where: {
+        providerKey: this.provider.key,
+        providerStreamId: event.providerStreamId,
       },
     });
-    return { stream: stripSecretHash(updated), streamKey };
+    if (!stream) {
+      return { accepted: true, ignored: true, eventId: event.eventId, event: event.kind };
+    }
+
+    const updated = await this.applyWebhookEvent(stream, event);
+    return {
+      accepted: true,
+      ignored: false,
+      eventId: event.eventId,
+      event: event.kind,
+      stream: stripSecretHash(updated),
+    };
   }
 
   async setState(accountId: string, streamId: string, status: "LIVE" | "ENDED" | "CANCELLED") {
+    if (status === "LIVE") {
+      const synced = await this.syncProviderStatus(accountId, streamId);
+      if (synced.stream.status !== "LIVE") {
+        throw new LiveError(
+          "LIVE_PROVIDER_NOT_PLAYABLE",
+          "The provider has not yet confirmed a playable live output.",
+          409,
+        );
+      }
+      return synced.stream;
+    }
+
     const stream = await this.ownedStream(accountId, streamId);
-    if (status === "LIVE" && (!stream.playbackUrl || stream.providerKey === "unconfigured"))
-      throw new LiveError(
-        "LIVE_PLAYBACK_UNAVAILABLE",
-        "A configured playback output is required.",
-        409,
-      );
-    if (status === "ENDED") await this.provider.stop(stream.providerStreamId);
+    if (stream.providerStreamId) {
+      this.assertProviderConfigured();
+      try {
+        await this.provider.stop(stream.providerStreamId);
+      } catch (error) {
+        this.throwProviderError(error);
+      }
+    }
     const updated = await this.database.client.liveStream.update({
       where: { id: stream.id },
       data: {
         status,
-        ...(status === "LIVE" ? { startedAt: new Date() } : {}),
         ...(status === "ENDED" ? { endedAt: new Date() } : {}),
       },
     });
@@ -231,7 +342,101 @@ export class LiveService {
   }
 
   providerStatus() {
-    return { key: this.provider.key, configured: this.provider.configured };
+    return this.provider.diagnostics();
+  }
+
+  private assertProviderConfigured() {
+    if (!this.provider.configured) {
+      throw new LiveError(
+        "LIVE_PROVIDER_UNCONFIGURED",
+        "Live ingest/transcoding requires a configured provider; R2 remains VOD storage only.",
+        503,
+      );
+    }
+  }
+
+  private throwProviderError(error: unknown): never {
+    if (error instanceof LiveProviderUnavailableError) {
+      throw new LiveError("LIVE_PROVIDER_UNCONFIGURED", error.message, 503);
+    }
+    if (error instanceof LiveProviderOperationError) {
+      throw new LiveError("LIVE_PROVIDER_REQUEST_FAILED", error.message, 502);
+    }
+    throw error;
+  }
+
+  private async applyProviderEvidence(
+    stream: Awaited<ReturnType<LiveService["ownedStream"]>>,
+    evidence: LiveProviderStatus,
+  ) {
+    if (evidence.playable) {
+      if (stream.status === "ENDED" || stream.status === "CANCELLED") return stream;
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          status: "LIVE",
+          playbackUrl: evidence.playbackUrl ?? stream.playbackUrl,
+          startedAt: stream.startedAt ?? new Date(),
+        },
+      });
+    }
+
+    const providerEnded =
+      evidence.state === "ENDED" ||
+      evidence.state === "DISABLED" ||
+      (evidence.state === "IDLE" && Boolean(stream.startedAt));
+    if (providerEnded && stream.status !== "CANCELLED") {
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          status: "ENDED",
+          playbackUrl: evidence.playbackUrl ?? stream.playbackUrl,
+          endedAt: stream.endedAt ?? new Date(),
+        },
+      });
+    }
+
+    if (evidence.playbackUrl && evidence.playbackUrl !== stream.playbackUrl) {
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: { playbackUrl: evidence.playbackUrl },
+      });
+    }
+    return stream;
+  }
+
+  private async applyWebhookEvent(
+    stream: Awaited<ReturnType<LiveService["ownedStream"]>>,
+    event: LiveProviderWebhookEvent,
+  ) {
+    if (event.kind === "PLAYABLE") {
+      if (stream.status === "ENDED" || stream.status === "CANCELLED") return stream;
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          status: "LIVE",
+          startedAt: stream.startedAt ?? event.occurredAt,
+        },
+      });
+    }
+
+    if (event.kind === "ENDED" && stream.status !== "CANCELLED") {
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: {
+          status: "ENDED",
+          endedAt: stream.endedAt ?? event.occurredAt,
+        },
+      });
+    }
+
+    if (event.kind === "ERROR" && event.fatal) {
+      return this.database.client.liveStream.update({
+        where: { id: stream.id },
+        data: { status: "FAILED" },
+      });
+    }
+    return stream;
   }
 
   private async creatorChannel(accountId: string) {
