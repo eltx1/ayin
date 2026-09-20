@@ -50,6 +50,7 @@ export interface LiveAyinPlayerProps {
 type ConnectionState = "IDLE" | "CONNECTING" | "PLAYING" | "RECOVERING" | "OFFLINE" | "FATAL";
 
 const STABLE_PLAYBACK_RESET_MS = 10_000;
+const LIVE_STARTUP_WATCHDOG_MS = 12_000;
 const LIVE_DURATION_SAMPLE_MS = 30_000;
 
 function terminalEndReason(status: LivePlayerStreamStatus): string | null {
@@ -253,8 +254,12 @@ export function LiveAyinPlayer({
     setMessage(
       status === "ENDED" ? "This live stream has ended." : "This live stream is unavailable.",
     );
-    if (startedRef.current) emit("LIVE_PLAY_COMPLETE", { metadata: { reason } });
-    emit("LIVE_END", { metadata: { reason } });
+    if (startedRef.current) {
+      emit("LIVE_PLAY_COMPLETE", { metadata: { reason } });
+      emit("LIVE_END", { metadata: { reason } });
+    } else if (firstConnectStartedAtRef.current !== null) {
+      emit("LIVE_END", { metadata: { reason: `${reason}_before_start` } });
+    }
   }, [emit, flushDuration, status]);
 
   useEffect(() => {
@@ -265,6 +270,7 @@ export function LiveAyinPlayer({
     let cancelled = false;
     let reconnectTimer: number | null = null;
     let stableTimer: number | null = null;
+    let startupWatchdog: number | null = null;
     let durationTimer: number | null = null;
     let connecting = false;
 
@@ -275,6 +281,10 @@ export function LiveAyinPlayer({
     const clearStableTimer = () => {
       if (stableTimer !== null) window.clearTimeout(stableTimer);
       stableTimer = null;
+    };
+    const clearStartupWatchdog = () => {
+      if (startupWatchdog !== null) window.clearTimeout(startupWatchdog);
+      startupWatchdog = null;
     };
 
     const reportFatal = (reason: string) => {
@@ -325,12 +335,21 @@ export function LiveAyinPlayer({
     connect = async (reason) => {
       if (cancelled || connecting || fatalReportedRef.current || navigator.onLine === false) return;
       connecting = true;
+      clearStartupWatchdog();
       sessionRef.current?.destroy();
       sessionRef.current = null;
       setConnectionState(reason ? "RECOVERING" : "CONNECTING");
       if (!startedRef.current && firstConnectStartedAtRef.current === null) {
         firstConnectStartedAtRef.current = performance.now();
       }
+
+      startupWatchdog = window.setTimeout(() => {
+        startupWatchdog = null;
+        connecting = false;
+        sessionRef.current?.destroy();
+        sessionRef.current = null;
+        scheduleReconnect("STARTUP");
+      }, LIVE_STARTUP_WATCHDOG_MS);
 
       let fatalDelivered = false;
       try {
@@ -340,6 +359,7 @@ export function LiveAyinPlayer({
           callbacks: {
             onReady: () => {
               if (cancelled) return;
+              clearStartupWatchdog();
               setMessage(null);
               updateEdge();
               if (startedRef.current || reason) moveToLiveEdge(video);
@@ -358,6 +378,7 @@ export function LiveAyinPlayer({
             },
             onFatal: (fatalReason) => {
               fatalDelivered = true;
+              clearStartupWatchdog();
               connecting = false;
               scheduleReconnect(fatalReason);
             },
@@ -475,6 +496,7 @@ export function LiveAyinPlayer({
       cancelled = true;
       clearReconnectTimer();
       clearStableTimer();
+      clearStartupWatchdog();
       if (durationTimer !== null) window.clearInterval(durationTimer);
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("pause", onPause);
