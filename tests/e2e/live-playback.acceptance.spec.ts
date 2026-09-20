@@ -187,6 +187,11 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await expect.poll(async () => (await state(page)).currentTime).toBeGreaterThan(119);
     await expect(page.getByRole("slider")).toHaveCount(0);
 
+    await page.waitForTimeout(350);
+    await page.locator("video").evaluate((video) => video.dispatchEvent(new Event("waiting")));
+    await page.waitForTimeout(80);
+    await page.locator("video").evaluate((video) => video.dispatchEvent(new Event("playing")));
+
     await page.evaluate(() => window.dispatchEvent(new Event("offline")));
     await expect(page.getByText("Connection lost. Waiting for network…")).toBeVisible();
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
@@ -210,7 +215,9 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await page.waitForTimeout(3_200);
     expect(analytics).toContain("LIVE_PLAY_START");
     expect(analytics).toContain("LIVE_STARTUP");
+    expect(analytics).toContain("LIVE_REBUFFER");
     expect(analytics).toContain("LIVE_RECONNECT");
+    expect(analytics).toContain("LIVE_DURATION");
   });
 
   test("native-HLS capability path bypasses hls.js and retains live controls", async ({ page }) => {
@@ -238,6 +245,43 @@ test.describe.serial("Task 74 live playback hardening", () => {
     expect((await state(page)).hlsConstructed).toBe(0);
     await expect(page.getByRole("button", { name: "Fullscreen" })).toBeVisible();
     await expect(page.getByText("Live edge")).toBeVisible();
+  });
+
+  test("provider ENDED stops live recovery and records an end reason", async ({ page }) => {
+    const analytics: string[] = [];
+    await installLiveHarness(page);
+    let requestCount = 0;
+    await page.route("**/live/task-74", async (route) => {
+      requestCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(liveFixture(requestCount === 1 ? "LIVE" : "ENDED")),
+      });
+    });
+    await page.route("**/live/task-74/chat", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+    });
+    await page.route("**/analytics/events", async (route) => {
+      const body = route.request().postDataJSON() as { events?: Array<{ eventName?: string }> };
+      for (const event of body.events ?? []) if (event.eventName) analytics.push(event.eventName);
+      await route.fulfill({ status: 202, contentType: "application/json", body: "{}" });
+    });
+
+    await page.goto("/live/task-74");
+    await expect.poll(async () => (await state(page)).playCalls).toBeGreaterThan(0);
+    const constructedBeforeEnd = (await state(page)).hlsConstructed;
+
+    await expect(page.getByText("This live stream has ended."), { timeout: 8_000 }).toBeVisible();
+    await page.waitForTimeout(3_200);
+
+    expect((await state(page)).hlsConstructed).toBe(constructedBeforeEnd);
+    expect(analytics).toContain("LIVE_END");
+    expect(analytics).toContain("LIVE_PLAY_COMPLETE");
   });
 
   test("stream-not-started path does not load the live manifest and can refresh into LIVE", async ({
