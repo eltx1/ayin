@@ -6,6 +6,28 @@ const LIVE_RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000] as
 export type LiveReconnectReason =
   "NETWORK" | "MANIFEST" | "MEDIA" | "STARTUP" | "UNSUPPORTED" | "OFFLINE" | "OTHER";
 
+export interface LiveAttemptGuard {
+  begin(): number;
+  invalidate(): void;
+  isCurrent(generation: number): boolean;
+}
+
+export function createLiveAttemptGuard(): LiveAttemptGuard {
+  let generation = 0;
+  return {
+    begin() {
+      generation += 1;
+      return generation;
+    },
+    invalidate() {
+      generation += 1;
+    },
+    isCurrent(candidate: number) {
+      return candidate === generation;
+    },
+  };
+}
+
 export interface LiveEdgeSnapshot {
   seekableStartSeconds: number | null;
   seekableEndSeconds: number | null;
