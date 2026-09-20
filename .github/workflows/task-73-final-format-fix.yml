@@ -1,0 +1,69 @@
+name: Task 73 final format repair
+
+on:
+  push:
+    branches:
+      - task-73-live-provider-adapter
+    paths:
+      - ".github/workflows/task-73-final-format-fix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: task-73-live-provider-adapter
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          check-latest: false
+          package-manager-cache: true
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format Task 73 source
+        run: |
+          pnpm exec prettier --write \
+            apps/api/src/live/live-provider.ts \
+            apps/api/src/live/live-recording-handoff.service.test.ts \
+            apps/api/src/live/live-recording-handoff.service.ts \
+            apps/api/src/live/live-recording-worker.service.test.ts \
+            apps/api/src/live/live-recording-worker.service.ts \
+            apps/api/src/live/live.service.test.ts \
+            apps/api/src/live/live.service.ts \
+            apps/api/src/live/mux-live-provider-proof.test.ts \
+            apps/api/src/live/mux-live-provider-proof.ts \
+            apps/api/src/live/mux-live-provider.test.ts \
+            apps/api/src/live/mux-live-provider.ts \
+            deploy/validate-production-env.cjs \
+            docs/LIVE_STREAMING.md
+
+      - name: Commit exact formatter output
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "Task 73 files already match repository formatting."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            apps/api/src/live \
+            deploy/validate-production-env.cjs \
+            docs/LIVE_STREAMING.md
+          git commit -m "style(task-73): apply final repository formatting"
+          git push origin HEAD:task-73-live-provider-adapter
