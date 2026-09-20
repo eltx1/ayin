@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   Inject,
   Param,
@@ -54,6 +55,25 @@ export class PublicLiveController {
   }
 }
 
+@Controller("webhooks/mux")
+export class MuxLiveWebhookController {
+  constructor(@Inject(LiveService) private readonly live: LiveService) {}
+
+  @Post()
+  async webhook(
+    @Req() request: { rawBody?: Buffer },
+    @Headers("mux-signature") signature: string | undefined,
+  ) {
+    if (!request.rawBody) {
+      throw new HttpException(
+        { code: "LIVE_WEBHOOK_RAW_BODY_REQUIRED", message: "Raw webhook body is required." },
+        400,
+      );
+    }
+    return call(() => this.live.handleProviderWebhook(request.rawBody as Buffer, signature));
+  }
+}
+
 @Controller("studio/live")
 @UseGuards(AuthGuard)
 export class StudioLiveController {
@@ -77,6 +97,16 @@ export class StudioLiveController {
   @Post(":id/rotate-key")
   async rotate(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return call(() => this.live.rotateKey(request.ayinAuth.accountId, id));
+  }
+
+  @Post(":id/sync")
+  async sync(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return call(() => this.live.syncProviderStatus(request.ayinAuth.accountId, id));
+  }
+
+  @Get(":id/diagnostics")
+  async diagnostics(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
+    return call(() => this.live.providerDiagnostics(request.ayinAuth.accountId, id));
   }
 
   @Patch(":id/state")
