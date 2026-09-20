@@ -2,15 +2,17 @@ import { createHash } from "node:crypto";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { DatabaseService } from "../database/database.service.js";
+import type { LiveStream } from "@ayin/db";
+
+import type { DatabaseService } from "../database/database.service.js";
 import {
   type LiveIngestProvider,
   type LiveProviderStatus,
   LiveProviderUnavailableError,
 } from "./live-provider.js";
-import { LiveError, LiveService } from "./live.service.js";
+import { type LiveError, LiveService } from "./live.service.js";
 
-const baseStream = {
+const baseStream: LiveStream = {
   id: "stream-1",
   channelId: "channel-1",
   createdByAccountId: "account-1",
@@ -37,7 +39,7 @@ function databaseFixture() {
     ...baseStream,
     ...input.data,
   }));
-  const findFirst = vi.fn(async () => ({ ...baseStream }));
+  const findFirst = vi.fn(async (): Promise<LiveStream> => ({ ...baseStream }));
   const queryRaw = vi.fn(async () => [{ locked: true }]);
   const transactionClient = {
     liveStream: {
@@ -47,9 +49,8 @@ function databaseFixture() {
     $queryRaw: queryRaw,
   };
   const transaction = vi.fn(
-    async (
-      operation: (client: typeof transactionClient) => Promise<unknown>,
-    ) => operation(transactionClient),
+    async (operation: (client: typeof transactionClient) => Promise<unknown>) =>
+      operation(transactionClient),
   );
   return {
     database: {
@@ -198,7 +199,7 @@ describe("LiveService provider evidence policy", () => {
   it("persists only a hash of the one-time provider stream key", async () => {
     const { database, findFirst, update } = databaseFixture();
     const provider = providerFixture(statusFixture("IDLE"));
-    const unprovisioned = {
+    const unprovisioned: LiveStream = {
       ...baseStream,
       status: "DRAFT",
       providerKey: "unconfigured",
@@ -211,9 +212,7 @@ describe("LiveService provider evidence policy", () => {
     const service = new LiveService(database, provider);
 
     const result = await service.provision("account-1", "stream-1");
-    const expectedHash = createHash("sha256")
-      .update("raw-one-time-stream-key")
-      .digest("hex");
+    const expectedHash = createHash("sha256").update("raw-one-time-stream-key").digest("hex");
 
     expect(result.encoder.rtmps.streamKey).toBe("raw-one-time-stream-key");
     expect(result.stream).not.toHaveProperty("streamKeyHash");
