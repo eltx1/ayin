@@ -95,6 +95,7 @@ export interface LiveIngestProvider {
   rotateKey(providerStreamId: string): Promise<LiveProvisionResult>;
   retrieveStatus(providerStreamId: string): Promise<LiveProviderStatus>;
   stop(providerStreamId: string | null): Promise<void>;
+  discard(providerStreamId: string): Promise<void>;
   verifyWebhook(\n    rawBody: string | Buffer,\n    signatureHeader: string | undefined,\n  ): LiveProviderWebhookEvent;
   diagnostics(): LiveProviderDiagnostics;
 }
@@ -128,6 +129,10 @@ export class UnconfiguredLiveIngestProvider implements LiveIngestProvider {
 
   async stop(): Promise<void> {
     return;
+  }
+
+  async discard(): Promise<void> {
+    throw new LiveProviderUnavailableError();
   }
 
   verifyWebhook(): LiveProviderWebhookEvent {
