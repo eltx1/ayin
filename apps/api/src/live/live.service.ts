@@ -419,10 +419,7 @@ export class LiveService {
     throw error;
   }
 
-  private async applyProviderEvidence(
-    stream: LiveStream,
-    evidence: LiveProviderStatus,
-  ) {
+  private async applyProviderEvidence(stream: LiveStream, evidence: LiveProviderStatus) {
     if (evidence.playable) {
       if (stream.status === "ENDED" || stream.status === "CANCELLED") return stream;
       return this.database.client.liveStream.update({
@@ -459,10 +456,7 @@ export class LiveService {
     return stream;
   }
 
-  private async applyWebhookEvent(
-    stream: LiveStream,
-    event: LiveProviderWebhookEvent,
-  ) {
+  private async applyWebhookEvent(stream: LiveStream, event: LiveProviderWebhookEvent) {
     if (event.kind === "PLAYABLE") {
       if (stream.status === "ENDED" || stream.status === "CANCELLED") return stream;
       return this.database.client.liveStream.update({
