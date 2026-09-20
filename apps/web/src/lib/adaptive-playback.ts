@@ -129,9 +129,10 @@ export function classifyHlsFailure(data: HlsErrorData): AyinHlsFailureReason {
 export async function startAdaptiveHlsPlayback(input: {
   video: HTMLVideoElement;
   hlsUrl: string;
+  mode?: "VOD" | "LIVE" | undefined;
   callbacks?: AyinAdaptivePlaybackCallbacks | undefined;
 }): Promise<AyinAdaptivePlaybackSession | null> {
-  const { video, hlsUrl, callbacks = {} } = input;
+  const { video, hlsUrl, mode = "VOD", callbacks = {} } = input;
 
   if (supportsNativeHls(video)) {
     let destroyed = false;
@@ -177,8 +178,21 @@ export async function startAdaptiveHlsPlayback(input: {
     autoStartLoad: true,
     enableWorker: true,
     capLevelToPlayerSize: true,
-    maxBufferLength: 30,
+    maxBufferLength: mode === "LIVE" ? 15 : 30,
     backBufferLength: 30,
+    ...(mode === "LIVE"
+      ? {
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 10,
+          maxLiveSyncPlaybackRate: 1.2,
+          manifestLoadingMaxRetry: 2,
+          manifestLoadingRetryDelay: 1_000,
+          manifestLoadingMaxRetryTimeout: 4_000,
+          levelLoadingMaxRetry: 2,
+          levelLoadingRetryDelay: 1_000,
+          levelLoadingMaxRetryTimeout: 4_000,
+        }
+      : {}),
   });
   let destroyed = false;
   let fatalReported = false;
