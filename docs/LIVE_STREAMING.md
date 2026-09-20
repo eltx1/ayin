@@ -136,13 +136,17 @@ against a Mux-shaped HTTP fixture:
 Unit coverage also verifies that AYIN does not mark a session LIVE on connected-only evidence and
 that the only persisted stream-key value is its SHA-256 hash.
 
-Deterministic fixtures keep ordinary CI repeatable, but Task 73 also has a credential-gated real Mux
-control-plane proof. The real proof is intentionally a required acceptance signal rather than a
-substitute fixture: it creates a Mux test live stream, verifies returned ingest/playback identifiers,
+Deterministic fixtures are the Task 73 integration acceptance path permitted by the task contract.
+They exercise the production adapter logic without requiring billable provider resources. The
+credential-gated GitHub workflow separately proves that the approved Mux credentials and webhook
+secret are present.
+
+A real Mux test-mode control-plane proof remains available through manual workflow dispatch as a
+deployment gate. It creates a Mux test live stream, verifies returned ingest/playback identifiers,
 rotates the provider stream key, disables the stream, and deletes the test resource without logging
-the one-time key. Mux currently exposes live streaming only on paid plans; test live streams are free
-to run on an eligible paid account, but a Free-plan organization cannot pass the real live-create
-gate.
+the one-time key. Until the Mux account allows Live and that proof succeeds, keep
+`MUX_LIVE_PRODUCTION_ENABLED=0`; the merged adapter can still verify webhooks and control existing
+resources when credentials are configured, but it will not create new live streams.
 
 ## Advertising
 
