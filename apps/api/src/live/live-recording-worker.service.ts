@@ -234,7 +234,6 @@ function safeErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message.slice(0, 500) : fallback;
 }
 
-
 function liveRecordingVodSlug(streamSlug: string, streamId: string): string {
   const suffix = `-replay-${streamId}`;
   const maximumBaseLength = Math.max(1, 160 - suffix.length);
