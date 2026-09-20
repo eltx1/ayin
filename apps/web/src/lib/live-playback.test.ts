@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createLiveAttemptGuard,
   liveEdgeSnapshot,
   liveReconnectDelayMs,
   moveToLiveEdge,
@@ -24,6 +25,19 @@ function ranges(...values: Array<[number, number]>): TimeRanges {
 }
 
 describe("live playback policy", () => {
+  it("invalidates superseded async connection attempts", () => {
+    const guard = createLiveAttemptGuard();
+    const first = guard.begin();
+    expect(guard.isCurrent(first)).toBe(true);
+
+    guard.invalidate();
+    expect(guard.isCurrent(first)).toBe(false);
+
+    const second = guard.begin();
+    expect(guard.isCurrent(second)).toBe(true);
+    expect(guard.isCurrent(first)).toBe(false);
+  });
+
   it("uses bounded exponential reconnect delays and then stops automatically", () => {
     expect(Array.from({ length: 7 }, (_, attempt) => liveReconnectDelayMs(attempt))).toEqual([
       1_000,
