@@ -224,7 +224,7 @@ export function StudioLiveClient() {
             <button
               className={styles.secondary}
               type="button"
-              disabled={!data.provider.configured}
+              disabled={!data.provider.configured || !data.provider.productionEnabled}
               onClick={() => void credentials(stream, Boolean(stream.providerStreamId))}
             >
               {stream.providerStreamId ? "Rotate encoder credentials" : "Provision encoder"}
