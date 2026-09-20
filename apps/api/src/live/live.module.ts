@@ -15,6 +15,7 @@ import {
 } from "./live-provider.js";
 import { MuxLiveIngestProvider } from "./mux-live-provider.js";
 import { LiveRecordingHandoffService } from "./live-recording-handoff.service.js";
+import { LiveRecordingWorkerService } from "./live-recording-worker.service.js";
 import { LiveService } from "./live.service.js";
 
 export function selectLiveIngestProvider(
@@ -30,6 +31,7 @@ export function selectLiveIngestProvider(
   providers: [
     LiveService,
     LiveRecordingHandoffService,
+    LiveRecordingWorkerService,
     UnconfiguredLiveIngestProvider,
     {
       provide: MuxLiveIngestProvider,
