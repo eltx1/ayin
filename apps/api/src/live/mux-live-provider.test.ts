@@ -37,7 +37,7 @@ function liveStreamFixture(overrides: Record<string, unknown> = {}) {
 }
 
 describe("MuxLiveIngestProvider", () => {
-  it("requires API credentials, webhook verification, and the explicit production enable gate", () => {
+  it("separates Mux control readiness from the new-stream production gate", () => {
     const disabled = new MuxLiveIngestProvider({
       MUX_TOKEN_ID: "id",
       MUX_TOKEN_SECRET: "secret",
@@ -52,6 +52,17 @@ describe("MuxLiveIngestProvider", () => {
     });
     expect(disabled.diagnostics().missingConfiguration).toEqual([
       "MUX_WEBHOOK_SIGNING_SECRET",
+      "MUX_LIVE_PRODUCTION_ENABLED=1",
+    ]);
+
+    const controlOnly = new MuxLiveIngestProvider({
+      MUX_TOKEN_ID: "id",
+      MUX_TOKEN_SECRET: "secret",
+      MUX_WEBHOOK_SIGNING_SECRET: "webhook-secret",
+    });
+    expect(controlOnly.configured).toBe(true);
+    expect(controlOnly.diagnostics().productionEnabled).toBe(false);
+    expect(controlOnly.diagnostics().missingConfiguration).toEqual([
       "MUX_LIVE_PRODUCTION_ENABLED=1",
     ]);
 
@@ -99,6 +110,11 @@ describe("MuxLiveIngestProvider", () => {
       playback_policies: ["public"],
       latency_mode: "low",
       reconnect_window: 60,
+      new_asset_settings: {
+        playback_policies: ["public"],
+        static_renditions: [{ resolution: "highest" }],
+        meta: { external_id: "ayin-stream-1" },
+      },
     });
     expect(JSON.stringify(body)).not.toContain("one-time-stream-key");
     expect(JSON.stringify(provider.diagnostics())).not.toContain("mux-token-secret");
@@ -147,6 +163,7 @@ describe("MuxLiveIngestProvider", () => {
         ),
       )
       .mockResolvedValueOnce(jsonResponse({ data: {} }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const provider = new MuxLiveIngestProvider(enabledEnvironment, fetchImpl);
 
@@ -168,6 +185,33 @@ describe("MuxLiveIngestProvider", () => {
       "https://api.mux.com/video/v1/live-streams/mux-live-1",
     );
     expect(fetchImpl.mock.calls[2]?.[1]?.method).toBe("DELETE");
+
+    await expect(provider.deleteRecordingAsset("mux-asset-1")).resolves.toBeUndefined();
+    expect(fetchImpl.mock.calls[3]?.[0]).toBe(
+      "https://api.mux.com/video/v1/assets/mux-asset-1",
+    );
+    expect(fetchImpl.mock.calls[3]?.[1]?.method).toBe("DELETE");
+  });
+
+  it("keeps stop and status control available when new provisioning is killed", async () => {
+    const controlEnvironment = {
+      MUX_TOKEN_ID: "id",
+      MUX_TOKEN_SECRET: "secret",
+      MUX_WEBHOOK_SIGNING_SECRET: "webhook-secret",
+    };
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ data: {} }))
+      .mockResolvedValueOnce(jsonResponse(liveStreamFixture({ status: "idle" })));
+    const provider = new MuxLiveIngestProvider(controlEnvironment, fetchImpl);
+
+    await expect(provider.stop("mux-live-1")).resolves.toBeUndefined();
+    await expect(provider.retrieveStatus("mux-live-1")).resolves.toMatchObject({
+      state: "IDLE",
+    });
+    await expect(
+      provider.provision({ streamId: "s", channelId: "c", title: "blocked" }),
+    ).rejects.toThrow(/provisioning is disabled/);
   });
 
   it("verifies signed raw webhook bodies and normalizes the live lifecycle", () => {
@@ -226,6 +270,54 @@ describe("MuxLiveIngestProvider", () => {
         data: { id: "mux-live-1" },
       }).kind,
     ).toBe("ERROR");
+    expect(
+      normalizeMuxWebhook({
+        id: "recording-complete",
+        type: "video.asset.live_stream_completed",
+        data: {
+          id: "asset-1",
+          meta: { external_id: "ayin-stream-1" },
+        },
+      }),
+    ).toMatchObject({
+      kind: "RECORDING_FINALIZED",
+      providerStreamId: null,
+      activeAssetId: "asset-1",
+      recording: {
+        providerAssetId: "asset-1",
+        ayinStreamId: "ayin-stream-1",
+        downloadUrl: null,
+      },
+    });
+    expect(
+      normalizeMuxWebhook({
+        id: "rendition-ready",
+        type: "video.asset.static_rendition.ready",
+        data: {
+          id: "asset-1",
+          meta: { external_id: "ayin-stream-1" },
+          playback_ids: [{ id: "asset-playback-1", policy: "public" }],
+          static_renditions: {
+            files: [
+              {
+                status: "ready",
+                ext: "mp4",
+                resolution: "highest",
+                name: "highest.mp4",
+              },
+            ],
+          },
+        },
+      }),
+    ).toMatchObject({
+      kind: "RECORDING_READY",
+      recording: {
+        providerAssetId: "asset-1",
+        ayinStreamId: "ayin-stream-1",
+        renditionName: "highest.mp4",
+        downloadUrl: "https://stream.mux.com/asset-playback-1/highest.mp4",
+      },
+    });
   });
 
   it("rejects forged and stale webhook signatures", () => {
