@@ -4,6 +4,8 @@ type HarnessState = {
   hlsConstructed: number;
   hlsDestroyed: number;
   playCalls: number;
+  pauseCalls: number;
+  loadCalls: number;
   currentTime: number;
 };
 
@@ -34,6 +36,8 @@ async function installLiveHarness(page: Page, nativeHls = false) {
         hlsConstructed: 0,
         hlsDestroyed: 0,
         playCalls: 0,
+        pauseCalls: 0,
+        loadCalls: 0,
         currentTime: 100,
       };
       Object.defineProperty(window, "__liveTask74", { value: state, configurable: true });
@@ -63,14 +67,13 @@ async function installLiveHarness(page: Page, nativeHls = false) {
           };
         },
       });
-      const nativeSources = new WeakMap<HTMLMediaElement, string>();
       Object.defineProperty(HTMLMediaElement.prototype, "src", {
         configurable: true,
         get() {
-          return nativeSources.get(this) ?? "";
+          return this.getAttribute("src") ?? "";
         },
         set(value: string) {
-          nativeSources.set(this, value);
+          this.setAttribute("src", value);
           (this as HTMLMediaElement).dataset.nativeHlsSource = value;
         },
       });
@@ -78,7 +81,8 @@ async function installLiveHarness(page: Page, nativeHls = false) {
         return native && type.toLowerCase().includes("mpegurl") ? "probably" : "";
       };
       HTMLMediaElement.prototype.load = function () {
-        if (native) {
+        state.loadCalls += 1;
+        if (native && this.getAttribute("src")) {
           queueMicrotask(() => {
             this.dispatchEvent(new Event("loadedmetadata"));
             this.dispatchEvent(new Event("canplay"));
@@ -91,6 +95,7 @@ async function installLiveHarness(page: Page, nativeHls = false) {
         return Promise.resolve();
       };
       HTMLMediaElement.prototype.pause = function () {
+        state.pauseCalls += 1;
         this.dispatchEvent(new Event("pause"));
       };
 
@@ -187,6 +192,29 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await expect.poll(async () => (await state(page)).currentTime).toBeGreaterThan(119);
     await expect(page.getByRole("slider")).toHaveCount(0);
 
+    await page.evaluate(() => {
+      const hls = (
+        window as unknown as {
+          __liveTask74Hls: { emit(event: string, data?: unknown): void };
+        }
+      ).__liveTask74Hls;
+      hls.emit("error", {
+        fatal: false,
+        type: "networkError",
+        details: "manifestLoadError",
+      });
+    });
+    await expect(page.getByText("Refreshing live stream…")).toBeVisible();
+    await page.evaluate(() => {
+      const hls = (
+        window as unknown as {
+          __liveTask74Hls: { emit(event: string, data?: unknown): void };
+        }
+      ).__liveTask74Hls;
+      hls.emit("frag-buffered");
+    });
+    await expect(page.getByText("Refreshing live stream…")).toHaveCount(0);
+
     await page.waitForTimeout(350);
     await page.locator("video").evaluate((video) => video.dispatchEvent(new Event("waiting")));
     await page.waitForTimeout(80);
@@ -247,6 +275,40 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await expect(page.getByText("Live edge")).toBeVisible();
   });
 
+  test("native HLS is paused and unloaded when the provider becomes terminal", async ({
+    page,
+  }) => {
+    await installLiveHarness(page, true);
+    let requestCount = 0;
+    await page.route("**/live/task-74", async (route) => {
+      requestCount += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(liveFixture(requestCount === 1 ? "LIVE" : "ENDED")),
+      });
+    });
+    await page.route("**/live/task-74/chat", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+    });
+
+    await page.goto("/live/task-74");
+    await expect(page.locator("video")).toHaveAttribute(
+      "src",
+      "https://stream.mux.com/task-74.m3u8",
+    );
+    const before = await state(page);
+
+    await expect(page.getByText("This live stream has ended."), { timeout: 8_000 }).toBeVisible();
+    await expect(page.locator("video")).not.toHaveAttribute("src", /.+/);
+    await expect.poll(async () => (await state(page)).pauseCalls).toBeGreaterThan(before.pauseCalls);
+    await expect.poll(async () => (await state(page)).loadCalls).toBeGreaterThan(before.loadCalls);
+  });
+
   test("provider ENDED stops live recovery and records an end reason", async ({ page }) => {
     const analytics: string[] = [];
     await installLiveHarness(page);
@@ -282,6 +344,38 @@ test.describe.serial("Task 74 live playback hardening", () => {
     expect((await state(page)).hlsConstructed).toBe(constructedBeforeEnd);
     expect(analytics).toContain("LIVE_END");
     expect(analytics).toContain("LIVE_PLAY_COMPLETE");
+  });
+
+  test("a later 404 clears previously mounted live playback and chat", async ({ page }) => {
+    await installLiveHarness(page);
+    let requestCount = 0;
+    await page.route("**/live/task-74", async (route) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(liveFixture("LIVE")),
+        });
+        return;
+      }
+      await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+    });
+    await page.route("**/live/task-74/chat", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+    });
+
+    await page.goto("/live/task-74");
+    await expect(page.locator('[data-live-player="true"]')).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+
+    await expect(page.getByText("This live session is unavailable."), { timeout: 8_000 }).toBeVisible();
+    await expect(page.locator('[data-live-player="true"]')).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
   });
 
   test("stream-not-started path does not load the live manifest and can refresh into LIVE", async ({
