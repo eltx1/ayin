@@ -471,7 +471,7 @@ export function LiveAyinPlayer({
     document.addEventListener("visibilitychange", onVisibility);
 
     durationTimer = window.setInterval(() => {
-      if (!video.paused && connectionState !== "OFFLINE") flushDuration(true);
+      if (!video.paused && navigator.onLine !== false) flushDuration(true);
     }, LIVE_DURATION_SAMPLE_MS);
 
     void connect();
@@ -498,7 +498,6 @@ export function LiveAyinPlayer({
     };
   }, [
     autoPlay,
-    connectionState,
     dvrWindowSeconds,
     emit,
     flushDuration,
