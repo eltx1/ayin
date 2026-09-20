@@ -246,6 +246,30 @@ export class LiveService {
       return { accepted: true, ignored: true, eventId: event.eventId, event: event.kind };
     }
 
+    if (event.kind === "RECORDING_READY") {
+      const recording = event.recording;
+      if (!recording?.providerAssetId || !recording.renditionName) {
+        throw new LiveError(
+          "LIVE_RECORDING_METADATA_INVALID",
+          "Mux reported a ready recording without an asset ID or rendition name.",
+          502,
+        );
+      }
+      try {
+        const enriched = await this.provider.retrieveRecording(
+          recording.providerAssetId,
+          recording.renditionName,
+        );
+        event = {
+          ...event,
+          activeAssetId: enriched.providerAssetId,
+          recording: enriched,
+        };
+      } catch (error) {
+        this.throwProviderError(error);
+      }
+    }
+
     const stream = await this.findStreamForProviderEvent(event);
     if (!stream) {
       return { accepted: true, ignored: true, eventId: event.eventId, event: event.kind };
@@ -709,6 +733,9 @@ type PublicLiveStream = Omit<
   | "recordingHandoffStatus"
   | "recordingR2ObjectKey"
   | "recordingMediaAssetId"
+  | "recordingProviderDownloadUrl"
+  | "recordingRenditionName"
+  | "recordingHandoffAttempt"
   | "recordingHandoffStartedAt"
   | "recordingHandoffAt"
   | "recordingProviderDeletedAt"
@@ -724,6 +751,9 @@ function stripSecretHash(stream: LiveStream): PublicLiveStream {
     recordingHandoffStatus,
     recordingR2ObjectKey,
     recordingMediaAssetId,
+    recordingProviderDownloadUrl,
+    recordingRenditionName,
+    recordingHandoffAttempt,
     recordingHandoffStartedAt,
     recordingHandoffAt,
     recordingProviderDeletedAt,
@@ -737,6 +767,9 @@ function stripSecretHash(stream: LiveStream): PublicLiveStream {
   void recordingHandoffStatus;
   void recordingR2ObjectKey;
   void recordingMediaAssetId;
+  void recordingProviderDownloadUrl;
+  void recordingRenditionName;
+  void recordingHandoffAttempt;
   void recordingHandoffStartedAt;
   void recordingHandoffAt;
   void recordingProviderDeletedAt;
