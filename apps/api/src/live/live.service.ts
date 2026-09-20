@@ -785,6 +785,7 @@ type PublicLiveStream = Omit<
   | "recordingRenditionName"
   | "recordingHandoffAttempt"
   | "recordingHandoffStartedAt"
+  | "recordingHandoffHeartbeatAt"
   | "recordingHandoffAt"
   | "recordingProviderDeletedAt"
   | "recordingHandoffError"
@@ -805,6 +806,7 @@ function stripSecretHash(stream: LiveStream): PublicLiveStream {
     recordingRenditionName,
     recordingHandoffAttempt,
     recordingHandoffStartedAt,
+    recordingHandoffHeartbeatAt,
     recordingHandoffAt,
     recordingProviderDeletedAt,
     recordingHandoffError,
@@ -823,6 +825,7 @@ function stripSecretHash(stream: LiveStream): PublicLiveStream {
   void recordingRenditionName;
   void recordingHandoffAttempt;
   void recordingHandoffStartedAt;
+  void recordingHandoffHeartbeatAt;
   void recordingHandoffAt;
   void recordingProviderDeletedAt;
   void recordingHandoffError;
