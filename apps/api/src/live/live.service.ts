@@ -662,8 +662,8 @@ export class LiveService {
           recordingHandoffError: message,
         },
       });
+      void updated;
       this.throwProviderError(error);
-      return { ignored: false, stream: updated };
     }
   }
 
@@ -759,10 +759,46 @@ function hashKey(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function stripSecretHash<T extends { streamKeyHash: string | null }>(
-  stream: T,
-): Omit<T, "streamKeyHash"> {
-  const { streamKeyHash, ...safe } = stream;
+type PublicLiveStream = Omit<
+  LiveStream,
+  | "streamKeyHash"
+  | "providerLastEventAt"
+  | "providerLastEventId"
+  | "providerRecordingAssetId"
+  | "recordingHandoffStatus"
+  | "recordingR2ObjectKey"
+  | "recordingMediaAssetId"
+  | "recordingHandoffStartedAt"
+  | "recordingHandoffAt"
+  | "recordingProviderDeletedAt"
+  | "recordingHandoffError"
+>;
+
+function stripSecretHash(stream: LiveStream): PublicLiveStream {
+  const {
+    streamKeyHash,
+    providerLastEventAt,
+    providerLastEventId,
+    providerRecordingAssetId,
+    recordingHandoffStatus,
+    recordingR2ObjectKey,
+    recordingMediaAssetId,
+    recordingHandoffStartedAt,
+    recordingHandoffAt,
+    recordingProviderDeletedAt,
+    recordingHandoffError,
+    ...safe
+  } = stream;
   void streamKeyHash;
+  void providerLastEventAt;
+  void providerLastEventId;
+  void providerRecordingAssetId;
+  void recordingHandoffStatus;
+  void recordingR2ObjectKey;
+  void recordingMediaAssetId;
+  void recordingHandoffStartedAt;
+  void recordingHandoffAt;
+  void recordingProviderDeletedAt;
+  void recordingHandoffError;
   return safe;
 }
