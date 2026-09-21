@@ -211,6 +211,7 @@ export class OwnedLinearStreamingProvider
     resource.lastError = restartRequired ? resource.lastError : null;
     await this.persistResource(resource);
     void this.prewarmNext(resource).catch(() => undefined);
+    void this.pruneSourceCache(resource).catch(() => undefined);
 
     if (restartRequired) {
       resource.status = "PROVISIONING";
@@ -377,6 +378,7 @@ export class OwnedLinearStreamingProvider
           resource.exhaustedUntilMs = endsAtMs;
         }
         resource.lastError = null;
+        void this.pruneSourceCache(resource).catch(() => undefined);
         return;
       } catch (error) {
         if (!this.isCurrent(resource, version)) return;
@@ -559,9 +561,11 @@ export class OwnedLinearStreamingProvider
       throw new Error("Owned linear compute currently accepts validated video/mp4 schedule sources.");
     }
 
-    const hash = createHash("sha256").update(program.source.objectKey).digest("hex");
     const sourceDirectory = join(this.resourceDirectory(resource.resourceId), "sources");
-    const destinationPath = join(sourceDirectory, hash + ".mp4");
+    const destinationPath = join(
+      sourceDirectory,
+      sourceCacheFileName(program.source.objectKey),
+    );
     const existing = await stat(destinationPath).catch(() => null);
     if (existing?.isFile() && existing.size > 0) return destinationPath;
 
@@ -579,6 +583,33 @@ export class OwnedLinearStreamingProvider
       await rm(temporaryPath, { force: true }).catch(() => undefined);
       throw error;
     }
+  }
+
+  private async pruneSourceCache(resource: OwnedLinearResource): Promise<void> {
+    const now = Date.now();
+    const keepKeys = new Set<string>();
+    const active = currentProgram(resource.plan, now);
+    const upcoming = nextProgram(resource.plan, now);
+    if (active) keepKeys.add(active.source.objectKey);
+    if (upcoming) keepKeys.add(upcoming.source.objectKey);
+
+    for (const [objectKey, promise] of resource.sourcePromises) {
+      if (keepKeys.has(objectKey)) continue;
+      resource.sourcePromises.delete(objectKey);
+      void promise
+        .then((filePath) => rm(filePath, { force: true }))
+        .catch(() => undefined);
+    }
+
+    const sourceDirectory = join(this.resourceDirectory(resource.resourceId), "sources");
+    const entries = await readdir(sourceDirectory, { withFileTypes: true }).catch(() => []);
+    const keepFiles = new Set([...keepKeys].map(sourceCacheFileName));
+    await Promise.all(
+      entries.map(async (entry) => {
+        if (!entry.isFile() || keepFiles.has(entry.name)) return;
+        await rm(join(sourceDirectory, entry.name), { force: true }).catch(() => undefined);
+      }),
+    );
   }
 
   private async prepareFreshResource(resource: OwnedLinearResource): Promise<void> {
@@ -974,6 +1005,10 @@ function renderAdMarker(marker: LinearAdMarker, markerAt: number): string {
 
 function hlsQuoted(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
+}
+
+function sourceCacheFileName(objectKey: string): string {
+  return createHash("sha256").update(objectKey).digest("hex") + ".mp4";
 }
 
 function sourceSeekOffsetMs(plan: LinearChannelPlan, program: LinearProgram, now: number): number {
