@@ -3,6 +3,7 @@ import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { MediaModule } from "../media/media.module.js";
+import { MediaProcessingStorageService } from "../media/media-processing-storage.service.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import { CaptionController } from "./caption.controller.js";
@@ -13,11 +14,16 @@ import { PublicClipsController } from "./clips.controller.js";
 import { ClipsService } from "./clips.service.js";
 import { CREATOR_TV_AD_BREAK_HOOK, NoopCreatorTvAdBreakHook } from "./creator-tv-ad-break.hook.js";
 import { CreatorTvController, PublicCreatorTvController } from "./creator-tv.controller.js";
+import { PublicCreatorTvLinearOutputController } from "./creator-tv-linear-output.controller.js";
 import {
   CREATOR_TV_LINEAR_PROVIDER,
   UnconfiguredLinearStreamingProvider,
 } from "./creator-tv-linear.provider.js";
 import { CreatorTvLinearService } from "./creator-tv-linear.service.js";
+import {
+  OwnedLinearStreamingProvider,
+  type LinearSourceMaterializer,
+} from "./owned-linear-streaming.provider.js";
 import { CreatorTvService } from "./creator-tv.service.js";
 import {
   CreatorPlaylistCollectionController,
@@ -44,6 +50,7 @@ import { VideoMetadataService } from "./video-metadata.service.js";
     CreatorPlaylistCollectionController,
     CreatorPlaylistController,
     PublicCreatorTvController,
+    PublicCreatorTvLinearOutputController,
     CreatorTvController,
   ],
   providers: [
@@ -57,7 +64,21 @@ import { VideoMetadataService } from "./video-metadata.service.js";
     CreatorTvService,
     CreatorTvLinearService,
     { provide: CREATOR_TV_AD_BREAK_HOOK, useClass: NoopCreatorTvAdBreakHook },
-    { provide: CREATOR_TV_LINEAR_PROVIDER, useClass: UnconfiguredLinearStreamingProvider },
+    UnconfiguredLinearStreamingProvider,
+    {
+      provide: OwnedLinearStreamingProvider,
+      inject: [MediaProcessingStorageService],
+      useFactory: (storage: MediaProcessingStorageService) => {
+        const materialize: LinearSourceMaterializer = (objectKey, destinationPath) =>
+          storage.downloadToFile(objectKey, destinationPath);
+        return new OwnedLinearStreamingProvider(process.env, materialize);
+      },
+    },
+    {
+      provide: CREATOR_TV_LINEAR_PROVIDER,
+      inject: [OwnedLinearStreamingProvider, UnconfiguredLinearStreamingProvider],
+      useFactory: selectLinearStreamingProvider,
+    },
   ],
   exports: [
     ChannelService,
@@ -70,3 +91,11 @@ import { VideoMetadataService } from "./video-metadata.service.js";
   ],
 })
 export class CreatorModule {}
+
+
+export function selectLinearStreamingProvider(
+  owned: OwnedLinearStreamingProvider,
+  fallback: UnconfiguredLinearStreamingProvider,
+) {
+  return owned.configured ? owned : fallback;
+}
