@@ -204,7 +204,7 @@ export class OwnedLinearStreamingProvider
     resource.plan = plan;
     resource.lastError = restartRequired ? resource.lastError : null;
     await this.persistResource(resource);
-    void this.prewarmNext(resource);
+    void this.prewarmNext(resource).catch(() => undefined);
 
     if (restartRequired) {
       resource.status = "PROVISIONING";
@@ -349,7 +349,7 @@ export class OwnedLinearStreamingProvider
 
         const seekMs = sourceSeekOffsetMs(resource.plan, program, now);
         this.markTransition(resource, program, now);
-        void this.prewarmNext(resource);
+        void this.prewarmNext(resource).catch(() => undefined);
 
         const durationMs = Math.max(250, endsAtMs - now);
         await this.runFfmpeg(
@@ -388,18 +388,31 @@ export class OwnedLinearStreamingProvider
     version: number,
     requestedDurationMs: number,
   ): Promise<void> {
-    if (!this.isCurrent(resource, version)) return;
-    const durationMs = Math.max(250, Math.min(FILLER_CHUNK_MS, requestedDurationMs));
-    resource.runningOccurrenceKey = null;
-    await this.runFfmpeg(
-      resource,
-      version,
-      buildFillerFfmpegArgs({
-        durationMs,
-        segmentDurationSeconds: this.segmentDurationSeconds,
-        outputDirectory: this.resourceDirectory(resource.resourceId),
-      }),
-    );
+    let attempt = 0;
+    while (this.isCurrent(resource, version)) {
+      const durationMs = Math.max(250, Math.min(FILLER_CHUNK_MS, requestedDurationMs));
+      resource.runningOccurrenceKey = null;
+      try {
+        await this.runFfmpeg(
+          resource,
+          version,
+          buildFillerFfmpegArgs({
+            durationMs,
+            segmentDurationSeconds: this.segmentDurationSeconds,
+            outputDirectory: this.resourceDirectory(resource.resourceId),
+          }),
+        );
+        return;
+      } catch (error) {
+        if (!this.isCurrent(resource, version)) return;
+        resource.recoveryCount += 1;
+        resource.lastError = errorMessage(error);
+        if (attempt >= this.maxRecoveryAttempts) throw error;
+        const delayMs = Math.min(5_000, 500 * 2 ** attempt);
+        attempt += 1;
+        await sleep(delayMs);
+      }
+    }
   }
 
   private async runFfmpeg(
@@ -407,6 +420,9 @@ export class OwnedLinearStreamingProvider
     version: number,
     args: readonly string[],
   ): Promise<void> {
+    const previousManifestMtimeMs = await stat(this.rawManifestPath(resource.resourceId))
+      .then((metadata) => metadata.mtimeMs)
+      .catch(() => 0);
     await new Promise<void>((resolve, reject) => {
       if (!this.isCurrent(resource, version)) {
         resolve();
@@ -456,16 +472,27 @@ export class OwnedLinearStreamingProvider
         );
       });
 
-      void this.observeManifest(resource, version);
+      void this.observeManifest(resource, version, previousManifestMtimeMs);
     });
   }
 
-  private async observeManifest(resource: OwnedLinearResource, version: number): Promise<void> {
+  private async observeManifest(
+    resource: OwnedLinearResource,
+    version: number,
+    previousManifestMtimeMs: number,
+  ): Promise<void> {
     while (this.isCurrent(resource, version)) {
-      const manifest = await readFile(this.rawManifestPath(resource.resourceId), "utf8").catch(
-        () => null,
-      );
-      if (manifest && isPlayableManifest(manifest)) {
+      const manifestPath = this.rawManifestPath(resource.resourceId);
+      const [manifest, metadata] = await Promise.all([
+        readFile(manifestPath, "utf8").catch(() => null),
+        stat(manifestPath).catch(() => null),
+      ]);
+      if (
+        manifest &&
+        metadata?.isFile() &&
+        metadata.mtimeMs > previousManifestMtimeMs &&
+        isPlayableManifest(manifest)
+      ) {
         const now = new Date().toISOString();
         resource.lastManifestAt = now;
         if (resource.status !== "READY" || !resource.hlsUrl) {
