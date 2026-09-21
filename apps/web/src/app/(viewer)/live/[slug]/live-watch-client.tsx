@@ -31,6 +31,9 @@ function terminalStatus(status: LivePlayerStreamStatus): boolean {
 }
 
 function waitingCopy(stream: Stream): string {
+  if (stream.status === "ENDED") return "This live stream has ended.";
+  if (stream.status === "CANCELLED") return "This live stream was cancelled.";
+  if (stream.status === "FAILED") return "This live stream is unavailable.";
   if (stream.status === "SCHEDULED")
     return "This live stream is scheduled and has not started yet.";
   if (stream.status === "READY") return "The encoder is ready. Waiting for playable live output…";
