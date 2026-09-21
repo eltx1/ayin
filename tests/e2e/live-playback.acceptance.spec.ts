@@ -376,6 +376,9 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await page.locator("video").evaluate((video) => video.dispatchEvent(new Event("waiting")));
     await expect(page.getByText("Reconnecting to live stream…"), { timeout: 14_000 }).toBeVisible();
     await expect
+      .poll(async () => (await state(page)).pauseCalls, { timeout: 14_000 })
+      .toBeGreaterThan(before.pauseCalls);
+    await expect
       .poll(async () => (await state(page)).loadCalls, { timeout: 17_000 })
       .toBeGreaterThan(before.loadCalls);
   });
