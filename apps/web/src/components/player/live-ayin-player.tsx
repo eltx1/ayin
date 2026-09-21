@@ -296,6 +296,7 @@ export function LiveAyinPlayer({
       connecting = false;
       attemptGuard.invalidate();
       clearReconnectTimer();
+      clearStableTimer();
       clearStartupWatchdog();
       clearStallWatchdog();
       sessionRef.current?.destroy();
@@ -406,6 +407,7 @@ export function LiveAyinPlayer({
               if (!attemptGuard.isCurrent(generation)) return;
               fatalDelivered = true;
               attemptGuard.invalidate();
+              clearStableTimer();
               clearStartupWatchdog();
               clearStallWatchdog();
               connecting = false;
@@ -603,6 +605,10 @@ export function LiveAyinPlayer({
   const retry = useCallback(() => {
     reconnectAttemptRef.current = 0;
     fatalReportedRef.current = false;
+    bufferStartedAtRef.current = null;
+    if (!startedRef.current) firstConnectStartedAtRef.current = null;
+    setPlaying(false);
+    setAutoplayBlocked(false);
     setMessage(null);
     setConnectionState("CONNECTING");
     setManualRetryGeneration((value) => value + 1);
