@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, type OnModuleDestroy } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { CreatorTvError, CreatorTvService, type CreatorTvEditActor } from "./creator-tv.service.js";
@@ -10,7 +10,13 @@ import {
 } from "./creator-tv-linear.provider.js";
 
 @Injectable()
-export class CreatorTvLinearService {
+export class CreatorTvLinearService implements OnModuleDestroy {
+  private readonly reconciliationTimers = new Map<string, NodeJS.Timeout>();
+  private readonly reconciliationInFlight = new Set<string>();
+  private readonly reconciliationIntervalMs = linearReconciliationIntervalMs(
+    process.env.LINEAR_RECONCILE_INTERVAL_SECONDS,
+  );
+
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CreatorTvService) private readonly creatorTv: CreatorTvService,
@@ -45,7 +51,9 @@ export class CreatorTvLinearService {
     const target = await this.authorizedTarget(actor, tvChannelId);
     const plan = await this.buildPlanByHandle(target.handle, now);
     try {
-      return { state: await this.provider.provision(plan), plan: summarizePlan(plan) };
+      const state = await this.provider.provision(plan);
+      this.ensureReconciliation(tvChannelId, target.handle, state);
+      return { state, plan: summarizePlan(plan) };
     } catch (error) {
       throw this.mapProviderError(error);
     }
@@ -55,7 +63,9 @@ export class CreatorTvLinearService {
     const target = await this.authorizedTarget(actor, tvChannelId);
     const plan = await this.buildPlanByHandle(target.handle, now);
     try {
-      return { state: await this.provider.reconcile(plan), plan: summarizePlan(plan) };
+      const state = await this.provider.reconcile(plan);
+      this.ensureReconciliation(tvChannelId, target.handle, state);
+      return { state, plan: summarizePlan(plan) };
     } catch (error) {
       throw this.mapProviderError(error);
     }
@@ -63,7 +73,13 @@ export class CreatorTvLinearService {
 
   async stop(actor: CreatorTvEditActor, tvChannelId: string) {
     await this.authorizedTarget(actor, tvChannelId);
+    this.clearReconciliation(tvChannelId);
     return { state: await this.provider.stop(tvChannelId) };
+  }
+
+  onModuleDestroy(): void {
+    for (const timer of this.reconciliationTimers.values()) clearInterval(timer);
+    this.reconciliationTimers.clear();
   }
 
   async buildPlanByHandle(handle: string, now = new Date()): Promise<LinearChannelPlan> {
@@ -98,6 +114,49 @@ export class CreatorTvLinearService {
       },
       fallback: { strategy: "PROGRESSIVE_MP4", enabled: true },
     };
+  }
+
+  private ensureReconciliation(
+    tvChannelId: string,
+    handle: string,
+    state: Awaited<ReturnType<LinearStreamingProvider["getState"]>>,
+  ): void {
+    if (!state.configured || !state.providerResourceId || state.status === "STOPPED") {
+      this.clearReconciliation(tvChannelId);
+      return;
+    }
+    if (this.reconciliationTimers.has(tvChannelId)) return;
+
+    const timer = setInterval(() => {
+      void this.reconcileManagedChannel(tvChannelId, handle);
+    }, this.reconciliationIntervalMs);
+    timer.unref();
+    this.reconciliationTimers.set(tvChannelId, timer);
+  }
+
+  private async reconcileManagedChannel(tvChannelId: string, handle: string): Promise<void> {
+    if (this.reconciliationInFlight.has(tvChannelId)) return;
+    this.reconciliationInFlight.add(tvChannelId);
+    try {
+      const state = await this.provider.getState(tvChannelId);
+      if (!state.configured || !state.providerResourceId || state.status === "STOPPED") {
+        this.clearReconciliation(tvChannelId);
+        return;
+      }
+      const plan = await this.buildPlanByHandle(handle, new Date());
+      await this.provider.reconcile(plan);
+    } catch {
+      // Provider state remains authoritative. A later bounded reconciliation can recover it.
+    } finally {
+      this.reconciliationInFlight.delete(tvChannelId);
+    }
+  }
+
+  private clearReconciliation(tvChannelId: string): void {
+    const timer = this.reconciliationTimers.get(tvChannelId);
+    if (timer) clearInterval(timer);
+    this.reconciliationTimers.delete(tvChannelId);
+    this.reconciliationInFlight.delete(tvChannelId);
   }
 
   private async authorizedTarget(actor: CreatorTvEditActor, tvChannelId: string) {
@@ -158,4 +217,11 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+
+function linearReconciliationIntervalMs(raw: string | undefined): number {
+  const seconds = raw?.trim() ? Number(raw) : 30;
+  if (!Number.isSafeInteger(seconds) || seconds < 5 || seconds > 300) return 30_000;
+  return seconds * 1_000;
 }
