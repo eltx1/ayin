@@ -586,27 +586,27 @@ export class OwnedLinearStreamingProvider
   }
 
   private async pruneSourceCache(resource: OwnedLinearResource): Promise<void> {
-    const now = Date.now();
-    const keepKeys = new Set<string>();
-    const active = currentProgram(resource.plan, now);
-    const upcoming = nextProgram(resource.plan, now);
-    if (active) keepKeys.add(active.source.objectKey);
-    if (upcoming) keepKeys.add(upcoming.source.objectKey);
+    const initiallyRequired = sourceObjectKeysToKeep(resource.plan, Date.now());
 
     for (const [objectKey, promise] of resource.sourcePromises) {
-      if (keepKeys.has(objectKey)) continue;
+      if (initiallyRequired.has(objectKey)) continue;
+      const filePath = await promise.catch(() => null);
+      if (sourceObjectKeysToKeep(resource.plan, Date.now()).has(objectKey)) continue;
+      if (resource.sourcePromises.get(objectKey) !== promise) continue;
       resource.sourcePromises.delete(objectKey);
-      void promise
-        .then((filePath) => rm(filePath, { force: true }))
-        .catch(() => undefined);
+      if (filePath) await rm(filePath, { force: true }).catch(() => undefined);
     }
 
     const sourceDirectory = join(this.resourceDirectory(resource.resourceId), "sources");
     const entries = await readdir(sourceDirectory, { withFileTypes: true }).catch(() => []);
-    const keepFiles = new Set([...keepKeys].map(sourceCacheFileName));
+    const retainedKeys = new Set([
+      ...sourceObjectKeysToKeep(resource.plan, Date.now()),
+      ...resource.sourcePromises.keys(),
+    ]);
+    const keepFiles = new Set([...retainedKeys].map(sourceCacheFileName));
     await Promise.all(
       entries.map(async (entry) => {
-        if (!entry.isFile() || keepFiles.has(entry.name)) return;
+        if (!entry.isFile() || !entry.name.endsWith(".mp4") || keepFiles.has(entry.name)) return;
         await rm(join(sourceDirectory, entry.name), { force: true }).catch(() => undefined);
       }),
     );
@@ -1009,6 +1009,15 @@ function hlsQuoted(value: string): string {
 
 function sourceCacheFileName(objectKey: string): string {
   return createHash("sha256").update(objectKey).digest("hex") + ".mp4";
+}
+
+function sourceObjectKeysToKeep(plan: LinearChannelPlan, now: number): Set<string> {
+  const keys = new Set<string>();
+  const active = currentProgram(plan, now);
+  const upcoming = nextProgram(plan, now);
+  if (active) keys.add(active.source.objectKey);
+  if (upcoming) keys.add(upcoming.source.objectKey);
+  return keys;
 }
 
 function sourceSeekOffsetMs(plan: LinearChannelPlan, program: LinearProgram, now: number): number {
