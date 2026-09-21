@@ -162,21 +162,21 @@ test.describe.serial("Task 74 live playback hardening", () => {
   }) => {
     const analytics: string[] = [];
     await installLiveHarness(page);
-    await page.route("**/live/task-74", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(liveFixture("LIVE")),
       });
     });
-    await page.route("**/live/task-74/chat", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ chatEnabled: true, messages: [] }),
       });
     });
-    await page.route("**/analytics/events", async (route) => {
+    await page.route("http://127.0.0.1:3001/analytics/events", async (route) => {
       const body = route.request().postDataJSON() as { events?: Array<{ eventName?: string }> };
       for (const event of body.events ?? []) if (event.eventName) analytics.push(event.eventName);
       await route.fulfill({ status: 202, contentType: "application/json", body: "{}" });
@@ -250,14 +250,14 @@ test.describe.serial("Task 74 live playback hardening", () => {
 
   test("native-HLS capability path bypasses hls.js and retains live controls", async ({ page }) => {
     await installLiveHarness(page, true);
-    await page.route("**/live/task-74", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(liveFixture("LIVE")),
       });
     });
-    await page.route("**/live/task-74/chat", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -277,14 +277,14 @@ test.describe.serial("Task 74 live playback hardening", () => {
 
   test("sustained native-HLS stall enters the bounded reconnect path", async ({ page }) => {
     await installLiveHarness(page, true);
-    await page.route("**/live/task-74", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(liveFixture("LIVE")),
       });
     });
-    await page.route("**/live/task-74/chat", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -309,7 +309,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
   test("native HLS is paused and unloaded when the provider becomes terminal", async ({ page }) => {
     await installLiveHarness(page, true);
     let requestCount = 0;
-    await page.route("**/live/task-74", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       requestCount += 1;
       await route.fulfill({
         status: 200,
@@ -317,7 +317,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
         body: JSON.stringify(liveFixture(requestCount === 1 ? "LIVE" : "ENDED")),
       });
     });
-    await page.route("**/live/task-74/chat", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -344,7 +344,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
     const analytics: string[] = [];
     await installLiveHarness(page);
     let requestCount = 0;
-    await page.route("**/live/task-74", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       requestCount += 1;
       await route.fulfill({
         status: 200,
@@ -352,14 +352,14 @@ test.describe.serial("Task 74 live playback hardening", () => {
         body: JSON.stringify(liveFixture(requestCount === 1 ? "LIVE" : "ENDED")),
       });
     });
-    await page.route("**/live/task-74/chat", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ chatEnabled: true, messages: [] }),
       });
     });
-    await page.route("**/analytics/events", async (route) => {
+    await page.route("http://127.0.0.1:3001/analytics/events", async (route) => {
       const body = route.request().postDataJSON() as { events?: Array<{ eventName?: string }> };
       for (const event of body.events ?? []) if (event.eventName) analytics.push(event.eventName);
       await route.fulfill({ status: 202, contentType: "application/json", body: "{}" });
@@ -380,7 +380,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
   test("a later 404 clears previously mounted live playback and chat", async ({ page }) => {
     await installLiveHarness(page);
     let requestCount = 0;
-    await page.route("**/live/task-74", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       requestCount += 1;
       if (requestCount === 1) {
         await route.fulfill({
@@ -392,7 +392,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
       }
       await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
     });
-    await page.route("**/live/task-74/chat", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -416,14 +416,14 @@ test.describe.serial("Task 74 live playback hardening", () => {
   }) => {
     await installLiveHarness(page);
     let status: LiveStatus = "READY";
-    await page.route("**/live/task-74", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(liveFixture(status)),
       });
     });
-    await page.route("**/live/task-74/chat", async (route) => {
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
