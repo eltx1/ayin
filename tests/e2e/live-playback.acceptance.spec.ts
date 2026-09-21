@@ -29,9 +29,13 @@ function liveFixture(status: LiveStatus) {
   };
 }
 
-async function installLiveHarness(page: Page, nativeHls = false) {
+async function installLiveHarness(
+  page: Page,
+  nativeHls = false,
+  playBehavior: "playing" | "pending" | "blocked" = "playing",
+) {
   await page.addInitScript(
-    ({ native }) => {
+    ({ native, behavior }) => {
       const state = {
         hlsConstructed: 0,
         hlsDestroyed: 0,
@@ -91,6 +95,10 @@ async function installLiveHarness(page: Page, nativeHls = false) {
       };
       HTMLMediaElement.prototype.play = function () {
         state.playCalls += 1;
+        if (behavior === "pending") return new Promise<void>(() => undefined);
+        if (behavior === "blocked") {
+          return Promise.reject(new DOMException("Autoplay blocked", "NotAllowedError"));
+        }
         this.dispatchEvent(new Event("playing"));
         return Promise.resolve();
       };
@@ -148,7 +156,7 @@ async function installLiveHarness(page: Page, nativeHls = false) {
 
       Object.defineProperty(window, "Hls", { value: FakeHls, configurable: true });
     },
-    { native: nativeHls },
+    { native: nativeHls, behavior: playBehavior },
   );
 }
 
@@ -246,6 +254,32 @@ test.describe.serial("Task 74 live playback hardening", () => {
     expect(analytics).toContain("LIVE_REBUFFER");
     expect(analytics).toContain("LIVE_RECONNECT");
     expect(analytics).toContain("LIVE_DURATION");
+  });
+
+  test("manifest readiness without playable frames remains under the startup watchdog", async ({
+    page,
+  }) => {
+    await installLiveHarness(page, false, "pending");
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(liveFixture("LIVE")),
+      });
+    });
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+    });
+
+    await page.goto("/live/task-74");
+    await expect.poll(async () => (await state(page)).hlsConstructed).toBe(1);
+    await expect
+      .poll(async () => (await state(page)).hlsConstructed, { timeout: 16_000 })
+      .toBeGreaterThan(1);
   });
 
   test("native-HLS capability path bypasses hls.js and retains live controls", async ({ page }) => {
