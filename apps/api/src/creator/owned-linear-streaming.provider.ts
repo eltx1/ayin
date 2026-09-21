@@ -520,7 +520,9 @@ export class OwnedLinearStreamingProvider
     if (resource.runningOccurrenceKey === program.occurrenceKey) return;
     const generatedAtMs = Date.parse(resource.plan.generatedAt);
     const startsAtMs = Date.parse(program.startsAt);
-    const driftMs = startsAtMs <= generatedAtMs ? 0 : now - startsAtMs;
+    const isInitialMidProgramJoin =
+      resource.lastTransitionAt === null && startsAtMs <= generatedAtMs;
+    const driftMs = isInitialMidProgramJoin ? 0 : now - startsAtMs;
     resource.runningOccurrenceKey = program.occurrenceKey;
     resource.lastTransitionAt = new Date(now).toISOString();
     resource.scheduleDriftMs = driftMs;
