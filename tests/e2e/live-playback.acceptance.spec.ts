@@ -39,11 +39,7 @@ async function installLiveHarness(
     ({ native, behavior, fastWatchdogs }) => {
       if (fastWatchdogs) {
         const nativeSetTimeout = window.setTimeout.bind(window);
-        window.setTimeout = ((
-          handler: TimerHandler,
-          timeout?: number,
-          ...args: unknown[]
-        ) =>
+        window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
           nativeSetTimeout(
             handler,
             timeout === 12_000 ? 75 : timeout,
