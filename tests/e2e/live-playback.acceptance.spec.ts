@@ -71,22 +71,32 @@ async function installLiveHarness(
           };
         },
       });
+      const nativeSources = new WeakMap<HTMLMediaElement, string>();
+      const nativeRemoveAttribute = Element.prototype.removeAttribute;
       Object.defineProperty(HTMLMediaElement.prototype, "src", {
         configurable: true,
         get() {
-          return this.getAttribute("src") ?? "";
+          return nativeSources.get(this) ?? "";
         },
         set(value: string) {
-          this.setAttribute("src", value);
+          nativeSources.set(this, value);
           (this as HTMLMediaElement).dataset.nativeHlsSource = value;
         },
       });
+      Element.prototype.removeAttribute = function (name: string) {
+        if (this instanceof HTMLMediaElement && name.toLowerCase() === "src") {
+          nativeSources.delete(this);
+          delete this.dataset.nativeHlsSource;
+          return;
+        }
+        nativeRemoveAttribute.call(this, name);
+      };
       HTMLMediaElement.prototype.canPlayType = function (type: string) {
         return native && type.toLowerCase().includes("mpegurl") ? "probably" : "";
       };
       HTMLMediaElement.prototype.load = function () {
         state.loadCalls += 1;
-        if (native && this.getAttribute("src")) {
+        if (native && nativeSources.get(this)) {
           queueMicrotask(() => {
             this.dispatchEvent(new Event("loadedmetadata"));
             this.dispatchEvent(new Event("canplay"));
@@ -301,7 +311,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
 
     await page.goto("/live/task-74");
     await expect(page.locator("video")).toHaveAttribute(
-      "src",
+      "data-native-hls-source",
       "https://stream.mux.com/task-74.m3u8",
     );
     await expect
@@ -358,7 +368,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
 
     await page.goto("/live/task-74");
     await expect(page.locator("video")).toHaveAttribute(
-      "src",
+      "data-native-hls-source",
       "https://stream.mux.com/task-74.m3u8",
     );
     const before = await state(page);
@@ -394,13 +404,13 @@ test.describe.serial("Task 74 live playback hardening", () => {
 
     await page.goto("/live/task-74");
     await expect(page.locator("video")).toHaveAttribute(
-      "src",
+      "data-native-hls-source",
       "https://stream.mux.com/task-74.m3u8",
     );
     const before = await state(page);
 
     await expect(page.getByText("This live stream has ended."), { timeout: 8_000 }).toBeVisible();
-    await expect(page.locator("video")).not.toHaveAttribute("src", /.+/);
+    await expect(page.locator("video")).not.toHaveAttribute("data-native-hls-source", /.+/);
     await expect
       .poll(async () => (await state(page)).pauseCalls)
       .toBeGreaterThan(before.pauseCalls);
@@ -524,7 +534,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
     await page.goto("/live/task-74");
     await expect(page.locator('[data-live-player="true"]')).toBeVisible();
     await expect(page.locator("video")).toHaveAttribute(
-      "src",
+      "data-native-hls-source",
       "https://stream.mux.com/task-74.m3u8",
     );
     await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
