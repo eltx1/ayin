@@ -1,4 +1,9 @@
-import { Inject, Injectable, type OnModuleDestroy } from "@nestjs/common";
+import {
+  Inject,
+  Injectable,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { CreatorTvError, CreatorTvService, type CreatorTvEditActor } from "./creator-tv.service.js";
@@ -10,7 +15,7 @@ import {
 } from "./creator-tv-linear.provider.js";
 
 @Injectable()
-export class CreatorTvLinearService implements OnModuleDestroy {
+export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
   private readonly reconciliationTimers = new Map<string, NodeJS.Timeout>();
   private readonly reconciliationInFlight = new Set<string>();
   private readonly reconciliationIntervalMs = linearReconciliationIntervalMs(
@@ -75,6 +80,20 @@ export class CreatorTvLinearService implements OnModuleDestroy {
     await this.authorizedTarget(actor, tvChannelId);
     this.clearReconciliation(tvChannelId);
     return { state: await this.provider.stop(tvChannelId) };
+  }
+
+  async onModuleInit(): Promise<void> {
+    try {
+      const channels = await this.database.client.creatorTvChannel.findMany({
+        select: { id: true, channel: { select: { handle: true } } },
+      });
+      for (const channel of channels) {
+        const state = await this.provider.getState(channel.id);
+        this.ensureReconciliation(channel.id, channel.channel.handle, state);
+      }
+    } catch {
+      // Startup readiness owns database failures; do not replace it with a linear-only crash.
+    }
   }
 
   onModuleDestroy(): void {
@@ -218,7 +237,6 @@ function escapeXml(value: string): string {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 }
-
 
 function linearReconciliationIntervalMs(raw: string | undefined): number {
   const seconds = raw?.trim() ? Number(raw) : 30;
