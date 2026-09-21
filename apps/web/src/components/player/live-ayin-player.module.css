@@ -1,0 +1,184 @@
+.player {
+  background: #000;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: clamp(14px, 2vw, 24px);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.stage {
+  aspect-ratio: 16 / 9;
+  background: #000;
+  outline: none;
+  overflow: hidden;
+  position: relative;
+}
+
+.stage:focus-visible {
+  box-shadow: inset 0 0 0 3px var(--focus-ring);
+}
+
+.video {
+  background: #000;
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+
+.titleBar {
+  align-items: center;
+  background: linear-gradient(180deg, rgb(0 0 0 / 78%), transparent);
+  display: flex;
+  gap: 0.65rem;
+  inset: 0 0 auto;
+  padding: 0.85rem 1rem 2.4rem;
+  pointer-events: none;
+  position: absolute;
+  z-index: 4;
+}
+
+.liveBadge,
+.edgeLabel,
+.dvrLabel {
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  padding: 0.3rem 0.55rem;
+  text-transform: uppercase;
+}
+
+.liveBadge[data-at-live-edge="true"] {
+  background: rgb(190 22 56 / 88%);
+}
+
+.liveBadge[data-at-live-edge="false"] {
+  background: rgb(28 24 38 / 88%);
+}
+
+.latency {
+  color: rgb(255 255 255 / 75%);
+  font-size: 0.74rem;
+  margin-inline-start: auto;
+}
+
+.controls {
+  align-items: center;
+  background: linear-gradient(180deg, transparent, rgb(0 0 0 / 88%));
+  bottom: 0;
+  display: flex;
+  gap: 0.45rem;
+  left: 0;
+  padding: 2.7rem 0.8rem 0.75rem;
+  position: absolute;
+  right: 0;
+  z-index: 6;
+}
+
+.controls button,
+.status button,
+.centerPlay {
+  background: rgb(18 14 28 / 88%);
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 780;
+  padding: 0.55rem 0.75rem;
+}
+
+.controls button:focus-visible,
+.status button:focus-visible,
+.centerPlay:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.status {
+  align-items: center;
+  background: rgb(2 2 7 / 72%);
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  justify-content: center;
+  padding: 2rem;
+  position: absolute;
+  text-align: center;
+  z-index: 5;
+}
+
+.status p {
+  color: #fff;
+  margin: 0 0 0.8rem;
+}
+
+.centerPlay {
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 7;
+}
+
+.adContainer {
+  display: none;
+  inset: 0;
+  position: absolute;
+  z-index: 10;
+}
+
+.adActive {
+  background: #000;
+  display: grid;
+  place-items: center;
+}
+
+.adActive span {
+  background: rgb(0 0 0 / 70%);
+  border-radius: 999px;
+  color: #fff;
+  padding: 0.4rem 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .player {
+    border-radius: 14px;
+  }
+
+  .titleBar {
+    font-size: 0.78rem;
+    padding: 0.65rem 0.7rem 2rem;
+  }
+
+  .latency {
+    display: none;
+  }
+
+  .controls {
+    gap: 0.25rem;
+    overflow-x: auto;
+    padding: 2.4rem 0.5rem 0.5rem;
+  }
+
+  .controls button,
+  .edgeLabel,
+  .dvrLabel {
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    padding: 0.45rem 0.58rem;
+  }
+}

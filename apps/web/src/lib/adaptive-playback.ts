@@ -30,6 +30,8 @@ export interface AyinAdaptivePlaybackCallbacks {
         automatic: boolean;
       }) => void)
     | undefined;
+  onRecoverable?: ((reason: AyinHlsFailureReason) => void) | undefined;
+  onRecovered?: (() => void) | undefined;
   onFatal?: ((reason: AyinHlsFailureReason) => void) | undefined;
 }
 
@@ -128,9 +130,10 @@ export function classifyHlsFailure(data: HlsErrorData): AyinHlsFailureReason {
 export async function startAdaptiveHlsPlayback(input: {
   video: HTMLVideoElement;
   hlsUrl: string;
+  mode?: "VOD" | "LIVE" | undefined;
   callbacks?: AyinAdaptivePlaybackCallbacks | undefined;
 }): Promise<AyinAdaptivePlaybackSession | null> {
-  const { video, hlsUrl, callbacks = {} } = input;
+  const { video, hlsUrl, mode = "VOD", callbacks = {} } = input;
 
   if (supportsNativeHls(video)) {
     let destroyed = false;
@@ -176,13 +179,27 @@ export async function startAdaptiveHlsPlayback(input: {
     autoStartLoad: true,
     enableWorker: true,
     capLevelToPlayerSize: true,
-    maxBufferLength: 30,
+    maxBufferLength: mode === "LIVE" ? 15 : 30,
     backBufferLength: 30,
+    ...(mode === "LIVE"
+      ? {
+          liveSyncDurationCount: 3,
+          liveMaxLatencyDurationCount: 10,
+          maxLiveSyncPlaybackRate: 1.2,
+          manifestLoadingMaxRetry: 2,
+          manifestLoadingRetryDelay: 1_000,
+          manifestLoadingMaxRetryTimeout: 4_000,
+          levelLoadingMaxRetry: 2,
+          levelLoadingRetryDelay: 1_000,
+          levelLoadingMaxRetryTimeout: 4_000,
+        }
+      : {}),
   });
   let destroyed = false;
   let fatalReported = false;
   let networkRecoveries = 0;
   let mediaRecoveries = 0;
+  let recovering = false;
   let renditions: AyinPlaybackRendition[] = [];
   let manualSelection = false;
 
@@ -204,6 +221,10 @@ export async function startAdaptiveHlsPlayback(input: {
   hls.on(Hls.Events.FRAG_BUFFERED, () => {
     networkRecoveries = 0;
     mediaRecoveries = 0;
+    if (recovering) {
+      recovering = false;
+      callbacks.onRecovered?.();
+    }
   });
   hls.on(Hls.Events.LEVEL_SWITCHED, (...args: unknown[]) => {
     if (destroyed) return;
@@ -218,15 +239,23 @@ export async function startAdaptiveHlsPlayback(input: {
   hls.on(Hls.Events.ERROR, (...args: unknown[]) => {
     if (destroyed || fatalReported) return;
     const data = (args.at(-1) ?? {}) as HlsErrorData;
-    if (!data.fatal) return;
     const reason = classifyHlsFailure(data);
+    if (!data.fatal) {
+      recovering = true;
+      callbacks.onRecoverable?.(reason);
+      return;
+    }
     if (reason === "NETWORK" && networkRecoveries < 2) {
       networkRecoveries += 1;
+      recovering = true;
+      callbacks.onRecoverable?.(reason);
       hls.startLoad();
       return;
     }
     if (reason === "MEDIA" && mediaRecoveries < 2) {
       mediaRecoveries += 1;
+      recovering = true;
+      callbacks.onRecoverable?.(reason);
       hls.recoverMediaError();
       return;
     }
