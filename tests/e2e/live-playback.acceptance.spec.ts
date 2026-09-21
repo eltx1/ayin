@@ -33,19 +33,9 @@ async function installLiveHarness(
   page: Page,
   nativeHls = false,
   playBehavior: "playing" | "pending" | "blocked" = "playing",
-  accelerateWatchdogs = false,
 ) {
   await page.addInitScript(
-    ({ native, behavior, fastWatchdogs }) => {
-      if (fastWatchdogs) {
-        const nativeSetTimeout = window.setTimeout.bind(window);
-        window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
-          nativeSetTimeout(
-            handler,
-            timeout === 12_000 ? 75 : timeout,
-            ...args,
-          )) as typeof window.setTimeout;
-      }
+    ({ native, behavior }) => {
       const state = {
         hlsConstructed: 0,
         hlsDestroyed: 0,
@@ -166,7 +156,7 @@ async function installLiveHarness(
 
       Object.defineProperty(window, "Hls", { value: FakeHls, configurable: true });
     },
-    { native: nativeHls, behavior: playBehavior, fastWatchdogs: accelerateWatchdogs },
+    { native: nativeHls, behavior: playBehavior },
   );
 }
 
@@ -293,7 +283,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
   });
 
   test("native-HLS startup watchdog unloads superseded media before retry", async ({ page }) => {
-    await installLiveHarness(page, true, "pending", true);
+    await installLiveHarness(page, true, "pending");
     await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       await route.fulfill({
         status: 200,
@@ -315,10 +305,10 @@ test.describe.serial("Task 74 live playback hardening", () => {
       "https://stream.mux.com/task-74.m3u8",
     );
     await expect
-      .poll(async () => (await state(page)).pauseCalls, { timeout: 3_000 })
+      .poll(async () => (await state(page)).pauseCalls, { timeout: 14_000 })
       .toBeGreaterThan(0);
     await expect
-      .poll(async () => (await state(page)).loadCalls, { timeout: 3_000 })
+      .poll(async () => (await state(page)).loadCalls, { timeout: 14_000 })
       .toBeGreaterThan(1);
   });
 
