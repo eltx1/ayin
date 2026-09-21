@@ -1,0 +1,50 @@
+name: Task 75 temporary autofmt
+
+on:
+  push:
+    branches:
+      - task-75-fast-provider
+    paths:
+      - ".github/workflows/task75-autofmt.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Task 75 branch
+        uses: actions/checkout@v7
+        with:
+          ref: task-75-fast-provider
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format Task 75 files
+        run: |
+          pnpm exec prettier --write             apps/api/src/creator/creator-tv-linear.service.ts             apps/api/src/creator/creator.module.ts             apps/api/src/creator/owned-linear-streaming.provider.ts             apps/api/test/owned-linear-streaming-provider.integration.test.ts             deploy/validate-production-env.cjs
+
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             apps/api/src/creator/creator-tv-linear.service.ts             apps/api/src/creator/creator.module.ts             apps/api/src/creator/owned-linear-streaming.provider.ts             apps/api/test/owned-linear-streaming-provider.integration.test.ts             deploy/validate-production-env.cjs
+          git commit -m "style: format Task 75 changes"
+          git push origin HEAD:task-75-fast-provider
