@@ -500,6 +500,9 @@ export function LiveAyinPlayer({
           attemptGuard.invalidate();
           sessionRef.current?.destroy();
           sessionRef.current = null;
+          stopLiveMedia(liveVideo);
+          bufferStartedAtRef.current = null;
+          setPlaying(false);
           scheduleReconnect("NETWORK");
         }, LIVE_STALL_WATCHDOG_MS);
       }
