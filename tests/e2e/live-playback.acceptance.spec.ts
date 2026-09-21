@@ -377,8 +377,46 @@ test.describe.serial("Task 74 live playback hardening", () => {
     expect(analytics).toContain("LIVE_PLAY_COMPLETE");
   });
 
-  test("a later 404 clears previously mounted live playback and chat", async ({ page }) => {
+  test("viewer pause during a pending stall is not counted as live rebuffer time", async ({
+    page,
+  }) => {
+    const analytics: string[] = [];
     await installLiveHarness(page);
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(liveFixture("LIVE")),
+      });
+    });
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+    });
+    await page.route("http://127.0.0.1:3001/analytics/events", async (route) => {
+      const body = route.request().postDataJSON() as { events?: Array<{ eventName?: string }> };
+      for (const event of body.events ?? []) if (event.eventName) analytics.push(event.eventName);
+      await route.fulfill({ status: 202, contentType: "application/json", body: "{}" });
+    });
+
+    await page.goto("/live/task-74");
+    await expect.poll(async () => (await state(page)).playCalls).toBeGreaterThan(0);
+
+    await page.locator("video").evaluate((video) => video.dispatchEvent(new Event("waiting")));
+    await page.waitForTimeout(100);
+    await page.locator("video").evaluate((video) => video.dispatchEvent(new Event("pause")));
+    await page.waitForTimeout(350);
+    await page.locator("video").evaluate((video) => video.dispatchEvent(new Event("playing")));
+    await page.waitForTimeout(3_200);
+
+    expect(analytics.filter((name) => name === "LIVE_REBUFFER")).toHaveLength(0);
+  });
+
+  test("a later 404 clears previously mounted native HLS playback and chat", async ({ page }) => {
+    await installLiveHarness(page, true);
     let requestCount = 0;
     await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       requestCount += 1;
@@ -402,13 +440,22 @@ test.describe.serial("Task 74 live playback hardening", () => {
 
     await page.goto("/live/task-74");
     await expect(page.locator('[data-live-player="true"]')).toBeVisible();
+    await expect(page.locator("video")).toHaveAttribute(
+      "src",
+      "https://stream.mux.com/task-74.m3u8",
+    );
     await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
+    const before = await state(page);
 
     await expect(page.getByText("This live session is unavailable."), {
       timeout: 8_000,
     }).toBeVisible();
     await expect(page.locator('[data-live-player="true"]')).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
+    await expect
+      .poll(async () => (await state(page)).pauseCalls)
+      .toBeGreaterThan(before.pauseCalls);
+    await expect.poll(async () => (await state(page)).loadCalls).toBeGreaterThan(before.loadCalls);
   });
 
   test("stream-not-started path does not load the live manifest and can refresh into LIVE", async ({
