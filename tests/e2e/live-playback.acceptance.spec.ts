@@ -9,7 +9,7 @@ type HarnessState = {
   currentTime: number;
 };
 
-type LiveStatus = "READY" | "LIVE" | "ENDED";
+type LiveStatus = "READY" | "LIVE" | "ENDED" | "CANCELLED" | "FAILED";
 
 function liveFixture(status: LiveStatus) {
   return {
@@ -490,6 +490,30 @@ test.describe.serial("Task 74 live playback hardening", () => {
       .poll(async () => (await state(page)).pauseCalls)
       .toBeGreaterThan(before.pauseCalls);
     await expect.poll(async () => (await state(page)).loadCalls).toBeGreaterThan(before.loadCalls);
+  });
+
+  test("terminal streams without playback URLs never show waiting copy", async ({ page }) => {
+    await installLiveHarness(page);
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ...liveFixture("CANCELLED"), playbackUrl: null }),
+      });
+    });
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+    });
+
+    await page.goto("/live/task-74");
+    await expect(page.getByText("This live stream was cancelled.")).toBeVisible();
+    await expect(page.getByText("Waiting for live output…")).toHaveCount(0);
+    await expect(page.locator('[data-live-player="true"]')).toHaveCount(0);
+    expect((await state(page)).hlsConstructed).toBe(0);
   });
 
   test("stream-not-started path does not load the live manifest and can refresh into LIVE", async ({
