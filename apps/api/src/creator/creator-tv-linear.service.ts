@@ -83,6 +83,7 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    if (!this.provider.configured) return;
     try {
       const channels = await this.database.client.creatorTvChannel.findMany({
         select: { id: true, channel: { select: { handle: true } } },
