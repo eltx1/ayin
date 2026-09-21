@@ -282,6 +282,40 @@ test.describe.serial("Task 74 live playback hardening", () => {
       .toBeGreaterThan(1);
   });
 
+  test("native-HLS startup watchdog unloads superseded media before retry", async ({
+    page,
+  }) => {
+    await installLiveHarness(page, true, "pending");
+    await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(liveFixture("LIVE")),
+      });
+    });
+    await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+    });
+
+    await page.goto("/live/task-74");
+    await expect(page.locator("video")).toHaveAttribute(
+      "src",
+      "https://stream.mux.com/task-74.m3u8",
+    );
+    const before = await state(page);
+
+    await expect
+      .poll(async () => (await state(page)).pauseCalls, { timeout: 14_000 })
+      .toBeGreaterThan(before.pauseCalls);
+    await expect
+      .poll(async () => (await state(page)).loadCalls, { timeout: 14_000 })
+      .toBeGreaterThan(before.loadCalls);
+  });
+
   test("native-HLS capability path bypasses hls.js and retains live controls", async ({ page }) => {
     await installLiveHarness(page, true);
     await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
@@ -449,9 +483,15 @@ test.describe.serial("Task 74 live playback hardening", () => {
     expect(analytics.filter((name) => name === "LIVE_REBUFFER")).toHaveLength(0);
   });
 
-  test("a later 404 clears previously mounted native HLS playback and chat", async ({ page }) => {
+  test("a later 404 clears native playback and invalidates a slow chat snapshot", async ({
+    page,
+  }) => {
     await installLiveHarness(page, true);
     let requestCount = 0;
+    let releaseChat: (() => void) | null = null;
+    const chatGate = new Promise<void>((resolve) => {
+      releaseChat = resolve;
+    });
     await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       requestCount += 1;
       if (requestCount === 1) {
@@ -465,10 +505,20 @@ test.describe.serial("Task 74 live playback hardening", () => {
       await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
     });
     await page.route("http://127.0.0.1:3001/live/task-74/chat", async (route) => {
+      await chatGate;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+        body: JSON.stringify({
+          chatEnabled: true,
+          messages: [
+            {
+              id: "stale-chat-message",
+              body: "stale moderated message",
+              createdAt: "2026-09-21T00:00:00.000Z",
+            },
+          ],
+        }),
       });
     });
 
@@ -490,6 +540,10 @@ test.describe.serial("Task 74 live playback hardening", () => {
       .poll(async () => (await state(page)).pauseCalls)
       .toBeGreaterThan(before.pauseCalls);
     await expect.poll(async () => (await state(page)).loadCalls).toBeGreaterThan(before.loadCalls);
+
+    releaseChat?.();
+    await page.waitForTimeout(150);
+    await expect(page.getByText("stale moderated message")).toHaveCount(0);
   });
 
   test("terminal streams without playback URLs never show waiting copy", async ({ page }) => {
