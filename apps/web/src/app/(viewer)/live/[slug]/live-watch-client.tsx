@@ -49,17 +49,42 @@ export function LiveWatchClient({ slug }: { slug: string }) {
   const [refreshGeneration, setRefreshGeneration] = useState(0);
   const pageViewReportedRef = useRef<string | null>(null);
   const chatLoadedRef = useRef<string | null>(null);
+  const chatLoadingForRef = useRef<string | null>(null);
+  const chatRequestGenerationRef = useRef(0);
 
   const loadChat = useCallback(
     async (streamId: string) => {
-      if (chatLoadedRef.current === streamId) return;
-      const response = await fetch(`${apiBaseUrl}/live/${encodeURIComponent(slug)}/chat`, {
-        cache: "no-store",
-      });
-      if (!response.ok) return;
-      const chat = (await response.json()) as { messages: ChatMessage[] };
-      chatLoadedRef.current = streamId;
-      setMessages(chat.messages);
+      if (
+        chatLoadedRef.current === streamId ||
+        chatLoadingForRef.current === streamId
+      ) {
+        return;
+      }
+      const generation = chatRequestGenerationRef.current + 1;
+      chatRequestGenerationRef.current = generation;
+      chatLoadingForRef.current = streamId;
+      try {
+        const response = await fetch(`${apiBaseUrl}/live/${encodeURIComponent(slug)}/chat`, {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const chat = (await response.json()) as { messages: ChatMessage[] };
+        if (
+          chatRequestGenerationRef.current !== generation ||
+          chatLoadingForRef.current !== streamId
+        ) {
+          return;
+        }
+        chatLoadedRef.current = streamId;
+        setMessages(chat.messages);
+      } finally {
+        if (
+          chatRequestGenerationRef.current === generation &&
+          chatLoadingForRef.current === streamId
+        ) {
+          chatLoadingForRef.current = null;
+        }
+      }
     },
     [slug],
   );
@@ -84,9 +109,11 @@ export function LiveWatchClient({ slug }: { slug: string }) {
         });
         if (!response.ok) {
           if (response.status === 404) {
+            chatRequestGenerationRef.current += 1;
+            chatLoadingForRef.current = null;
+            chatLoadedRef.current = null;
             setStream(null);
             setMessages([]);
-            chatLoadedRef.current = null;
             setStatus("This live session is unavailable.");
             return;
           }
@@ -124,6 +151,8 @@ export function LiveWatchClient({ slug }: { slug: string }) {
     return () => {
       stopped = true;
       controller.abort();
+      chatRequestGenerationRef.current += 1;
+      chatLoadingForRef.current = null;
       if (timer !== null) window.clearTimeout(timer);
     };
   }, [loadChat, refreshGeneration, slug]);
