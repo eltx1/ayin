@@ -361,6 +361,8 @@ export function LiveAyinPlayer({
         connecting = false;
         sessionRef.current?.destroy();
         sessionRef.current = null;
+        stopLiveMedia(liveVideo);
+        bufferStartedAtRef.current = null;
         scheduleReconnect("STARTUP");
       }, LIVE_STARTUP_WATCHDOG_MS);
 
