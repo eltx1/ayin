@@ -736,15 +736,16 @@ export class OwnedLinearStreamingProvider
 
     await new Promise<void>((resolve) => {
       let settled = false;
+      let forceTimer: NodeJS.Timeout | null = null;
       const finish = () => {
         if (settled) return;
         settled = true;
-        clearTimeout(forceTimer);
+        if (forceTimer) clearTimeout(forceTimer);
         resolve();
       };
       child.once("close", finish);
       child.kill("SIGTERM");
-      const forceTimer = setTimeout(() => {
+      forceTimer = setTimeout(() => {
         if (child.exitCode === null) child.kill("SIGKILL");
         finish();
       }, PROCESS_KILL_GRACE_MS);
