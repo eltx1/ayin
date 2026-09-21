@@ -41,6 +41,16 @@ export interface LinearChannelPlan {
   };
 }
 
+export interface LinearOutputMonitoring {
+  runningOccurrenceKey: string | null;
+  lastTransitionAt: string | null;
+  scheduleDriftMs: number | null;
+  maxScheduleDriftMs: number | null;
+  recoveryCount: number;
+  lastManifestAt: string | null;
+  lastError: string | null;
+}
+
 export interface LinearOutputState {
   providerKey: string;
   configured: boolean;
@@ -49,6 +59,7 @@ export interface LinearOutputState {
   providerResourceId: string | null;
   lastPlanGeneratedAt: string | null;
   message: string | null;
+  monitoring?: LinearOutputMonitoring;
 }
 
 export interface LinearStreamingProvider {
