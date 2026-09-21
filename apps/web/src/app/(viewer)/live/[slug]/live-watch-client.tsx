@@ -54,10 +54,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
 
   const loadChat = useCallback(
     async (streamId: string) => {
-      if (
-        chatLoadedRef.current === streamId ||
-        chatLoadingForRef.current === streamId
-      ) {
+      if (chatLoadedRef.current === streamId || chatLoadingForRef.current === streamId) {
         return;
       }
       const generation = chatRequestGenerationRef.current + 1;

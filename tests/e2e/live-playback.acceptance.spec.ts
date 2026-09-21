@@ -282,9 +282,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
       .toBeGreaterThan(1);
   });
 
-  test("native-HLS startup watchdog unloads superseded media before retry", async ({
-    page,
-  }) => {
+  test("native-HLS startup watchdog unloads superseded media before retry", async ({ page }) => {
     await installLiveHarness(page, true, "pending");
     await page.route("http://127.0.0.1:3001/live/task-74", async (route) => {
       await route.fulfill({
