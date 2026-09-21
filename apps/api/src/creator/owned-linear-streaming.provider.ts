@@ -472,7 +472,7 @@ export class OwnedLinearStreamingProvider
         );
       });
 
-      void this.observeManifest(resource, version, previousManifestMtimeMs);
+      void this.observeManifest(resource, version, previousManifestMtimeMs, child);
     });
   }
 
@@ -480,8 +480,10 @@ export class OwnedLinearStreamingProvider
     resource: OwnedLinearResource,
     version: number,
     previousManifestMtimeMs: number,
+    child: ChildProcess,
   ): Promise<void> {
-    while (this.isCurrent(resource, version)) {
+    let lastSeenMtimeMs = previousManifestMtimeMs;
+    while (this.isCurrent(resource, version) && resource.child === child) {
       const manifestPath = this.rawManifestPath(resource.resourceId);
       const [manifest, metadata] = await Promise.all([
         readFile(manifestPath, "utf8").catch(() => null),
@@ -490,20 +492,18 @@ export class OwnedLinearStreamingProvider
       if (
         manifest &&
         metadata?.isFile() &&
-        metadata.mtimeMs > previousManifestMtimeMs &&
+        metadata.mtimeMs > lastSeenMtimeMs &&
         isPlayableManifest(manifest)
       ) {
-        const now = new Date().toISOString();
-        resource.lastManifestAt = now;
+        lastSeenMtimeMs = metadata.mtimeMs;
+        resource.lastManifestAt = new Date().toISOString();
         if (resource.status !== "READY" || !resource.hlsUrl) {
           resource.status = "READY";
           resource.hlsUrl = this.publicManifestUrl(resource.resourceId);
           resource.lastError = null;
         }
-        return;
       }
-      if (!resource.child) return;
-      await sleep(100);
+      await sleep(250);
     }
   }
 
@@ -592,9 +592,13 @@ export class OwnedLinearStreamingProvider
       plan: resource.plan,
     };
     const target = join(directory, RESOURCE_STATE_FILE);
-    const temporary = target + ".tmp";
-    await writeFile(temporary, JSON.stringify(payload), { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, target);
+    const temporary = target + "." + randomUUID() + ".tmp";
+    try {
+      await writeFile(temporary, JSON.stringify(payload), { encoding: "utf8", mode: 0o600 });
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
   }
 
   private async readPersistedResource(directoryName: string): Promise<PersistedLinearResource | null> {
