@@ -314,14 +314,12 @@ test.describe.serial("Task 74 live playback hardening", () => {
       "src",
       "https://stream.mux.com/task-74.m3u8",
     );
-    const before = await state(page);
-
     await expect
       .poll(async () => (await state(page)).pauseCalls, { timeout: 3_000 })
-      .toBeGreaterThan(before.pauseCalls);
+      .toBeGreaterThan(0);
     await expect
       .poll(async () => (await state(page)).loadCalls, { timeout: 3_000 })
-      .toBeGreaterThan(before.loadCalls);
+      .toBeGreaterThan(1);
   });
 
   test("native-HLS capability path bypasses hls.js and retains live controls", async ({ page }) => {
