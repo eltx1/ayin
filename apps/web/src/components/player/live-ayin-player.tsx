@@ -411,6 +411,8 @@ export function LiveAyinPlayer({
               clearStartupWatchdog();
               clearStallWatchdog();
               connecting = false;
+              flushDuration(false);
+              bufferStartedAtRef.current = null;
               sessionRef.current?.destroy();
               sessionRef.current = null;
               scheduleReconnect(fatalReason);
