@@ -166,6 +166,39 @@ describe("owned Creator TV linear provider end to end", () => {
         expect(reconciled.lastPlanGeneratedAt).toBe(reconciledPlan.generatedAt);
         expect(reconciled.hlsUrl).toBe(ready.hlsUrl);
 
+        const providerEnvironment = {
+          LINEAR_COMPUTE_ENABLED: "1",
+          LINEAR_PUBLIC_BASE_URL:
+            "http://127.0.0.1:" + String(address.port) + "/public/linear",
+          LINEAR_OUTPUT_ROOT: join(root, "linear"),
+          LINEAR_SEGMENT_DURATION_SECONDS: "1",
+          LINEAR_MAX_RECOVERY_ATTEMPTS: "1",
+          FFMPEG_PATH: ffmpegPath,
+        };
+        const materializer = async (objectKey: string, destinationPath: string) => {
+          const source =
+            objectKey === "fixtures/first.mp4"
+              ? firstSource
+              : objectKey === "fixtures/second.mp4"
+                ? secondSource
+                : null;
+          if (!source) throw new Error("Unknown Task 75 fixture source.");
+          await copyFile(source, destinationPath);
+        };
+
+        await provider.onModuleDestroy();
+        provider = new OwnedLinearStreamingProvider(providerEnvironment, materializer);
+        await provider.onModuleInit();
+
+        const recovered = await waitForState(
+          () => provider!.getState(plan.tvChannelId),
+          (state) => state.status === "READY" && Boolean(state.hlsUrl),
+          6_000,
+        );
+        expect(recovered.providerResourceId).toBe(ready.providerResourceId);
+        expect(recovered.hlsUrl).toBe(ready.hlsUrl);
+        expect(recovered.monitoring?.recoveryCount).toBeGreaterThanOrEqual(1);
+
         const stopped = await provider.stop(plan.tvChannelId);
         expect(stopped).toMatchObject({
           status: "STOPPED",
