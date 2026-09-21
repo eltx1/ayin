@@ -300,7 +300,10 @@ export function LiveAyinPlayer({
       clearStallWatchdog();
       sessionRef.current?.destroy();
       sessionRef.current = null;
+      stopLiveMedia(liveVideo);
+      bufferStartedAtRef.current = null;
       flushDuration(false);
+      setPlaying(false);
       setConnectionState("FATAL");
       setMessage("Live playback could not reconnect. Try again.");
       emit("LIVE_FATAL_ERROR", { metadata: { reason } });
@@ -369,12 +372,18 @@ export function LiveAyinPlayer({
           callbacks: {
             onReady: () => {
               if (cancelled || !attemptGuard.isCurrent(generation)) return;
-              clearStartupWatchdog();
               setMessage(null);
               updateEdge();
               if (startedRef.current || reason) moveToLiveEdge(liveVideo);
               if (autoPlay && !adActiveRef.current) {
-                void liveVideo.play().catch(() => setAutoplayBlocked(true));
+                void liveVideo.play().catch(() => {
+                  if (!attemptGuard.isCurrent(generation)) return;
+                  clearStartupWatchdog();
+                  setAutoplayBlocked(true);
+                });
+              } else {
+                // The media is intentionally held for a user gesture/ad; this is not startup loss.
+                clearStartupWatchdog();
               }
             },
             onRecoverable: (recoveringReason) => {
@@ -429,6 +438,7 @@ export function LiveAyinPlayer({
 
     const onPlaying = () => {
       if (cancelled) return;
+      clearStartupWatchdog();
       setPlaying(true);
       setAutoplayBlocked(false);
       setConnectionState("PLAYING");
