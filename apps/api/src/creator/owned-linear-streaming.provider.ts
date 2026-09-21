@@ -87,6 +87,7 @@ export class OwnedLinearStreamingProvider
 
   private readonly resourcesByTv = new Map<string, OwnedLinearResource>();
   private readonly resourcesById = new Map<string, OwnedLinearResource>();
+  private readonly recoveryByTv = new Map<string, Promise<OwnedLinearResource | null>>();
   private readonly outputRoot: string | null;
   private readonly publicBaseUrl: string | null;
   private readonly ffmpegPath: string;
@@ -155,7 +156,8 @@ export class OwnedLinearStreamingProvider
 
   async getState(tvChannelId: string): Promise<LinearOutputState> {
     if (!this.configured) return this.unconfiguredState();
-    const resource = this.resourcesByTv.get(tvChannelId);
+    const resource =
+      this.resourcesByTv.get(tvChannelId) ?? (await this.recoverPersistedResource(tvChannelId));
     if (!resource) {
       return {
         providerKey: this.key,
@@ -175,7 +177,9 @@ export class OwnedLinearStreamingProvider
     this.assertConfigured();
     validatePlan(plan);
 
-    const existing = this.resourcesByTv.get(plan.tvChannelId);
+    const existing =
+      this.resourcesByTv.get(plan.tvChannelId) ??
+      (await this.recoverPersistedResource(plan.tvChannelId));
     if (existing && !existing.stopped) {
       return this.reconcile(plan);
     }
@@ -192,7 +196,9 @@ export class OwnedLinearStreamingProvider
     this.assertConfigured();
     validatePlan(plan);
 
-    const resource = this.resourcesByTv.get(plan.tvChannelId);
+    const resource =
+      this.resourcesByTv.get(plan.tvChannelId) ??
+      (await this.recoverPersistedResource(plan.tvChannelId));
     if (!resource || resource.stopped) return this.provision(plan);
 
     const now = Date.now();
@@ -221,7 +227,8 @@ export class OwnedLinearStreamingProvider
 
   async stop(tvChannelId: string): Promise<LinearOutputState> {
     if (!this.configured) return this.unconfiguredState("STOPPED");
-    const resource = this.resourcesByTv.get(tvChannelId);
+    const resource =
+      this.resourcesByTv.get(tvChannelId) ?? (await this.recoverPersistedResource(tvChannelId));
     if (!resource) {
       return {
         providerKey: this.key,
@@ -598,6 +605,46 @@ export class OwnedLinearStreamingProvider
       await rename(temporary, target);
     } finally {
       await rm(temporary, { force: true }).catch(() => undefined);
+    }
+  }
+
+  private async recoverPersistedResource(
+    tvChannelId: string,
+  ): Promise<OwnedLinearResource | null> {
+    const current = this.resourcesByTv.get(tvChannelId);
+    if (current) return current;
+    if (!this.configured || !this.outputRoot || this.shuttingDown) return null;
+
+    const inFlight = this.recoveryByTv.get(tvChannelId);
+    if (inFlight) return inFlight;
+
+    const recovery = (async () => {
+      const entries = await readdir(this.outputRoot!, { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const persisted = await this.readPersistedResource(entry.name);
+        if (!persisted || persisted.tvChannelId !== tvChannelId) continue;
+
+        const alreadyRecovered = this.resourcesByTv.get(tvChannelId);
+        if (alreadyRecovered) return alreadyRecovered;
+
+        const resource = this.createResource(persisted.resourceId, persisted.plan);
+        resource.recoveryCount = 1;
+        resource.lastError = "Recovered owned linear compute after provider process restart.";
+        this.registerResource(resource);
+        void this.startRunner(resource);
+        return resource;
+      }
+      return null;
+    })();
+
+    this.recoveryByTv.set(tvChannelId, recovery);
+    try {
+      return await recovery;
+    } finally {
+      if (this.recoveryByTv.get(tvChannelId) === recovery) {
+        this.recoveryByTv.delete(tvChannelId);
+      }
     }
   }
 
