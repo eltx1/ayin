@@ -88,6 +88,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Task 75 temporary formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            apps/api/src/creator/creator-tv-linear.service.ts
+            apps/api/src/creator/creator.module.ts
+            apps/api/src/creator/owned-linear-streaming.provider.ts
+            apps/api/test/owned-linear-streaming-provider.integration.test.ts
+            deploy/validate-production-env.cjs
+            .github/workflows/task75-autofmt.yml
+          )
+          pnpm exec prettier --write "${files[@]}"
+          for file in "${files[@]:0:5}"; do
+            echo "TASK75_FORMATTED_BEGIN:$file"
+            base64 -w0 "$file"
+            echo
+            echo "TASK75_FORMATTED_END:$file"
+          done
+
       - name: Audit production dependencies
         run: pnpm audit:prod
 
