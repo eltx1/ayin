@@ -55,6 +55,16 @@ const LIVE_STARTUP_WATCHDOG_MS = 12_000;
 const LIVE_STALL_WATCHDOG_MS = 12_000;
 const LIVE_DURATION_SAMPLE_MS = 30_000;
 
+function stopLiveMedia(video: HTMLVideoElement): void {
+  try {
+    video.pause();
+  } catch {
+    // Native media teardown is best-effort, but source removal still prevents continued playback.
+  }
+  video.removeAttribute("src");
+  video.load();
+}
+
 function terminalEndReason(status: LivePlayerStreamStatus): string | null {
   if (status === "ENDED") return "provider_ended";
   if (status === "CANCELLED") return "cancelled";
@@ -239,11 +249,7 @@ export function LiveAyinPlayer({
     sessionRef.current?.destroy();
     sessionRef.current = null;
     const video = videoRef.current;
-    if (video) {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    }
+    if (video) stopLiveMedia(video);
     if (startedRef.current) {
       emit("LIVE_PLAY_COMPLETE", { metadata: { reason } });
       emit("LIVE_END", { metadata: { reason } });
@@ -461,6 +467,7 @@ export function LiveAyinPlayer({
     const onPause = () => {
       clearStableTimer();
       clearStallWatchdog();
+      bufferStartedAtRef.current = null;
       setPlaying(false);
       flushDuration(false);
     };
@@ -556,6 +563,8 @@ export function LiveAyinPlayer({
       document.removeEventListener("visibilitychange", onVisibility);
       sessionRef.current?.destroy();
       sessionRef.current = null;
+      stopLiveMedia(liveVideo);
+      bufferStartedAtRef.current = null;
       flushDuration(false);
     };
   }, [
@@ -574,6 +583,9 @@ export function LiveAyinPlayer({
       flushDuration(false);
       sessionRef.current?.destroy();
       sessionRef.current = null;
+      const video = videoRef.current;
+      if (video) stopLiveMedia(video);
+      bufferStartedAtRef.current = null;
     },
     [flushDuration],
   );
