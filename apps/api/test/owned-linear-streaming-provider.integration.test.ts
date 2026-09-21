@@ -7,175 +7,74 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import type { LinearChannelPlan, LinearOutputState } from "../src/creator/creator-tv-linear.provider.js";
+import type {
+  LinearChannelPlan,
+  LinearOutputState,
+} from "../src/creator/creator-tv-linear.provider.js";
 import { OwnedLinearStreamingProvider } from "../src/creator/owned-linear-streaming.provider.js";
 
 describe("owned Creator TV linear provider end to end", () => {
-  it(
-    "packages a real continuous HLS test channel, reconciles schedule, measures sync and stops",
-    async () => {
-      const ffmpegPath = process.env.FFMPEG_PATH?.trim() || "ffmpeg";
-      const root = await mkdtemp(join(tmpdir(), "ayin-task75-"));
-      const firstSource = join(root, "first.mp4");
-      const secondSource = join(root, "second.mp4");
-      let provider: OwnedLinearStreamingProvider | null = null;
-      let server: Server | null = null;
+  it("packages a real continuous HLS test channel, reconciles schedule, measures sync and stops", async () => {
+    const ffmpegPath = process.env.FFMPEG_PATH?.trim() || "ffmpeg";
+    const root = await mkdtemp(join(tmpdir(), "ayin-task75-"));
+    const firstSource = join(root, "first.mp4");
+    const secondSource = join(root, "second.mp4");
+    let provider: OwnedLinearStreamingProvider | null = null;
+    let server: Server | null = null;
 
-      try {
-        await makeFixture(ffmpegPath, firstSource, 440);
-        await makeFixture(ffmpegPath, secondSource, 880);
+    try {
+      await makeFixture(ffmpegPath, firstSource, 440);
+      await makeFixture(ffmpegPath, secondSource, 880);
 
-        server = createServer(async (request, response) => {
-          try {
-            if (!provider || !request.url) {
-              response.statusCode = 503;
-              response.end();
-              return;
-            }
-            const url = new URL(request.url, "http://127.0.0.1");
-            const match = /^\/public\/linear\/([^/]+)\/([^/]+)$/.exec(url.pathname);
-            if (!match) {
-              response.statusCode = 404;
-              response.end();
-              return;
-            }
-            const output = await provider.readPublicOutput(
-              decodeURIComponent(match[1] ?? ""),
-              decodeURIComponent(match[2] ?? ""),
-            );
-            if (!output) {
-              response.statusCode = 404;
-              response.end();
-              return;
-            }
-            response.statusCode = 200;
-            response.setHeader("content-type", output.contentType);
-            response.setHeader("cache-control", output.cacheControl);
-            if (output.contentLength !== null) {
-              response.setHeader("content-length", String(output.contentLength));
-            }
-            if (Buffer.isBuffer(output.body)) response.end(output.body);
-            else output.body.pipe(response);
-          } catch {
-            response.statusCode = 500;
+      server = createServer(async (request, response) => {
+        try {
+          if (!provider || !request.url) {
+            response.statusCode = 503;
             response.end();
+            return;
           }
-        });
-        await listen(server);
-        const address = server.address() as AddressInfo;
+          const url = new URL(request.url, "http://127.0.0.1");
+          const match = /^\/public\/linear\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+          if (!match) {
+            response.statusCode = 404;
+            response.end();
+            return;
+          }
+          const output = await provider.readPublicOutput(
+            decodeURIComponent(match[1] ?? ""),
+            decodeURIComponent(match[2] ?? ""),
+          );
+          if (!output) {
+            response.statusCode = 404;
+            response.end();
+            return;
+          }
+          response.statusCode = 200;
+          response.setHeader("content-type", output.contentType);
+          response.setHeader("cache-control", output.cacheControl);
+          if (output.contentLength !== null) {
+            response.setHeader("content-length", String(output.contentLength));
+          }
+          if (Buffer.isBuffer(output.body)) response.end(output.body);
+          else output.body.pipe(response);
+        } catch {
+          response.statusCode = 500;
+          response.end();
+        }
+      });
+      await listen(server);
+      const address = server.address() as AddressInfo;
 
-        provider = new OwnedLinearStreamingProvider(
-          {
-            LINEAR_COMPUTE_ENABLED: "1",
-            LINEAR_PUBLIC_BASE_URL:
-              "http://127.0.0.1:" + String(address.port) + "/public/linear",
-            LINEAR_OUTPUT_ROOT: join(root, "linear"),
-            LINEAR_SEGMENT_DURATION_SECONDS: "1",
-            LINEAR_MAX_RECOVERY_ATTEMPTS: "1",
-            FFMPEG_PATH: ffmpegPath,
-          },
-          async (objectKey, destinationPath) => {
-            const source =
-              objectKey === "fixtures/first.mp4"
-                ? firstSource
-                : objectKey === "fixtures/second.mp4"
-                  ? secondSource
-                  : null;
-            if (!source) throw new Error("Unknown Task 75 fixture source.");
-            await copyFile(source, destinationPath);
-          },
-        );
-
-        const generatedAtMs = Date.now();
-        const firstStartsAtMs = generatedAtMs - 300;
-        const firstEndsAtMs = generatedAtMs + 2_500;
-        const secondEndsAtMs = firstEndsAtMs + 2_800;
-        const plan = task75Plan({
-          generatedAtMs,
-          firstStartsAtMs,
-          firstEndsAtMs,
-          secondEndsAtMs,
-        });
-
-        const provisioned = await provider.provision(plan);
-        expect(provisioned.providerKey).toBe("owned-ffmpeg");
-        expect(provisioned.providerResourceId).toMatch(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-        );
-        expect(provisioned.hlsUrl).toBeNull();
-
-        const ready = await waitForState(
-          () => provider!.getState(plan.tvChannelId),
-          (state) => state.status === "READY" && Boolean(state.hlsUrl),
-          8_000,
-        );
-        expect(ready.hlsUrl).toContain(
-          "/public/linear/" + ready.providerResourceId + "/index.m3u8",
-        );
-
-        const initialManifestResponse = await fetch(ready.hlsUrl!);
-        expect(initialManifestResponse.ok).toBe(true);
-        const initialManifest = await initialManifestResponse.text();
-        expect(initialManifest).toContain("#EXTM3U");
-        expect(initialManifest).toContain("#EXT-X-PROGRAM-DATE-TIME:");
-        const firstSegment = segmentName(initialManifest);
-        expect(firstSegment).toMatch(/^segment-\d+\.ts$/);
-
-        const segmentResponse = await fetch(new URL(firstSegment, ready.hlsUrl!));
-        expect(segmentResponse.ok).toBe(true);
-        expect((await segmentResponse.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
-
-        const secondProgram = await waitForState(
-          () => provider!.getState(plan.tvChannelId),
-          (state) => state.monitoring?.runningOccurrenceKey === "task75:second",
-          8_000,
-        );
-        expect(secondProgram.monitoring?.scheduleDriftMs).not.toBeNull();
-        expect(secondProgram.monitoring?.maxScheduleDriftMs).not.toBeNull();
-        expect(secondProgram.monitoring!.maxScheduleDriftMs!).toBeLessThan(2_500);
-
-        const transitionedManifest = await waitForManifest(
-          ready.hlsUrl!,
-          (manifest) =>
-            count(manifest, "#EXT-X-DISCONTINUITY") >= 2 &&
-            manifest.includes('CLASS="com.ayin.ad-break"') &&
-            manifest.includes('X-AYIN-SCTE35-INTENT="YES"'),
-          6_000,
-        );
-        expect(transitionedManifest).toContain('X-AYIN-SOURCE="PROGRAMMATIC"');
-
-        const reconciledPlan: LinearChannelPlan = {
-          ...plan,
-          generatedAt: new Date().toISOString(),
-          windowEndsAt: new Date(secondEndsAtMs + 2_000).toISOString(),
-          programs: [
-            ...plan.programs,
-            {
-              occurrenceKey: "task75:third",
-              videoId: "video-task75-first",
-              title: "Task 75 reconciled program",
-              startsAt: new Date(secondEndsAtMs).toISOString(),
-              endsAt: new Date(secondEndsAtMs + 2_000).toISOString(),
-              playbackOffsetMs: 0,
-              source: { objectKey: "fixtures/first.mp4", mimeType: "video/mp4" },
-            },
-          ],
-        };
-        const reconciled = await provider.reconcile(reconciledPlan);
-        expect(reconciled.providerResourceId).toBe(ready.providerResourceId);
-        expect(reconciled.lastPlanGeneratedAt).toBe(reconciledPlan.generatedAt);
-        expect(reconciled.hlsUrl).toBe(ready.hlsUrl);
-
-        const providerEnvironment = {
+      provider = new OwnedLinearStreamingProvider(
+        {
           LINEAR_COMPUTE_ENABLED: "1",
-          LINEAR_PUBLIC_BASE_URL:
-            "http://127.0.0.1:" + String(address.port) + "/public/linear",
+          LINEAR_PUBLIC_BASE_URL: "http://127.0.0.1:" + String(address.port) + "/public/linear",
           LINEAR_OUTPUT_ROOT: join(root, "linear"),
           LINEAR_SEGMENT_DURATION_SECONDS: "1",
           LINEAR_MAX_RECOVERY_ATTEMPTS: "1",
           FFMPEG_PATH: ffmpegPath,
-        };
-        const materializer = async (objectKey: string, destinationPath: string) => {
+        },
+        async (objectKey, destinationPath) => {
           const source =
             objectKey === "fixtures/first.mp4"
               ? firstSource
@@ -184,37 +83,133 @@ describe("owned Creator TV linear provider end to end", () => {
                 : null;
           if (!source) throw new Error("Unknown Task 75 fixture source.");
           await copyFile(source, destinationPath);
-        };
+        },
+      );
 
-        await provider.onModuleDestroy();
-        provider = new OwnedLinearStreamingProvider(providerEnvironment, materializer);
-        await provider.onModuleInit();
+      const generatedAtMs = Date.now();
+      const firstStartsAtMs = generatedAtMs - 300;
+      const firstEndsAtMs = generatedAtMs + 2_500;
+      const secondEndsAtMs = firstEndsAtMs + 2_800;
+      const plan = task75Plan({
+        generatedAtMs,
+        firstStartsAtMs,
+        firstEndsAtMs,
+        secondEndsAtMs,
+      });
 
-        const recovered = await waitForState(
-          () => provider!.getState(plan.tvChannelId),
-          (state) => state.status === "READY" && Boolean(state.hlsUrl),
-          6_000,
-        );
-        expect(recovered.providerResourceId).toBe(ready.providerResourceId);
-        expect(recovered.hlsUrl).toBe(ready.hlsUrl);
-        expect(recovered.monitoring?.recoveryCount).toBeGreaterThanOrEqual(1);
+      const provisioned = await provider.provision(plan);
+      expect(provisioned.providerKey).toBe("owned-ffmpeg");
+      expect(provisioned.providerResourceId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+      expect(provisioned.hlsUrl).toBeNull();
 
-        const stopped = await provider.stop(plan.tvChannelId);
-        expect(stopped).toMatchObject({
-          status: "STOPPED",
-          providerResourceId: ready.providerResourceId,
-          hlsUrl: null,
-        });
-        const stoppedManifest = await fetch(ready.hlsUrl!);
-        expect(stoppedManifest.status).toBe(404);
-      } finally {
-        if (provider) await provider.onModuleDestroy();
-        if (server) await close(server);
-        await rm(root, { recursive: true, force: true });
-      }
-    },
-    25_000,
-  );
+      const ready = await waitForState(
+        () => provider!.getState(plan.tvChannelId),
+        (state) => state.status === "READY" && Boolean(state.hlsUrl),
+        8_000,
+      );
+      expect(ready.hlsUrl).toContain("/public/linear/" + ready.providerResourceId + "/index.m3u8");
+
+      const initialManifestResponse = await fetch(ready.hlsUrl!);
+      expect(initialManifestResponse.ok).toBe(true);
+      const initialManifest = await initialManifestResponse.text();
+      expect(initialManifest).toContain("#EXTM3U");
+      expect(initialManifest).toContain("#EXT-X-PROGRAM-DATE-TIME:");
+      const firstSegment = segmentName(initialManifest);
+      expect(firstSegment).toMatch(/^segment-\d+\.ts$/);
+
+      const segmentResponse = await fetch(new URL(firstSegment, ready.hlsUrl!));
+      expect(segmentResponse.ok).toBe(true);
+      expect((await segmentResponse.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
+
+      const secondProgram = await waitForState(
+        () => provider!.getState(plan.tvChannelId),
+        (state) => state.monitoring?.runningOccurrenceKey === "task75:second",
+        8_000,
+      );
+      expect(secondProgram.monitoring?.scheduleDriftMs).not.toBeNull();
+      expect(secondProgram.monitoring?.maxScheduleDriftMs).not.toBeNull();
+      expect(secondProgram.monitoring!.maxScheduleDriftMs!).toBeLessThan(2_500);
+
+      const transitionedManifest = await waitForManifest(
+        ready.hlsUrl!,
+        (manifest) =>
+          count(manifest, "#EXT-X-DISCONTINUITY") >= 2 &&
+          manifest.includes('CLASS="com.ayin.ad-break"') &&
+          manifest.includes('X-AYIN-SCTE35-INTENT="YES"'),
+        6_000,
+      );
+      expect(transitionedManifest).toContain('X-AYIN-SOURCE="PROGRAMMATIC"');
+
+      const reconciledPlan: LinearChannelPlan = {
+        ...plan,
+        generatedAt: new Date().toISOString(),
+        windowEndsAt: new Date(secondEndsAtMs + 2_000).toISOString(),
+        programs: [
+          ...plan.programs,
+          {
+            occurrenceKey: "task75:third",
+            videoId: "video-task75-first",
+            title: "Task 75 reconciled program",
+            startsAt: new Date(secondEndsAtMs).toISOString(),
+            endsAt: new Date(secondEndsAtMs + 2_000).toISOString(),
+            playbackOffsetMs: 0,
+            source: { objectKey: "fixtures/first.mp4", mimeType: "video/mp4" },
+          },
+        ],
+      };
+      const reconciled = await provider.reconcile(reconciledPlan);
+      expect(reconciled.providerResourceId).toBe(ready.providerResourceId);
+      expect(reconciled.lastPlanGeneratedAt).toBe(reconciledPlan.generatedAt);
+      expect(reconciled.hlsUrl).toBe(ready.hlsUrl);
+
+      const providerEnvironment = {
+        LINEAR_COMPUTE_ENABLED: "1",
+        LINEAR_PUBLIC_BASE_URL: "http://127.0.0.1:" + String(address.port) + "/public/linear",
+        LINEAR_OUTPUT_ROOT: join(root, "linear"),
+        LINEAR_SEGMENT_DURATION_SECONDS: "1",
+        LINEAR_MAX_RECOVERY_ATTEMPTS: "1",
+        FFMPEG_PATH: ffmpegPath,
+      };
+      const materializer = async (objectKey: string, destinationPath: string) => {
+        const source =
+          objectKey === "fixtures/first.mp4"
+            ? firstSource
+            : objectKey === "fixtures/second.mp4"
+              ? secondSource
+              : null;
+        if (!source) throw new Error("Unknown Task 75 fixture source.");
+        await copyFile(source, destinationPath);
+      };
+
+      await provider.onModuleDestroy();
+      provider = new OwnedLinearStreamingProvider(providerEnvironment, materializer);
+      await provider.onModuleInit();
+
+      const recovered = await waitForState(
+        () => provider!.getState(plan.tvChannelId),
+        (state) => state.status === "READY" && Boolean(state.hlsUrl),
+        6_000,
+      );
+      expect(recovered.providerResourceId).toBe(ready.providerResourceId);
+      expect(recovered.hlsUrl).toBe(ready.hlsUrl);
+      expect(recovered.monitoring?.recoveryCount).toBeGreaterThanOrEqual(1);
+
+      const stopped = await provider.stop(plan.tvChannelId);
+      expect(stopped).toMatchObject({
+        status: "STOPPED",
+        providerResourceId: ready.providerResourceId,
+        hlsUrl: null,
+      });
+      const stoppedManifest = await fetch(ready.hlsUrl!);
+      expect(stoppedManifest.status).toBe(404);
+    } finally {
+      if (provider) await provider.onModuleDestroy();
+      if (server) await close(server);
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 25_000);
 });
 
 function task75Plan(input: {
@@ -266,7 +261,11 @@ function task75Plan(input: {
   };
 }
 
-async function makeFixture(ffmpegPath: string, destination: string, frequency: number): Promise<void> {
+async function makeFixture(
+  ffmpegPath: string,
+  destination: string,
+  frequency: number,
+): Promise<void> {
   await run(
     ffmpegPath,
     [

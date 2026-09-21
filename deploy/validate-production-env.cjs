@@ -183,33 +183,11 @@ const linearFlag = apiEnv.LINEAR_COMPUTE_ENABLED?.trim();
 if (linearFlag && !["0", "1"].includes(linearFlag)) {
   fail("api.env: LINEAR_COMPUTE_ENABLED must be 0 or 1");
 }
-requireOptionalIntegerRange(
-  apiEnv,
-  "LINEAR_SEGMENT_DURATION_SECONDS",
-  1,
-  10,
-  "api.env",
-);
-requireOptionalIntegerRange(
-  apiEnv,
-  "LINEAR_RECONCILE_INTERVAL_SECONDS",
-  5,
-  300,
-  "api.env",
-);
-requireOptionalIntegerRange(
-  apiEnv,
-  "LINEAR_MAX_RECOVERY_ATTEMPTS",
-  0,
-  10,
-  "api.env",
-);
+requireOptionalIntegerRange(apiEnv, "LINEAR_SEGMENT_DURATION_SECONDS", 1, 10, "api.env");
+requireOptionalIntegerRange(apiEnv, "LINEAR_RECONCILE_INTERVAL_SECONDS", 5, 300, "api.env");
+requireOptionalIntegerRange(apiEnv, "LINEAR_MAX_RECOVERY_ATTEMPTS", 0, 10, "api.env");
 if (linearFlag === "1") {
-  const linearPublicBaseUrl = requireHttpsUrl(
-    apiEnv,
-    "LINEAR_PUBLIC_BASE_URL",
-    "api.env",
-  );
+  const linearPublicBaseUrl = requireHttpsUrl(apiEnv, "LINEAR_PUBLIC_BASE_URL", "api.env");
   const linearOutputRoot = requireValue(apiEnv, "LINEAR_OUTPUT_ROOT", "api.env");
   if (linearPublicBaseUrl) {
     const normalizedPath = linearPublicBaseUrl.pathname.replace(/\/+$/, "");

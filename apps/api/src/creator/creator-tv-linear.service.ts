@@ -1,9 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  type OnModuleDestroy,
-  type OnModuleInit,
-} from "@nestjs/common";
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { CreatorTvError, CreatorTvService, type CreatorTvEditActor } from "./creator-tv.service.js";

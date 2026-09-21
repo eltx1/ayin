@@ -92,7 +92,6 @@ import { VideoMetadataService } from "./video-metadata.service.js";
 })
 export class CreatorModule {}
 
-
 export function selectLinearStreamingProvider(
   owned: OwnedLinearStreamingProvider,
   fallback: UnconfiguredLinearStreamingProvider,

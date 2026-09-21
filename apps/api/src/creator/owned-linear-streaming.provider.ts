@@ -1,15 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createReadStream, type ReadStream } from "node:fs";
-import {
-  mkdir,
-  readFile,
-  readdir,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Injectable, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
@@ -42,7 +34,10 @@ export interface OwnedLinearEnvironment {
   FFMPEG_PATH?: string | undefined;
 }
 
-export type LinearSourceMaterializer = (objectKey: string, destinationPath: string) => Promise<void>;
+export type LinearSourceMaterializer = (
+  objectKey: string,
+  destinationPath: string,
+) => Promise<void>;
 
 export interface OwnedLinearPublicOutput {
   body: Buffer | ReadStream;
@@ -250,7 +245,10 @@ export class OwnedLinearStreamingProvider
     resource.runVersion += 1;
     await this.terminateChild(resource);
     await rm(this.resourceDirectory(resource.resourceId), { recursive: true, force: true });
-    return this.snapshot(resource, "Owned linear compute stopped. Progressive MP4 fallback remains available.");
+    return this.snapshot(
+      resource,
+      "Owned linear compute stopped. Progressive MP4 fallback remains available.",
+    );
   }
 
   async readPublicOutput(
@@ -262,7 +260,9 @@ export class OwnedLinearStreamingProvider
     if (!resource || resource.stopped || resource.status !== "READY") return null;
 
     if (fileName === PUBLIC_MANIFEST_FILE) {
-      const raw = await readFile(this.rawManifestPath(resource.resourceId), "utf8").catch(() => null);
+      const raw = await readFile(this.rawManifestPath(resource.resourceId), "utf8").catch(
+        () => null,
+      );
       if (!raw || !isPlayableManifest(raw)) return null;
       const rendered = injectAdMarkersIntoManifest(
         raw,
@@ -524,10 +524,7 @@ export class OwnedLinearStreamingProvider
     resource.runningOccurrenceKey = program.occurrenceKey;
     resource.lastTransitionAt = new Date(now).toISOString();
     resource.scheduleDriftMs = driftMs;
-    resource.maxScheduleDriftMs = Math.max(
-      resource.maxScheduleDriftMs ?? 0,
-      Math.abs(driftMs),
-    );
+    resource.maxScheduleDriftMs = Math.max(resource.maxScheduleDriftMs ?? 0, Math.abs(driftMs));
   }
 
   private async prewarmNext(resource: OwnedLinearResource): Promise<void> {
@@ -558,14 +555,13 @@ export class OwnedLinearStreamingProvider
     program: LinearProgram,
   ): Promise<string> {
     if (program.source.mimeType !== "video/mp4") {
-      throw new Error("Owned linear compute currently accepts validated video/mp4 schedule sources.");
+      throw new Error(
+        "Owned linear compute currently accepts validated video/mp4 schedule sources.",
+      );
     }
 
     const sourceDirectory = join(this.resourceDirectory(resource.resourceId), "sources");
-    const destinationPath = join(
-      sourceDirectory,
-      sourceCacheFileName(program.source.objectKey),
-    );
+    const destinationPath = join(sourceDirectory, sourceCacheFileName(program.source.objectKey));
     const existing = await stat(destinationPath).catch(() => null);
     if (existing?.isFile() && existing.size > 0) return destinationPath;
 
@@ -639,9 +635,7 @@ export class OwnedLinearStreamingProvider
     }
   }
 
-  private async recoverPersistedResource(
-    tvChannelId: string,
-  ): Promise<OwnedLinearResource | null> {
+  private async recoverPersistedResource(tvChannelId: string): Promise<OwnedLinearResource | null> {
     const current = this.resourcesByTv.get(tvChannelId);
     if (current) return current;
     if (!this.configured || !this.outputRoot || this.shuttingDown) return null;
@@ -679,11 +673,14 @@ export class OwnedLinearStreamingProvider
     }
   }
 
-  private async readPersistedResource(directoryName: string): Promise<PersistedLinearResource | null> {
+  private async readPersistedResource(
+    directoryName: string,
+  ): Promise<PersistedLinearResource | null> {
     if (!this.outputRoot || !isUuid(directoryName)) return null;
-    const raw = await readFile(join(this.outputRoot, directoryName, RESOURCE_STATE_FILE), "utf8").catch(
-      () => null,
-    );
+    const raw = await readFile(
+      join(this.outputRoot, directoryName, RESOURCE_STATE_FILE),
+      "utf8",
+    ).catch(() => null);
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as unknown;
@@ -802,13 +799,7 @@ export class OwnedLinearStreamingProvider
 
   private publicManifestUrl(resourceId: string): string {
     if (!this.publicBaseUrl) throw new LinearProviderUnavailableError();
-    return (
-      this.publicBaseUrl +
-      "/" +
-      encodeURIComponent(resourceId) +
-      "/" +
-      PUBLIC_MANIFEST_FILE
-    );
+    return this.publicBaseUrl + "/" + encodeURIComponent(resourceId) + "/" + PUBLIC_MANIFEST_FILE;
   }
 
   private resourceDirectory(resourceId: string): string {
@@ -992,20 +983,20 @@ export function injectAdMarkersIntoManifest(
 
 function renderAdMarker(marker: LinearAdMarker, markerAt: number): string {
   return (
-    "#EXT-X-DATERANGE:ID=\"" +
+    '#EXT-X-DATERANGE:ID="' +
     hlsQuoted(marker.id) +
-    "\",CLASS=\"com.ayin.ad-break\",START-DATE=\"" +
+    '",CLASS="com.ayin.ad-break",START-DATE="' +
     new Date(markerAt).toISOString() +
-    "\",X-AYIN-SCTE35-INTENT=\"YES\",X-AYIN-SOURCE=\"" +
+    '",X-AYIN-SCTE35-INTENT="YES",X-AYIN-SOURCE="' +
     hlsQuoted(marker.source) +
-    "\",X-AYIN-OCCURRENCE=\"" +
+    '",X-AYIN-OCCURRENCE="' +
     hlsQuoted(marker.occurrenceKey) +
-    "\""
+    '"'
   );
 }
 
 function hlsQuoted(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"");
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
 function sourceCacheFileName(objectKey: string): string {
@@ -1037,9 +1028,7 @@ function currentProgram(plan: LinearChannelPlan, now: number): LinearProgram | n
 }
 
 function nextProgram(plan: LinearChannelPlan, now: number): LinearProgram | null {
-  return (
-    plan.programs.find((program) => Date.parse(program.startsAt) > now) ?? null
-  );
+  return plan.programs.find((program) => Date.parse(program.startsAt) > now) ?? null;
 }
 
 function sameProgramForContinuousPlayout(
@@ -1061,7 +1050,10 @@ function validatePlan(plan: LinearChannelPlan): void {
   if (!plan.tvChannelId || !plan.channelId || !plan.channelHandle) {
     throw new Error("Linear channel plan is missing its channel identity.");
   }
-  if (!Number.isFinite(Date.parse(plan.generatedAt)) || !Number.isFinite(Date.parse(plan.windowEndsAt))) {
+  if (
+    !Number.isFinite(Date.parse(plan.generatedAt)) ||
+    !Number.isFinite(Date.parse(plan.windowEndsAt))
+  ) {
     throw new Error("Linear channel plan has an invalid generation window.");
   }
 
@@ -1153,9 +1145,7 @@ function errorMessage(error: unknown): string {
 }
 
 function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value,
-  );
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function isPersistedLinearResource(value: unknown): value is PersistedLinearResource {
