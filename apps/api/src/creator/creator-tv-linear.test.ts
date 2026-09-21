@@ -6,6 +6,10 @@ import {
   type LinearChannelPlan,
 } from "./creator-tv-linear.provider.js";
 import { buildXmlTv } from "./creator-tv-linear.service.js";
+import {
+  buildProgramFfmpegArgs,
+  injectAdMarkersIntoManifest,
+} from "./owned-linear-streaming.provider.js";
 
 const plan: LinearChannelPlan = {
   tvChannelId: "00000000-0000-4000-8000-000000000001",
@@ -63,5 +67,58 @@ describe("Creator TV linear foundation", () => {
       status: "STOPPED",
       hlsUrl: null,
     });
+  });
+
+  it("builds live HLS output with wall-clock and discontinuity semantics", () => {
+    const args = buildProgramFfmpegArgs({
+      ffmpegInputPath: "/tmp/source.mp4",
+      seekMs: 1_500,
+      durationMs: 10_000,
+      segmentDurationSeconds: 4,
+      outputDirectory: "/tmp/linear",
+    });
+    const flags = args[args.indexOf("-hls_flags") + 1];
+    expect(flags).toContain("append_list");
+    expect(flags).toContain("program_date_time");
+    expect(flags).toContain("discont_start");
+    expect(flags).toContain("omit_endlist");
+    expect(args).toContain("epoch_us");
+  });
+
+  it("maps SCTE35 intent to HLS DATERANGE without fabricating a binary cue", () => {
+    const markedPlan: LinearChannelPlan = {
+      ...plan,
+      programs: [
+        {
+          ...plan.programs[0]!,
+          startsAt: "2026-08-30T18:00:00.000Z",
+          endsAt: "2026-08-30T18:30:00.000Z",
+        },
+      ],
+      adMarkers: [
+        {
+          id: "break-1",
+          occurrenceKey: "auto:1",
+          offsetMs: 2_000,
+          source: "PROGRAMMATIC",
+          signaling: "SCTE35_INTENT",
+        },
+      ],
+    };
+    const manifest = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:6",
+      "#EXT-X-PROGRAM-DATE-TIME:2026-08-30T18:00:00.000Z",
+      "#EXTINF:4.000,",
+      "segment-1.ts",
+      "",
+    ].join("\n");
+
+    const rendered = injectAdMarkersIntoManifest(manifest, markedPlan, 4_000);
+    expect(rendered).toContain('#EXT-X-DATERANGE:ID="break-1"');
+    expect(rendered).toContain('CLASS="com.ayin.ad-break"');
+    expect(rendered).toContain('START-DATE="2026-08-30T18:00:02.000Z"');
+    expect(rendered).toContain('X-AYIN-SCTE35-INTENT="YES"');
+    expect(rendered).not.toContain("SCTE35-OUT");
   });
 });
