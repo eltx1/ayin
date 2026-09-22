@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { loadLinearSsaiConfig } from "./linear-ssai.config.js";
 import {
@@ -6,6 +6,24 @@ import {
   LinearSsaiService,
   opportunityIdentity,
 } from "./linear-ssai.service.js";
+
+const originalGamEnvironment = {
+  GAM_NETWORK_CODE: process.env.GAM_NETWORK_CODE,
+  GAM_PUBLISHER_ID: process.env.GAM_PUBLISHER_ID,
+  GAM_VIDEO_AD_UNIT_PATH: process.env.GAM_VIDEO_AD_UNIT_PATH,
+  GAM_DISPLAY_AD_UNIT_PREFIX: process.env.GAM_DISPLAY_AD_UNIT_PREFIX,
+  GAM_ADS_TXT_RELATIONSHIP: process.env.GAM_ADS_TXT_RELATIONSHIP,
+  GAM_TEST_MODE: process.env.GAM_TEST_MODE,
+  GAM_PRODUCTION_ENABLED: process.env.GAM_PRODUCTION_ENABLED,
+  GAM_KILL_SWITCH: process.env.GAM_KILL_SWITCH,
+};
+
+afterEach(() => {
+  for (const [key, value] of Object.entries(originalGamEnvironment)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+});
 
 describe("Task 76 linear SSAI/DAI", () => {
   it("defaults off without inventing a Google DAI asset key", () => {
@@ -29,7 +47,7 @@ describe("Task 76 linear SSAI/DAI", () => {
     ).toThrow(/GAM_DAI_ASSET_KEY/);
   });
 
-  it("creates stable ad opportunity identity and official SSB playback shape", () => {
+  it("creates stable opportunity identity and official SSB playback shape", () => {
     expect(opportunityIdentity("tv-1", "occurrence-1", 60_000, 30_000)).toBe(
       opportunityIdentity("tv-1", "occurrence-1", 60_000, 30_000),
     );
@@ -71,15 +89,12 @@ describe("Task 76 linear SSAI/DAI", () => {
     expect(breaks.every((item) => item.durationMs === 30_000)).toBe(true);
   });
 
-  it("kills signaling without affecting content fallback", async () => {
-    const service = makeService(
-      {
-        LINEAR_SSAI_ENABLED: "1",
-        LINEAR_SSAI_BREAK_DURATION_SECONDS: "30",
-        LINEAR_SSAI_KILL_SWITCH: "1",
-      },
-      { gamProductionEnabled: true },
-    );
+  it("kills signaling without affecting the content fallback", async () => {
+    const service = makeService({
+      LINEAR_SSAI_ENABLED: "1",
+      LINEAR_SSAI_BREAK_DURATION_SECONDS: "30",
+      LINEAR_SSAI_KILL_SWITCH: "1",
+    });
     expect(await service.signalingState()).toMatchObject({
       enabled: false,
       taskKillSwitch: true,
@@ -89,15 +104,13 @@ describe("Task 76 linear SSAI/DAI", () => {
   });
 
   it("does not expose Google DAI for unsupported direct/house breaks", async () => {
-    const service = makeService(
-      {
-        LINEAR_SSAI_ENABLED: "1",
-        LINEAR_SSAI_BREAK_DURATION_SECONDS: "30",
-        GAM_DAI_ENABLED: "1",
-        GAM_DAI_ASSET_KEY: "real-asset-key",
-      },
-      { gamProductionEnabled: true },
-    );
+    enableExampleGamProduction();
+    const service = makeService({
+      LINEAR_SSAI_ENABLED: "1",
+      LINEAR_SSAI_BREAK_DURATION_SECONDS: "30",
+      GAM_DAI_ENABLED: "1",
+      GAM_DAI_ASSET_KEY: "real-asset-key",
+    });
     const capability = await service.publicCapability(
       {
         tvChannelId: "tv-1",
@@ -138,29 +151,53 @@ describe("Task 76 linear SSAI/DAI", () => {
   });
 });
 
-function makeService(
-  environment: NodeJS.ProcessEnv,
-  options: { gamProductionEnabled?: boolean } = {},
-) {
-  const config = loadLinearSsaiConfig(environment);
+function makeService(environment: NodeJS.ProcessEnv) {
   return new LinearSsaiService(
-    config,
+    loadLinearSsaiConfig(environment),
     {
-      isEmergencyKilled: async () => false,
-    } as never,
-    {
-      resolveLinearBreakPolicy: async () => ({
-        enabled: true,
-        midRollEnabled: true,
-        midRollEverySec: 60,
-        source: "PROGRAMMATIC",
-      }),
-    } as never,
-    {
-      productionRequestState: async () =>
-        options.gamProductionEnabled
-          ? ({ enabled: true } as const)
-          : ({ enabled: false, reason: "GAM_PRODUCTION_NOT_READY" } as const),
+      client: {
+        platformSetting: {
+          findUnique: async (query: {
+            where: { namespace_key: { namespace: string; key: string } };
+          }) => {
+            if (query.where.namespace_key.key === "emergencyKillSwitch") {
+              return { value: false };
+            }
+            if (query.where.namespace_key.key === "videoAdsV1") {
+              return {
+                value: {
+                  masterEnabled: true,
+                  provider: "GOOGLE_IMA",
+                  preRollEnabled: true,
+                  midRollEnabled: true,
+                  postRollEnabled: false,
+                  midRollEverySec: 60,
+                  frequencyCapPerSession: 3,
+                  externalVastTagUrl: "https://ads.example/vast",
+                  houseCreativeUrl: null,
+                  houseClickUrl: null,
+                },
+              };
+            }
+            return null;
+          },
+        },
+        videoAdOverride: {
+          findUnique: async () => null,
+          findMany: async () => [],
+        },
+      },
     } as never,
   );
+}
+
+function enableExampleGamProduction() {
+  process.env.GAM_NETWORK_CODE = "1234";
+  process.env.GAM_PUBLISHER_ID = "pub-0000000000000000";
+  process.env.GAM_VIDEO_AD_UNIT_PATH = "/1234/example/video";
+  process.env.GAM_DISPLAY_AD_UNIT_PREFIX = "/1234/example";
+  process.env.GAM_ADS_TXT_RELATIONSHIP = "DIRECT";
+  process.env.GAM_TEST_MODE = "0";
+  process.env.GAM_PRODUCTION_ENABLED = "1";
+  process.env.GAM_KILL_SWITCH = "0";
 }
