@@ -191,6 +191,20 @@ export function CreatorTvPlayer({
     }
   }, [data.canonicalHandle, refreshing]);
 
+  useEffect(() => {
+    if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB" || !current?.endsAt) return;
+    const endsAt = Date.parse(current.endsAt);
+    if (!Number.isFinite(endsAt)) return;
+    const delayMs = Math.min(
+      Math.max(500, endsAt - Date.now() + 250),
+      2_147_000_000,
+    );
+    const timer = window.setTimeout(() => {
+      void refreshSchedule();
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [current?.endsAt, currentOccurrenceKey, monetizedPlayback.mode, refreshSchedule]);
+
   if (data.tv.state === "OFF_AIR" || !current) {
     return (
       <main className={styles.page} style={style}>
@@ -222,6 +236,7 @@ export function CreatorTvPlayer({
         <section className={styles.playerCard} aria-labelledby="now-playing-heading">
           {monetizedPlayback.mode === "GOOGLE_DAI_SSB" ? (
             <LiveAyinPlayer
+              analyticsEnabled={false}
               autoPlay
               channelId={data.channel.id}
               dvrWindowSeconds={null}
