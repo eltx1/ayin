@@ -163,6 +163,8 @@ jobs:
           set -euo pipefail
           package="${{ matrix.package }}"
           component="$package/net.ayin.shell.MainActivity"
+          gradle -p platforms/android --no-daemon :app:install${{ matrix.flavor }}Debug
+          adb shell pm path "$package"
           adb logcat -c
           adb shell am force-stop "$package"
           adb shell am start -W             -a android.intent.action.VIEW             -c android.intent.category.BROWSABLE             -d "ayin://watch/task-77-emulator?autoplay=1"             "$component"
