@@ -58,6 +58,7 @@ module.exports = {
         API_HOST: "127.0.0.1",
         PORT: "4000",
         FFMPEG_PATH: apiEnv.FFMPEG_PATH || "/home/ayin/bin/ffmpeg",
+        FFPROBE_PATH: apiEnv.FFPROBE_PATH || "/home/ayin/bin/ffprobe",
         AYIN_RELEASE_SHA: currentReleaseSha,
         AYIN_SERVICE_NAME: "ayin-api",
       },

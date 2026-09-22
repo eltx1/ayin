@@ -18,12 +18,14 @@ import {
 const RESOURCE_STATE_FILE = "resource.json";
 const RAW_MANIFEST_FILE = "media.m3u8";
 const PUBLIC_MANIFEST_FILE = "index.m3u8";
+const PUBLIC_MASTER_MANIFEST_FILE = "master.m3u8";
 const DEFAULT_SEGMENT_DURATION_SECONDS = 4;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
 const HLS_LIST_SIZE = 18;
 const FILLER_CHUNK_MS = 5_000;
 const SHORT_WAIT_MS = 100;
 const PROCESS_KILL_GRACE_MS = 5_000;
+const FFPROBE_TIMEOUT_MS = 10_000;
 
 export interface OwnedLinearEnvironment {
   LINEAR_COMPUTE_ENABLED?: string | undefined;
@@ -32,6 +34,7 @@ export interface OwnedLinearEnvironment {
   LINEAR_SEGMENT_DURATION_SECONDS?: string | undefined;
   LINEAR_MAX_RECOVERY_ATTEMPTS?: string | undefined;
   FFMPEG_PATH?: string | undefined;
+  FFPROBE_PATH?: string | undefined;
 }
 
 export type LinearSourceMaterializer = (
@@ -72,6 +75,7 @@ interface OwnedLinearResource {
   exhaustedOccurrenceKey: string | null;
   exhaustedUntilMs: number;
   sourcePromises: Map<string, Promise<string>>;
+  audioPresencePromises: Map<string, Promise<boolean>>;
 }
 
 @Injectable()
@@ -86,6 +90,7 @@ export class OwnedLinearStreamingProvider
   private readonly outputRoot: string | null;
   private readonly publicBaseUrl: string | null;
   private readonly ffmpegPath: string;
+  private readonly ffprobePath: string;
   private readonly segmentDurationSeconds: number;
   private readonly maxRecoveryAttempts: number;
   private shuttingDown = false;
@@ -99,6 +104,7 @@ export class OwnedLinearStreamingProvider
     this.outputRoot = normalizeNonEmpty(environment.LINEAR_OUTPUT_ROOT);
     this.publicBaseUrl = normalizePublicBaseUrl(environment.LINEAR_PUBLIC_BASE_URL);
     this.ffmpegPath = normalizeNonEmpty(environment.FFMPEG_PATH) ?? "ffmpeg";
+    this.ffprobePath = normalizeNonEmpty(environment.FFPROBE_PATH) ?? "ffprobe";
     this.segmentDurationSeconds = integerSetting(
       environment.LINEAR_SEGMENT_DURATION_SECONDS,
       DEFAULT_SEGMENT_DURATION_SECONDS,
@@ -259,16 +265,22 @@ export class OwnedLinearStreamingProvider
     const resource = this.resourcesById.get(providerResourceId);
     if (!resource || resource.stopped || resource.status !== "READY") return null;
 
+    if (fileName === PUBLIC_MASTER_MANIFEST_FILE) {
+      const body = Buffer.from(buildLinearMasterManifest(), "utf8");
+      return {
+        body,
+        contentType: "application/vnd.apple.mpegurl",
+        contentLength: body.length,
+        cacheControl: "no-store, max-age=0",
+      };
+    }
+
     if (fileName === PUBLIC_MANIFEST_FILE) {
       const raw = await readFile(this.rawManifestPath(resource.resourceId), "utf8").catch(
         () => null,
       );
       if (!raw || !isPlayableManifest(raw)) return null;
-      const rendered = injectAdMarkersIntoManifest(
-        raw,
-        resource.plan,
-        this.segmentDurationSeconds * 1_000,
-      );
+      const rendered = injectAdMarkersWithContentFallback(raw, resource.plan);
       const body = Buffer.from(rendered, "utf8");
       return {
         body,
@@ -356,6 +368,7 @@ export class OwnedLinearStreamingProvider
         if (endsAtMs <= now) return;
 
         const seekMs = sourceSeekOffsetMs(resource.plan, program, now);
+        const sourceHasAudio = await this.ensureSourceHasAudio(resource, program, sourcePath);
         this.markTransition(resource, program, now);
         void this.prewarmNext(resource).catch(() => undefined);
 
@@ -365,6 +378,7 @@ export class OwnedLinearStreamingProvider
           version,
           buildProgramFfmpegArgs({
             ffmpegInputPath: sourcePath,
+            sourceHasAudio,
             seekMs,
             durationMs,
             segmentDurationSeconds: this.segmentDurationSeconds,
@@ -552,6 +566,83 @@ export class OwnedLinearStreamingProvider
     }
   }
 
+  private async ensureSourceHasAudio(
+    resource: OwnedLinearResource,
+    program: LinearProgram,
+    sourcePath: string,
+  ): Promise<boolean> {
+    const existing = resource.audioPresencePromises.get(program.source.objectKey);
+    if (existing) return existing;
+
+    const probe = this.probeSourceHasAudio(sourcePath);
+    resource.audioPresencePromises.set(program.source.objectKey, probe);
+    try {
+      return await probe;
+    } catch (error) {
+      resource.audioPresencePromises.delete(program.source.objectKey);
+      throw error;
+    }
+  }
+
+  private async probeSourceHasAudio(sourcePath: string): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      const child = spawn(
+        this.ffprobePath,
+        [
+          "-v",
+          "error",
+          "-select_streams",
+          "a:0",
+          "-show_entries",
+          "stream=index",
+          "-of",
+          "csv=p=0",
+          sourcePath,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"], shell: false },
+      );
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        child.kill("SIGKILL");
+        finish(new Error("Owned linear FFprobe timed out while checking source audio."));
+      }, FFPROBE_TIMEOUT_MS);
+      timeout.unref();
+
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve(stdout.trim().length > 0);
+      };
+
+      child.stdout?.on("data", (chunk: Buffer | string) => {
+        stdout = boundedAppend(stdout, String(chunk), 1_024);
+      });
+      child.stderr?.on("data", (chunk: Buffer | string) => {
+        stderr = boundedAppend(stderr, String(chunk), 4_000);
+      });
+      child.once("error", (error) => {
+        finish(new Error("Owned linear FFprobe failed to start: " + error.message));
+      });
+      child.once("close", (code) => {
+        if (code === 0) finish();
+        else {
+          finish(
+            new Error(
+              "Owned linear FFprobe exited with code " +
+                String(code) +
+                (stderr.trim() ? ". " + stderr.trim() : "."),
+            ),
+          );
+        }
+      });
+    });
+  }
+
   private async materializeSourceFile(
     resource: OwnedLinearResource,
     program: LinearProgram,
@@ -592,6 +683,7 @@ export class OwnedLinearStreamingProvider
       if (sourceObjectKeysToKeep(resource.plan, Date.now()).has(objectKey)) continue;
       if (resource.sourcePromises.get(objectKey) !== promise) continue;
       resource.sourcePromises.delete(objectKey);
+      resource.audioPresencePromises.delete(objectKey);
       if (filePath) await rm(filePath, { force: true }).catch(() => undefined);
     }
 
@@ -714,6 +806,7 @@ export class OwnedLinearStreamingProvider
       exhaustedOccurrenceKey: null,
       exhaustedUntilMs: 0,
       sourcePromises: new Map(),
+      audioPresencePromises: new Map(),
     };
   }
 
@@ -763,6 +856,8 @@ export class OwnedLinearStreamingProvider
       configured: true,
       status: resource.status,
       hlsUrl: resource.status === "READY" ? resource.hlsUrl : null,
+      hlsMasterUrl:
+        resource.status === "READY" ? this.publicMasterManifestUrl(resource.resourceId) : null,
       providerResourceId: resource.resourceId,
       lastPlanGeneratedAt: resource.plan.generatedAt,
       message:
@@ -791,6 +886,7 @@ export class OwnedLinearStreamingProvider
       configured: false,
       status,
       hlsUrl: null,
+      hlsMasterUrl: null,
       providerResourceId: null,
       lastPlanGeneratedAt: null,
       message:
@@ -802,6 +898,13 @@ export class OwnedLinearStreamingProvider
   private publicManifestUrl(resourceId: string): string {
     if (!this.publicBaseUrl) throw new LinearProviderUnavailableError();
     return this.publicBaseUrl + "/" + encodeURIComponent(resourceId) + "/" + PUBLIC_MANIFEST_FILE;
+  }
+
+  private publicMasterManifestUrl(resourceId: string): string {
+    if (!this.publicBaseUrl) throw new LinearProviderUnavailableError();
+    return (
+      this.publicBaseUrl + "/" + encodeURIComponent(resourceId) + "/" + PUBLIC_MASTER_MANIFEST_FILE
+    );
   }
 
   private resourceDirectory(resourceId: string): string {
@@ -820,6 +923,7 @@ export class OwnedLinearStreamingProvider
 
 export function buildProgramFfmpegArgs(input: {
   ffmpegInputPath: string;
+  sourceHasAudio: boolean;
   seekMs: number;
   durationMs: number;
   segmentDurationSeconds: number;
@@ -835,16 +939,19 @@ export function buildProgramFfmpegArgs(input: {
     seconds(input.seekMs),
     "-i",
     input.ffmpegInputPath,
+    ...(input.sourceHasAudio
+      ? []
+      : ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]),
     "-t",
     seconds(input.durationMs),
     "-map",
     "0:v:0",
     "-map",
-    "0:a:0?",
+    input.sourceHasAudio ? "0:a:0" : "1:a:0",
     "-map_metadata",
     "-1",
     "-vf",
-    "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+    "scale=1280:720:force_original_aspect_ratio=decrease:flags=lanczos,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1",
     "-c:v",
     "libx264",
     "-preset",
@@ -853,6 +960,12 @@ export function buildProgramFfmpegArgs(input: {
     "high",
     "-level:v",
     "4.1",
+    "-b:v",
+    "4500k",
+    "-maxrate",
+    "5000k",
+    "-bufsize",
+    "9000k",
     "-pix_fmt",
     "yuv420p",
     "-force_key_frames",
@@ -906,6 +1019,12 @@ export function buildFillerFfmpegArgs(input: {
     "high",
     "-level:v",
     "4.1",
+    "-b:v",
+    "4500k",
+    "-maxrate",
+    "5000k",
+    "-bufsize",
+    "9000k",
     "-pix_fmt",
     "yuv420p",
     "-force_key_frames",
@@ -940,7 +1059,7 @@ function hlsOutputArgs(input: {
     "-hls_start_number_source",
     "epoch_us",
     "-hls_flags",
-    "delete_segments+append_list+program_date_time+independent_segments+discont_start+omit_endlist+temp_file",
+    "delete_segments+append_list+program_date_time+discont_start+omit_endlist+temp_file",
     "-hls_allow_cache",
     "0",
     "-hls_segment_filename",
@@ -949,56 +1068,144 @@ function hlsOutputArgs(input: {
   ];
 }
 
-export function injectAdMarkersIntoManifest(
+export function buildLinearMasterManifest(): string {
+  return [
+    "#EXTM3U",
+    "#EXT-X-VERSION:3",
+    '#EXT-X-STREAM-INF:BANDWIDTH=5500000,AVERAGE-BANDWIDTH=4700000,CODECS="avc1.640029,mp4a.40.2",RESOLUTION=1280x720',
+    PUBLIC_MANIFEST_FILE,
+    "",
+  ].join("\n");
+}
+
+interface LinearManifestSegment {
+  insertionIndex: number;
+  startMs: number;
+  durationMs: number;
+}
+
+export function injectAdMarkersWithContentFallback(
   manifest: string,
   plan: LinearChannelPlan,
-  segmentDurationMs: number,
 ): string {
-  const programDates = manifest
-    .split("\n")
-    .filter((line) => line.startsWith("#EXT-X-PROGRAM-DATE-TIME:"))
-    .map((line) => Date.parse(line.slice("#EXT-X-PROGRAM-DATE-TIME:".length)))
-    .filter((value) => Number.isFinite(value));
-  if (!programDates.length) return manifest;
+  try {
+    return injectAdMarkersIntoManifest(manifest, plan);
+  } catch {
+    return manifest;
+  }
+}
 
-  const windowStart = Math.min(...programDates) - segmentDurationMs;
-  const windowEnd = Math.max(...programDates) + segmentDurationMs * 2;
+export function injectAdMarkersIntoManifest(manifest: string, plan: LinearChannelPlan): string {
+  if (
+    !plan.adSignaling ||
+    !plan.adSignaling.enabled ||
+    plan.adSignaling.format !== "HLS_CUE_OUT_IN"
+  ) {
+    return manifest;
+  }
+
+  const lines = manifest.trimEnd().split("\n");
+  const segments = parseManifestSegments(lines);
+  if (!segments.length) return manifest;
+
+  const firstStartMs = segments[0]!.startMs;
+  const lastSegment = segments[segments.length - 1]!;
+  const lastEndMs = lastSegment.startMs + lastSegment.durationMs;
   const programByOccurrence = new Map(
     plan.programs.map((program) => [program.occurrenceKey, program]),
   );
-  const markerLines = plan.adMarkers.flatMap((marker) => {
-    const program = programByOccurrence.get(marker.occurrenceKey);
-    if (!program) return [];
-    const markerAt = Date.parse(program.startsAt) + marker.offsetMs;
-    if (!Number.isFinite(markerAt) || markerAt < windowStart || markerAt > windowEnd) return [];
-    return [renderAdMarker(marker, markerAt)];
-  });
-  if (!markerLines.length) return manifest;
+  const insertions = new Map<number, string[]>();
+  let previousCueEndMs = -1;
 
-  const lines = manifest.trimEnd().split("\n");
-  const insertionIndex = lines.findIndex(
-    (line) => line.startsWith("#EXT-X-PROGRAM-DATE-TIME:") || line.startsWith("#EXTINF:"),
-  );
-  lines.splice(insertionIndex < 0 ? lines.length : insertionIndex, 0, ...markerLines);
-  return lines.join("\n") + "\n";
+  const opportunities = plan.adMarkers
+    .map((marker) => {
+      const program = programByOccurrence.get(marker.occurrenceKey);
+      if (!program) return null;
+      const plannedStartMs = Date.parse(program.startsAt) + marker.offsetMs;
+      return Number.isFinite(plannedStartMs) ? { marker, plannedStartMs } : null;
+    })
+    .filter((value): value is { marker: LinearAdMarker; plannedStartMs: number } => value !== null)
+    .sort((left, right) => left.plannedStartMs - right.plannedStartMs);
+
+  for (const { marker, plannedStartMs } of opportunities) {
+    if (plannedStartMs < firstStartMs || plannedStartMs >= lastEndMs) continue;
+
+    const cueStart = segments.find((segment) => segment.startMs >= plannedStartMs);
+    if (!cueStart || cueStart.startMs < previousCueEndMs) continue;
+
+    const requestedEndMs = cueStart.startMs + marker.durationMs;
+    const cueIn = segments.find((segment) => segment.startMs >= requestedEndMs);
+    const effectiveEndMs = cueIn?.startMs ?? requestedEndMs;
+
+    addManifestInsertion(
+      insertions,
+      cueStart.insertionIndex,
+      "#EXT-X-CUE-OUT:DURATION=" +
+        trimSeconds(marker.durationMs / 1000) +
+        ",BREAKID=" +
+        marker.opportunityId,
+    );
+    if (cueIn) addManifestInsertion(insertions, cueIn.insertionIndex, "#EXT-X-CUE-IN");
+    previousCueEndMs = effectiveEndMs;
+  }
+
+  if (!insertions.size) return manifest;
+
+  const rendered: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const before = insertions.get(index);
+    if (before) rendered.push(...before);
+    rendered.push(lines[index]!);
+  }
+  const after = insertions.get(lines.length);
+  if (after) rendered.push(...after);
+  return rendered.join("\n") + "\n";
 }
 
-function renderAdMarker(marker: LinearAdMarker, markerAt: number): string {
-  return (
-    '#EXT-X-DATERANGE:ID="' +
-    hlsQuoted(marker.id) +
-    '",CLASS="com.ayin.ad-break",START-DATE="' +
-    new Date(markerAt).toISOString() +
-    '",X-AYIN-SCTE35-INTENT="YES",X-AYIN-SOURCE="' +
-    hlsQuoted(marker.source) +
-    '",X-AYIN-OCCURRENCE="' +
-    hlsQuoted(marker.occurrenceKey) +
-    '"'
-  );
+function parseManifestSegments(lines: string[]): LinearManifestSegment[] {
+  const segments: LinearManifestSegment[] = [];
+  let programDateMs: number | null = null;
+  let durationMs: number | null = null;
+  let insertionIndex = 0;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!.trim();
+    if (line.startsWith("#EXT-X-PROGRAM-DATE-TIME:")) {
+      const parsed = Date.parse(line.slice("#EXT-X-PROGRAM-DATE-TIME:".length));
+      programDateMs = Number.isFinite(parsed) ? parsed : null;
+      insertionIndex = index;
+      continue;
+    }
+    if (line.startsWith("#EXTINF:")) {
+      const value = Number(line.slice("#EXTINF:".length).split(",", 1)[0]);
+      durationMs = Number.isFinite(value) && value > 0 ? value * 1000 : null;
+      continue;
+    }
+    if (/^segment-\d+\.ts$/u.test(line) && programDateMs !== null && durationMs !== null) {
+      segments.push({ insertionIndex, startMs: programDateMs, durationMs });
+      programDateMs += durationMs;
+      durationMs = null;
+      insertionIndex = index + 1;
+    }
+  }
+  return segments;
 }
 
-function hlsQuoted(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+function addManifestInsertion(
+  insertions: Map<number, string[]>,
+  index: number,
+  line: string,
+): void {
+  const current = insertions.get(index) ?? [];
+  if (!current.includes(line)) current.push(line);
+  insertions.set(index, current);
+}
+
+function trimSeconds(value: number): string {
+  return value
+    .toFixed(3)
+    .replace(/\.0+$/u, "")
+    .replace(/(\.\d*?)0+$/u, "$1");
 }
 
 function sourceCacheFileName(objectKey: string): string {

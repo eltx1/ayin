@@ -17,8 +17,10 @@ export interface LinearProgram {
 
 export interface LinearAdMarker {
   id: string;
+  opportunityId: string;
   occurrenceKey: string;
   offsetMs: number;
+  durationMs: number;
   source: "HOUSE" | "DIRECT" | "PROGRAMMATIC";
   signaling: "SCTE35_INTENT";
 }
@@ -34,6 +36,11 @@ export interface LinearChannelPlan {
   epg: {
     format: "XMLTV";
     xml: string;
+  };
+  adSignaling: {
+    enabled: boolean;
+    format: "NONE" | "HLS_CUE_OUT_IN";
+    scte35Binary: false;
   };
   fallback: {
     strategy: "PROGRESSIVE_MP4";
@@ -56,6 +63,7 @@ export interface LinearOutputState {
   configured: boolean;
   status: "UNCONFIGURED" | "PROVISIONING" | "READY" | "STOPPED" | "ERROR";
   hlsUrl: string | null;
+  hlsMasterUrl?: string | null;
   providerResourceId: string | null;
   lastPlanGeneratedAt: string | null;
   message: string | null;

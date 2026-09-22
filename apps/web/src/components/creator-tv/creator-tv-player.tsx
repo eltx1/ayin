@@ -1,20 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AyinPlayer } from "@/components/player/ayin-player";
+import { AdEnabledAyinPlayer } from "@/components/player/ad-enabled-ayin-player";
+import { LiveAyinPlayer } from "@/components/player/live-ayin-player";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
+import { getAdvertisingConsentSnapshot } from "@/lib/advertising-consent";
 import { mediaAssetUrl } from "@/lib/channel";
-import type { CreatorTvProgram, PublicCreatorTvResponse } from "@/lib/creator-tv";
+import {
+  fetchPublicCreatorTvLinear,
+  selectCreatorTvMonetizedPlayback,
+  type CreatorTvLinearCapability,
+  type CreatorTvProgram,
+  type PublicCreatorTvResponse,
+} from "@/lib/creator-tv";
 
 import styles from "./creator-tv.module.css";
 
-export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvResponse }) {
+export function CreatorTvPlayer({
+  initialData,
+  initialLinear,
+}: {
+  initialData: PublicCreatorTvResponse;
+  initialLinear: CreatorTvLinearCapability | null;
+}) {
   const [data, setData] = useState(initialData);
+  const [linear, setLinear] = useState(initialLinear);
+  const [ssaiFallback, setSsaiFallback] = useState<{
+    occurrenceKey: string | null;
+    offsetMs: number;
+  } | null>(null);
+  const [advertisingConsent] = useState(() => getAdvertisingConsentSnapshot());
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const selectedSsaiRef = useRef<string | null>(null);
+  const opportunityEventsRef = useRef(new Set<string>());
 
   const current = data.schedule.nowPlaying;
   const currentOccurrenceKey = current?.occurrenceKey;
@@ -27,6 +49,125 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
     });
   }, [currentOccurrenceKey, currentVideoId, data.channel.id]);
   const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);
+  const ssaiFailed = ssaiFallback !== null;
+  const monetizedPlayback = useMemo(
+    () => selectCreatorTvMonetizedPlayback(linear, ssaiFailed, advertisingConsent.mode),
+    [advertisingConsent.mode, linear, ssaiFailed],
+  );
+  const progressiveOffsetMs =
+    ssaiFallback && ssaiFallback.occurrenceKey === currentOccurrenceKey
+      ? ssaiFallback.offsetMs
+      : (current?.playbackOffsetMs ?? 0);
+
+  useEffect(() => {
+    if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
+    const identity = monetizedPlayback.providerResourceId + ":" + monetizedPlayback.assetKey;
+    if (selectedSsaiRef.current === identity) return;
+    selectedSsaiRef.current = identity;
+    trackAnalyticsEvent("TV_SSAI_SELECTED", {
+      channelId: data.channel.id,
+      ...(currentVideoId ? { videoId: currentVideoId } : {}),
+      metadata: {
+        provider: "GOOGLE_AD_MANAGER_DAI",
+        integration: "SSB",
+        assetKey: monetizedPlayback.assetKey,
+        networkCode: monetizedPlayback.networkCode,
+        providerResourceId: monetizedPlayback.providerResourceId,
+      },
+    });
+  }, [currentVideoId, data.channel.id, monetizedPlayback]);
+
+  useEffect(() => {
+    if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB" || !linear) return;
+    const timers: number[] = [];
+    const now = Date.now();
+
+    const emitOpportunity = (
+      kind: "OPEN" | "CLOSE",
+      opportunity: CreatorTvLinearCapability["monetization"]["opportunities"][number],
+    ) => {
+      const key = opportunity.opportunityId + ":" + kind;
+      if (opportunityEventsRef.current.has(key)) return;
+      opportunityEventsRef.current.add(key);
+      trackAnalyticsEvent(kind === "OPEN" ? "TV_AD_BREAK_OPEN" : "TV_AD_BREAK_CLOSE", {
+        channelId: data.channel.id,
+        ...(opportunity.videoId ? { videoId: opportunity.videoId } : {}),
+        metadata: {
+          opportunityId: opportunity.opportunityId,
+          occurrenceKey: opportunity.occurrenceKey,
+          source: opportunity.source,
+          assetKey: monetizedPlayback.assetKey,
+          networkCode: monetizedPlayback.networkCode,
+          providerResourceId: monetizedPlayback.providerResourceId,
+          durationMs: opportunity.durationMs,
+        },
+      });
+    };
+
+    for (const opportunity of linear.monetization.opportunities) {
+      if (!opportunity.startsAt || !opportunity.endsAt) continue;
+      const startsAt = Date.parse(opportunity.startsAt);
+      const endsAt = Date.parse(opportunity.endsAt);
+      if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt) || endsAt <= now) continue;
+
+      if (startsAt <= now) emitOpportunity("OPEN", opportunity);
+      else {
+        timers.push(
+          window.setTimeout(
+            () => emitOpportunity("OPEN", opportunity),
+            Math.min(startsAt - now, 2_147_000_000),
+          ),
+        );
+      }
+      timers.push(
+        window.setTimeout(
+          () => emitOpportunity("CLOSE", opportunity),
+          Math.min(endsAt - now, 2_147_000_000),
+        ),
+      );
+    }
+
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [data.channel.id, linear, monetizedPlayback]);
+
+  const handleDaiFatal = useCallback(
+    (reason: string) => {
+      if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
+      trackAnalyticsEvent("TV_SSAI_FALLBACK", {
+        channelId: data.channel.id,
+        ...(currentVideoId ? { videoId: currentVideoId } : {}),
+        metadata: {
+          reason,
+          assetKey: monetizedPlayback.assetKey,
+          networkCode: monetizedPlayback.networkCode,
+          providerResourceId: monetizedPlayback.providerResourceId,
+          fallback: "CLIENT_IMA_MP4",
+        },
+      });
+      const fallbackOffsetMs = current
+        ? Math.min(
+            Math.max(0, Date.parse(current.endsAt) - Date.parse(current.startsAt) - 250),
+            Math.max(
+              0,
+              current.playbackOffsetMs +
+                Math.max(0, Date.now() - Date.parse(data.schedule.generatedAt)),
+            ),
+          )
+        : 0;
+      setSsaiFallback({ occurrenceKey: currentOccurrenceKey ?? null, offsetMs: fallbackOffsetMs });
+    },
+    [
+      current,
+      currentOccurrenceKey,
+      currentVideoId,
+      data.channel.id,
+      data.schedule.generatedAt,
+      monetizedPlayback,
+    ],
+  );
+
   const accent = data.appearance.accentColor ?? "#63D1CC";
   const avatar = mediaAssetUrl(data.appearance.avatar?.objectKey);
   const banner = mediaAssetUrl(data.appearance.banner?.objectKey);
@@ -46,18 +187,78 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
     setRefreshing(true);
     setRefreshError(null);
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/public/channels/${encodeURIComponent(data.canonicalHandle)}/tv`,
-        { cache: "no-store" },
-      );
+      const [response, nextLinear] = await Promise.all([
+        fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(data.canonicalHandle)}/tv`, {
+          cache: "no-store",
+        }),
+        fetchPublicCreatorTvLinear(data.canonicalHandle),
+      ]);
       if (!response.ok) throw new Error("Creator TV could not refresh its guide.");
-      setData((await response.json()) as PublicCreatorTvResponse);
+      const nextData = (await response.json()) as PublicCreatorTvResponse;
+      if (
+        monetizedPlayback.mode === "GOOGLE_DAI_SSB" &&
+        nextLinear &&
+        selectCreatorTvMonetizedPlayback(nextLinear, false, advertisingConsent.mode).mode !==
+          "GOOGLE_DAI_SSB"
+      ) {
+        const reason =
+          nextLinear.monetization.dai.reason ??
+          nextLinear.monetization.signaling.reason ??
+          "CAPABILITY_DISABLED";
+        handleDaiFatal("CAPABILITY_" + reason);
+      }
+      setData(nextData);
+      if (nextLinear) setLinear(nextLinear);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "Creator TV could not refresh.");
     } finally {
       setRefreshing(false);
     }
-  }, [data.canonicalHandle, refreshing]);
+  }, [
+    advertisingConsent.mode,
+    data.canonicalHandle,
+    handleDaiFatal,
+    monetizedPlayback.mode,
+    refreshing,
+  ]);
+
+  useEffect(() => {
+    if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
+    let cancelled = false;
+    const poll = async () => {
+      const nextLinear = await fetchPublicCreatorTvLinear(data.canonicalHandle);
+      if (cancelled || !nextLinear) return;
+      if (
+        monetizedPlayback.mode === "GOOGLE_DAI_SSB" &&
+        selectCreatorTvMonetizedPlayback(nextLinear, false, advertisingConsent.mode).mode !==
+          "GOOGLE_DAI_SSB"
+      ) {
+        const reason =
+          nextLinear.monetization.dai.reason ??
+          nextLinear.monetization.signaling.reason ??
+          "CAPABILITY_DISABLED";
+        handleDaiFatal("CAPABILITY_" + reason);
+      }
+      setLinear(nextLinear);
+    };
+
+    const timer = window.setInterval(() => void poll(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [advertisingConsent.mode, data.canonicalHandle, handleDaiFatal, monetizedPlayback.mode]);
+
+  useEffect(() => {
+    if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB" || !current?.endsAt) return;
+    const endsAt = Date.parse(current.endsAt);
+    if (!Number.isFinite(endsAt)) return;
+    const delayMs = Math.min(Math.max(500, endsAt - Date.now() + 250), 2_147_000_000);
+    const timer = window.setTimeout(() => {
+      void refreshSchedule();
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [current?.endsAt, currentOccurrenceKey, monetizedPlayback.mode, refreshSchedule]);
 
   if (data.tv.state === "OFF_AIR" || !current) {
     return (
@@ -88,10 +289,25 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
       <TvHero data={data} initial={initial} />
       <div className={styles.layout}>
         <section className={styles.playerCard} aria-labelledby="now-playing-heading">
-          {mediaUrl ? (
-            <AyinPlayer
+          {monetizedPlayback.mode === "GOOGLE_DAI_SSB" ? (
+            <LiveAyinPlayer
+              analyticsEnabled={false}
               autoPlay
-              initialPositionMs={current.playbackOffsetMs}
+              channelId={data.channel.id}
+              dvrWindowSeconds={null}
+              key={monetizedPlayback.providerResourceId + ":" + monetizedPlayback.assetKey}
+              maxReconnectAttempts={2}
+              muted
+              onFatal={handleDaiFatal}
+              playbackUrl={monetizedPlayback.playbackUrl}
+              status="LIVE"
+              streamId={data.tv.id}
+              title={current.video.title}
+            />
+          ) : mediaUrl ? (
+            <AdEnabledAyinPlayer
+              autoPlay
+              initialPositionMs={progressiveOffsetMs}
               muted
               onNext={() => void refreshSchedule()}
               progressEnabled={false}
@@ -125,7 +341,11 @@ export function CreatorTvPlayer({ initialData }: { initialData: PublicCreatorTvR
               {formatDuration(current.video.durationMs)}
             </p>
             {current.video.description ? <p>{current.video.description}</p> : null}
-            <p className={styles.limitation}>{data.playback.limitation}</p>
+            <p className={styles.limitation}>
+              {monetizedPlayback.mode === "GOOGLE_DAI_SSB"
+                ? "Playing the continuous linear HLS stream with server-side ad insertion."
+                : data.playback.limitation}
+            </p>
             {refreshError ? <p className={styles.error}>{refreshError}</p> : null}
           </div>
         </section>

@@ -7,8 +7,10 @@ import {
 } from "./creator-tv-linear.provider.js";
 import { buildXmlTv } from "./creator-tv-linear.service.js";
 import {
+  buildLinearMasterManifest,
   buildProgramFfmpegArgs,
   injectAdMarkersIntoManifest,
+  injectAdMarkersWithContentFallback,
 } from "./owned-linear-streaming.provider.js";
 
 const plan: LinearChannelPlan = {
@@ -31,13 +33,16 @@ const plan: LinearChannelPlan = {
   adMarkers: [
     {
       id: "break-1",
+      opportunityId: "break-1",
       occurrenceKey: "auto:1",
       offsetMs: 600000,
+      durationMs: 30000,
       source: "PROGRAMMATIC",
       signaling: "SCTE35_INTENT",
     },
   ],
   epg: { format: "XMLTV", xml: "" },
+  adSignaling: { enabled: true, format: "HLS_CUE_OUT_IN", scte35Binary: false },
   fallback: { strategy: "PROGRESSIVE_MP4", enabled: true },
 };
 
@@ -72,6 +77,7 @@ describe("Creator TV linear foundation", () => {
   it("builds live HLS output with wall-clock and discontinuity semantics", () => {
     const args = buildProgramFfmpegArgs({
       ffmpegInputPath: "/tmp/source.mp4",
+      sourceHasAudio: true,
       seekMs: 1_500,
       durationMs: 10_000,
       segmentDurationSeconds: 4,
@@ -82,10 +88,38 @@ describe("Creator TV linear foundation", () => {
     expect(flags).toContain("program_date_time");
     expect(flags).toContain("discont_start");
     expect(flags).toContain("omit_endlist");
+    expect(flags).not.toContain("independent_segments");
     expect(args).toContain("epoch_us");
+    expect(args[args.indexOf("-vf") + 1]).toContain("scale=1280:720");
+    expect(args[args.indexOf("-vf") + 1]).toContain("fps=30");
+    expect(args[args.indexOf("-maxrate") + 1]).toBe("5000k");
   });
 
-  it("maps SCTE35 intent to HLS DATERANGE without fabricating a binary cue", () => {
+  it("adds silent AAC when a scheduled MP4 has no source audio", () => {
+    const args = buildProgramFfmpegArgs({
+      ffmpegInputPath: "/tmp/silent.mp4",
+      sourceHasAudio: false,
+      seekMs: 0,
+      durationMs: 10_000,
+      segmentDurationSeconds: 4,
+      outputDirectory: "/tmp/linear",
+    });
+    expect(args).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    expect(args[args.indexOf("-map") + 1]).toBe("0:v:0");
+    const audioMapIndex = args.lastIndexOf("-map");
+    expect(args[audioMapIndex + 1]).toBe("1:a:0");
+  });
+
+  it("publishes a conservative HLS v3 DAI master with required codec and resolution attributes", () => {
+    const master = buildLinearMasterManifest();
+    expect(master).toContain("#EXT-X-VERSION:3");
+    expect(master).toContain('CODECS="avc1.640029,mp4a.40.2"');
+    expect(master).toContain("RESOLUTION=1280x720");
+    expect(master).toContain("AVERAGE-BANDWIDTH=4700000");
+    expect(master).not.toContain("#EXT-X-INDEPENDENT-SEGMENTS");
+  });
+
+  it("translates intent to Google-supported HLS cue-out/cue-in without inventing SCTE-35", () => {
     const markedPlan: LinearChannelPlan = {
       ...plan,
       programs: [
@@ -98,8 +132,10 @@ describe("Creator TV linear foundation", () => {
       adMarkers: [
         {
           id: "break-1",
+          opportunityId: "ayin-break-1",
           occurrenceKey: "auto:1",
           offsetMs: 2_000,
+          durationMs: 4_000,
           source: "PROGRAMMATIC",
           signaling: "SCTE35_INTENT",
         },
@@ -109,16 +145,58 @@ describe("Creator TV linear foundation", () => {
       "#EXTM3U",
       "#EXT-X-VERSION:6",
       "#EXT-X-PROGRAM-DATE-TIME:2026-08-30T18:00:00.000Z",
+      "#EXTINF:2.000,",
+      "segment-1.ts",
+      "#EXT-X-PROGRAM-DATE-TIME:2026-08-30T18:00:02.000Z",
+      "#EXTINF:2.000,",
+      "segment-2.ts",
+      "#EXT-X-PROGRAM-DATE-TIME:2026-08-30T18:00:04.000Z",
+      "#EXTINF:2.000,",
+      "segment-3.ts",
+      "#EXT-X-PROGRAM-DATE-TIME:2026-08-30T18:00:06.000Z",
+      "#EXTINF:2.000,",
+      "segment-4.ts",
+      "",
+    ].join("\n");
+
+    const rendered = injectAdMarkersIntoManifest(manifest, markedPlan);
+    expect(rendered).toContain("#EXT-X-CUE-OUT:DURATION=4,BREAKID=ayin-break-1");
+    expect(rendered).toContain("#EXT-X-CUE-IN");
+    expect(rendered.indexOf("#EXT-X-CUE-OUT")).toBeLessThan(rendered.indexOf("segment-2.ts"));
+    expect(rendered.indexOf("#EXT-X-CUE-IN")).toBeLessThan(rendered.indexOf("segment-4.ts"));
+    expect(rendered).not.toContain("SCTE35-OUT");
+    expect(rendered).not.toContain("SCTE35-IN");
+    expect(rendered).not.toContain("EXT-OATCLS-SCTE35");
+  });
+
+  it("serves raw content if ad-marker rendering itself fails", () => {
+    const manifest = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:3",
+      "#EXT-X-PROGRAM-DATE-TIME:2026-08-30T18:10:00.000Z",
       "#EXTINF:4.000,",
       "segment-1.ts",
       "",
     ].join("\n");
+    const malformedPlan = {
+      ...plan,
+      adMarkers: undefined,
+    } as unknown as LinearChannelPlan;
+    expect(injectAdMarkersWithContentFallback(manifest, malformedPlan)).toBe(manifest);
+  });
 
-    const rendered = injectAdMarkersIntoManifest(manifest, markedPlan, 4_000);
-    expect(rendered).toContain('#EXT-X-DATERANGE:ID="break-1"');
-    expect(rendered).toContain('CLASS="com.ayin.ad-break"');
-    expect(rendered).toContain('START-DATE="2026-08-30T18:00:02.000Z"');
-    expect(rendered).toContain('X-AYIN-SCTE35-INTENT="YES"');
-    expect(rendered).not.toContain("SCTE35-OUT");
+  it("does not signal opportunities when Task 76 signaling is disabled", () => {
+    const disabledPlan: LinearChannelPlan = {
+      ...plan,
+      adSignaling: { enabled: false, format: "NONE", scte35Binary: false },
+    };
+    const manifest = [
+      "#EXTM3U",
+      "#EXT-X-PROGRAM-DATE-TIME:2026-08-30T18:10:00.000Z",
+      "#EXTINF:4.000,",
+      "segment-1.ts",
+      "",
+    ].join("\n");
+    expect(injectAdMarkersIntoManifest(manifest, disabledPlan)).toBe(manifest);
   });
 });

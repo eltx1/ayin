@@ -44,6 +44,9 @@ export interface LiveAyinPlayerProps {
   dvrWindowSeconds?: number | null | undefined;
   adMode?: AyinPlayerAdModeState | undefined;
   onAdContainerReady?: ((element: HTMLDivElement | null) => void) | undefined;
+  onFatal?: ((reason: string) => void) | undefined;
+  analyticsEnabled?: boolean | undefined;
+  maxReconnectAttempts?: number | undefined;
   className?: string | undefined;
   footer?: ReactNode;
 }
@@ -84,6 +87,9 @@ export function LiveAyinPlayer({
   dvrWindowSeconds = null,
   adMode = { active: false },
   onAdContainerReady,
+  onFatal,
+  analyticsEnabled = true,
+  maxReconnectAttempts = 6,
   className,
   footer,
 }: LiveAyinPlayerProps) {
@@ -138,6 +144,7 @@ export function LiveAyinPlayer({
         metadata?: Record<string, string | number | boolean | null>;
       } = {},
     ) => {
+      if (!analyticsEnabled) return;
       trackAnalyticsEvent(eventName, {
         channelId,
         ...(input.durationDeltaMs === undefined
@@ -148,7 +155,7 @@ export function LiveAyinPlayer({
         metadata: { liveStreamId: streamId, ...(input.metadata ?? {}) },
       });
     },
-    [channelId, streamId],
+    [analyticsEnabled, channelId, streamId],
   );
 
   const flushDuration = useCallback(
@@ -308,6 +315,7 @@ export function LiveAyinPlayer({
       setConnectionState("FATAL");
       setMessage("Live playback could not reconnect. Try again.");
       emit("LIVE_FATAL_ERROR", { metadata: { reason } });
+      onFatal?.(reason);
     };
 
     const scheduleReconnect = (reason: AyinHlsFailureReason | "OFFLINE", immediate = false) => {
@@ -319,7 +327,8 @@ export function LiveAyinPlayer({
       }
 
       const attemptIndex = reconnectAttemptRef.current;
-      const policyDelay = liveReconnectDelayMs(attemptIndex);
+      const policyDelay =
+        attemptIndex >= maxReconnectAttempts ? null : liveReconnectDelayMs(attemptIndex);
       if (policyDelay === null) {
         reportFatal(reason);
         return;
@@ -592,6 +601,8 @@ export function LiveAyinPlayer({
     emit,
     flushDuration,
     manualRetryGeneration,
+    maxReconnectAttempts,
+    onFatal,
     playbackUrl,
     status,
     updateEdge,

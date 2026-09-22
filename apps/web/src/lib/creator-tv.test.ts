@@ -2,18 +2,124 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { selectCreatorTvMonetizedPlayback, type CreatorTvLinearCapability } from "./creator-tv";
+
 const playerSource = readFileSync(
   new URL("../components/creator-tv/creator-tv-player.tsx", import.meta.url),
   "utf8",
 );
+const livePlayerSource = readFileSync(
+  new URL("../components/player/live-ayin-player.tsx", import.meta.url),
+  "utf8",
+);
 const contractSource = readFileSync(new URL("./creator-tv.ts", import.meta.url), "utf8");
 
-describe("Creator TV V1 playback contract", () => {
-  it("keeps exact mid-program synchronization explicitly unsupported in progressive MP4 V1", () => {
+describe("Creator TV playback contract", () => {
+  it("preserves progressive MP4 with client-side IMA as the safe fallback", () => {
     expect(contractSource).toContain("exactMidProgramSynchronization: false");
     expect(contractSource).toContain('strategy: "BEST_EFFORT_PROGRESSIVE_MP4"');
-    expect(playerSource).toContain("<AyinPlayer");
-    expect(playerSource).toContain("initialPositionMs={current.playbackOffsetMs}");
+    expect(playerSource).toContain("<AdEnabledAyinPlayer");
+    expect(playerSource).toContain("initialPositionMs={progressiveOffsetMs}");
     expect(playerSource).toContain("progressEnabled={false}");
   });
+
+  it("uses Google DAI only when the server reports a ready monetized stream", () => {
+    const capability = linearCapability();
+    expect(selectCreatorTvMonetizedPlayback(capability, false)).toEqual({
+      mode: "GOOGLE_DAI_SSB",
+      playbackUrl: "https://pubads.g.doubleclick.net/ssai/event/real-asset/master.m3u8",
+      assetKey: "real-asset",
+      providerResourceId: "resource-1",
+      networkCode: "1234",
+    });
+    expect(selectCreatorTvMonetizedPlayback(capability, true)).toEqual({
+      mode: "CLIENT_IMA_MP4",
+    });
+    expect(
+      selectCreatorTvMonetizedPlayback(
+        {
+          ...capability,
+          monetization: {
+            ...capability.monetization,
+            dai: { ...capability.monetization.dai, available: false, playbackUrl: null },
+          },
+        },
+        false,
+      ),
+    ).toEqual({ mode: "CLIENT_IMA_MP4" });
+  });
+
+  it("passes non-personalized consent to DAI and keeps limited-ads traffic on IMA", () => {
+    const capability = linearCapability();
+    const nonPersonalized = selectCreatorTvMonetizedPlayback(capability, false, "NON_PERSONALIZED");
+    expect(nonPersonalized.mode).toBe("GOOGLE_DAI_SSB");
+    if (nonPersonalized.mode === "GOOGLE_DAI_SSB") {
+      expect(new URL(nonPersonalized.playbackUrl).searchParams.get("npa")).toBe("1");
+    }
+    expect(selectCreatorTvMonetizedPlayback(capability, false, "LIMITED_ADS")).toEqual({
+      mode: "CLIENT_IMA_MP4",
+    });
+  });
+
+  it("keeps DAI TV playback on the live player and falls back on fatal failure", () => {
+    expect(playerSource).toContain("<LiveAyinPlayer");
+    expect(playerSource).toContain("onFatal={handleDaiFatal}");
+    expect(playerSource).toContain("analyticsEnabled={false}");
+    expect(playerSource).toContain("maxReconnectAttempts={2}");
+    expect(playerSource).toContain('"TV_SSAI_FALLBACK"');
+    expect(playerSource).toContain("Date.parse(current.endsAt)");
+    expect(playerSource).toContain("void refreshSchedule()");
+    expect(playerSource).toContain("window.setInterval(() => void poll(), 15_000)");
+    expect(playerSource).toContain('"CAPABILITY_" + reason');
+    expect(livePlayerSource).toContain("<TvFocusScope");
+    expect(livePlayerSource).toContain("onFatal?.(reason)");
+    expect(livePlayerSource).toContain("if (!analyticsEnabled) return");
+  });
 });
+
+function linearCapability(): CreatorTvLinearCapability {
+  return {
+    provider: {
+      providerKey: "owned-ffmpeg",
+      configured: true,
+      status: "READY",
+      hlsUrl: "https://api.ayin.stream/public/linear/resource-1/index.m3u8",
+      hlsMasterUrl: "https://api.ayin.stream/public/linear/resource-1/master.m3u8",
+      providerResourceId: "resource-1",
+    },
+    hls: {
+      available: true,
+      url: "https://api.ayin.stream/public/linear/resource-1/index.m3u8",
+      masterUrl: "https://api.ayin.stream/public/linear/resource-1/master.m3u8",
+    },
+    monetization: {
+      signaling: {
+        enabled: true,
+        format: "HLS_CUE_OUT_IN",
+        scte35Binary: false,
+        emergencyKillSwitch: false,
+        taskKillSwitch: false,
+        reason: null,
+      },
+      dai: {
+        provider: "GOOGLE_AD_MANAGER_DAI",
+        integration: "SSB",
+        configured: true,
+        available: true,
+        assetKey: "real-asset",
+        playbackUrl: "https://pubads.g.doubleclick.net/ssai/event/real-asset/master.m3u8",
+        contentSourceUrl: "https://api.ayin.stream/public/linear/resource-1/master.m3u8",
+        attribution: {
+          tvChannelId: "tv-1",
+          channelId: "channel-1",
+          channelHandle: "channel",
+          networkCode: "1234",
+        },
+        reason: null,
+      },
+      clientSideImaFallback: true,
+      opportunities: [],
+    },
+    fallback: { strategy: "PROGRESSIVE_MP4", enabled: true },
+  };
+}

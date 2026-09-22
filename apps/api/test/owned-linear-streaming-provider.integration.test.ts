@@ -16,6 +16,7 @@ import { OwnedLinearStreamingProvider } from "../src/creator/owned-linear-stream
 describe("owned Creator TV linear provider end to end", () => {
   it("packages a real continuous HLS test channel, reconciles schedule, measures sync and stops", async () => {
     const ffmpegPath = process.env.FFMPEG_PATH?.trim() || "ffmpeg";
+    const ffprobePath = process.env.FFPROBE_PATH?.trim() || "ffprobe";
     const root = await mkdtemp(join(tmpdir(), "ayin-task75-"));
     const firstSource = join(root, "first.mp4");
     const secondSource = join(root, "second.mp4");
@@ -73,6 +74,7 @@ describe("owned Creator TV linear provider end to end", () => {
           LINEAR_SEGMENT_DURATION_SECONDS: "1",
           LINEAR_MAX_RECOVERY_ATTEMPTS: "1",
           FFMPEG_PATH: ffmpegPath,
+          FFPROBE_PATH: ffprobePath,
         },
         async (objectKey, destinationPath) => {
           const source =
@@ -110,11 +112,23 @@ describe("owned Creator TV linear provider end to end", () => {
         8_000,
       );
       expect(ready.hlsUrl).toContain("/public/linear/" + ready.providerResourceId + "/index.m3u8");
+      expect(ready.hlsMasterUrl).toContain(
+        "/public/linear/" + ready.providerResourceId + "/master.m3u8",
+      );
+      const masterResponse = await fetch(ready.hlsMasterUrl!);
+      expect(masterResponse.ok).toBe(true);
+      const masterManifest = await masterResponse.text();
+      expect(masterManifest).toContain("#EXT-X-STREAM-INF:");
+      expect(masterManifest).toContain('CODECS="avc1.640029,mp4a.40.2"');
+      expect(masterManifest).toContain("RESOLUTION=1280x720");
+      expect(masterManifest).toContain("index.m3u8");
 
       const initialManifestResponse = await fetch(ready.hlsUrl!);
       expect(initialManifestResponse.ok).toBe(true);
       const initialManifest = await initialManifestResponse.text();
       expect(initialManifest).toContain("#EXTM3U");
+      expect(initialManifest).toContain("#EXT-X-VERSION:3");
+      expect(initialManifest).not.toContain("#EXT-X-INDEPENDENT-SEGMENTS");
       expect(initialManifest).toContain("#EXT-X-PROGRAM-DATE-TIME:");
       const firstSegment = segmentName(initialManifest);
       expect(firstSegment).toMatch(/^segment-\d+\.ts$/);
@@ -136,11 +150,20 @@ describe("owned Creator TV linear provider end to end", () => {
         ready.hlsUrl!,
         (manifest) =>
           count(manifest, "#EXT-X-DISCONTINUITY") >= 2 &&
-          manifest.includes('CLASS="com.ayin.ad-break"') &&
-          manifest.includes('X-AYIN-SCTE35-INTENT="YES"'),
+          manifest.includes("#EXT-X-CUE-OUT:") &&
+          manifest.includes("BREAKID=task76-opportunity-1") &&
+          manifest.includes("#EXT-X-CUE-IN"),
         6_000,
       );
-      expect(transitionedManifest).toContain('X-AYIN-SOURCE="PROGRAMMATIC"');
+      expect(count(transitionedManifest, "BREAKID=task76-opportunity-1")).toBe(1);
+      const cue = cueWindow(transitionedManifest, "task76-opportunity-1");
+      const plannedCueStartMs = firstEndsAtMs + 500;
+      expect(cue.startsAtMs).toBeGreaterThanOrEqual(plannedCueStartMs);
+      expect(cue.startsAtMs - plannedCueStartMs).toBeLessThan(1_500);
+      expect(cue.endsAtMs).toBeGreaterThanOrEqual(cue.startsAtMs + 1_000);
+      expect(cue.endsAtMs - cue.startsAtMs).toBeLessThan(2_500);
+      expect(transitionedManifest).not.toContain("SCTE35-OUT");
+      expect(transitionedManifest).not.toContain("SCTE35-IN");
 
       const reconciledPlan: LinearChannelPlan = {
         ...plan,
@@ -162,7 +185,17 @@ describe("owned Creator TV linear provider end to end", () => {
       const reconciled = await provider.reconcile(reconciledPlan);
       expect(reconciled.providerResourceId).toBe(ready.providerResourceId);
       expect(reconciled.lastPlanGeneratedAt).toBe(reconciledPlan.generatedAt);
-      expect(reconciled.hlsUrl).toBe(ready.hlsUrl);
+
+      const reconciledReady = await waitForState(
+        () => provider!.getState(plan.tvChannelId),
+        (state) =>
+          state.status === "READY" &&
+          state.providerResourceId === ready.providerResourceId &&
+          Boolean(state.hlsUrl),
+        6_000,
+      );
+      expect(reconciledReady.hlsUrl).toBe(ready.hlsUrl);
+      expect(reconciledReady.hlsMasterUrl).toBe(ready.hlsMasterUrl);
 
       const providerEnvironment = {
         LINEAR_COMPUTE_ENABLED: "1",
@@ -171,6 +204,7 @@ describe("owned Creator TV linear provider end to end", () => {
         LINEAR_SEGMENT_DURATION_SECONDS: "1",
         LINEAR_MAX_RECOVERY_ATTEMPTS: "1",
         FFMPEG_PATH: ffmpegPath,
+        FFPROBE_PATH: ffprobePath,
       };
       const materializer = async (objectKey: string, destinationPath: string) => {
         const source =
@@ -246,9 +280,11 @@ function task75Plan(input: {
     ],
     adMarkers: [
       {
-        id: "task75-ad-1",
+        id: "task76-opportunity-1",
+        opportunityId: "task76-opportunity-1",
         occurrenceKey: "task75:second",
         offsetMs: 500,
+        durationMs: 1_000,
         source: "PROGRAMMATIC",
         signaling: "SCTE35_INTENT",
       },
@@ -257,6 +293,7 @@ function task75Plan(input: {
       format: "XMLTV",
       xml: '<?xml version="1.0"?><tv><channel id="tv-task75-e2e"/></tv>',
     },
+    adSignaling: { enabled: true, format: "HLS_CUE_OUT_IN", scte35Binary: false },
     fallback: { strategy: "PROGRESSIVE_MP4", enabled: true },
   };
 }
@@ -363,6 +400,31 @@ function segmentName(manifest: string): string {
 
 function count(value: string, needle: string): number {
   return value.split(needle).length - 1;
+}
+
+function cueWindow(manifest: string, breakId: string) {
+  const lines = manifest.split("\n").map((line) => line.trim());
+  const cueOutIndex = lines.findIndex(
+    (line) => line.startsWith("#EXT-X-CUE-OUT:") && line.includes("BREAKID=" + breakId),
+  );
+  if (cueOutIndex < 0) throw new Error("Cue-out was not found for " + breakId);
+  const startsAtMs = nextProgramDateMs(lines, cueOutIndex + 1);
+  const cueInIndex = lines.findIndex(
+    (line, index) => index > cueOutIndex && line === "#EXT-X-CUE-IN",
+  );
+  if (cueInIndex < 0) throw new Error("Cue-in was not found for " + breakId);
+  const endsAtMs = nextProgramDateMs(lines, cueInIndex + 1);
+  return { startsAtMs, endsAtMs };
+}
+
+function nextProgramDateMs(lines: string[], fromIndex: number): number {
+  for (let index = fromIndex; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    if (!line.startsWith("#EXT-X-PROGRAM-DATE-TIME:")) continue;
+    const value = Date.parse(line.slice("#EXT-X-PROGRAM-DATE-TIME:".length));
+    if (Number.isFinite(value)) return value;
+  }
+  throw new Error("No program-date-time followed the ad cue.");
 }
 
 async function listen(server: Server): Promise<void> {

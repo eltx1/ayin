@@ -1,4 +1,5 @@
 import { apiBaseUrl, readApiError } from "@/lib/api";
+import type { AdvertisingConsentMode } from "@/lib/advertising-consent";
 import type { ChannelAppearance } from "@/lib/channel";
 
 export interface CreatorTvVideo {
@@ -50,8 +51,10 @@ export interface PublicCreatorTvResponse {
     guide: CreatorTvProgram[];
     adBreaks: Array<{
       id: string;
+      opportunityId: string;
       occurrenceKey: string;
       offsetMs: number;
+      durationMs: number;
       source: "HOUSE" | "DIRECT" | "PROGRAMMATIC";
     }>;
   };
@@ -129,4 +132,113 @@ export async function updateCreatorTvVideoPreference(
       updatedAt: string;
     };
   };
+}
+
+export interface CreatorTvLinearCapability {
+  provider: {
+    providerKey: string;
+    configured: boolean;
+    status: "UNCONFIGURED" | "PROVISIONING" | "READY" | "STOPPED" | "ERROR";
+    hlsUrl: string | null;
+    hlsMasterUrl?: string | null;
+    providerResourceId: string | null;
+  };
+  hls: {
+    available: boolean;
+    url: string | null;
+    masterUrl: string | null;
+  };
+  monetization: {
+    signaling: {
+      enabled: boolean;
+      format: "NONE" | "HLS_CUE_OUT_IN";
+      scte35Binary: false;
+      emergencyKillSwitch: boolean;
+      taskKillSwitch: boolean;
+      reason: string | null;
+    };
+    dai: {
+      provider: "GOOGLE_AD_MANAGER_DAI";
+      integration: "SSB";
+      configured: boolean;
+      available: boolean;
+      assetKey: string | null;
+      playbackUrl: string | null;
+      contentSourceUrl: string | null;
+      attribution: {
+        tvChannelId: string;
+        channelId: string;
+        channelHandle: string;
+        networkCode: string | null;
+      };
+      reason: string | null;
+    };
+    clientSideImaFallback: true;
+    opportunities: Array<{
+      opportunityId: string;
+      occurrenceKey: string;
+      videoId: string | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      durationMs: number;
+      source: "HOUSE" | "DIRECT" | "PROGRAMMATIC";
+    }>;
+  };
+  fallback: {
+    strategy: "PROGRESSIVE_MP4";
+    enabled: true;
+  };
+}
+
+export async function fetchPublicCreatorTvLinear(
+  handle: string,
+): Promise<CreatorTvLinearCapability | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/tv/linear`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) return null;
+    return (await response.json()) as CreatorTvLinearCapability;
+  } catch {
+    return null;
+  }
+}
+
+export function selectCreatorTvMonetizedPlayback(
+  capability: CreatorTvLinearCapability | null,
+  ssaiFailed: boolean,
+  consentMode: AdvertisingConsentMode = "PERSONALIZED",
+):
+  | {
+      mode: "GOOGLE_DAI_SSB";
+      playbackUrl: string;
+      assetKey: string;
+      providerResourceId: string;
+      networkCode: string;
+    }
+  | { mode: "CLIENT_IMA_MP4" } {
+  const dai = capability?.monetization.dai;
+  const providerResourceId = capability?.provider.providerResourceId;
+  if (
+    !ssaiFailed &&
+    consentMode !== "LIMITED_ADS" &&
+    capability?.monetization.signaling.enabled &&
+    dai?.available &&
+    dai.playbackUrl &&
+    dai.assetKey &&
+    dai.attribution.networkCode &&
+    providerResourceId
+  ) {
+    const playbackUrl = new URL(dai.playbackUrl);
+    if (consentMode === "NON_PERSONALIZED") playbackUrl.searchParams.set("npa", "1");
+    return {
+      mode: "GOOGLE_DAI_SSB",
+      playbackUrl: playbackUrl.toString(),
+      assetKey: dai.assetKey,
+      providerResourceId,
+      networkCode: dai.attribution.networkCode!,
+    };
+  }
+  return { mode: "CLIENT_IMA_MP4" };
 }
