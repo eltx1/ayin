@@ -275,7 +275,7 @@ export class OwnedLinearStreamingProvider
         () => null,
       );
       if (!raw || !isPlayableManifest(raw)) return null;
-      const rendered = injectAdMarkersIntoManifest(raw, resource.plan);
+      const rendered = injectAdMarkersWithContentFallback(raw, resource.plan);
       const body = Buffer.from(rendered, "utf8");
       return {
         body,
@@ -992,6 +992,17 @@ interface LinearManifestSegment {
   insertionIndex: number;
   startMs: number;
   durationMs: number;
+}
+
+export function injectAdMarkersWithContentFallback(
+  manifest: string,
+  plan: LinearChannelPlan,
+): string {
+  try {
+    return injectAdMarkersIntoManifest(manifest, plan);
+  } catch {
+    return manifest;
+  }
 }
 
 export function injectAdMarkersIntoManifest(manifest: string, plan: LinearChannelPlan): string {
