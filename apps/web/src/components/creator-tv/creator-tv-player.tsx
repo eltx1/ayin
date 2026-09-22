@@ -53,7 +53,7 @@ export function CreatorTvPlayer({
     [linear, ssaiFailed],
   );
   const progressiveOffsetMs =
-    ssaiFallback?.occurrenceKey === currentOccurrenceKey
+    ssaiFallback && ssaiFallback.occurrenceKey === currentOccurrenceKey
       ? ssaiFallback.offsetMs
       : (current?.playbackOffsetMs ?? 0);
 
