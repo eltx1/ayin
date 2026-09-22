@@ -1,5 +1,6 @@
 import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 
+import { LinearSsaiService } from "../ads/linear-ssai.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { CreatorTvError, CreatorTvService, type CreatorTvEditActor } from "./creator-tv.service.js";
 import {
@@ -21,6 +22,7 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CreatorTvService) private readonly creatorTv: CreatorTvService,
     @Inject(CREATOR_TV_LINEAR_PROVIDER) private readonly provider: LinearStreamingProvider,
+    @Inject(LinearSsaiService) private readonly ssai: LinearSsaiService,
   ) {}
 
   async publicCapability(handle: string, now = new Date()) {
@@ -31,9 +33,11 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
       hls: {
         available: state.configured && state.status === "READY" && Boolean(state.hlsUrl),
         url: state.hlsUrl,
+        masterUrl: state.hlsMasterUrl ?? null,
       },
       epg: plan.epg,
       adMarkers: plan.adMarkers,
+      monetization: await this.ssai.publicCapability(plan, state),
       fallback: plan.fallback,
     };
   }
@@ -115,6 +119,7 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
       ...marker,
       signaling: "SCTE35_INTENT" as const,
     }));
+    const signaling = await this.ssai.signalingState();
     return {
       tvChannelId: tv.tv.id,
       channelId: tv.channel.id,
@@ -126,6 +131,11 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
       epg: {
         format: "XMLTV",
         xml: buildXmlTv(tv.tv.id, tv.tv.name, programs),
+      },
+      adSignaling: {
+        enabled: signaling.enabled,
+        format: signaling.format,
+        scte35Binary: false,
       },
       fallback: { strategy: "PROGRESSIVE_MP4", enabled: true },
     };
