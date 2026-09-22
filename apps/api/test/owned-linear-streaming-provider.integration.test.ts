@@ -183,7 +183,17 @@ describe("owned Creator TV linear provider end to end", () => {
       const reconciled = await provider.reconcile(reconciledPlan);
       expect(reconciled.providerResourceId).toBe(ready.providerResourceId);
       expect(reconciled.lastPlanGeneratedAt).toBe(reconciledPlan.generatedAt);
-      expect(reconciled.hlsUrl).toBe(ready.hlsUrl);
+
+      const reconciledReady = await waitForState(
+        () => provider!.getState(plan.tvChannelId),
+        (state) =>
+          state.status === "READY" &&
+          state.providerResourceId === ready.providerResourceId &&
+          Boolean(state.hlsUrl),
+        6_000,
+      );
+      expect(reconciledReady.hlsUrl).toBe(ready.hlsUrl);
+      expect(reconciledReady.hlsMasterUrl).toBe(ready.hlsMasterUrl);
 
       const providerEnvironment = {
         LINEAR_COMPUTE_ENABLED: "1",
