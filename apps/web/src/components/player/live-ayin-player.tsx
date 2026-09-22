@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
+import { notifyNativePlaybackState, toggleShellAwareFullscreen } from "@/lib/native-shell-bridge";
 import {
   type AyinAdaptivePlaybackSession,
   type AyinHlsFailureReason,
@@ -217,8 +218,7 @@ export function LiveAyinPlayer({
   const toggleFullscreen = useCallback(async () => {
     const root = rootRef.current;
     if (!root) return;
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await root.requestFullscreen();
+    await toggleShellAwareFullscreen(root);
   }, []);
 
   const selectCaption = useCallback(
@@ -453,6 +453,7 @@ export function LiveAyinPlayer({
 
     const onPlaying = () => {
       if (cancelled) return;
+      notifyNativePlaybackState("playing");
       clearStartupWatchdog();
       setPlaying(true);
       setAutoplayBlocked(false);
@@ -490,6 +491,7 @@ export function LiveAyinPlayer({
     };
 
     const onPause = () => {
+      notifyNativePlaybackState("paused");
       clearStableTimer();
       clearStallWatchdog();
       bufferStartedAtRef.current = null;
@@ -518,6 +520,7 @@ export function LiveAyinPlayer({
     };
 
     const onEnded = () => {
+      notifyNativePlaybackState("ended");
       clearStableTimer();
       clearStallWatchdog();
       setPlaying(false);
@@ -610,6 +613,7 @@ export function LiveAyinPlayer({
 
   useEffect(
     () => () => {
+      notifyNativePlaybackState("paused");
       flushDuration(false);
       sessionRef.current?.destroy();
       sessionRef.current = null;

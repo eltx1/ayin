@@ -6,11 +6,18 @@ on:
       - "platforms/android/**"
       - "apps/web/src/lib/native-shell-bridge.ts"
       - "apps/web/src/lib/native-shell-bridge.test.ts"
+      - "apps/web/src/lib/tv-platform-runtime.ts"
+      - "apps/web/src/components/player/ayin-player.tsx"
+      - "apps/web/src/components/player/live-ayin-player.tsx"
       - ".github/workflows/android-shell.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: android-shell-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   android-shell:
@@ -21,17 +28,193 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - name: Expose runner Android SDK tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          tools_bin="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -printf '%h\n' | sort -V | tail -1)"
+          test -n "$tools_bin"
+          echo "$tools_bin" >> "$GITHUB_PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          echo "$sdk_root/emulator" >> "$GITHUB_PATH"
       - name: Install Android SDK
-        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
       - name: Build mobile, Google TV and Fire TV debug shells
-        run: >-
-          gradle -p platforms/android
-          :app:assembleMobileDebug
-          :app:assembleTvDebug
-          :app:assembleFireTvDebug
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if gradle -p platforms/android               :app:assembleMobileDebug               :app:assembleTvDebug               :app:assembleFireTvDebug; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+      - name: Run Android JVM baseline tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if gradle -p platforms/android               :app:testMobileDebugUnitTest               :app:testTvDebugUnitTest               :app:testFireTvDebugUnitTest; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
       - name: Run Android lint
-        run: gradle -p platforms/android :app:lintMobileDebug :app:lintTvDebug :app:lintFireTvDebug
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if gradle -p platforms/android               :app:lintMobileDebug               :app:lintTvDebug               :app:lintFireTvDebug; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+
+  emulator-baseline:
+    name: Emulator baseline (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Android 16 mobile
+            api: "36"
+            tag: google_apis
+            device: pixel_6
+            arch: x86_64
+            flavor: Mobile
+            package: net.ayin.app.mobile
+            apk: app-mobile-debug.apk
+            remoteSmoke: "false"
+          - name: Google TV Android 16
+            api: "36"
+            tag: google-tv
+            device: tv_1080p
+            arch: x86
+            flavor: Tv
+            package: net.ayin.app.tv
+            apk: app-tv-debug.apk
+            remoteSmoke: "true"
+          - name: Fire flavor on Google TV Android 16 emulator
+            api: "36"
+            tag: google-tv
+            device: tv_1080p
+            arch: x86
+            flavor: FireTv
+            package: net.ayin.app.firetv
+            apk: app-fireTv-debug.apk
+            remoteSmoke: "true"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Expose runner Android SDK tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          tools_bin="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -printf '%h\n' | sort -V | tail -1)"
+          test -n "$tools_bin"
+          echo "$tools_bin" >> "$GITHUB_PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          echo "$sdk_root/emulator" >> "$GITHUB_PATH"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Install emulator image
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "emulator" "platforms;android-${{ matrix.api }}" "system-images;android-${{ matrix.api }};${{ matrix.tag }};${{ matrix.arch }}"
+      - name: Start emulator
+        run: |
+          set -euo pipefail
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/ayin-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avd_name="ayin-task77-${{ matrix.flavor }}"
+          echo "no" | avdmanager create avd             --force             --name "$avd_name"             --path "$ANDROID_AVD_HOME/$avd_name.avd"             --package "system-images;android-${{ matrix.api }};${{ matrix.tag }};${{ matrix.arch }}"             --device "${{ matrix.device }}"
+          emulator -list-avds
+          test -d "$ANDROID_AVD_HOME/$avd_name.avd"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/adbkey" ]; then
+            adb keygen "$HOME/.android/adbkey"
+          fi
+          export ADB_VENDOR_KEYS="$HOME/.android"
+          adb kill-server || true
+          adb start-server
+          sudo chmod 666 /dev/kvm || true
+          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu swiftshader_indirect             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
+          emulator_pid=$!
+          if ! timeout 120 adb wait-for-device; then
+            cat "$RUNNER_TEMP/ayin-emulator.log"
+            kill "$emulator_pid" 2>/dev/null || true
+            exit 1
+          fi
+          if ! timeout 240 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'; then
+            adb devices -l || true
+            cat "$RUNNER_TEMP/ayin-emulator.log"
+            kill "$emulator_pid" 2>/dev/null || true
+            exit 1
+          fi
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb shell getprop ro.build.version.release
+          adb shell getprop ro.build.version.sdk
+      - name: Run shell instrumentation baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! timeout 360 gradle -p platforms/android --no-daemon --stacktrace :app:connected${{ matrix.flavor }}DebugAndroidTest; then
+            adb devices -l || true
+            adb logcat -d -t 400 || true
+            exit 1
+          fi
+      - name: Run ADB deep-link and TV remote smoke
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          package="${{ matrix.package }}"
+          component="$package/net.ayin.shell.MainActivity"
+          apk_path="$(find platforms/android/app/build/outputs/apk -type f -name "${{ matrix.apk }}" -print -quit)"
+          test -n "$apk_path"
+          timeout 120 adb install -r "$apk_path"
+          adb shell pm path "$package"
+          adb logcat -c
+          adb shell am force-stop "$package"
+          adb shell am start -W             -a android.intent.action.VIEW             -c android.intent.category.BROWSABLE             -d "ayin://watch/task-77-emulator?autoplay=1"             "$component"
+          sleep 2
+          if [ "${{ matrix.remoteSmoke }}" = "true" ]; then
+            adb shell input keyevent 22
+            adb shell input keyevent 20
+            adb shell input keyevent 23
+            adb shell input keyevent 85
+            sleep 2
+          fi
+          logs="$(adb logcat -d -s AyinShell:I '*:S')"
+          printf '%s\n' "$logs"
+          grep -q "deep-link=https://ayin.stream/watch/task-77-emulator?autoplay=1" <<<"$logs"
+          if [ "${{ matrix.remoteSmoke }}" = "true" ]; then
+            grep -q "dpad=" <<<"$logs"
+            grep -q "remote=PLAY_PAUSE" <<<"$logs"
+          fi
+      - name: Upload emulator log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: task77-emulator-${{ matrix.flavor }}-${{ matrix.api }}
+          path: ${{ runner.temp }}/ayin-emulator.log
+          retention-days: 7

@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
+import { notifyNativePlaybackState, toggleShellAwareFullscreen } from "@/lib/native-shell-bridge";
 import {
   type AyinAdaptivePlaybackSession,
   type AyinHlsFailureReason,
@@ -402,6 +403,13 @@ export function AyinPlayer({
     ],
   );
 
+  useEffect(
+    () => () => {
+      notifyNativePlaybackState("paused");
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!progressEnabled) return;
     const flush = () => void persist(true, true);
@@ -469,8 +477,7 @@ export function AyinPlayer({
   const toggleFullscreen = useCallback(async () => {
     const root = rootRef.current;
     if (!root) return;
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await root.requestFullscreen();
+    await toggleShellAwareFullscreen(root);
   }, []);
 
   const togglePip = useCallback(async () => {
@@ -580,6 +587,7 @@ export function AyinPlayer({
               applyResume();
             }}
             onEnded={() => {
+              notifyNativePlaybackState("ended");
               void persist(true);
               analytics.emit({ type: "complete", videoId });
               if (onNext) {
@@ -604,6 +612,7 @@ export function AyinPlayer({
               applyResume();
             }}
             onPause={() => {
+              notifyNativePlaybackState("paused");
               setPlaying(false);
               if (suppressPauseTelemetryRef.current) {
                 suppressPauseTelemetryRef.current = false;
@@ -613,6 +622,7 @@ export function AyinPlayer({
               void persist(true);
             }}
             onPlay={() => {
+              notifyNativePlaybackState("playing");
               bufferingRef.current = false;
               setPlaying(true);
               if (suppressNextPlayTelemetryRef.current) {

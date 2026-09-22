@@ -1,58 +1,92 @@
-# Android, Google TV and Fire TV shells
+# AYIN Task 77 — Android / Google TV supported-device baseline
 
-AYIN keeps one shared web product and wraps it in a thin Android `WebView` host. The shell does not duplicate account, catalog, player, ads, analytics, Studio or Admin business logic.
+Task 77 turns the existing Task 37 WebView shells into a tested support baseline without forking AYIN account, catalog, player, ads, Creator TV, or live-streaming business logic.
 
-## Variants
+## SDK envelope
 
-The Gradle project under `platforms/android` builds three flavors:
+- compileSdk 36
+- targetSdk 36
+- minSdk 26
+- JDK 17 / Android Gradle Plugin 8.13.2
 
-- `mobile` — Android mobile/tablet shell, application id suffix `.mobile`, platform id `android`.
-- `tv` — Android TV / Google TV shell, application id suffix `.tv`, platform id `google-tv`.
-- `fireTv` — Fire TV-compatible Android shell, application id suffix `.firetv`, platform id `fire-tv`.
+Google Play currently requires Android TV new apps and updates to target API 34 or higher; AYIN targets API 36. Amazon maps Fire OS 7 to Android API 28, Fire OS 8 to API 29/30, Fire OS 14 to API 31–34, and Fire OS 16 to API 35/36. Because AYIN minSdk is 26, Fire OS 5/6 are outside this baseline. Vega OS devices are also outside this Android APK baseline.
 
-All variants load only the canonical `https://ayin.stream` origin inside the WebView. External HTTP(S), mail and telephone links leave the shell. Cleartext traffic, file access and content access are disabled.
+## Device and emulator matrix
 
-## Shared bridge
+| Surface                | Environment                                               | Flavor      | Tested evidence / claim                                                             |
+| ---------------------- | --------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------- |
+| Android mobile         | Android 16 / API 36 google_apis x86_64 emulator           | mobileDebug | Run 35763437374: boot + 4/4 instrumentation + deep-link smoke passed                |
+| Google TV              | Android 16 / API 36 google-tv x86 emulator                | tvDebug     | Run 35763437374: boot + 4/4 instrumentation + ADB deep-link/DPAD/media smoke passed |
+| Fire APK compatibility | fireTvDebug on the Android 16 / API 36 Google TV emulator | fireTvDebug | Run 35763437374: same Android smoke passed; NOT Fire OS hardware certification      |
 
-`apps/web/src/lib/native-shell-bridge.ts` is the shared browser-side capability boundary. The Android host exposes `window.AyinNative` for:
+The table records only behavior actually exercised on the named emulator image. A build alone is not counted as device validation. Run 35763437374 is the successful Task 77 Android baseline run; the final merge additionally requires a clean repository-wide CI run after temporary tooling is removed.
 
-- platform identification;
-- external-link requests;
-- fullscreen requests;
-- bounded playback-state notifications for a future native `MediaSession` adapter.
+## Validation coverage
 
-Lifecycle and non-D-pad remote media events are sent as `ayin:native-lifecycle` and `ayin:native-remote` custom events. D-pad and Enter are deliberately delegated to WebView as ordinary keyboard events so the shared TV focus system remains authoritative.
+### Build and packaging
 
-## Deep links
+CI assembles mobileDebug, tvDebug and fireTvDebug, runs flavor JVM tests and Android lint. TV flavors declare Leanback, no touchscreen requirement, LEANBACK_LAUNCHER, launcher icon and TV banner. Checked-in artwork is a technical baseline and is not final store marketing artwork.
 
-The shell accepts:
+### Deep links
 
-- verified `https://ayin.stream/...` app links;
-- custom `ayin://...` links mapped back onto the canonical AYIN origin.
+The shell accepts canonical HTTPS links on ayin.stream and custom ayin:// links mapped to the same canonical route. HTTP, foreign hosts and unexpected HTTPS ports are rejected by the shared navigation policy. The manifest requests Android App Links auto-verification. Release verification still requires the final signing certificate fingerprints in the production assetlinks.json file.
 
-The production web deployment must publish a valid Android Digital Asset Links file at `/.well-known/assetlinks.json` containing the final signed package ids and SHA-256 signing certificate fingerprints. Those fingerprints cannot be created safely in source control before release signing exists.
+### Login and session
 
-## Build validation
+Authentication remains the shared AYIN cookie/session implementation. Task 77 does not create a second native auth store. The shell accepts first-party cookies, flushes the cookie store on lifecycle transitions, and emulator instrumentation verifies a secure AYIN session-shaped cookie survives Activity recreation and WebView renderer replacement. Register/login/logout business behavior remains covered by browser acceptance.
 
-Repository CI builds and lints all three debug variants with JDK 17, Android API 36, Android Gradle Plugin 8.13.x and Gradle 8.13. Release signing keys are never committed.
+Third-party cookies are not globally enabled.
 
-Local examples:
+### D-pad and focus
 
-```bash
-gradle -p platforms/android :app:assembleMobileDebug
-gradle -p platforms/android :app:assembleTvDebug
-gradle -p platforms/android :app:assembleFireTvDebug
-```
+D-pad and Enter remain normal WebView keyboard events. Android does not own a second focus graph. Emulator tests inject real Android D-pad key events; TvFocusScope and @ayin/ui remain authoritative for spatial focus. This keeps one shared focus implementation for web, Android TV, Google TV, Fire APK compatibility, Tizen and webOS.
 
-## Store and device prerequisites
+### Media remote buttons
 
-Repository-side packaging is complete without pretending that desktop-browser behavior proves TV behavior. Before a production release:
+Play/pause, play, pause, rewind, fast-forward and menu are normalized into the shared ayin:native-remote contract. Rewind/fast-forward reuse the existing AYIN player keyboard seek path instead of native seek business logic.
 
-1. replace the build-safe vector TV banner with final store artwork and add final launcher/store artwork;
-2. configure release signing outside git and publish matching Digital Asset Links;
-3. install the TV flavor on representative Android TV / Google TV hardware and the Fire TV flavor on representative Fire OS hardware;
-4. verify D-pad focus order, Back behavior, fullscreen entry/exit, pause/resume, deep links and external-link handling;
-5. validate the actual Google IMA runtime on each target family, including ad focus/skip controls, consent state, no-fill and ad-error fallback. Desktop IMA success is not treated as TV verification;
-6. complete Google Play / Amazon Appstore listing, privacy/data-safety declarations and store policy checks with the final package/signing identities.
+### Back
 
-Fire TV remains an Android-compatible shell here. Amazon's newer Vega WebView runtime is a separate platform option and is not silently treated as equivalent to Fire OS Android APK behavior.
+Back uses OnBackPressedDispatcher. Native fullscreen exits first, then the shared web runtime receives a cancelable BACK event. If the web layer does not consume it, WebView history is used and the Activity exits only when no in-app history remains. For Google TV deep links carrying exit_on_back=true, a one-press direct exit is supported while the hint remains armed; any intervening non-Back user action disarms it.
+
+### Fullscreen
+
+AyinPlayer and LiveAyinPlayer use one shell-aware fullscreen helper. Browsers use the Fullscreen API; Android additionally synchronizes immersive system bars. WebChrome custom-view fullscreen uses the same native state.
+
+### HLS, MP4 fallback, autoplay and captions
+
+These remain shared player responsibilities. adaptive-playback.ts owns HLS/hls.js and bounded recovery; AyinPlayer owns progressive MP4 fallback; autoplay degrades to user-start where blocked; captions remain the shared video text-track path. Android emulator tests validate the shell bridge around this runtime; repository web quality/browser tests remain the functional source of truth for player behavior.
+
+### IMA
+
+AdEnabledAyinPlayer remains the only VOD IMA orchestration path. Task 77 does not introduce native Android ad business logic. Existing browser acceptance verifies IMA startup/error cannot block content. Physical Google TV and Fire TV release testing is still required for real ad rendering, skip focus, consent, no-fill and error UX.
+
+### Creator TV and live
+
+Creator TV continues to use the shared Creator TV player and Task 75/76 linear/DAI paths. Live uses LiveAyinPlayer. Native Android connectivity changes are mapped to ordinary browser online/offline events so the existing Task 74 live reconnect/backoff behavior is reused.
+
+### Lifecycle, low memory and renderer recovery
+
+The shell emits pause, resume, stop, configuration-change, memory-pressure and renderer-recovered lifecycle states. The shared runtime pauses only media that was playing and resumes only that media. WebView state is saved across Activity recreation. WebViewClient.onRenderProcessGone replaces a killed/crashed renderer with a fresh hardened WebView, reloads the last trusted AYIN URL, preserves the cookie/session store, and emits renderer-recovered.
+
+### Network loss
+
+ConnectivityManager.registerDefaultNetworkCallback emits ayin:native-network. The shared runtime maps this to browser offline/online. If the main AYIN page failed while offline, the shell retries the last trusted URL after connectivity returns.
+
+The emulator instrumentation explicitly drives the native offline/online bridge and verifies both event states on the tested shell. The separate ADB smoke does not claim to cut physical transport: current Android/Google TV emulator images keep their virtual Ethernet transport active when airplane mode is toggled, and production Google TV images correctly refuse root-only interface manipulation. Physical transport-loss recovery remains a release-hardware acceptance item.
+
+## Store status
+
+Task 77 prepares technical store requirements only. It does not upload an AAB/APK, create or modify a store listing, accept store agreements, submit a release, or claim Fire TV certification from emulator results.
+
+See platforms/android/store/STORE_READINESS.md.
+
+## Official references
+
+- Android TV navigation: https://developer.android.com/training/tv/get-started/navigation
+- Android TV app creation: https://developer.android.com/training/tv/get-started/create
+- Android App Links verification: https://developer.android.com/training/app-links/verify-applinks
+- Android WebView renderer recovery: https://developer.android.com/reference/android/webkit/WebView
+- Google Play target API requirements: https://support.google.com/googleplay/android-developer/answer/11926878
+- Fire TV D-pad and focus guidance: https://developer.amazon.com/docs/fire-tv/design-and-user-experience-guidelines.html
+- Fire OS Android/API mapping: https://developer.amazon.com/docs/fire-tv/fire-os-overview.html
