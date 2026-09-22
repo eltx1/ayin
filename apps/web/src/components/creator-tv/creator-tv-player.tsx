@@ -59,8 +59,7 @@ export function CreatorTvPlayer({
 
   useEffect(() => {
     if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
-    const identity =
-      monetizedPlayback.providerResourceId + ":" + monetizedPlayback.assetKey;
+    const identity = monetizedPlayback.providerResourceId + ":" + monetizedPlayback.assetKey;
     if (selectedSsaiRef.current === identity) return;
     selectedSsaiRef.current = identity;
     trackAnalyticsEvent("TV_SSAI_SELECTED", {
@@ -177,10 +176,9 @@ export function CreatorTvPlayer({
     setRefreshError(null);
     try {
       const [response, nextLinear] = await Promise.all([
-        fetch(
-          `${apiBaseUrl}/public/channels/${encodeURIComponent(data.canonicalHandle)}/tv`,
-          { cache: "no-store" },
-        ),
+        fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(data.canonicalHandle)}/tv`, {
+          cache: "no-store",
+        }),
         fetchPublicCreatorTvLinear(data.canonicalHandle),
       ]);
       if (!response.ok) throw new Error("Creator TV could not refresh its guide.");
