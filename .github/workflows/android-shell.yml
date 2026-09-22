@@ -47,19 +47,38 @@ jobs:
         with:
           gradle-version: "8.13"
       - name: Build mobile, Google TV and Fire TV debug shells
-        run: >-
-          gradle -p platforms/android
-          :app:assembleMobileDebug
-          :app:assembleTvDebug
-          :app:assembleFireTvDebug
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if gradle -p platforms/android               :app:assembleMobileDebug               :app:assembleTvDebug               :app:assembleFireTvDebug; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
       - name: Run Android JVM baseline tests
-        run: >-
-          gradle -p platforms/android
-          :app:testMobileDebugUnitTest
-          :app:testTvDebugUnitTest
-          :app:testFireTvDebugUnitTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if gradle -p platforms/android               :app:testMobileDebugUnitTest               :app:testTvDebugUnitTest               :app:testFireTvDebugUnitTest; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
       - name: Run Android lint
-        run: gradle -p platforms/android :app:lintMobileDebug :app:lintTvDebug :app:lintFireTvDebug
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if gradle -p platforms/android               :app:lintMobileDebug               :app:lintTvDebug               :app:lintFireTvDebug; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
 
   emulator-baseline:
     name: Emulator baseline (${{ matrix.name }})
