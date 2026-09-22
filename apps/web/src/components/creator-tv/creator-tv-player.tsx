@@ -64,7 +64,7 @@ export function CreatorTvPlayer({
     selectedSsaiRef.current = identity;
     trackAnalyticsEvent("TV_SSAI_SELECTED", {
       channelId: data.channel.id,
-      videoId: currentVideoId ?? undefined,
+      ...(currentVideoId ? { videoId: currentVideoId } : {}),
       metadata: {
         provider: "GOOGLE_AD_MANAGER_DAI",
         integration: "SSB",
@@ -135,10 +135,11 @@ export function CreatorTvPlayer({
       if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
       trackAnalyticsEvent("TV_SSAI_FALLBACK", {
         channelId: data.channel.id,
-        videoId: currentVideoId ?? undefined,
+        ...(currentVideoId ? { videoId: currentVideoId } : {}),
         metadata: {
           reason,
           assetKey: monetizedPlayback.assetKey,
+          networkCode: monetizedPlayback.networkCode,
           providerResourceId: monetizedPlayback.providerResourceId,
           fallback: "CLIENT_IMA_MP4",
         },
