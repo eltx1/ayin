@@ -1,11 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { loadLinearSsaiConfig } from "./linear-ssai.config.js";
-import {
-  googleDaiSsbUrl,
-  LinearSsaiService,
-  opportunityIdentity,
-} from "./linear-ssai.service.js";
+import { googleDaiSsbUrl, LinearSsaiService, opportunityIdentity } from "./linear-ssai.service.js";
 
 const originalGamEnvironment = {
   GAM_NETWORK_CODE: process.env.GAM_NETWORK_CODE,
@@ -35,9 +31,7 @@ describe("Task 76 linear SSAI/DAI", () => {
   });
 
   it("requires explicit break duration and real DAI asset key before enablement", () => {
-    expect(() => loadLinearSsaiConfig({ LINEAR_SSAI_ENABLED: "1" })).toThrow(
-      /BREAK_DURATION/,
-    );
+    expect(() => loadLinearSsaiConfig({ LINEAR_SSAI_ENABLED: "1" })).toThrow(/BREAK_DURATION/);
     expect(() =>
       loadLinearSsaiConfig({
         LINEAR_SSAI_ENABLED: "1",
@@ -152,43 +146,40 @@ describe("Task 76 linear SSAI/DAI", () => {
 });
 
 function makeService(environment: NodeJS.ProcessEnv) {
-  return new LinearSsaiService(
-    loadLinearSsaiConfig(environment),
-    {
-      client: {
-        platformSetting: {
-          findUnique: async (query: {
-            where: { namespace_key: { namespace: string; key: string } };
-          }) => {
-            if (query.where.namespace_key.key === "emergencyKillSwitch") {
-              return { value: false };
-            }
-            if (query.where.namespace_key.key === "videoAdsV1") {
-              return {
-                value: {
-                  masterEnabled: true,
-                  provider: "GOOGLE_IMA",
-                  preRollEnabled: true,
-                  midRollEnabled: true,
-                  postRollEnabled: false,
-                  midRollEverySec: 60,
-                  frequencyCapPerSession: 3,
-                  externalVastTagUrl: "https://ads.example/vast",
-                  houseCreativeUrl: null,
-                  houseClickUrl: null,
-                },
-              };
-            }
-            return null;
-          },
-        },
-        videoAdOverride: {
-          findUnique: async () => null,
-          findMany: async () => [],
+  return new LinearSsaiService(loadLinearSsaiConfig(environment), {
+    client: {
+      platformSetting: {
+        findUnique: async (query: {
+          where: { namespace_key: { namespace: string; key: string } };
+        }) => {
+          if (query.where.namespace_key.key === "emergencyKillSwitch") {
+            return { value: false };
+          }
+          if (query.where.namespace_key.key === "videoAdsV1") {
+            return {
+              value: {
+                masterEnabled: true,
+                provider: "GOOGLE_IMA",
+                preRollEnabled: true,
+                midRollEnabled: true,
+                postRollEnabled: false,
+                midRollEverySec: 60,
+                frequencyCapPerSession: 3,
+                externalVastTagUrl: "https://ads.example/vast",
+                houseCreativeUrl: null,
+                houseClickUrl: null,
+              },
+            };
+          }
+          return null;
         },
       },
-    } as never,
-  );
+      videoAdOverride: {
+        findUnique: async () => null,
+        findMany: async () => [],
+      },
+    },
+  } as never);
 }
 
 function enableExampleGamProduction() {
