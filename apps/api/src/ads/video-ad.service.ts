@@ -228,6 +228,68 @@ export class VideoAdService {
     };
   }
 
+  async resolveLinearBreakPolicy(channelId: string, videoId: string) {
+    const [settings, channelOverride, videoOverride] = await Promise.all([
+      this.getSettings(),
+      this.database.client.videoAdOverride.findUnique({ where: { channelId } }),
+      this.database.client.videoAdOverride.findUnique({ where: { videoId } }),
+    ]);
+    if (!settings.masterEnabled) {
+      return {
+        enabled: false as const,
+        midRollEnabled: false,
+        midRollEverySec: settings.midRollEverySec,
+        source: null,
+      };
+    }
+
+    const resolved = resolveVideoAdPolicy(settings, channelOverride, videoOverride);
+    if (!resolved.enabled || !resolved.midRollEnabled) {
+      return {
+        enabled: false as const,
+        midRollEnabled: false,
+        midRollEverySec: resolved.midRollEverySec,
+        source: null,
+      };
+    }
+
+    const explicitTagUrl = resolved.vastTagUrl ?? settings.externalVastTagUrl;
+    if (explicitTagUrl) {
+      return {
+        enabled: true as const,
+        midRollEnabled: true,
+        midRollEverySec: resolved.midRollEverySec,
+        source: "DIRECT" as const,
+      };
+    }
+
+    const gamProduction = await this.gam.productionRequestState();
+    if (gamProduction.enabled) {
+      return {
+        enabled: true as const,
+        midRollEnabled: true,
+        midRollEverySec: resolved.midRollEverySec,
+        source: "PROGRAMMATIC" as const,
+      };
+    }
+
+    if (settings.houseCreativeUrl) {
+      return {
+        enabled: true as const,
+        midRollEnabled: true,
+        midRollEverySec: resolved.midRollEverySec,
+        source: "HOUSE" as const,
+      };
+    }
+
+    return {
+      enabled: false as const,
+      midRollEnabled: false,
+      midRollEverySec: resolved.midRollEverySec,
+      source: null,
+    };
+  }
+
   async upsertOverride(
     actorAccountId: string,
     target: { channelId?: string; videoId?: string },
