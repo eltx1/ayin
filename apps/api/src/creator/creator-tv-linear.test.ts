@@ -7,6 +7,7 @@ import {
 } from "./creator-tv-linear.provider.js";
 import { buildXmlTv } from "./creator-tv-linear.service.js";
 import {
+  buildLinearMasterManifest,
   buildProgramFfmpegArgs,
   injectAdMarkersIntoManifest,
 } from "./owned-linear-streaming.provider.js";
@@ -86,6 +87,15 @@ describe("Creator TV linear foundation", () => {
     expect(flags).toContain("discont_start");
     expect(flags).toContain("omit_endlist");
     expect(args).toContain("epoch_us");
+  });
+
+  it("publishes a conservative HLS v3 DAI master with required codec and resolution attributes", () => {
+    const master = buildLinearMasterManifest();
+    expect(master).toContain("#EXT-X-VERSION:3");
+    expect(master).toContain('CODECS="avc1.640029,mp4a.40.2"');
+    expect(master).toContain("RESOLUTION=1280x720");
+    expect(master).toContain("AVERAGE-BANDWIDTH=4700000");
+    expect(master).not.toContain("#EXT-X-INDEPENDENT-SEGMENTS");
   });
 
   it("translates intent to Google-supported HLS cue-out/cue-in without inventing SCTE-35", () => {
