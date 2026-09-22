@@ -53,7 +53,6 @@ import { VideoAdService } from "./video-ad.service.js";
     GamProductionService,
     AuthorizedSellerFileService,
     LinearSsaiService,
-    LinearSsaiService,
     { provide: GAM_PRODUCTION_CONFIG, useFactory: createGamProductionConfig },
     { provide: LINEAR_SSAI_CONFIG, useFactory: loadLinearSsaiConfig },
   ],
@@ -63,6 +62,7 @@ import { VideoAdService } from "./video-ad.service.js";
     AdvertisingControlService,
     GamProductionService,
     AuthorizedSellerFileService,
+    LinearSsaiService,
   ],
 })
 export class AdsModule {}
