@@ -49,6 +49,22 @@ describe("Creator TV playback contract", () => {
     ).toEqual({ mode: "CLIENT_IMA_MP4" });
   });
 
+  it("passes non-personalized consent to DAI and keeps limited-ads traffic on IMA", () => {
+    const capability = linearCapability();
+    const nonPersonalized = selectCreatorTvMonetizedPlayback(
+      capability,
+      false,
+      "NON_PERSONALIZED",
+    );
+    expect(nonPersonalized.mode).toBe("GOOGLE_DAI_SSB");
+    if (nonPersonalized.mode === "GOOGLE_DAI_SSB") {
+      expect(new URL(nonPersonalized.playbackUrl).searchParams.get("npa")).toBe("1");
+    }
+    expect(selectCreatorTvMonetizedPlayback(capability, false, "LIMITED_ADS")).toEqual({
+      mode: "CLIENT_IMA_MP4",
+    });
+  });
+
   it("keeps DAI TV playback on the live player and falls back on fatal failure", () => {
     expect(playerSource).toContain("<LiveAyinPlayer");
     expect(playerSource).toContain("onFatal={handleDaiFatal}");
