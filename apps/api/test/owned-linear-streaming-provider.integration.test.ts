@@ -117,6 +117,8 @@ describe("owned Creator TV linear provider end to end", () => {
       expect(masterResponse.ok).toBe(true);
       const masterManifest = await masterResponse.text();
       expect(masterManifest).toContain("#EXT-X-STREAM-INF:");
+      expect(masterManifest).toContain('CODECS="avc1.640029,mp4a.40.2"');
+      expect(masterManifest).toContain("RESOLUTION=1280x720");
       expect(masterManifest).toContain("index.m3u8");
 
       const initialManifestResponse = await fetch(ready.hlsUrl!);
@@ -150,6 +152,12 @@ describe("owned Creator TV linear provider end to end", () => {
         6_000,
       );
       expect(count(transitionedManifest, "BREAKID=task76-opportunity-1")).toBe(1);
+      const cue = cueWindow(transitionedManifest, "task76-opportunity-1");
+      const plannedCueStartMs = firstEndsAtMs + 500;
+      expect(cue.startsAtMs).toBeGreaterThanOrEqual(plannedCueStartMs);
+      expect(cue.startsAtMs - plannedCueStartMs).toBeLessThan(1_500);
+      expect(cue.endsAtMs).toBeGreaterThanOrEqual(cue.startsAtMs + 1_000);
+      expect(cue.endsAtMs - cue.startsAtMs).toBeLessThan(2_500);
       expect(transitionedManifest).not.toContain("SCTE35-OUT");
       expect(transitionedManifest).not.toContain("SCTE35-IN");
 
@@ -377,6 +385,31 @@ function segmentName(manifest: string): string {
 
 function count(value: string, needle: string): number {
   return value.split(needle).length - 1;
+}
+
+function cueWindow(manifest: string, breakId: string) {
+  const lines = manifest.split("\n").map((line) => line.trim());
+  const cueOutIndex = lines.findIndex(
+    (line) => line.startsWith("#EXT-X-CUE-OUT:") && line.includes("BREAKID=" + breakId),
+  );
+  if (cueOutIndex < 0) throw new Error("Cue-out was not found for " + breakId);
+  const startsAtMs = nextProgramDateMs(lines, cueOutIndex + 1);
+  const cueInIndex = lines.findIndex(
+    (line, index) => index > cueOutIndex && line === "#EXT-X-CUE-IN",
+  );
+  if (cueInIndex < 0) throw new Error("Cue-in was not found for " + breakId);
+  const endsAtMs = nextProgramDateMs(lines, cueInIndex + 1);
+  return { startsAtMs, endsAtMs };
+}
+
+function nextProgramDateMs(lines: string[], fromIndex: number): number {
+  for (let index = fromIndex; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    if (!line.startsWith("#EXT-X-PROGRAM-DATE-TIME:")) continue;
+    const value = Date.parse(line.slice("#EXT-X-PROGRAM-DATE-TIME:".length));
+    if (Number.isFinite(value)) return value;
+  }
+  throw new Error("No program-date-time followed the ad cue.");
 }
 
 async function listen(server: Server): Promise<void> {
