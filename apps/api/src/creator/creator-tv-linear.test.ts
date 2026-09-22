@@ -77,6 +77,7 @@ describe("Creator TV linear foundation", () => {
   it("builds live HLS output with wall-clock and discontinuity semantics", () => {
     const args = buildProgramFfmpegArgs({
       ffmpegInputPath: "/tmp/source.mp4",
+      sourceHasAudio: true,
       seekMs: 1_500,
       durationMs: 10_000,
       segmentDurationSeconds: 4,
@@ -92,6 +93,21 @@ describe("Creator TV linear foundation", () => {
     expect(args[args.indexOf("-vf") + 1]).toContain("scale=1280:720");
     expect(args[args.indexOf("-vf") + 1]).toContain("fps=30");
     expect(args[args.indexOf("-maxrate") + 1]).toBe("5000k");
+  });
+
+  it("adds silent AAC when a scheduled MP4 has no source audio", () => {
+    const args = buildProgramFfmpegArgs({
+      ffmpegInputPath: "/tmp/silent.mp4",
+      sourceHasAudio: false,
+      seekMs: 0,
+      durationMs: 10_000,
+      segmentDurationSeconds: 4,
+      outputDirectory: "/tmp/linear",
+    });
+    expect(args).toContain("anullsrc=channel_layout=stereo:sample_rate=48000");
+    expect(args[args.indexOf("-map") + 1]).toBe("0:v:0");
+    const audioMapIndex = args.lastIndexOf("-map");
+    expect(args[audioMapIndex + 1]).toBe("1:a:0");
   });
 
   it("publishes a conservative HLS v3 DAI master with required codec and resolution attributes", () => {
