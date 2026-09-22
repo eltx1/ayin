@@ -24,6 +24,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Expose runner Android SDK tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          tools_bin="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -printf '%h\n' | sort -V | tail -1)"
+          test -n "$tools_bin"
+          echo "$tools_bin" >> "$GITHUB_PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          echo "$sdk_root/emulator" >> "$GITHUB_PATH"
       - name: Install Android SDK
         run: |
           set -euo pipefail
@@ -78,6 +88,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+      - name: Expose runner Android SDK tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          tools_bin="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -printf '%h\n' | sort -V | tail -1)"
+          test -n "$tools_bin"
+          echo "$tools_bin" >> "$GITHUB_PATH"
+          echo "$sdk_root/platform-tools" >> "$GITHUB_PATH"
+          echo "$sdk_root/emulator" >> "$GITHUB_PATH"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.13"
