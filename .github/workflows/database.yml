@@ -88,6 +88,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Task 77 temporary formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write             apps/web/src/lib/tv-platform-runtime.ts             docs/ANDROID_TV_SHELLS.md             platforms/android/store/STORE_READINESS.md
+          git diff --no-color --             apps/web/src/lib/tv-platform-runtime.ts             docs/ANDROID_TV_SHELLS.md             platforms/android/store/STORE_READINESS.md
+
       - name: Audit production dependencies
         run: pnpm audit:prod
 
