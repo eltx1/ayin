@@ -100,6 +100,21 @@ class ShellBaselineInstrumentedTest {
                     .contains("ayin_task77_session=baseline"),
             )
 
+            loadHarness(scenario)
+            evaluateJavascript(
+                scenario,
+                "history.pushState({}, '', '/watch/task77-spa-route'); true",
+            )
+            assertTrue(
+                awaitActivity(
+                    scenario,
+                    predicate = {
+                        it.currentTrustedUrlForTests()
+                            .endsWith("/watch/task77-spa-route")
+                    },
+                ),
+            )
+
             var before = 0
             scenario.onActivity {
                 before = System.identityHashCode(it.webView)
@@ -111,6 +126,9 @@ class ShellBaselineInstrumentedTest {
                     predicate = { System.identityHashCode(it.webView) != before },
                 ),
             )
+            scenario.onActivity {
+                assertTrue(it.lastTrustedUrlForTests().endsWith("/watch/task77-spa-route"))
+            }
             assertTrue(
                 CookieManager.getInstance()
                     .getCookie(BuildConfig.AYIN_ORIGIN)
