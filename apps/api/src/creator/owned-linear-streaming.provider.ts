@@ -1026,13 +1026,12 @@ export function injectAdMarkersIntoManifest(
     const requestedEndMs = cueStart.startMs + marker.durationMs;
     const cueIn = segments.find((segment) => segment.startMs >= requestedEndMs);
     const effectiveEndMs = cueIn?.startMs ?? requestedEndMs;
-    const durationSeconds = Math.max(0.001, (effectiveEndMs - cueStart.startMs) / 1000);
 
     addManifestInsertion(
       insertions,
       cueStart.insertionIndex,
       "#EXT-X-CUE-OUT:DURATION=" +
-        trimSeconds(durationSeconds) +
+        trimSeconds(marker.durationMs / 1000) +
         ",BREAKID=" +
         marker.opportunityId,
     );
