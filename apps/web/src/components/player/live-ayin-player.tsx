@@ -601,6 +601,7 @@ export function LiveAyinPlayer({
     emit,
     flushDuration,
     manualRetryGeneration,
+    maxReconnectAttempts,
     onFatal,
     playbackUrl,
     status,
