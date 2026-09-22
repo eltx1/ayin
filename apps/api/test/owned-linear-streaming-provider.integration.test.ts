@@ -125,6 +125,8 @@ describe("owned Creator TV linear provider end to end", () => {
       expect(initialManifestResponse.ok).toBe(true);
       const initialManifest = await initialManifestResponse.text();
       expect(initialManifest).toContain("#EXTM3U");
+      expect(initialManifest).toContain("#EXT-X-VERSION:3");
+      expect(initialManifest).not.toContain("#EXT-X-INDEPENDENT-SEGMENTS");
       expect(initialManifest).toContain("#EXT-X-PROGRAM-DATE-TIME:");
       const firstSegment = segmentName(initialManifest);
       expect(firstSegment).toMatch(/^segment-\d+\.ts$/);
