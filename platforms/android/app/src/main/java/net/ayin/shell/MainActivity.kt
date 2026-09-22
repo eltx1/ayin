@@ -567,6 +567,11 @@ class MainActivity : AppCompatActivity() {
         replaceWebView(BuildConfig.AYIN_ORIGIN, rendererRecovery = true)
     }
 
+    internal fun emitNetworkForTests(online: Boolean) {
+        check(BuildConfig.DEBUG)
+        emitNetwork(online, force = true)
+    }
+
     internal fun shellFullscreenForTests(): Boolean = shellFullscreen
 
     internal fun lastTrustedUrlForTests(): String = lastTrustedUrl
