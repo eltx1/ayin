@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 
+import { AdsModule } from "../ads/ads.module.js";
+import { LinearSsaiService } from "../ads/linear-ssai.service.js";
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { MediaModule } from "../media/media.module.js";
@@ -12,7 +14,7 @@ import { CreatorChannelController, PublicChannelController } from "./channel.con
 import { ChannelService } from "./channel.service.js";
 import { PublicClipsController } from "./clips.controller.js";
 import { ClipsService } from "./clips.service.js";
-import { CREATOR_TV_AD_BREAK_HOOK, NoopCreatorTvAdBreakHook } from "./creator-tv-ad-break.hook.js";
+import { CREATOR_TV_AD_BREAK_HOOK } from "./creator-tv-ad-break.hook.js";
 import { CreatorTvController, PublicCreatorTvController } from "./creator-tv.controller.js";
 import { PublicCreatorTvLinearOutputController } from "./creator-tv-linear-output.controller.js";
 import {
@@ -38,7 +40,7 @@ import { StudioService } from "./studio.service.js";
 import { VideoMetadataService } from "./video-metadata.service.js";
 
 @Module({
-  imports: [AuthModule, DatabaseModule, MediaModule, PlatformConfigModule, VideoPolicyModule],
+  imports: [AdsModule, AuthModule, DatabaseModule, MediaModule, PlatformConfigModule, VideoPolicyModule],
   controllers: [
     QuickUploadController,
     StudioController,
@@ -63,7 +65,7 @@ import { VideoMetadataService } from "./video-metadata.service.js";
     PlaylistService,
     CreatorTvService,
     CreatorTvLinearService,
-    { provide: CREATOR_TV_AD_BREAK_HOOK, useClass: NoopCreatorTvAdBreakHook },
+    { provide: CREATOR_TV_AD_BREAK_HOOK, useExisting: LinearSsaiService },
     UnconfiguredLinearStreamingProvider,
     {
       provide: OwnedLinearStreamingProvider,
