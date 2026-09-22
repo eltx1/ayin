@@ -1,4 +1,5 @@
 import { apiBaseUrl, readApiError } from "@/lib/api";
+import type { AdvertisingConsentMode } from "@/lib/advertising-consent";
 import type { ChannelAppearance } from "@/lib/channel";
 
 export interface CreatorTvVideo {
@@ -207,6 +208,7 @@ export async function fetchPublicCreatorTvLinear(
 export function selectCreatorTvMonetizedPlayback(
   capability: CreatorTvLinearCapability | null,
   ssaiFailed: boolean,
+  consentMode: AdvertisingConsentMode = "PERSONALIZED",
 ):
   | {
       mode: "GOOGLE_DAI_SSB";
@@ -220,6 +222,7 @@ export function selectCreatorTvMonetizedPlayback(
   const providerResourceId = capability?.provider.providerResourceId;
   if (
     !ssaiFailed &&
+    consentMode !== "LIMITED_ADS" &&
     capability?.monetization.signaling.enabled &&
     dai?.available &&
     dai.playbackUrl &&
@@ -227,9 +230,11 @@ export function selectCreatorTvMonetizedPlayback(
     dai.attribution.networkCode &&
     providerResourceId
   ) {
+    const playbackUrl = new URL(dai.playbackUrl);
+    if (consentMode === "NON_PERSONALIZED") playbackUrl.searchParams.set("npa", "1");
     return {
       mode: "GOOGLE_DAI_SSB",
-      playbackUrl: dai.playbackUrl,
+      playbackUrl: playbackUrl.toString(),
       assetKey: dai.assetKey,
       providerResourceId,
       networkCode: dai.attribution.networkCode!,
