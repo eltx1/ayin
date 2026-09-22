@@ -4,10 +4,10 @@ Task 77 prepares configuration and listing requirements. No store submission is 
 
 ## Packages
 
-| Flavor | Application ID | Intended channel |
-| --- | --- | --- |
-| mobile | net.ayin.app.mobile | Google Play Android mobile/tablet |
-| tv | net.ayin.app.tv | Google Play Android TV / Google TV |
+| Flavor | Application ID      | Intended channel                                  |
+| ------ | ------------------- | ------------------------------------------------- |
+| mobile | net.ayin.app.mobile | Google Play Android mobile/tablet                 |
+| tv     | net.ayin.app.tv     | Google Play Android TV / Google TV                |
 | fireTv | net.ayin.app.firetv | Amazon Appstore Fire TV Android APK compatibility |
 
 All flavors currently use versionCode 1 and versionName 1.0.0. Release versioning must be confirmed before first submission.
