@@ -86,7 +86,11 @@ describe("Creator TV linear foundation", () => {
     expect(flags).toContain("program_date_time");
     expect(flags).toContain("discont_start");
     expect(flags).toContain("omit_endlist");
+    expect(flags).not.toContain("independent_segments");
     expect(args).toContain("epoch_us");
+    expect(args[args.indexOf("-vf") + 1]).toContain("scale=1280:720");
+    expect(args[args.indexOf("-vf") + 1]).toContain("fps=30");
+    expect(args[args.indexOf("-maxrate") + 1]).toBe("5000k");
   });
 
   it("publishes a conservative HLS v3 DAI master with required codec and resolution attributes", () => {
