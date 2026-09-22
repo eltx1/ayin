@@ -53,6 +53,7 @@ describe("Creator TV playback contract", () => {
     expect(playerSource).toContain("<LiveAyinPlayer");
     expect(playerSource).toContain("onFatal={handleDaiFatal}");
     expect(playerSource).toContain("analyticsEnabled={false}");
+    expect(playerSource).toContain("maxReconnectAttempts={2}");
     expect(playerSource).toContain('"TV_SSAI_FALLBACK"');
     expect(playerSource).toContain("Date.parse(current.endsAt)");
     expect(playerSource).toContain("void refreshSchedule()");
