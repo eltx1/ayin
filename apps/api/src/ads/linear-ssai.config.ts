@@ -15,7 +15,11 @@ const environmentSchema = z.object({
   GAM_DAI_ENABLED: z.enum(["0", "1"]).default("0"),
   GAM_DAI_ASSET_KEY: z.preprocess(
     emptyStringToUndefined,
-    z.string().trim().regex(/^[A-Za-z0-9._~-]{1,512}$/u).optional(),
+    z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9._~-]{1,512}$/u)
+      .optional(),
   ),
 });
 
