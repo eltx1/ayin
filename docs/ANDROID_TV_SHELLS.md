@@ -13,13 +13,13 @@ Google Play currently requires Android TV new apps and updates to target API 34 
 
 ## Device and emulator matrix
 
-| Surface                | Environment                                                | Flavor      | Claim                                                                |
-| ---------------------- | ---------------------------------------------------------- | ----------- | -------------------------------------------------------------------- |
-| Android mobile         | Android 16 / API 36 google_apis x86_64 emulator            | mobileDebug | CI candidate until final Task 77 workflow is green                   |
-| Google TV              | Android 16 / API 36 google-tv x86 emulator                 | tvDebug     | CI candidate until final Task 77 workflow is green                   |
-| Fire APK compatibility | fireTvDebug on the Android 16 / API 36 Google TV emulator | fireTvDebug | Android compatibility smoke only; NOT Fire OS hardware certification |
+| Surface                | Environment                                                | Flavor      | Tested evidence / claim                                                                 |
+| ---------------------- | ---------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------- |
+| Android mobile         | Android 16 / API 36 google_apis x86_64 emulator            | mobileDebug | Run 35752934606: boot + 4/4 instrumentation passed; hardware-remote ADB smoke is N/A     |
+| Google TV              | Android 16 / API 36 google-tv x86 emulator                 | tvDebug     | Run 35752934606: boot + 4/4 instrumentation + ADB deep-link/DPAD/media smoke passed     |
+| Fire APK compatibility | fireTvDebug on the Android 16 / API 36 Google TV emulator | fireTvDebug | Run 35752934606: same Android smoke passed; NOT Fire OS hardware certification          |
 
-The final Task 77 merge updates this matrix with the actual successful workflow run and observed emulator API/version values. A build alone is not counted as device validation.
+The table records only behavior actually exercised on the named emulator image. A build alone is not counted as device validation. The final merge still requires the current Android workflow to be green with the mobile smoke scoped to mobile capabilities.
 
 ## Validation coverage
 
