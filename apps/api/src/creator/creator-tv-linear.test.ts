@@ -10,6 +10,7 @@ import {
   buildLinearMasterManifest,
   buildProgramFfmpegArgs,
   injectAdMarkersIntoManifest,
+  injectAdMarkersWithContentFallback,
 } from "./owned-linear-streaming.provider.js";
 
 const plan: LinearChannelPlan = {
@@ -150,6 +151,22 @@ describe("Creator TV linear foundation", () => {
     expect(rendered).not.toContain("SCTE35-OUT");
     expect(rendered).not.toContain("SCTE35-IN");
     expect(rendered).not.toContain("EXT-OATCLS-SCTE35");
+  });
+
+  it("serves raw content if ad-marker rendering itself fails", () => {
+    const manifest = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:3",
+      "#EXT-X-PROGRAM-DATE-TIME:2026-08-30T18:10:00.000Z",
+      "#EXTINF:4.000,",
+      "segment-1.ts",
+      "",
+    ].join("\n");
+    const malformedPlan = {
+      ...plan,
+      adMarkers: undefined,
+    } as unknown as LinearChannelPlan;
+    expect(injectAdMarkersWithContentFallback(manifest, malformedPlan)).toBe(manifest);
   });
 
   it("does not signal opportunities when Task 76 signaling is disabled", () => {
