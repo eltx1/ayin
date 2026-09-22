@@ -216,6 +216,7 @@ export function CreatorTvPlayer({
   ]);
 
   useEffect(() => {
+    if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
     let cancelled = false;
     const poll = async () => {
       const nextLinear = await fetchPublicCreatorTvLinear(data.canonicalHandle);
