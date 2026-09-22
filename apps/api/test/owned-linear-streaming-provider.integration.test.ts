@@ -110,6 +110,14 @@ describe("owned Creator TV linear provider end to end", () => {
         8_000,
       );
       expect(ready.hlsUrl).toContain("/public/linear/" + ready.providerResourceId + "/index.m3u8");
+      expect(ready.hlsMasterUrl).toContain(
+        "/public/linear/" + ready.providerResourceId + "/master.m3u8",
+      );
+      const masterResponse = await fetch(ready.hlsMasterUrl!);
+      expect(masterResponse.ok).toBe(true);
+      const masterManifest = await masterResponse.text();
+      expect(masterManifest).toContain("#EXT-X-STREAM-INF:");
+      expect(masterManifest).toContain("index.m3u8");
 
       const initialManifestResponse = await fetch(ready.hlsUrl!);
       expect(initialManifestResponse.ok).toBe(true);
@@ -136,11 +144,14 @@ describe("owned Creator TV linear provider end to end", () => {
         ready.hlsUrl!,
         (manifest) =>
           count(manifest, "#EXT-X-DISCONTINUITY") >= 2 &&
-          manifest.includes('CLASS="com.ayin.ad-break"') &&
-          manifest.includes('X-AYIN-SCTE35-INTENT="YES"'),
+          manifest.includes("#EXT-X-CUE-OUT:") &&
+          manifest.includes("BREAKID=task76-opportunity-1") &&
+          manifest.includes("#EXT-X-CUE-IN"),
         6_000,
       );
-      expect(transitionedManifest).toContain('X-AYIN-SOURCE="PROGRAMMATIC"');
+      expect(count(transitionedManifest, "BREAKID=task76-opportunity-1")).toBe(1);
+      expect(transitionedManifest).not.toContain("SCTE35-OUT");
+      expect(transitionedManifest).not.toContain("SCTE35-IN");
 
       const reconciledPlan: LinearChannelPlan = {
         ...plan,
@@ -246,9 +257,11 @@ function task75Plan(input: {
     ],
     adMarkers: [
       {
-        id: "task75-ad-1",
+        id: "task76-opportunity-1",
+        opportunityId: "task76-opportunity-1",
         occurrenceKey: "task75:second",
         offsetMs: 500,
+        durationMs: 1_000,
         source: "PROGRAMMATIC",
         signaling: "SCTE35_INTENT",
       },
@@ -257,6 +270,7 @@ function task75Plan(input: {
       format: "XMLTV",
       xml: '<?xml version="1.0"?><tv><channel id="tv-task75-e2e"/></tv>',
     },
+    adSignaling: { enabled: true, format: "HLS_CUE_OUT_IN", scte35Binary: false },
     fallback: { strategy: "PROGRESSIVE_MP4", enabled: true },
   };
 }
