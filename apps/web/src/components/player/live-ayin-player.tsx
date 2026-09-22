@@ -45,6 +45,7 @@ export interface LiveAyinPlayerProps {
   adMode?: AyinPlayerAdModeState | undefined;
   onAdContainerReady?: ((element: HTMLDivElement | null) => void) | undefined;
   onFatal?: ((reason: string) => void) | undefined;
+  analyticsEnabled?: boolean | undefined;
   className?: string | undefined;
   footer?: ReactNode;
 }
@@ -86,6 +87,7 @@ export function LiveAyinPlayer({
   adMode = { active: false },
   onAdContainerReady,
   onFatal,
+  analyticsEnabled = true,
   className,
   footer,
 }: LiveAyinPlayerProps) {
@@ -140,6 +142,7 @@ export function LiveAyinPlayer({
         metadata?: Record<string, string | number | boolean | null>;
       } = {},
     ) => {
+      if (!analyticsEnabled) return;
       trackAnalyticsEvent(eventName, {
         channelId,
         ...(input.durationDeltaMs === undefined
@@ -150,7 +153,7 @@ export function LiveAyinPlayer({
         metadata: { liveStreamId: streamId, ...(input.metadata ?? {}) },
       });
     },
-    [channelId, streamId],
+    [analyticsEnabled, channelId, streamId],
   );
 
   const flushDuration = useCallback(
