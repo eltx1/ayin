@@ -44,6 +44,7 @@ export interface LiveAyinPlayerProps {
   dvrWindowSeconds?: number | null | undefined;
   adMode?: AyinPlayerAdModeState | undefined;
   onAdContainerReady?: ((element: HTMLDivElement | null) => void) | undefined;
+  onFatal?: ((reason: string) => void) | undefined;
   className?: string | undefined;
   footer?: ReactNode;
 }
@@ -84,6 +85,7 @@ export function LiveAyinPlayer({
   dvrWindowSeconds = null,
   adMode = { active: false },
   onAdContainerReady,
+  onFatal,
   className,
   footer,
 }: LiveAyinPlayerProps) {
@@ -308,6 +310,7 @@ export function LiveAyinPlayer({
       setConnectionState("FATAL");
       setMessage("Live playback could not reconnect. Try again.");
       emit("LIVE_FATAL_ERROR", { metadata: { reason } });
+      onFatal?.(reason);
     };
 
     const scheduleReconnect = (reason: AyinHlsFailureReason | "OFFLINE", immediate = false) => {
@@ -592,6 +595,7 @@ export function LiveAyinPlayer({
     emit,
     flushDuration,
     manualRetryGeneration,
+    onFatal,
     playbackUrl,
     status,
     updateEdge,
