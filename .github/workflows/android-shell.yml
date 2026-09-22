@@ -149,9 +149,14 @@ jobs:
           adb shell getprop ro.build.version.release
           adb shell getprop ro.build.version.sdk
       - name: Run shell instrumentation baseline
-        run: >-
-          gradle -p platforms/android
-          :app:connected${{ matrix.flavor }}DebugAndroidTest
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! timeout 360 gradle -p platforms/android --no-daemon --stacktrace :app:connected${{ matrix.flavor }}DebugAndroidTest; then
+            adb devices -l || true
+            adb logcat -d -t 400 || true
+            exit 1
+          fi
       - name: Run ADB lifecycle, DPAD and network smoke
         shell: bash
         run: |
