@@ -34,11 +34,19 @@ export class LinearSsaiService implements CreatorTvAdBreakHook {
 
     const durationMs = this.config.breakDurationSeconds * 1000;
     const breaks: CreatorTvAdBreakMarker[] = [];
+    const videoIds = [...new Set(context.programs.map((program) => program.videoId))];
+    const policies = await Promise.all(
+      videoIds.map(async (videoId) => [
+        videoId,
+        await this.videoAds.resolveLinearBreakPolicy(context.channelId, videoId),
+      ] as const),
+    );
+    const policyByVideo = new Map(policies);
 
     for (const program of context.programs) {
       if (program.creatorPreference?.mode === "DISABLED") continue;
-      const policy = await this.videoAds.resolveLinearBreakPolicy(context.channelId, program.videoId);
-      if (!policy.enabled || !policy.midRollEnabled || !policy.source) continue;
+      const policy = policyByVideo.get(program.videoId);
+      if (!policy?.enabled || !policy.midRollEnabled || !policy.source) continue;
 
       const programDurationMs = program.endsAt.getTime() - program.startsAt.getTime();
       const rawOffsets =
