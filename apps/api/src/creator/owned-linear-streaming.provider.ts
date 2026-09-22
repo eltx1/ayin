@@ -990,7 +990,7 @@ export function injectAdMarkersIntoManifest(
   manifest: string,
   plan: LinearChannelPlan,
 ): string {
-  if (!plan.adSignaling.enabled || plan.adSignaling.format !== "HLS_CUE_OUT_IN") {
+  if (!plan.adSignaling || !plan.adSignaling.enabled || plan.adSignaling.format !== "HLS_CUE_OUT_IN") {
     return manifest;
   }
 
