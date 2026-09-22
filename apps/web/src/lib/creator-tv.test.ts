@@ -92,6 +92,11 @@ function linearCapability(): CreatorTvLinearCapability {
         assetKey: "real-asset",
         playbackUrl: "https://pubads.g.doubleclick.net/ssai/event/real-asset/master.m3u8",
         contentSourceUrl: "https://api.ayin.stream/public/linear/resource-1/master.m3u8",
+        attribution: {
+          tvChannelId: "tv-1",
+          channelId: "channel-1",
+          channelHandle: "channel",
+        },
         reason: null,
       },
       clientSideImaFallback: true,
