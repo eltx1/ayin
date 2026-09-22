@@ -50,8 +50,10 @@ export interface PublicCreatorTvResponse {
     guide: CreatorTvProgram[];
     adBreaks: Array<{
       id: string;
+      opportunityId: string;
       occurrenceKey: string;
       offsetMs: number;
+      durationMs: number;
       source: "HOUSE" | "DIRECT" | "PROGRAMMATIC";
     }>;
   };
@@ -163,6 +165,11 @@ export interface CreatorTvLinearCapability {
       assetKey: string | null;
       playbackUrl: string | null;
       contentSourceUrl: string | null;
+      attribution: {
+        tvChannelId: string;
+        channelId: string;
+        channelHandle: string;
+      };
       reason: string | null;
     };
     clientSideImaFallback: true;
