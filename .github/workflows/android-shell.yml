@@ -71,15 +71,15 @@ jobs:
             arch: x86_64
             flavor: Mobile
             package: net.ayin.app.mobile
-          - name: Google TV Android 15
-            api: "35"
+          - name: Google TV Android 16
+            api: "36"
             tag: google-tv
             device: tv_1080p
             arch: x86
             flavor: Tv
             package: net.ayin.app.tv
-          - name: Fire flavor on Google TV emulator
-            api: "35"
+          - name: Fire flavor on Google TV Android 16 emulator
+            api: "36"
             tag: google-tv
             device: tv_1080p
             arch: x86
