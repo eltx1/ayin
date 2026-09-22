@@ -173,15 +173,9 @@ jobs:
           adb shell input keyevent 20
           adb shell input keyevent 23
           adb shell input keyevent 85
-          network_interface="$(adb shell ip route show default | awk '{print $5; exit}' | tr -d '\r')"
-          test -n "$network_interface"
-          if ! adb shell "ip link set dev $network_interface down" 2>/dev/null; then
-            adb root
-            adb wait-for-device
-            adb shell "ip link set dev $network_interface down"
-          fi
+          adb shell cmd connectivity airplane-mode enable
           sleep 3
-          adb shell "ip link set dev $network_interface up"
+          adb shell cmd connectivity airplane-mode disable
           sleep 5
           logs="$(adb logcat -d -s AyinShell:I '*:S')"
           printf '%s\n' "$logs"
