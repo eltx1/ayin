@@ -18,6 +18,7 @@ import {
 const RESOURCE_STATE_FILE = "resource.json";
 const RAW_MANIFEST_FILE = "media.m3u8";
 const PUBLIC_MANIFEST_FILE = "index.m3u8";
+const PUBLIC_MASTER_MANIFEST_FILE = "master.m3u8";
 const DEFAULT_SEGMENT_DURATION_SECONDS = 4;
 const DEFAULT_MAX_RECOVERY_ATTEMPTS = 3;
 const HLS_LIST_SIZE = 18;
@@ -259,16 +260,22 @@ export class OwnedLinearStreamingProvider
     const resource = this.resourcesById.get(providerResourceId);
     if (!resource || resource.stopped || resource.status !== "READY") return null;
 
+    if (fileName === PUBLIC_MASTER_MANIFEST_FILE) {
+      const body = Buffer.from(buildLinearMasterManifest(), "utf8");
+      return {
+        body,
+        contentType: "application/vnd.apple.mpegurl",
+        contentLength: body.length,
+        cacheControl: "no-store, max-age=0",
+      };
+    }
+
     if (fileName === PUBLIC_MANIFEST_FILE) {
       const raw = await readFile(this.rawManifestPath(resource.resourceId), "utf8").catch(
         () => null,
       );
       if (!raw || !isPlayableManifest(raw)) return null;
-      const rendered = injectAdMarkersIntoManifest(
-        raw,
-        resource.plan,
-        this.segmentDurationSeconds * 1_000,
-      );
+      const rendered = injectAdMarkersIntoManifest(raw, resource.plan);
       const body = Buffer.from(rendered, "utf8");
       return {
         body,
@@ -763,6 +770,8 @@ export class OwnedLinearStreamingProvider
       configured: true,
       status: resource.status,
       hlsUrl: resource.status === "READY" ? resource.hlsUrl : null,
+      hlsMasterUrl:
+        resource.status === "READY" ? this.publicMasterManifestUrl(resource.resourceId) : null,
       providerResourceId: resource.resourceId,
       lastPlanGeneratedAt: resource.plan.generatedAt,
       message:
@@ -791,6 +800,7 @@ export class OwnedLinearStreamingProvider
       configured: false,
       status,
       hlsUrl: null,
+      hlsMasterUrl: null,
       providerResourceId: null,
       lastPlanGeneratedAt: null,
       message:
@@ -802,6 +812,17 @@ export class OwnedLinearStreamingProvider
   private publicManifestUrl(resourceId: string): string {
     if (!this.publicBaseUrl) throw new LinearProviderUnavailableError();
     return this.publicBaseUrl + "/" + encodeURIComponent(resourceId) + "/" + PUBLIC_MANIFEST_FILE;
+  }
+
+  private publicMasterManifestUrl(resourceId: string): string {
+    if (!this.publicBaseUrl) throw new LinearProviderUnavailableError();
+    return (
+      this.publicBaseUrl +
+      "/" +
+      encodeURIComponent(resourceId) +
+      "/" +
+      PUBLIC_MASTER_MANIFEST_FILE
+    );
   }
 
   private resourceDirectory(resourceId: string): string {
@@ -949,56 +970,130 @@ function hlsOutputArgs(input: {
   ];
 }
 
+export function buildLinearMasterManifest(): string {
+  return [
+    "#EXTM3U",
+    "#EXT-X-VERSION:3",
+    "#EXT-X-STREAM-INF:BANDWIDTH=6000000",
+    PUBLIC_MANIFEST_FILE,
+    "",
+  ].join("\n");
+}
+
+interface LinearManifestSegment {
+  insertionIndex: number;
+  startMs: number;
+  durationMs: number;
+}
+
 export function injectAdMarkersIntoManifest(
   manifest: string,
   plan: LinearChannelPlan,
-  segmentDurationMs: number,
 ): string {
-  const programDates = manifest
-    .split("\n")
-    .filter((line) => line.startsWith("#EXT-X-PROGRAM-DATE-TIME:"))
-    .map((line) => Date.parse(line.slice("#EXT-X-PROGRAM-DATE-TIME:".length)))
-    .filter((value) => Number.isFinite(value));
-  if (!programDates.length) return manifest;
+  if (!plan.adSignaling.enabled || plan.adSignaling.format !== "HLS_CUE_OUT_IN") {
+    return manifest;
+  }
 
-  const windowStart = Math.min(...programDates) - segmentDurationMs;
-  const windowEnd = Math.max(...programDates) + segmentDurationMs * 2;
+  const lines = manifest.trimEnd().split("\n");
+  const segments = parseManifestSegments(lines);
+  if (!segments.length) return manifest;
+
+  const firstStartMs = segments[0]!.startMs;
+  const lastSegment = segments[segments.length - 1]!;
+  const lastEndMs = lastSegment.startMs + lastSegment.durationMs;
   const programByOccurrence = new Map(
     plan.programs.map((program) => [program.occurrenceKey, program]),
   );
-  const markerLines = plan.adMarkers.flatMap((marker) => {
-    const program = programByOccurrence.get(marker.occurrenceKey);
-    if (!program) return [];
-    const markerAt = Date.parse(program.startsAt) + marker.offsetMs;
-    if (!Number.isFinite(markerAt) || markerAt < windowStart || markerAt > windowEnd) return [];
-    return [renderAdMarker(marker, markerAt)];
-  });
-  if (!markerLines.length) return manifest;
+  const insertions = new Map<number, string[]>();
+  let previousCueEndMs = -1;
 
-  const lines = manifest.trimEnd().split("\n");
-  const insertionIndex = lines.findIndex(
-    (line) => line.startsWith("#EXT-X-PROGRAM-DATE-TIME:") || line.startsWith("#EXTINF:"),
-  );
-  lines.splice(insertionIndex < 0 ? lines.length : insertionIndex, 0, ...markerLines);
-  return lines.join("\n") + "\n";
+  const opportunities = plan.adMarkers
+    .map((marker) => {
+      const program = programByOccurrence.get(marker.occurrenceKey);
+      if (!program) return null;
+      const plannedStartMs = Date.parse(program.startsAt) + marker.offsetMs;
+      return Number.isFinite(plannedStartMs) ? { marker, plannedStartMs } : null;
+    })
+    .filter((value): value is { marker: LinearAdMarker; plannedStartMs: number } => value !== null)
+    .sort((left, right) => left.plannedStartMs - right.plannedStartMs);
+
+  for (const { marker, plannedStartMs } of opportunities) {
+    if (plannedStartMs < firstStartMs || plannedStartMs >= lastEndMs) continue;
+
+    const cueStart = segments.find((segment) => segment.startMs >= plannedStartMs);
+    if (!cueStart || cueStart.startMs < previousCueEndMs) continue;
+
+    const requestedEndMs = cueStart.startMs + marker.durationMs;
+    const cueIn = segments.find((segment) => segment.startMs >= requestedEndMs);
+    const effectiveEndMs = cueIn?.startMs ?? requestedEndMs;
+    const durationSeconds = Math.max(0.001, (effectiveEndMs - cueStart.startMs) / 1000);
+
+    addManifestInsertion(
+      insertions,
+      cueStart.insertionIndex,
+      "#EXT-X-CUE-OUT:DURATION=" +
+        trimSeconds(durationSeconds) +
+        ",BREAKID=" +
+        marker.opportunityId,
+    );
+    if (cueIn) addManifestInsertion(insertions, cueIn.insertionIndex, "#EXT-X-CUE-IN");
+    previousCueEndMs = effectiveEndMs;
+  }
+
+  if (!insertions.size) return manifest;
+
+  const rendered: string[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const before = insertions.get(index);
+    if (before) rendered.push(...before);
+    rendered.push(lines[index]!);
+  }
+  const after = insertions.get(lines.length);
+  if (after) rendered.push(...after);
+  return rendered.join("\n") + "\n";
 }
 
-function renderAdMarker(marker: LinearAdMarker, markerAt: number): string {
-  return (
-    '#EXT-X-DATERANGE:ID="' +
-    hlsQuoted(marker.id) +
-    '",CLASS="com.ayin.ad-break",START-DATE="' +
-    new Date(markerAt).toISOString() +
-    '",X-AYIN-SCTE35-INTENT="YES",X-AYIN-SOURCE="' +
-    hlsQuoted(marker.source) +
-    '",X-AYIN-OCCURRENCE="' +
-    hlsQuoted(marker.occurrenceKey) +
-    '"'
-  );
+function parseManifestSegments(lines: string[]): LinearManifestSegment[] {
+  const segments: LinearManifestSegment[] = [];
+  let programDateMs: number | null = null;
+  let durationMs: number | null = null;
+  let insertionIndex = 0;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!.trim();
+    if (line.startsWith("#EXT-X-PROGRAM-DATE-TIME:")) {
+      const parsed = Date.parse(line.slice("#EXT-X-PROGRAM-DATE-TIME:".length));
+      programDateMs = Number.isFinite(parsed) ? parsed : null;
+      insertionIndex = index;
+      continue;
+    }
+    if (line.startsWith("#EXTINF:")) {
+      const value = Number(line.slice("#EXTINF:".length).split(",", 1)[0]);
+      durationMs = Number.isFinite(value) && value > 0 ? value * 1000 : null;
+      continue;
+    }
+    if (/^segment-\d+\.ts$/u.test(line) && programDateMs !== null && durationMs !== null) {
+      segments.push({ insertionIndex, startMs: programDateMs, durationMs });
+      programDateMs += durationMs;
+      durationMs = null;
+      insertionIndex = index + 1;
+    }
+  }
+  return segments;
 }
 
-function hlsQuoted(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+function addManifestInsertion(
+  insertions: Map<number, string[]>,
+  index: number,
+  line: string,
+): void {
+  const current = insertions.get(index) ?? [];
+  if (!current.includes(line)) current.push(line);
+  insertions.set(index, current);
+}
+
+function trimSeconds(value: number): string {
+  return value.toFixed(3).replace(/\.0+$/u, "").replace(/(\.\d*?)0+$/u, "$1");
 }
 
 function sourceCacheFileName(objectKey: string): string {
