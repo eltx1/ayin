@@ -51,9 +51,13 @@ describe("Creator TV playback contract", () => {
   it("keeps DAI TV playback on the live player and falls back on fatal failure", () => {
     expect(playerSource).toContain("<LiveAyinPlayer");
     expect(playerSource).toContain("onFatal={handleDaiFatal}");
+    expect(playerSource).toContain("analyticsEnabled={false}");
     expect(playerSource).toContain('"TV_SSAI_FALLBACK"');
+    expect(playerSource).toContain("Date.parse(current.endsAt)");
+    expect(playerSource).toContain("void refreshSchedule()");
     expect(livePlayerSource).toContain("<TvFocusScope");
     expect(livePlayerSource).toContain("onFatal?.(reason)");
+    expect(livePlayerSource).toContain("if (!analyticsEnabled) return");
   });
 });
 
