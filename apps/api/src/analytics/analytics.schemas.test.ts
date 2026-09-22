@@ -73,21 +73,24 @@ describe("analytics contracts", () => {
     "TV_SSAI_FALLBACK",
     "TV_AD_BREAK_OPEN",
     "TV_AD_BREAK_CLOSE",
-  ] as const)("accepts Task 76 opportunity event %s with reconciliation identifiers", (eventName) => {
-    const parsed = analyticsEventSchema.parse({
-      ...event,
-      clientEventId: crypto.randomUUID(),
-      eventName,
-      channelId: "00000000-0000-4000-8000-000000000010",
-      metadata: {
-        opportunityId: "ayin-example",
-        providerResourceId: "linear-resource",
-        assetKey: "real-asset-key",
-      },
-    });
-    expect(parsed.eventName).toBe(eventName);
-    expect(parsed.metadata?.opportunityId).toBe("ayin-example");
-  });
+  ] as const)(
+    "accepts Task 76 opportunity event %s with reconciliation identifiers",
+    (eventName) => {
+      const parsed = analyticsEventSchema.parse({
+        ...event,
+        clientEventId: crypto.randomUUID(),
+        eventName,
+        channelId: "00000000-0000-4000-8000-000000000010",
+        metadata: {
+          opportunityId: "ayin-example",
+          providerResourceId: "linear-resource",
+          assetKey: "real-asset-key",
+        },
+      });
+      expect(parsed.eventName).toBe(eventName);
+      expect(parsed.metadata?.opportunityId).toBe("ayin-example");
+    },
+  );
 
   it("rejects unbounded noisy progress deltas", () => {
     expect(() => analyticsEventSchema.parse({ ...event, durationDeltaMs: 3_600_001 })).toThrow();
