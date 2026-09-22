@@ -20,8 +20,10 @@ export interface CreatorTvAdBreakContext {
 
 export interface CreatorTvAdBreakMarker {
   id: string;
+  opportunityId: string;
   occurrenceKey: string;
   offsetMs: number;
+  durationMs: number;
   source: "HOUSE" | "DIRECT" | "PROGRAMMATIC";
 }
 
