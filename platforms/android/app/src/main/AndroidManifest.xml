@@ -6,6 +6,8 @@
     <application
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
+        android:icon="@drawable/ayin_app_icon"
+        android:roundIcon="@drawable/ayin_app_icon"
         android:label="AYIN"
         android:theme="@style/Theme.AyinShell">
         <activity
