@@ -122,8 +122,15 @@ jobs:
           echo "no" | avdmanager create avd             --force             --name "$avd_name"             --path "$ANDROID_AVD_HOME/$avd_name.avd"             --package "system-images;android-${{ matrix.api }};${{ matrix.tag }};${{ matrix.arch }}"             --device "${{ matrix.device }}"
           emulator -list-avds
           test -d "$ANDROID_AVD_HOME/$avd_name.avd"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/adbkey" ]; then
+            adb keygen "$HOME/.android/adbkey"
+          fi
+          export ADB_VENDOR_KEYS="$HOME/.android"
+          adb kill-server || true
+          adb start-server
           sudo chmod 666 /dev/kvm || true
-          nohup emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu swiftshader_indirect             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
+          nohup env ADB_VENDOR_KEYS="$ADB_VENDOR_KEYS" emulator -avd "$avd_name"             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu swiftshader_indirect             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
           emulator_pid=$!
           if ! timeout 120 adb wait-for-device; then
             cat "$RUNNER_TEMP/ayin-emulator.log"
