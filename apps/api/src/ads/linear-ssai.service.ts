@@ -7,14 +7,21 @@ import type {
   CreatorTvAdBreakHook,
   CreatorTvAdBreakMarker,
 } from "../creator/creator-tv-ad-break.hook.js";
-import type { LinearChannelPlan, LinearOutputState } from "../creator/creator-tv-linear.provider.js";
-import { AdvertisingControlService } from "./advertising-control.service.js";
-import { GamProductionService } from "./gam-production.service.js";
+import type {
+  LinearChannelPlan,
+  LinearOutputState,
+} from "../creator/creator-tv-linear.provider.js";
+import { DatabaseService } from "../database/database.service.js";
+import { loadGamProductionConfig } from "./gam-production.config.js";
 import {
   loadLinearSsaiConfig,
   type LinearSsaiConfig,
 } from "./linear-ssai.config.js";
-import { VideoAdService } from "./video-ad.service.js";
+import { resolveVideoAdPolicy } from "./video-ad-policy.js";
+import {
+  defaultVideoAdSettings,
+  videoAdSettingsSchema,
+} from "./video-ad.service.js";
 
 export const LINEAR_SSAI_CONFIG = Symbol("LINEAR_SSAI_CONFIG");
 
@@ -22,10 +29,7 @@ export const LINEAR_SSAI_CONFIG = Symbol("LINEAR_SSAI_CONFIG");
 export class LinearSsaiService implements CreatorTvAdBreakHook {
   constructor(
     @Inject(LINEAR_SSAI_CONFIG) private readonly config: LinearSsaiConfig,
-    @Inject(AdvertisingControlService)
-    private readonly advertising: AdvertisingControlService,
-    @Inject(VideoAdService) private readonly videoAds: VideoAdService,
-    @Inject(GamProductionService) private readonly gam: GamProductionService,
+    @Inject(DatabaseService) private readonly database: DatabaseService,
   ) {}
 
   async getBreaks(context: CreatorTvAdBreakContext): Promise<CreatorTvAdBreakMarker[]> {
@@ -33,16 +37,43 @@ export class LinearSsaiService implements CreatorTvAdBreakHook {
     if (!signaling.enabled || !this.config.breakDurationSeconds) return [];
 
     const durationMs = this.config.breakDurationSeconds * 1000;
-    const breaks: CreatorTvAdBreakMarker[] = [];
     const videoIds = [...new Set(context.programs.map((program) => program.videoId))];
-    const policies = await Promise.all(
-      videoIds.map(async (videoId) => [
-        videoId,
-        await this.videoAds.resolveLinearBreakPolicy(context.channelId, videoId),
-      ] as const),
-    );
-    const policyByVideo = new Map(policies);
+    const [settingsRow, channelOverride, videoOverrides] = await Promise.all([
+      this.database.client.platformSetting.findUnique({
+        where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
+        select: { value: true },
+      }),
+      this.database.client.videoAdOverride.findUnique({
+        where: { channelId: context.channelId },
+      }),
+      videoIds.length
+        ? this.database.client.videoAdOverride.findMany({
+            where: { videoId: { in: videoIds } },
+          })
+        : Promise.resolve([]),
+    ]);
+    const parsedSettings = videoAdSettingsSchema.safeParse(settingsRow?.value);
+    const settings = parsedSettings.success ? parsedSettings.data : defaultVideoAdSettings;
+    if (!settings.masterEnabled) return [];
 
+    const overrideByVideo = new Map(
+      videoOverrides.flatMap((override) =>
+        override.videoId ? [[override.videoId, override] as const] : [],
+      ),
+    );
+    const policyByVideo = new Map(
+      videoIds.map((videoId) => [
+        videoId,
+        linearPolicy(
+          settings,
+          channelOverride,
+          overrideByVideo.get(videoId) ?? null,
+          gamProductionReady(),
+        ),
+      ]),
+    );
+
+    const breaks: CreatorTvAdBreakMarker[] = [];
     for (const program of context.programs) {
       if (program.creatorPreference?.mode === "DISABLED") continue;
       const policy = policyByVideo.get(program.videoId);
@@ -82,7 +113,7 @@ export class LinearSsaiService implements CreatorTvAdBreakHook {
   }
 
   async signalingState() {
-    const emergencyKillSwitch = await this.advertising.isEmergencyKilled();
+    const emergencyKillSwitch = await this.emergencyKilled();
     const killed = emergencyKillSwitch || this.config.killSwitch;
     const enabled = this.config.enabled && !killed && Boolean(this.config.breakDurationSeconds);
     return {
@@ -102,10 +133,8 @@ export class LinearSsaiService implements CreatorTvAdBreakHook {
   }
 
   async publicCapability(plan: LinearChannelPlan, state: LinearOutputState) {
-    const [signaling, gamProduction] = await Promise.all([
-      this.signalingState(),
-      this.gam.productionRequestState(),
-    ]);
+    const signaling = await this.signalingState();
+    const gamProduction = gamProductionReady();
     const daiConfigured = this.config.gamDaiEnabled && Boolean(this.config.gamDaiAssetKey);
     const allBreaksSupportedByDai = plan.adMarkers.every(
       (marker) => marker.source === "PROGRAMMATIC",
@@ -172,12 +201,85 @@ export class LinearSsaiService implements CreatorTvAdBreakHook {
       }),
     };
   }
+
+  private async emergencyKilled(): Promise<boolean> {
+    const row = await this.database.client.platformSetting.findUnique({
+      where: { namespace_key: { namespace: "ADVERTISING", key: "emergencyKillSwitch" } },
+      select: { value: true },
+    });
+    return row?.value === true;
+  }
+}
+
+function linearPolicy(
+  settings: typeof defaultVideoAdSettings,
+  channelOverride: Parameters<typeof resolveVideoAdPolicy>[1],
+  videoOverride: Parameters<typeof resolveVideoAdPolicy>[2],
+  gamProduction: ReturnType<typeof gamProductionReady>,
+) {
+  const resolved = resolveVideoAdPolicy(settings, channelOverride, videoOverride);
+  if (!resolved.enabled || !resolved.midRollEnabled) {
+    return {
+      enabled: false as const,
+      midRollEnabled: false,
+      midRollEverySec: resolved.midRollEverySec,
+      source: null,
+    };
+  }
+
+  const explicitTagUrl = resolved.vastTagUrl ?? settings.externalVastTagUrl;
+  if (explicitTagUrl) {
+    return {
+      enabled: true as const,
+      midRollEnabled: true,
+      midRollEverySec: resolved.midRollEverySec,
+      source: "DIRECT" as const,
+    };
+  }
+  if (gamProduction.enabled) {
+    return {
+      enabled: true as const,
+      midRollEnabled: true,
+      midRollEverySec: resolved.midRollEverySec,
+      source: "PROGRAMMATIC" as const,
+    };
+  }
+  if (settings.houseCreativeUrl) {
+    return {
+      enabled: true as const,
+      midRollEnabled: true,
+      midRollEverySec: resolved.midRollEverySec,
+      source: "HOUSE" as const,
+    };
+  }
+  return {
+    enabled: false as const,
+    midRollEnabled: false,
+    midRollEverySec: resolved.midRollEverySec,
+    source: null,
+  };
+}
+
+function gamProductionReady() {
+  const config = loadGamProductionConfig();
+  if (config.killSwitch) {
+    return { enabled: false as const, reason: "GAM_KILL_SWITCH" as const };
+  }
+  if (!config.complete) {
+    return { enabled: false as const, reason: "GAM_CONFIG_INCOMPLETE" as const };
+  }
+  if (!config.productionEnabled || config.testMode) {
+    return { enabled: false as const, reason: "GAM_PRODUCTION_NOT_READY" as const };
+  }
+  return { enabled: true as const };
 }
 
 function automaticOffsets(programDurationMs: number, intervalMs: number): number[] {
   if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0) return [];
   const offsets: number[] = [];
-  for (let offset = intervalMs; offset < programDurationMs; offset += intervalMs) offsets.push(offset);
+  for (let offset = intervalMs; offset < programDurationMs; offset += intervalMs) {
+    offsets.push(offset);
+  }
   return offsets;
 }
 
@@ -196,4 +298,8 @@ export function opportunityIdentity(
 
 export function googleDaiSsbUrl(assetKey: string): string {
   return "https://pubads.g.doubleclick.net/ssai/event/" + encodeURIComponent(assetKey) + "/master.m3u8";
+}
+
+export function createLinearSsaiConfig(): LinearSsaiConfig {
+  return loadLinearSsaiConfig();
 }
