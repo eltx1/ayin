@@ -51,11 +51,7 @@ describe("Creator TV playback contract", () => {
 
   it("passes non-personalized consent to DAI and keeps limited-ads traffic on IMA", () => {
     const capability = linearCapability();
-    const nonPersonalized = selectCreatorTvMonetizedPlayback(
-      capability,
-      false,
-      "NON_PERSONALIZED",
-    );
+    const nonPersonalized = selectCreatorTvMonetizedPlayback(capability, false, "NON_PERSONALIZED");
     expect(nonPersonalized.mode).toBe("GOOGLE_DAI_SSB");
     if (nonPersonalized.mode === "GOOGLE_DAI_SSB") {
       expect(new URL(nonPersonalized.playbackUrl).searchParams.get("npa")).toBe("1");
