@@ -174,10 +174,16 @@ jobs:
           adb shell input keyevent 23
           adb shell input keyevent 85
           adb shell am send-trim-memory "$package" RUNNING_CRITICAL
-          adb shell cmd connectivity airplane-mode enable
-          sleep 2
-          adb shell cmd connectivity airplane-mode disable
-          sleep 4
+          network_interface="$(adb shell ip route show default | awk '{print $5; exit}' | tr -d '\r')"
+          test -n "$network_interface"
+          if ! adb shell "ip link set dev $network_interface down" 2>/dev/null; then
+            adb root
+            adb wait-for-device
+            adb shell "ip link set dev $network_interface down"
+          fi
+          sleep 3
+          adb shell "ip link set dev $network_interface up"
+          sleep 5
           logs="$(adb logcat -d -s AyinShell:I '*:S')"
           printf '%s\n' "$logs"
           grep -q "deep-link=https://ayin.stream/watch/task-77-emulator?autoplay=1" <<<"$logs"
