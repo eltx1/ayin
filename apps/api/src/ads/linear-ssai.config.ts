@@ -12,6 +12,10 @@ const environmentSchema = z.object({
     emptyStringToUndefined,
     z.coerce.number().int().min(5).max(180).optional(),
   ),
+  LINEAR_SEGMENT_DURATION_SECONDS: z.preprocess(
+    emptyStringToUndefined,
+    z.coerce.number().int().min(1).max(10).optional(),
+  ),
   GAM_DAI_ENABLED: z.enum(["0", "1"]).default("0"),
   GAM_DAI_ASSET_KEY: z.preprocess(
     emptyStringToUndefined,
@@ -41,6 +45,17 @@ export function loadLinearSsaiConfig(
   if (enabled && parsed.LINEAR_SSAI_BREAK_DURATION_SECONDS === undefined) {
     throw new Error(
       "LINEAR_SSAI_ENABLED=1 requires an explicit LINEAR_SSAI_BREAK_DURATION_SECONDS value.",
+    );
+  }
+  const segmentDurationSeconds = parsed.LINEAR_SEGMENT_DURATION_SECONDS ?? 4;
+  const maximumBreakSeconds = segmentDurationSeconds * 16;
+  if (
+    enabled &&
+    parsed.LINEAR_SSAI_BREAK_DURATION_SECONDS !== undefined &&
+    parsed.LINEAR_SSAI_BREAK_DURATION_SECONDS > maximumBreakSeconds
+  ) {
+    throw new Error(
+      "LINEAR_SSAI_BREAK_DURATION_SECONDS must fit inside the owned HLS rolling window.",
     );
   }
   if (gamDaiEnabled && !enabled) {
