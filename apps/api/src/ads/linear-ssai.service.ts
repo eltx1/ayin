@@ -99,10 +99,14 @@ export class LinearSsaiService implements CreatorTvAdBreakHook {
       this.gam.productionRequestState(),
     ]);
     const daiConfigured = this.config.gamDaiEnabled && Boolean(this.config.gamDaiAssetKey);
+    const allBreaksSupportedByDai = plan.adMarkers.every(
+      (marker) => marker.source === "PROGRAMMATIC",
+    );
     const daiAvailable =
       signaling.enabled &&
       daiConfigured &&
       gamProduction.enabled &&
+      allBreaksSupportedByDai &&
       state.status === "READY" &&
       Boolean(state.hlsMasterUrl);
 
@@ -119,15 +123,22 @@ export class LinearSsaiService implements CreatorTvAdBreakHook {
             ? googleDaiSsbUrl(this.config.gamDaiAssetKey)
             : null,
         contentSourceUrl: state.status === "READY" ? (state.hlsMasterUrl ?? null) : null,
+        attribution: {
+          tvChannelId: plan.tvChannelId,
+          channelId: plan.channelId,
+          channelHandle: plan.channelHandle,
+        },
         reason: !daiConfigured
           ? ("DAI_NOT_CONFIGURED" as const)
           : !gamProduction.enabled
             ? gamProduction.reason
             : !signaling.enabled
               ? ("SIGNALING_DISABLED" as const)
-              : state.status !== "READY" || !state.hlsMasterUrl
-                ? ("CONTENT_STREAM_NOT_READY" as const)
-                : null,
+              : !allBreaksSupportedByDai
+                ? ("UNSUPPORTED_BREAK_SOURCE" as const)
+                : state.status !== "READY" || !state.hlsMasterUrl
+                  ? ("CONTENT_STREAM_NOT_READY" as const)
+                  : null,
       },
       clientSideImaFallback: true as const,
       opportunities: plan.adMarkers.map((marker) => {
