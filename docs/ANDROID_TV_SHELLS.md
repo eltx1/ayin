@@ -13,11 +13,11 @@ Google Play currently requires Android TV new apps and updates to target API 34 
 
 ## Device and emulator matrix
 
-| Surface | Environment | Flavor | Claim |
-| --- | --- | --- | --- |
-| Android mobile | Android 16 / API 36 google_apis x86_64 emulator | mobileDebug | CI candidate until final Task 77 workflow is green |
-| Google TV | Android 15 / API 35 google-tv x86_64 emulator | tvDebug | CI candidate until final Task 77 workflow is green |
-| Fire APK compatibility | fireTvDebug installed on the Android 15 Google TV emulator | fireTvDebug | Android compatibility smoke only; NOT Fire OS hardware certification |
+| Surface                | Environment                                                | Flavor      | Claim                                                                |
+| ---------------------- | ---------------------------------------------------------- | ----------- | -------------------------------------------------------------------- |
+| Android mobile         | Android 16 / API 36 google_apis x86_64 emulator            | mobileDebug | CI candidate until final Task 77 workflow is green                   |
+| Google TV              | Android 16 / API 36 google-tv x86 emulator                 | tvDebug     | CI candidate until final Task 77 workflow is green                   |
+| Fire APK compatibility | fireTvDebug on the Android 16 / API 36 Google TV emulator | fireTvDebug | Android compatibility smoke only; NOT Fire OS hardware certification |
 
 The final Task 77 merge updates this matrix with the actual successful workflow run and observed emulator API/version values. A build alone is not counted as device validation.
 
