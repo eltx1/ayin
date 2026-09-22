@@ -158,6 +158,7 @@ export class LinearSsaiService implements CreatorTvAdBreakHook {
           tvChannelId: plan.tvChannelId,
           channelId: plan.channelId,
           channelHandle: plan.channelHandle,
+          networkCode: gamProduction.enabled ? gamProduction.networkCode : null,
         },
         reason: !daiConfigured
           ? ("DAI_NOT_CONFIGURED" as const)
@@ -265,7 +266,7 @@ function gamProductionReady() {
   if (!config.productionEnabled || config.testMode) {
     return { enabled: false as const, reason: "GAM_PRODUCTION_NOT_READY" as const };
   }
-  return { enabled: true as const };
+  return { enabled: true as const, networkCode: config.networkCode as string };
 }
 
 function automaticOffsets(programDurationMs: number, intervalMs: number): number[] {
