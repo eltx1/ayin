@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  selectCreatorTvMonetizedPlayback,
-  type CreatorTvLinearCapability,
-} from "./creator-tv";
+import { selectCreatorTvMonetizedPlayback, type CreatorTvLinearCapability } from "./creator-tv";
 
 const playerSource = readFileSync(
   new URL("../components/creator-tv/creator-tv-player.tsx", import.meta.url),
