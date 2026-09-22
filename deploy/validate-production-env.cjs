@@ -200,6 +200,31 @@ if (linearFlag === "1") {
   }
 }
 
+const linearSsaiFlag = apiEnv.LINEAR_SSAI_ENABLED?.trim();
+if (linearSsaiFlag && !["0", "1"].includes(linearSsaiFlag)) {
+  fail("api.env: LINEAR_SSAI_ENABLED must be 0 or 1");
+}
+const linearSsaiKillSwitch = apiEnv.LINEAR_SSAI_KILL_SWITCH?.trim();
+if (linearSsaiKillSwitch && !["0", "1"].includes(linearSsaiKillSwitch)) {
+  fail("api.env: LINEAR_SSAI_KILL_SWITCH must be 0 or 1");
+}
+requireOptionalIntegerRange(apiEnv, "LINEAR_SSAI_BREAK_DURATION_SECONDS", 5, 180, "api.env");
+if (linearSsaiFlag === "1") {
+  if (linearFlag !== "1") {
+    fail("api.env: LINEAR_SSAI_ENABLED=1 requires LINEAR_COMPUTE_ENABLED=1");
+  }
+  requireValue(apiEnv, "LINEAR_SSAI_BREAK_DURATION_SECONDS", "api.env");
+}
+
+const gamDaiFlag = apiEnv.GAM_DAI_ENABLED?.trim();
+if (gamDaiFlag && !["0", "1"].includes(gamDaiFlag)) {
+  fail("api.env: GAM_DAI_ENABLED must be 0 or 1");
+}
+const gamDaiAssetKey = apiEnv.GAM_DAI_ASSET_KEY?.trim();
+if (gamDaiAssetKey && !/^[A-Za-z0-9._~-]{1,512}$/.test(gamDaiAssetKey)) {
+  fail("api.env: GAM_DAI_ASSET_KEY contains unsupported characters");
+}
+
 const gamProductionEnabled = apiEnv.GAM_PRODUCTION_ENABLED === "1";
 if (gamProductionEnabled) {
   for (const key of [
@@ -213,6 +238,16 @@ if (gamProductionEnabled) {
   if (apiEnv.GAM_TEST_MODE === "1") {
     fail("api.env: GAM_TEST_MODE must be 0 when GAM_PRODUCTION_ENABLED=1");
   }
+}
+
+if (gamDaiFlag === "1") {
+  if (linearSsaiFlag !== "1") {
+    fail("api.env: GAM_DAI_ENABLED=1 requires LINEAR_SSAI_ENABLED=1");
+  }
+  if (!gamProductionEnabled || apiEnv.GAM_TEST_MODE === "1") {
+    fail("api.env: GAM_DAI_ENABLED=1 requires production GAM delivery with test mode off");
+  }
+  requireValue(apiEnv, "GAM_DAI_ASSET_KEY", "api.env");
 }
 
 if (failures.length) {
