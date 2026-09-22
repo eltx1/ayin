@@ -16,6 +16,7 @@ import { OwnedLinearStreamingProvider } from "../src/creator/owned-linear-stream
 describe("owned Creator TV linear provider end to end", () => {
   it("packages a real continuous HLS test channel, reconciles schedule, measures sync and stops", async () => {
     const ffmpegPath = process.env.FFMPEG_PATH?.trim() || "ffmpeg";
+    const ffprobePath = process.env.FFPROBE_PATH?.trim() || "ffprobe";
     const root = await mkdtemp(join(tmpdir(), "ayin-task75-"));
     const firstSource = join(root, "first.mp4");
     const secondSource = join(root, "second.mp4");
@@ -73,6 +74,7 @@ describe("owned Creator TV linear provider end to end", () => {
           LINEAR_SEGMENT_DURATION_SECONDS: "1",
           LINEAR_MAX_RECOVERY_ATTEMPTS: "1",
           FFMPEG_PATH: ffmpegPath,
+          FFPROBE_PATH: ffprobePath,
         },
         async (objectKey, destinationPath) => {
           const source =
@@ -202,6 +204,7 @@ describe("owned Creator TV linear provider end to end", () => {
         LINEAR_SEGMENT_DURATION_SECONDS: "1",
         LINEAR_MAX_RECOVERY_ATTEMPTS: "1",
         FFMPEG_PATH: ffmpegPath,
+        FFPROBE_PATH: ffprobePath,
       };
       const materializer = async (objectKey: string, destinationPath: string) => {
         const source =
