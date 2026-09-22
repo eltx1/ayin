@@ -90,6 +90,8 @@ This gives Google an explicit return-to-content marker while keeping the declare
 
 The manifest renderer never writes two identical break IDs in one playlist and rejects overlapping opportunity windows.
 
+Because Task 75 uses an 18-segment rolling live window, Task 76 also refuses a configured break duration that would exceed 16 segment durations. This ensures the cue-out remains observable until the matching cue-in can be emitted, including on the short-segment test profile.
+
 ## Google DAI / SSAI selection
 
 DAI remains default-off. AYIN selects Google DAI SSB playback only when all of the following are true:
