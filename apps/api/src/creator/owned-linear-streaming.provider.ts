@@ -941,12 +941,7 @@ export function buildProgramFfmpegArgs(input: {
     input.ffmpegInputPath,
     ...(input.sourceHasAudio
       ? []
-      : [
-          "-f",
-          "lavfi",
-          "-i",
-          "anullsrc=channel_layout=stereo:sample_rate=48000",
-        ]),
+      : ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]),
     "-t",
     seconds(input.durationMs),
     "-map",
