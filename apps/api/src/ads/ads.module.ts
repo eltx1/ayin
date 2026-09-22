@@ -24,11 +24,6 @@ import {
 } from "./gam-production.service.js";
 import { AdminPageAdController, PageAdController } from "./page-ad.controller.js";
 import { PageAdService } from "./page-ad.service.js";
-import { loadLinearSsaiConfig } from "./linear-ssai.config.js";
-import {
-  LINEAR_SSAI_CONFIG,
-  LinearSsaiService,
-} from "./linear-ssai.service.js";
 import { AdminVideoAdController, VideoAdController } from "./video-ad.controller.js";
 import { VideoAdService } from "./video-ad.service.js";
 
@@ -52,9 +47,7 @@ import { VideoAdService } from "./video-ad.service.js";
     AdvertisingControlService,
     GamProductionService,
     AuthorizedSellerFileService,
-    LinearSsaiService,
     { provide: GAM_PRODUCTION_CONFIG, useFactory: createGamProductionConfig },
-    { provide: LINEAR_SSAI_CONFIG, useFactory: loadLinearSsaiConfig },
   ],
   exports: [
     VideoAdService,
@@ -62,7 +55,6 @@ import { VideoAdService } from "./video-ad.service.js";
     AdvertisingControlService,
     GamProductionService,
     AuthorizedSellerFileService,
-    LinearSsaiService,
   ],
 })
 export class AdsModule {}
