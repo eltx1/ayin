@@ -1,7 +1,10 @@
 import { Module } from "@nestjs/common";
 
-import { AdsModule } from "../ads/ads.module.js";
-import { LinearSsaiService } from "../ads/linear-ssai.service.js";
+import {
+  createLinearSsaiConfig,
+  LINEAR_SSAI_CONFIG,
+  LinearSsaiService,
+} from "../ads/linear-ssai.service.js";
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { MediaModule } from "../media/media.module.js";
@@ -40,7 +43,7 @@ import { StudioService } from "./studio.service.js";
 import { VideoMetadataService } from "./video-metadata.service.js";
 
 @Module({
-  imports: [AdsModule, AuthModule, DatabaseModule, MediaModule, PlatformConfigModule, VideoPolicyModule],
+  imports: [AuthModule, DatabaseModule, MediaModule, PlatformConfigModule, VideoPolicyModule],
   controllers: [
     QuickUploadController,
     StudioController,
@@ -65,6 +68,8 @@ import { VideoMetadataService } from "./video-metadata.service.js";
     PlaylistService,
     CreatorTvService,
     CreatorTvLinearService,
+    LinearSsaiService,
+    { provide: LINEAR_SSAI_CONFIG, useFactory: createLinearSsaiConfig },
     { provide: CREATOR_TV_AD_BREAK_HOOK, useExisting: LinearSsaiService },
     UnconfiguredLinearStreamingProvider,
     {
