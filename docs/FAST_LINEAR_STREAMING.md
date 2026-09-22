@@ -68,9 +68,9 @@ GET /public/channels/:handle/tv/linear continues to return provider state, HLS a
 
 Creator TV ad-break intents remain SCTE35_INTENT in the schedule plan.
 
-Task 75 maps an intent that falls inside the current live HLS window to an EXT-X-DATERANGE carrying a stable break ID, scheduled wall-clock START-DATE, CLASS="com.ayin.ad-break", X-AYIN-SCTE35-INTENT="YES", and AYIN source/occurrence metadata.
+Task 75 originally preserved these intents as provider-neutral metadata only. Task 76 adds the monetization translation boundary: when explicitly enabled, the owned HLS packager emits Google-supported EXT-X-CUE-OUT / EXT-X-CUE-IN splice markers with required DURATION and stable BREAKID values.
 
-This is real HLS ad-marker metadata for downstream integration. It does not falsely claim that binary SCTE-35 splice payloads have been generated. A future SSAI/DAI integration can translate the retained intent into its required signaling format.
+Task 76 still does not generate or claim SCTE-35 binary. SCTE35_INTENT remains the upstream semantic intent, while the concrete HLS provider equivalent is HLS_CUE_OUT_IN. See docs/TASK76_SSAI_DAI.md for the account gates, DAI selection, fallback, and reconciliation rules.
 
 ## Failure recovery and monitoring
 
@@ -92,8 +92,9 @@ For an initial mid-program join the provider seeks directly to the calculated wa
 
 ## Public owned-compute output
 
-The provider exposes only two public object shapes under its resource route:
+The provider exposes only these public object shapes under its resource route:
 
+    GET /public/linear/{providerResourceId}/master.m3u8
     GET /public/linear/{providerResourceId}/index.m3u8
     GET /public/linear/{providerResourceId}/segment-{sequence}.ts
 
