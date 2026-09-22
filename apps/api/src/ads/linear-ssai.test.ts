@@ -41,6 +41,24 @@ describe("Task 76 linear SSAI/DAI", () => {
     ).toThrow(/GAM_DAI_ASSET_KEY/);
   });
 
+  it("rejects breaks that cannot return to content inside the rolling HLS window", () => {
+    expect(() =>
+      loadLinearSsaiConfig({
+        LINEAR_SSAI_ENABLED: "1",
+        LINEAR_SEGMENT_DURATION_SECONDS: "1",
+        LINEAR_SSAI_BREAK_DURATION_SECONDS: "30",
+      }),
+    ).toThrow(/rolling window/);
+
+    expect(
+      loadLinearSsaiConfig({
+        LINEAR_SSAI_ENABLED: "1",
+        LINEAR_SEGMENT_DURATION_SECONDS: "2",
+        LINEAR_SSAI_BREAK_DURATION_SECONDS: "30",
+      }).breakDurationSeconds,
+    ).toBe(30);
+  });
+
   it("creates stable opportunity identity and official SSB playback shape", () => {
     expect(opportunityIdentity("tv-1", "occurrence-1", 60_000, 30_000)).toBe(
       opportunityIdentity("tv-1", "occurrence-1", 60_000, 30_000),
