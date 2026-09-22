@@ -182,14 +182,51 @@ export function CreatorTvPlayer({
         fetchPublicCreatorTvLinear(data.canonicalHandle),
       ]);
       if (!response.ok) throw new Error("Creator TV could not refresh its guide.");
-      setData((await response.json()) as PublicCreatorTvResponse);
-      setLinear(nextLinear);
+      const nextData = (await response.json()) as PublicCreatorTvResponse;
+      if (
+        monetizedPlayback.mode === "GOOGLE_DAI_SSB" &&
+        nextLinear &&
+        selectCreatorTvMonetizedPlayback(nextLinear, false).mode !== "GOOGLE_DAI_SSB"
+      ) {
+        const reason =
+          nextLinear.monetization.dai.reason ??
+          nextLinear.monetization.signaling.reason ??
+          "CAPABILITY_DISABLED";
+        handleDaiFatal("CAPABILITY_" + reason);
+      }
+      setData(nextData);
+      if (nextLinear) setLinear(nextLinear);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "Creator TV could not refresh.");
     } finally {
       setRefreshing(false);
     }
-  }, [data.canonicalHandle, refreshing]);
+  }, [data.canonicalHandle, handleDaiFatal, monetizedPlayback.mode, refreshing]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      const nextLinear = await fetchPublicCreatorTvLinear(data.canonicalHandle);
+      if (cancelled || !nextLinear) return;
+      if (
+        monetizedPlayback.mode === "GOOGLE_DAI_SSB" &&
+        selectCreatorTvMonetizedPlayback(nextLinear, false).mode !== "GOOGLE_DAI_SSB"
+      ) {
+        const reason =
+          nextLinear.monetization.dai.reason ??
+          nextLinear.monetization.signaling.reason ??
+          "CAPABILITY_DISABLED";
+        handleDaiFatal("CAPABILITY_" + reason);
+      }
+      setLinear(nextLinear);
+    };
+
+    const timer = window.setInterval(() => void poll(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [data.canonicalHandle, handleDaiFatal, monetizedPlayback.mode]);
 
   useEffect(() => {
     if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB" || !current?.endsAt) return;
