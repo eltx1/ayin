@@ -232,7 +232,9 @@ function registerTizenMediaKeys(target: Window) {
 function activeVideo(document: Document): HTMLVideoElement | null {
   const active = document.activeElement;
   const activeStage =
-    active instanceof HTMLElement ? active.closest<HTMLElement>("[data-player-stage='true']") : null;
+    active instanceof HTMLElement
+      ? active.closest<HTMLElement>("[data-player-stage='true']")
+      : null;
   const activeVideo = activeStage?.querySelector<HTMLVideoElement>("video");
   if (activeVideo) return activeVideo;
 
