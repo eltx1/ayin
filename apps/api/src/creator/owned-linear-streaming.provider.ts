@@ -861,7 +861,7 @@ export function buildProgramFfmpegArgs(input: {
     "-map_metadata",
     "-1",
     "-vf",
-    "scale=1280:720:force_original_aspect_ratio=decrease:flags=lanczos,pad=1280:720:(ow-iw)/2:(oh-ih)/2",
+    "scale=1280:720:force_original_aspect_ratio=decrease:flags=lanczos,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=30,setsar=1",
     "-c:v",
     "libx264",
     "-preset",
