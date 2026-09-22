@@ -130,3 +130,100 @@ export async function updateCreatorTvVideoPreference(
     };
   };
 }
+
+
+export interface CreatorTvLinearCapability {
+  provider: {
+    providerKey: string;
+    configured: boolean;
+    status: "UNCONFIGURED" | "PROVISIONING" | "READY" | "STOPPED" | "ERROR";
+    hlsUrl: string | null;
+    hlsMasterUrl?: string | null;
+    providerResourceId: string | null;
+  };
+  hls: {
+    available: boolean;
+    url: string | null;
+    masterUrl: string | null;
+  };
+  monetization: {
+    signaling: {
+      enabled: boolean;
+      format: "NONE" | "HLS_CUE_OUT_IN";
+      scte35Binary: false;
+      emergencyKillSwitch: boolean;
+      taskKillSwitch: boolean;
+      reason: string | null;
+    };
+    dai: {
+      provider: "GOOGLE_AD_MANAGER_DAI";
+      integration: "SSB";
+      configured: boolean;
+      available: boolean;
+      assetKey: string | null;
+      playbackUrl: string | null;
+      contentSourceUrl: string | null;
+      reason: string | null;
+    };
+    clientSideImaFallback: true;
+    opportunities: Array<{
+      opportunityId: string;
+      occurrenceKey: string;
+      videoId: string | null;
+      startsAt: string | null;
+      endsAt: string | null;
+      durationMs: number;
+      source: "HOUSE" | "DIRECT" | "PROGRAMMATIC";
+    }>;
+  };
+  fallback: {
+    strategy: "PROGRESSIVE_MP4";
+    enabled: true;
+  };
+}
+
+export async function fetchPublicCreatorTvLinear(
+  handle: string,
+): Promise<CreatorTvLinearCapability | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/tv/linear`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) return null;
+    return (await response.json()) as CreatorTvLinearCapability;
+  } catch {
+    return null;
+  }
+}
+
+export function selectCreatorTvMonetizedPlayback(
+  capability: CreatorTvLinearCapability | null,
+  ssaiFailed: boolean,
+):
+  | {
+      mode: "GOOGLE_DAI_SSB";
+      playbackUrl: string;
+      assetKey: string;
+      providerResourceId: string;
+    }
+  | { mode: "CLIENT_IMA_MP4" } {
+  const dai = capability?.monetization.dai;
+  const providerResourceId = capability?.provider.providerResourceId;
+  if (
+    !ssaiFailed &&
+    capability?.monetization.signaling.enabled &&
+    dai?.available &&
+    dai.playbackUrl &&
+    dai.assetKey &&
+    providerResourceId
+  ) {
+    return {
+      mode: "GOOGLE_DAI_SSB",
+      playbackUrl: dai.playbackUrl,
+      assetKey: dai.assetKey,
+      providerResourceId,
+    };
+  }
+  return { mode: "CLIENT_IMA_MP4" };
+}
