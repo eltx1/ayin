@@ -6,6 +6,9 @@ on:
       - "platforms/android/**"
       - "apps/web/src/lib/native-shell-bridge.ts"
       - "apps/web/src/lib/native-shell-bridge.test.ts"
+      - "apps/web/src/lib/tv-platform-runtime.ts"
+      - "apps/web/src/components/player/ayin-player.tsx"
+      - "apps/web/src/components/player/live-ayin-player.tsx"
       - ".github/workflows/android-shell.yml"
   workflow_dispatch:
 
@@ -33,5 +36,102 @@ jobs:
           :app:assembleMobileDebug
           :app:assembleTvDebug
           :app:assembleFireTvDebug
+      - name: Run Android JVM baseline tests
+        run: >-
+          gradle -p platforms/android
+          :app:testMobileDebugUnitTest
+          :app:testTvDebugUnitTest
+          :app:testFireTvDebugUnitTest
       - name: Run Android lint
         run: gradle -p platforms/android :app:lintMobileDebug :app:lintTvDebug :app:lintFireTvDebug
+
+  emulator-baseline:
+    name: Emulator baseline (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Android 16 mobile
+            api: "36"
+            tag: google_apis
+            device: pixel_6
+            flavor: Mobile
+            package: net.ayin.app.mobile
+          - name: Google TV Android 15
+            api: "35"
+            tag: google-tv
+            device: tv_1080p
+            flavor: Tv
+            package: net.ayin.app.tv
+          - name: Fire flavor on Google TV emulator
+            api: "35"
+            tag: google-tv
+            device: tv_1080p
+            flavor: FireTv
+            package: net.ayin.app.firetv
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      - name: Install emulator image
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "emulator" "platforms;android-${{ matrix.api }}" "system-images;android-${{ matrix.api }};${{ matrix.tag }};x86_64"
+      - name: Start emulator
+        run: |
+          set -euo pipefail
+          echo "no" | avdmanager create avd             --force             --name ayin-task77             --package "system-images;android-${{ matrix.api }};${{ matrix.tag }};x86_64"             --device "${{ matrix.device }}"
+          sudo chmod 666 /dev/kvm || true
+          nohup emulator @ayin-task77             -no-window             -no-audio             -no-boot-anim             -no-snapshot             -gpu swiftshader_indirect             -no-metrics >"$RUNNER_TEMP/ayin-emulator.log" 2>&1 &
+          adb wait-for-device
+          timeout 360 bash -c 'until [ "$(adb shell getprop sys.boot_completed | tr -d "\r")" = "1" ]; do sleep 2; done'
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb shell getprop ro.build.version.release
+          adb shell getprop ro.build.version.sdk
+      - name: Run shell instrumentation baseline
+        run: >-
+          gradle -p platforms/android
+          :app:connected${{ matrix.flavor }}DebugAndroidTest
+      - name: Run ADB lifecycle, DPAD and network smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          package="${{ matrix.package }}"
+          component="$package/net.ayin.shell.MainActivity"
+          adb logcat -c
+          adb shell am force-stop "$package"
+          adb shell am start -W             -a android.intent.action.VIEW             -c android.intent.category.BROWSABLE             -d "ayin://watch/task-77-emulator?autoplay=1"             "$component"
+          sleep 2
+          adb shell input keyevent 22
+          adb shell input keyevent 20
+          adb shell input keyevent 23
+          adb shell input keyevent 85
+          adb shell am send-trim-memory "$package" RUNNING_CRITICAL
+          adb shell cmd connectivity airplane-mode enable
+          sleep 2
+          adb shell cmd connectivity airplane-mode disable
+          sleep 4
+          logs="$(adb logcat -d -s AyinShell:I '*:S')"
+          printf '%s\n' "$logs"
+          grep -q "deep-link=https://ayin.stream/watch/task-77-emulator?autoplay=1" <<<"$logs"
+          grep -q "dpad=" <<<"$logs"
+          grep -q "remote=PLAY_PAUSE" <<<"$logs"
+          grep -q "memory-pressure=" <<<"$logs"
+          grep -q "network=offline" <<<"$logs"
+          grep -q "network=online" <<<"$logs"
+      - name: Upload emulator log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: task77-emulator-${{ matrix.flavor }}-${{ matrix.api }}
+          path: ${{ runner.temp }}/ayin-emulator.log
+          retention-days: 7
