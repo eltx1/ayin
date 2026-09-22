@@ -5,6 +5,7 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.ConnectivityManager
 import android.net.Network
@@ -90,6 +91,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        lastTrustedUrl = currentTrustedUrl()
         outState.putString(STATE_LAST_TRUSTED_URL, lastTrustedUrl)
         outState.putBoolean(STATE_DIRECT_BACK_ARMED, directBackArmed)
         webView.saveState(outState)
@@ -244,6 +246,22 @@ class MainActivity : AppCompatActivity() {
               const transport = window.AyinNativeTransport;
               if (!transport) return;
               const send = (payload) => transport.postMessage(JSON.stringify(payload));
+              const reportNavigation = () =>
+                send({ type: 'navigation', url: String(window.location.href).slice(0, 2048) });
+              const wrapHistory = (name) => {
+                const original = window.history[name];
+                if (typeof original !== 'function') return;
+                window.history[name] = function(...args) {
+                  const result = original.apply(this, args);
+                  reportNavigation();
+                  return result;
+                };
+              };
+              wrapHistory('pushState');
+              wrapHistory('replaceState');
+              window.addEventListener('popstate', reportNavigation);
+              window.addEventListener('hashchange', reportNavigation);
+
               const bridge = Object.freeze({
                 getPlatform: () => $platform,
                 openExternal: (url) => send({ type: 'openExternal', url: String(url).slice(0, 2048) }),
@@ -256,6 +274,7 @@ class MainActivity : AppCompatActivity() {
                 enumerable: false,
                 writable: false
               });
+              reportNavigation();
             })();
         """.trimIndent()
     }
@@ -282,6 +301,15 @@ class MainActivity : AppCompatActivity() {
                     debugLog("playback=$state")
                 }
             }
+
+            "navigation" -> {
+                val url = payload.optString("url").take(MAX_EXTERNAL_URL_LENGTH)
+                if (!isTrustedWebUrl(url)) return
+                runOnUiThread {
+                    lastTrustedUrl = url
+                    debugLog("navigation=$url")
+                }
+            }
         }
     }
 
@@ -299,6 +327,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun normalizedPort(uri: Uri): Int =
         if (uri.port == -1 && uri.scheme == "https") 443 else uri.port
+
+    private fun currentTrustedUrl(view: WebView = webView): String =
+        view.url?.takeIf(::isTrustedWebUrl) ?: lastTrustedUrl
 
     private fun loadIntent(intent: Intent) {
         val raw = intent.dataString
@@ -456,6 +487,11 @@ class MainActivity : AppCompatActivity() {
         }
 
     private inner class AyinWebViewClient : WebViewClient() {
+        override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+            super.onPageStarted(view, url, favicon)
+            if (isTrustedWebUrl(url)) mainFrameLoadFailed = false
+        }
+
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             if (!request.isForMainFrame) return false
             val uri = request.url
@@ -467,9 +503,12 @@ class MainActivity : AppCompatActivity() {
         override fun onPageFinished(view: WebView, url: String) {
             super.onPageFinished(view, url)
             if (!isTrustedWebUrl(url)) return
-            lastTrustedUrl = url
-            mainFrameLoadFailed = false
             emitNetwork(isNetworkOnline(), force = true)
+            if (mainFrameLoadFailed) {
+                debugLog("main-frame-failed-finished")
+                return
+            }
+            lastTrustedUrl = currentTrustedUrl(view)
             if (rendererRecoveryPending) {
                 rendererRecoveryPending = false
                 emitLifecycle("renderer-recovered")
@@ -490,7 +529,8 @@ class MainActivity : AppCompatActivity() {
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
             if (view !== webView) return true
-            val target = lastTrustedUrl
+            val target = currentTrustedUrl(view)
+            lastTrustedUrl = target
             debugLog(
                 "renderer-gone crashed=${detail.didCrash()} priority=${detail.rendererPriorityAtExit()}",
             )
@@ -564,7 +604,9 @@ class MainActivity : AppCompatActivity() {
 
     internal fun simulateRendererRecoveryForTests() {
         check(BuildConfig.DEBUG)
-        replaceWebView(BuildConfig.AYIN_ORIGIN, rendererRecovery = true)
+        val target = currentTrustedUrl()
+        lastTrustedUrl = target
+        replaceWebView(target, rendererRecovery = true)
     }
 
     internal fun emitNetworkForTests(online: Boolean) {
@@ -575,6 +617,8 @@ class MainActivity : AppCompatActivity() {
     internal fun shellFullscreenForTests(): Boolean = shellFullscreen
 
     internal fun lastTrustedUrlForTests(): String = lastTrustedUrl
+
+    internal fun currentTrustedUrlForTests(): String = currentTrustedUrl()
 
     private fun debugLog(message: String) {
         if (BuildConfig.DEBUG) Log.i(TAG, message)
