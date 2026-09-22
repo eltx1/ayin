@@ -94,6 +94,7 @@ jobs:
             arch: x86_64
             flavor: Mobile
             package: net.ayin.app.mobile
+            apk: app-mobile-debug.apk
           - name: Google TV Android 16
             api: "36"
             tag: google-tv
@@ -101,6 +102,7 @@ jobs:
             arch: x86
             flavor: Tv
             package: net.ayin.app.tv
+            apk: app-tv-debug.apk
           - name: Fire flavor on Google TV Android 16 emulator
             api: "36"
             tag: google-tv
@@ -108,6 +110,7 @@ jobs:
             arch: x86
             flavor: FireTv
             package: net.ayin.app.firetv
+            apk: app-fireTv-debug.apk
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v4
@@ -178,11 +181,14 @@ jobs:
           fi
       - name: Run ADB deep-link, DPAD and media-key smoke
         shell: bash
+        timeout-minutes: 5
         run: |
           set -euo pipefail
           package="${{ matrix.package }}"
           component="$package/net.ayin.shell.MainActivity"
-          gradle -p platforms/android --no-daemon :app:install${{ matrix.flavor }}Debug
+          apk_path="$(find platforms/android/app/build/outputs/apk -type f -name "${{ matrix.apk }}" -print -quit)"
+          test -n "$apk_path"
+          timeout 120 adb install -r "$apk_path"
           adb shell pm path "$package"
           adb logcat -c
           adb shell am force-stop "$package"
