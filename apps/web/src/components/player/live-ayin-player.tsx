@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
+import { toggleShellAwareFullscreen } from "@/lib/native-shell-bridge";
 import {
   type AyinAdaptivePlaybackSession,
   type AyinHlsFailureReason,
@@ -217,8 +218,7 @@ export function LiveAyinPlayer({
   const toggleFullscreen = useCallback(async () => {
     const root = rootRef.current;
     if (!root) return;
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await root.requestFullscreen();
+    await toggleShellAwareFullscreen(root);
   }, []);
 
   const selectCaption = useCallback(
