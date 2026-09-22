@@ -613,6 +613,7 @@ export function LiveAyinPlayer({
 
   useEffect(
     () => () => {
+      notifyNativePlaybackState("paused");
       flushDuration(false);
       sessionRef.current?.destroy();
       sessionRef.current = null;
