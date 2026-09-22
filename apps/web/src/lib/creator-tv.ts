@@ -133,7 +133,6 @@ export async function updateCreatorTvVideoPreference(
   };
 }
 
-
 export interface CreatorTvLinearCapability {
   provider: {
     providerKey: string;
