@@ -14,10 +14,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.json.JSONObject
 
 @RunWith(AndroidJUnit4::class)
 class ShellBaselineInstrumentedTest {
@@ -42,12 +42,12 @@ class ShellBaselineInstrumentedTest {
                 scenario,
                 "window.AyinNative.setFullscreen(true); true",
             )
-            assertTrue(awaitActivity(scenario) { it.shellFullscreenForTests() })
+            assertTrue(awaitActivity(scenario, predicate = { it.shellFullscreenForTests() }))
             evaluateJavascript(
                 scenario,
                 "window.AyinNative.setFullscreen(false); true",
             )
-            assertTrue(awaitActivity(scenario) { !it.shellFullscreenForTests() })
+            assertTrue(awaitActivity(scenario, predicate = { !it.shellFullscreenForTests() }))
 
             evaluateJavascript(
                 scenario,
@@ -106,9 +106,10 @@ class ShellBaselineInstrumentedTest {
                 it.simulateRendererRecoveryForTests()
             }
             assertTrue(
-                awaitActivity(scenario) {
-                    System.identityHashCode(it.webView) != before
-                },
+                awaitActivity(
+                    scenario,
+                    predicate = { System.identityHashCode(it.webView) != before },
+                ),
             )
             assertTrue(
                 CookieManager.getInstance()
@@ -245,6 +246,5 @@ class ShellBaselineInstrumentedTest {
         return false
     }
 
-    private fun JSONObjectQuote(value: String): String =
-        """ + value.replace("\\", "\\\\").replace(""", "\\"") + """
+    private fun JSONObjectQuote(value: String): String = JSONObject.quote(value)
 }
