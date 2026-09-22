@@ -73,6 +73,8 @@ The shell emits pause, resume, stop, configuration-change, memory-pressure and r
 
 ConnectivityManager.registerDefaultNetworkCallback emits ayin:native-network. The shared runtime maps this to browser offline/online. If the main AYIN page failed while offline, the shell retries the last trusted URL after connectivity returns.
 
+The emulator instrumentation explicitly drives the native offline/online bridge and verifies both event states on the tested shell. The separate ADB smoke does not claim to cut physical transport: current Android/Google TV emulator images keep their virtual Ethernet transport active when airplane mode is toggled, and production Google TV images correctly refuse root-only interface manipulation. Physical transport-loss recovery remains a release-hardware acceptance item.
+
 ## Store status
 
 Task 77 prepares technical store requirements only. It does not upload an AAB/APK, create or modify a store listing, accept store agreements, submit a release, or claim Fire TV certification from emulator results.
