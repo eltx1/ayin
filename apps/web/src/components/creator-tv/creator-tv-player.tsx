@@ -69,6 +69,7 @@ export function CreatorTvPlayer({
         provider: "GOOGLE_AD_MANAGER_DAI",
         integration: "SSB",
         assetKey: monetizedPlayback.assetKey,
+        networkCode: monetizedPlayback.networkCode,
         providerResourceId: monetizedPlayback.providerResourceId,
       },
     });
@@ -94,6 +95,7 @@ export function CreatorTvPlayer({
           occurrenceKey: opportunity.occurrenceKey,
           source: opportunity.source,
           assetKey: monetizedPlayback.assetKey,
+          networkCode: monetizedPlayback.networkCode,
           providerResourceId: monetizedPlayback.providerResourceId,
           durationMs: opportunity.durationMs,
         },
