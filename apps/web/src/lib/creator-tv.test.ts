@@ -30,6 +30,7 @@ describe("Creator TV playback contract", () => {
       playbackUrl: "https://pubads.g.doubleclick.net/ssai/event/real-asset/master.m3u8",
       assetKey: "real-asset",
       providerResourceId: "resource-1",
+      networkCode: "1234",
     });
     expect(selectCreatorTvMonetizedPlayback(capability, true)).toEqual({
       mode: "CLIENT_IMA_MP4",
@@ -99,6 +100,7 @@ function linearCapability(): CreatorTvLinearCapability {
           tvChannelId: "tv-1",
           channelId: "channel-1",
           channelHandle: "channel",
+          networkCode: "1234",
         },
         reason: null,
       },
