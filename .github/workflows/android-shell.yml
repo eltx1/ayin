@@ -95,6 +95,7 @@ jobs:
             flavor: Mobile
             package: net.ayin.app.mobile
             apk: app-mobile-debug.apk
+            remoteSmoke: "false"
           - name: Google TV Android 16
             api: "36"
             tag: google-tv
@@ -103,6 +104,7 @@ jobs:
             flavor: Tv
             package: net.ayin.app.tv
             apk: app-tv-debug.apk
+            remoteSmoke: "true"
           - name: Fire flavor on Google TV Android 16 emulator
             api: "36"
             tag: google-tv
@@ -111,6 +113,7 @@ jobs:
             flavor: FireTv
             package: net.ayin.app.firetv
             apk: app-fireTv-debug.apk
+            remoteSmoke: "true"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v4
@@ -179,7 +182,7 @@ jobs:
             adb logcat -d -t 400 || true
             exit 1
           fi
-      - name: Run ADB deep-link, DPAD and media-key smoke
+      - name: Run ADB deep-link and TV remote smoke
         shell: bash
         timeout-minutes: 5
         run: |
@@ -194,16 +197,20 @@ jobs:
           adb shell am force-stop "$package"
           adb shell am start -W             -a android.intent.action.VIEW             -c android.intent.category.BROWSABLE             -d "ayin://watch/task-77-emulator?autoplay=1"             "$component"
           sleep 2
-          adb shell input keyevent 22
-          adb shell input keyevent 20
-          adb shell input keyevent 23
-          adb shell input keyevent 85
-          sleep 2
+          if [ "${{ matrix.remoteSmoke }}" = "true" ]; then
+            adb shell input keyevent 22
+            adb shell input keyevent 20
+            adb shell input keyevent 23
+            adb shell input keyevent 85
+            sleep 2
+          fi
           logs="$(adb logcat -d -s AyinShell:I '*:S')"
           printf '%s\n' "$logs"
           grep -q "deep-link=https://ayin.stream/watch/task-77-emulator?autoplay=1" <<<"$logs"
-          grep -q "dpad=" <<<"$logs"
-          grep -q "remote=PLAY_PAUSE" <<<"$logs"
+          if [ "${{ matrix.remoteSmoke }}" = "true" ]; then
+            grep -q "dpad=" <<<"$logs"
+            grep -q "remote=PLAY_PAUSE" <<<"$logs"
+          fi
       - name: Upload emulator log on failure
         if: failure()
         uses: actions/upload-artifact@v4
