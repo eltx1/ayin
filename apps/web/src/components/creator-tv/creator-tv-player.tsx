@@ -27,7 +27,10 @@ export function CreatorTvPlayer({
 }) {
   const [data, setData] = useState(initialData);
   const [linear, setLinear] = useState(initialLinear);
-  const [ssaiFailed, setSsaiFailed] = useState(false);
+  const [ssaiFallback, setSsaiFallback] = useState<{
+    occurrenceKey: string | null;
+    offsetMs: number;
+  } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const selectedSsaiRef = useRef<string | null>(null);
@@ -44,20 +47,15 @@ export function CreatorTvPlayer({
     });
   }, [currentOccurrenceKey, currentVideoId, data.channel.id]);
   const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);
+  const ssaiFailed = ssaiFallback !== null;
   const monetizedPlayback = useMemo(
     () => selectCreatorTvMonetizedPlayback(linear, ssaiFailed),
     [linear, ssaiFailed],
   );
-  const progressiveOffsetMs = current
-    ? Math.min(
-        Math.max(0, Date.parse(current.endsAt) - Date.parse(current.startsAt) - 250),
-        Math.max(
-          0,
-          current.playbackOffsetMs +
-            Math.max(0, Date.now() - Date.parse(data.schedule.generatedAt)),
-        ),
-      )
-    : 0;
+  const progressiveOffsetMs =
+    ssaiFallback?.occurrenceKey === currentOccurrenceKey
+      ? ssaiFallback.offsetMs
+      : (current?.playbackOffsetMs ?? 0);
 
   useEffect(() => {
     if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
@@ -144,9 +142,19 @@ export function CreatorTvPlayer({
           fallback: "CLIENT_IMA_MP4",
         },
       });
-      setSsaiFailed(true);
+      const fallbackOffsetMs = current
+        ? Math.min(
+            Math.max(0, Date.parse(current.endsAt) - Date.parse(current.startsAt) - 250),
+            Math.max(
+              0,
+              current.playbackOffsetMs +
+                Math.max(0, Date.now() - Date.parse(data.schedule.generatedAt)),
+            ),
+          )
+        : 0;
+      setSsaiFallback({ occurrenceKey: currentOccurrenceKey ?? null, offsetMs: fallbackOffsetMs });
     },
-    [currentVideoId, data.channel.id, monetizedPlayback],
+    [current, currentOccurrenceKey, currentVideoId, data.channel.id, data.schedule.generatedAt, monetizedPlayback],
   );
 
   const accent = data.appearance.accentColor ?? "#63D1CC";
