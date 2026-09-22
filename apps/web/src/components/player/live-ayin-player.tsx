@@ -46,6 +46,7 @@ export interface LiveAyinPlayerProps {
   onAdContainerReady?: ((element: HTMLDivElement | null) => void) | undefined;
   onFatal?: ((reason: string) => void) | undefined;
   analyticsEnabled?: boolean | undefined;
+  maxReconnectAttempts?: number | undefined;
   className?: string | undefined;
   footer?: ReactNode;
 }
@@ -88,6 +89,7 @@ export function LiveAyinPlayer({
   onAdContainerReady,
   onFatal,
   analyticsEnabled = true,
+  maxReconnectAttempts = 6,
   className,
   footer,
 }: LiveAyinPlayerProps) {
@@ -325,7 +327,8 @@ export function LiveAyinPlayer({
       }
 
       const attemptIndex = reconnectAttemptRef.current;
-      const policyDelay = liveReconnectDelayMs(attemptIndex);
+      const policyDelay =
+        attemptIndex >= maxReconnectAttempts ? null : liveReconnectDelayMs(attemptIndex);
       if (policyDelay === null) {
         reportFatal(reason);
         return;
