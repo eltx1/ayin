@@ -158,7 +158,14 @@ export function CreatorTvPlayer({
         : 0;
       setSsaiFallback({ occurrenceKey: currentOccurrenceKey ?? null, offsetMs: fallbackOffsetMs });
     },
-    [current, currentOccurrenceKey, currentVideoId, data.channel.id, data.schedule.generatedAt, monetizedPlayback],
+    [
+      current,
+      currentOccurrenceKey,
+      currentVideoId,
+      data.channel.id,
+      data.schedule.generatedAt,
+      monetizedPlayback,
+    ],
   );
 
   const accent = data.appearance.accentColor ?? "#63D1CC";
@@ -240,21 +247,13 @@ export function CreatorTvPlayer({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [
-    advertisingConsent.mode,
-    data.canonicalHandle,
-    handleDaiFatal,
-    monetizedPlayback.mode,
-  ]);
+  }, [advertisingConsent.mode, data.canonicalHandle, handleDaiFatal, monetizedPlayback.mode]);
 
   useEffect(() => {
     if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB" || !current?.endsAt) return;
     const endsAt = Date.parse(current.endsAt);
     if (!Number.isFinite(endsAt)) return;
-    const delayMs = Math.min(
-      Math.max(500, endsAt - Date.now() + 250),
-      2_147_000_000,
-    );
+    const delayMs = Math.min(Math.max(500, endsAt - Date.now() + 250), 2_147_000_000);
     const timer = window.setTimeout(() => {
       void refreshSchedule();
     }, delayMs);
