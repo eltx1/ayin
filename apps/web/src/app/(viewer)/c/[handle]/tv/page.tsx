@@ -2,10 +2,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 
 import { CreatorTvPlayer } from "@/components/creator-tv/creator-tv-player";
 import { apiBaseUrl } from "@/lib/api";
-import {
-  fetchPublicCreatorTvLinear,
-  type PublicCreatorTvResponse,
-} from "@/lib/creator-tv";
+import { fetchPublicCreatorTvLinear, type PublicCreatorTvResponse } from "@/lib/creator-tv";
 
 export default async function CreatorTvPage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
