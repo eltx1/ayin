@@ -213,7 +213,18 @@ if (linearSsaiFlag === "1") {
   if (linearFlag !== "1") {
     fail("api.env: LINEAR_SSAI_ENABLED=1 requires LINEAR_COMPUTE_ENABLED=1");
   }
-  requireValue(apiEnv, "LINEAR_SSAI_BREAK_DURATION_SECONDS", "api.env");
+  const breakDurationRaw = requireValue(apiEnv, "LINEAR_SSAI_BREAK_DURATION_SECONDS", "api.env");
+  const segmentDuration = Number(apiEnv.LINEAR_SEGMENT_DURATION_SECONDS?.trim() || "4");
+  const breakDuration = Number(breakDurationRaw);
+  if (
+    Number.isFinite(segmentDuration) &&
+    Number.isFinite(breakDuration) &&
+    breakDuration > segmentDuration * 16
+  ) {
+    fail(
+      "api.env: LINEAR_SSAI_BREAK_DURATION_SECONDS must fit inside the owned HLS rolling window",
+    );
+  }
 }
 
 const gamDaiFlag = apiEnv.GAM_DAI_ENABLED?.trim();
