@@ -95,6 +95,23 @@ export class GamProductionService {
     };
   }
 
+  async productionRequestState() {
+    const emergencyKillSwitch = await this.advertising.isEmergencyKilled();
+    if (emergencyKillSwitch) {
+      return { enabled: false as const, reason: "EMERGENCY_KILL_SWITCH" as const };
+    }
+    if (this.config.killSwitch) {
+      return { enabled: false as const, reason: "GAM_KILL_SWITCH" as const };
+    }
+    if (!this.config.complete) {
+      return { enabled: false as const, reason: "GAM_CONFIG_INCOMPLETE" as const };
+    }
+    if (!this.config.productionEnabled || this.config.testMode) {
+      return { enabled: false as const, reason: "GAM_PRODUCTION_NOT_READY" as const };
+    }
+    return { enabled: true as const };
+  }
+
   async requestState() {
     const emergencyKillSwitch = await this.advertising.isEmergencyKilled();
     if (emergencyKillSwitch) {
