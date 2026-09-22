@@ -13,15 +13,9 @@ import type {
 } from "../creator/creator-tv-linear.provider.js";
 import { DatabaseService } from "../database/database.service.js";
 import { loadGamProductionConfig } from "./gam-production.config.js";
-import {
-  loadLinearSsaiConfig,
-  type LinearSsaiConfig,
-} from "./linear-ssai.config.js";
+import { loadLinearSsaiConfig, type LinearSsaiConfig } from "./linear-ssai.config.js";
 import { resolveVideoAdPolicy } from "./video-ad-policy.js";
-import {
-  defaultVideoAdSettings,
-  videoAdSettingsSchema,
-} from "./video-ad.service.js";
+import { defaultVideoAdSettings, videoAdSettingsSchema } from "./video-ad.service.js";
 
 export const LINEAR_SSAI_CONFIG = Symbol("LINEAR_SSAI_CONFIG");
 
@@ -297,7 +291,9 @@ export function opportunityIdentity(
 }
 
 export function googleDaiSsbUrl(assetKey: string): string {
-  return "https://pubads.g.doubleclick.net/ssai/event/" + encodeURIComponent(assetKey) + "/master.m3u8";
+  return (
+    "https://pubads.g.doubleclick.net/ssai/event/" + encodeURIComponent(assetKey) + "/master.m3u8"
+  );
 }
 
 export function createLinearSsaiConfig(): LinearSsaiConfig {
