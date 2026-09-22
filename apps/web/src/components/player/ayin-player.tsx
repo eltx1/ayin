@@ -403,6 +403,13 @@ export function AyinPlayer({
     ],
   );
 
+  useEffect(
+    () => () => {
+      notifyNativePlaybackState("paused");
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!progressEnabled) return;
     const flush = () => void persist(true, true);
