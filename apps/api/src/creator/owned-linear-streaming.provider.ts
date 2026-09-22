@@ -25,6 +25,7 @@ const HLS_LIST_SIZE = 18;
 const FILLER_CHUNK_MS = 5_000;
 const SHORT_WAIT_MS = 100;
 const PROCESS_KILL_GRACE_MS = 5_000;
+const FFPROBE_TIMEOUT_MS = 10_000;
 
 export interface OwnedLinearEnvironment {
   LINEAR_COMPUTE_ENABLED?: string | undefined;
@@ -33,6 +34,7 @@ export interface OwnedLinearEnvironment {
   LINEAR_SEGMENT_DURATION_SECONDS?: string | undefined;
   LINEAR_MAX_RECOVERY_ATTEMPTS?: string | undefined;
   FFMPEG_PATH?: string | undefined;
+  FFPROBE_PATH?: string | undefined;
 }
 
 export type LinearSourceMaterializer = (
@@ -73,6 +75,7 @@ interface OwnedLinearResource {
   exhaustedOccurrenceKey: string | null;
   exhaustedUntilMs: number;
   sourcePromises: Map<string, Promise<string>>;
+  audioPresencePromises: Map<string, Promise<boolean>>;
 }
 
 @Injectable()
@@ -87,6 +90,7 @@ export class OwnedLinearStreamingProvider
   private readonly outputRoot: string | null;
   private readonly publicBaseUrl: string | null;
   private readonly ffmpegPath: string;
+  private readonly ffprobePath: string;
   private readonly segmentDurationSeconds: number;
   private readonly maxRecoveryAttempts: number;
   private shuttingDown = false;
@@ -100,6 +104,7 @@ export class OwnedLinearStreamingProvider
     this.outputRoot = normalizeNonEmpty(environment.LINEAR_OUTPUT_ROOT);
     this.publicBaseUrl = normalizePublicBaseUrl(environment.LINEAR_PUBLIC_BASE_URL);
     this.ffmpegPath = normalizeNonEmpty(environment.FFMPEG_PATH) ?? "ffmpeg";
+    this.ffprobePath = normalizeNonEmpty(environment.FFPROBE_PATH) ?? "ffprobe";
     this.segmentDurationSeconds = integerSetting(
       environment.LINEAR_SEGMENT_DURATION_SECONDS,
       DEFAULT_SEGMENT_DURATION_SECONDS,
@@ -363,6 +368,7 @@ export class OwnedLinearStreamingProvider
         if (endsAtMs <= now) return;
 
         const seekMs = sourceSeekOffsetMs(resource.plan, program, now);
+        const sourceHasAudio = await this.ensureSourceHasAudio(resource, program, sourcePath);
         this.markTransition(resource, program, now);
         void this.prewarmNext(resource).catch(() => undefined);
 
@@ -372,6 +378,7 @@ export class OwnedLinearStreamingProvider
           version,
           buildProgramFfmpegArgs({
             ffmpegInputPath: sourcePath,
+            sourceHasAudio,
             seekMs,
             durationMs,
             segmentDurationSeconds: this.segmentDurationSeconds,
@@ -559,6 +566,83 @@ export class OwnedLinearStreamingProvider
     }
   }
 
+  private async ensureSourceHasAudio(
+    resource: OwnedLinearResource,
+    program: LinearProgram,
+    sourcePath: string,
+  ): Promise<boolean> {
+    const existing = resource.audioPresencePromises.get(program.source.objectKey);
+    if (existing) return existing;
+
+    const probe = this.probeSourceHasAudio(sourcePath);
+    resource.audioPresencePromises.set(program.source.objectKey, probe);
+    try {
+      return await probe;
+    } catch (error) {
+      resource.audioPresencePromises.delete(program.source.objectKey);
+      throw error;
+    }
+  }
+
+  private async probeSourceHasAudio(sourcePath: string): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      const child = spawn(
+        this.ffprobePath,
+        [
+          "-v",
+          "error",
+          "-select_streams",
+          "a:0",
+          "-show_entries",
+          "stream=index",
+          "-of",
+          "csv=p=0",
+          sourcePath,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"], shell: false },
+      );
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        child.kill("SIGKILL");
+        finish(new Error("Owned linear FFprobe timed out while checking source audio."));
+      }, FFPROBE_TIMEOUT_MS);
+      timeout.unref();
+
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve(stdout.trim().length > 0);
+      };
+
+      child.stdout?.on("data", (chunk: Buffer | string) => {
+        stdout = boundedAppend(stdout, String(chunk), 1_024);
+      });
+      child.stderr?.on("data", (chunk: Buffer | string) => {
+        stderr = boundedAppend(stderr, String(chunk), 4_000);
+      });
+      child.once("error", (error) => {
+        finish(new Error("Owned linear FFprobe failed to start: " + error.message));
+      });
+      child.once("close", (code) => {
+        if (code === 0) finish();
+        else {
+          finish(
+            new Error(
+              "Owned linear FFprobe exited with code " +
+                String(code) +
+                (stderr.trim() ? ". " + stderr.trim() : "."),
+            ),
+          );
+        }
+      });
+    });
+  }
+
   private async materializeSourceFile(
     resource: OwnedLinearResource,
     program: LinearProgram,
@@ -599,6 +683,7 @@ export class OwnedLinearStreamingProvider
       if (sourceObjectKeysToKeep(resource.plan, Date.now()).has(objectKey)) continue;
       if (resource.sourcePromises.get(objectKey) !== promise) continue;
       resource.sourcePromises.delete(objectKey);
+      resource.audioPresencePromises.delete(objectKey);
       if (filePath) await rm(filePath, { force: true }).catch(() => undefined);
     }
 
@@ -721,6 +806,7 @@ export class OwnedLinearStreamingProvider
       exhaustedOccurrenceKey: null,
       exhaustedUntilMs: 0,
       sourcePromises: new Map(),
+      audioPresencePromises: new Map(),
     };
   }
 
@@ -837,6 +923,7 @@ export class OwnedLinearStreamingProvider
 
 export function buildProgramFfmpegArgs(input: {
   ffmpegInputPath: string;
+  sourceHasAudio: boolean;
   seekMs: number;
   durationMs: number;
   segmentDurationSeconds: number;
@@ -852,12 +939,20 @@ export function buildProgramFfmpegArgs(input: {
     seconds(input.seekMs),
     "-i",
     input.ffmpegInputPath,
+    ...(input.sourceHasAudio
+      ? []
+      : [
+          "-f",
+          "lavfi",
+          "-i",
+          "anullsrc=channel_layout=stereo:sample_rate=48000",
+        ]),
     "-t",
     seconds(input.durationMs),
     "-map",
     "0:v:0",
     "-map",
-    "0:a:0?",
+    input.sourceHasAudio ? "0:a:0" : "1:a:0",
     "-map_metadata",
     "-1",
     "-vf",
