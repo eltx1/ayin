@@ -119,6 +119,16 @@ This Task 76 DAI integration does not pretend that an arbitrary external VAST or
 
 If the current linear plan contains a `DIRECT` or `HOUSE` opportunity, Google DAI selection is blocked for that capability response and the client keeps the existing IMA/MP4 path.
 
+## Consent boundary
+
+Task 76 does not bypass AYIN's existing advertising-consent layer.
+
+- `PERSONALIZED` may use the configured DAI SSB URL.
+- `NON_PERSONALIZED` appends Google's documented `npa=1` stream parameter.
+- `LIMITED_ADS` remains on the existing client-side IMA path. AYIN does not guess an SDK-less limited-ads DAI endpoint/domain behavior for the SSB stream.
+
+Google documents `npa=1` for DAI VOD/live stream requests and documents separate handling requirements for SDK-less limited ads.
+
 ## Failure and fallback
 
 Progressive MP4 is still the content safety path.
