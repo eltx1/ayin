@@ -168,6 +168,7 @@ export interface CreatorTvLinearCapability {
         tvChannelId: string;
         channelId: string;
         channelHandle: string;
+        networkCode: string | null;
       };
       reason: string | null;
     };
@@ -212,6 +213,7 @@ export function selectCreatorTvMonetizedPlayback(
       playbackUrl: string;
       assetKey: string;
       providerResourceId: string;
+      networkCode: string;
     }
   | { mode: "CLIENT_IMA_MP4" } {
   const dai = capability?.monetization.dai;
@@ -222,6 +224,7 @@ export function selectCreatorTvMonetizedPlayback(
     dai?.available &&
     dai.playbackUrl &&
     dai.assetKey &&
+    dai.attribution.networkCode &&
     providerResourceId
   ) {
     return {
@@ -229,6 +232,7 @@ export function selectCreatorTvMonetizedPlayback(
       playbackUrl: dai.playbackUrl,
       assetKey: dai.assetKey,
       providerResourceId,
+      networkCode: dai.attribution.networkCode!,
     };
   }
   return { mode: "CLIENT_IMA_MP4" };
