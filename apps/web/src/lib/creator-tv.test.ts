@@ -55,6 +55,8 @@ describe("Creator TV playback contract", () => {
     expect(playerSource).toContain('"TV_SSAI_FALLBACK"');
     expect(playerSource).toContain("Date.parse(current.endsAt)");
     expect(playerSource).toContain("void refreshSchedule()");
+    expect(playerSource).toContain("window.setInterval(() => void poll(), 15_000)");
+    expect(playerSource).toContain('"CAPABILITY_" + reason');
     expect(livePlayerSource).toContain("<TvFocusScope");
     expect(livePlayerSource).toContain("onFatal?.(reason)");
     expect(livePlayerSource).toContain("if (!analyticsEnabled) return");
