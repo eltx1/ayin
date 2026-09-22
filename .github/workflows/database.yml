@@ -88,13 +88,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Task 76 temporary formatter
-        shell: bash
-        run: |
-          set -euo pipefail
-          pnpm exec prettier --write             apps/api/src/ads/linear-ssai.config.ts             apps/api/src/ads/linear-ssai.service.ts             apps/api/src/ads/linear-ssai.test.ts             apps/api/src/analytics/analytics.schemas.test.ts             apps/api/src/creator/owned-linear-streaming.provider.ts             'apps/web/src/app/(viewer)/c/[handle]/tv/page.tsx'             apps/web/src/components/creator-tv/creator-tv-player.tsx             apps/web/src/lib/creator-tv.test.ts             apps/web/src/lib/creator-tv.ts
-          git diff --no-color --             apps/api/src/ads/linear-ssai.config.ts             apps/api/src/ads/linear-ssai.service.ts             apps/api/src/ads/linear-ssai.test.ts             apps/api/src/analytics/analytics.schemas.test.ts             apps/api/src/creator/owned-linear-streaming.provider.ts             'apps/web/src/app/(viewer)/c/[handle]/tv/page.tsx'             apps/web/src/components/creator-tv/creator-tv-player.tsx             apps/web/src/lib/creator-tv.test.ts             apps/web/src/lib/creator-tv.ts
-
       - name: Audit production dependencies
         run: pnpm audit:prod
 
