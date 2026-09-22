@@ -280,6 +280,7 @@ export function CreatorTvPlayer({
               channelId={data.channel.id}
               dvrWindowSeconds={null}
               key={monetizedPlayback.providerResourceId + ":" + monetizedPlayback.assetKey}
+              maxReconnectAttempts={2}
               muted
               onFatal={handleDaiFatal}
               playbackUrl={monetizedPlayback.playbackUrl}
