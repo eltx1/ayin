@@ -42,13 +42,15 @@ DAI availability is account-dependent. AYIN does not assume that a GAM account h
 
 Task 75 selected AYIN-owned FFmpeg compute. The provider owns the rolling HLS media playlist and can therefore insert valid HLS cue tags at segment boundaries.
 
+The separate real-live provider selected in Task 73 is Mux. Current Mux Live Stream API documentation exposes ingest, playback, metadata, captions, latency, reconnect, and simulcast controls, but AYIN does not have a documented Mux control-plane operation that inserts Google-compatible SCTE-35/CUE splice signaling into Mux-packaged HLS. Task 76 therefore **does not claim or fabricate live SSAI on Mux**. Existing live playback keeps its client-side IMA ad-break hook.
+
 Task 76 adds a single-variant HLS master playlist:
 
 ```text
 /public/linear/{providerResourceId}/master.m3u8
 ```
 
-The master points to the real Task 75 media playlist. This is the content-source URL that can be configured in an eligible Google DAI live stream.
+The master points to the real Task 75 media playlist. It is HLS v3 and carries explicit CODECS and RESOLUTION attributes required by the current Google DAI HLS integration guidance. The owned linear output is normalized to a stable 1280x720 H.264 High@4.1/AAC profile with bounded bitrate so the master accurately describes the media. This is the content-source URL that can be configured in an eligible Google DAI live stream.
 
 Cue translation is performed only when Task 76 signaling is enabled. Old Task 75 persisted resources without the new signaling field remain content-playable and receive no Task 76 cues until reconciled.
 
