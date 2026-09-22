@@ -16,7 +16,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -74,6 +73,11 @@ class ShellBaselineInstrumentedTest {
                 it.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL)
             }
             assertTrue(awaitJsBoolean(scenario, "window.__lastLifecycle === 'memory-pressure'"))
+
+            scenario.onActivity { it.emitNetworkForTests(false) }
+            assertTrue(awaitJsBoolean(scenario, "window.__lastNetwork === false"))
+            scenario.onActivity { it.emitNetworkForTests(true) }
+            assertTrue(awaitJsBoolean(scenario, "window.__lastNetwork === true"))
         }
     }
 
@@ -116,7 +120,27 @@ class ShellBaselineInstrumentedTest {
     }
 
     @Test
-    fun deepLinksStayCanonicalAndGoogleTvDirectBackExitsInOnePress() {
+    fun deepLinksStayCanonical() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val deepLink =
+            Intent(context, MainActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("ayin://live/task-77?autoplay=1"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        ActivityScenario.launch<MainActivity>(deepLink).use { scenario ->
+            scenario.onActivity {
+                assertEquals(
+                    "https://ayin.stream/live/task-77?autoplay=1",
+                    it.lastTrustedUrlForTests(),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun googleTvDirectBackExitsInOnePressWhenRequested() {
+        if (!ShellNavigation.isTvPlatform()) return
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val deepLink =
             Intent(context, MainActivity::class.java)
@@ -126,21 +150,10 @@ class ShellBaselineInstrumentedTest {
 
         ActivityScenario.launch<MainActivity>(deepLink).use { scenario ->
             scenario.onActivity {
-                assertEquals(
-                    "https://ayin.stream/live/task-77?exit_on_back=true",
-                    it.lastTrustedUrlForTests(),
-                )
-            }
-
-            if (ShellNavigation.isTvPlatform()) {
-                scenario.onActivity {
-                    it.onBackPressedDispatcher.onBackPressed()
-                    assertTrue(it.isFinishing)
-                }
+                it.onBackPressedDispatcher.onBackPressed()
+                assertTrue(it.isFinishing)
             }
         }
-
-        assumeTrue(ShellNavigation.isTvPlatform())
     }
 
     private fun launch(): ActivityScenario<MainActivity> {
@@ -163,12 +176,16 @@ class ShellBaselineInstrumentedTest {
                       window.__lastRemote = null;
                       window.__lastLifecycle = null;
                       window.__lastKeyCode = null;
+                      window.__lastNetwork = null;
                       window.__backConsumed = false;
                       window.addEventListener('ayin:native-remote', (event) => {
                         window.__lastRemote = event.detail.key;
                       });
                       window.addEventListener('ayin:native-lifecycle', (event) => {
                         window.__lastLifecycle = event.detail.state;
+                      });
+                      window.addEventListener('ayin:native-network', (event) => {
+                        window.__lastNetwork = event.detail.online;
                       });
                       window.addEventListener('keydown', (event) => {
                         window.__lastKeyCode = event.keyCode;
