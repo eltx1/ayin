@@ -817,11 +817,7 @@ export class OwnedLinearStreamingProvider
   private publicMasterManifestUrl(resourceId: string): string {
     if (!this.publicBaseUrl) throw new LinearProviderUnavailableError();
     return (
-      this.publicBaseUrl +
-      "/" +
-      encodeURIComponent(resourceId) +
-      "/" +
-      PUBLIC_MASTER_MANIFEST_FILE
+      this.publicBaseUrl + "/" + encodeURIComponent(resourceId) + "/" + PUBLIC_MASTER_MANIFEST_FILE
     );
   }
 
@@ -986,11 +982,12 @@ interface LinearManifestSegment {
   durationMs: number;
 }
 
-export function injectAdMarkersIntoManifest(
-  manifest: string,
-  plan: LinearChannelPlan,
-): string {
-  if (!plan.adSignaling || !plan.adSignaling.enabled || plan.adSignaling.format !== "HLS_CUE_OUT_IN") {
+export function injectAdMarkersIntoManifest(manifest: string, plan: LinearChannelPlan): string {
+  if (
+    !plan.adSignaling ||
+    !plan.adSignaling.enabled ||
+    plan.adSignaling.format !== "HLS_CUE_OUT_IN"
+  ) {
     return manifest;
   }
 
@@ -1092,7 +1089,10 @@ function addManifestInsertion(
 }
 
 function trimSeconds(value: number): string {
-  return value.toFixed(3).replace(/\.0+$/u, "").replace(/(\.\d*?)0+$/u, "$1");
+  return value
+    .toFixed(3)
+    .replace(/\.0+$/u, "")
+    .replace(/(\.\d*?)0+$/u, "$1");
 }
 
 function sourceCacheFileName(objectKey: string): string {
