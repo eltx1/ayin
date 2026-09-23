@@ -32,4 +32,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-      - run: node scripts/validate-tv-packages.mjs
+      - name: Validate packaged TV bootstrap JavaScript
+        run: node --check platforms/tizen/bootstrap.js
+
+      - name: Validate TV package manifests
+        run: node scripts/validate-tv-packages.mjs
