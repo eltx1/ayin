@@ -34,7 +34,7 @@ Repository validation requires:
 - local `index.html` entrypoint;
 - packaged PNG icon;
 - 1920×1080 TV feature;
-- Tizen 9.0 minimum;
+- Tizen 9.0 minimum plus matching Samsung development API metadata;
 - landscape/maximized mode;
 - pointing device disabled for remote-first UX;
 - Internet privilege;
