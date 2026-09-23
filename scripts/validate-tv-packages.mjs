@@ -25,13 +25,10 @@ for (const needle of [
   if (!tizen.includes(needle)) throw new Error(`Tizen config missing ${needle}`);
 }
 
-const tizenPrivileges = [
-  ...tizen.matchAll(/<tizen:privilege\s+name="([^"]+)"\s*\/?>/gu),
-].map((match) => match[1]);
-if (
-  tizenPrivileges.length !== 1 ||
-  tizenPrivileges[0] !== "http://tizen.org/privilege/internet"
-) {
+const tizenPrivileges = [...tizen.matchAll(/<tizen:privilege\s+name="([^"]+)"\s*\/?>/gu)].map(
+  (match) => match[1],
+);
+if (tizenPrivileges.length !== 1 || tizenPrivileges[0] !== "http://tizen.org/privilege/internet") {
   throw new Error(
     "Hosted Tizen package must request only the Internet privilege until Product/Tizen APIs are actually available",
   );
