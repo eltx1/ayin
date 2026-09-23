@@ -18,10 +18,10 @@ The package keeps `required_version="9.0"`.
 
 Samsung's current TV generation table maps:
 
-| Model year | Tizen |
-| --- | --- |
-| 2025 | 9.0 / Chromium M120 |
-| 2026 | 10.0 / Chromium M130 |
+| Model year | Tizen                |
+| ---------- | -------------------- |
+| 2025       | 9.0 / Chromium M120  |
+| 2026       | 10.0 / Chromium M130 |
 
 This floor is deliberate: AYIN currently uses Next.js 16, whose zero-configuration browser baseline is Chrome 111+, while Samsung documents Tizen 8.0 (2024) as Chromium M108, Tizen 9.0 (2025) as M120, and Tizen 10.0 (2026) as M130. Tizen 9.0+ is therefore the declared browser-compatible range. It is still not a verified retail-device claim; exact model/firmware compatibility remains unverified until emulator/device testing is completed.
 
@@ -134,14 +134,14 @@ Samsung's memory guidance emphasizes releasing media buffers, DOM, and JavaScrip
 
 ## Verification matrix
 
-| Stage | Target | Status | Evidence / limitation |
-| --- | --- | --- | --- |
-| Repository/package validation | GitHub CI | **VERIFIED** | config/bootstrap/status validator + shared runtime unit/type/build gates |
-| Samsung TV Simulator | Current simulator | **NOT VERIFIED** | not available in this task environment; Samsung also states hosted apps and real HLS are not supported by the simulator |
-| Samsung TV Emulator | Current TV Emulator | **NOT VERIFIED** | no Samsung emulator host connected |
-| Real Samsung TV | Retail hardware | **NOT VERIFIED** | no Samsung TV hardware connected |
-| Seller Office submission | Samsung Seller Office | **NOT SUBMITTED** | explicit approval required before submission |
-| Seller Office approval | Samsung Seller Office | **NOT APPROVED** | no submission was made |
+| Stage                         | Target                | Status            | Evidence / limitation                                                                                                   |
+| ----------------------------- | --------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Repository/package validation | GitHub CI             | **VERIFIED**      | config/bootstrap/status validator + shared runtime unit/type/build gates                                                |
+| Samsung TV Simulator          | Current simulator     | **NOT VERIFIED**  | not available in this task environment; Samsung also states hosted apps and real HLS are not supported by the simulator |
+| Samsung TV Emulator           | Current TV Emulator   | **NOT VERIFIED**  | no Samsung emulator host connected                                                                                      |
+| Real Samsung TV               | Retail hardware       | **NOT VERIFIED**  | no Samsung TV hardware connected                                                                                        |
+| Seller Office submission      | Samsung Seller Office | **NOT SUBMITTED** | explicit approval required before submission                                                                            |
+| Seller Office approval        | Samsung Seller Office | **NOT APPROVED**  | no submission was made                                                                                                  |
 
 A simulator result must never be presented as emulator or real-device verification.
 
