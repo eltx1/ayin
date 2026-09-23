@@ -88,21 +88,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Task 78 temporary formatter
-        shell: bash
-        run: |
-          set -euo pipefail
-          pnpm exec prettier --write \
-            apps/web/src/components/platform/tv-platform-runtime.tsx \
-            apps/web/src/lib/tv-platform-runtime.test.ts \
-            docs/TIZEN_CERTIFICATION.md \
-            scripts/validate-tv-packages.mjs
-          git diff --no-color -- \
-            apps/web/src/components/platform/tv-platform-runtime.tsx \
-            apps/web/src/lib/tv-platform-runtime.test.ts \
-            docs/TIZEN_CERTIFICATION.md \
-            scripts/validate-tv-packages.mjs
-
       - name: Audit production dependencies
         run: pnpm audit:prod
 
