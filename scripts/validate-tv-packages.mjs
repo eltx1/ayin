@@ -15,7 +15,7 @@ for (const needle of [
   '<content src="index.html"',
   '<icon src="icon.png"',
   '<feature name="http://tizen.org/feature/screen.size.normal.1080.1920"',
-  'required_version="6.0"',
+  'required_version="9.0"',
   "http://tizen.org/privilege/internet",
   'origin="https://ayin.stream"',
   'origin="https://api.ayin.stream"',
@@ -51,7 +51,7 @@ if (tizenBootstrap.includes("window.tizen") || tizenBootstrap.includes("webapis.
 }
 
 if (tizenStatus.packageMode !== "hosted") throw new Error("Tizen package mode must be explicit");
-if (tizenStatus.declaredMinimumTizen !== "6.0") {
+if (tizenStatus.declaredMinimumTizen !== "9.0") {
   throw new Error("Tizen declared minimum must match config.xml");
 }
 if (tizenStatus.tizenApisAvailableInHostedContent !== false) {
