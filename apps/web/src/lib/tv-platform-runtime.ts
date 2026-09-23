@@ -293,7 +293,11 @@ function installTizenScreenSaverGuard(
     const state = enabled ? states.SCREEN_SAVER_ON : states.SCREEN_SAVER_OFF;
     if (typeof state !== "number") return;
     try {
-      appcommon.setScreenSaver?.(state, () => undefined, () => undefined);
+      appcommon.setScreenSaver?.(
+        state,
+        () => undefined,
+        () => undefined,
+      );
     } catch {
       // Product API support differs by Samsung model; media playback must continue.
     }
