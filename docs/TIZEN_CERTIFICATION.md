@@ -50,6 +50,10 @@ If the package starts offline, it displays a reconnect message and navigates aft
 
 The shared Tizen adapter also presents an in-app network-loss notification for the hosted `?platform=tizen` runtime.
 
+### Hosted CSP submission blocker
+
+Samsung's hosted-application guidance says hosted submission CSP must not use `unsafe-inline` or `unsafe-eval`. AYIN's current production Next.js CSP still contains `unsafe-inline` for its shared web runtime. Task 78 does **not** weaken the site's CSP, invent a Samsung exception, or introduce a Tizen-only UI build. This remains an explicit Seller Office blocker until AYIN moves the shared application to a nonce/hash-compatible CSP or Samsung's Content Manager confirms an accepted hosted-app treatment.
+
 ## Remote keys and focus
 
 Samsung defines Arrow keys, Enter, and Back as mandatory keys that applications cannot register through TVInputDevice. AYIN continues to normalize those DOM keyboard events through the shared `tv-platform-runtime` and existing `TvFocusScope`.
@@ -63,9 +67,9 @@ The shared runtime still understands Samsung media key names/codes when they are
 The shared adapter keeps Back hierarchical:
 
 1. exit fullscreen first;
-2. let shared AYIN UI consume Back;
-3. use browser history for detail pages;
-4. request an app-root exit flow only at the root.
+3. let shared AYIN UI consume Back;
+4. use browser history for detail pages;
+5. request an app-root exit flow only at the root.
 
 The shared exit confirmation calls `tizen.application.getCurrentApplication().exit()` only when that API actually exists.
 
@@ -149,15 +153,16 @@ A simulator result must never be presented as emulator or real-device verificati
 
 Before calling AYIN Tizen-certified:
 
-1. obtain Samsung Content Manager approval for the hosted-app architecture, or move to a packaged-local architecture that can legitimately access required Tizen/Product APIs;
+1. resolve the hosted-page CSP `unsafe-inline` Seller blocker with a nonce/hash-compatible shared CSP or explicit Samsung Content Manager direction;
+2. obtain Samsung Content Manager approval for the hosted-app architecture, or move to a packaged-local architecture that can legitimately access required Tizen/Product APIs;
 2. create final Samsung/Tizen author and distributor certificate profiles outside git;
 3. package/sign a WGT with current Samsung TV tooling;
 4. test on Samsung TV Emulator;
-5. test representative physical Samsung TVs;
-6. validate Return/Exit policy, screensaver, D-pad/focus, HLS/MP4, WebVTT, autoplay, fullscreen, lifecycle/memory, Creator TV, live, and network loss;
-7. confirm IMA/GAM support with Google for Samsung Tizen;
-8. prepare Seller Office metadata/artwork;
-9. submit only after explicit approval.
+6. test representative physical Samsung TVs;
+7. validate Return/Exit policy, screensaver, D-pad/focus, HLS/MP4, WebVTT, autoplay, fullscreen, lifecycle/memory, Creator TV, live, and network loss;
+8. confirm IMA/GAM support with Google for Samsung Tizen;
+9. prepare Seller Office metadata/artwork;
+10. submit only after explicit approval.
 
 No certificate, store credential, signing key, Seller Office submission, or store approval is created by Task 78.
 
