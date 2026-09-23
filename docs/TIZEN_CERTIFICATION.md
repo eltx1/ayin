@@ -73,7 +73,9 @@ The shared adapter keeps Back hierarchical:
 
 The shared exit confirmation calls `tizen.application.getCurrentApplication().exit()` only when that API actually exists.
 
-The current hosted page does not receive the Application API, so Seller Office Return-key certification is **not claimed** for hosted mode. Samsung's long-press Return/Exit remains platform behavior and is not overridden.
+In hosted mode the root Back key still opens AYIN's exit confirmation. If the user confirms and the Application API is unavailable, AYIN explicitly tells the user to press and hold Samsung Return/Exit to close the app. Samsung documents that long-press Return/Exit forcibly terminates the application and must not be overridden.
+
+The current hosted page still cannot prove the Seller Office single-press Return policy end-to-end without Samsung runtime validation, so Return-key certification is **not claimed**.
 
 ## HLS, MP4 fallback, Creator TV, and live
 
