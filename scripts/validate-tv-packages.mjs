@@ -7,6 +7,7 @@ const tizenIndex = await readFile("platforms/tizen/index.html", "utf8");
 const tizenBootstrap = await readFile("platforms/tizen/bootstrap.js", "utf8");
 const tizenStatus = JSON.parse(await readFile("platforms/tizen/CERTIFICATION_STATUS.json", "utf8"));
 const webosIndex = await readFile("platforms/webos/index.html", "utf8");
+const nextConfig = await readFile("apps/web/next.config.ts", "utf8");
 
 for (const needle of [
   '<tizen:profile name="tv-samsung"',
@@ -73,6 +74,17 @@ for (const stage of [
       `Tizen certification stage ${stage} must remain false until actually completed`,
     );
   }
+}
+
+if (
+  nextConfig.includes("'unsafe-inline'") &&
+  !tizenStatus.blockingReleaseChecks?.some(
+    (item) => typeof item === "string" && item.includes("CSP") && item.includes("unsafe-inline"),
+  )
+) {
+  throw new Error(
+    "Tizen certification state must record Samsung's hosted CSP blocker while AYIN uses unsafe-inline",
+  );
 }
 
 for (const key of ["id", "title", "type", "main", "version", "icon"]) {
