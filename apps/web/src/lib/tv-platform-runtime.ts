@@ -88,7 +88,9 @@ export function detectTvWebPlatform(target: Window = window): NativeShellPlatfor
   if (target.tizen?.tvinputdevice) return "tizen";
   if (target.webOS) return "webos";
   try {
-    const declared = new URL(target.location.href).searchParams.get("platform");
+    const location = new URL(target.location.href);
+    if (location.protocol !== "https:" || location.hostname !== "ayin.stream") return null;
+    const declared = location.searchParams.get("platform");
     if (declared === "tizen" || declared === "webos") return declared;
   } catch {
     // A malformed location must not prevent the shared TV runtime from starting.
