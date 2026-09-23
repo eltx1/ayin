@@ -11,29 +11,29 @@ import {
 } from "@/lib/tv-platform-runtime";
 
 export function TvPlatformRuntime() {
-  const [platform, setPlatform] = useState<ReturnType<typeof detectTvWebPlatform>>(null);
+  const [platform] = useState<ReturnType<typeof detectTvWebPlatform>>(() =>
+    typeof window === "undefined" ? null : detectTvWebPlatform(),
+  );
   const [offline, setOffline] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    const detected = detectTvWebPlatform();
-    setPlatform(detected);
-    setOffline(detected === "tizen" && !navigator.onLine);
-
     const updateNetwork = () => {
-      if (detected === "tizen") setOffline(!navigator.onLine);
+      if (platform === "tizen") setOffline(!navigator.onLine);
     };
+    const frame = window.requestAnimationFrame(updateNetwork);
     window.addEventListener("online", updateNetwork);
     window.addEventListener("offline", updateNetwork);
     const uninstallRuntime = installTvPlatformRuntime();
 
     return () => {
+      window.cancelAnimationFrame(frame);
       window.removeEventListener("online", updateNetwork);
       window.removeEventListener("offline", updateNetwork);
       uninstallRuntime();
     };
-  }, []);
+  }, [platform]);
 
   useEffect(() => {
     const onExitRequest = (event: Event) => {
