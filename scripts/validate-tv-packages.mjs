@@ -62,10 +62,11 @@ for (const key of [
 if (!webosIndex.includes("https://ayin.stream/?platform=webos"))
   throw new Error("webOS entrypoint must target canonical AYIN origin");
 
+await access("platforms/tizen/icon.png");
+
 if (process.env.AYIN_TV_REQUIRE_STORE_ASSETS === "1") {
   await access("platforms/webos/icon.png");
   await access("platforms/webos/largeIcon.png");
-  await access("platforms/tizen/icon.png");
 }
 
 console.log("TV package manifests are structurally valid.");
