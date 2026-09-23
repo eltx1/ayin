@@ -22,6 +22,18 @@ type TizenApplication = {
   getCurrentApplication?: () => { exit?: () => void };
 };
 
+type SamsungAppCommon = {
+  AppCommonScreenSaverState?: {
+    SCREEN_SAVER_ON?: number;
+    SCREEN_SAVER_OFF?: number;
+  };
+  setScreenSaver?: (
+    state: number,
+    success?: (result?: unknown) => void,
+    error?: (error: unknown) => void,
+  ) => void;
+};
+
 declare global {
   interface Window {
     tizen?: {
@@ -29,6 +41,9 @@ declare global {
       application?: TizenApplication;
     };
     webOS?: unknown;
+    webapis?: {
+      appcommon?: SamsungAppCommon;
+    };
   }
 }
 
@@ -104,6 +119,8 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   const platform = nativeShell?.platform ?? detectTvWebPlatform(target);
   const pausedForLifecycle = new Set<HTMLMediaElement>();
   registerTizenMediaKeys(target);
+  const removeScreenSaverGuard = installTizenScreenSaverGuard(target, platform);
+  if (platform) target.document.documentElement.dataset.tvPlatform = platform;
 
   const onKeyDown = (event: KeyboardEvent) => {
     const key = normalizeTvRemoteEvent(event);
@@ -126,13 +143,12 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
       return;
     }
     if (action === "REQUEST_EXIT") {
-      event.preventDefault();
-      target.dispatchEvent(
-        new CustomEvent("ayin:tv-exit-request", {
-          detail: { platform: "tizen" },
-          cancelable: true,
-        }),
-      );
+      const exitEvent = new CustomEvent("ayin:tv-exit-request", {
+        detail: { platform: "tizen" },
+        cancelable: true,
+      });
+      target.dispatchEvent(exitEvent);
+      if (exitEvent.defaultPrevented) event.preventDefault();
     }
   };
 
@@ -237,12 +253,20 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     target.document.removeEventListener("visibilitychange", onVisibility);
     target.document.removeEventListener("webOSLaunch", onWebOsLaunch as EventListener);
     target.document.removeEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
+    removeScreenSaverGuard();
+    if (platform && target.document.documentElement.dataset.tvPlatform === platform) {
+      delete target.document.documentElement.dataset.tvPlatform;
+    }
     pausedForLifecycle.clear();
   };
 }
 
+export function canRequestTvExit(target: Window = window): boolean {
+  return Boolean(target.tizen?.application?.getCurrentApplication);
+}
+
 export function requestTvExit(target: Window = window): boolean {
-  if (target.tizen?.application?.getCurrentApplication) {
+  if (canRequestTvExit(target)) {
     try {
       target.tizen.application.getCurrentApplication()?.exit?.();
       return true;
@@ -251,6 +275,51 @@ export function requestTvExit(target: Window = window): boolean {
     }
   }
   return false;
+}
+
+function installTizenScreenSaverGuard(
+  target: Window,
+  platform: NativeShellPlatform | null,
+): () => void {
+  if (platform !== "tizen") return () => undefined;
+  const appcommon = target.webapis?.appcommon;
+  const states = appcommon?.AppCommonScreenSaverState;
+  if (!appcommon?.setScreenSaver || !states) return () => undefined;
+
+  const setEnabled = (enabled: boolean) => {
+    const state = enabled ? states.SCREEN_SAVER_ON : states.SCREEN_SAVER_OFF;
+    if (typeof state !== "number") return;
+    try {
+      appcommon.setScreenSaver?.(state, () => undefined, () => undefined);
+    } catch {
+      // Product API support differs by Samsung model; media playback must continue.
+    }
+  };
+
+  const anyPlayingMedia = () =>
+    [...target.document.querySelectorAll<HTMLMediaElement>("video,audio")].some(
+      (media) => !media.paused && !media.ended,
+    );
+
+  const onPlay = () => setEnabled(false);
+  const onStopped = () => {
+    if (!anyPlayingMedia()) setEnabled(true);
+  };
+
+  target.document.addEventListener("play", onPlay, true);
+  target.document.addEventListener("playing", onPlay, true);
+  target.document.addEventListener("pause", onStopped, true);
+  target.document.addEventListener("ended", onStopped, true);
+  target.document.addEventListener("emptied", onStopped, true);
+
+  return () => {
+    target.document.removeEventListener("play", onPlay, true);
+    target.document.removeEventListener("playing", onPlay, true);
+    target.document.removeEventListener("pause", onStopped, true);
+    target.document.removeEventListener("ended", onStopped, true);
+    target.document.removeEventListener("emptied", onStopped, true);
+    setEnabled(true);
+  };
 }
 
 function registerTizenMediaKeys(target: Window) {
