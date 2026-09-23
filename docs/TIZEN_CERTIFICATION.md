@@ -42,6 +42,8 @@ Repository validation requires:
 
 The hosted package intentionally does not request `tv.inputdevice`, `adinfo`, DRM, TV window/audio, microphone, billing, SSO, or other privileges the hosted content cannot legitimately use.
 
+The checked-in development package identity is `AYINtv2026.AYIN` with package ID `AYINtv2026`, satisfying Tizen's 10-character package-ID shape. It is **not** marked as the final Seller Office identity. Before signing or registration, Tizen Studio/Samsung must confirm or generate the final unique identity; once an application is published, its Tizen ID must remain stable.
+
 ## HTTPS and network
 
 The local bootstrap contains no inline script and navigates only to the canonical HTTPS AYIN origin.
@@ -155,16 +157,17 @@ A simulator result must never be presented as emulator or real-device verificati
 
 Before calling AYIN Tizen-certified:
 
-1. resolve the hosted-page CSP `unsafe-inline` Seller blocker with a nonce/hash-compatible shared CSP or explicit Samsung Content Manager direction;
-2. obtain Samsung Content Manager approval for the hosted-app architecture, or move to a packaged-local architecture that can legitimately access required Tizen/Product APIs;
-2. create final Samsung/Tizen author and distributor certificate profiles outside git;
-3. package/sign a WGT with current Samsung TV tooling;
-4. test on Samsung TV Emulator;
-6. test representative physical Samsung TVs;
-7. validate Return/Exit policy, screensaver, D-pad/focus, HLS/MP4, WebVTT, autoplay, fullscreen, lifecycle/memory, Creator TV, live, and network loss;
-8. confirm IMA/GAM support with Google for Samsung Tizen;
-9. prepare Seller Office metadata/artwork;
-10. submit only after explicit approval.
+1. confirm or replace the checked-in development package/application ID with the final Samsung/Tizen Studio identity before signing or Seller Office registration;
+2. resolve the hosted-page CSP `unsafe-inline` Seller blocker with a nonce/hash-compatible shared CSP or explicit Samsung Content Manager direction;
+3. obtain Samsung Content Manager approval for the hosted-app architecture, or move to a packaged-local architecture that can legitimately access required Tizen/Product APIs;
+4. create final Samsung/Tizen author and distributor certificate profiles outside git;
+5. package/sign a WGT with current Samsung TV tooling;
+6. test on Samsung TV Emulator;
+7. test representative physical Samsung TVs;
+8. validate Return/Exit policy, screensaver, D-pad/focus, HLS/MP4, WebVTT, autoplay, fullscreen, lifecycle/memory, Creator TV, live, and network loss;
+9. confirm IMA/GAM support with Google for Samsung Tizen;
+10. prepare Seller Office metadata/artwork;
+11. submit only after explicit approval.
 
 No certificate, store credential, signing key, Seller Office submission, or store approval is created by Task 78.
 
