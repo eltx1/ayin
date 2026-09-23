@@ -17,8 +17,9 @@ export function TvPlatformRuntime() {
   useEffect(() => installTvPlatformRuntime(), []);
 
   useEffect(() => {
+    const platform = detectTvWebPlatform();
     const onExitRequest = () => {
-      if (detectTvWebPlatform() !== "tizen") return;
+      if (platform !== "tizen") return;
       setExitUnavailable(false);
       setExitOpen(true);
     };
