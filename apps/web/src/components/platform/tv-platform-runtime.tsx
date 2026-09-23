@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { TvFocusScope } from "@/components/tv/tv-focus-scope";
 import {
   detectTvWebPlatform,
   installTvPlatformRuntime,
@@ -48,17 +49,18 @@ export function TvPlatformRuntime() {
         zIndex: 2147483647,
       }}
     >
-      <div
-        style={{
-          background: "#11131a",
-          border: "2px solid rgba(255,255,255,0.22)",
-          borderRadius: 18,
-          color: "#fff",
-          maxWidth: 620,
-          padding: 32,
-          width: "min(80vw, 620px)",
-        }}
-      >
+      <TvFocusScope>
+        <div
+          style={{
+            background: "#11131a",
+            border: "2px solid rgba(255,255,255,0.22)",
+            borderRadius: 18,
+            color: "#fff",
+            maxWidth: 620,
+            padding: 32,
+            width: "min(80vw, 620px)",
+          }}
+        >
         <h2 style={{ fontSize: 32, margin: "0 0 16px" }}>Exit AYIN?</h2>
         <p style={{ fontSize: 22, lineHeight: 1.5, margin: "0 0 24px" }}>
           {exitUnavailable
@@ -94,8 +96,9 @@ export function TvPlatformRuntime() {
           >
             Yes
           </button>
+          </div>
         </div>
-      </div>
+      </TvFocusScope>
     </div>
   );
 }
