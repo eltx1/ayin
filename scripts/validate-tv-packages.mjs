@@ -30,7 +30,7 @@ for (const needle of tizenRequiredNeedles) {
   if (!tizen.includes(needle)) throw new Error(`Tizen config missing ${needle}`);
 }
 
-if (/\<access\s+origin="http:\/\//u.test(tizen)) {
+if (/<access\s+origin="http:\/\//u.test(tizen)) {
   throw new Error("Tizen network access must not allow cleartext HTTP origins");
 }
 if (tizen.includes("http://developer.samsung.com/privilege/drmplay")) {
