@@ -2,7 +2,10 @@
   "task": 78,
   "packageMode": "hosted",
   "declaredMinimumTizen": "9.0",
-  "currentSamsungTvRangeReviewed": ["9.0", "10.0"],
+  "currentSamsungTvRangeReviewed": [
+    "9.0",
+    "10.0"
+  ],
   "hostedApplicationPartnerApprovalRequired": true,
   "tizenApisAvailableInHostedContent": false,
   "verification": {
@@ -14,6 +17,7 @@
     "storeApproved": false
   },
   "blockingReleaseChecks": [
+    "Hosted AYIN response CSP currently uses unsafe-inline; Samsung hosted-app submission guidance requires removing unsafe-inline/unsafe-eval or obtaining explicit Content Manager direction",
     "Samsung Content Manager approval for hosted application distribution",
     "Samsung TV emulator validation on a supported TV Extension",
     "Representative physical Samsung TV validation",
