@@ -35,5 +35,8 @@ jobs:
       - name: Validate packaged TV bootstrap JavaScript
         run: node --check platforms/tizen/bootstrap.js
 
+      - name: Validate Tizen config XML
+        run: python3 -c 'import xml.etree.ElementTree as ET; ET.parse("platforms/tizen/config.xml")'
+
       - name: Validate TV package manifests
         run: node scripts/validate-tv-packages.mjs
