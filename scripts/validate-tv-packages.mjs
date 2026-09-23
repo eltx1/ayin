@@ -14,6 +14,7 @@ for (const needle of [
   '<icon src="icon.png"',
   '<feature name="http://tizen.org/feature/screen.size.normal.1080.1920"',
   'required_version="9.0"',
+  'key="http://samsung.com/tv/metadata/devel.api.version" value="9.0"',
   "http://tizen.org/privilege/internet",
   'origin="https://ayin.stream"',
   'origin="https://api.ayin.stream"',
@@ -23,11 +24,16 @@ for (const needle of [
   if (!tizen.includes(needle)) throw new Error(`Tizen config missing ${needle}`);
 }
 
-if (tizen.includes("http://tizen.org/privilege/tv.inputdevice")) {
-  throw new Error("Hosted Tizen package must not claim TVInputDevice API access");
-}
-if (tizen.includes("http://developer.samsung.com/privilege/adinfo")) {
-  throw new Error("Tizen package must not request adinfo without an implemented Product API use");
+const tizenPrivileges = [
+  ...tizen.matchAll(/<tizen:privilege\s+name="([^"]+)"\s*\/?>/gu),
+].map((match) => match[1]);
+if (
+  tizenPrivileges.length !== 1 ||
+  tizenPrivileges[0] !== "http://tizen.org/privilege/internet"
+) {
+  throw new Error(
+    "Hosted Tizen package must request only the Internet privilege until Product/Tizen APIs are actually available",
+  );
 }
 if (/<access\s+origin="http:\/\//u.test(tizen)) {
   throw new Error("Tizen network access must not allow cleartext HTTP origins");
@@ -79,7 +85,18 @@ if (!webosIndex.includes("https://ayin.stream/?platform=webos")) {
   throw new Error("webOS entrypoint must target canonical AYIN origin");
 }
 
-await access("platforms/tizen/icon.png");
+const tizenIcon = await readFile("platforms/tizen/icon.png");
+if (
+  tizenIcon.length < 24 ||
+  !tizenIcon.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+) {
+  throw new Error("Tizen package icon must be a real PNG file");
+}
+const iconWidth = tizenIcon.readUInt32BE(16);
+const iconHeight = tizenIcon.readUInt32BE(20);
+if (iconWidth < 117 || iconHeight < 117) {
+  throw new Error("Tizen package icon must be at least the 117x117 test-icon baseline");
+}
 
 if (process.env.AYIN_TV_REQUIRE_STORE_ASSETS === "1") {
   await access("platforms/webos/icon.png");
