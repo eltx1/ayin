@@ -4,45 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=1920,initial-scale=1" />
     <title>AYIN</title>
+    <script defer src="bootstrap.js"></script>
   </head>
   <body>
     <p>Opening AYIN…</p>
-    <script>
-      (() => {
-        const target = "https://ayin.stream/?platform=tizen";
-        const mediaKeys = [
-          "MediaPlayPause",
-          "MediaPlay",
-          "MediaPause",
-          "MediaRewind",
-          "MediaFastForward",
-        ];
-        let redirected = false;
-        let timeoutId = 0;
-
-        const redirect = () => {
-          if (redirected) return;
-          redirected = true;
-          if (timeoutId) window.clearTimeout(timeoutId);
-          window.location.replace(target);
-        };
-
-        try {
-          const input = window.tizen && window.tizen.tvinputdevice;
-          if (input && typeof input.registerKeyBatch === "function") {
-            timeoutId = window.setTimeout(redirect, 750);
-            input.registerKeyBatch(mediaKeys, redirect, redirect);
-            return;
-          }
-          if (input && typeof input.registerKey === "function") {
-            for (const key of mediaKeys) input.registerKey(key);
-          }
-        } catch {
-          // Hosted AYIN remains usable even if a model rejects an optional media key.
-        }
-
-        redirect();
-      })();
-    </script>
   </body>
 </html>
