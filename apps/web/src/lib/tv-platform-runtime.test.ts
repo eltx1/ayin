@@ -47,17 +47,15 @@ describe("TV platform runtime", () => {
   });
 
   it("keeps Samsung Back hierarchical and requests exit only from app root", () => {
-    expect(
-      tvBackAction({ platform: "tizen", fullscreen: true, historyLength: 1 }),
-    ).toBe("EXIT_FULLSCREEN");
-    expect(
-      tvBackAction({ platform: "tizen", fullscreen: false, historyLength: 3 }),
-    ).toBe("HISTORY_BACK");
-    expect(
-      tvBackAction({ platform: "tizen", fullscreen: false, historyLength: 1 }),
-    ).toBe("REQUEST_EXIT");
-    expect(
-      tvBackAction({ platform: "webos", fullscreen: false, historyLength: 1 }),
-    ).toBe("NONE");
+    expect(tvBackAction({ platform: "tizen", fullscreen: true, historyLength: 1 })).toBe(
+      "EXIT_FULLSCREEN",
+    );
+    expect(tvBackAction({ platform: "tizen", fullscreen: false, historyLength: 3 })).toBe(
+      "HISTORY_BACK",
+    );
+    expect(tvBackAction({ platform: "tizen", fullscreen: false, historyLength: 1 })).toBe(
+      "REQUEST_EXIT",
+    );
+    expect(tvBackAction({ platform: "webos", fullscreen: false, historyLength: 1 })).toBe("NONE");
   });
 });
