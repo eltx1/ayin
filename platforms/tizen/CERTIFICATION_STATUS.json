@@ -17,6 +17,7 @@
     "storeApproved": false
   },
   "blockingReleaseChecks": [
+    "Confirm or replace the development Tizen package/application ID with the final Samsung/Tizen Studio identity before signing or Seller Office registration",
     "Hosted AYIN response CSP currently uses unsafe-inline; Samsung hosted-app submission guidance requires removing unsafe-inline/unsafe-eval or obtaining explicit Content Manager direction",
     "Samsung Content Manager approval for hosted application distribution",
     "Samsung TV emulator validation on a supported TV Extension",
@@ -24,5 +25,8 @@
     "Google account-manager confirmation for IMA on Samsung Tizen",
     "Final Samsung certificate profile and signing",
     "Final icon and Seller Office store artwork"
-  ]
+  ],
+  "developmentPackageId": "AYINtv2026",
+  "developmentApplicationId": "AYINtv2026.AYIN",
+  "sellerIdentityFinalized": false
 }
