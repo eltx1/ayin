@@ -72,7 +72,25 @@ const KEY_BY_NAME: Record<string, NativeRemoteKey> = {
 export function detectTvWebPlatform(target: Window = window): NativeShellPlatform | null {
   if (target.tizen?.tvinputdevice) return "tizen";
   if (target.webOS) return "webos";
+  try {
+    const declared = new URL(target.location.href).searchParams.get("platform");
+    if (declared === "tizen" || declared === "webos") return declared;
+  } catch {
+    // A malformed location must not prevent the shared TV runtime from starting.
+  }
   return null;
+}
+
+export type TvBackAction = "EXIT_FULLSCREEN" | "HISTORY_BACK" | "REQUEST_EXIT" | "NONE";
+
+export function tvBackAction(input: {
+  platform: NativeShellPlatform | null;
+  fullscreen: boolean;
+  historyLength: number;
+}): TvBackAction {
+  if (input.fullscreen) return "EXIT_FULLSCREEN";
+  if (input.platform !== "tizen") return "NONE";
+  return input.historyLength > 1 ? "HISTORY_BACK" : "REQUEST_EXIT";
 }
 
 export function normalizeTvRemoteEvent(
@@ -90,12 +108,32 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   const onKeyDown = (event: KeyboardEvent) => {
     const key = normalizeTvRemoteEvent(event);
     if (!key) return;
-    target.dispatchEvent(
-      new CustomEvent<NativeRemoteEventDetail>("ayin:native-remote", {
-        detail: { key, platform },
-        cancelable: true,
-      }),
-    );
+    const remoteEvent = new CustomEvent<NativeRemoteEventDetail>("ayin:native-remote", {
+      detail: { key, platform },
+      cancelable: true,
+    });
+    target.dispatchEvent(remoteEvent);
+
+    if (key !== "BACK" || remoteEvent.defaultPrevented) return;
+    const action = tvBackAction({
+      platform,
+      fullscreen: Boolean(target.document.fullscreenElement),
+      historyLength: target.history.length,
+    });
+    if (action === "HISTORY_BACK") {
+      event.preventDefault();
+      target.history.back();
+      return;
+    }
+    if (action === "REQUEST_EXIT") {
+      event.preventDefault();
+      target.dispatchEvent(
+        new CustomEvent("ayin:tv-exit-request", {
+          detail: { platform: "tizen" },
+          cancelable: true,
+        }),
+      );
+    }
   };
 
   const onVisibility = () => {
