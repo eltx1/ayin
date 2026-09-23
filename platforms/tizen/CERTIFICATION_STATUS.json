@@ -1,0 +1,24 @@
+{
+  "task": 78,
+  "packageMode": "hosted",
+  "declaredMinimumTizen": "6.0",
+  "currentSamsungTvRangeReviewed": ["6.0", "6.5", "7.0", "8.0", "9.0", "10.0"],
+  "hostedApplicationPartnerApprovalRequired": true,
+  "tizenApisAvailableInHostedContent": false,
+  "verification": {
+    "repositoryValidation": true,
+    "simulatorVerified": false,
+    "emulatorVerified": false,
+    "realDeviceVerified": false,
+    "storeSubmitted": false,
+    "storeApproved": false
+  },
+  "blockingReleaseChecks": [
+    "Samsung Content Manager approval for hosted application distribution",
+    "Samsung TV emulator validation on a supported TV Extension",
+    "Representative physical Samsung TV validation",
+    "Google account-manager confirmation for IMA on Samsung Tizen",
+    "Final Samsung certificate profile and signing",
+    "Final icon and Seller Office store artwork"
+  ]
+}
