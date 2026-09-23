@@ -16,6 +16,7 @@ export function TvPlatformRuntime() {
   );
   const [offline, setOffline] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
+  const [hostedExitFallback, setHostedExitFallback] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -37,8 +38,9 @@ export function TvPlatformRuntime() {
 
   useEffect(() => {
     const onExitRequest = (event: Event) => {
-      if (platform !== "tizen" || !canRequestTvExit()) return;
+      if (platform !== "tizen") return;
       event.preventDefault();
+      setHostedExitFallback(false);
       setExitOpen(true);
     };
     window.addEventListener("ayin:tv-exit-request", onExitRequest);
@@ -81,30 +83,41 @@ export function TvPlatformRuntime() {
           >
             <h2 style={{ fontSize: 32, margin: "0 0 16px" }}>Exit AYIN?</h2>
             <p style={{ fontSize: 22, lineHeight: 1.5, margin: "0 0 24px" }}>
-              Do you want to close AYIN?
+              {hostedExitFallback
+                ? "This hosted TV runtime cannot close the app directly. Press and hold Return/Exit on the Samsung remote to close AYIN."
+                : "Do you want to close AYIN?"}
             </p>
             <div style={{ display: "flex", gap: 16, justifyContent: "flex-end" }}>
               <button
                 data-tv-focus-id="tizen-exit-cancel"
                 data-tv-focusable="true"
-                onClick={() => setExitOpen(false)}
+                onClick={() => {
+                  setHostedExitFallback(false);
+                  setExitOpen(false);
+                }}
                 ref={cancelRef}
                 style={{ fontSize: 22, minHeight: 56, minWidth: 140 }}
                 type="button"
               >
-                No
+                {hostedExitFallback ? "OK" : "No"}
               </button>
-              <button
-                data-tv-focus-id="tizen-exit-confirm"
-                data-tv-focusable="true"
-                onClick={() => {
-                  if (requestTvExit()) setExitOpen(false);
-                }}
-                style={{ fontSize: 22, minHeight: 56, minWidth: 140 }}
-                type="button"
-              >
-                Yes
-              </button>
+              {!hostedExitFallback ? (
+                <button
+                  data-tv-focus-id="tizen-exit-confirm"
+                  data-tv-focusable="true"
+                  onClick={() => {
+                    if (canRequestTvExit() && requestTvExit()) {
+                      setExitOpen(false);
+                      return;
+                    }
+                    setHostedExitFallback(true);
+                  }}
+                  style={{ fontSize: 22, minHeight: 56, minWidth: 140 }}
+                  type="button"
+                >
+                  Yes
+                </button>
+              ) : null}
             </div>
           </div>
         </TvFocusScope>
