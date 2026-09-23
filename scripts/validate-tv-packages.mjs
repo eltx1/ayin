@@ -5,9 +5,7 @@ const tizen = await readFile("platforms/tizen/config.xml", "utf8");
 const webos = JSON.parse(await readFile("platforms/webos/appinfo.json", "utf8"));
 const tizenIndex = await readFile("platforms/tizen/index.html", "utf8");
 const tizenBootstrap = await readFile("platforms/tizen/bootstrap.js", "utf8");
-const tizenStatus = JSON.parse(
-  await readFile("platforms/tizen/CERTIFICATION_STATUS.json", "utf8"),
-);
+const tizenStatus = JSON.parse(await readFile("platforms/tizen/CERTIFICATION_STATUS.json", "utf8"));
 const webosIndex = await readFile("platforms/webos/index.html", "utf8");
 
 for (const needle of [
@@ -57,9 +55,17 @@ if (tizenStatus.declaredMinimumTizen !== "9.0") {
 if (tizenStatus.tizenApisAvailableInHostedContent !== false) {
   throw new Error("Hosted certification state must not claim Tizen API availability");
 }
-for (const stage of ["simulatorVerified", "emulatorVerified", "realDeviceVerified", "storeSubmitted", "storeApproved"]) {
+for (const stage of [
+  "simulatorVerified",
+  "emulatorVerified",
+  "realDeviceVerified",
+  "storeSubmitted",
+  "storeApproved",
+]) {
   if (tizenStatus.verification?.[stage] !== false) {
-    throw new Error(`Tizen certification stage ${stage} must remain false until actually completed`);
+    throw new Error(
+      `Tizen certification stage ${stage} must remain false until actually completed`,
+    );
   }
 }
 
