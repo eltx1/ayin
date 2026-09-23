@@ -39,6 +39,12 @@ if (/<access\s+origin="http:\/\//u.test(tizen)) {
 if (!/version="\d+\.\d+\.\d+"/u.test(tizen)) {
   throw new Error("Tizen widget version must be x.y.z");
 }
+const tizenIdentity = tizen.match(
+  /<tizen:application\s+id="([A-Za-z0-9]{10}\.[A-Za-z][A-Za-z0-9_-]*)"\s+package="([A-Za-z0-9]{10})"/u,
+);
+if (!tizenIdentity || !tizenIdentity[1].startsWith(tizenIdentity[2] + ".")) {
+  throw new Error("Tizen application/package identity must use a matching 10-character package ID");
+}
 if (!tizenIndex.includes('src="bootstrap.js"')) {
   throw new Error("Tizen entrypoint must load the packaged bootstrap");
 }
@@ -58,6 +64,13 @@ if (tizenStatus.declaredMinimumTizen !== "9.0") {
 }
 if (tizenStatus.tizenApisAvailableInHostedContent !== false) {
   throw new Error("Hosted certification state must not claim Tizen API availability");
+}
+if (
+  tizenStatus.developmentPackageId !== tizenIdentity[2] ||
+  tizenStatus.developmentApplicationId !== tizenIdentity[1] ||
+  tizenStatus.sellerIdentityFinalized !== false
+) {
+  throw new Error("Tizen certification state must record the development identity as non-final");
 }
 for (const stage of [
   "simulatorVerified",
