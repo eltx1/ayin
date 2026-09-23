@@ -6,11 +6,13 @@ Task 38 keeps AYIN's TV business UI in the shared web application and adds platf
 
 Task 78 defines the detailed baseline in `docs/TIZEN_CERTIFICATION.md`.
 
-The package now declares Tizen 9.0+ because the shared AYIN web application uses Next.js 16, whose default supported browser floor is newer than the Chromium M108 engine in Tizen 8.0. Current declared targets are therefore 2025 Tizen 9.0 and 2026 Tizen 10.0, pending actual emulator/device evidence.
+The current package remains a hosted Tizen Web application with `required_version="6.0"`. That is a manifest compatibility declaration, not a claim that Tizen 6.0–10.0 retail models have been runtime-certified.
 
-`platforms/tizen/config.xml` is the Samsung TV Web Application manifest. The local packaged entrypoint uses `platforms/tizen/bootstrap.js` to register playback media keys before opening the hosted AYIN UI. The package declares only the current screen, internet, input-device and in-app-advertising requirements and keeps AYIN product/player logic shared.
+`platforms/tizen/config.xml` declares the Samsung TV profile, packaged icon, 1920×1080 TV feature, HTTPS-only AYIN origins, Internet privilege, and remote-first pointing-device settings. The local packaged entrypoint uses `platforms/tizen/bootstrap.js` only to handle startup/offline retry and then opens the canonical hosted AYIN UI.
 
-This remains a hosted-app architecture. Samsung requires advance Content Manager approval for hosted applications and does not expose Tizen APIs inside the hosted page. Repository validation therefore does not claim emulator verification, physical-TV verification, Seller Office submission or Seller Office approval. See `docs/TIZEN_CERTIFICATION.md` for the exact verification matrix and release blockers.
+Samsung's current Hosted Applications policy requires advance Content Manager approval and does not expose Tizen APIs inside hosted content. The package therefore does not claim TVInputDevice, Application, AppCommon, adinfo/TIFA, AVPlay, emulator verification, physical-TV verification, Seller Office submission, or approval.
+
+Remote/focus/media/product behavior remains in AYIN's shared web runtime. See `docs/TIZEN_CERTIFICATION.md` for exact verified/unverified stages and release blockers.
 
 ## LG webOS
 
@@ -26,7 +28,7 @@ The runtime is installed once from the root layout through `TvPlatformRuntime`. 
 
 Repository-side compatibility target:
 
-- Samsung Tizen 9.0+ TV Web Application runtimes matching the declared package floor;
+- Samsung Tizen 6.0+ as the manifest-declared package range, pending emulator/device verification;
 - current supported LG webOS TV web-app runtimes capable of hosted web applications and standard keyboard/remote events.
 
 Exact retail-model/year coverage cannot be certified from repository CI. Before release, record the tested Samsung model/Tizen versions and LG model/webOS versions in the release checklist. Validate HLS/MP4 playback, fullscreen behavior, D-pad traversal, back/exit semantics, app suspend/resume, cookies/session persistence, CSP/network access, captions, and Google IMA behavior on each target runtime.
