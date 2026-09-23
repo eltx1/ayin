@@ -268,15 +268,16 @@ export function canRequestTvExit(target: Window = window): boolean {
 }
 
 export function requestTvExit(target: Window = window): boolean {
-  if (canRequestTvExit(target)) {
-    try {
-      target.tizen.application.getCurrentApplication()?.exit?.();
-      return true;
-    } catch {
-      return false;
-    }
+  const application = target.tizen?.application;
+  const getCurrentApplication = application?.getCurrentApplication;
+  if (!application || !getCurrentApplication) return false;
+
+  try {
+    getCurrentApplication.call(application)?.exit?.();
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 }
 
 function installTizenScreenSaverGuard(
