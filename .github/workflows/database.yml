@@ -88,6 +88,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Task 78 format capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm exec prettier --write scripts/validate-tv-packages.mjs
+          git diff --no-color -- scripts/validate-tv-packages.mjs
+
       - name: Audit production dependencies
         run: pnpm audit:prod
 
