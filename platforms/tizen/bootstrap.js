@@ -9,29 +9,41 @@
     "MediaRewind",
     "MediaFastForward",
   ];
-  let redirected = false;
-  let timeoutId = 0;
+  const status = document.getElementById("tizen-bootstrap-status");
+  let navigating = false;
 
-  function redirect() {
-    if (redirected) return;
-    redirected = true;
-    if (timeoutId) window.clearTimeout(timeoutId);
-    window.location.replace(target);
-  }
+  const renderOffline = () => {
+    if (status) status.textContent = "AYIN needs an internet connection. Reconnecting…";
+  };
 
-  try {
-    const input = window.tizen && window.tizen.tvinputdevice;
-    if (input && typeof input.registerKeyBatch === "function") {
-      timeoutId = window.setTimeout(redirect, 750);
-      input.registerKeyBatch(mediaKeys, redirect, redirect);
+  const redirect = () => {
+    if (navigating) return;
+    if (!navigator.onLine) {
+      renderOffline();
       return;
     }
-    if (input && typeof input.registerKey === "function") {
-      for (const key of mediaKeys) input.registerKey(key);
-    }
-  } catch {
-    // Optional key registration failure must not block AYIN from opening.
-  }
+    navigating = true;
+    window.location.replace(target);
+  };
 
+  const registerLocalMediaKeys = () => {
+    try {
+      const input = window.tizen && window.tizen.tvinputdevice;
+      if (!input) return;
+      if (typeof input.registerKeyBatch === "function") {
+        input.registerKeyBatch(mediaKeys);
+        return;
+      }
+      if (typeof input.registerKey === "function") {
+        for (const key of mediaKeys) input.registerKey(key);
+      }
+    } catch {
+      // Hosted content cannot rely on Tizen APIs; registration is best-effort only.
+    }
+  };
+
+  window.addEventListener("online", redirect);
+  window.addEventListener("offline", renderOffline);
+  registerLocalMediaKeys();
   redirect();
 })();
