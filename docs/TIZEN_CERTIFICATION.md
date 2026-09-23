@@ -14,20 +14,16 @@ Samsung's current Hosted Applications guidance states that hosted applications g
 
 ## Declared Tizen range
 
-The package keeps `required_version="6.0"`.
+The package keeps `required_version="9.0"`.
 
 Samsung's current TV generation table maps:
 
 | Model year | Tizen |
 | --- | --- |
-| 2021 | 6.0 |
-| 2022 | 6.5 |
-| 2023 | 7.0 |
-| 2024 | 8.0 |
-| 2025 | 9.0 |
-| 2026 | 10.0 |
+| 2025 | 9.0 / Chromium M120 |
+| 2026 | 10.0 / Chromium M130 |
 
-This is a manifest compatibility declaration, not a verified retail-device claim. Exact AYIN compatibility for an individual Samsung model/firmware remains unverified until emulator/device testing is completed.
+This floor is deliberate: AYIN currently uses Next.js 16, whose zero-configuration browser baseline is Chrome 111+, while Samsung documents Tizen 8.0 (2024) as Chromium M108, Tizen 9.0 (2025) as M120, and Tizen 10.0 (2026) as M130. Tizen 9.0+ is therefore the declared browser-compatible range. It is still not a verified retail-device claim; exact model/firmware compatibility remains unverified until emulator/device testing is completed.
 
 ## Package configuration
 
@@ -38,7 +34,7 @@ Repository validation requires:
 - local `index.html` entrypoint;
 - packaged PNG icon;
 - 1920×1080 TV feature;
-- Tizen 6.0 minimum;
+- Tizen 9.0 minimum;
 - landscape/maximized mode;
 - pointing device disabled for remote-first UX;
 - Internet privilege;
@@ -179,3 +175,4 @@ No certificate, store credential, signing key, Seller Office submission, or stor
 - Samsung Web App Memory Optimization Guide: https://developer.samsung.com/smarttv/develop/guides/web-app-memory-optimization-guide.html
 - Samsung TV Simulator: https://developer.samsung.com/smarttv/develop/tools/additional-tools/vscode/tv-simulator.html
 - Google IMA additional platforms: https://developers.google.com/interactive-media-ads/docs/sdks/other
+- Next.js supported browsers: https://nextjs.org/docs/architecture/supported-browsers
