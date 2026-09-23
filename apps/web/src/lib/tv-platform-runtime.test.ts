@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canRequestTvExit,
   detectTvWebPlatform,
   normalizeTvRemoteEvent,
   tvBackAction,
@@ -23,6 +24,26 @@ describe("TV platform runtime", () => {
       location: { href: "https://ayin.stream/?platform=tizen" },
     } as unknown as Window;
     expect(detectTvWebPlatform(target)).toBe("tizen");
+  });
+
+  it("ignores hosted platform markers on foreign origins", () => {
+    const target = {
+      location: { href: "https://example.com/?platform=tizen" },
+    } as unknown as Window;
+    expect(detectTvWebPlatform(target)).toBeNull();
+  });
+
+  it("distinguishes packaged Tizen exit API availability from hosted mode", () => {
+    const hosted = {} as Window;
+    const packaged = {
+      tizen: {
+        application: {
+          getCurrentApplication: () => ({ exit: () => undefined }),
+        },
+      },
+    } as unknown as Window;
+    expect(canRequestTvExit(hosted)).toBe(false);
+    expect(canRequestTvExit(packaged)).toBe(true);
   });
 
   it("keeps Samsung Back hierarchical and requests exit only from app root", () => {
