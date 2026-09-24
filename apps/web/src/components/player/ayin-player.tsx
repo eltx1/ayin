@@ -404,14 +404,13 @@ export function AyinPlayer({
     ],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => {
       notifyNativePlaybackState("paused");
-      const video = videoRef.current;
       if (video) releaseHtmlMediaElement(video);
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     if (!progressEnabled) return;
