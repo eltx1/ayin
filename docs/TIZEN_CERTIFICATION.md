@@ -53,8 +53,8 @@ The package declares:
 
 Development identity remains the existing Task 38 identity:
 
-- Package ID: `AYINtv2026`
-- Application ID: `AYINtv2026.AYIN`
+- Package ID: `AYINtv`
+- Application ID: `AYINtv.AYIN`
 - Widget version: `1.0.0`
 
 The package requests only the Tizen Internet privilege.
@@ -82,6 +82,8 @@ AYIN therefore keeps remote navigation in the shared Web runtime:
 Media transport keys such as Play/Pause/Rewind/Fast-Forward require Samsung TVInputDevice registration. Because hosted AYIN content has no Tizen API access, Task 78 does **not** claim those registered transport keys work in the hosted package.
 
 Long-press Exit remains platform-owned. Task 78 does not synthesize or intercept an Exit key.
+
+For a packaged Samsung app, `tizen.application.getCurrentApplication().exit()` can implement the documented Back-from-home confirmation flow. The current AYIN architecture is hosted, where Samsung does not expose Tizen APIs; therefore Task 78 does not pretend that programmatic exit is available after the hosted navigation. Back-from-home exit confirmation/termination remains an explicit Content Manager / physical-device release blocker.
 
 Real Back/Exit behavior must be verified on physical Tizen 9.0 and 10.0 TVs before a device-stage claim is made.
 
@@ -140,7 +142,7 @@ No AVPlay-only fullscreen path is introduced. Fullscreen entry/exit and Back int
 
 Task 78 does not claim official client-side Google IMA certification on Samsung Tizen.
 
-Google's current IMA HTML5 documentation treats Samsung TV/Tizen as an additional-device case that requires contacting the Google account team rather than a generally supported browser target.
+Google's current IMA HTML5 compatibility documentation does not list Samsung Tizen among the supported player platforms. Task 78 therefore makes no official client-side IMA support claim for Samsung TVs.
 
 AYIN therefore preserves:
 
@@ -149,7 +151,7 @@ AYIN therefore preserves:
 - content-safe IMA error/no-fill fallback;
 - Task 76 server-side DAI path where separately configured.
 
-Physical Samsung TV testing and Google account-manager confirmation are required before client-side IMA/GAM can be marked device verified.
+Physical Samsung TV testing is required before client-side IMA/GAM can be marked device verified. If AYIN intends to ship client-side IMA on Samsung TV, confirm the intended deployment with Google support/account management because the current public compatibility table does not list Tizen.
 
 ## Memory behavior
 
