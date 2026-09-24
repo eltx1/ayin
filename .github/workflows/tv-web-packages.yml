@@ -4,35 +4,31 @@ on:
   pull_request:
     paths:
       - "platforms/tizen/**"
+      - "platforms/webos/**"
       - "apps/web/next.config.ts"
       - "apps/web/src/lib/tizen-embed-policy.test.ts"
-      - "scripts/test-tizen-shell.mjs"
-      - "docs/TIZEN_CERTIFICATION.md"
-      - "platforms/tizen/store/**"
-      - "platforms/webos/**"
-      - "apps/web/package.json"
-      - "apps/web/next.config.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
+      - "scripts/test-tizen-shell.mjs"
       - "scripts/validate-tv-packages.mjs"
+      - "docs/TIZEN_CERTIFICATION.md"
+      - "docs/TV_TIZEN_WEBOS.md"
       - ".github/workflows/tv-web-packages.yml"
   push:
     branches: [main]
     paths:
       - "platforms/tizen/**"
+      - "platforms/webos/**"
       - "apps/web/next.config.ts"
       - "apps/web/src/lib/tizen-embed-policy.test.ts"
-      - "scripts/test-tizen-shell.mjs"
-      - "docs/TIZEN_CERTIFICATION.md"
-      - "platforms/tizen/store/**"
-      - "platforms/webos/**"
-      - "apps/web/package.json"
-      - "apps/web/next.config.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
+      - "scripts/test-tizen-shell.mjs"
       - "scripts/validate-tv-packages.mjs"
+      - "docs/TIZEN_CERTIFICATION.md"
+      - "docs/TV_TIZEN_WEBOS.md"
       - ".github/workflows/tv-web-packages.yml"
 
 permissions:
@@ -43,14 +39,43 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-      - name: Validate packaged TV bootstrap JavaScript
-        run: node --check platforms/tizen/bootstrap.js
 
       - name: Validate Tizen config XML
         run: python3 -c 'import xml.etree.ElementTree as ET; ET.parse("platforms/tizen/config.xml")'
 
       - name: Validate TV package manifests
         run: node scripts/validate-tv-packages.mjs
+
+      - name: Validate packaged Tizen shell adapter
+        run: |
+          set -euo pipefail
+          node --check platforms/tizen/shell.js
+          node scripts/test-tizen-shell.mjs
+
+      - name: Build unsigned Tizen payload archive
+        run: |
+          set -euo pipefail
+          payload="$RUNNER_TEMP/tizen-payload"
+          mkdir -p "$payload"
+          cp platforms/tizen/config.xml "$payload/"
+          cp platforms/tizen/index.html "$payload/"
+          cp platforms/tizen/shell.js "$payload/"
+          cp platforms/tizen/shell.css "$payload/"
+          cp platforms/tizen/icon.png "$payload/"
+          cp platforms/tizen/CERTIFICATION_STATUS.json "$payload/"
+          (
+            cd "$payload"
+            zip -q -r "$RUNNER_TEMP/ayin-tizen-unsigned-payload.zip" .
+          )
+          unzip -l "$RUNNER_TEMP/ayin-tizen-unsigned-payload.zip"
+
+      - name: Upload unsigned Tizen payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-tizen-unsigned-payload
+          path: ${{ runner.temp }}/ayin-tizen-unsigned-payload.zip
+          retention-days: 7
