@@ -22,29 +22,6 @@ type TizenApplication = {
   getCurrentApplication?: () => { exit?: () => void };
 };
 
-type TizenShellRemoteMessage = {
-  source: "ayin-tizen-shell";
-  type: "remote";
-  key: NativeRemoteKey;
-};
-
-type TizenShellLifecycleMessage = {
-  source: "ayin-tizen-shell";
-  type: "lifecycle";
-  state: "pause" | "resume";
-};
-
-type TizenShellNetworkMessage = {
-  source: "ayin-tizen-shell";
-  type: "network";
-  online: boolean;
-};
-
-type TizenShellMessage =
-  | TizenShellRemoteMessage
-  | TizenShellLifecycleMessage
-  | TizenShellNetworkMessage;
-
 declare global {
   interface Window {
     tizen?: {
@@ -54,11 +31,6 @@ declare global {
     webOS?: unknown;
   }
 }
-
-export const TIZEN_EMBED_QUERY = "ayin_tizen_embed";
-export const TIZEN_EMBED_COOKIE = "ayin_tizen_embed";
-const TIZEN_SHELL_SOURCE = "ayin-tizen-shell";
-const TIZEN_APP_SOURCE = "ayin-tizen-app";
 
 export const AYIN_TIZEN_MIN_SUPPORTED_VERSION = 9;
 
@@ -79,7 +51,7 @@ const KEY_BY_CODE: Record<number, NativeRemoteKey> = {
   10009: "BACK",
   10252: "PLAY_PAUSE",
   412: "REWIND",
-  19: "PAUSE",
+  413: "PAUSE",
   415: "PLAY",
   417: "FAST_FORWARD",
   461: "BACK",
@@ -99,45 +71,22 @@ const KEY_BY_NAME: Record<string, NativeRemoteKey> = {
   MediaFastForward: "FAST_FORWARD",
 };
 
-const BROWSER_KEY_BY_REMOTE: Partial<Record<NativeRemoteKey, string>> = {
-  UP: "ArrowUp",
-  DOWN: "ArrowDown",
-  LEFT: "ArrowLeft",
-  RIGHT: "ArrowRight",
-  SELECT: "Enter",
-  BACK: "Escape",
-  PLAY_PAUSE: "MediaPlayPause",
-  PLAY: "MediaPlay",
-  PAUSE: "MediaPause",
-  REWIND: "MediaRewind",
-  FAST_FORWARD: "MediaFastForward",
-};
-
-export function isTizenEmbeddedUrl(value: string): boolean {
-  try {
-    return new URL(value).searchParams.get(TIZEN_EMBED_QUERY) === "1";
-  } catch {
-    return false;
-  }
+export function parseSamsungTizenVersion(userAgent: string): number | null {
+  const match = /\bTizen\s+(\d+(?:\.\d+)?)/iu.exec(userAgent);
+  if (!match?.[1]) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function isTizenEmbeddedRuntime(target: Window = window): boolean {
-  return target.parent !== target && isTizenEmbeddedUrl(target.location.href);
-}
-
-export function browserKeyForNativeRemote(key: NativeRemoteKey): string | null {
-  return BROWSER_KEY_BY_REMOTE[key] ?? null;
-}
-
-export function isTizenHomePath(pathname: string): boolean {
-  const segments = pathname.split("/").filter(Boolean);
-  if (segments.length === 0) return true;
-  return segments.length === 1 && /^[a-z]{2}(?:-[A-Z]{2})?$/u.test(segments[0]!);
+export function isSupportedSamsungTizenRuntime(userAgent: string): boolean {
+  const version = parseSamsungTizenVersion(userAgent);
+  return version !== null && version >= AYIN_TIZEN_MIN_SUPPORTED_VERSION;
 }
 
 export function detectTvWebPlatform(target: Window = window): NativeShellPlatform | null {
-  if (isTizenEmbeddedRuntime(target)) return "tizen";
-  if (target.tizen?.tvinputdevice) return "tizen";
+  if (target.tizen?.tvinputdevice || parseSamsungTizenVersion(target.navigator.userAgent) !== null) {
+    return "tizen";
+  }
   if (target.webOS) return "webos";
   return null;
 }
@@ -150,33 +99,34 @@ export function normalizeTvRemoteEvent(
 
 export function installTvPlatformRuntime(target: Window = window): () => void {
   const nativeShell = detectNativeShell();
-  const embeddedTizen = isTizenEmbeddedRuntime(target);
   const platform = nativeShell?.platform ?? detectTvWebPlatform(target);
   const pausedForLifecycle = new Set<HTMLMediaElement>();
-  registerTizenMediaKeys(target);
+  const tizenMediaKeyRegistration = registerTizenMediaKeys(target);
 
-  if (embeddedTizen) {
-    persistTizenEmbedCookie(target);
+  if (platform) target.document.documentElement.dataset.tvPlatform = platform;
+  if (platform === "tizen") {
+    const version = parseSamsungTizenVersion(target.navigator.userAgent);
+    target.document.documentElement.dataset.tizenVersion =
+      version === null ? "unknown" : String(version);
+    target.document.documentElement.dataset.tizenMediaKeys = tizenMediaKeyRegistration;
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
     const key = normalizeTvRemoteEvent(event);
     if (!key) return;
-
     const remoteEvent = new CustomEvent<NativeRemoteEventDetail>("ayin:native-remote", {
       detail: { key, platform },
       cancelable: true,
     });
-    const consumed = !target.dispatchEvent(remoteEvent);
-
-    if (embeddedTizen && key === "BACK") {
+    const notConsumed = target.dispatchEvent(remoteEvent);
+    if (!notConsumed) {
       event.preventDefault();
-      if (!consumed) handleEmbeddedTizenBack(target);
+      event.stopPropagation();
     }
   };
 
   const onVisibility = () => {
-    if (nativeShell || embeddedTizen) return;
+    if (nativeShell) return;
     target.dispatchEvent(
       new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
         detail: { state: target.document.hidden ? "pause" : "resume", platform },
@@ -268,59 +218,26 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     target.dispatchEvent(new Event(event.detail.online ? "online" : "offline"));
   };
 
-  const onTizenShellMessage = (event: MessageEvent<unknown>) => {
-    if (!embeddedTizen || event.source !== target.parent || !isTizenShellMessage(event.data)) {
-      return;
-    }
-    if (event.data.type === "remote") {
-      dispatchEmbeddedRemoteKey(target, event.data.key);
-      return;
-    }
-    if (event.data.type === "lifecycle") {
-      target.dispatchEvent(
-        new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
-          detail: { state: event.data.state, platform: "tizen" },
-        }),
-      );
-      return;
-    }
-    target.dispatchEvent(
-      new CustomEvent<NativeNetworkEventDetail>("ayin:native-network", {
-        detail: { online: event.data.online, platform: "tizen" },
-      }),
-    );
-  };
-
   target.addEventListener("keydown", onKeyDown);
   target.addEventListener("ayin:native-remote", onNativeRemote);
   target.addEventListener("ayin:native-lifecycle", onNativeLifecycle);
   target.addEventListener("ayin:native-network", onNativeNetwork);
-  target.addEventListener("message", onTizenShellMessage);
   target.document.addEventListener("visibilitychange", onVisibility);
   target.addEventListener("pagehide", onPageHide);
   target.document.addEventListener("webOSLaunch", onWebOsLaunch as EventListener);
   target.document.addEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
-
-  if (embeddedTizen) {
-    postToTizenShell(target, { source: TIZEN_APP_SOURCE, type: "ready" });
-  }
 
   return () => {
     target.removeEventListener("keydown", onKeyDown);
     target.removeEventListener("ayin:native-remote", onNativeRemote);
     target.removeEventListener("ayin:native-lifecycle", onNativeLifecycle);
     target.removeEventListener("ayin:native-network", onNativeNetwork);
-    target.removeEventListener("message", onTizenShellMessage);
     target.document.removeEventListener("visibilitychange", onVisibility);
     target.removeEventListener("pagehide", onPageHide);
     target.document.removeEventListener("webOSLaunch", onWebOsLaunch as EventListener);
     target.document.removeEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
     pausedForLifecycle.clear();
   };
-}
-
-export function canRequestTvExit(target: Window = window): boolean {
-  return Boolean(target.tizen?.application?.getCurrentApplication);
 }
 
 export function requestTvExit(target: Window = window): boolean {
@@ -348,79 +265,9 @@ export function registerTizenMediaKeys(target: Window): TizenMediaKeyRegistratio
     for (const key of TIZEN_MEDIA_KEYS) input.registerKey?.(key);
     return "registered";
   } catch {
-    // Hosted Samsung apps do not expose Tizen APIs. Media-key registration is therefore
-    // capability-driven and must never prevent DPAD/Back or the AYIN product UI from starting.
+    // Hosted Samsung apps do not expose Tizen APIs. Media-key registration is capability-driven
+    // and must never prevent standard DPAD/Enter/Back or the shared AYIN UI from starting.
     return "failed";
-  }
-}
-
-function persistTizenEmbedCookie(target: Window): void {
-  try {
-    target.document.cookie = `${TIZEN_EMBED_COOKIE}=1; Path=/; Max-Age=86400; SameSite=None; Secure`;
-  } catch {
-    // A cookie is only a resilience aid for full document navigations; SPA navigation still works.
-  }
-}
-
-function isTizenShellMessage(value: unknown): value is TizenShellMessage {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<TizenShellMessage> & { source?: unknown; type?: unknown };
-  if (candidate.source !== TIZEN_SHELL_SOURCE) return false;
-  if (candidate.type === "remote") {
-    return typeof (candidate as Partial<TizenShellRemoteMessage>).key === "string";
-  }
-  if (candidate.type === "lifecycle") {
-    const state = (candidate as Partial<TizenShellLifecycleMessage>).state;
-    return state === "pause" || state === "resume";
-  }
-  if (candidate.type === "network") {
-    return typeof (candidate as Partial<TizenShellNetworkMessage>).online === "boolean";
-  }
-  return false;
-}
-
-function dispatchEmbeddedRemoteKey(target: Window, key: NativeRemoteKey): void {
-  const browserKey = browserKeyForNativeRemote(key);
-  if (!browserKey) return;
-  const active = target.document.activeElement;
-  const recipient = active instanceof HTMLElement ? active : target.document.body;
-  if (!recipient) return;
-
-  const keyboardEvent = new KeyboardEvent("keydown", {
-    key: browserKey,
-    bubbles: true,
-    cancelable: true,
-  });
-  const notPrevented = recipient.dispatchEvent(keyboardEvent);
-  if (key === "SELECT" && notPrevented && active instanceof HTMLElement) {
-    active.click();
-  }
-}
-
-function handleEmbeddedTizenBack(target: Window): void {
-  if (isTizenHomePath(target.location.pathname)) {
-    postToTizenShell(target, { source: TIZEN_APP_SOURCE, type: "exit-request" });
-    return;
-  }
-
-  if (target.history.length > 1) {
-    target.history.back();
-    return;
-  }
-
-  const home = new URL(target.location.href);
-  home.pathname = "/";
-  home.search = "";
-  home.searchParams.set("platform", "tizen");
-  home.searchParams.set(TIZEN_EMBED_QUERY, "1");
-  target.location.assign(home.toString());
-}
-
-function postToTizenShell(target: Window, message: object): void {
-  try {
-    target.parent.postMessage(message, "*");
-  } catch {
-    // Tizen shell communication is an enhancement; content must remain usable without it.
   }
 }
 
