@@ -611,18 +611,17 @@ export function LiveAyinPlayer({
     updateEdge,
   ]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const video = videoRef.current;
+    return () => {
       notifyNativePlaybackState("paused");
       flushDuration(false);
       sessionRef.current?.destroy();
       sessionRef.current = null;
-      const video = videoRef.current;
       if (video) stopLiveMedia(video);
       bufferStartedAtRef.current = null;
-    },
-    [flushDuration],
-  );
+    };
+  }, [flushDuration]);
 
   const retry = useCallback(() => {
     reconnectAttemptRef.current = 0;
