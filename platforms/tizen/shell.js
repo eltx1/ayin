@@ -15,7 +15,7 @@
     10009: "BACK",
     10252: "PLAY_PAUSE",
     412: "REWIND",
-    413: "PAUSE",
+    19: "PAUSE",
     415: "PLAY",
     417: "FAST_FORWARD",
   };
