@@ -14,6 +14,7 @@ for (const needle of [
   '<tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="9.0"',
   '<tizen:metadata key="http://samsung.com/tv/metadata/use.network" value="true"',
   '<feature name="http://tizen.org/feature/screen.size.normal.1080.1920"',
+  '<feature name="http://tizen.org/feature/tv.inputdevice"',
   '<icon src="icon.png"',
   '<content src="index.html"',
   "http://tizen.org/privilege/internet",
@@ -56,6 +57,7 @@ for (const needle of [
   "registerKeyBatch",
   'navigationType() === "back_forward"',
   "getCurrentApplication().exit()",
+  'window.addEventListener("pageshow", onPageShow)',
   "window.location.assign(TARGET_URL)",
 ]) {
   if (!tizenBootstrap.includes(needle)) {
@@ -96,6 +98,12 @@ if (certification.packagedBootstrapUsesTizenApis !== true) {
 }
 if (certification.mediaKeyRegistrationDeviceVerified !== false) {
   throw new Error("Media-key registration cannot be called device verified by repository CI");
+}
+if (certification.hostedScreensaverApiAvailable !== false) {
+  throw new Error("Hosted AYIN must not claim Samsung AppCommon/screensaver API access");
+}
+if (certification.screensaverPlaybackControlDeviceVerified !== false) {
+  throw new Error("Screensaver playback control cannot be called device verified by repository CI");
 }
 if (typeof certification.verification?.repositoryValidation !== "boolean") {
   throw new Error("repositoryValidation must be explicit");
