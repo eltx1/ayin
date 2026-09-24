@@ -5,11 +5,12 @@ import vm from "node:vm";
 const source = await readFile("platforms/tizen/bootstrap.js", "utf8");
 const target = "https://ayin.stream/?platform=tizen&hosted=1";
 
-function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {}) {
+function runBootstrap({ navigationType = "navigate", withTizenApi = true, online = true } = {}) {
   const assigned = [];
   const registered = [];
   let exitCount = 0;
   const listeners = new Map();
+  const status = { textContent: "Opening AYIN…" };
 
   const window = {
     addEventListener(type, listener) {
@@ -25,6 +26,7 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {})
         assigned.push(value);
       },
     },
+    navigator: { onLine: online },
     setTimeout(callback) {
       listeners.set("timeout", callback);
       return 1;
@@ -63,6 +65,9 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {})
     addEventListener(type, listener) {
       listeners.set(type, listener);
     },
+    getElementById(id) {
+      return id === "status" ? status : null;
+    },
   };
 
   vm.runInNewContext(source, { document, window }, { filename: "platforms/tizen/bootstrap.js" });
@@ -71,6 +76,12 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {})
     registered,
     get exitCount() {
       return exitCount;
+    },
+    get statusText() {
+      return status.textContent;
+    },
+    setOnline(value) {
+      window.navigator.onLine = value;
     },
     dispatch(type, event) {
       listeners.get(type)?.(event);
@@ -95,6 +106,16 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {})
   const result = runBootstrap({ withTizenApi: false });
   assert.deepEqual(result.assigned, [target]);
   assert.deepEqual(result.registered, []);
+}
+
+{
+  const result = runBootstrap({ online: false });
+  assert.deepEqual(result.assigned, [], "Offline cold launch must stay on the packaged bootstrap");
+  assert.equal(result.statusText, "Network connection lost. Reconnect to continue.");
+  result.setOnline(true);
+  result.dispatch("online");
+  assert.deepEqual(result.assigned, [target], "Hosted navigation must resume when connectivity returns");
+  assert.equal(result.statusText, "Opening AYIN…");
 }
 
 {

@@ -4,33 +4,16 @@ import { useEffect, useRef, useState } from "react";
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
 import {
-  detectTvWebPlatform,
   installTvPlatformRuntime,
   requestTvExit,
-  shouldShowTizenNetworkNotice,
   type TvExitRequestDetail,
 } from "@/lib/tv-platform-runtime";
 
 export function TvPlatformRuntime() {
   const [exitOpen, setExitOpen] = useState(false);
-  const [networkOffline, setNetworkOffline] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => installTvPlatformRuntime(), []);
-
-  useEffect(() => {
-    const platform = detectTvWebPlatform();
-    const update = () => {
-      setNetworkOffline(shouldShowTizenNetworkNotice(platform, navigator.onLine));
-    };
-    update();
-    window.addEventListener("online", update);
-    window.addEventListener("offline", update);
-    return () => {
-      window.removeEventListener("online", update);
-      window.removeEventListener("offline", update);
-    };
-  }, []);
 
   useEffect(() => {
     const onExitRequest = (event: CustomEvent<TvExitRequestDetail>) => {
@@ -58,35 +41,10 @@ export function TvPlatformRuntime() {
     };
   }, [exitOpen]);
 
-  if (!exitOpen && !networkOffline) return null;
+  if (!exitOpen) return null;
 
   return (
     <>
-      {networkOffline ? (
-        <div
-          aria-live="assertive"
-          role="alert"
-          style={{
-            background: "#11121a",
-            border: "1px solid rgba(255,255,255,0.18)",
-            borderRadius: 12,
-            boxShadow: "0 16px 48px rgba(0,0,0,0.45)",
-            color: "#fff",
-            fontSize: 20,
-            left: "50%",
-            maxWidth: 720,
-            padding: "16px 22px",
-            position: "fixed",
-            top: 28,
-            transform: "translateX(-50%)",
-            width: "min(86vw,720px)",
-            zIndex: 2147483646,
-          }}
-        >
-          Network connection lost. Reconnect to continue.
-        </div>
-      ) : null}
-
       {exitOpen ? (
         <div
           aria-label="Exit AYIN"

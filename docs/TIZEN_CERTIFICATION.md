@@ -87,7 +87,7 @@ Samsung's Return/Exit policy requires:
 Task 78 implements that policy without a Tizen-specific AYIN page:
 
 - shared runtime Back on non-root routes calls browser history;
-- Back on AYIN root opens a shared TV exit confirmation dialog;
+- Back on AYIN root, including localized home routes such as `/ar`, opens a shared TV exit confirmation dialog;
 - confirming exit calls `requestTvExit()`;
 - packaged Tizen pages call `tizen.application.getCurrentApplication().exit()` directly;
 - hosted AYIN navigates back to the local bootstrap, and the bootstrap terminates the application on the back-forward return.
@@ -100,7 +100,7 @@ The package launches only `https://ayin.stream`.
 
 The package has Internet privilege and explicit HTTPS WARP access. No cleartext origin is added.
 
-Hosted AYIN retains the existing browser online/offline, HLS recovery, and live reconnect behavior. Physical Wi-Fi/Ethernet interruption is a real-device acceptance item.
+On a cold launch with no connectivity, the local packaged bootstrap remains on-device, shows a network message, and waits for the browser `online` event before navigating to the hosted origin. After AYIN is loaded, the existing global `NetworkStatusBanner` remains the single shared offline notification surface; the Tizen adapter does not add a duplicate banner. Hosted AYIN retains the existing HLS recovery and live reconnect behavior. Physical Wi-Fi/Ethernet interruption is a real-device acceptance item.
 
 ## HLS, MP4, captions, autoplay, fullscreen, Creator TV and live
 

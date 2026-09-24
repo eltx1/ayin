@@ -1,3 +1,4 @@
+import { stripLocalePrefix } from "./i18n/routing";
 import {
   detectNativeShell,
   nativeRemotePlayerCommand,
@@ -154,11 +155,8 @@ function rememberHostedTizenSession(target: Window): boolean {
   }
 }
 
-export function shouldShowTizenNetworkNotice(
-  platform: NativeShellPlatform | null,
-  online: boolean,
-): boolean {
-  return platform === "tizen" && !online;
+export function isTvHomePathname(pathname: string): boolean {
+  return stripLocalePrefix(pathname || "/") === "/";
 }
 
 export function normalizeTvRemoteEvent(
@@ -252,7 +250,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
 
     if (event.detail.key === "BACK" && platform === "tizen" && packagedTizenSession) {
       event.preventDefault();
-      if (target.location.pathname !== "/") {
+      if (!isTvHomePathname(target.location.pathname)) {
         target.history.back();
       } else {
         target.dispatchEvent(

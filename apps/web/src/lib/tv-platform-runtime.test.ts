@@ -4,11 +4,11 @@ import {
   AYIN_TIZEN_MIN_SUPPORTED_VERSION,
   detectTvWebPlatform,
   isSupportedSamsungTizenRuntime,
+  isTvHomePathname,
   normalizeTvRemoteEvent,
   parseSamsungTizenVersion,
   registerTizenMediaKeys,
   requestTvExit,
-  shouldShowTizenNetworkNotice,
 } from "./tv-platform-runtime";
 
 describe("TV platform runtime", () => {
@@ -72,11 +72,13 @@ describe("TV platform runtime", () => {
     expect(detectTvWebPlatform(target)).toBeNull();
   });
 
-  it("shows the network-loss notice only for an offline Tizen runtime", () => {
-    expect(shouldShowTizenNetworkNotice("tizen", false)).toBe(true);
-    expect(shouldShowTizenNetworkNotice("tizen", true)).toBe(false);
-    expect(shouldShowTizenNetworkNotice("webos", false)).toBe(false);
-    expect(shouldShowTizenNetworkNotice(null, false)).toBe(false);
+  it("treats localized AYIN home routes as home for Samsung Back/Exit policy", () => {
+    expect(isTvHomePathname("/")).toBe(true);
+    expect(isTvHomePathname("/ar")).toBe(true);
+    expect(isTvHomePathname("/ar/")).toBe(true);
+    expect(isTvHomePathname("/en")).toBe(true);
+    expect(isTvHomePathname("/ar/watch/example")).toBe(false);
+    expect(isTvHomePathname("/watch/example")).toBe(false);
   });
 
   it("sets the current AYIN Samsung baseline to Tizen 9.0 and newer", () => {

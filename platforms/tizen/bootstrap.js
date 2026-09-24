@@ -4,6 +4,7 @@
   var TARGET_URL = "https://ayin.stream/?platform=tizen&hosted=1";
   var MEDIA_KEYS = ["MediaPlayPause", "MediaPlay", "MediaPause", "MediaRewind", "MediaFastForward"];
   var redirected = false;
+  var waitingForOnline = false;
 
   function navigationType() {
     try {
@@ -29,9 +30,33 @@
     return false;
   }
 
+  function setStatus(message) {
+    var status = document.getElementById ? document.getElementById("status") : null;
+    if (status) status.textContent = message;
+  }
+
   function goToHostedApp() {
     if (redirected) return;
+
+    if (window.navigator && window.navigator.onLine === false) {
+      setStatus("Network connection lost. Reconnect to continue.");
+      if (!waitingForOnline) {
+        waitingForOnline = true;
+        window.addEventListener(
+          "online",
+          function () {
+            waitingForOnline = false;
+            setStatus("Opening AYIN…");
+            goToHostedApp();
+          },
+          { once: true },
+        );
+      }
+      return;
+    }
+
     redirected = true;
+    setStatus("Opening AYIN…");
     window.location.assign(TARGET_URL);
   }
 
