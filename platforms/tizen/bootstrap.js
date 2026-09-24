@@ -2,20 +2,15 @@
   "use strict";
 
   var TARGET_URL = "https://ayin.stream/?platform=tizen&hosted=1";
-  var MEDIA_KEYS = [
-    "MediaPlayPause",
-    "MediaPlay",
-    "MediaPause",
-    "MediaRewind",
-    "MediaFastForward"
-  ];
+  var MEDIA_KEYS = ["MediaPlayPause", "MediaPlay", "MediaPause", "MediaRewind", "MediaFastForward"];
   var redirected = false;
 
   function navigationType() {
     try {
-      var entries = window.performance && window.performance.getEntriesByType
-        ? window.performance.getEntriesByType("navigation")
-        : [];
+      var entries =
+        window.performance && window.performance.getEntriesByType
+          ? window.performance.getEntriesByType("navigation")
+          : [];
       return entries && entries[0] ? entries[0].type : null;
     } catch (_) {
       return null;
@@ -80,7 +75,7 @@
           function () {
             window.clearTimeout(timeout);
             goToHostedApp();
-          }
+          },
         );
         return;
       }
