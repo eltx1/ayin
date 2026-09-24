@@ -63,8 +63,8 @@ const KEY_BY_CODE: Record<number, NativeRemoteKey> = {
   40: "DOWN",
   10009: "BACK",
   10252: "PLAY_PAUSE",
+  19: "PAUSE",
   412: "REWIND",
-  413: "PAUSE",
   415: "PLAY",
   417: "FAST_FORWARD",
   461: "BACK",
@@ -84,8 +84,15 @@ const KEY_BY_NAME: Record<string, NativeRemoteKey> = {
   MediaFastForward: "FAST_FORWARD",
 };
 
+export interface TizenRuntimeCapabilities {
+  hosted: boolean;
+  inputDeviceApiAvailable: boolean;
+  applicationApiAvailable: boolean;
+  productApiAvailable: boolean;
+}
+
 export function detectTvWebPlatform(target: Window = window): NativeShellPlatform | null {
-  if (target.tizen?.tvinputdevice) return "tizen";
+  if (target.tizen?.tvinputdevice || target.tizen?.application?.getCurrentApplication) return "tizen";
   if (target.webOS) return "webos";
   try {
     const location = new URL(target.location.href);
@@ -96,6 +103,21 @@ export function detectTvWebPlatform(target: Window = window): NativeShellPlatfor
     // A malformed location must not prevent the shared TV runtime from starting.
   }
   return null;
+}
+
+export function detectTizenRuntimeCapabilities(
+  target: Window = window,
+): TizenRuntimeCapabilities | null {
+  if (detectTvWebPlatform(target) !== "tizen") return null;
+  const inputDeviceApiAvailable = Boolean(target.tizen?.tvinputdevice);
+  const applicationApiAvailable = Boolean(target.tizen?.application?.getCurrentApplication);
+  const productApiAvailable = Boolean(target.webapis?.appcommon?.setScreenSaver);
+  return {
+    hosted: !inputDeviceApiAvailable && !applicationApiAvailable && !productApiAvailable,
+    inputDeviceApiAvailable,
+    applicationApiAvailable,
+    productApiAvailable,
+  };
 }
 
 export type TvBackAction = "EXIT_FULLSCREEN" | "HISTORY_BACK" | "REQUEST_EXIT" | "NONE";
@@ -133,7 +155,11 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     });
     target.dispatchEvent(remoteEvent);
 
-    if (key !== "BACK" || remoteEvent.defaultPrevented) return;
+    if (remoteEvent.defaultPrevented) {
+      event.preventDefault();
+      return;
+    }
+    if (key !== "BACK") return;
     const action = tvBackAction({
       platform,
       fullscreen: Boolean(target.document.fullscreenElement),
@@ -329,17 +355,21 @@ function installTizenScreenSaverGuard(
   };
 }
 
-function registerTizenMediaKeys(target: Window) {
+export function registerTizenMediaKeys(
+  target: Window,
+): "registered" | "unavailable" | "failed" {
   const input = target.tizen?.tvinputdevice;
-  if (!input) return;
+  if (!input) return "unavailable";
   try {
     if (input.registerKeyBatch) {
       input.registerKeyBatch(TIZEN_MEDIA_KEYS);
-      return;
+      return "registered";
     }
     for (const key of TIZEN_MEDIA_KEYS) input.registerKey?.(key);
+    return "registered";
   } catch {
     // Unsupported remote keys must not prevent the TV app from starting.
+    return "failed";
   }
 }
 
