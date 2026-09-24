@@ -164,9 +164,9 @@ Session behavior across Smart Hub transitions, TV restart, and uninstall must be
 
 | Stage                                     | Environment           | Task 78 state                           |
 | ----------------------------------------- | --------------------- | --------------------------------------- |
-| Repository package/config validation      | GitHub CI             | Pending current Task 78 CI              |
-| Packaged bootstrap simulation             | Node VM in GitHub CI  | Pending current Task 78 CI              |
-| Shared Web unit/integration/browser suite | GitHub CI             | Pending current Task 78 CI              |
+| Repository package/config validation      | GitHub CI             | **Verified — run 36052770533**           |
+| Packaged bootstrap simulation             | Node VM in GitHub CI  | **Verified — run 36052770533**           |
+| Shared Web unit/integration/browser suite | GitHub CI             | **Verified — quality 36052769902 / browser 36052769980** |
 | Samsung TV Simulator                      | Samsung Simulator     | **Not verified**                        |
 | Samsung TV Emulator                       | Tizen 9/10 Emulator   | **Not verified**                        |
 | Real Tizen 9.0 TV                         | Physical Samsung TV   | **Not verified — no hardware attached** |
@@ -174,7 +174,7 @@ Session behavior across Smart Hub transitions, TV restart, and uninstall must be
 | Seller Office submitted                   | Samsung Seller Office | **No**                                  |
 | Store approved                            | Samsung Seller Office | **No**                                  |
 
-Repository/Node validation is not Samsung emulator certification.
+Repository/Node validation is not Samsung emulator certification. Security validation passed in run 36052769908; shared Android-shell regression validation for the player teardown changes passed in run 36052769931. These run IDs prove repository behavior only and do not change any Samsung device/store stage.
 
 ## Why emulator/device stages remain false
 
