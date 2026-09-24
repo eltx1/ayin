@@ -8,6 +8,7 @@ const tizenBootstrap = await readFile("platforms/tizen/bootstrap.js", "utf8");
 const tizenStatus = JSON.parse(await readFile("platforms/tizen/CERTIFICATION_STATUS.json", "utf8"));
 const webosIndex = await readFile("platforms/webos/index.html", "utf8");
 const nextConfig = await readFile("apps/web/next.config.ts", "utf8");
+const webPackage = JSON.parse(await readFile("apps/web/package.json", "utf8"));
 
 for (const needle of [
   '<tizen:profile name="tv-samsung"',
@@ -20,6 +21,10 @@ for (const needle of [
   'origin="https://ayin.stream"',
   'origin="https://api.ayin.stream"',
   'origin="https://media.ayin.stream"',
+  'origin="https://doubleclick.net"',
+  'origin="https://googlesyndication.com"',
+  'origin="https://imasdk.googleapis.com"',
+  'origin="https://www.googletagservices.com"',
   'pointing-device-support="disable"',
 ]) {
   if (!tizen.includes(needle)) throw new Error(`Tizen config missing ${needle}`);
@@ -51,16 +56,31 @@ if (!tizenIndex.includes('src="bootstrap.js"')) {
 if (/<script(?![^>]*\bsrc=)[^>]*>/u.test(tizenIndex)) {
   throw new Error("Tizen hosted bootstrap must not contain inline script");
 }
-if (!tizenBootstrap.includes("https://ayin.stream/?platform=tizen")) {
-  throw new Error("Tizen bootstrap must target canonical HTTPS AYIN origin");
+if (!tizenBootstrap.includes("https://ayin.stream/?platform=tizen&runtime=hosted")) {
+  throw new Error("Tizen bootstrap must identify the canonical hosted Tizen runtime");
 }
 if (tizenBootstrap.includes("window.tizen") || tizenBootstrap.includes("webapis.")) {
   throw new Error("Hosted bootstrap must not rely on Tizen/Product APIs");
 }
 
 if (tizenStatus.packageMode !== "hosted") throw new Error("Tizen package mode must be explicit");
-if (tizenStatus.declaredMinimumTizen !== "9.0") {
-  throw new Error("Tizen declared minimum must match config.xml");
+const requiredVersion = tizen.match(/required_version="(\d+\.\d+)"/u)?.[1] ?? null;
+const developmentApiVersion =
+  tizen.match(/metadata\/devel\.api\.version" value="(\d+\.\d+)"/u)?.[1] ?? null;
+if (
+  requiredVersion !== "9.0" ||
+  developmentApiVersion !== requiredVersion ||
+  tizenStatus.declaredMinimumTizen !== requiredVersion
+) {
+  throw new Error("Tizen required/API/certification versions must stay aligned at 9.0");
+}
+
+const nextVersion = webPackage.dependencies?.next;
+const nextMajor = Number(String(nextVersion ?? "").match(/^(\d+)/u)?.[1] ?? NaN);
+if (nextMajor !== 16) {
+  throw new Error(
+    "Review Samsung Web Engine compatibility and Tizen minimum whenever the Next.js major changes",
+  );
 }
 if (tizenStatus.tizenApisAvailableInHostedContent !== false) {
   throw new Error("Hosted certification state must not claim Tizen API availability");
@@ -71,6 +91,9 @@ if (
   tizenStatus.sellerIdentityFinalized !== false
 ) {
   throw new Error("Tizen certification state must record the development identity as non-final");
+}
+if (tizenStatus.verification?.repositoryValidation !== true) {
+  throw new Error("Repository/package validation status must be explicitly recorded");
 }
 for (const stage of [
   "simulatorVerified",
