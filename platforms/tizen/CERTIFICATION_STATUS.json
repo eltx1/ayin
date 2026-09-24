@@ -29,10 +29,11 @@
   "developmentApplicationId": "AYINtv2026.AYIN",
   "sellerIdentityFinalized": false,
   "repositoryValidationEvidence": {
-    "tvPackageRun": 35952633271,
-    "qualityRun": 35952633216,
-    "browserAcceptanceRun": 35952633272,
-    "securityRun": 35952633203
+    "tvPackageRun": 35953908905,
+    "qualityRun": 35953908950,
+    "browserAcceptanceRun": 35953908896,
+    "securityRun": 35953908900,
+    "sharedAndroidRegressionRun": 35953908951
   },
   "previousTask38DevelopmentPackageId": "AYINtv",
   "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve."
