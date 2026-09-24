@@ -130,9 +130,17 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
 
   const onVisibility = () => {
     if (nativeShell) return;
+    const hidden = target.document.hidden;
+    if (!hidden && platform === "tizen") {
+      target.dispatchEvent(
+        new CustomEvent<NativeNetworkEventDetail>("ayin:native-network", {
+          detail: { online: target.navigator.onLine, platform },
+        }),
+      );
+    }
     target.dispatchEvent(
       new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
-        detail: { state: target.document.hidden ? "pause" : "resume", platform },
+        detail: { state: hidden ? "pause" : "resume", platform },
       }),
     );
   };
