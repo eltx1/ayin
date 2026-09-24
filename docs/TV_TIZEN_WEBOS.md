@@ -40,8 +40,11 @@ Repository work does not claim the following live checks are complete:
 - Samsung certificate/profile and Seller Office submission;
 - LG developer/store signing/submission credentials;
 - final launcher/store artwork;
-- emulator and physical-TV validation matrix;
+- Samsung emulator/simulator verification;
+- physical Tizen 9.0/10.0 TV verification;
 - target-runtime Google IMA/ad behavior;
 - DRM/HLS codec compatibility on chosen retail models.
+
+Task 78 explicitly records these stages as not verified rather than treating CI as device certification.
 
 These are release-environment checks, not missing application architecture.
