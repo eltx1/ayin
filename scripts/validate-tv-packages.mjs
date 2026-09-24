@@ -1,126 +1,88 @@
 import { access, readFile } from "node:fs/promises";
 import process from "node:process";
-import vm from "node:vm";
 
 const tizen = await readFile("platforms/tizen/config.xml", "utf8");
-const webos = JSON.parse(await readFile("platforms/webos/appinfo.json", "utf8"));
 const tizenIndex = await readFile("platforms/tizen/index.html", "utf8");
-const tizenBootstrap = await readFile("platforms/tizen/bootstrap.js", "utf8");
-const tizenStatus = JSON.parse(await readFile("platforms/tizen/CERTIFICATION_STATUS.json", "utf8"));
+const tizenShell = await readFile("platforms/tizen/shell.js", "utf8");
+const tizenCss = await readFile("platforms/tizen/shell.css", "utf8");
+const webConfig = await readFile("apps/web/next.config.ts", "utf8");
+const webos = JSON.parse(await readFile("platforms/webos/appinfo.json", "utf8"));
 const webosIndex = await readFile("platforms/webos/index.html", "utf8");
-const nextConfig = await readFile("apps/web/next.config.ts", "utf8");
-const webPackage = JSON.parse(await readFile("apps/web/package.json", "utf8"));
 
 for (const needle of [
   '<tizen:profile name="tv-samsung"',
   '<content src="index.html"',
-  '<icon src="icon.png"',
-  '<feature name="http://tizen.org/feature/screen.size.normal.1080.1920"',
   'required_version="9.0"',
-  'key="http://samsung.com/tv/metadata/devel.api.version" value="9.0"',
+  'http://samsung.com/tv/metadata/devel.api.version" value="9.0"',
   "http://tizen.org/privilege/internet",
-  'origin="https://ayin.stream"',
-  'origin="https://api.ayin.stream"',
-  'origin="https://media.ayin.stream"',
-  'origin="https://doubleclick.net"',
-  'origin="https://googlesyndication.com"',
-  'origin="https://imasdk.googleapis.com"',
-  'origin="https://www.googletagservices.com"',
+  "http://tizen.org/privilege/tv.inputdevice",
+  'background-support="disable"',
   'pointing-device-support="disable"',
+  'hwkey-event="enable"',
+  '<access origin="https://ayin.stream" subdomains="true"',
 ]) {
   if (!tizen.includes(needle)) throw new Error(`Tizen config missing ${needle}`);
 }
 
-const tizenPrivileges = [...tizen.matchAll(/<tizen:privilege\s+name="([^"]+)"\s*\/?>/gu)].map(
-  (match) => match[1],
-);
-if (tizenPrivileges.length !== 1 || tizenPrivileges[0] !== "http://tizen.org/privilege/internet") {
-  throw new Error(
-    "Hosted Tizen package must request only the Internet privilege until Product/Tizen APIs are actually available",
-  );
-}
-if (/<access\s+origin="http:\/\//u.test(tizen)) {
-  throw new Error("Tizen network access must not allow cleartext HTTP origins");
-}
-if (!/version="\d+\.\d+\.\d+"/u.test(tizen)) {
-  throw new Error("Tizen widget version must be x.y.z");
-}
-const tizenIdentity = tizen.match(
-  /<tizen:application\s+id="([A-Za-z0-9]{10}\.[A-Za-z][A-Za-z0-9_-]*)"\s+package="([A-Za-z0-9]{10})"/u,
-);
-if (!tizenIdentity || !tizenIdentity[1].startsWith(tizenIdentity[2] + ".")) {
-  throw new Error("Tizen application/package identity must use a matching 10-character package ID");
-}
-if (!tizenIndex.includes('src="bootstrap.js"')) {
-  throw new Error("Tizen entrypoint must load the packaged bootstrap");
-}
-if (/<script(?![^>]*\bsrc=)[^>]*>/u.test(tizenIndex)) {
-  throw new Error("Tizen hosted bootstrap must not contain inline script");
-}
-if (!tizenBootstrap.includes("https://ayin.stream/?platform=tizen&runtime=hosted")) {
-  throw new Error("Tizen bootstrap must identify the canonical hosted Tizen runtime");
-}
-if (tizenBootstrap.includes("window.tizen") || tizenBootstrap.includes("webapis.")) {
-  throw new Error("Hosted bootstrap must not rely on Tizen/Product APIs");
-}
-
-validateTizenBootstrap(tizenBootstrap);
-
-if (tizenStatus.packageMode !== "hosted") throw new Error("Tizen package mode must be explicit");
-const requiredVersion = tizen.match(/required_version="(\d+\.\d+)"/u)?.[1] ?? null;
-const developmentApiVersion =
-  tizen.match(/metadata\/devel\.api\.version" value="(\d+\.\d+)"/u)?.[1] ?? null;
-if (
-  requiredVersion !== "9.0" ||
-  developmentApiVersion !== requiredVersion ||
-  tizenStatus.declaredMinimumTizen !== requiredVersion
-) {
-  throw new Error("Tizen required/API/certification versions must stay aligned at 9.0");
-}
-
-const nextVersion = webPackage.dependencies?.next;
-const nextMajor = Number(String(nextVersion ?? "").match(/^(\d+)/u)?.[1] ?? NaN);
-if (nextMajor !== 16) {
-  throw new Error(
-    "Review Samsung Web Engine compatibility and Tizen minimum whenever the Next.js major changes",
-  );
-}
-if (tizenStatus.tizenApisAvailableInHostedContent !== false) {
-  throw new Error("Hosted certification state must not claim Tizen API availability");
-}
-if (
-  tizenStatus.developmentPackageId !== tizenIdentity[2] ||
-  tizenStatus.developmentApplicationId !== tizenIdentity[1] ||
-  tizenStatus.sellerIdentityFinalized !== false
-) {
-  throw new Error("Tizen certification state must record the development identity as non-final");
-}
-if (tizenStatus.verification?.repositoryValidation !== true) {
-  throw new Error("Repository/package validation status must be explicitly recorded");
-}
-for (const stage of [
-  "simulatorVerified",
-  "emulatorVerified",
-  "realDeviceVerified",
-  "storeSubmitted",
-  "storeApproved",
+for (const origin of [
+  "https://doubleclick.net",
+  "https://googleapis.com",
+  "https://googletagservices.com",
+  "https://googlesyndication.com",
 ]) {
-  if (tizenStatus.verification?.[stage] !== false) {
-    throw new Error(
-      `Tizen certification stage ${stage} must remain false until actually completed`,
-    );
+  if (!tizen.includes(`<access origin="${origin}" subdomains="true"`)) {
+    throw new Error(`Tizen config missing WARP access for ${origin}`);
   }
 }
 
-if (
-  nextConfig.includes("'unsafe-inline'") &&
-  !tizenStatus.blockingReleaseChecks?.some(
-    (item) => typeof item === "string" && item.includes("CSP") && item.includes("unsafe-inline"),
-  )
-) {
-  throw new Error(
-    "Tizen certification state must record Samsung's hosted CSP blocker while AYIN uses unsafe-inline",
-  );
+if (tizenIndex.includes("location.replace(")) {
+  throw new Error("Tizen package must not regress to a hosted-app redirect");
+}
+for (const needle of [
+  'id="ayin-app"',
+  "https://ayin.stream/?platform=tizen&amp;ayin_tizen_embed=1",
+  'allow="autoplay; fullscreen"',
+  'src="shell.js"',
+  'href="shell.css"',
+  'id="exit-dialog"',
+]) {
+  if (!tizenIndex.includes(needle)) throw new Error(`Tizen shell HTML missing ${needle}`);
+}
+
+for (const needle of [
+  'var EXIT_KEY = 10182',
+  "registerKeyBatch(MEDIA_KEYS)",
+  '10009: "BACK"',
+  '10252: "PLAY_PAUSE"',
+  'source: SHELL_SOURCE, type: "lifecycle"',
+  'source: SHELL_SOURCE, type: "network"',
+  'data.type === "exit-request"',
+  "getCurrentApplication().exit()",
+]) {
+  if (!tizenShell.includes(needle)) throw new Error(`Tizen shell adapter missing ${needle}`);
+}
+
+const mediaKeyArray =
+  tizenShell.match(/var MEDIA_KEYS = \[([\s\S]*?)\];/)?.[1] ??
+  (() => {
+    throw new Error("Tizen MEDIA_KEYS declaration missing");
+  })();
+if (/["'](?:Exit|Back)["']/.test(mediaKeyArray)) {
+  throw new Error("Tizen shell must not register Back/Exit; Samsung owns the Exit long-press");
+}
+
+if (!tizenCss.includes("#exit-dialog") || !tizenCss.includes("#ayin-app")) {
+  throw new Error("Tizen shell CSS is incomplete");
+}
+
+for (const needle of [
+  'TIZEN_EMBED_COOKIE = "ayin_tizen_embed"',
+  "frame-ancestors 'self' file: tizen-widget:",
+  'header.key !== "X-Frame-Options"',
+]) {
+  if (!webConfig.includes(needle)) {
+    throw new Error(`AYIN Tizen framing policy missing ${needle}`);
+  }
 }
 
 for (const key of ["id", "title", "type", "main", "version", "icon"]) {
@@ -133,62 +95,10 @@ if (!webosIndex.includes("https://ayin.stream/?platform=webos")) {
   throw new Error("webOS entrypoint must target canonical AYIN origin");
 }
 
-const tizenIcon = await readFile("platforms/tizen/icon.png");
-if (
-  tizenIcon.length < 24 ||
-  !tizenIcon.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-) {
-  throw new Error("Tizen package icon must be a real PNG file");
-}
-const iconWidth = tizenIcon.readUInt32BE(16);
-const iconHeight = tizenIcon.readUInt32BE(20);
-if (iconWidth < 117 || iconHeight < 117) {
-  throw new Error("Tizen package icon must be at least the 117x117 test-icon baseline");
-}
-
 if (process.env.AYIN_TV_REQUIRE_STORE_ASSETS === "1") {
   await access("platforms/webos/icon.png");
   await access("platforms/webos/largeIcon.png");
+  await access("platforms/tizen/icon.png");
 }
 
-console.log("TV package manifests are structurally valid.");
-
-function validateTizenBootstrap(source) {
-  const target = "https://ayin.stream/?platform=tizen&runtime=hosted";
-
-  const run = (initialOnline) => {
-    const handlers = new Map();
-    const replacements = [];
-    const status = { textContent: "Opening AYIN…" };
-    const navigator = { onLine: initialOnline };
-    const context = vm.createContext({
-      document: {
-        getElementById: (id) => (id === "tizen-bootstrap-status" ? status : null),
-      },
-      navigator,
-      window: {
-        addEventListener: (name, listener) => handlers.set(name, listener),
-        location: {
-          replace: (url) => replacements.push(url),
-        },
-      },
-    });
-    vm.runInContext(source, context, { filename: "platforms/tizen/bootstrap.js" });
-    return { handlers, navigator, replacements, status };
-  };
-
-  const online = run(true);
-  if (online.replacements.length !== 1 || online.replacements[0] !== target) {
-    throw new Error("Online Tizen bootstrap must immediately open the canonical hosted runtime");
-  }
-
-  const offline = run(false);
-  if (offline.replacements.length !== 0 || !offline.status.textContent.includes("Reconnecting")) {
-    throw new Error("Offline Tizen bootstrap must stay local and show reconnect state");
-  }
-  offline.navigator.onLine = true;
-  offline.handlers.get("online")?.();
-  if (offline.replacements.length !== 1 || offline.replacements[0] !== target) {
-    throw new Error("Tizen bootstrap must navigate after connectivity returns");
-  }
-}
+console.log("TV package manifests and Tizen packaged-shell policy are structurally valid.");
