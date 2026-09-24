@@ -6,8 +6,8 @@ Task 78 prepares technical requirements only. It does not authorize or perform S
 
 - Profile: `tv-samsung`
 - Widget version: `1.0.0`
-- Application ID: `AYINtv2026.AYIN`
-- Package ID: `AYINtv2026`
+- Application ID: `AYINtv.AYIN`
+- Package ID: `AYINtv`
 - Minimum Tizen platform: `9.0`
 - Samsung development API baseline: `9.0`
 - Package mode: hosted/cloud Web application
