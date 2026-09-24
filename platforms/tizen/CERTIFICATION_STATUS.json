@@ -5,10 +5,12 @@
   "currentSamsungTvRangeReviewed": ["9.0", "10.0"],
   "hostedContentManagerApprovalRequired": true,
   "packagedBootstrapUsesTizenApis": true,
+  "packagedBootstrapTizenApiPatternSamsungApproved": false,
   "tizenApisAvailableInHostedContent": false,
   "standardRemoteKeysExpected": ["UP", "DOWN", "LEFT", "RIGHT", "SELECT", "BACK"],
   "packagedBootstrapMediaKeyRegistration": true,
   "mediaKeyRegistrationDeviceVerified": false,
+  "externalOriginPolicyContentManagerVerified": false,
   "verification": {
     "repositoryValidation": true,
     "simulatorVerified": false,
@@ -18,7 +20,8 @@
     "storeApproved": false
   },
   "blockingReleaseChecks": [
-    "Obtain Samsung Content Manager approval for the hosted/cloud application architecture before Seller Office submission",
+    "Obtain Samsung Content Manager approval for the hosted/cloud application architecture and explicitly confirm whether the packaged pre-navigation Tizen API shim is permitted before Seller Office submission",
+    "Confirm the final hosted external-origin/WARP policy with Samsung Content Manager and current Tizen tooling; do not add undocumented config elements based only on FAQ wording",
     "Confirm packaged-bootstrap media-key registration persists into hosted AYIN on Samsung TV Emulator and physical hardware",
     "Resolve and validate Samsung screensaver suppression during hosted media playback; hosted AYIN cannot call Samsung AppCommon from the remote hosted page",
     "Validate the signed package on the Samsung TV Simulator/Emulator with a valid Samsung certificate profile",
@@ -32,12 +35,13 @@
   "developmentPackageId": "AYINtv2026",
   "developmentApplicationId": "AYINtv2026.AYIN",
   "sellerIdentityFinalized": false,
+  "repositoryValidationEvidenceHeadSha": "37e0bc2c11980a7cd80ec2f25bf4aec35b113158",
   "repositoryValidationEvidence": {
-    "tvPackageRun": 36052770533,
-    "qualityRun": 36052769902,
-    "browserAcceptanceRun": 36052769980,
-    "securityRun": 36052769908,
-    "sharedAndroidRegressionRun": 36052769931
+    "tvPackageRun": 36053966555,
+    "qualityRun": 36053966534,
+    "browserAcceptanceRun": 36053966560,
+    "securityRun": 36053966563,
+    "sharedAndroidRegressionRun": 36053966588
   },
   "previousTask38DevelopmentPackageId": "AYINtv",
   "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve.",

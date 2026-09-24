@@ -9,12 +9,12 @@ AYIN remains one shared Web product. The Tizen package is a thin local bootstrap
 The package is a **Samsung hosted/cloud Web application**:
 
 1. `config.xml`, `index.html`, `bootstrap.js`, and the package icon are local;
-2. the local bootstrap can use Tizen APIs before hosted navigation;
-3. it registers only Samsung-reported media keys, then navigates the top-level document to `https://ayin.stream/?platform=tizen&hosted=1`;
+2. the local bootstrap currently probes Tizen APIs before hosted navigation as a thin implementation shim;
+3. it attempts to register only Samsung-reported media keys, then navigates the top-level document to `https://ayin.stream/?platform=tizen&hosted=1`;
 4. account/session, product navigation, focus, playback, advertising, Creator TV, and live logic remain in the shared AYIN Web application;
 5. Samsung Tizen APIs are **not** assumed to exist after navigation to hosted content.
 
-Samsung documents that hosted/cloud applications normally require prior Content Manager approval and that hosted content cannot use Tizen APIs. Task 78 therefore confines Tizen API calls to the packaged bootstrap and keeps hosted AYIN capability-driven.
+Samsung documents that hosted/cloud applications normally require prior Content Manager approval and that Tizen APIs are not supported in hosted applications. The pre-navigation bootstrap probe is therefore **not treated as a Samsung-approved hosted capability** by Task 78. It must be explicitly accepted by the Samsung Content Manager and verified on Samsung tooling/hardware. If Samsung rejects that pattern, the release must move to a Samsung-approved thin shell/partner mechanism rather than forking AYIN product UI or playback logic.
 
 A remote iframe is not used.
 
@@ -55,9 +55,11 @@ The package requests only:
 - `http://tizen.org/privilege/internet`;
 - `http://tizen.org/privilege/tv.inputdevice`.
 
-TVInputDevice is used only by the **local packaged bootstrap** to register optional media transport keys before hosted navigation. Hosted AYIN itself does not claim Tizen API access.
+TVInputDevice is declared only for the **local packaged bootstrap** to attempt optional media transport-key registration before hosted navigation. This is repository-validated implementation behavior, not a claim that Samsung approves Tizen API use in a hosted application. Hosted AYIN itself does not claim Tizen API access.
 
 WARP access is HTTPS-only for AYIN and the Google IMA/GAM origins already used by the shared Web product.
+
+Samsung's current Hosted Applications FAQ says multi-domain hosted downloads should be declared with a `tizen:allow-origin` element, while the current TV configuration guide describes W3C WARP policy but does not provide a usable syntax for that FAQ-only element. Task 78 does not invent an undocumented XML shape. The checked-in explicit HTTPS `<access>` entries remain the structural baseline, and the final multi-domain policy must be confirmed with current Tizen tooling and the Samsung Content Manager before submission.
 
 ## Remote keys and focus
 
@@ -164,9 +166,9 @@ Session behavior across Smart Hub transitions, TV restart, and uninstall must be
 
 | Stage                                     | Environment           | Task 78 state                                            |
 | ----------------------------------------- | --------------------- | -------------------------------------------------------- |
-| Repository package/config validation      | GitHub CI             | **Verified — run 36052770533**                           |
-| Packaged bootstrap simulation             | Node VM in GitHub CI  | **Verified — run 36052770533**                           |
-| Shared Web unit/integration/browser suite | GitHub CI             | **Verified — quality 36052769902 / browser 36052769980** |
+| Repository package/config validation      | GitHub CI             | **Verified — run 36053966555**                           |
+| Packaged bootstrap simulation             | Node VM in GitHub CI  | **Verified — run 36053966555**                           |
+| Shared Web unit/integration/browser suite | GitHub CI             | **Verified — quality 36053966534 / browser 36053966560** |
 | Samsung TV Simulator                      | Samsung Simulator     | **Not verified**                                         |
 | Samsung TV Emulator                       | Tizen 9/10 Emulator   | **Not verified**                                         |
 | Real Tizen 9.0 TV                         | Physical Samsung TV   | **Not verified — no hardware attached**                  |
@@ -174,7 +176,7 @@ Session behavior across Smart Hub transitions, TV restart, and uninstall must be
 | Seller Office submitted                   | Samsung Seller Office | **No**                                                   |
 | Store approved                            | Samsung Seller Office | **No**                                                   |
 
-Repository/Node validation is not Samsung emulator certification. Security validation passed in run 36052769908; shared Android-shell regression validation for the player teardown changes passed in run 36052769931. These run IDs prove repository behavior only and do not change any Samsung device/store stage.
+Repository/Node validation is not Samsung emulator certification. Security validation passed in run 36053966563; shared Android-shell/mobile/Google TV/Fire-flavor regression validation passed in run 36053966588. The implementation evidence head for these five workflows is `37e0bc2c11980a7cd80ec2f25bf4aec35b113158`. These runs prove repository behavior only and do not change any Samsung device/store stage. Any later documentation/evidence bookkeeping commit must still pass its own PR checks before merge.
 
 ## Why emulator/device stages remain false
 
@@ -191,8 +193,8 @@ Samsung's current emulator installation policy requires Samsung certificate sign
 
 Before Seller Office submission:
 
-- obtain Samsung Content Manager approval for the hosted/cloud architecture;
-- confirm hosted-app CSP/external-resource policy with the Content Manager;
+- obtain Samsung Content Manager approval for the hosted/cloud architecture, including explicit approval or rejection of the pre-navigation Tizen API shim;
+- confirm hosted-app CSP and multi-domain external-resource/WARP policy with the Content Manager and current Tizen tooling;
 - create and secure Samsung author/distributor certificates;
 - build and sign a WGT with official Samsung/Tizen tooling;
 - validate Simulator/Emulator;
