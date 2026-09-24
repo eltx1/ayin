@@ -35,13 +35,15 @@
     "Create and secure the final Samsung certificate profile and signed WGT",
     "Prepare final Seller Office screenshots, icon artwork, localized metadata and release information"
   ],
-  "developmentPackageId": "AYINtv",
-  "developmentApplicationId": "AYINtv.AYIN",
+  "developmentPackageId": "AYINtv2026",
+  "developmentApplicationId": "AYINtv2026.AYIN",
   "sellerIdentityFinalized": false,
   "repositoryValidationEvidence": {
     "tvPackageRun": 35952633271,
     "qualityRun": 35952633216,
     "browserAcceptanceRun": 35952633272,
     "securityRun": 35952633203
-  }
+  },
+  "previousTask38DevelopmentPackageId": "AYINtv",
+  "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve."
 }
