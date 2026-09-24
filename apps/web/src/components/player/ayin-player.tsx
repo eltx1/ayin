@@ -16,6 +16,7 @@ import {
   type AyinAdaptivePlaybackSession,
   type AyinHlsFailureReason,
   type AyinPlaybackRendition,
+  releaseHtmlMediaElement,
   startAdaptiveHlsPlayback,
 } from "@/lib/adaptive-playback";
 import {
@@ -406,6 +407,8 @@ export function AyinPlayer({
   useEffect(
     () => () => {
       notifyNativePlaybackState("paused");
+      const video = videoRef.current;
+      if (video) releaseHtmlMediaElement(video);
     },
     [],
   );
