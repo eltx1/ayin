@@ -51,10 +51,10 @@ The package declares:
 
 ## Package identity and permissions
 
-Development identity remains the existing Task 38 identity:
+Task 78 replaces the Task 38 development package ID because the old `AYINtv` value did not satisfy the Tizen Web application requirement that a package ID be exactly 10 alphanumeric bytes. No Samsung Seller Office submission or approval exists for the old development ID, so Task 78 uses a structurally valid development identity:
 
-- Package ID: `AYINtv`
-- Application ID: `AYINtv.AYIN`
+- Package ID: `AYINtv2026`
+- Application ID: `AYINtv2026.AYIN`
 - Widget version: `1.0.0`
 
 The package requests only the Tizen Internet privilege.
