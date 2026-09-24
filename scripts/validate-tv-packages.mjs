@@ -11,6 +11,8 @@ const webosIndex = await readFile("platforms/webos/index.html", "utf8");
 
 for (const needle of [
   '<tizen:profile name="tv-samsung"',
+  '<tizen:application id="AYINtv2026.AYIN" package="AYINtv2026" required_version="9.0"',
+  '<icon src="icon.png"',
   '<content src="index.html"',
   'required_version="9.0"',
   'http://samsung.com/tv/metadata/devel.api.version" value="9.0"',
@@ -93,6 +95,33 @@ if (webos.main !== "index.html") throw new Error("webOS main must be index.html"
 if (!/^\d+\.\d+\.\d+$/.test(webos.version)) throw new Error("webOS version must be x.y.z");
 if (!webosIndex.includes("https://ayin.stream/?platform=webos")) {
   throw new Error("webOS entrypoint must target canonical AYIN origin");
+}
+
+await access("platforms/tizen/icon.png");
+
+const certification = JSON.parse(
+  await readFile("platforms/tizen/CERTIFICATION_STATUS.json", "utf8"),
+);
+if (certification.task !== 78) throw new Error("Tizen certification status task must be 78");
+if (certification.packageMode !== "packaged-shell-remote-ui") {
+  throw new Error("Tizen certification status must match packaged-shell architecture");
+}
+if (certification.developmentPackageId !== "AYINtv2026") {
+  throw new Error("Tizen certification package ID does not match config.xml");
+}
+if (certification.developmentApplicationId !== "AYINtv2026.AYIN") {
+  throw new Error("Tizen certification application ID does not match config.xml");
+}
+for (const stage of [
+  "simulatorVerified",
+  "emulatorVerified",
+  "realDeviceVerified",
+  "storeSubmitted",
+  "storeApproved",
+]) {
+  if (certification.verification?.[stage] !== false) {
+    throw new Error(`Tizen stage ${stage} cannot be claimed complete by repository CI`);
+  }
 }
 
 if (process.env.AYIN_TV_REQUIRE_STORE_ASSETS === "1") {
