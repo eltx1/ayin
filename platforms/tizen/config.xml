@@ -8,6 +8,7 @@
   <content src="index.html" />
   <icon src="icon.png" />
   <feature name="http://tizen.org/feature/screen.size.normal.1080.1920" />
+  <feature name="http://tizen.org/feature/tv.inputdevice" />
 
   <access origin="https://ayin.stream" subdomains="true" />
   <access origin="https://googleapis.com" subdomains="true" />
