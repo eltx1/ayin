@@ -92,7 +92,8 @@ export interface TizenRuntimeCapabilities {
 }
 
 export function detectTvWebPlatform(target: Window = window): NativeShellPlatform | null {
-  if (target.tizen?.tvinputdevice || target.tizen?.application?.getCurrentApplication) return "tizen";
+  if (target.tizen?.tvinputdevice || target.tizen?.application?.getCurrentApplication)
+    return "tizen";
   if (target.webOS) return "webos";
   try {
     const location = new URL(target.location.href);
@@ -355,9 +356,7 @@ function installTizenScreenSaverGuard(
   };
 }
 
-export function registerTizenMediaKeys(
-  target: Window,
-): "registered" | "unavailable" | "failed" {
+export function registerTizenMediaKeys(target: Window): "registered" | "unavailable" | "failed" {
   const input = target.tizen?.tvinputdevice;
   if (!input) return "unavailable";
   try {
