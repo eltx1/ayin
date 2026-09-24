@@ -1,147 +1,241 @@
-# AYIN Task 78 — Samsung Tizen TV certification baseline
+# AYIN Task 78 — Samsung Tizen supported baseline
 
-Task 78 hardens the existing Samsung TV package while keeping AYIN product UI, account/session, media players, advertising, Creator TV, and live-streaming logic in the shared Web application.
+Task 78 hardens the existing Samsung TV package without creating a Samsung-specific AYIN product UI.
 
-The Samsung-specific layer is deliberately thin:
+AYIN remains one shared Web product. The Tizen package contains only a local bootstrap page that validates the Samsung runtime and then navigates the top-level Web application to the canonical HTTPS AYIN origin.
 
-1. a packaged local Tizen shell owns Samsung/Tizen APIs;
-2. the shared AYIN Web application is rendered inside a remote iframe;
-3. the local shell forwards remote, lifecycle, and network signals through a small postMessage bridge;
-4. shared AYIN focus/player code remains authoritative.
+## Architecture
 
-This replaces the previous direct hosted-page redirect. Samsung documents that hosted applications normally require prior Content Manager approval and do not have access to Tizen APIs for security reasons. Because AYIN still renders substantial remote content, Seller Office classification must still be confirmed with Samsung before submission.
+The package is a **Samsung hosted/cloud Web application**:
 
-## Supported baseline
+1. `config.xml` and the package icon are local;
+2. `index.html` and `bootstrap.js` perform only compatibility/network startup checks;
+3. the top-level document navigates to `https://ayin.stream/?platform=tizen&ayin_tizen_hosted=1`;
+4. all account/session, navigation, focus, playback, advertising, Creator TV and live logic remains in the shared AYIN Web application.
 
-AYIN's declared minimum is **Tizen 9.0**.
+Task 78 does **not** use a remote iframe. Samsung documents that remote iframe content in a TV Web application is not an interactive replacement for the app UI: remote iframe user interaction can open the TV Web Browser, and Tizen/Product APIs are not available to the remote iframe.
 
-| Samsung TV platform | Model year | Web engine | AYIN Task 78 status |
+Samsung also documents that hosted/cloud applications require prior Content Manager approval except for approved special cases, and Tizen APIs are not available in hosted content for security reasons.
+
+Because of those rules:
+
+- the hosted AYIN page does not claim `tizen.tvinputdevice`;
+- the package does not request the `tv.inputdevice` privilege;
+- media-key registration is not claimed for the hosted runtime;
+- standard D-pad/Enter/Back events are handled by the shared Web runtime;
+- Seller Office submission remains blocked until Samsung Content Manager confirms the hosted architecture.
+
+## Supported Tizen baseline
+
+AYIN Task 78 declares **Tizen 9.0** as its minimum supported Samsung TV runtime.
+
+| Samsung TV platform | Model year | Samsung Web engine | AYIN Task 78 baseline |
 | --- | ---: | --- | --- |
-| Tizen 10.0 | 2026 | Chromium 130 | Package baseline targeted; no Samsung emulator/real-device verification completed |
-| Tizen 9.0 | 2025 | Chromium 120 | Minimum package/API baseline; no Samsung emulator/real-device verification completed |
-| Tizen 8.0 and older | 2024 and older | Chromium 108 or older | Not in the supported Task 78 baseline |
+| Tizen 10.0 | 2026 | Chromium 130 | In declared support range; repository logic validated only |
+| Tizen 9.0 | 2025 | Chromium 120 | Minimum declared support range; repository logic validated only |
+| Tizen 8.0 | 2024 | Chromium 108 | Not supported by Task 78 |
+| Older Tizen | 2023 and older | Older Chromium engines | Not supported by Task 78 |
 
-The current AYIN Web stack is Next.js 16 / React 19. Task 78 intentionally avoids claiming compatibility with older Samsung Web engines that have not been exercised against the current production application.
+The shared AYIN Web application uses Next.js 16 / React 19. Next.js 16 documents Chrome 111+ as its default browser baseline. Tizen 9.0 and 10.0 are therefore the first current Samsung TV generations whose documented Chromium engines are above that baseline. Task 78 intentionally does not claim Tizen 8.0 compatibility.
 
-The Tizen configuration sets both required_version=9.0 and Samsung development API metadata 9.0.
+The package declares:
 
-## Package and network policy
+- `required_version="9.0"`;
+- Samsung development API metadata `9.0`;
+- Samsung TV profile;
+- 1920×1080 screen-size feature;
+- maximized landscape presentation;
+- background support disabled;
+- hardware key events enabled;
+- pointing-device support disabled for the remote-first baseline.
 
-The package uses the tv-samsung profile, maximized landscape mode, background-support disabled, hardware key events enabled, and pointing-device support disabled for the remote-first baseline.
+## Package identity and permissions
 
-Privileges are limited to Internet and TVInputDevice. WARP access is HTTPS-only for AYIN and the Google advertising origins already used by the shared Web CSP.
+Development identity remains the existing Task 38 identity:
 
-A final Samsung launcher/store icon is intentionally not invented in Task 78 and remains a release prerequisite.
+- Package ID: `AYINtv`
+- Application ID: `AYINtv.AYIN`
+- Widget version: `1.0.0`
 
-## Packaged shell instead of hosted redirect
+The package requests only the Tizen Internet privilege.
 
-The old package immediately redirected its top-level document to https://ayin.stream. Task 78 replaces that with local index.html, shell.js, shell.css, and a full-screen AYIN iframe.
+The hosted application does **not** request TVInputDevice because Samsung does not expose Tizen APIs to hosted content.
 
-The iframe loads https://ayin.stream/?platform=tizen&ayin_tizen_embed=1.
+WARP access remains HTTPS-only for:
 
-AYIN ordinary pages remain protected by CSP frame-ancestors 'none' and X-Frame-Options DENY. Only the Tizen embed marker/cookie receives a narrowly-scoped framing exception that permits local packaged ancestor schemes file: and tizen-widget:. The embedded response does not receive X-Frame-Options DENY.
+- `ayin.stream` and its subdomains;
+- Google ad/IMA origins already used by the shared AYIN Web product.
 
-The local shell has its own restrictive CSP and can frame only https://ayin.stream.
+No cleartext HTTP origin is added.
 
 ## Remote keys, focus, Back and Exit
 
-The local package registers MediaPlayPause, MediaPlay, MediaPause, MediaRewind, and MediaFastForward. It does not register Back or Exit.
+Samsung documents that Arrow keys, Enter and Back are automatically delivered and do not require TVInputDevice registration.
 
-Samsung requires long-press Exit to retain platform default termination behavior. Task 78 therefore ignores Exit key code 10182.
+AYIN therefore keeps remote navigation in the shared Web runtime:
 
-Remote signals are forwarded to the shared AYIN runtime. Direction/select signals reuse TvFocusScope; media keys reuse the shared AYIN player controls. No Tizen-specific product focus graph or player UI is added.
+- Arrow Up/Down/Left/Right → existing `TvFocusScope` spatial focus;
+- Enter → existing focused Web control/player action;
+- Back → existing browser/platform behavior unless a shared AYIN handler consumes it;
+- focus visibility remains the existing AYIN TV focus styling.
 
-Samsung Return/Exit policy is implemented as follows:
+Media transport keys such as Play/Pause/Rewind/Fast-Forward require Samsung TVInputDevice registration. Because hosted AYIN content has no Tizen API access, Task 78 does **not** claim those registered transport keys work in the hosted package.
 
-- detail route Back goes to previous AYIN history;
-- home Back requests an exit confirmation from the local package;
-- only Yes calls tizen.application.getCurrentApplication().exit();
-- long-press Exit remains platform-owned.
+Long-press Exit remains platform-owned. Task 78 does not synthesize or intercept an Exit key.
 
-## Media playback
+Real Back/Exit behavior must be verified on physical Tizen 9.0 and 10.0 TVs before a device-stage claim is made.
 
-AYIN continues to use HTML5 video and the existing adaptive playback abstraction. Samsung documents HTML5 video, HLS, MSE, H.264/AAC MP4, and external WebVTT support on the current platforms.
+## HTTPS and network behavior
 
-AYIN already prefers native HLS when canPlayType() reports support, so no Tizen-only media player is added. Task 75/76 Creator TV output uses conservative HLS v3 and does not require EXT-X-INDEPENDENT-SEGMENTS, which Samsung documents as unsupported.
+The package only launches `https://ayin.stream`.
 
-Captions remain the shared WebVTT track implementation. Autoplay remains best-effort; the iframe grants autoplay and AYIN preserves user-start fallback if play() is rejected.
+The local bootstrap:
 
-The packaged iframe occupies the full TV surface and grants fullscreen. Shared AYIN fullscreen controls remain authoritative.
+- rejects unknown/non-Tizen user agents;
+- rejects Tizen versions below 9.0;
+- waits when `navigator.onLine === false`;
+- navigates only after the runtime is supported and online.
+
+After navigation, the existing AYIN network behavior applies. Live playback already uses bounded reconnect/backoff and ordinary browser online/offline events.
+
+Actual Wi-Fi/Ethernet loss/recovery remains a real-TV validation item.
+
+## HLS, MP4, Creator TV and live
+
+Task 78 adds no Tizen-specific player fork.
+
+AYIN continues to use:
+
+- native HLS when the browser reports support;
+- bundled hls.js when needed;
+- progressive MP4 as the existing content fallback;
+- Task 75/76 Creator TV HLS output;
+- Task 74 shared live playback/reconnect path.
+
+Samsung's current media documentation supports HTML5 video, HLS and MSE on supported TVs. Samsung's general specifications document HLS basic version 3 and do not support `EXT-X-INDEPENDENT-SEGMENTS`; AYIN's Creator TV output already avoids requiring that tag.
+
+Exact codecs, manifests and live-provider streams still require runtime validation on representative TVs.
+
+## Captions
+
+AYIN keeps the existing HTML5 `<track>` / WebVTT caption path.
+
+No Samsung-only caption UI or subtitle engine is added.
+
+WebVTT rendering, caption focus/selection and language behavior remain physical-TV acceptance items.
+
+## Autoplay and user-start fallback
+
+AYIN keeps its existing best-effort autoplay behavior.
+
+Samsung documents HTML5 video autoplay support on current TVs, but AYIN does not assume every content/ad state can autoplay. If `play()` is rejected, the existing shared user-start control remains the fallback.
+
+## Full-screen video
+
+AYIN keeps the shared Web Fullscreen API/player controls.
+
+No AVPlay-only fullscreen path is introduced. Fullscreen entry/exit and Back interaction remain real-device validation items.
 
 ## IMA / Google Ad Manager
 
-AYIN retains the existing HTML5 IMA path and content-safe fallback. Google's current IMA HTML5 compatibility matrix does not list Samsung Tizen TV as an officially supported platform, so Task 78 does not claim official client-side IMA support on Samsung TV.
+Task 78 does not claim official client-side Google IMA certification on Samsung Tizen.
 
-Real IMA/GAM ad rendering, skip focus, consent, no-fill, error recovery, and measurement require physical Samsung TV validation. Creator TV may use Task 76 server-side Google DAI when configured because the stitched output is ordinary HLS from the player's perspective.
+Google's current IMA HTML5 documentation treats Samsung TV/Tizen as an additional-device case that requires contacting the Google account team rather than a generally supported browser target.
 
-## Lifecycle, memory and network
+AYIN therefore preserves:
 
-Samsung requires visibilitychange handling. The local shell forwards pause/resume lifecycle state to the shared runtime. The shared runtime pauses media that was playing and restores only that media when visible again.
+- the existing HTML5 IMA integration;
+- consent handling;
+- content-safe IMA error/no-fill fallback;
+- Task 76 server-side DAI path where separately configured.
 
-AYIN player teardown follows the Samsung-recommended HTML5 decoder cleanup sequence: pause, remove src, then load().
+Physical Samsung TV testing and Google account-manager confirmation are required before client-side IMA/GAM can be marked device verified.
 
-The local shell forwards browser online/offline state into the existing AYIN network path. Real cable/Wi-Fi loss and resume behavior remain physical-TV acceptance items.
+## Memory behavior
+
+Samsung recommends releasing HTML5 video decoder/buffer resources by:
+
+1. pausing playback;
+2. removing the media `src`;
+3. calling `load()`.
+
+Task 78 adds that sequence to the shared AYIN VOD teardown helper instead of creating a Tizen player fork. The helper is exception-safe so detached media cannot break route teardown.
+
+The live player already destroys its adaptive session and releases its video element through the shared live cleanup path.
+
+Actual low-memory eviction/recovery remains a physical-device acceptance item.
+
+## Lifecycle
+
+Samsung documents `visibilitychange` as the Web-app multitasking signal.
+
+The shared TV runtime already maps document visibility to AYIN pause/resume lifecycle behavior and now also emits a stop lifecycle on `pagehide`.
+
+Media that was playing is paused on backgrounding and only those media elements are considered for resume.
+
+Model-specific multitasking behavior remains a device validation item because low-memory models can terminate apps instead of suspending them.
 
 ## Login and session
 
-Login/session remains AYIN's existing HTTPS cookie/session implementation inside the AYIN iframe. A Secure SameSite=None marker cookie is used only to preserve the Tizen framing policy across full document navigations.
+Login/session remains the canonical AYIN HTTPS cookie/session implementation.
 
-Actual session persistence across TV suspend/reboot/uninstall remains a real-device validation item. Samsung also requires login data to be gone after uninstall.
+No Tizen-specific auth store is added.
 
-## Validation matrix
+Session persistence across Smart Hub transitions, TV restart and uninstall data removal must be verified on a real TV before certification status changes.
 
-| Stage | Environment | Task 78 status |
+## Verification matrix
+
+| Stage | Environment | Task 78 state |
 | --- | --- | --- |
-| Static package/config validation | GitHub CI | **Pending current PR CI** |
-| Packaged shell adapter simulation | Node sandbox in GitHub CI | **Pending current PR CI** |
-| Shared Web unit/integration/browser tests | repository quality/browser CI | **Pending current PR CI** |
-| Samsung TV Simulator | Samsung TV Simulator | **Not verified** |
+| Repository package/config validation | GitHub CI | Pending PR CI |
+| Hosted bootstrap simulation | Node VM in GitHub CI | Pending PR CI |
+| Shared Web unit/integration/browser suite | GitHub CI | Pending PR CI |
+| Samsung TV Simulator | Samsung simulator | **Not verified** |
 | Samsung TV Emulator | Tizen 9/10 emulator | **Not verified** |
-| Real Samsung TV | Tizen 9.0 retail hardware | **Not verified — no hardware attached** |
-| Real Samsung TV | Tizen 10.0 retail hardware | **Not verified — no hardware attached** |
+| Real Tizen 9.0 TV | Physical Samsung TV | **Not verified — no hardware attached** |
+| Real Tizen 10.0 TV | Physical Samsung TV | **Not verified — no hardware attached** |
 | Seller Office submitted | Samsung Seller Office | **No** |
 | Store approved | Samsung Seller Office | **No** |
 
-Samsung notes that remote-source iframe behavior on the emulator can differ from a TV. An emulator pass would therefore not replace real-device testing for this architecture.
+Repository/Node validation is not Samsung emulator certification.
 
-## Why no emulator claim in CI
+## Why emulator/device stages remain false
 
-Samsung TV Extension 7.0.1+ requires a Samsung certificate even for emulator installation. The repository intentionally contains no Samsung signing certificate/profile or password. CI creates only an unsigned payload archive for structural inspection; it is not represented as an installable or store-ready WGT.
+The current environment does not have:
 
-## Required real-device acceptance
+- Tizen Studio + Samsung TV Extension installation runtime;
+- a Samsung certificate profile;
+- Samsung TV emulator images already configured for signed installation;
+- connected Samsung TV hardware.
 
-Before changing any status to real-device verified, run on representative Tizen 9.0 and Tizen 10.0 TVs:
+Samsung's current emulator installation policy requires Samsung certificate/signing setup for TV applications. Task 78 therefore creates only an **unsigned structural payload archive** in CI and does not call it a WGT, emulator-verified package or store-ready artifact.
 
-- cold launch and relaunch;
-- login/logout/session persistence;
-- D-pad traversal and visible focus;
-- Enter/select;
-- Back from details and exit confirmation from home;
-- long-press Exit default behavior;
-- media Play/Pause/Rewind/Fast-Forward;
-- HLS VOD and MP4 fallback;
-- Creator TV HLS/DAI where configured;
-- live HLS/reconnect;
-- WebVTT captions;
-- autoplay and user-start fallback;
-- fullscreen enter/exit;
-- IMA/GAM content-safe failure path and ad behavior if monetization is enabled;
-- suspend/resume via Smart Hub/input switch;
-- low-memory/background recovery;
-- network disconnect/reconnect;
-- HTTPS/certificate failure behavior.
+## Release blockers before Seller Office
+
+Before submission:
+
+- obtain Samsung Content Manager approval for the hosted/cloud architecture;
+- resolve Samsung hosted-app CSP policy with the Content Manager; AYIN's shared production CSP currently uses `unsafe-inline` for product requirements;
+- create and securely retain the Samsung author/distributor certificate profile;
+- build a signed WGT with official Samsung/Tizen tooling;
+- validate Samsung Simulator/Emulator;
+- validate representative physical Tizen 9.0 and 10.0 TVs;
+- validate IMA/GAM on hardware and confirm support with Google account management;
+- verify login/logout/session/uninstall behavior;
+- verify DPAD/focus/Back/Exit, HLS/MP4/live, Creator TV, captions, autoplay, fullscreen, lifecycle, low-memory and network recovery;
+- prepare final Samsung Seller Office artwork, screenshots, localized metadata and release information.
 
 ## Official references used
 
-- https://developer.samsung.com/smarttv/develop/faq/hosted-applications.html
-- https://developer.samsung.com/smarttv/develop/guides/fundamentals/configuring-tv-applications.html
-- https://developer.samsung.com/smarttv/develop/specifications/web-engine-specifications.html
-- https://developer.samsung.com/smarttv/develop/guides/fundamentals/retrieving-platform-information.html
-- https://developer.samsung.com/smarttv/develop/guides/user-interaction/remote-control.html
-- https://developer.samsung.com/smarttv/develop/guides/fundamentals/terminating-applications.html
-- https://developer.samsung.com/smarttv/develop/guides/fundamentals/multitasking.html
-- https://developer.samsung.com/smarttv/develop/guides/multimedia/media-playback/using-video-elements.html
-- https://developer.samsung.com/smarttv/develop/specifications/general-specifications.html
-- https://developer.samsung.com/smarttv/develop/guides/web-app-memory-optimization-guide.html
-- https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-emulator/application-install-policy.html
-- https://developers.google.com/interactive-media-ads/docs/sdks/html5/client-side/compatibility
+- Samsung Hosted Applications: https://developer.samsung.com/smarttv/develop/faq/hosted-applications.html
+- Configuring TV Applications: https://developer.samsung.com/smarttv/develop/guides/fundamentals/configuring-tv-applications.html
+- Samsung Web Engine Specifications: https://developer.samsung.com/smarttv/develop/specifications/web-engine-specifications.html
+- Samsung Remote Control: https://developer.samsung.com/smarttv/develop/guides/user-interaction/remote-control.html
+- Samsung Terminating Applications: https://developer.samsung.com/smarttv/develop/guides/fundamentals/terminating-applications.html
+- Samsung Multitasking: https://developer.samsung.com/smarttv/develop/guides/fundamentals/multitasking.html
+- Samsung Video Elements: https://developer.samsung.com/smarttv/develop/guides/multimedia/media-playback/using-video-elements.html
+- Samsung General Specifications: https://developer.samsung.com/smarttv/develop/specifications/general-specifications.html
+- Samsung Web App Memory Optimization: https://developer.samsung.com/smarttv/develop/guides/web-app-memory-optimization-guide.html
+- Samsung Emulator Application Install Policy: https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-emulator/application-install-policy.html
+- Next.js Supported Browsers: https://nextjs.org/docs/architecture/supported-browsers
+- Google IMA HTML5 Compatibility: https://developers.google.com/interactive-media-ads/docs/sdks/html5/client-side/compatibility
