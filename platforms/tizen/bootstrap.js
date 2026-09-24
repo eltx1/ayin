@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const target = "https://ayin.stream/?platform=tizen";
+  const target = "https://ayin.stream/?platform=tizen&runtime=hosted";
   const status = document.getElementById("tizen-bootstrap-status");
   let navigating = false;
 
