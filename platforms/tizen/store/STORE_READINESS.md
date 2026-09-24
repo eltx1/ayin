@@ -1,72 +1,94 @@
 # AYIN Samsung TV store technical readiness
 
-Task 78 prepares technical requirements only. It does not authorize or perform a Samsung Seller Office submission.
+Task 78 prepares technical requirements only. It does not authorize or perform Samsung Seller Office submission.
 
 ## Current package identity
 
-- Tizen profile: tv-samsung
-- Widget version: 1.0.0
-- Application ID: AYINtv2026.AYIN
-- Package ID: AYINtv2026
-- Minimum Tizen platform: 9.0
-- Development API baseline: 9.0
+- Profile: `tv-samsung`
+- Widget version: `1.0.0`
+- Application ID: `AYINtv.AYIN`
+- Package ID: `AYINtv`
+- Minimum Tizen platform: `9.0`
+- Samsung development API baseline: `9.0`
+- Package mode: hosted/cloud Web application
 
-Version/package identifiers must be confirmed before first production submission because published-app updates have identity and signing continuity requirements.
+The existing Task 38 package/application identity is preserved. Do not change it casually after signing/store publication because update continuity depends on identity and certificate continuity.
 
-## Signing requirements
+## Hosted application approval
+
+Samsung states that hosted/cloud applications require advance Content Manager approval except in approved special cases.
+
+Before Seller Office submission:
+
+- confirm the AYIN hosted architecture with Samsung Content Manager;
+- confirm external Google IMA/GAM resources;
+- resolve Samsung hosted-app CSP policy. AYIN's shared production Web CSP currently uses `unsafe-inline` and Task 78 does not weaken global Web security to hide this requirement.
+
+Repository CI is not evidence of hosted-app approval.
+
+## Permissions/network
+
+The package requests only Internet.
+
+It intentionally does not request TVInputDevice because hosted AYIN content cannot use Tizen APIs.
+
+WARP access remains HTTPS-only for AYIN and required Google advertising origins.
+
+No HTTP/cleartext endpoint is part of the release baseline.
+
+## Signing
 
 Before release:
 
 - install current Tizen Studio;
 - install current Samsung TV Extension and Samsung Certificate Extension;
-- create a Samsung certificate profile;
+- create the final Samsung certificate profile;
+- back up the author certificate for future updates;
 - protect author/distributor certificates and passwords outside git;
-- keep the original author certificate backed up for future updates;
-- build the signed WGT with Samsung/Tizen tooling.
+- build a signed WGT with official tooling.
 
-No certificate, password, signed WGT, or Seller Office credential is stored in this repository.
+No signing certificate, password, signed WGT or Seller Office credential belongs in this repository.
 
-## Hosted/remote-content classification
+## Store assets and metadata still required
 
-The app uses a local packaged shell but renders the shared AYIN application remotely in an iframe. Samsung states that hosted/cloud-based applications normally require prior Content Manager approval and are accepted only in special cases.
+Task 78 does not invent final Seller Office content:
 
-Before Seller Office submission, confirm this architecture with the assigned Samsung Content Manager. Do not assume store eligibility from repository tests.
-
-## Required store assets and metadata
-
-Task 78 intentionally does not invent:
-
-- final Samsung TV launcher icon;
-- store icon and screenshots;
-- app title/localized titles;
-- short and long descriptions;
+- final launcher/store icon;
+- screenshots;
+- localized public title;
+- short/long descriptions;
 - category;
-- privacy policy URL;
-- support contact details;
+- privacy-policy/support contacts;
 - content rating answers;
-- countries/regions;
+- supported countries/regions;
 - release notes;
-- monetization disclosures;
-- final certificate fingerprints/profile;
-- Seller Office distribution/model groups.
+- monetization disclosure;
+- model/device distribution selections.
 
-The checked-in icon.png is a technical package icon. Final Seller Office icon/screenshots must still satisfy Samsung artwork requirements before submission.
+The checked-in `icon.png` is only a technical package icon until final artwork is approved.
 
-## Release validation gates
+## Required validation gates
 
-- build a signed WGT with the intended production certificate;
-- install it on Samsung TV Simulator/Emulator where applicable;
-- install it on representative physical Tizen 9.0 and Tizen 10.0 TVs;
-- complete the real-device matrix in docs/TIZEN_CERTIFICATION.md;
-- validate login/session, remote/focus/back/exit, HLS/MP4, captions, autoplay, fullscreen, Creator TV/live, network recovery and lifecycle;
-- validate IMA/GAM behavior on hardware if client-side ads are enabled;
-- verify HTTPS endpoints and TLS chains from the TV;
-- verify uninstall removes user login data;
-- confirm remote-content architecture with Samsung Content Manager.
+Before submission:
+
+- get Content Manager hosted-app approval;
+- create the final Samsung signing profile;
+- build and inspect a signed WGT;
+- install/test on Samsung Simulator/Emulator;
+- test representative physical Tizen 9.0 and 10.0 TVs;
+- verify cold launch, resume and termination;
+- verify login/logout/session and uninstall data removal;
+- verify D-pad/focus/Enter/Back/Exit;
+- verify HLS, MP4 fallback, WebVTT captions, autoplay fallback and fullscreen;
+- verify Creator TV and live playback/reconnect;
+- verify physical network disconnect/reconnect and low-memory behavior;
+- validate client-side IMA/GAM with the Google account team if enabled.
 
 ## Submission state
 
+- Samsung Simulator verified: **No**
+- Samsung Emulator verified: **No**
+- Real Samsung TV verified: **No**
 - Samsung Seller Office submitted: **No**
 - Samsung review started: **No**
 - Samsung store approved: **No**
-- Real Samsung TV certification claimed: **No**
