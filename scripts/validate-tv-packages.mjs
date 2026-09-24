@@ -1,5 +1,6 @@
 import { access, readFile } from "node:fs/promises";
 import process from "node:process";
+import vm from "node:vm";
 
 const tizen = await readFile("platforms/tizen/config.xml", "utf8");
 const webos = JSON.parse(await readFile("platforms/webos/appinfo.json", "utf8"));
@@ -62,6 +63,8 @@ if (!tizenBootstrap.includes("https://ayin.stream/?platform=tizen&runtime=hosted
 if (tizenBootstrap.includes("window.tizen") || tizenBootstrap.includes("webapis.")) {
   throw new Error("Hosted bootstrap must not rely on Tizen/Product APIs");
 }
+
+validateTizenBootstrap(tizenBootstrap);
 
 if (tizenStatus.packageMode !== "hosted") throw new Error("Tizen package mode must be explicit");
 const requiredVersion = tizen.match(/required_version="(\d+\.\d+)"/u)?.[1] ?? null;
@@ -149,3 +152,43 @@ if (process.env.AYIN_TV_REQUIRE_STORE_ASSETS === "1") {
 }
 
 console.log("TV package manifests are structurally valid.");
+
+function validateTizenBootstrap(source) {
+  const target = "https://ayin.stream/?platform=tizen&runtime=hosted";
+
+  const run = (initialOnline) => {
+    const handlers = new Map();
+    const replacements = [];
+    const status = { textContent: "Opening AYIN…" };
+    const navigator = { onLine: initialOnline };
+    const context = vm.createContext({
+      document: {
+        getElementById: (id) => (id === "tizen-bootstrap-status" ? status : null),
+      },
+      navigator,
+      window: {
+        addEventListener: (name, listener) => handlers.set(name, listener),
+        location: {
+          replace: (url) => replacements.push(url),
+        },
+      },
+    });
+    vm.runInContext(source, context, { filename: "platforms/tizen/bootstrap.js" });
+    return { handlers, navigator, replacements, status };
+  };
+
+  const online = run(true);
+  if (online.replacements.length !== 1 || online.replacements[0] !== target) {
+    throw new Error("Online Tizen bootstrap must immediately open the canonical hosted runtime");
+  }
+
+  const offline = run(false);
+  if (offline.replacements.length !== 0 || !offline.status.textContent.includes("Reconnecting")) {
+    throw new Error("Offline Tizen bootstrap must stay local and show reconnect state");
+  }
+  offline.navigator.onLine = true;
+  offline.handlers.get("online")?.();
+  if (offline.replacements.length !== 1 || offline.replacements[0] !== target) {
+    throw new Error("Tizen bootstrap must navigate after connectivity returns");
+  }
+}
