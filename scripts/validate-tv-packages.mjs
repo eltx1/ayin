@@ -9,7 +9,7 @@ const webosIndex = await readFile("platforms/webos/index.html", "utf8");
 
 for (const needle of [
   '<tizen:profile name="tv-samsung"',
-  '<tizen:application id="AYINtv.AYIN" package="AYINtv" required_version="9.0"',
+  '<tizen:application id="AYINtv2026.AYIN" package="AYINtv2026" required_version="9.0"',
   '<tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="9.0"',
   '<feature name="http://tizen.org/feature/screen.size.normal.1080.1920"',
   '<icon src="icon.png"',
@@ -84,10 +84,13 @@ if (certification.packageMode !== "hosted-redirect") {
 if (certification.declaredMinimumTizen !== "9.0") {
   throw new Error("Tizen certification baseline must remain 9.0");
 }
-if (certification.developmentPackageId !== "AYINtv") {
+if (certification.developmentPackageId !== "AYINtv2026") {
   throw new Error("Tizen certification package ID does not match config.xml");
 }
-if (certification.developmentApplicationId !== "AYINtv.AYIN") {
+if (!/^[0-9A-Za-z]{10}$/.test(certification.developmentPackageId)) {
+  throw new Error("Tizen package ID must be exactly 10 alphanumeric characters");
+}
+if (certification.developmentApplicationId !== "AYINtv2026.AYIN") {
   throw new Error("Tizen certification application ID does not match config.xml");
 }
 if (certification.tizenApisAvailableInHostedContent !== false) {
