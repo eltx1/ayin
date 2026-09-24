@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - "platforms/tizen/**"
+      - "apps/web/next.config.ts"
+      - "apps/web/src/lib/tizen-embed-policy.test.ts"
+      - "scripts/test-tizen-shell.mjs"
+      - "docs/TIZEN_CERTIFICATION.md"
+      - "platforms/tizen/store/**"
       - "platforms/webos/**"
       - "apps/web/package.json"
       - "apps/web/next.config.ts"
@@ -16,6 +21,11 @@ on:
     branches: [main]
     paths:
       - "platforms/tizen/**"
+      - "apps/web/next.config.ts"
+      - "apps/web/src/lib/tizen-embed-policy.test.ts"
+      - "scripts/test-tizen-shell.mjs"
+      - "docs/TIZEN_CERTIFICATION.md"
+      - "platforms/tizen/store/**"
       - "platforms/webos/**"
       - "apps/web/package.json"
       - "apps/web/next.config.ts"
