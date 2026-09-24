@@ -371,9 +371,7 @@ export function registerTizenMediaKeys(target: Window): TizenMediaKeyRegistratio
   if (!input) return "unavailable";
   try {
     const supported = input.getSupportedKeys?.() ?? [];
-    const supportedNames = new Set(
-      supported.flatMap((key) => (key.name ? [key.name] : [])),
-    );
+    const supportedNames = new Set(supported.flatMap((key) => (key.name ? [key.name] : [])));
     const keys =
       supported.length === 0
         ? TIZEN_MEDIA_KEYS
