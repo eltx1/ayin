@@ -88,12 +88,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Task 78 markdown format capture
+      - name: Task 78 format capture
         shell: bash
         run: |
           set -euo pipefail
-          pnpm exec prettier --write docs/TIZEN_CERTIFICATION.md
-          git diff --no-color -- docs/TIZEN_CERTIFICATION.md
+          pnpm exec prettier --write             apps/web/src/lib/tv-platform-runtime.ts             docs/TIZEN_CERTIFICATION.md
+          git diff --no-color --             apps/web/src/lib/tv-platform-runtime.ts             docs/TIZEN_CERTIFICATION.md
 
       - name: Audit production dependencies
         run: pnpm audit:prod
