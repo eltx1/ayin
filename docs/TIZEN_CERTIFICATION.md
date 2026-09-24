@@ -92,9 +92,9 @@ Actual session persistence across TV suspend/reboot/uninstall remains a real-dev
 
 | Stage | Environment | Task 78 status |
 | --- | --- | --- |
-| Static package/config validation | GitHub CI | Verified by scripts/validate-tv-packages.mjs |
-| Packaged shell adapter simulation | Node sandbox in GitHub CI | Verified by scripts/test-tizen-shell.mjs |
-| Shared Web unit/integration/browser tests | repository quality/browser CI | Required before merge |
+| Static package/config validation | GitHub CI | **Pending current PR CI** |
+| Packaged shell adapter simulation | Node sandbox in GitHub CI | **Pending current PR CI** |
+| Shared Web unit/integration/browser tests | repository quality/browser CI | **Pending current PR CI** |
 | Samsung TV Simulator | Samsung TV Simulator | **Not verified** |
 | Samsung TV Emulator | Tizen 9/10 emulator | **Not verified** |
 | Real Samsung TV | Tizen 9.0 retail hardware | **Not verified — no hardware attached** |
