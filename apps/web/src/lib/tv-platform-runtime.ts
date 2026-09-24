@@ -307,6 +307,10 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   };
 }
 
+export function canRequestTvExit(target: Window = window): boolean {
+  return Boolean(target.tizen?.application?.getCurrentApplication);
+}
+
 export function requestTvExit(target: Window = window): boolean {
   if (target.tizen?.application?.getCurrentApplication) {
     try {
