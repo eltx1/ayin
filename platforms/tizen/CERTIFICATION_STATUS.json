@@ -29,13 +29,14 @@
     "Obtain Samsung Content Manager approval for the hosted/cloud application architecture before Seller Office submission",
     "Resolve Samsung hosted-application CSP requirements with the Content Manager; AYIN production CSP currently contains unsafe-inline for the shared Web product",
     "Validate the signed package on the Samsung TV Simulator/Emulator with a valid Samsung certificate profile",
+    "Resolve and physically verify Samsung hosted-app Back-from-home exit confirmation/termination behavior; hosted content cannot call tizen.application.exit",
     "Validate representative physical Tizen 9.0 and Tizen 10.0 Samsung TVs",
     "Confirm client-side IMA/GAM Samsung TV support with the Google account manager and validate it on physical hardware",
     "Create and secure the final Samsung certificate profile and signed WGT",
     "Prepare final Seller Office screenshots, icon artwork, localized metadata and release information"
   ],
-  "developmentPackageId": "AYINtv2026",
-  "developmentApplicationId": "AYINtv2026.AYIN",
+  "developmentPackageId": "AYINtv",
+  "developmentApplicationId": "AYINtv.AYIN",
   "sellerIdentityFinalized": false,
   "repositoryValidationEvidence": {
     "tvPackageRun": 35952633271,
