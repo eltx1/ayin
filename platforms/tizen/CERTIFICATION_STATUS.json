@@ -2,11 +2,21 @@
   "task": 78,
   "packageMode": "hosted-redirect",
   "declaredMinimumTizen": "9.0",
-  "currentSamsungTvRangeReviewed": ["9.0", "10.0"],
+  "currentSamsungTvRangeReviewed": [
+    "9.0",
+    "10.0"
+  ],
   "hostedContentManagerApprovalRequired": true,
   "packagedBootstrapUsesTizenApis": true,
   "tizenApisAvailableInHostedContent": false,
-  "standardRemoteKeysExpected": ["UP", "DOWN", "LEFT", "RIGHT", "SELECT", "BACK"],
+  "standardRemoteKeysExpected": [
+    "UP",
+    "DOWN",
+    "LEFT",
+    "RIGHT",
+    "SELECT",
+    "BACK"
+  ],
   "packagedBootstrapMediaKeyRegistration": true,
   "mediaKeyRegistrationDeviceVerified": false,
   "verification": {
@@ -20,6 +30,7 @@
   "blockingReleaseChecks": [
     "Obtain Samsung Content Manager approval for the hosted/cloud application architecture before Seller Office submission",
     "Confirm packaged-bootstrap media-key registration persists into hosted AYIN on Samsung TV Emulator and physical hardware",
+    "Resolve and validate Samsung screensaver suppression during hosted media playback; hosted AYIN cannot call Samsung AppCommon from the remote hosted page",
     "Validate the signed package on the Samsung TV Simulator/Emulator with a valid Samsung certificate profile",
     "Validate Back-from-home exit confirmation and packaged-shell termination on emulator and physical hardware",
     "Validate representative physical Tizen 9.0 and Tizen 10.0 Samsung TVs",
@@ -38,5 +49,7 @@
     "securityRun": null
   },
   "previousTask38DevelopmentPackageId": "AYINtv",
-  "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve."
+  "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve.",
+  "hostedScreensaverApiAvailable": false,
+  "screensaverPlaybackControlDeviceVerified": false
 }
