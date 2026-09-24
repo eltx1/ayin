@@ -34,11 +34,7 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {})
           tizen: {
             tvinputdevice: {
               getSupportedKeys() {
-                return [
-                  { name: "MediaPlayPause" },
-                  { name: "MediaPlay" },
-                  { name: "ColorF0Red" },
-                ];
+                return [{ name: "MediaPlayPause" }, { name: "MediaPlay" }, { name: "ColorF0Red" }];
               },
               registerKeyBatch(keys, success) {
                 registered.push(...keys);
