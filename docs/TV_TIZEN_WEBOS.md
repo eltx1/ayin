@@ -12,7 +12,7 @@ The current Samsung package is a **hosted/cloud Web application**.
 
 AYIN does not use a remote iframe because Samsung documents that remote iframe content is not a supported interactive replacement for TV app UI.
 
-Samsung also documents that hosted content does not have access to Tizen APIs. The Tizen package therefore requests Internet only and does not claim TVInputDevice/media-key registration.
+Samsung also documents that hosted content does not have access to Tizen APIs. Task 78 therefore confines Tizen API usage to the local packaged bootstrap: it requests TVInputDevice, filters the optional media keys reported by the TV, registers them before top-level hosted navigation, and then treats the hosted AYIN page as capability-limited. Repository CI validates the bootstrap logic, but persistence of those media-key registrations after hosted navigation remains emulator/device verification.
 
 The detailed Task 78 support and certification state is in `docs/TIZEN_CERTIFICATION.md`.
 
@@ -30,7 +30,7 @@ It:
 
 - recognizes Samsung hosted runtime from the official Tizen user-agent shape even when Tizen APIs are absent;
 - maps standard DPAD/Enter/Back keyboard events into AYIN's existing remote contract;
-- uses Tizen media-key registration only when that capability actually exists;
+- recognizes the packaged media-key registration path while remaining safe when hosted content has no Tizen API object;
 - reuses AYIN's shared focus and player controls;
 - maps visibility/pagehide lifecycle without creating platform-specific product UI.
 
