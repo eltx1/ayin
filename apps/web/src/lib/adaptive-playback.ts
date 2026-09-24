@@ -96,6 +96,23 @@ function loadHlsRuntime(): Promise<HlsConstructor> {
   return hlsImportPromise;
 }
 
+export function releaseHtmlMediaElement(
+  media: Pick<HTMLMediaElement, "pause" | "removeAttribute" | "load">,
+): void {
+  try {
+    media.pause();
+  } catch {
+    // Decoder release must continue even when a runtime throws while pausing teardown media.
+  }
+  try {
+    media.removeAttribute("src");
+  } finally {
+    // Samsung explicitly recommends load() after source removal so decoder/buffer resources
+    // are released instead of relying on DOM removal alone.
+    media.load();
+  }
+}
+
 export function supportsNativeHls(video: Pick<HTMLVideoElement, "canPlayType">): boolean {
   return Boolean(
     video.canPlayType("application/vnd.apple.mpegurl") ||
