@@ -6,13 +6,13 @@ Task 78 prepares technical requirements only. It does not authorize or perform S
 
 - Profile: `tv-samsung`
 - Widget version: `1.0.0`
-- Application ID: `AYINtv.AYIN`
-- Package ID: `AYINtv`
+- Application ID: `AYINtv2026.AYIN`
+- Package ID: `AYINtv2026`
 - Minimum Tizen platform: `9.0`
 - Samsung development API baseline: `9.0`
 - Package mode: hosted/cloud Web application
 
-The existing Task 38 package/application identity is preserved. Do not change it casually after signing/store publication because update continuity depends on identity and certificate continuity.
+Task 78 intentionally replaces the pre-store Task 38 development package ID `AYINtv`, which was shorter than the 10-character Tizen package-ID requirement. The new development package ID is structurally valid. Once a package is registered/signed for distribution, do not change its Tizen ID or author-signature continuity casually because Samsung uses those for updates.
 
 ## Hosted application approval
 
