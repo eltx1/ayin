@@ -12,6 +12,9 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {})
   const listeners = new Map();
 
   const window = {
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
     performance: {
       getEntriesByType(type) {
         return type === "navigation" ? [{ type: navigationType }] : [];
@@ -63,7 +66,16 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {})
   };
 
   vm.runInNewContext(source, { document, window }, { filename: "platforms/tizen/bootstrap.js" });
-  return { assigned, registered, exitCount };
+  return {
+    assigned,
+    registered,
+    get exitCount() {
+      return exitCount;
+    },
+    dispatch(type, event) {
+      listeners.get(type)?.(event);
+    },
+  };
 }
 
 {
@@ -85,5 +97,24 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true } = {})
   assert.deepEqual(result.registered, []);
 }
 
+{
+  const result = runBootstrap();
+  assert.equal(result.exitCount, 0);
+  result.dispatch("pageshow", { persisted: true });
+  assert.equal(result.exitCount, 1, "BFCache restore must terminate the packaged Tizen shell");
+  assert.deepEqual(result.assigned, [target]);
+}
+
+{
+  const result = runBootstrap({ withTizenApi: false });
+  result.dispatch("pageshow", { persisted: true });
+  assert.deepEqual(
+    result.assigned,
+    [target, target],
+    "Non-Tizen BFCache restoration must fail open to the canonical hosted app",
+  );
+}
+
+assert.equal(source.includes("pageshow"), true, "Tizen bootstrap must handle BFCache restoration");
 assert.equal(source.includes("http://"), false, "Tizen bootstrap must remain HTTPS-only");
 console.log("Task 78 packaged Tizen bootstrap tests passed.");
