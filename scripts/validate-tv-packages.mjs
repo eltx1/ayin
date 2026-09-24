@@ -46,11 +46,10 @@ if (tizenIndex.includes("<iframe")) {
 if (tizenIndex.includes("location.replace(")) {
   throw new Error("Tizen index must keep hosted navigation in external bootstrap.js");
 }
-for (const needle of [
-  'id="status"',
-  'href="https://ayin.stream/?platform=tizen&amp;ayin_tizen_hosted=1"',
-  'src="bootstrap.js"',
-]) {
+if (tizenIndex.includes("https://ayin.stream/?platform=tizen")) {
+  throw new Error("Tizen index must not provide a manual URL that bypasses version checks");
+}
+for (const needle of ['id="status"', 'src="bootstrap.js"']) {
   if (!tizenIndex.includes(needle)) throw new Error(`Tizen hosted HTML missing ${needle}`);
 }
 
