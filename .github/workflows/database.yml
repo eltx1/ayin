@@ -88,25 +88,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Task 78 format capture
-        shell: bash
-        run: |
-          set -euo pipefail
-          files=(
-            .github/workflows/tv-web-packages.yml
-            apps/web/src/components/platform/tv-platform-runtime.tsx
-            apps/web/src/lib/tv-platform-runtime.test.ts
-            apps/web/src/lib/tv-platform-runtime.ts
-            docs/TIZEN_CERTIFICATION.md
-            docs/TV_TIZEN_WEBOS.md
-            platforms/tizen/CERTIFICATION_STATUS.json
-            platforms/tizen/bootstrap.js
-            platforms/tizen/index.html
-            scripts/validate-tv-packages.mjs
-          )
-          pnpm exec prettier --write "${files[@]}"
-          git diff --no-color -- "${files[@]}"
-
       - name: Audit production dependencies
         run: pnpm audit:prod
 
