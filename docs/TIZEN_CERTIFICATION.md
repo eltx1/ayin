@@ -53,8 +53,8 @@ The package declares:
 
 Development identity remains the existing Task 38 identity:
 
-- Package ID: `AYINtv`
-- Application ID: `AYINtv.AYIN`
+- Package ID: `AYINtv2026`
+- Application ID: `AYINtv2026.AYIN`
 - Widget version: `1.0.0`
 
 The package requests only the Tizen Internet privilege.
