@@ -10,6 +10,7 @@ import {
 } from "./native-shell-bridge";
 
 type TizenInputDevice = {
+  getSupportedKeys?: () => Array<{ name?: string | null }>;
   registerKey?: (name: string) => void;
   registerKeyBatch?: (
     names: string[],
@@ -22,6 +23,10 @@ type TizenApplication = {
   getCurrentApplication?: () => { exit?: () => void };
 };
 
+export interface TvExitRequestDetail {
+  platform: "tizen";
+}
+
 declare global {
   interface Window {
     tizen?: {
@@ -29,6 +34,10 @@ declare global {
       application?: TizenApplication;
     };
     webOS?: unknown;
+  }
+
+  interface WindowEventMap {
+    "ayin:tv-exit-request": CustomEvent<TvExitRequestDetail>;
   }
 }
 
@@ -86,12 +95,62 @@ export function isSupportedSamsungTizenRuntime(userAgent: string): boolean {
 export function detectTvWebPlatform(target: Window = window): NativeShellPlatform | null {
   if (
     target.tizen?.tvinputdevice ||
-    parseSamsungTizenVersion(target.navigator.userAgent) !== null
+    parseSamsungTizenVersion(target.navigator.userAgent) !== null ||
+    isCanonicalHostedTizen(target)
   ) {
     return "tizen";
   }
   if (target.webOS) return "webos";
   return null;
+}
+
+const TIZEN_HOSTED_SESSION_KEY = "ayin:tizen-hosted";
+const TIZEN_EXIT_PENDING_KEY = "ayin:tizen-exit-pending";
+
+function isCanonicalHostedTizen(target: Window): boolean {
+  try {
+    const url = new URL(target.location.href);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "ayin.stream" &&
+      url.searchParams.get("platform") === "tizen"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function readSessionFlag(target: Window, key: string): boolean {
+  try {
+    return target.sessionStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSessionFlag(target: Window, key: string, enabled: boolean): void {
+  try {
+    if (enabled) target.sessionStorage.setItem(key, "1");
+    else target.sessionStorage.removeItem(key);
+  } catch {
+    // TV storage can be unavailable in restricted/private environments.
+  }
+}
+
+function rememberHostedTizenSession(target: Window): boolean {
+  if (isCanonicalHostedTizen(target)) {
+    writeSessionFlag(target, TIZEN_HOSTED_SESSION_KEY, true);
+    return true;
+  }
+
+  try {
+    return (
+      new URL(target.location.href).hostname === "ayin.stream" &&
+      readSessionFlag(target, TIZEN_HOSTED_SESSION_KEY)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function normalizeTvRemoteEvent(
@@ -103,6 +162,7 @@ export function normalizeTvRemoteEvent(
 export function installTvPlatformRuntime(target: Window = window): () => void {
   const nativeShell = detectNativeShell();
   const platform = nativeShell?.platform ?? detectTvWebPlatform(target);
+  const packagedTizenSession = platform === "tizen" && rememberHostedTizenSession(target);
   const pausedForLifecycle = new Set<HTMLMediaElement>();
   const tizenMediaKeyRegistration = registerTizenMediaKeys(target);
 
@@ -153,6 +213,17 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     );
   };
 
+  const continueTizenExit = () => {
+    if (!packagedTizenSession || !readSessionFlag(target, TIZEN_EXIT_PENDING_KEY)) return;
+    if (target.history.length <= 1) {
+      writeSessionFlag(target, TIZEN_EXIT_PENDING_KEY, false);
+      return;
+    }
+    target.history.back();
+  };
+
+  const onPopState = () => continueTizenExit();
+
   const onWebOsLaunch = () => {
     target.dispatchEvent(
       new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
@@ -171,9 +242,17 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
       return;
     }
 
-    if (event.detail.key === "BACK" && platform === "tizen" && target.location.pathname !== "/") {
+    if (event.detail.key === "BACK" && platform === "tizen" && packagedTizenSession) {
       event.preventDefault();
-      target.history.back();
+      if (target.location.pathname !== "/") {
+        target.history.back();
+      } else {
+        target.dispatchEvent(
+          new CustomEvent<TvExitRequestDetail>("ayin:tv-exit-request", {
+            detail: { platform: "tizen" },
+          }),
+        );
+      }
       return;
     }
 
@@ -241,6 +320,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   target.addEventListener("ayin:native-network", onNativeNetwork);
   target.document.addEventListener("visibilitychange", onVisibility);
   target.addEventListener("pagehide", onPageHide);
+  target.addEventListener("popstate", onPopState);
   target.document.addEventListener("webOSLaunch", onWebOsLaunch as EventListener);
   target.document.addEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
 
@@ -251,6 +331,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     target.removeEventListener("ayin:native-network", onNativeNetwork);
     target.document.removeEventListener("visibilitychange", onVisibility);
     target.removeEventListener("pagehide", onPageHide);
+    target.removeEventListener("popstate", onPopState);
     target.document.removeEventListener("webOSLaunch", onWebOsLaunch as EventListener);
     target.document.removeEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
     pausedForLifecycle.clear();
@@ -266,6 +347,20 @@ export function requestTvExit(target: Window = window): boolean {
       return false;
     }
   }
+
+  if (detectTvWebPlatform(target) === "tizen" && rememberHostedTizenSession(target)) {
+    try {
+      if (target.history.length > 1) {
+        writeSessionFlag(target, TIZEN_EXIT_PENDING_KEY, true);
+        target.history.back();
+        return true;
+      }
+      writeSessionFlag(target, TIZEN_EXIT_PENDING_KEY, false);
+    } catch {
+      return false;
+    }
+  }
+
   return false;
 }
 
@@ -275,14 +370,24 @@ export function registerTizenMediaKeys(target: Window): TizenMediaKeyRegistratio
   const input = target.tizen?.tvinputdevice;
   if (!input) return "unavailable";
   try {
+    const supported = input.getSupportedKeys?.() ?? [];
+    const supportedNames = new Set(
+      supported.flatMap((key) => (key.name ? [key.name] : [])),
+    );
+    const keys =
+      supported.length === 0
+        ? TIZEN_MEDIA_KEYS
+        : TIZEN_MEDIA_KEYS.filter((key) => supportedNames.has(key));
+
+    if (keys.length === 0) return "unavailable";
     if (input.registerKeyBatch) {
-      input.registerKeyBatch(TIZEN_MEDIA_KEYS);
+      input.registerKeyBatch(keys);
       return "registered";
     }
-    for (const key of TIZEN_MEDIA_KEYS) input.registerKey?.(key);
+    for (const key of keys) input.registerKey?.(key);
     return "registered";
   } catch {
-    // Hosted Samsung apps do not expose Tizen APIs. Media-key registration is capability-driven
+    // Hosted Samsung content does not expose Tizen APIs. Registration is best-effort
     // and must never prevent standard DPAD/Enter/Back or the shared AYIN UI from starting.
     return "failed";
   }
