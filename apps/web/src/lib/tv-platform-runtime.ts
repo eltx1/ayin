@@ -113,7 +113,8 @@ function isCanonicalHostedTizen(target: Window): boolean {
     return (
       url.protocol === "https:" &&
       url.hostname === "ayin.stream" &&
-      url.searchParams.get("platform") === "tizen"
+      url.searchParams.get("platform") === "tizen" &&
+      url.searchParams.get("hosted") === "1"
     );
   } catch {
     return false;
@@ -151,6 +152,13 @@ function rememberHostedTizenSession(target: Window): boolean {
   } catch {
     return false;
   }
+}
+
+export function shouldShowTizenNetworkNotice(
+  platform: NativeShellPlatform | null,
+  online: boolean,
+): boolean {
+  return platform === "tizen" && !online;
 }
 
 export function normalizeTvRemoteEvent(
