@@ -5,12 +5,13 @@ on:
     paths:
       - "platforms/tizen/**"
       - "platforms/webos/**"
-      - "apps/web/next.config.ts"
-      - "apps/web/src/lib/tizen-embed-policy.test.ts"
+      - "apps/web/src/components/player/ayin-player.tsx"
+      - "apps/web/src/lib/adaptive-playback.ts"
+      - "apps/web/src/lib/adaptive-playback.test.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
-      - "scripts/test-tizen-shell.mjs"
+      - "scripts/test-tizen-bootstrap.mjs"
       - "scripts/validate-tv-packages.mjs"
       - "docs/TIZEN_CERTIFICATION.md"
       - "docs/TV_TIZEN_WEBOS.md"
@@ -20,12 +21,13 @@ on:
     paths:
       - "platforms/tizen/**"
       - "platforms/webos/**"
-      - "apps/web/next.config.ts"
-      - "apps/web/src/lib/tizen-embed-policy.test.ts"
+      - "apps/web/src/components/player/ayin-player.tsx"
+      - "apps/web/src/lib/adaptive-playback.ts"
+      - "apps/web/src/lib/adaptive-playback.test.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
-      - "scripts/test-tizen-shell.mjs"
+      - "scripts/test-tizen-bootstrap.mjs"
       - "scripts/validate-tv-packages.mjs"
       - "docs/TIZEN_CERTIFICATION.md"
       - "docs/TV_TIZEN_WEBOS.md"
@@ -50,11 +52,11 @@ jobs:
       - name: Validate TV package manifests
         run: node scripts/validate-tv-packages.mjs
 
-      - name: Validate packaged Tizen shell adapter
+      - name: Validate hosted Tizen bootstrap
         run: |
           set -euo pipefail
-          node --check platforms/tizen/shell.js
-          node scripts/test-tizen-shell.mjs
+          node --check platforms/tizen/bootstrap.js
+          node scripts/test-tizen-bootstrap.mjs
 
       - name: Build unsigned Tizen payload archive
         run: |
@@ -63,8 +65,7 @@ jobs:
           mkdir -p "$payload"
           cp platforms/tizen/config.xml "$payload/"
           cp platforms/tizen/index.html "$payload/"
-          cp platforms/tizen/shell.js "$payload/"
-          cp platforms/tizen/shell.css "$payload/"
+          cp platforms/tizen/bootstrap.js "$payload/"
           cp platforms/tizen/icon.png "$payload/"
           cp platforms/tizen/CERTIFICATION_STATUS.json "$payload/"
           (
