@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
 import { I18nProvider } from "@/components/i18n/i18n-provider";
+import { NetworkStatusBanner } from "@/components/platform/network-status-banner";
 import { TvPlatformRuntime } from "@/components/platform/tv-platform-runtime";
 import { InstallUpdateController } from "@/components/pwa/install-update-controller";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
@@ -100,6 +101,7 @@ export default async function RootLayout({ children }: RootLayoutProperties) {
           <ServiceWorkerRegistration />
           <InstallUpdateController />
           <TvPlatformRuntime />
+          <NetworkStatusBanner />
           {children}
         </I18nProvider>
       </body>

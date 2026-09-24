@@ -32,7 +32,9 @@ declare global {
   }
 }
 
-const TIZEN_MEDIA_KEYS = [
+export const AYIN_TIZEN_MIN_SUPPORTED_VERSION = 9;
+
+export const TIZEN_MEDIA_KEYS = [
   "MediaPlayPause",
   "MediaPlay",
   "MediaPause",
@@ -49,7 +51,7 @@ const KEY_BY_CODE: Record<number, NativeRemoteKey> = {
   10009: "BACK",
   10252: "PLAY_PAUSE",
   412: "REWIND",
-  413: "PAUSE",
+  19: "PAUSE",
   415: "PLAY",
   417: "FAST_FORWARD",
   461: "BACK",
@@ -69,8 +71,25 @@ const KEY_BY_NAME: Record<string, NativeRemoteKey> = {
   MediaFastForward: "FAST_FORWARD",
 };
 
+export function parseSamsungTizenVersion(userAgent: string): number | null {
+  const match = /\bTizen\s+(\d+(?:\.\d+)?)/iu.exec(userAgent);
+  if (!match?.[1]) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function isSupportedSamsungTizenRuntime(userAgent: string): boolean {
+  const version = parseSamsungTizenVersion(userAgent);
+  return version !== null && version >= AYIN_TIZEN_MIN_SUPPORTED_VERSION;
+}
+
 export function detectTvWebPlatform(target: Window = window): NativeShellPlatform | null {
-  if (target.tizen?.tvinputdevice) return "tizen";
+  if (
+    target.tizen?.tvinputdevice ||
+    parseSamsungTizenVersion(target.navigator.userAgent) !== null
+  ) {
+    return "tizen";
+  }
   if (target.webOS) return "webos";
   return null;
 }
@@ -85,24 +104,51 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   const nativeShell = detectNativeShell();
   const platform = nativeShell?.platform ?? detectTvWebPlatform(target);
   const pausedForLifecycle = new Set<HTMLMediaElement>();
-  registerTizenMediaKeys(target);
+  const tizenMediaKeyRegistration = registerTizenMediaKeys(target);
+
+  if (platform) target.document.documentElement.dataset.tvPlatform = platform;
+  if (platform === "tizen") {
+    const version = parseSamsungTizenVersion(target.navigator.userAgent);
+    target.document.documentElement.dataset.tizenVersion =
+      version === null ? "unknown" : String(version);
+    target.document.documentElement.dataset.tizenMediaKeys = tizenMediaKeyRegistration;
+  }
 
   const onKeyDown = (event: KeyboardEvent) => {
     const key = normalizeTvRemoteEvent(event);
     if (!key) return;
-    target.dispatchEvent(
-      new CustomEvent<NativeRemoteEventDetail>("ayin:native-remote", {
-        detail: { key, platform },
-        cancelable: true,
-      }),
-    );
+    const remoteEvent = new CustomEvent<NativeRemoteEventDetail>("ayin:native-remote", {
+      detail: { key, platform },
+      cancelable: true,
+    });
+    const notConsumed = target.dispatchEvent(remoteEvent);
+    if (!notConsumed) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   };
 
   const onVisibility = () => {
     if (nativeShell) return;
+    const hidden = target.document.hidden;
+    if (!hidden && platform === "tizen") {
+      target.dispatchEvent(
+        new CustomEvent<NativeNetworkEventDetail>("ayin:native-network", {
+          detail: { online: target.navigator.onLine, platform },
+        }),
+      );
+    }
     target.dispatchEvent(
       new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
-        detail: { state: target.document.hidden ? "pause" : "resume", platform },
+        detail: { state: hidden ? "pause" : "resume", platform },
+      }),
+    );
+  };
+
+  const onPageHide = () => {
+    target.dispatchEvent(
+      new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
+        detail: { state: "stop", platform },
       }),
     );
   };
@@ -122,6 +168,12 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
         .exitFullscreen()
         .catch(() => undefined)
         .finally(() => syncNativeFullscreen(false));
+      return;
+    }
+
+    if (event.detail.key === "BACK" && platform === "tizen" && target.location.pathname !== "/") {
+      event.preventDefault();
+      target.history.back();
       return;
     }
 
@@ -188,6 +240,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   target.addEventListener("ayin:native-lifecycle", onNativeLifecycle);
   target.addEventListener("ayin:native-network", onNativeNetwork);
   target.document.addEventListener("visibilitychange", onVisibility);
+  target.addEventListener("pagehide", onPageHide);
   target.document.addEventListener("webOSLaunch", onWebOsLaunch as EventListener);
   target.document.addEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
 
@@ -197,6 +250,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     target.removeEventListener("ayin:native-lifecycle", onNativeLifecycle);
     target.removeEventListener("ayin:native-network", onNativeNetwork);
     target.document.removeEventListener("visibilitychange", onVisibility);
+    target.removeEventListener("pagehide", onPageHide);
     target.document.removeEventListener("webOSLaunch", onWebOsLaunch as EventListener);
     target.document.removeEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
     pausedForLifecycle.clear();
@@ -215,17 +269,22 @@ export function requestTvExit(target: Window = window): boolean {
   return false;
 }
 
-function registerTizenMediaKeys(target: Window) {
+export type TizenMediaKeyRegistration = "registered" | "unavailable" | "failed";
+
+export function registerTizenMediaKeys(target: Window): TizenMediaKeyRegistration {
   const input = target.tizen?.tvinputdevice;
-  if (!input) return;
+  if (!input) return "unavailable";
   try {
     if (input.registerKeyBatch) {
       input.registerKeyBatch(TIZEN_MEDIA_KEYS);
-      return;
+      return "registered";
     }
     for (const key of TIZEN_MEDIA_KEYS) input.registerKey?.(key);
+    return "registered";
   } catch {
-    // Unsupported remote keys must not prevent the TV app from starting.
+    // Hosted Samsung apps do not expose Tizen APIs. Media-key registration is capability-driven
+    // and must never prevent standard DPAD/Enter/Back or the shared AYIN UI from starting.
+    return "failed";
   }
 }
 

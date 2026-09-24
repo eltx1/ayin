@@ -5,20 +5,32 @@ on:
     paths:
       - "platforms/tizen/**"
       - "platforms/webos/**"
+      - "apps/web/src/components/player/ayin-player.tsx"
+      - "apps/web/src/lib/adaptive-playback.ts"
+      - "apps/web/src/lib/adaptive-playback.test.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
+      - "scripts/test-tizen-bootstrap.mjs"
       - "scripts/validate-tv-packages.mjs"
+      - "docs/TIZEN_CERTIFICATION.md"
+      - "docs/TV_TIZEN_WEBOS.md"
       - ".github/workflows/tv-web-packages.yml"
   push:
     branches: [main]
     paths:
       - "platforms/tizen/**"
       - "platforms/webos/**"
+      - "apps/web/src/components/player/ayin-player.tsx"
+      - "apps/web/src/lib/adaptive-playback.ts"
+      - "apps/web/src/lib/adaptive-playback.test.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
+      - "scripts/test-tizen-bootstrap.mjs"
       - "scripts/validate-tv-packages.mjs"
+      - "docs/TIZEN_CERTIFICATION.md"
+      - "docs/TV_TIZEN_WEBOS.md"
       - ".github/workflows/tv-web-packages.yml"
 
 permissions:
@@ -29,7 +41,42 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-      - run: node scripts/validate-tv-packages.mjs
+
+      - name: Validate Tizen config XML
+        run: python3 -c 'import xml.etree.ElementTree as ET; ET.parse("platforms/tizen/config.xml")'
+
+      - name: Validate TV package manifests
+        run: node scripts/validate-tv-packages.mjs
+
+      - name: Validate hosted Tizen bootstrap
+        run: |
+          set -euo pipefail
+          node --check platforms/tizen/bootstrap.js
+          node scripts/test-tizen-bootstrap.mjs
+
+      - name: Build unsigned Tizen payload archive
+        run: |
+          set -euo pipefail
+          payload="$RUNNER_TEMP/tizen-payload"
+          mkdir -p "$payload"
+          cp platforms/tizen/config.xml "$payload/"
+          cp platforms/tizen/index.html "$payload/"
+          cp platforms/tizen/bootstrap.js "$payload/"
+          cp platforms/tizen/icon.png "$payload/"
+          cp platforms/tizen/CERTIFICATION_STATUS.json "$payload/"
+          (
+            cd "$payload"
+            zip -q -r "$RUNNER_TEMP/ayin-tizen-unsigned-payload.zip" .
+          )
+          unzip -l "$RUNNER_TEMP/ayin-tizen-unsigned-payload.zip"
+
+      - name: Upload unsigned Tizen payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-tizen-unsigned-payload
+          path: ${{ runner.temp }}/ayin-tizen-unsigned-payload.zip
+          retention-days: 7
