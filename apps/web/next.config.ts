@@ -17,8 +17,6 @@ const explicitMediaOrigins = mediaOrigin ?? "";
 const isProduction = process.env.NODE_ENV === "production";
 const productionOnlyDirectives = isProduction ? ["upgrade-insecure-requests"] : [];
 
-export const TIZEN_EMBED_COOKIE = "ayin_tizen_embed";
-
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -35,11 +33,6 @@ const contentSecurityPolicy = [
   "manifest-src 'self'",
   ...productionOnlyDirectives,
 ].join("; ");
-
-export const tizenEmbeddedContentSecurityPolicy = contentSecurityPolicy.replace(
-  "frame-ancestors 'none'",
-  "frame-ancestors 'self' file: tizen-widget:",
-);
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: contentSecurityPolicy },
@@ -58,14 +51,6 @@ const securityHeaders = [
     : []),
 ];
 
-export const tizenEmbeddedSecurityHeaders = securityHeaders
-  .filter((header) => header.key !== "X-Frame-Options")
-  .map((header) =>
-    header.key === "Content-Security-Policy"
-      ? { ...header, value: tizenEmbeddedContentSecurityPolicy }
-      : header,
-  );
-
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
@@ -77,21 +62,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        missing: [
-          { type: "query", key: "ayin_tizen_embed", value: "1" },
-          { type: "cookie", key: TIZEN_EMBED_COOKIE, value: "1" },
-        ],
         headers: securityHeaders,
-      },
-      {
-        source: "/:path*",
-        has: [{ type: "query", key: "ayin_tizen_embed", value: "1" }],
-        headers: tizenEmbeddedSecurityHeaders,
-      },
-      {
-        source: "/:path*",
-        has: [{ type: "cookie", key: TIZEN_EMBED_COOKIE, value: "1" }],
-        headers: tizenEmbeddedSecurityHeaders,
       },
     ];
   },
