@@ -8,6 +8,7 @@ import {
   parseSamsungTizenVersion,
   registerTizenMediaKeys,
   requestTvExit,
+  shouldShowTizenNetworkNotice,
 } from "./tv-platform-runtime";
 
 describe("TV platform runtime", () => {
@@ -58,6 +59,24 @@ describe("TV platform runtime", () => {
     } as unknown as Window;
 
     expect(detectTvWebPlatform(target)).toBeNull();
+  });
+
+  it("does not create a packaged Tizen session from platform=tizen without hosted=1", () => {
+    const target = {
+      location: { href: "https://ayin.stream/?platform=tizen" },
+      navigator: { userAgent: "Mozilla/5.0" },
+      tizen: undefined,
+      webOS: undefined,
+    } as unknown as Window;
+
+    expect(detectTvWebPlatform(target)).toBeNull();
+  });
+
+  it("shows the network-loss notice only for an offline Tizen runtime", () => {
+    expect(shouldShowTizenNetworkNotice("tizen", false)).toBe(true);
+    expect(shouldShowTizenNetworkNotice("tizen", true)).toBe(false);
+    expect(shouldShowTizenNetworkNotice("webos", false)).toBe(false);
+    expect(shouldShowTizenNetworkNotice(null, false)).toBe(false);
   });
 
   it("sets the current AYIN Samsung baseline to Tizen 9.0 and newer", () => {
