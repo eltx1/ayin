@@ -146,6 +146,7 @@ function simulatePackagedBootstrap(source) {
   let exitCount = 0;
 
   const makeWindow = (navigationType) => ({
+    addEventListener: () => undefined,
     performance: { getEntriesByType: () => [{ type: navigationType }] },
     location: { assign: (url) => assigned.push(url) },
     setTimeout: () => 1,
@@ -197,6 +198,7 @@ function simulatePackagedBootstrap(source) {
 
   const noApiAssigned = [];
   const noApiWindow = {
+    addEventListener: () => undefined,
     performance: { getEntriesByType: () => [{ type: "navigate" }] },
     location: { assign: (url) => noApiAssigned.push(url) },
     setTimeout: () => 1,
