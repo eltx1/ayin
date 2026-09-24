@@ -189,9 +189,9 @@ Session persistence across Smart Hub transitions, TV restart and uninstall data 
 
 | Stage                                     | Environment           | Task 78 state                                 |
 | ----------------------------------------- | --------------------- | --------------------------------------------- |
-| Repository package/config validation      | GitHub CI             | **Verified — run 35952633271**                |
-| Hosted bootstrap simulation               | Node VM in GitHub CI  | **Verified — run 35952633271**                |
-| Shared Web unit/integration/browser suite | GitHub CI             | **Verified — runs 35952633216 / 35952633272** |
+| Repository package/config validation      | GitHub CI             | **Verified — run 35953908905**                |
+| Hosted bootstrap simulation               | Node VM in GitHub CI  | **Verified — run 35953908905**                |
+| Shared Web unit/integration/browser suite | GitHub CI             | **Verified — runs 35953908950 / 35953908896** |
 | Samsung TV Simulator                      | Samsung simulator     | **Not verified**                              |
 | Samsung TV Emulator                       | Tizen 9/10 emulator   | **Not verified**                              |
 | Real Tizen 9.0 TV                         | Physical Samsung TV   | **Not verified — no hardware attached**       |
@@ -199,7 +199,7 @@ Session persistence across Smart Hub transitions, TV restart and uninstall data 
 | Seller Office submitted                   | Samsung Seller Office | **No**                                        |
 | Store approved                            | Samsung Seller Office | **No**                                        |
 
-Repository/Node validation is not Samsung emulator certification.
+Repository/Node validation is not Samsung emulator certification. Security gates also passed in run 35953908900, and the shared Android shell/player regression matrix passed in run 35953908951; neither changes the Samsung simulator/emulator/device status above.
 
 ## Why emulator/device stages remain false
 
