@@ -2,13 +2,23 @@
   "task": 78,
   "packageMode": "hosted-redirect",
   "declaredMinimumTizen": "9.0",
-  "currentSamsungTvRangeReviewed": ["9.0", "10.0"],
+  "currentSamsungTvRangeReviewed": [
+    "9.0",
+    "10.0"
+  ],
   "hostedContentManagerApprovalRequired": true,
   "tizenApisAvailableInHostedContent": false,
-  "standardRemoteKeysExpected": ["UP", "DOWN", "LEFT", "RIGHT", "SELECT", "BACK"],
+  "standardRemoteKeysExpected": [
+    "UP",
+    "DOWN",
+    "LEFT",
+    "RIGHT",
+    "SELECT",
+    "BACK"
+  ],
   "registeredMediaKeysAvailable": false,
   "verification": {
-    "repositoryValidation": false,
+    "repositoryValidation": true,
     "simulatorVerified": false,
     "emulatorVerified": false,
     "realDeviceVerified": false,
@@ -26,5 +36,11 @@
   ],
   "developmentPackageId": "AYINtv2026",
   "developmentApplicationId": "AYINtv2026.AYIN",
-  "sellerIdentityFinalized": false
+  "sellerIdentityFinalized": false,
+  "repositoryValidationEvidence": {
+    "tvPackageRun": 35952633271,
+    "qualityRun": 35952633216,
+    "browserAcceptanceRun": 35952633272,
+    "securityRun": 35952633203
+  }
 }
