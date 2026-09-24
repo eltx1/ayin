@@ -110,11 +110,19 @@ function runBootstrap({ navigationType = "navigate", withTizenApi = true, online
 
 {
   const result = runBootstrap({ online: false });
-  assert.deepEqual(result.assigned, [], "Offline cold launch must stay on the packaged bootstrap");
+  assert.deepEqual(
+    result.assigned,
+    [],
+    "Offline cold launch must stay on the packaged bootstrap",
+  );
   assert.equal(result.statusText, "Network connection lost. Reconnect to continue.");
   result.setOnline(true);
   result.dispatch("online");
-  assert.deepEqual(result.assigned, [target], "Hosted navigation must resume when connectivity returns");
+  assert.deepEqual(
+    result.assigned,
+    [target],
+    "Hosted navigation must resume when connectivity returns",
+  );
   assert.equal(result.statusText, "Opening AYIN…");
 }
 
