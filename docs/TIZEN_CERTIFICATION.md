@@ -117,6 +117,20 @@ AYIN keeps:
 
 Samsung documents HTML5 video, MSE, HLS-capable media playback, and WebVTT captions on current TVs. Exact codecs, live manifests, fullscreen behavior, caption rendering, and autoplay behavior must be validated on the target emulator/device.
 
+## Screensaver certification boundary
+
+Samsung requires the TV screensaver to be disabled while video is playing and re-enabled when playback pauses or stops. Samsung's documented mechanism is the Product AppCommon API (`webapis.appcommon.setScreenSaver`).
+
+AYIN's current hosted/cloud architecture creates a hard certification boundary here: Samsung explicitly does not expose Tizen APIs to hosted content, and Product APIs are likewise available only in the packaged Samsung context. The canonical hosted AYIN player therefore cannot truthfully call AppCommon during playback.
+
+Task 78 does **not** fake screensaver compliance. It records:
+
+- hosted AppCommon/screensaver API availability: **No**;
+- screensaver playback control device verified: **No**;
+- Samsung Content Manager / architecture resolution and emulator/device validation: release blockers.
+
+If Samsung approves a partner mechanism that keeps Product API control available during hosted playback, it can be added as a thin adapter. A Tizen-specific AYIN player/UI fork is not introduced.
+
 ## IMA / GAM
 
 Task 78 preserves the existing Web IMA/GAM integration and its content-safe error/no-fill fallback.
@@ -127,7 +141,7 @@ Physical TV validation and Google account confirmation remain required before cl
 
 ## Memory and lifecycle
 
-Samsung recommends releasing heavy media resources and stopping background work when the application is hidden.
+Samsung recommends releasing heavy media resources and stopping background work when the application is hidden. Samsung also documents that Studio-installed test applications on 2017+ model groups are limited to approximately 120 MB before stability management becomes relevant.
 
 AYIN's shared TV runtime uses `visibilitychange` and `pagehide`:
 
@@ -186,6 +200,7 @@ Before Seller Office submission:
 - validate media transport keys persist through hosted navigation;
 - validate login/session/uninstall behavior;
 - validate DPAD/focus/Back/Exit, HLS/MP4/live, Creator TV, captions, autoplay, fullscreen, lifecycle, low-memory, and network recovery;
+- resolve and validate Samsung screensaver suppression during every video playback state before store submission;
 - confirm intended IMA/GAM deployment with Google account management;
 - prepare final Seller Office icon/screenshots/localized metadata.
 
@@ -200,6 +215,9 @@ Before Seller Office submission:
 - Samsung Video Elements: https://developer.samsung.com/smarttv/develop/guides/multimedia/media-playback/using-video-elements.html
 - Samsung General Specifications: https://developer.samsung.com/smarttv/develop/specifications/general-specifications.html
 - Samsung Web App Memory Optimization: https://developer.samsung.com/smarttv/develop/guides/web-app-memory-optimization-guide.html
+- Samsung Mandatory Features for Quality: https://developer.samsung.com/smarttv/develop/development-checklist/mandatory-features.html
+- Samsung Setting Screensaver: https://developer.samsung.com/smarttv/develop/guides/fundamentals/setting-screensaver.html
+- Samsung AppCommon API: https://developer.samsung.com/smarttv/develop/api-references/samsung-product-api-references/appcommon-api.html
 - Samsung Emulator Installation Policy: https://developer.samsung.com/smarttv/develop/getting-started/using-sdk/tv-emulator/application-install-policy.html
 - Next.js Supported Browsers: https://nextjs.org/docs/architecture/supported-browsers
 - Google IMA Additional Platforms: https://developers.google.com/interactive-media-ads/docs/sdks/other
