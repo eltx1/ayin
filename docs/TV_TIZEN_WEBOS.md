@@ -6,9 +6,9 @@ Task 38 established thin TV packaging around AYIN's shared Web product. Task 78 
 
 The current Samsung package is a **hosted/cloud Web application**.
 
-`platforms/tizen/index.html` and `bootstrap.js` are local compatibility/startup code only. After confirming Tizen 9.0+ and network availability, they navigate the top-level document to:
+`platforms/tizen/index.html` and `bootstrap.js` are local compatibility/startup code only. The package declares Tizen 9.0 as its minimum runtime, and the local bootstrap navigates the top-level document to:
 
-`https://ayin.stream/?platform=tizen&ayin_tizen_hosted=1`
+`https://ayin.stream/?platform=tizen&hosted=1`
 
 AYIN does not use a remote iframe because Samsung documents that remote iframe content is not a supported interactive replacement for TV app UI.
 
@@ -32,7 +32,8 @@ It:
 - maps standard DPAD/Enter/Back keyboard events into AYIN's existing remote contract;
 - recognizes the packaged media-key registration path while remaining safe when hosted content has no Tizen API object;
 - reuses AYIN's shared focus and player controls;
-- maps visibility/pagehide lifecycle without creating platform-specific product UI.
+- maps visibility/pagehide lifecycle without creating platform-specific product UI;
+- shows the shared hosted-Tizen network-loss notice from standard browser online/offline state, while physical network recovery remains a device acceptance item.
 
 ## Compatibility policy
 
