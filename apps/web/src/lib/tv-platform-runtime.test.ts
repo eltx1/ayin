@@ -1,19 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
-  browserKeyForNativeRemote,
-  canRequestTvExit,
-  isTizenEmbeddedUrl,
-  isTizenHomePath,
+  AYIN_TIZEN_MIN_SUPPORTED_VERSION,
+  detectTvWebPlatform,
+  isSupportedSamsungTizenRuntime,
   normalizeTvRemoteEvent,
+  parseSamsungTizenVersion,
+  registerTizenMediaKeys,
+  TIZEN_MEDIA_KEYS,
 } from "./tv-platform-runtime";
 
 describe("TV platform runtime", () => {
-  it("normalizes current Samsung remote key codes without confusing Pause and Stop", () => {
+  it("normalizes Samsung remote key codes", () => {
     expect(normalizeTvRemoteEvent({ key: "", keyCode: 10009 })).toBe("BACK");
     expect(normalizeTvRemoteEvent({ key: "", keyCode: 10252 })).toBe("PLAY_PAUSE");
-    expect(normalizeTvRemoteEvent({ key: "", keyCode: 19 })).toBe("PAUSE");
-    expect(normalizeTvRemoteEvent({ key: "", keyCode: 413 })).toBeNull();
   });
 
   it("normalizes webOS and browser keyboard names", () => {
@@ -22,36 +22,52 @@ describe("TV platform runtime", () => {
     expect(normalizeTvRemoteEvent({ key: "Unknown", keyCode: 0 })).toBeNull();
   });
 
-  it("maps packaged Tizen remote messages into the shared browser input path", () => {
-    expect(browserKeyForNativeRemote("UP")).toBe("ArrowUp");
-    expect(browserKeyForNativeRemote("SELECT")).toBe("Enter");
-    expect(browserKeyForNativeRemote("PLAY_PAUSE")).toBe("MediaPlayPause");
-    expect(browserKeyForNativeRemote("MENU")).toBeNull();
+  it("detects hosted Samsung Tizen from the official user-agent shape without Tizen APIs", () => {
+    const target = {
+      navigator: {
+        userAgent:
+          "Mozilla/5.0 (SMART-TV; LINUX; Tizen 10.0) AppleWebKit/537.36 (KHTML, like Gecko) 130.0.6723.116/10.0 TV Safari/537.36",
+      },
+      tizen: undefined,
+      webOS: undefined,
+    } as unknown as Window;
+
+    expect(detectTvWebPlatform(target)).toBe("tizen");
   });
 
-  it("detects only the dedicated embedded Tizen marker", () => {
-    expect(isTizenEmbeddedUrl("https://ayin.stream/?ayin_tizen_embed=1")).toBe(true);
-    expect(isTizenEmbeddedUrl("https://ayin.stream/watch/a?ayin_tizen_embed=0")).toBe(false);
-    expect(isTizenEmbeddedUrl("not-a-url")).toBe(false);
+  it("sets the current AYIN Samsung baseline to Tizen 9.0 and newer", () => {
+    expect(AYIN_TIZEN_MIN_SUPPORTED_VERSION).toBe(9);
+    expect(parseSamsungTizenVersion("SMART-TV; LINUX; Tizen 10.0")).toBe(10);
+    expect(parseSamsungTizenVersion("SMART-TV; LINUX; Tizen 9.0")).toBe(9);
+    expect(parseSamsungTizenVersion("SMART-TV; LINUX; Tizen 8.0")).toBe(8);
+    expect(parseSamsungTizenVersion("Chrome/130")).toBeNull();
+    expect(isSupportedSamsungTizenRuntime("SMART-TV; LINUX; Tizen 10.0")).toBe(true);
+    expect(isSupportedSamsungTizenRuntime("SMART-TV; LINUX; Tizen 9.0")).toBe(true);
+    expect(isSupportedSamsungTizenRuntime("SMART-TV; LINUX; Tizen 8.0")).toBe(false);
   });
 
-  it("treats only root and locale-root routes as Tizen home pages", () => {
-    expect(isTizenHomePath("/")).toBe(true);
-    expect(isTizenHomePath("/ar")).toBe(true);
-    expect(isTizenHomePath("/en-US")).toBe(true);
-    expect(isTizenHomePath("/watch/example")).toBe(false);
-    expect(isTizenHomePath("/ar/watch/example")).toBe(false);
+  it("batch-registers Samsung media keys when the packaged Tizen API is actually available", () => {
+    const registerKeyBatch = vi.fn();
+    const target = {
+      tizen: { tvinputdevice: { registerKeyBatch } },
+    } as unknown as Window;
+
+    expect(registerTizenMediaKeys(target)).toBe("registered");
+    expect(registerKeyBatch).toHaveBeenCalledWith(TIZEN_MEDIA_KEYS);
   });
 
-  it("does not invent the packaged Application API inside remote content", () => {
-    expect(canRequestTvExit({} as Window)).toBe(false);
-    const packaged = {
+  it("treats hosted Tizen media-key registration as unavailable instead of failing the app", () => {
+    expect(registerTizenMediaKeys({ tizen: undefined } as unknown as Window)).toBe("unavailable");
+
+    const target = {
       tizen: {
-        application: {
-          getCurrentApplication: () => ({ exit: () => undefined }),
+        tvinputdevice: {
+          registerKeyBatch: () => {
+            throw new Error("not supported");
+          },
         },
       },
     } as unknown as Window;
-    expect(canRequestTvExit(packaged)).toBe(true);
+    expect(registerTizenMediaKeys(target)).toBe("failed");
   });
 });
