@@ -106,10 +106,15 @@ export function releaseHtmlMediaElement(
   }
   try {
     media.removeAttribute("src");
-  } finally {
+  } catch {
+    // Source teardown is best-effort on already-detached TV media elements.
+  }
+  try {
     // Samsung explicitly recommends load() after source removal so decoder/buffer resources
     // are released instead of relying on DOM removal alone.
     media.load();
+  } catch {
+    // A detached/terminating runtime must not turn media cleanup into an app failure.
   }
 }
 
