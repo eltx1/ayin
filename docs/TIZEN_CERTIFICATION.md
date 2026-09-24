@@ -29,12 +29,12 @@ Because of those rules:
 
 AYIN Task 78 declares **Tizen 9.0** as its minimum supported Samsung TV runtime.
 
-| Samsung TV platform | Model year | Samsung Web engine | AYIN Task 78 baseline |
-| --- | ---: | --- | --- |
-| Tizen 10.0 | 2026 | Chromium 130 | In declared support range; repository logic validated only |
-| Tizen 9.0 | 2025 | Chromium 120 | Minimum declared support range; repository logic validated only |
-| Tizen 8.0 | 2024 | Chromium 108 | Not supported by Task 78 |
-| Older Tizen | 2023 and older | Older Chromium engines | Not supported by Task 78 |
+| Samsung TV platform |     Model year | Samsung Web engine     | AYIN Task 78 baseline                                           |
+| ------------------- | -------------: | ---------------------- | --------------------------------------------------------------- |
+| Tizen 10.0          |           2026 | Chromium 130           | In declared support range; repository logic validated only      |
+| Tizen 9.0           |           2025 | Chromium 120           | Minimum declared support range; repository logic validated only |
+| Tizen 8.0           |           2024 | Chromium 108           | Not supported by Task 78                                        |
+| Older Tizen         | 2023 and older | Older Chromium engines | Not supported by Task 78                                        |
 
 The shared AYIN Web application uses Next.js 16 / React 19. Next.js 16 documents Chrome 111+ as its default browser baseline. Tizen 9.0 and 10.0 are therefore the first current Samsung TV generations whose documented Chromium engines are above that baseline. Task 78 intentionally does not claim Tizen 8.0 compatibility.
 
@@ -185,17 +185,17 @@ Session persistence across Smart Hub transitions, TV restart and uninstall data 
 
 ## Verification matrix
 
-| Stage | Environment | Task 78 state |
-| --- | --- | --- |
-| Repository package/config validation | GitHub CI | Pending PR CI |
-| Hosted bootstrap simulation | Node VM in GitHub CI | Pending PR CI |
-| Shared Web unit/integration/browser suite | GitHub CI | Pending PR CI |
-| Samsung TV Simulator | Samsung simulator | **Not verified** |
-| Samsung TV Emulator | Tizen 9/10 emulator | **Not verified** |
-| Real Tizen 9.0 TV | Physical Samsung TV | **Not verified — no hardware attached** |
-| Real Tizen 10.0 TV | Physical Samsung TV | **Not verified — no hardware attached** |
-| Seller Office submitted | Samsung Seller Office | **No** |
-| Store approved | Samsung Seller Office | **No** |
+| Stage                                     | Environment           | Task 78 state                           |
+| ----------------------------------------- | --------------------- | --------------------------------------- |
+| Repository package/config validation      | GitHub CI             | Pending PR CI                           |
+| Hosted bootstrap simulation               | Node VM in GitHub CI  | Pending PR CI                           |
+| Shared Web unit/integration/browser suite | GitHub CI             | Pending PR CI                           |
+| Samsung TV Simulator                      | Samsung simulator     | **Not verified**                        |
+| Samsung TV Emulator                       | Tizen 9/10 emulator   | **Not verified**                        |
+| Real Tizen 9.0 TV                         | Physical Samsung TV   | **Not verified — no hardware attached** |
+| Real Tizen 10.0 TV                        | Physical Samsung TV   | **Not verified — no hardware attached** |
+| Seller Office submitted                   | Samsung Seller Office | **No**                                  |
+| Store approved                            | Samsung Seller Office | **No**                                  |
 
 Repository/Node validation is not Samsung emulator certification.
 
