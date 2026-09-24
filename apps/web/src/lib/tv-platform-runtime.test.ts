@@ -7,6 +7,7 @@ import {
   normalizeTvRemoteEvent,
   parseSamsungTizenVersion,
   registerTizenMediaKeys,
+  requestTvExit,
   TIZEN_MEDIA_KEYS,
 } from "./tv-platform-runtime";
 
@@ -38,6 +39,28 @@ describe("TV platform runtime", () => {
     expect(detectTvWebPlatform(target)).toBe("tizen");
   });
 
+  it("detects the canonical hosted Tizen query when platform APIs are intentionally absent", () => {
+    const target = {
+      location: { href: "https://ayin.stream/?platform=tizen&hosted=1" },
+      navigator: { userAgent: "Mozilla/5.0" },
+      tizen: undefined,
+      webOS: undefined,
+    } as unknown as Window;
+
+    expect(detectTvWebPlatform(target)).toBe("tizen");
+  });
+
+  it("rejects spoofed hosted-platform query strings on foreign origins", () => {
+    const target = {
+      location: { href: "https://example.com/?platform=tizen" },
+      navigator: { userAgent: "Mozilla/5.0" },
+      tizen: undefined,
+      webOS: undefined,
+    } as unknown as Window;
+
+    expect(detectTvWebPlatform(target)).toBeNull();
+  });
+
   it("sets the current AYIN Samsung baseline to Tizen 9.0 and newer", () => {
     expect(AYIN_TIZEN_MIN_SUPPORTED_VERSION).toBe(9);
     expect(parseSamsungTizenVersion("SMART-TV; LINUX; Tizen 10.0")).toBe(10);
@@ -49,14 +72,98 @@ describe("TV platform runtime", () => {
     expect(isSupportedSamsungTizenRuntime("SMART-TV; LINUX; Tizen 8.0")).toBe(false);
   });
 
-  it("batch-registers Samsung media keys when the packaged Tizen API is actually available", () => {
+  it("batch-registers only media keys reported by the Samsung TV", () => {
     const registerKeyBatch = vi.fn();
     const target = {
-      tizen: { tvinputdevice: { registerKeyBatch } },
+      tizen: {
+        tvinputdevice: {
+          getSupportedKeys: () => [
+            { name: "MediaPlayPause" },
+            { name: "MediaPlay" },
+            { name: "ColorF0Red" },
+          ],
+          registerKeyBatch,
+        },
+      },
     } as unknown as Window;
 
     expect(registerTizenMediaKeys(target)).toBe("registered");
-    expect(registerKeyBatch).toHaveBeenCalledWith(TIZEN_MEDIA_KEYS);
+    expect(registerKeyBatch).toHaveBeenCalledWith(["MediaPlayPause", "MediaPlay"]);
+  });
+
+  it("keeps the packaged Tizen session across SPA routes before confirmed exit", () => {
+    const storage = new Map<string, string>();
+    const back = vi.fn();
+    const target = {
+      history: { back, length: 4 },
+      location: { href: "https://ayin.stream/watch/example" },
+      navigator: { userAgent: "SMART-TV; LINUX; Tizen 10.0" },
+      sessionStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+      tizen: undefined,
+      webOS: undefined,
+    } as unknown as Window;
+    storage.set("ayin:tizen-hosted", "1");
+
+    expect(requestTvExit(target)).toBe(true);
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(storage.get("ayin:tizen-exit-pending")).toBe("1");
+  });
+
+  it("does not treat a Samsung browser visit as a packaged Tizen exit session", () => {
+    const back = vi.fn();
+    const target = {
+      history: { back, length: 3 },
+      location: { href: "https://ayin.stream/" },
+      navigator: { userAgent: "SMART-TV; LINUX; Tizen 10.0" },
+      sessionStorage: {
+        getItem: () => null,
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      tizen: undefined,
+      webOS: undefined,
+    } as unknown as Window;
+
+    expect(requestTvExit(target)).toBe(false);
+    expect(back).not.toHaveBeenCalled();
+  });
+
+  it("returns to the packaged bootstrap to complete a hosted Tizen exit", () => {
+    const back = vi.fn();
+    const storage = new Map<string, string>();
+    const target = {
+      history: { back, length: 2 },
+      location: { href: "https://ayin.stream/?platform=tizen&hosted=1" },
+      navigator: { userAgent: "Mozilla/5.0" },
+      sessionStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+      tizen: undefined,
+      webOS: undefined,
+    } as unknown as Window;
+
+    expect(requestTvExit(target)).toBe(true);
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the packaged Tizen Application API directly when it is available", () => {
+    const exit = vi.fn();
+    const target = {
+      tizen: {
+        application: {
+          getCurrentApplication: () => ({ exit }),
+        },
+      },
+    } as unknown as Window;
+
+    expect(requestTvExit(target)).toBe(true);
+    expect(exit).toHaveBeenCalledTimes(1);
   });
 
   it("treats hosted Tizen media-key registration as unavailable instead of failing the app", () => {
