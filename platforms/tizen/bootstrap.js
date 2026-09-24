@@ -94,6 +94,18 @@
     goToHostedApp();
   }
 
+  function onPageShow(event) {
+    if (!event || event.persisted !== true) return;
+    if (exitPackagedShell()) return;
+
+    // If a non-Tizen test/browser restores this page from BFCache, fail open back to
+    // the canonical hosted product instead of leaving the user on the bootstrap page.
+    redirected = false;
+    registerMediaKeysThenLaunch();
+  }
+
+  window.addEventListener("pageshow", onPageShow);
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", registerMediaKeysThenLaunch, { once: true });
   } else {
