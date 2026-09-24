@@ -126,6 +126,22 @@ describe("AYIN adaptive playback abstraction", () => {
     expect(calls).toEqual(["pause", "remove:src", "load"]);
   });
 
+  it("never lets detached-media cleanup exceptions escape", () => {
+    expect(() =>
+      releaseHtmlMediaElement({
+        pause: () => {
+          throw new Error("pause failed");
+        },
+        removeAttribute: () => {
+          throw new Error("remove failed");
+        },
+        load: () => {
+          throw new Error("load failed");
+        },
+      } as never),
+    ).not.toThrow();
+  });
+
   it("prefers native HLS capability without loading the JavaScript adapter", async () => {
     const video = new FakeVideo(true);
     const ready = vi.fn();
