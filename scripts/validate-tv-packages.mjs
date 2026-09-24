@@ -108,6 +108,20 @@ if (certification.screensaverPlaybackControlDeviceVerified !== false) {
 if (typeof certification.verification?.repositoryValidation !== "boolean") {
   throw new Error("repositoryValidation must be explicit");
 }
+if (certification.verification.repositoryValidation) {
+  for (const evidence of [
+    "tvPackageRun",
+    "qualityRun",
+    "browserAcceptanceRun",
+    "securityRun",
+    "sharedAndroidRegressionRun",
+  ]) {
+    const value = certification.repositoryValidationEvidence?.[evidence];
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new Error(`repositoryValidation=true requires a positive ${evidence} run ID`);
+    }
+  }
+}
 for (const stage of [
   "simulatorVerified",
   "emulatorVerified",
