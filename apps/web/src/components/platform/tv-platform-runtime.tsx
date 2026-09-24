@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
+import type { NativeRemoteEventDetail } from "@/lib/native-shell-bridge";
 import {
   canRequestTvExit,
   detectTvWebPlatform,
@@ -50,7 +51,17 @@ export function TvPlatformRuntime() {
   useEffect(() => {
     if (!exitOpen) return;
     const frame = window.requestAnimationFrame(() => cancelRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
+    const onRemote = (event: CustomEvent<NativeRemoteEventDetail>) => {
+      if (event.detail.key !== "BACK") return;
+      event.preventDefault();
+      setHostedExitFallback(false);
+      setExitOpen(false);
+    };
+    window.addEventListener("ayin:native-remote", onRemote);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("ayin:native-remote", onRemote);
+    };
   }, [exitOpen]);
 
   if (exitOpen) {
