@@ -1,12 +1,16 @@
 {
   "task": 78,
-  "packageMode": "hosted",
+  "packageMode": "packaged-shell-remote-ui",
   "declaredMinimumTizen": "9.0",
-  "currentSamsungTvRangeReviewed": ["9.0", "10.0"],
-  "hostedApplicationPartnerApprovalRequired": true,
-  "tizenApisAvailableInHostedContent": false,
+  "currentSamsungTvRangeReviewed": [
+    "9.0",
+    "10.0"
+  ],
+  "remoteContentManagerConfirmationRequired": true,
+  "tizenApisAvailableInRemoteHostedContent": false,
+  "tizenApisUsedOnlyInLocalPackageShell": true,
   "verification": {
-    "repositoryValidation": true,
+    "repositoryValidation": false,
     "simulatorVerified": false,
     "emulatorVerified": false,
     "realDeviceVerified": false,
@@ -14,14 +18,13 @@
     "storeApproved": false
   },
   "blockingReleaseChecks": [
-    "Confirm or replace the development Tizen package/application ID with the final Samsung/Tizen Studio identity before signing or Seller Office registration",
-    "Hosted AYIN response CSP currently uses unsafe-inline; Samsung hosted-app submission guidance requires removing unsafe-inline/unsafe-eval or obtaining explicit Content Manager direction",
-    "Samsung Content Manager approval for hosted application distribution",
-    "Samsung TV emulator validation on a supported TV Extension",
-    "Representative physical Samsung TV validation",
-    "Google account-manager confirmation for IMA on Samsung Tizen",
-    "Final Samsung certificate profile and signing",
-    "Final icon and Seller Office store artwork"
+    "Confirm the packaged-shell/remote-UI architecture with the assigned Samsung Content Manager before Seller Office submission",
+    "AYIN shared production CSP still uses unsafe-inline; Samsung hosted/remote-content policy requires Content Manager direction or a shared nonce/hash CSP before submission",
+    "Samsung TV simulator/emulator validation with a valid Samsung certificate profile",
+    "Representative physical Tizen 9.0 and 10.0 Samsung TV validation",
+    "Google account-manager confirmation and physical-TV validation for client-side IMA/GAM behavior",
+    "Final Samsung certificate profile and signed WGT",
+    "Final Seller Office screenshots/store artwork and release metadata"
   ],
   "developmentPackageId": "AYINtv2026",
   "developmentApplicationId": "AYINtv2026.AYIN",
