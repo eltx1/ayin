@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   classifyHlsFailure,
+  releaseHtmlMediaElement,
   startAdaptiveHlsPlayback,
   supportsNativeHls,
   type AyinPlaybackRendition,
@@ -102,6 +103,29 @@ afterEach(() => {
 });
 
 describe("AYIN adaptive playback abstraction", () => {
+  it("releases HTML media decoder resources in Samsung-recommended teardown order", () => {
+    const calls: string[] = [];
+    releaseHtmlMediaElement({
+      pause: () => calls.push("pause"),
+      removeAttribute: (name: string) => calls.push("remove:" + name),
+      load: () => calls.push("load"),
+    } as never);
+    expect(calls).toEqual(["pause", "remove:src", "load"]);
+  });
+
+  it("continues decoder release even when pause throws during teardown", () => {
+    const calls: string[] = [];
+    releaseHtmlMediaElement({
+      pause: () => {
+        calls.push("pause");
+        throw new Error("already detached");
+      },
+      removeAttribute: (name: string) => calls.push("remove:" + name),
+      load: () => calls.push("load"),
+    } as never);
+    expect(calls).toEqual(["pause", "remove:src", "load"]);
+  });
+
   it("prefers native HLS capability without loading the JavaScript adapter", async () => {
     const video = new FakeVideo(true);
     const ready = vi.fn();
