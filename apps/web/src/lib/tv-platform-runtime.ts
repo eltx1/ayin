@@ -171,6 +171,12 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
       return;
     }
 
+    if (event.detail.key === "BACK" && platform === "tizen" && target.location.pathname !== "/") {
+      event.preventDefault();
+      target.history.back();
+      return;
+    }
+
     const command = nativeRemotePlayerCommand(event.detail.key);
     if (!command) return;
     const video = activeVideo(target.document);
