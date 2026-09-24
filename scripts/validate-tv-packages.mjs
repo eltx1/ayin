@@ -56,8 +56,9 @@ for (const needle of [
   "registerKeyBatch(MEDIA_KEYS)",
   '10009: "BACK"',
   '10252: "PLAY_PAUSE"',
-  'source: SHELL_SOURCE, type: "lifecycle"',
-  'source: SHELL_SOURCE, type: "network"',
+  'source: SHELL_SOURCE',
+  'type: "lifecycle"',
+  'type: "network"',
   'data.type === "exit-request"',
   "getCurrentApplication().exit()",
 ]) {
