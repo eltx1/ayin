@@ -187,9 +187,9 @@ Session persistence across Smart Hub transitions, TV restart and uninstall data 
 
 | Stage                                     | Environment           | Task 78 state                           |
 | ----------------------------------------- | --------------------- | --------------------------------------- |
-| Repository package/config validation      | GitHub CI             | Pending PR CI                           |
-| Hosted bootstrap simulation               | Node VM in GitHub CI  | Pending PR CI                           |
-| Shared Web unit/integration/browser suite | GitHub CI             | Pending PR CI                           |
+| Repository package/config validation      | GitHub CI             | **Verified — run 35952633271**          |
+| Hosted bootstrap simulation               | Node VM in GitHub CI  | **Verified — run 35952633271**          |
+| Shared Web unit/integration/browser suite | GitHub CI             | **Verified — runs 35952633216 / 35952633272** |
 | Samsung TV Simulator                      | Samsung simulator     | **Not verified**                        |
 | Samsung TV Emulator                       | Tizen 9/10 emulator   | **Not verified**                        |
 | Real Tizen 9.0 TV                         | Physical Samsung TV   | **Not verified — no hardware attached** |
