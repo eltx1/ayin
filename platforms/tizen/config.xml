@@ -5,6 +5,7 @@
   version="1.0.0"
   viewmodes="maximized">
   <name>AYIN</name>
+  <icon src="icon.png" />
   <content src="index.html" />
 
   <access origin="https://ayin.stream" subdomains="true" />
@@ -13,7 +14,7 @@
   <access origin="https://googletagservices.com" subdomains="true" />
   <access origin="https://googlesyndication.com" subdomains="true" />
 
-  <tizen:application id="AYINtv.AYIN" package="AYINtv" required_version="9.0" />
+  <tizen:application id="AYINtv2026.AYIN" package="AYINtv2026" required_version="9.0" />
   <tizen:profile name="tv-samsung" />
   <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="9.0" />
 
