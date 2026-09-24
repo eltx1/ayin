@@ -142,7 +142,7 @@ Samsung recommends `visibilitychange` for multitasking. AYIN maps visibility int
 - visible → resume only media paused by lifecycle;
 - teardown → release adapter listeners and restore screensaver when supported.
 
-Samsung's memory guidance emphasizes releasing media buffers, DOM, and JavaScript references promptly. Actual memory ceilings remain model-specific and require emulator/device observation.
+Samsung's memory guidance emphasizes releasing media buffers, DOM, and JavaScript references promptly. AYIN now applies the recommended HTML-media teardown sequence on VOD unmount (pause, remove the media source, then load to release decoder/buffer resources); live playback already performs equivalent teardown on terminal/fatal/unmount paths. Actual memory ceilings remain model-specific and require emulator/device observation.
 
 ## Verification matrix
 
