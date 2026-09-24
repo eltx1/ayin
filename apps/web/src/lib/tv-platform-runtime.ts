@@ -60,7 +60,9 @@ export const TIZEN_EMBED_COOKIE = "ayin_tizen_embed";
 const TIZEN_SHELL_SOURCE = "ayin-tizen-shell";
 const TIZEN_APP_SOURCE = "ayin-tizen-app";
 
-const TIZEN_MEDIA_KEYS = [
+export const AYIN_TIZEN_MIN_SUPPORTED_VERSION = 9;
+
+export const TIZEN_MEDIA_KEYS = [
   "MediaPlayPause",
   "MediaPlay",
   "MediaPause",
@@ -182,6 +184,14 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     );
   };
 
+  const onPageHide = () => {
+    target.dispatchEvent(
+      new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
+        detail: { state: "stop", platform },
+      }),
+    );
+  };
+
   const onWebOsLaunch = () => {
     target.dispatchEvent(
       new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
@@ -287,6 +297,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   target.addEventListener("ayin:native-network", onNativeNetwork);
   target.addEventListener("message", onTizenShellMessage);
   target.document.addEventListener("visibilitychange", onVisibility);
+  target.addEventListener("pagehide", onPageHide);
   target.document.addEventListener("webOSLaunch", onWebOsLaunch as EventListener);
   target.document.addEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
 
@@ -301,6 +312,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
     target.removeEventListener("ayin:native-network", onNativeNetwork);
     target.removeEventListener("message", onTizenShellMessage);
     target.document.removeEventListener("visibilitychange", onVisibility);
+    target.removeEventListener("pagehide", onPageHide);
     target.document.removeEventListener("webOSLaunch", onWebOsLaunch as EventListener);
     target.document.removeEventListener("webOSRelaunch", onWebOsLaunch as EventListener);
     pausedForLifecycle.clear();
@@ -323,17 +335,22 @@ export function requestTvExit(target: Window = window): boolean {
   return false;
 }
 
-function registerTizenMediaKeys(target: Window) {
+export type TizenMediaKeyRegistration = "registered" | "unavailable" | "failed";
+
+export function registerTizenMediaKeys(target: Window): TizenMediaKeyRegistration {
   const input = target.tizen?.tvinputdevice;
-  if (!input) return;
+  if (!input) return "unavailable";
   try {
     if (input.registerKeyBatch) {
       input.registerKeyBatch(TIZEN_MEDIA_KEYS);
-      return;
+      return "registered";
     }
     for (const key of TIZEN_MEDIA_KEYS) input.registerKey?.(key);
+    return "registered";
   } catch {
-    // Unsupported remote keys must not prevent the TV app from starting.
+    // Hosted Samsung apps do not expose Tizen APIs. Media-key registration is therefore
+    // capability-driven and must never prevent DPAD/Back or the AYIN product UI from starting.
+    return "failed";
   }
 }
 
