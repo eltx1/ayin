@@ -187,17 +187,17 @@ Session persistence across Smart Hub transitions, TV restart and uninstall data 
 
 ## Verification matrix
 
-| Stage                                     | Environment           | Task 78 state                           |
-| ----------------------------------------- | --------------------- | --------------------------------------- |
-| Repository package/config validation      | GitHub CI             | **Verified — run 35952633271**          |
-| Hosted bootstrap simulation               | Node VM in GitHub CI  | **Verified — run 35952633271**          |
+| Stage                                     | Environment           | Task 78 state                                 |
+| ----------------------------------------- | --------------------- | --------------------------------------------- |
+| Repository package/config validation      | GitHub CI             | **Verified — run 35952633271**                |
+| Hosted bootstrap simulation               | Node VM in GitHub CI  | **Verified — run 35952633271**                |
 | Shared Web unit/integration/browser suite | GitHub CI             | **Verified — runs 35952633216 / 35952633272** |
-| Samsung TV Simulator                      | Samsung simulator     | **Not verified**                        |
-| Samsung TV Emulator                       | Tizen 9/10 emulator   | **Not verified**                        |
-| Real Tizen 9.0 TV                         | Physical Samsung TV   | **Not verified — no hardware attached** |
-| Real Tizen 10.0 TV                        | Physical Samsung TV   | **Not verified — no hardware attached** |
-| Seller Office submitted                   | Samsung Seller Office | **No**                                  |
-| Store approved                            | Samsung Seller Office | **No**                                  |
+| Samsung TV Simulator                      | Samsung simulator     | **Not verified**                              |
+| Samsung TV Emulator                       | Tizen 9/10 emulator   | **Not verified**                              |
+| Real Tizen 9.0 TV                         | Physical Samsung TV   | **Not verified — no hardware attached**       |
+| Real Tizen 10.0 TV                        | Physical Samsung TV   | **Not verified — no hardware attached**       |
+| Seller Office submitted                   | Samsung Seller Office | **No**                                        |
+| Store approved                            | Samsung Seller Office | **No**                                        |
 
 Repository/Node validation is not Samsung emulator certification.
 
