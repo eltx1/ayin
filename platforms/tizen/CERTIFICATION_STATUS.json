@@ -10,7 +10,7 @@
   "packagedBootstrapMediaKeyRegistration": true,
   "mediaKeyRegistrationDeviceVerified": false,
   "verification": {
-    "repositoryValidation": false,
+    "repositoryValidation": true,
     "simulatorVerified": false,
     "emulatorVerified": false,
     "realDeviceVerified": false,
@@ -33,10 +33,11 @@
   "developmentApplicationId": "AYINtv2026.AYIN",
   "sellerIdentityFinalized": false,
   "repositoryValidationEvidence": {
-    "tvPackageRun": null,
-    "qualityRun": null,
-    "browserAcceptanceRun": null,
-    "securityRun": null
+    "tvPackageRun": 36052770533,
+    "qualityRun": 36052769902,
+    "browserAcceptanceRun": 36052769980,
+    "securityRun": 36052769908,
+    "sharedAndroidRegressionRun": 36052769931
   },
   "previousTask38DevelopmentPackageId": "AYINtv",
   "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve.",
