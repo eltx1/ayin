@@ -7,7 +7,7 @@ Task 78 hardens the existing Samsung TV package without forking AYIN product UI,
 The checked-in Samsung package remains a **hosted Tizen Web application**:
 
 - local `platforms/tizen/index.html` starts the package;
-- local `bootstrap.js` opens `https://ayin.stream/?platform=tizen`;
+- local `bootstrap.js` opens `https://ayin.stream/?platform=tizen&runtime=hosted`;
 - AYIN product UI and media logic remain the canonical shared web application.
 
 Samsung's current Hosted Applications guidance states that hosted applications generally require advance Content Manager approval and that Tizen APIs are not supported inside hosted content. Task 78 therefore does not claim `TVInputDevice`, `Application`, `AppCommon`, AVPlay, TIFA/adinfo, or other Product APIs inside the hosted AYIN page.
@@ -38,7 +38,7 @@ Repository validation requires:
 - landscape/maximized mode;
 - pointing device disabled for remote-first UX;
 - Internet privilege;
-- HTTPS-only AYIN web/API/media origins.
+- HTTPS-only AYIN web/API/media origins plus the Google IMA/GAM HTTPS origins used by the shared ad runtime.
 
 The hosted package intentionally does not request `tv.inputdevice`, `adinfo`, DRM, TV window/audio, microphone, billing, SSO, or other privileges the hosted content cannot legitimately use.
 
@@ -49,6 +49,8 @@ The checked-in development package identity is `AYINtv2026.AYIN` with package ID
 The local bootstrap contains no inline script and navigates only to the canonical HTTPS AYIN origin.
 
 If the package starts offline, it displays a reconnect message and navigates after the browser reports online.
+
+Repository CI executes the packaged bootstrap in both online and offline states: offline must remain on the local shell and show reconnect status, while the online event must navigate only to the canonical hosted Tizen URL.
 
 The shared Tizen adapter also presents an in-app network-loss notification for the hosted `?platform=tizen` runtime.
 
@@ -69,9 +71,9 @@ The shared runtime still understands Samsung media key names/codes when they are
 The shared adapter keeps Back hierarchical:
 
 1. exit fullscreen first;
-3. let shared AYIN UI consume Back;
-4. use browser history for detail pages;
-5. request an app-root exit flow only at the root.
+2. let shared AYIN UI consume Back;
+3. use browser history for detail pages;
+4. request an app-root exit flow only at the root.
 
 The shared exit confirmation calls `tizen.application.getCurrentApplication().exit()` only when that API actually exists.
 
