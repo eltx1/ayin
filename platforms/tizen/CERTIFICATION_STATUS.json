@@ -2,20 +2,10 @@
   "task": 78,
   "packageMode": "hosted-redirect",
   "declaredMinimumTizen": "9.0",
-  "currentSamsungTvRangeReviewed": [
-    "9.0",
-    "10.0"
-  ],
+  "currentSamsungTvRangeReviewed": ["9.0", "10.0"],
   "hostedContentManagerApprovalRequired": true,
   "tizenApisAvailableInHostedContent": false,
-  "standardRemoteKeysExpected": [
-    "UP",
-    "DOWN",
-    "LEFT",
-    "RIGHT",
-    "SELECT",
-    "BACK"
-  ],
+  "standardRemoteKeysExpected": ["UP", "DOWN", "LEFT", "RIGHT", "SELECT", "BACK"],
   "registeredMediaKeysAvailable": false,
   "verification": {
     "repositoryValidation": true,
