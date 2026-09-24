@@ -16,7 +16,7 @@ Task 78 intentionally replaces the pre-store Task 38 development package ID `AYI
 
 ## Hosted application approval
 
-Samsung states that hosted/cloud applications require advance Content Manager approval except in approved special cases.
+Samsung states that hosted/cloud applications require advance Content Manager approval except in approved special cases. The same hosted boundary means Product APIs such as AppCommon screensaver control are not assumed available in the remote AYIN page; that store-quality requirement must be resolved with the approved Samsung architecture before submission.
 
 Before Seller Office submission:
 
@@ -83,6 +83,7 @@ Before submission:
 - verify login/logout/session and uninstall data removal;
 - verify D-pad/focus/Enter/Back/Exit and optional media-key persistence after hosted navigation;
 - verify HLS, MP4 fallback, WebVTT captions, autoplay fallback and fullscreen;
+- resolve and verify Samsung screensaver suppression for all video playback states; hosted AYIN cannot call AppCommon directly;
 - verify Creator TV and live playback/reconnect;
 - verify physical network disconnect/reconnect and low-memory behavior;
 - validate client-side IMA/GAM with the Google account team if enabled.
