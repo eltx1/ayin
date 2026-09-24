@@ -11,9 +11,12 @@ import {
 } from "./tv-platform-runtime";
 
 describe("TV platform runtime", () => {
-  it("normalizes Samsung remote key codes", () => {
+  it("normalizes Samsung remote key codes without treating MediaStop as Pause", () => {
     expect(normalizeTvRemoteEvent({ key: "", keyCode: 10009 })).toBe("BACK");
     expect(normalizeTvRemoteEvent({ key: "", keyCode: 10252 })).toBe("PLAY_PAUSE");
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 19 })).toBe("PAUSE");
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 413 })).toBeNull();
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 10182 })).toBeNull();
   });
 
   it("normalizes webOS and browser keyboard names", () => {
