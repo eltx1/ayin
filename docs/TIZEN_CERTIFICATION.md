@@ -75,6 +75,8 @@ The shared adapter keeps Back hierarchical:
 3. use browser history for detail pages;
 4. request an app-root exit flow only at the root.
 
+The exit confirmation defaults focus to Cancel, and a second Samsung Return/Back press cancels the dialog through the shared remote event contract.
+
 The shared exit confirmation calls `tizen.application.getCurrentApplication().exit()` only when that API actually exists.
 
 In hosted mode the root Back key still opens AYIN's exit confirmation. If the user confirms and the Application API is unavailable, AYIN explicitly tells the user to press and hold Samsung Return/Exit to close the app. Samsung documents that long-press Return/Exit forcibly terminates the application and must not be overridden.
