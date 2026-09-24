@@ -84,7 +84,10 @@ export function isSupportedSamsungTizenRuntime(userAgent: string): boolean {
 }
 
 export function detectTvWebPlatform(target: Window = window): NativeShellPlatform | null {
-  if (target.tizen?.tvinputdevice || parseSamsungTizenVersion(target.navigator.userAgent) !== null) {
+  if (
+    target.tizen?.tvinputdevice ||
+    parseSamsungTizenVersion(target.navigator.userAgent) !== null
+  ) {
     return "tizen";
   }
   if (target.webOS) return "webos";
