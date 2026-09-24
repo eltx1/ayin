@@ -5,6 +5,8 @@ on:
     paths:
       - "platforms/tizen/**"
       - "platforms/webos/**"
+      - "apps/web/package.json"
+      - "apps/web/next.config.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
@@ -15,6 +17,8 @@ on:
     paths:
       - "platforms/tizen/**"
       - "platforms/webos/**"
+      - "apps/web/package.json"
+      - "apps/web/next.config.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
