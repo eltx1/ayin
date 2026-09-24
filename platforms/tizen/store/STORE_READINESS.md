@@ -28,9 +28,12 @@ Repository CI is not evidence of hosted-app approval.
 
 ## Permissions/network
 
-The package requests only Internet.
+The package requests:
 
-It intentionally does not request TVInputDevice because hosted AYIN content cannot use Tizen APIs.
+- Internet;
+- TVInputDevice for the **local packaged bootstrap only**.
+
+Samsung hosted content itself cannot use Tizen APIs. Task 78 therefore uses TVInputDevice before hosted navigation to register supported optional media keys, then treats hosted AYIN as standard Web content. The persistence of those registrations after hosted navigation is not considered device verified until Samsung Emulator/TV testing succeeds.
 
 WARP access remains HTTPS-only for AYIN and required Google advertising origins.
 
@@ -78,7 +81,7 @@ Before submission:
 - test representative physical Tizen 9.0 and 10.0 TVs;
 - verify cold launch, resume and termination;
 - verify login/logout/session and uninstall data removal;
-- verify D-pad/focus/Enter/Back/Exit;
+- verify D-pad/focus/Enter/Back/Exit and optional media-key persistence after hosted navigation;
 - verify HLS, MP4 fallback, WebVTT captions, autoplay fallback and fullscreen;
 - verify Creator TV and live playback/reconnect;
 - verify physical network disconnect/reconnect and low-memory behavior;
