@@ -1,14 +1,22 @@
 {
   "task": 78,
-  "packageMode": "packaged-shell-remote-ui",
+  "packageMode": "hosted-redirect",
   "declaredMinimumTizen": "9.0",
   "currentSamsungTvRangeReviewed": [
     "9.0",
     "10.0"
   ],
-  "remoteContentManagerConfirmationRequired": true,
-  "tizenApisAvailableInRemoteHostedContent": false,
-  "tizenApisUsedOnlyInLocalPackageShell": true,
+  "hostedContentManagerApprovalRequired": true,
+  "tizenApisAvailableInHostedContent": false,
+  "standardRemoteKeysExpected": [
+    "UP",
+    "DOWN",
+    "LEFT",
+    "RIGHT",
+    "SELECT",
+    "BACK"
+  ],
+  "registeredMediaKeysAvailable": false,
   "verification": {
     "repositoryValidation": false,
     "simulatorVerified": false,
@@ -18,15 +26,15 @@
     "storeApproved": false
   },
   "blockingReleaseChecks": [
-    "Confirm the packaged-shell/remote-UI architecture with the assigned Samsung Content Manager before Seller Office submission",
-    "AYIN shared production CSP still uses unsafe-inline; Samsung hosted/remote-content policy requires Content Manager direction or a shared nonce/hash CSP before submission",
-    "Samsung TV simulator/emulator validation with a valid Samsung certificate profile",
-    "Representative physical Tizen 9.0 and 10.0 Samsung TV validation",
-    "Google account-manager confirmation and physical-TV validation for client-side IMA/GAM behavior",
-    "Final Samsung certificate profile and signed WGT",
-    "Final Seller Office screenshots/store artwork and release metadata"
+    "Obtain Samsung Content Manager approval for the hosted/cloud application architecture before Seller Office submission",
+    "Resolve Samsung hosted-application CSP requirements with the Content Manager; AYIN production CSP currently contains unsafe-inline for the shared Web product",
+    "Validate the signed package on the Samsung TV Simulator/Emulator with a valid Samsung certificate profile",
+    "Validate representative physical Tizen 9.0 and Tizen 10.0 Samsung TVs",
+    "Confirm client-side IMA/GAM Samsung TV support with the Google account manager and validate it on physical hardware",
+    "Create and secure the final Samsung certificate profile and signed WGT",
+    "Prepare final Seller Office screenshots, icon artwork, localized metadata and release information"
   ],
-  "developmentPackageId": "AYINtv2026",
-  "developmentApplicationId": "AYINtv2026.AYIN",
+  "developmentPackageId": "AYINtv",
+  "developmentApplicationId": "AYINtv.AYIN",
   "sellerIdentityFinalized": false
 }
