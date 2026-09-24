@@ -2,15 +2,35 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'none'; object-src 'none'; frame-src https://ayin.stream; connect-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'"
+    />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>AYIN</title>
-    <script src="bootstrap.js" defer></script>
+    <link rel="stylesheet" href="shell.css" />
   </head>
-  <body>
-    <p id="tizen-bootstrap-status">Opening AYIN…</p>
-    <noscript>
-      AYIN requires JavaScript. Visit https://ayin.stream/ from a supported Samsung TV runtime.
-    </noscript>
+  <body tabindex="0">
+    <main id="shell">
+      <iframe
+        id="ayin-app"
+        src="https://ayin.stream/?platform=tizen&amp;ayin_tizen_embed=1"
+        title="AYIN"
+        allow="autoplay; fullscreen"
+        referrerpolicy="strict-origin-when-cross-origin"
+      ></iframe>
+
+      <div id="loading" role="status" aria-live="polite">Opening AYIN…</div>
+
+      <section id="exit-dialog" role="dialog" aria-modal="true" aria-labelledby="exit-title" hidden>
+        <h1 id="exit-title">Exit AYIN?</h1>
+        <div class="dialog-actions">
+          <button id="exit-no" type="button" data-selected="true">No</button>
+          <button id="exit-yes" type="button">Yes</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="shell.js"></script>
   </body>
 </html>
