@@ -8,7 +8,6 @@ import {
   parseSamsungTizenVersion,
   registerTizenMediaKeys,
   requestTvExit,
-  TIZEN_MEDIA_KEYS,
 } from "./tv-platform-runtime";
 
 describe("TV platform runtime", () => {
