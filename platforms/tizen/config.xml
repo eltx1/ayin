@@ -14,12 +14,13 @@
   <access origin="https://googletagservices.com" subdomains="true" />
   <access origin="https://googlesyndication.com" subdomains="true" />
 
-  <tizen:application id="AYINtv2026.AYIN" package="AYINtv2026" required_version="9.0" />
+  <feature name="http://tizen.org/feature/screen.size.normal.1080.1920" />
+
+  <tizen:application id="AYINtv.AYIN" package="AYINtv" required_version="9.0" />
   <tizen:profile name="tv-samsung" />
   <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="9.0" />
 
   <tizen:privilege name="http://tizen.org/privilege/internet" />
-  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice" />
 
   <tizen:setting
     screen-orientation="landscape"
