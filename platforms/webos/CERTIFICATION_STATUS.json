@@ -3,10 +3,7 @@
   "packageMode": "hosted-redirect",
   "hostedUrl": "https://ayin.stream/?platform=webos&hosted=1",
   "declaredMinimumWebOsTv": "25",
-  "currentWebOsTvRangeReviewed": [
-    "25",
-    "26"
-  ],
+  "currentWebOsTvRangeReviewed": ["25", "26"],
   "minimumChromiumMajor": 120,
   "nextJsDefaultMinimumChromiumMajor": 111,
   "currentSimulatorVersions": {
