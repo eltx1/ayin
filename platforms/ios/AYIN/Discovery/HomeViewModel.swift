@@ -17,6 +17,7 @@ final class HomeViewModel: ObservableObject {
     private let discovery: any DiscoveryServicing
     private var sessionScope: String?
     private var generation = 0
+    private var requestSequence = 0
 
     init(discovery: any DiscoveryServicing = DiscoveryService()) {
         self.discovery = discovery
@@ -26,6 +27,7 @@ final class HomeViewModel: ObservableObject {
         guard scope != sessionScope else { return }
         sessionScope = scope
         generation += 1
+        requestSequence += 1
         rows = []
         errorMessage = nil
         isLoading = false
@@ -34,30 +36,32 @@ final class HomeViewModel: ObservableObject {
     @discardableResult
     func load(token: String?) async -> HomeLoadResult {
         let requestGeneration = generation
+        requestSequence += 1
+        let requestID = requestSequence
         isLoading = true
         defer {
-            if requestGeneration == generation {
+            if requestGeneration == generation, requestID == requestSequence {
                 isLoading = false
             }
         }
 
         do {
             let response = try await discovery.home(token: token)
-            guard requestGeneration == generation, !Task.isCancelled else {
+            guard requestGeneration == generation, requestID == requestSequence, !Task.isCancelled else {
                 return .superseded
             }
             rows = response.rows
             errorMessage = nil
             return .loaded
         } catch let error as APIClientError where error.statusCode == 401 {
-            guard requestGeneration == generation, !Task.isCancelled else {
+            guard requestGeneration == generation, requestID == requestSequence, !Task.isCancelled else {
                 return .superseded
             }
             rows = []
             errorMessage = nil
             return .authenticationRejected
         } catch {
-            guard requestGeneration == generation, !Task.isCancelled else {
+            guard requestGeneration == generation, requestID == requestSequence, !Task.isCancelled else {
                 return .superseded
             }
             errorMessage = error.localizedDescription
