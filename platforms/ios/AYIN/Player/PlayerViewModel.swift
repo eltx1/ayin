@@ -30,6 +30,7 @@ final class PlayerViewModel: ObservableObject {
     private var startupReported = false
     private var lastAnalyticsPositionMs: Int?
     private var lastSavedPositionMs: Int?
+    private var progressBaselineResolved = false
     private var didComplete = false
 
     init(
@@ -65,13 +66,16 @@ final class PlayerViewModel: ObservableObject {
             self.playback = playback
             self.player = player
             lastAnalyticsPositionMs = currentPositionMs()
-            playAttemptStartedAt = Date()
             startupReported = false
+            progressBaselineResolved = token == nil || playback.isLive || playback.videoId == nil
             installPlaybackObservers(player: player, item: item)
 
-            // Playback must not wait for analytics or authenticated resume-state I/O.
-            player.play()
+            // Schedule analytics first so event ordering is stable, but never await its I/O.
             dispatchInitialAnalytics(for: playback)
+            playAttemptStartedAt = Date()
+            player.play()
+
+            // Authenticated resume lookup is deliberately off the startup critical path.
             loadResumePositionIfUseful(
                 player: player,
                 playback: playback,
@@ -162,6 +166,7 @@ final class PlayerViewModel: ObservableObject {
         startupReported = false
         lastAnalyticsPositionMs = nil
         lastSavedPositionMs = nil
+        progressBaselineResolved = false
         didComplete = false
         shouldResumeAfterInterruption = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -327,22 +332,35 @@ final class PlayerViewModel: ObservableObject {
 
         resumeTask = Task { @MainActor [weak self, weak player] in
             guard let self, let player else { return }
-            guard let progress = try? await self.progressService.progress(
-                videoId: videoId,
-                profileId: profileId,
-                token: token
-            ) else { return }
-            guard !Task.isCancelled, self.player === player else { return }
-            guard
-                progress.completedAt == nil,
-                progress.positionMs > 0,
-                (self.currentPositionMs() ?? 0) <= 2_500
-            else { return }
+            do {
+                let progress = try await self.progressService.progress(
+                    videoId: videoId,
+                    profileId: profileId,
+                    token: token
+                )
+                guard !Task.isCancelled, self.player === player else { return }
 
-            await self.seek(player, toMilliseconds: progress.positionMs)
-            guard !Task.isCancelled, self.player === player else { return }
-            self.lastSavedPositionMs = progress.positionMs
-            self.lastAnalyticsPositionMs = progress.positionMs
+                // From this point forward we know the authoritative server baseline and can
+                // persist only forward progress without accidentally moving Continue Watching back.
+                self.progressBaselineResolved = true
+                self.lastSavedPositionMs = progress.positionMs
+
+                guard
+                    progress.completedAt == nil,
+                    progress.positionMs > 0,
+                    (self.currentPositionMs() ?? 0) <= 2_500
+                else { return }
+
+                await self.seek(player, toMilliseconds: progress.positionMs)
+                guard !Task.isCancelled, self.player === player else { return }
+                self.lastAnalyticsPositionMs = progress.positionMs
+            } catch is CancellationError {
+                return
+            } catch {
+                // A transient progress failure must not delay playback or risk overwriting
+                // an unknown server position with a lower local value.
+                self.progressBaselineResolved = false
+            }
         }
     }
 
@@ -406,13 +424,18 @@ final class PlayerViewModel: ObservableObject {
         guard
             !playback.isLive,
             let token = sessionToken,
-            let videoId = playback.videoId
+            let videoId = playback.videoId,
+            progressBaselineResolved
         else { return }
+
+        if let lastSavedPositionMs, positionMs < lastSavedPositionMs {
+            return
+        }
 
         let shouldSave =
             forceProgressSave ||
             lastSavedPositionMs == nil ||
-            abs(positionMs - (lastSavedPositionMs ?? 0)) >= 5_000
+            positionMs - (lastSavedPositionMs ?? 0) >= 5_000
         guard shouldSave else { return }
 
         do {
