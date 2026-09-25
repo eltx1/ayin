@@ -24,8 +24,6 @@ targets:
         excludes:
           - Info.plist
           - AYIN.entitlements
-    info:
-      path: AYIN/Info.plist
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(AYIN_BUNDLE_ID)"
@@ -35,6 +33,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: AYIN/AYIN.entitlements
         CODE_SIGN_STYLE: Automatic
         GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: AYIN/Info.plist
     scheme:
       gatherCoverageData: true
       testTargets:
