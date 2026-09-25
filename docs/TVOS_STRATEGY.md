@@ -9,6 +9,7 @@ AYIN Apple TV is a native SwiftUI + UIKit + AVKit/AVPlayer application with a mi
 The core app does not use WKWebView. Apple's current WKWebView documentation does not list tvOS as a supported platform. Apple also deprecated TVML, TVMLKit and TVMLKit JS beginning in tvOS 18 and directs apps toward SwiftUI/UIKit.
 
 Official references:
+
 - https://developer.apple.com/documentation/webkit/wkwebview
 - https://developer.apple.com/documentation/tvmlkit
 - https://developer.apple.com/videos/play/wwdc2024/10160/
@@ -32,6 +33,7 @@ Kids discovery links preserve the kids=1 policy boundary through routing, sharin
 SwiftUI focus is the default navigation model. Browse cards and actions are native Buttons grouped into focus sections, so Siri Remote navigation uses the platform focus engine rather than DOM/spatial-navigation code. AVPlayerViewController owns playback remote semantics.
 
 Official references:
+
 - https://developer.apple.com/documentation/uikit/about-focus-interactions-for-apple-tv
 - https://developer.apple.com/documentation/swiftui/view/onmovecommand(perform:)
 
@@ -42,6 +44,7 @@ Playback uses AVPlayer and AVPlayerViewController. It prefers HLS where AYIN exp
 Apple documents AVPlayerViewController as the native tvOS playback UI with Siri Remote, subtitle/alternate-audio and Picture in Picture support.
 
 Official references:
+
 - https://developer.apple.com/documentation/avkit/avplayerviewcontroller
 - https://developer.apple.com/documentation/avfoundation/avplayer
 - https://developer.apple.com/streaming/
@@ -53,6 +56,7 @@ AYIN currently exposes enabled sidecar WebVTT caption assets from the playback A
 If a future HLS master contains standard subtitle media-selection groups, AVPlayer native media selection should be preferred.
 
 Official references:
+
 - https://developer.apple.com/documentation/avkit/avplayerviewcontroller
 - https://developer.apple.com/streaming/examples/
 
@@ -65,11 +69,13 @@ Creator TV first requests the existing linear capability. When linear HLS is ava
 Task 81 does not assume HTML5/browser IMA works on tvOS.
 
 Current strategy:
+
 - Creator TV / FAST: use AYIN server-side linear HLS + SSAI path when available.
 - VOD client-side ads: use Google's native IMA tvOS SDK when production ad tags, consent behavior and device validation are ready.
 - The initial Task 81 binary does not link IMA because those production inputs are not part of this task.
 
 Official references:
+
 - https://developers.google.com/interactive-media-ads/docs/sdks/tvos/client-side
 - https://developers.google.com/interactive-media-ads/docs/sdks/tvos/client-side/compatibility
 - https://github.com/googleads/swift-package-manager-google-interactive-media-ads-tvos
@@ -83,6 +89,7 @@ Apple TV reuses AYIN bearer authentication: email/password, MFA authenticator co
 The target declares applinks:ayin.stream and a fallback ayin-tv:// custom scheme. Native routes include watch, live, movie, series, channel and Creator TV links. Production Universal Link verification still requires the real Apple Team ID and deployed AASA file.
 
 Official references:
+
 - https://developer.apple.com/documentation/xcode/supporting-universal-links-in-your-app
 - https://developer.apple.com/documentation/xcode/supporting-associated-domains
 
@@ -93,6 +100,7 @@ Top Shelf is appropriate for a future AYIN Apple TV release because Continue Wat
 Apple implements Top Shelf through a separate TVServices extension and warns that extension memory limits are significantly lower than the main app. Before adding it, finalize the App IDs, production artwork/cache policy, a bounded server-side feed, profile/privacy behavior and physical-device memory validation.
 
 Official references:
+
 - https://developer.apple.com/documentation/tvservices
 - https://developer.apple.com/documentation/tvservices/tvtopshelfcontentprovider
 
