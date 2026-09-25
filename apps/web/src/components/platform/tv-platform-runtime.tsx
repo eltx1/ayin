@@ -10,42 +10,41 @@ import {
 } from "@/lib/tv-platform-runtime";
 
 export function TvPlatformRuntime() {
-  const [exitOpen, setExitOpen] = useState(false);
+  const [exitPlatform, setExitPlatform] = useState<TvExitRequestDetail["platform"] | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => installTvPlatformRuntime(), []);
 
   useEffect(() => {
     const onExitRequest = (event: CustomEvent<TvExitRequestDetail>) => {
-      if (event.detail.platform !== "tizen") return;
-      setExitOpen(true);
+      setExitPlatform(event.detail.platform);
     };
     window.addEventListener("ayin:tv-exit-request", onExitRequest);
     return () => window.removeEventListener("ayin:tv-exit-request", onExitRequest);
   }, []);
 
   useEffect(() => {
-    if (!exitOpen) return;
+    if (!exitPlatform) return;
     const frame = window.requestAnimationFrame(() => {
       cancelRef.current?.focus({ preventScroll: true });
     });
     const onRemote = (event: CustomEvent<{ key: string }>) => {
       if (event.detail.key !== "BACK") return;
       event.preventDefault();
-      setExitOpen(false);
+      setExitPlatform(null);
     };
     window.addEventListener("ayin:native-remote", onRemote);
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("ayin:native-remote", onRemote);
     };
-  }, [exitOpen]);
+  }, [exitPlatform]);
 
-  if (!exitOpen) return null;
+  if (!exitPlatform) return null;
 
   return (
     <>
-      {exitOpen ? (
+      {exitPlatform ? (
         <div
           aria-label="Exit AYIN"
           aria-modal="true"
@@ -74,14 +73,22 @@ export function TvPlatformRuntime() {
               }}
             >
               <h2 style={{ fontSize: 30, margin: "0 0 12px" }}>Exit AYIN?</h2>
-              <p style={{ fontSize: 20, lineHeight: 1.45, margin: "0 0 28px", opacity: 0.82 }}>
-                Do you want to close AYIN and return to Samsung TV?
+              <p
+                style={{
+                  fontSize: 20,
+                  lineHeight: 1.45,
+                  margin: "0 0 28px",
+                  opacity: 0.82,
+                }}
+              >
+                Do you want to close AYIN and return to{" "}
+                {exitPlatform === "webos" ? "LG TV" : "Samsung TV"}?
               </p>
               <div style={{ display: "flex", gap: 16, justifyContent: "flex-end" }}>
                 <button
-                  data-tv-focus-id="tizen-exit-cancel"
+                  data-tv-focus-id="tv-exit-cancel"
                   data-tv-focusable="true"
-                  onClick={() => setExitOpen(false)}
+                  onClick={() => setExitPlatform(null)}
                   ref={cancelRef}
                   style={buttonStyle}
                   type="button"
@@ -89,10 +96,10 @@ export function TvPlatformRuntime() {
                   Stay
                 </button>
                 <button
-                  data-tv-focus-id="tizen-exit-confirm"
+                  data-tv-focus-id="tv-exit-confirm"
                   data-tv-focusable="true"
                   onClick={() => {
-                    if (!requestTvExit()) setExitOpen(false);
+                    if (!requestTvExit()) setExitPlatform(null);
                   }}
                   style={buttonStyle}
                   type="button"

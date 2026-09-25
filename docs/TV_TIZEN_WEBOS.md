@@ -1,6 +1,6 @@
 # Samsung Tizen and LG webOS TV packages
 
-Task 38 established thin TV packaging around AYIN's shared Web product. Task 78 hardens the Samsung Tizen baseline without forking product UI or player business logic.
+Task 38 established thin TV packaging around AYIN's shared Web product. Task 78 hardens Samsung Tizen, and Task 79 hardens LG webOS, without forking product UI or player business logic.
 
 ## Samsung Tizen
 
@@ -18,9 +18,15 @@ The detailed Task 78 support and certification state is in `docs/TIZEN_CERTIFICA
 
 ## LG webOS
 
-`platforms/webos/appinfo.json` contains the existing Web app identity/version/main/title metadata and `platforms/webos/index.html` remains the hosted Web entry point.
+Task 79 keeps AYIN as an LG hosted Web app. The installable IPK contains `appinfo.json`, the required 80×80 and 130×130 PNG icons, and a local network-aware bootstrap that navigates the top-level document to:
 
-Task 78 does not alter or recertify webOS.
+`https://ayin.stream/?platform=webos&hosted=1`
+
+The shared TV runtime handles LG remote codes, focus, Back/fullscreen/exit, lifecycle and network signals. The AYIN UI, player, ads, Creator TV and live logic remain shared.
+
+AYIN's current zero-configuration baseline is webOS TV **25 and 26** because LG documents Chromium 120 and 132 respectively; webOS TV 24 uses Chromium 108, below Next.js 16's documented Chrome 111+ baseline.
+
+Detailed Task 79 behavior and the explicit Simulator/device/store status are in `docs/WEBOS_CERTIFICATION.md`.
 
 ## Shared runtime
 
@@ -39,6 +45,8 @@ It:
 
 Task 78 declares Samsung Tizen **9.0 and 10.0** as the current AYIN Web baseline.
 
+Task 79 declares LG webOS TV **25 and 26** as the current AYIN zero-configuration webOS baseline.
+
 Tizen 8.0 and older are not claimed because their documented Web engines fall below the current Next.js 16 default Chrome baseline.
 
-Samsung Simulator/Emulator, physical-TV verification and Seller Office status remain explicitly separate stages. None is implied by repository CI.
+Samsung and LG Simulator/Emulator, physical-TV verification and store-submission/approval status remain explicitly separate stages. None is implied by repository CI.

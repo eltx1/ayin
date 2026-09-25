@@ -110,8 +110,8 @@ export function releaseHtmlMediaElement(
     // Source teardown is best-effort on already-detached TV media elements.
   }
   try {
-    // Samsung explicitly recommends load() after source removal so decoder/buffer resources
-    // are released instead of relying on DOM removal alone.
+    // TV runtimes can retain decoder/buffer resources after DOM removal. Calling load() after
+    // removing the source makes teardown explicit instead of relying on garbage collection.
     media.load();
   } catch {
     // A detached/terminating runtime must not turn media cleanup into an app failure.

@@ -20,9 +20,15 @@ describe("TV platform runtime", () => {
     expect(normalizeTvRemoteEvent({ key: "", keyCode: 10182 })).toBeNull();
   });
 
-  it("normalizes webOS and browser keyboard names", () => {
+  it("normalizes webOS remote and browser keyboard input", () => {
     expect(normalizeTvRemoteEvent({ key: "ArrowLeft", keyCode: 0 })).toBe("LEFT");
     expect(normalizeTvRemoteEvent({ key: "Enter", keyCode: 0 })).toBe("SELECT");
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 461 })).toBe("BACK");
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 415 })).toBe("PLAY");
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 19 })).toBe("PAUSE");
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 417 })).toBe("FAST_FORWARD");
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 412 })).toBe("REWIND");
+    expect(normalizeTvRemoteEvent({ key: "", keyCode: 413 })).toBeNull();
     expect(normalizeTvRemoteEvent({ key: "Unknown", keyCode: 0 })).toBeNull();
   });
 
@@ -37,6 +43,17 @@ describe("TV platform runtime", () => {
     } as unknown as Window;
 
     expect(detectTvWebPlatform(target)).toBe("tizen");
+  });
+
+  it("detects canonical hosted webOS when platform APIs are intentionally absent", () => {
+    const target = {
+      location: { href: "https://ayin.stream/?platform=webos&hosted=1" },
+      navigator: { userAgent: "Mozilla/5.0" },
+      tizen: undefined,
+      webOS: undefined,
+    } as unknown as Window;
+
+    expect(detectTvWebPlatform(target)).toBe("webos");
   });
 
   it("detects the canonical hosted Tizen query when platform APIs are intentionally absent", () => {

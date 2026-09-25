@@ -9,6 +9,12 @@ import {
   type NativeRemoteKey,
   type NativeShellPlatform,
 } from "./native-shell-bridge";
+import {
+  detectWebOsRuntime,
+  isSupportedLgWebOsRuntime,
+  parseLgWebOsChromiumMajor,
+  requestWebOsExit,
+} from "./webos-tv-bridge";
 
 type TizenInputDevice = {
   getSupportedKeys?: () => Array<{ name?: string | null }>;
@@ -25,7 +31,7 @@ type TizenApplication = {
 };
 
 export interface TvExitRequestDetail {
-  platform: "tizen";
+  platform: "tizen" | "webos";
 }
 
 declare global {
@@ -34,7 +40,6 @@ declare global {
       tvinputdevice?: TizenInputDevice;
       application?: TizenApplication;
     };
-    webOS?: unknown;
   }
 
   interface WindowEventMap {
@@ -101,7 +106,7 @@ export function detectTvWebPlatform(target: Window = window): NativeShellPlatfor
   ) {
     return "tizen";
   }
-  if (target.webOS) return "webos";
+  if (detectWebOsRuntime(target)) return "webos";
   return null;
 }
 
@@ -179,6 +184,14 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
       version === null ? "unknown" : String(version);
     target.document.documentElement.dataset.tizenMediaKeys = tizenMediaKeyRegistration;
   }
+  if (platform === "webos") {
+    const chromiumMajor = parseLgWebOsChromiumMajor(target.navigator.userAgent);
+    target.document.documentElement.dataset.webosChromium =
+      chromiumMajor === null ? "unknown" : String(chromiumMajor);
+    target.document.documentElement.dataset.webosSupported = String(
+      isSupportedLgWebOsRuntime(target.navigator.userAgent),
+    );
+  }
 
   const onKeyDown = (event: KeyboardEvent) => {
     const key = normalizeTvRemoteEvent(event);
@@ -197,7 +210,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   const onVisibility = () => {
     if (nativeShell) return;
     const hidden = target.document.hidden;
-    if (!hidden && platform === "tizen") {
+    if (!hidden && (platform === "tizen" || platform === "webos")) {
       target.dispatchEvent(
         new CustomEvent<NativeNetworkEventDetail>("ayin:native-network", {
           detail: { online: target.navigator.onLine, platform },
@@ -256,6 +269,20 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
         target.dispatchEvent(
           new CustomEvent<TvExitRequestDetail>("ayin:tv-exit-request", {
             detail: { platform: "tizen" },
+          }),
+        );
+      }
+      return;
+    }
+
+    if (event.detail.key === "BACK" && platform === "webos") {
+      event.preventDefault();
+      if (!isTvHomePathname(target.location.pathname)) {
+        target.history.back();
+      } else {
+        target.dispatchEvent(
+          new CustomEvent<TvExitRequestDetail>("ayin:tv-exit-request", {
+            detail: { platform: "webos" },
           }),
         );
       }
@@ -366,6 +393,8 @@ export function requestTvExit(target: Window = window): boolean {
       return false;
     }
   }
+
+  if (detectWebOsRuntime(target)) return requestWebOsExit(target);
 
   return false;
 }

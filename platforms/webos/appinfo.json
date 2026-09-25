@@ -5,6 +5,11 @@
   "type": "web",
   "main": "index.html",
   "title": "AYIN",
+  "appDescription": "Stream and create with AYIN",
   "icon": "icon.png",
-  "largeIcon": "largeIcon.png"
+  "largeIcon": "largeIcon.png",
+  "resolution": "1920x1080",
+  "iconColor": "#03030A",
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": false
 }
