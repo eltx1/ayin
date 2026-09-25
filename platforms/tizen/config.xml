@@ -5,23 +5,24 @@
   version="1.0.0"
   viewmodes="maximized">
   <name>AYIN</name>
-  <icon src="icon.png" />
   <content src="index.html" />
+  <icon src="icon.png" />
+  <feature name="http://tizen.org/feature/screen.size.normal.1080.1920" />
+  <feature name="http://tizen.org/feature/tv.inputdevice" />
 
   <access origin="https://ayin.stream" subdomains="true" />
-  <access origin="https://doubleclick.net" subdomains="true" />
   <access origin="https://googleapis.com" subdomains="true" />
-  <access origin="https://googletagservices.com" subdomains="true" />
+  <access origin="https://doubleclick.net" subdomains="true" />
   <access origin="https://googlesyndication.com" subdomains="true" />
-
-  <feature name="http://tizen.org/feature/screen.size.normal.1080.1920" />
+  <access origin="https://googletagservices.com" subdomains="true" />
 
   <tizen:application id="AYINtv2026.AYIN" package="AYINtv2026" required_version="9.0" />
   <tizen:profile name="tv-samsung" />
-  <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="9.0" />
-
   <tizen:privilege name="http://tizen.org/privilege/internet" />
-
+  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice" />
+  <tizen:metadata key="http://samsung.com/tv/metadata/devel.api.version" value="9.0" />
+  <tizen:metadata key="http://samsung.com/tv/metadata/use.network" value="true" />
+  <tizen:metadata key="http://samsung.com/tv/metadata/prelaunch.support" value="false" />
   <tizen:setting
     screen-orientation="landscape"
     context-menu="disable"

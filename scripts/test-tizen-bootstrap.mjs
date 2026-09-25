@@ -3,78 +3,143 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
 const source = await readFile("platforms/tizen/bootstrap.js", "utf8");
-const target = "https://ayin.stream/?platform=tizen&ayin_tizen_hosted=1";
+const target = "https://ayin.stream/?platform=tizen&hosted=1";
 
-function runBootstrap({ userAgent, online }) {
+function runBootstrap({ navigationType = "navigate", withTizenApi = true, online = true } = {}) {
+  const assigned = [];
+  const registered = [];
+  let exitCount = 0;
   const listeners = new Map();
-  const redirects = [];
-  const status = { textContent: "" };
+  const status = { textContent: "Opening AYIN…" };
 
   const window = {
-    location: {
-      replace(value) {
-        redirects.push(value);
-      },
-    },
     addEventListener(type, listener) {
       listeners.set(type, listener);
     },
-  };
-
-  const context = vm.createContext({
-    Number,
-    document: {
-      getElementById(id) {
-        return id === "status" ? status : null;
+    performance: {
+      getEntriesByType(type) {
+        return type === "navigation" ? [{ type: navigationType }] : [];
       },
     },
-    navigator: { userAgent, onLine: online },
-    window,
-  });
+    location: {
+      assign(value) {
+        assigned.push(value);
+      },
+    },
+    navigator: { onLine: online },
+    setTimeout(callback) {
+      listeners.set("timeout", callback);
+      return 1;
+    },
+    clearTimeout() {
+      listeners.delete("timeout");
+    },
+    ...(withTizenApi
+      ? {
+          tizen: {
+            tvinputdevice: {
+              getSupportedKeys() {
+                return [{ name: "MediaPlayPause" }, { name: "MediaPlay" }, { name: "ColorF0Red" }];
+              },
+              registerKeyBatch(keys, success) {
+                registered.push(...keys);
+                success?.();
+              },
+            },
+            application: {
+              getCurrentApplication() {
+                return {
+                  exit() {
+                    exitCount += 1;
+                  },
+                };
+              },
+            },
+          },
+        }
+      : { tizen: undefined }),
+  };
 
-  vm.runInContext(source, context, { filename: "platforms/tizen/bootstrap.js" });
+  const document = {
+    readyState: "complete",
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
+    getElementById(id) {
+      return id === "status" ? status : null;
+    },
+  };
 
+  vm.runInNewContext(source, { document, window }, { filename: "platforms/tizen/bootstrap.js" });
   return {
-    redirects,
-    status,
-    goOnline() {
-      context.navigator.onLine = true;
-      listeners.get("online")?.();
+    assigned,
+    registered,
+    get exitCount() {
+      return exitCount;
+    },
+    get statusText() {
+      return status.textContent;
+    },
+    setOnline(value) {
+      window.navigator.onLine = value;
+    },
+    dispatch(type, event) {
+      listeners.get(type)?.(event);
     },
   };
 }
 
 {
-  const result = runBootstrap({ userAgent: "SMART-TV; LINUX; Tizen 10.0", online: true });
-  assert.deepEqual(result.redirects, [target]);
+  const result = runBootstrap();
+  assert.deepEqual(result.assigned, [target]);
+  assert.deepEqual(result.registered, ["MediaPlayPause", "MediaPlay"]);
+  assert.equal(result.exitCount, 0);
 }
 
 {
-  const result = runBootstrap({ userAgent: "SMART-TV; LINUX; Tizen 9.0", online: true });
-  assert.deepEqual(result.redirects, [target]);
+  const result = runBootstrap({ navigationType: "back_forward" });
+  assert.deepEqual(result.assigned, []);
+  assert.equal(result.exitCount, 1);
 }
 
 {
-  const result = runBootstrap({ userAgent: "SMART-TV; LINUX; Tizen 8.0", online: true });
-  assert.deepEqual(result.redirects, []);
-  assert.match(result.status.textContent, /not in the AYIN supported baseline/i);
+  const result = runBootstrap({ withTizenApi: false });
+  assert.deepEqual(result.assigned, [target]);
+  assert.deepEqual(result.registered, []);
 }
 
 {
-  const result = runBootstrap({ userAgent: "Mozilla/5.0 Chrome/130", online: true });
-  assert.deepEqual(result.redirects, []);
-  assert.match(result.status.textContent, /could not identify/i);
+  const result = runBootstrap({ online: false });
+  assert.deepEqual(result.assigned, [], "Offline cold launch must stay on the packaged bootstrap");
+  assert.equal(result.statusText, "Network connection lost. Reconnect to continue.");
+  result.setOnline(true);
+  result.dispatch("online");
+  assert.deepEqual(
+    result.assigned,
+    [target],
+    "Hosted navigation must resume when connectivity returns",
+  );
+  assert.equal(result.statusText, "Opening AYIN…");
 }
 
 {
-  const result = runBootstrap({ userAgent: "SMART-TV; LINUX; Tizen 10.0", online: false });
-  assert.deepEqual(result.redirects, []);
-  assert.match(result.status.textContent, /Waiting for a network connection/i);
-  result.goOnline();
-  assert.deepEqual(result.redirects, [target]);
+  const result = runBootstrap();
+  assert.equal(result.exitCount, 0);
+  result.dispatch("pageshow", { persisted: true });
+  assert.equal(result.exitCount, 1, "BFCache restore must terminate the packaged Tizen shell");
+  assert.deepEqual(result.assigned, [target]);
 }
 
-assert.equal(/\btizen\s*\./i.test(source), false, "Hosted bootstrap must not call Tizen APIs");
-assert.equal(source.includes("http://"), false, "Hosted bootstrap must remain HTTPS-only");
+{
+  const result = runBootstrap({ withTizenApi: false });
+  result.dispatch("pageshow", { persisted: true });
+  assert.deepEqual(
+    result.assigned,
+    [target, target],
+    "Non-Tizen BFCache restoration must fail open to the canonical hosted app",
+  );
+}
 
-console.log("Tizen hosted bootstrap tests passed.");
+assert.equal(source.includes("pageshow"), true, "Tizen bootstrap must handle BFCache restoration");
+assert.equal(source.includes("http://"), false, "Tizen bootstrap must remain HTTPS-only");
+console.log("Task 78 packaged Tizen bootstrap tests passed.");

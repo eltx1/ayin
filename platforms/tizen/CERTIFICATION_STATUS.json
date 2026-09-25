@@ -4,9 +4,13 @@
   "declaredMinimumTizen": "9.0",
   "currentSamsungTvRangeReviewed": ["9.0", "10.0"],
   "hostedContentManagerApprovalRequired": true,
+  "packagedBootstrapUsesTizenApis": true,
+  "packagedBootstrapTizenApiPatternSamsungApproved": false,
   "tizenApisAvailableInHostedContent": false,
   "standardRemoteKeysExpected": ["UP", "DOWN", "LEFT", "RIGHT", "SELECT", "BACK"],
-  "registeredMediaKeysAvailable": false,
+  "packagedBootstrapMediaKeyRegistration": true,
+  "mediaKeyRegistrationDeviceVerified": false,
+  "externalOriginPolicyContentManagerVerified": false,
   "verification": {
     "repositoryValidation": true,
     "simulatorVerified": false,
@@ -16,25 +20,31 @@
     "storeApproved": false
   },
   "blockingReleaseChecks": [
-    "Obtain Samsung Content Manager approval for the hosted/cloud application architecture before Seller Office submission",
-    "Resolve Samsung hosted-application CSP requirements with the Content Manager; AYIN production CSP currently contains unsafe-inline for the shared Web product",
+    "Obtain Samsung Content Manager approval for the hosted/cloud application architecture and explicitly confirm whether the packaged pre-navigation Tizen API shim is permitted before Seller Office submission",
+    "Confirm the final hosted external-origin/WARP policy with Samsung Content Manager and current Tizen tooling; do not add undocumented config elements based only on FAQ wording",
+    "Confirm packaged-bootstrap media-key registration persists into hosted AYIN on Samsung TV Emulator and physical hardware",
+    "Resolve and validate Samsung screensaver suppression during hosted media playback; hosted AYIN cannot call Samsung AppCommon from the remote hosted page",
     "Validate the signed package on the Samsung TV Simulator/Emulator with a valid Samsung certificate profile",
-    "Resolve and physically verify Samsung hosted-app Back-from-home exit confirmation/termination behavior; hosted content cannot call tizen.application.exit",
+    "Validate Back-from-home exit confirmation and packaged-shell termination on emulator and physical hardware",
     "Validate representative physical Tizen 9.0 and Tizen 10.0 Samsung TVs",
-    "Confirm client-side IMA/GAM Samsung TV support with the Google account manager and validate it on physical hardware",
+    "Confirm client-side IMA/GAM Samsung Tizen support with the Google account manager and validate it on physical hardware",
     "Create and secure the final Samsung certificate profile and signed WGT",
+    "Verify login/session persistence and uninstall data-removal behavior on a real Samsung TV",
     "Prepare final Seller Office screenshots, icon artwork, localized metadata and release information"
   ],
   "developmentPackageId": "AYINtv2026",
   "developmentApplicationId": "AYINtv2026.AYIN",
   "sellerIdentityFinalized": false,
+  "repositoryValidationEvidenceHeadSha": "f953a5ee2892cfef5daa7d2e3d7b643adf5db731",
   "repositoryValidationEvidence": {
-    "tvPackageRun": 35953908905,
-    "qualityRun": 35953908950,
-    "browserAcceptanceRun": 35953908896,
-    "securityRun": 35953908900,
-    "sharedAndroidRegressionRun": 35953908951
+    "tvPackageRun": 36075012627,
+    "qualityRun": 36075012660,
+    "browserAcceptanceRun": 36075012669,
+    "securityRun": 36075012654,
+    "sharedAndroidRegressionRun": 36075012600
   },
   "previousTask38DevelopmentPackageId": "AYINtv",
-  "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve."
+  "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve.",
+  "hostedScreensaverApiAvailable": false,
+  "screensaverPlaybackControlDeviceVerified": false
 }
