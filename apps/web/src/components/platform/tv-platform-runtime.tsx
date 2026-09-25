@@ -10,7 +10,9 @@ import {
 } from "@/lib/tv-platform-runtime";
 
 export function TvPlatformRuntime() {
-  const [exitPlatform, setExitPlatform] = useState<TvExitRequestDetail["platform"] | null>(null);
+  const [exitPlatform, setExitPlatform] = useState<
+    TvExitRequestDetail["platform"] | null
+  >(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => installTvPlatformRuntime(), []);
@@ -73,8 +75,16 @@ export function TvPlatformRuntime() {
               }}
             >
               <h2 style={{ fontSize: 30, margin: "0 0 12px" }}>Exit AYIN?</h2>
-              <p style={{ fontSize: 20, lineHeight: 1.45, margin: "0 0 28px", opacity: 0.82 }}>
-                Do you want to close AYIN and return to {exitPlatform === "webos" ? "LG TV" : "Samsung TV"}?
+              <p
+                style={{
+                  fontSize: 20,
+                  lineHeight: 1.45,
+                  margin: "0 0 28px",
+                  opacity: 0.82,
+                }}
+              >
+                Do you want to close AYIN and return to{" "}
+                {exitPlatform === "webos" ? "LG TV" : "Samsung TV"}?
               </p>
               <div style={{ display: "flex", gap: 16, justifyContent: "flex-end" }}>
                 <button
