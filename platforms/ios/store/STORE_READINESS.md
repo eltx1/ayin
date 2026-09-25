@@ -5,6 +5,7 @@ Task 80 prepares a buildable unsigned iOS application and distribution strategy.
 ## Signing boundary
 
 Never commit:
+
 - Apple distribution certificates or .p12 files
 - provisioning profiles
 - App Store Connect API .p8 keys
