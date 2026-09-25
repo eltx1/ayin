@@ -19,6 +19,16 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertEqual(link, .video(slug: "kids-show", isKids: true))
     }
 
+    func testKidsShareURLPreservesKidsPolicyContext() throws {
+        let destination = PlayerDestination(kind: .video, slug: "kids-show", isKids: true)
+        let components = try XCTUnwrap(
+            URLComponents(url: destination.shareURL, resolvingAgainstBaseURL: false)
+        )
+        XCTAssertEqual(components.path, "/watch/kids-show")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "kids" })?.value, "1")
+        XCTAssertEqual(DeepLink.parse(destination.shareURL), .video(slug: "kids-show", isKids: true))
+    }
+
     func testCustomLiveLink() throws {
         let link = DeepLink.parse(try XCTUnwrap(URL(string: "ayin://live/main-stage")))
         XCTAssertEqual(link, .live(slug: "main-stage"))
