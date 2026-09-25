@@ -59,8 +59,7 @@ struct TVPlayerController: UIViewControllerRepresentable {
 
         let actions = model.captionTracks.map { track in
             UIAction(
-                title: track.label,
-                subtitle: track.language,
+                title: "\(track.label) · \(track.language)",
                 state: model.selectedCaptionId == track.id ? .on : .off
             ) { _ in
                 Task { @MainActor in await model.selectCaption(track.id) }
