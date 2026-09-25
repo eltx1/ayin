@@ -4,12 +4,19 @@ import XCTest
 final class DeepLinkTests: XCTestCase {
     func testUniversalVideoLink() throws {
         let link = DeepLink.parse(try XCTUnwrap(URL(string: "https://ayin.stream/watch/demo-video")))
-        XCTAssertEqual(link, .video(slug: "demo-video"))
+        XCTAssertEqual(link, .video(slug: "demo-video", isKids: false))
     }
 
     func testLocalizedUniversalVideoLink() throws {
         let link = DeepLink.parse(try XCTUnwrap(URL(string: "https://ayin.stream/ar/watch/demo-video")))
         XCTAssertEqual(link, .video(slug: "demo-video"))
+    }
+
+    func testKidsVideoLinkPreservesServerPolicyContext() throws {
+        let link = DeepLink.parse(
+            try XCTUnwrap(URL(string: "https://ayin.stream/watch/kids-show?kids=1"))
+        )
+        XCTAssertEqual(link, .video(slug: "kids-show", isKids: true))
     }
 
     func testCustomLiveLink() throws {
