@@ -11,7 +11,7 @@ configFiles:
   Release: Config/Release.xcconfig
 settings:
   base:
-    SWIFT_VERSION: "5.10"
+    SWIFT_VERSION: "5.0"
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     TARGETED_DEVICE_FAMILY: "1,2"
     SUPPORTS_MACCATALYST: NO
