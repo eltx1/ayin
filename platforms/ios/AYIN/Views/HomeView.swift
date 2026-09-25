@@ -12,11 +12,17 @@ struct HomeView: View {
                 if model.isLoading && model.rows.isEmpty {
                     ProgressView("Loading AYIN…")
                 } else if let error = model.errorMessage, model.rows.isEmpty {
-                    ContentUnavailableView(
-                        "AYIN is unavailable",
-                        systemImage: "wifi.exclamationmark",
-                        description: Text(error)
-                    )
+                    VStack(spacing: 16) {
+                        ContentUnavailableView(
+                            "AYIN is unavailable",
+                            systemImage: "wifi.exclamationmark",
+                            description: Text(error)
+                        )
+                        Button("Try again") {
+                            Task { await loadForCurrentSession() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 28) {
