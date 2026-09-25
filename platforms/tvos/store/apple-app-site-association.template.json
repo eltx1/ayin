@@ -1,0 +1,35 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appID": "<APPLE_TEAM_ID>.net.ayin.app.tvos",
+        "components": [
+          {
+            "/": "/watch/*",
+            "comment": "Native AYIN video details/playback"
+          },
+          {
+            "/": "/live/*",
+            "comment": "Native AYIN live playback"
+          },
+          {
+            "/": "/movies/*",
+            "comment": "Native AYIN movie details"
+          },
+          {
+            "/": "/series/*",
+            "comment": "Native AYIN series details"
+          },
+          {
+            "/": "/c/*/tv",
+            "comment": "Native AYIN Creator TV"
+          },
+          {
+            "/": "/c/*",
+            "comment": "Native AYIN channel details"
+          }
+        ]
+      }
+    ]
+  }
+}
