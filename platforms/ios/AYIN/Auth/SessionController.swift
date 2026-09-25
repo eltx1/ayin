@@ -3,11 +3,14 @@ import Foundation
 
 enum SessionControllerError: LocalizedError, Equatable {
     case restorationInProgress
+    case invalidMFAInput
 
     var errorDescription: String? {
         switch self {
         case .restorationInProgress:
             return "AYIN is still restoring your session. Try again in a moment."
+        case .invalidMFAInput:
+            return "Enter either an authenticator code or a recovery code."
         }
     }
 }
@@ -78,6 +81,7 @@ final class SessionController: ObservableObject {
             email: email.trimmingCharacters(in: .whitespacesAndNewlines),
             password: password
         )
+        try Task.checkCancellation()
         if result.mfaRequired == true {
             guard let challengeToken = result.challengeToken else {
                 throw APIClientError.invalidResponse
@@ -91,12 +95,26 @@ final class SessionController: ObservableObject {
         try accept(result)
     }
 
-    func completeMFA(code: String) async throws {
+    func completeMFA(code: String? = nil, recoveryCode: String? = nil) async throws {
         guard !isRestoring else { throw SessionControllerError.restorationInProgress }
         guard let challenge = mfaChallenge, !challenge.enrollmentRequired else {
             throw APIClientError.invalidResponse
         }
-        let result = try await auth.completeMFA(challengeToken: challenge.token, code: code)
+
+        let normalizedCode = code?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedRecoveryCode = recoveryCode?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasCode = !(normalizedCode?.isEmpty ?? true)
+        let hasRecoveryCode = !(normalizedRecoveryCode?.isEmpty ?? true)
+        guard hasCode != hasRecoveryCode else {
+            throw SessionControllerError.invalidMFAInput
+        }
+
+        let result = try await auth.completeMFA(
+            challengeToken: challenge.token,
+            code: hasCode ? normalizedCode : nil,
+            recoveryCode: hasRecoveryCode ? normalizedRecoveryCode : nil
+        )
+        try Task.checkCancellation()
         try accept(result)
         mfaChallenge = nil
     }
