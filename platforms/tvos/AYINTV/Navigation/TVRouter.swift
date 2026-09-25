@@ -17,9 +17,10 @@ final class TVRouter: ObservableObject {
     }
 
     func open(_ route: TVRoute) {
-        if let destination = TVRoute.playerDestination(for: route) {
-            player = destination
-        } else {
+        switch route {
+        case let .live(slug):
+            player = .live(slug: slug)
+        default:
             path.append(route)
         }
     }
