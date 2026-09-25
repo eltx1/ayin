@@ -63,6 +63,15 @@ jobs:
           set -euo pipefail
           xcodebuild             -project AYIN.xcodeproj             -scheme AYIN             -configuration Debug             -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator'             CODE_SIGNING_ALLOWED=NO             clean build
 
+      - name: Verify resolved production origins
+        run: |
+          set -euo pipefail
+          app_plist="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*Debug-iphonesimulator/AYIN.app/Info.plist' -print -quit)"
+          test -n "$app_plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINAPIBaseURL' "$app_plist")" = "https://api.ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINMediaBaseURL' "$app_plist")" = "https://media.ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINWebBaseURL' "$app_plist")" = "https://ayin.stream"
+
       - name: Select available iPhone Simulator
         id: simulator
         run: |
