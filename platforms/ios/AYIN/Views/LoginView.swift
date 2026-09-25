@@ -7,8 +7,11 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var code = ""
+    @State private var recoveryCode = ""
+    @State private var useRecoveryCode = false
     @State private var isSubmitting = false
     @State private var errorMessage: String?
+    @State private var submissionTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -22,14 +25,30 @@ struct LoginView: View {
                         }
                     } else {
                         Section("Two-factor authentication") {
-                            TextField("6-digit code", text: $code)
-                                .keyboardType(.numberPad)
-                                .textContentType(.oneTimeCode)
+                            if useRecoveryCode {
+                                TextField("Recovery code", text: $recoveryCode)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+
+                                Button("Use authenticator code") {
+                                    useRecoveryCode = false
+                                    errorMessage = nil
+                                }
+                            } else {
+                                TextField("6-digit code", text: $code)
+                                    .keyboardType(.numberPad)
+                                    .textContentType(.oneTimeCode)
+
+                                Button("Use recovery code") {
+                                    useRecoveryCode = true
+                                    errorMessage = nil
+                                }
+                            }
 
                             Button("Verify") {
-                                Task { await verifyMFA() }
+                                startMFASubmission()
                             }
-                            .disabled(code.count != 6 || isSubmitting)
+                            .disabled(!mfaInputValid || isSubmitting)
                         }
                     }
                 } else {
@@ -44,7 +63,7 @@ struct LoginView: View {
                             .textContentType(.password)
 
                         Button("Sign in") {
-                            Task { await signIn() }
+                            startSignIn()
                         }
                         .disabled(email.isEmpty || password.isEmpty || isSubmitting)
                     }
@@ -61,15 +80,45 @@ struct LoginView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
+                        cancelSubmission()
                         session.cancelMFA()
                         dismiss()
                     }
                 }
             }
             .onChange(of: session.isAuthenticated) { _, authenticated in
-                if authenticated { dismiss() }
+                if authenticated {
+                    submissionTask = nil
+                    dismiss()
+                }
+            }
+            .onDisappear {
+                cancelSubmission()
             }
         }
+    }
+
+    private var mfaInputValid: Bool {
+        if useRecoveryCode {
+            return recoveryCode.trimmingCharacters(in: .whitespacesAndNewlines).count >= 16
+        }
+        return code.count == 6
+    }
+
+    private func startSignIn() {
+        submissionTask?.cancel()
+        submissionTask = Task { await signIn() }
+    }
+
+    private func startMFASubmission() {
+        submissionTask?.cancel()
+        submissionTask = Task { await verifyMFA() }
+    }
+
+    private func cancelSubmission() {
+        submissionTask?.cancel()
+        submissionTask = nil
+        isSubmitting = false
     }
 
     private func signIn() async {
@@ -77,7 +126,10 @@ struct LoginView: View {
         defer { isSubmitting = false }
         do {
             try await session.login(email: email, password: password)
+            try Task.checkCancellation()
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -87,8 +139,15 @@ struct LoginView: View {
         isSubmitting = true
         defer { isSubmitting = false }
         do {
-            try await session.completeMFA(code: code)
+            if useRecoveryCode {
+                try await session.completeMFA(recoveryCode: recoveryCode)
+            } else {
+                try await session.completeMFA(code: code)
+            }
+            try Task.checkCancellation()
             errorMessage = nil
+        } catch is CancellationError {
+            return
         } catch {
             errorMessage = error.localizedDescription
         }
