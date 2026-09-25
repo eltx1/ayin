@@ -42,3 +42,36 @@ func testHTTPResponse(for request: URLRequest, statusCode: Int = 200) -> HTTPURL
         headerFields: ["Content-Type": "application/json"]
     )!
 }
+
+
+func requestBodyData(_ request: URLRequest) throws -> Data {
+    if let body = request.httpBody { return body }
+    guard let stream = request.httpBodyStream else {
+        throw XCTBodyError.missingBody
+    }
+
+    stream.open()
+    defer { stream.close() }
+
+    var data = Data()
+    let bufferSize = 4_096
+    let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+    defer { buffer.deallocate() }
+
+    while stream.hasBytesAvailable {
+        let count = stream.read(buffer, maxLength: bufferSize)
+        if count < 0 {
+            throw stream.streamError ?? XCTBodyError.readFailed
+        }
+        if count == 0 { break }
+        data.append(buffer, count: count)
+    }
+
+    guard !data.isEmpty else { throw XCTBodyError.missingBody }
+    return data
+}
+
+private enum XCTBodyError: Error {
+    case missingBody
+    case readFailed
+}
