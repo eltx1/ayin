@@ -114,19 +114,20 @@ final class PlayerViewModel: ObservableObject {
             return
         } catch {
             errorMessage = error.localizedDescription
-            let eventName = destination.kind == .live ? "LIVE_FATAL_ERROR" : "VIDEO_BUFFER"
-            Task { [analytics, profileId, destination] in
-                await analytics.emit(
-                    eventName,
-                    profileId: profileId,
+            let message = String(error.localizedDescription.prefix(200))
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.analytics.emit(
+                    self.destination.kind == .live ? "LIVE_FATAL_ERROR" : "VIDEO_BUFFER",
+                    profileId: self.profileId,
                     videoId: nil,
                     channelId: nil,
                     durationDeltaMs: nil,
                     positionMs: nil,
                     metadata: [
                         "stage": "load",
-                        "slug": destination.slug,
-                        "message": String(error.localizedDescription.prefix(200))
+                        "slug": self.destination.slug,
+                        "message": message
                     ]
                 )
             }
