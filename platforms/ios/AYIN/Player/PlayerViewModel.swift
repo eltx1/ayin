@@ -20,7 +20,9 @@ final class PlayerViewModel: ObservableObject {
     private var shouldResumeAfterInterruption = false
     private var periodicObserver: Any?
     private var notificationObservers: [NSObjectProtocol] = []
-    private var lastAnalyticsAt: Date?
+    private var checkpointTask: Task<Void, Never>?
+    private var startupAnalyticsTask: Task<Void, Never>?
+    private var lastAnalyticsPositionMs: Int?
     private var lastSavedPositionMs: Int?
     private var didComplete = false
 
@@ -47,6 +49,7 @@ final class PlayerViewModel: ObservableObject {
 
         do {
             let playback = try await service.load(destination)
+            try Task.checkCancellation()
             try configureAudioSession()
 
             let item = AVPlayerItem(url: playback.sourceURL)
@@ -73,48 +76,60 @@ final class PlayerViewModel: ObservableObject {
                 lastSavedPositionMs = progress.positionMs
             }
 
+            try Task.checkCancellation()
+            lastAnalyticsPositionMs = currentPositionMs()
             installPlaybackObservers(player: player, item: item)
-            lastAnalyticsAt = Date()
+
+            // Media startup must never wait on best-effort analytics I/O.
+            player.play()
 
             let startupMs = max(
                 0,
                 min(3_600_000, Int(Date().timeIntervalSince(loadStartedAt) * 1_000))
             )
-            if playback.isLive {
-                await emit("LIVE_PAGE_VIEW", playback: playback)
-                await emit("LIVE_PLAY_START", playback: playback)
-                await emit(
-                    "LIVE_STARTUP",
-                    playback: playback,
-                    durationDeltaMs: startupMs
-                )
-            } else {
-                await emit("VIDEO_START", playback: playback)
-                await emit(
-                    "VIDEO_STARTUP",
-                    playback: playback,
-                    durationDeltaMs: startupMs
-                )
+            startupAnalyticsTask?.cancel()
+            startupAnalyticsTask = Task { @MainActor [weak self] in
+                guard let self, !Task.isCancelled else { return }
+                if playback.isLive {
+                    await self.emit("LIVE_PAGE_VIEW", playback: playback)
+                    guard !Task.isCancelled else { return }
+                    await self.emit("LIVE_PLAY_START", playback: playback)
+                    guard !Task.isCancelled else { return }
+                    await self.emit(
+                        "LIVE_STARTUP",
+                        playback: playback,
+                        durationDeltaMs: startupMs
+                    )
+                } else {
+                    await self.emit("VIDEO_START", playback: playback)
+                    guard !Task.isCancelled else { return }
+                    await self.emit(
+                        "VIDEO_STARTUP",
+                        playback: playback,
+                        durationDeltaMs: startupMs
+                    )
+                }
             }
-
-            player.play()
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.localizedDescription
-            await analytics.emit(
-                destination.kind == .live ? "LIVE_FATAL_ERROR" : "VIDEO_BUFFER",
-                profileId: profileId,
-                videoId: nil,
-                channelId: nil,
-                durationDeltaMs: nil,
-                positionMs: nil,
-                metadata: [
-                    "stage": "load",
-                    "slug": destination.slug,
-                    "message": String(error.localizedDescription.prefix(200))
-                ]
-            )
+            let eventName = destination.kind == .live ? "LIVE_FATAL_ERROR" : "VIDEO_BUFFER"
+            Task { [analytics, profileId, destination] in
+                await analytics.emit(
+                    eventName,
+                    profileId: profileId,
+                    videoId: nil,
+                    channelId: nil,
+                    durationDeltaMs: nil,
+                    positionMs: nil,
+                    metadata: [
+                        "stage": "load",
+                        "slug": destination.slug,
+                        "message": String(error.localizedDescription.prefix(200))
+                    ]
+                )
+            }
         }
     }
 
@@ -142,17 +157,29 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func stop() async {
-        if let player {
-            await checkpoint(player.currentTime(), forceProgressSave: true)
-        }
-        removePlaybackObservers()
+        let finalTime = player?.currentTime()
         player?.pause()
+
+        // Stop new periodic work before appending the final checkpoint.
+        removePlaybackObservers()
+
+        if let finalTime, let finalCheckpoint = enqueueCheckpoint(
+            finalTime,
+            forceProgressSave: true
+        ) {
+            await finalCheckpoint.value
+        }
+
+        startupAnalyticsTask?.cancel()
+        startupAnalyticsTask = nil
+        checkpointTask = nil
+
         player?.replaceCurrentItem(with: nil)
         player = nil
         playback = nil
         sessionToken = nil
         profileId = nil
-        lastAnalyticsAt = nil
+        lastAnalyticsPositionMs = nil
         lastSavedPositionMs = nil
         didComplete = false
         shouldResumeAfterInterruption = false
@@ -167,7 +194,7 @@ final class PlayerViewModel: ObservableObject {
             queue: .main
         ) { [weak self] time in
             Task { @MainActor [weak self] in
-                await self?.checkpoint(time)
+                _ = self?.enqueueCheckpoint(time)
             }
         }
 
@@ -214,6 +241,20 @@ final class PlayerViewModel: ObservableObject {
 
         notificationObservers.append(
             center.addObserver(
+                forName: AVPlayerItem.timeJumpedNotification,
+                object: item,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    // A seek is not watched duration. Reset the accounting baseline.
+                    self.lastAnalyticsPositionMs = self.currentPositionMs()
+                }
+            }
+        )
+
+        notificationObservers.append(
+            center.addObserver(
                 forName: AVPlayerItem.didPlayToEndTimeNotification,
                 object: item,
                 queue: .main
@@ -221,8 +262,12 @@ final class PlayerViewModel: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self, !self.didComplete, let playback = self.playback else { return }
                     self.didComplete = true
-                    if let player = self.player {
-                        await self.checkpoint(player.currentTime(), forceProgressSave: true)
+                    if let player = self.player,
+                       let checkpoint = self.enqueueCheckpoint(
+                           player.currentTime(),
+                           forceProgressSave: true
+                       ) {
+                        await checkpoint.value
                     }
                     await self.emit(
                         playback.isLive ? "LIVE_PLAY_COMPLETE" : "VIDEO_COMPLETE",
@@ -245,27 +290,43 @@ final class PlayerViewModel: ObservableObject {
         notificationObservers.removeAll()
     }
 
-    private func checkpoint(_ time: CMTime, forceProgressSave: Bool = false) async {
-        guard let playback else { return }
-        let seconds = CMTimeGetSeconds(time)
-        guard seconds.isFinite, seconds >= 0 else { return }
-        let positionMs = max(0, Int(seconds * 1_000))
+    @discardableResult
+    private func enqueueCheckpoint(
+        _ time: CMTime,
+        forceProgressSave: Bool = false
+    ) -> Task<Void, Never>? {
+        guard let positionMs = positionMs(time) else { return nil }
 
-        let now = Date()
-        let deltaMs = max(
-            0,
-            min(
-                60_000,
-                lastAnalyticsAt.map { Int(now.timeIntervalSince($0) * 1_000) } ?? 0
+        let predecessor = checkpointTask
+        let next = Task { @MainActor [weak self] in
+            await predecessor?.value
+            guard let self, !Task.isCancelled else { return }
+            await self.performCheckpoint(
+                positionMs: positionMs,
+                forceProgressSave: forceProgressSave
             )
-        )
-        lastAnalyticsAt = now
+        }
+        checkpointTask = next
+        return next
+    }
 
-        if deltaMs > 0 {
+    private func performCheckpoint(
+        positionMs: Int,
+        forceProgressSave: Bool
+    ) async {
+        guard let playback else { return }
+
+        let durationDeltaMs = PlaybackAccounting.watchedDeltaMs(
+            previousPositionMs: lastAnalyticsPositionMs,
+            currentPositionMs: positionMs
+        )
+        lastAnalyticsPositionMs = positionMs
+
+        if durationDeltaMs > 0 {
             await emit(
                 playback.isLive ? "LIVE_DURATION" : "VIDEO_PROGRESS",
                 playback: playback,
-                durationDeltaMs: deltaMs,
+                durationDeltaMs: durationDeltaMs,
                 positionMs: positionMs
             )
         }
@@ -321,9 +382,13 @@ final class PlayerViewModel: ObservableObject {
 
     private func currentPositionMs() -> Int? {
         guard let player else { return nil }
-        let seconds = CMTimeGetSeconds(player.currentTime())
+        return positionMs(player.currentTime())
+    }
+
+    private func positionMs(_ time: CMTime) -> Int? {
+        let seconds = CMTimeGetSeconds(time)
         guard seconds.isFinite, seconds >= 0 else { return nil }
-        return Int(seconds * 1_000)
+        return max(0, Int(seconds * 1_000))
     }
 
     private func resolvedDurationMs(_ playback: NativePlayback) -> Int? {
