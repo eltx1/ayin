@@ -2,7 +2,11 @@ import Foundation
 
 protocol AuthServicing {
     func login(email: String, password: String) async throws -> AuthResponse
-    func completeMFA(challengeToken: String, code: String) async throws -> AuthResponse
+    func completeMFA(
+        challengeToken: String,
+        code: String?,
+        recoveryCode: String?
+    ) async throws -> AuthResponse
     func identity(token: String) async throws -> AYINIdentity
     func logout(token: String) async
 }
@@ -23,11 +27,19 @@ struct AuthService: AuthServicing {
         )
     }
 
-    func completeMFA(challengeToken: String, code: String) async throws -> AuthResponse {
+    func completeMFA(
+        challengeToken: String,
+        code: String?,
+        recoveryCode: String?
+    ) async throws -> AuthResponse {
         try await client.request(
             "/auth/mfa/challenge",
             method: "POST",
-            body: MFARequest(challengeToken: challengeToken, code: code),
+            body: MFARequest(
+                challengeToken: challengeToken,
+                code: code,
+                recoveryCode: recoveryCode
+            ),
             headers: ["X-Ayin-Auth-Transport": "bearer"]
         )
     }
