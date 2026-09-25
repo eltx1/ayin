@@ -21,6 +21,7 @@ final class PlayerViewModel: ObservableObject {
     private var periodicObserver: Any?
     private var notificationObservers: [NSObjectProtocol] = []
     private var checkpointTask: Task<Void, Never>?
+    private var pendingCheckpoint: PlaybackCheckpoint?
     private var startupAnalyticsTask: Task<Void, Never>?
     private var lastAnalyticsPositionMs: Int?
     private var lastSavedPositionMs: Int?
@@ -174,6 +175,7 @@ final class PlayerViewModel: ObservableObject {
         startupAnalyticsTask?.cancel()
         startupAnalyticsTask = nil
         checkpointTask = nil
+        pendingCheckpoint = nil
 
         player?.replaceCurrentItem(with: nil)
         player = nil
@@ -226,16 +228,7 @@ final class PlayerViewModel: ObservableObject {
                 Task { @MainActor [weak self] in
                     guard let self, let playback = self.playback else { return }
                     let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
-                    await self.emit(
-                        playback.isLive ? "LIVE_FATAL_ERROR" :
-                            (playback.protocolName == "HLS" ? "VIDEO_HLS_FATAL" : "VIDEO_BUFFER"),
-                        playback: playback,
-                        positionMs: self.currentPositionMs(),
-                        metadata: [
-                            "protocol": playback.protocolName,
-                            "message": String((error?.localizedDescription ?? "Playback failed").prefix(200))
-                        ]
-                    )
+                    self.handleAsynchronousPlaybackFailure(playback: playback, error: error)
                 }
             }
         )
@@ -298,17 +291,30 @@ final class PlayerViewModel: ObservableObject {
     ) -> Task<Void, Never>? {
         guard let positionMs = positionMs(time) else { return nil }
 
-        let predecessor = checkpointTask
-        let next = Task { @MainActor [weak self] in
-            await predecessor?.value
-            guard let self, !Task.isCancelled else { return }
-            await self.performCheckpoint(
-                positionMs: positionMs,
-                forceProgressSave: forceProgressSave
-            )
+        pendingCheckpoint = PlaybackAccounting.coalescedCheckpoint(
+            existing: pendingCheckpoint,
+            positionMs: positionMs,
+            forceProgressSave: forceProgressSave
+        )
+
+        if let checkpointTask {
+            return checkpointTask
         }
-        checkpointTask = next
-        return next
+
+        let worker = Task { @MainActor [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                guard let checkpoint = self.pendingCheckpoint else { break }
+                self.pendingCheckpoint = nil
+                await self.performCheckpoint(
+                    positionMs: checkpoint.positionMs,
+                    forceProgressSave: checkpoint.forceProgressSave
+                )
+            }
+            self.checkpointTask = nil
+        }
+        checkpointTask = worker
+        return worker
     }
 
     private func performCheckpoint(
@@ -324,12 +330,15 @@ final class PlayerViewModel: ObservableObject {
         lastAnalyticsPositionMs = positionMs
 
         if durationDeltaMs > 0 {
-            await emit(
-                playback.isLive ? "LIVE_DURATION" : "VIDEO_PROGRESS",
-                playback: playback,
-                durationDeltaMs: durationDeltaMs,
-                positionMs: positionMs
-            )
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.emit(
+                    playback.isLive ? "LIVE_DURATION" : "VIDEO_PROGRESS",
+                    playback: playback,
+                    durationDeltaMs: durationDeltaMs,
+                    positionMs: positionMs
+                )
+            }
         }
 
         guard
@@ -406,6 +415,44 @@ final class PlayerViewModel: ObservableObject {
             player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                 continuation.resume()
             }
+        }
+    }
+
+    func retry(token: String?, profileId: String?) async {
+        await stop()
+        errorMessage = nil
+        await load(token: token, profileId: profileId)
+    }
+
+    private func handleAsynchronousPlaybackFailure(
+        playback: NativePlayback,
+        error: Error?
+    ) {
+        let failurePosition = player?.currentTime()
+        let position = currentPositionMs()
+        let message = error?.localizedDescription ?? "Playback failed."
+
+        player?.pause()
+        removePlaybackObservers()
+        if let failurePosition {
+            _ = enqueueCheckpoint(failurePosition, forceProgressSave: true)
+        }
+        player?.replaceCurrentItem(with: nil)
+        player = nil
+        errorMessage = message
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.emit(
+                playback.isLive ? "LIVE_FATAL_ERROR" :
+                    (playback.protocolName == "HLS" ? "VIDEO_HLS_FATAL" : "VIDEO_BUFFER"),
+                playback: playback,
+                positionMs: position,
+                metadata: [
+                    "protocol": playback.protocolName,
+                    "message": String(message.prefix(200))
+                ]
+            )
         }
     }
 
