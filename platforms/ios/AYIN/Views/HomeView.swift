@@ -42,7 +42,6 @@ struct HomeView: View {
                                 Task {
                                     model.prepareForSession(scope: "guest")
                                     await session.logout()
-                                    _ = await model.load(token: nil)
                                 }
                             }
                         } label: {
@@ -94,7 +93,6 @@ struct HomeView: View {
         if result == .authenticationRejected {
             session.invalidateLocalSession()
             model.prepareForSession(scope: "guest")
-            _ = await model.load(token: nil)
         }
     }
 
