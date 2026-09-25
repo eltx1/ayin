@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var session: SessionController
     @StateObject private var model: PlayerViewModel
 
     init(destination: PlayerDestination) {
@@ -54,8 +55,15 @@ struct PlayerScreen: View {
             }
             .padding()
         }
-        .task { await model.load() }
-        .onDisappear { model.stop() }
+        .task {
+            await model.load(
+                token: session.isAuthenticated ? session.token : nil,
+                profileId: session.isAuthenticated ? session.identity?.profile.id : nil
+            )
+        }
+        .onDisappear {
+            Task { await model.stop() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) {
             model.handleAudioInterruption($0)
         }
