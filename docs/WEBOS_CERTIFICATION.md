@@ -117,6 +117,7 @@ The local hosted bootstrap does not navigate away while `navigator.onLine === fa
 Inside the hosted product, AYIN already uses the shared browser `online`/`offline` path and the live player reconnect state machine. Task 79 does not add a permanent Luna Connection Manager dependency because standard Web connectivity events are enough for this product path. Device verification remains required because network transition behavior is hardware/runtime dependent.
 
 LG also exposes Connection Manager for explicit native connection status when a future requirement needs it:
+
 - https://webostv.developer.lge.com/develop/references/connection-manager
 
 ## Ads / IMA / GAM
