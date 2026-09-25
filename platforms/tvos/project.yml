@@ -59,3 +59,5 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: net.ayin.app.tvos.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AYIN.app/AYIN"
+        BUNDLE_LOADER: "$(TEST_HOST)"
