@@ -71,6 +71,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :AYINAPIBaseURL' "$app_plist")" = "https://api.ayin.stream"
           test "$(/usr/libexec/PlistBuddy -c 'Print :AYINMediaBaseURL' "$app_plist")" = "https://media.ayin.stream"
           test "$(/usr/libexec/PlistBuddy -c 'Print :AYINWebBaseURL' "$app_plist")" = "https://ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_plist")" = "AYIN"
 
       - name: Select available iPhone Simulator
         id: simulator
