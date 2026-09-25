@@ -138,15 +138,7 @@ for (const stage of [
   }
 }
 
-for (const key of [
-  "id",
-  "title",
-  "type",
-  "main",
-  "version",
-  "icon",
-  "largeIcon",
-]) {
+for (const key of ["id", "title", "type", "main", "version", "icon", "largeIcon"]) {
   if (!webos[key]) throw new Error(`webOS appinfo missing ${key}`);
 }
 if (!/^[a-z0-9][a-z0-9.-]+$/.test(webos.id)) {
@@ -172,14 +164,9 @@ if (typeof webos.requiredMemory !== "undefined") {
   );
 }
 if (webos.icon !== "icon.png" || webos.largeIcon !== "largeIcon.png") {
-  throw new Error(
-    "webOS appinfo must reference the certified package icon filenames",
-  );
+  throw new Error("webOS appinfo must reference the certified package icon filenames");
 }
-if (
-  typeof webos.appDescription === "string" &&
-  webos.appDescription.length > 60
-) {
+if (typeof webos.appDescription === "string" && webos.appDescription.length > 60) {
   throw new Error("webOS appDescription exceeds LG's 60-character limit");
 }
 
@@ -221,10 +208,7 @@ if (webosCertification.declaredMinimumWebOsTv !== "25") {
 if (webosCertification.minimumChromiumMajor !== 120) {
   throw new Error("webOS certification Chromium baseline must remain 120");
 }
-if (
-  webosCertification.hostedUrl !==
-  "https://ayin.stream/?platform=webos&hosted=1"
-) {
+if (webosCertification.hostedUrl !== "https://ayin.stream/?platform=webos&hosted=1") {
   throw new Error("webOS certification hosted URL does not match bootstrap.js");
 }
 for (const stage of [
@@ -334,8 +318,6 @@ async function assertPngDimensions(path, expectedWidth, expectedHeight) {
   const width = data.readUInt32BE(16);
   const height = data.readUInt32BE(20);
   if (width !== expectedWidth || height !== expectedHeight) {
-    throw new Error(
-      `${path} must be ${expectedWidth}x${expectedHeight}; found ${width}x${height}`,
-    );
+    throw new Error(`${path} must be ${expectedWidth}x${expectedHeight}; found ${width}x${height}`);
   }
 }
