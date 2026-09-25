@@ -1,6 +1,10 @@
 import Foundation
 
-struct PlaybackService {
+protocol PlaybackServicing {
+    func load(_ destination: PlayerDestination) async throws -> NativePlayback
+}
+
+struct PlaybackService: PlaybackServicing {
     private let client: APIClient
 
     init(client: APIClient = APIClient(baseURL: AppEnvironment.apiBaseURL)) {
@@ -10,18 +14,25 @@ struct PlaybackService {
     func load(_ destination: PlayerDestination) async throws -> NativePlayback {
         switch destination.kind {
         case .video:
+            let kidsQuery = destination.isKids ? "?kids=1" : ""
             let response: VideoPlaybackResponse = try await client.request(
-                "/public/videos/\(destination.slug)/playback"
+                "/public/videos/\(destination.slug)/playback\(kidsQuery)"
             )
-            let objectKey = response.video.adaptiveSource?.objectKey ?? response.video.source.objectKey
-            guard let mediaURL = MediaURLBuilder.url(objectKey: objectKey) else {
+            let adaptive = response.video.adaptiveSource
+            let source = adaptive ?? response.video.source
+            guard let mediaURL = MediaURLBuilder.url(objectKey: source.objectKey) else {
                 throw PlaybackError.invalidMediaURL
             }
             return NativePlayback(
                 title: response.video.title,
                 sourceURL: mediaURL,
                 shareURL: destination.shareURL,
-                isLive: false
+                isLive: false,
+                isKids: destination.isKids,
+                videoId: response.video.id,
+                channelId: response.video.channel.id,
+                durationMs: response.video.durationMs,
+                protocolName: adaptive == nil ? "MP4" : "HLS"
             )
 
         case .live:
@@ -40,7 +51,12 @@ struct PlaybackService {
                 title: response.title,
                 sourceURL: mediaURL,
                 shareURL: destination.shareURL,
-                isLive: true
+                isLive: true,
+                isKids: false,
+                videoId: nil,
+                channelId: response.channel.id,
+                durationMs: nil,
+                protocolName: "HLS"
             )
         }
     }
