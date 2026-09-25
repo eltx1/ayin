@@ -103,7 +103,7 @@ afterEach(() => {
 });
 
 describe("AYIN adaptive playback abstraction", () => {
-  it("releases HTML media decoder resources in Samsung-recommended teardown order", () => {
+  it("releases HTML media decoder resources in TV-safe teardown order", () => {
     const calls: string[] = [];
     releaseHtmlMediaElement({
       pause: () => calls.push("pause"),
