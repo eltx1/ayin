@@ -1,6 +1,13 @@
 import Foundation
 
-struct AuthService {
+protocol AuthServicing {
+    func login(email: String, password: String) async throws -> AuthResponse
+    func completeMFA(challengeToken: String, code: String) async throws -> AuthResponse
+    func identity(token: String) async throws -> AYINIdentity
+    func logout(token: String) async
+}
+
+struct AuthService: AuthServicing {
     private let client: APIClient
 
     init(client: APIClient = APIClient(baseURL: AppEnvironment.apiBaseURL)) {
