@@ -38,6 +38,7 @@ struct LivePlaybackResponse: Decodable {
 struct NativePlayback: Equatable {
     let title: String
     let sourceURL: URL
+    let fallbackSourceURL: URL?
     let shareURL: URL
     let isLive: Bool
     let isKids: Bool
@@ -45,6 +46,22 @@ struct NativePlayback: Equatable {
     let channelId: String?
     let durationMs: Int?
     let protocolName: String
+
+    func usingMP4Fallback() -> NativePlayback? {
+        guard !isLive, protocolName == "HLS", let fallbackSourceURL else { return nil }
+        return NativePlayback(
+            title: title,
+            sourceURL: fallbackSourceURL,
+            fallbackSourceURL: nil,
+            shareURL: shareURL,
+            isLive: false,
+            isKids: isKids,
+            videoId: videoId,
+            channelId: channelId,
+            durationMs: durationMs,
+            protocolName: "MP4"
+        )
+    }
 }
 
 enum PlaybackError: LocalizedError {
