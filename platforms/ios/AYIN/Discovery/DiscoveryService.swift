@@ -1,6 +1,10 @@
 import Foundation
 
-struct DiscoveryService {
+protocol DiscoveryServicing {
+    func home(token: String?) async throws -> DiscoveryHomeResponse
+}
+
+struct DiscoveryService: DiscoveryServicing {
     private let client: APIClient
 
     init(client: APIClient = APIClient(baseURL: AppEnvironment.apiBaseURL)) {
@@ -9,11 +13,7 @@ struct DiscoveryService {
 
     func home(token: String?) async throws -> DiscoveryHomeResponse {
         if let token {
-            do {
-                return try await client.request("/discovery/home", token: token)
-            } catch let APIClientError.server(status, _) where status == 401 {
-                return try await client.request("/public/discovery/home")
-            }
+            return try await client.request("/discovery/home", token: token)
         }
         return try await client.request("/public/discovery/home")
     }
