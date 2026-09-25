@@ -1,0 +1,4 @@
+// Copy to Local.xcconfig for local-only overrides. Never commit signing credentials or secrets.
+AYIN_API_BASE_URL = https://api.ayin.stream
+AYIN_MEDIA_BASE_URL = https://media.ayin.stream
+AYIN_WEB_BASE_URL = https://ayin.stream
