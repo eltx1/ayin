@@ -10,6 +10,11 @@ struct PlayerScreen: View {
         _model = StateObject(wrappedValue: PlayerViewModel(destination: destination))
     }
 
+    private var playerSessionIdentity: String {
+        if session.isRestoring { return "restoring" }
+        return session.identity?.account.id ?? "guest"
+    }
+
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -66,7 +71,8 @@ struct PlayerScreen: View {
             }
             .padding()
         }
-        .task {
+        .task(id: playerSessionIdentity) {
+            guard !session.isRestoring else { return }
             await model.load(
                 token: session.isAuthenticated ? session.token : nil,
                 profileId: session.isAuthenticated ? session.identity?.profile.id : nil
