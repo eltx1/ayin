@@ -224,7 +224,9 @@ final class TVPlayerViewModel: ObservableObject {
         subtitleObserver = nil
         timeControlObservation?.invalidate()
         timeControlObservation = nil
-        notificationObservers.forEach(NotificationCenter.default.removeObserver)
+        for observer in notificationObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
         notificationObservers.removeAll()
     }
 
