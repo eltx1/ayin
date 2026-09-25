@@ -51,7 +51,7 @@ jobs:
           xcodegen generate
           plutil -lint AYIN/Info.plist
           plutil -lint AYIN/AYIN.entitlements
-          plutil -lint store/apple-app-site-association.template.json
+          python3 -m json.tool store/apple-app-site-association.template.json >/dev/null
           if /usr/libexec/PlistBuddy -c 'Print :NSAppTransportSecurity:NSAllowsArbitraryLoads' AYIN/Info.plist >/dev/null 2>&1; then
             echo "ATS arbitrary loads must remain disabled."
             exit 1
