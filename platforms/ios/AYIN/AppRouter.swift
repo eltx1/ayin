@@ -13,8 +13,8 @@ final class AppRouter: ObservableObject {
 
     func open(_ link: DeepLink) {
         switch link {
-        case let .video(slug):
-            player = PlayerDestination(kind: .video, slug: slug)
+        case let .video(slug, isKids):
+            player = PlayerDestination(kind: .video, slug: slug, isKids: isKids)
         case let .live(slug):
             player = PlayerDestination(kind: .live, slug: slug)
         case let .web(url):
