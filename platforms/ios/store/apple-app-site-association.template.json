@@ -1,0 +1,17 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appID": "<APPLE_TEAM_ID>.net.ayin.app.ios",
+        "components": [
+          { "/": "/watch/*", "comment": "Native AYIN video playback" },
+          { "/": "/en/watch/*", "comment": "Localized native AYIN video playback" },
+          { "/": "/ar/watch/*", "comment": "Localized native AYIN video playback" },
+          { "/": "/live/*", "comment": "Native AYIN live playback" },
+          { "/": "/en/live/*", "comment": "Localized native AYIN live playback" },
+          { "/": "/ar/live/*", "comment": "Localized native AYIN live playback" }
+        ]
+      }
+    ]
+  }
+}

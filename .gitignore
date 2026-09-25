@@ -34,3 +34,13 @@ pnpm-debug.log*
 .eslintcache
 .turbo/
 .vitest/
+
+# iOS local/generated build state
+platforms/ios/AYIN.xcodeproj/
+platforms/ios/Config/Local.xcconfig
+platforms/ios/DerivedData/
+*.xcresult
+*.mobileprovision
+*.p12
+*.p8
+*.cer

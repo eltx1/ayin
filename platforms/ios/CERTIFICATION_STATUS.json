@@ -1,0 +1,43 @@
+{
+  "task": 80,
+  "approach": "native-swiftui-avkit",
+  "bundleId": "net.ayin.app.ios",
+  "minimumIOS": "17.0",
+  "coreProductUsesWKWebView": false,
+  "pwaRemainsSupported": true,
+  "companyOwnedLoginOnly": true,
+  "signInWithAppleRequiredNow": false,
+  "bearerSessionTransportReused": true,
+  "sessionStorage": "Keychain",
+  "universalLinksEntitlementConfigured": true,
+  "aasaProductionConfigured": false,
+  "backgroundAudioConfigured": true,
+  "pictureInPictureConfigured": true,
+  "nativeHlsPlayback": true,
+  "imaSdkIntegrated": false,
+  "storeKitIntegrated": false,
+  "verification": {
+    "repositoryValidation": true,
+    "simulatorBuildVerified": true,
+    "simulatorUnitTestsVerified": true,
+    "physicalDeviceVerified": false,
+    "signedArchiveVerified": false,
+    "testFlightUploaded": false,
+    "appStoreSubmitted": false,
+    "appStoreApproved": false
+  },
+  "blockingDistributionChecks": [
+    "Register the final App ID and Apple Developer Team without committing signing certificates, private keys or provisioning profiles",
+    "Replace <APPLE_TEAM_ID> in the AASA template and deploy it at https://ayin.stream/.well-known/apple-app-site-association before claiming universal-link verification",
+    "Validate HLS, MP4 fallback, background audio, AirPlay, Picture in Picture and interruptions on physical iPhone and iPad hardware",
+    "Complete App Privacy details and verify the in-app privacy-policy surface before App Store submission",
+    "Add native Google IMA iOS integration only when production ad configuration and consent requirements are ready, then validate on device",
+    "If AYIN introduces paid digital subscriptions or feature unlocks in iOS, implement StoreKit/In-App Purchase or an explicitly permitted regional entitlement path before sale",
+    "If AYIN adds Google, Facebook or another third-party primary login, add an Apple-compliant equivalent login option and backend token verification"
+  ],
+  "repositoryValidationEvidenceHeadSha": "f3afd7e23accd7b115f45128892aaaab38d6d2ea",
+  "repositoryValidationEvidence": {
+    "iosValidationRun": 36197977505,
+    "qualityRun": 36197977487
+  }
+}

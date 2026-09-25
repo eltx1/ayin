@@ -1,0 +1,109 @@
+name: iOS app validation
+
+on:
+  pull_request:
+    paths:
+      - "platforms/ios/**"
+      - "docs/IOS_DISTRIBUTION.md"
+      - ".github/workflows/ios-app.yml"
+  push:
+    branches: [main]
+    paths:
+      - "platforms/ios/**"
+      - "docs/IOS_DISTRIBUTION.md"
+      - ".github/workflows/ios-app.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Show Apple toolchain
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Reject committed Apple signing secrets
+        run: |
+          set -euo pipefail
+          if find platforms/ios -type f \( -name '*.p8' -o -name '*.p12' -o -name '*.mobileprovision' -o -name '*.cer' \) -print -quit | grep -q .; then
+            echo "Apple signing material must not be committed."
+            exit 1
+          fi
+          if grep -R -E 'DEVELOPMENT_TEAM[[:space:]]*=[[:space:]]*[A-Z0-9]{10}' platforms/ios --exclude-dir=.git; then
+            echo "A concrete Apple Team ID must not be committed by Task 80."
+            exit 1
+          fi
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project and validate property lists
+        working-directory: platforms/ios
+        run: |
+          set -euo pipefail
+          xcodegen generate
+          plutil -lint AYIN/Info.plist
+          plutil -lint AYIN/AYIN.entitlements
+          python3 -m json.tool store/apple-app-site-association.template.json >/dev/null
+          if /usr/libexec/PlistBuddy -c 'Print :NSAppTransportSecurity:NSAllowsArbitraryLoads' AYIN/Info.plist >/dev/null 2>&1; then
+            echo "ATS arbitrary loads must remain disabled."
+            exit 1
+          fi
+
+      - name: Build unsigned simulator application
+        working-directory: platforms/ios
+        run: |
+          set -euo pipefail
+          xcodebuild             -project AYIN.xcodeproj             -scheme AYIN             -configuration Debug             -sdk iphonesimulator             -destination 'generic/platform=iOS Simulator'             CODE_SIGNING_ALLOWED=NO             clean build
+
+      - name: Verify resolved production origins
+        run: |
+          set -euo pipefail
+          app_plist="$(find "$HOME/Library/Developer/Xcode/DerivedData" -path '*Debug-iphonesimulator/AYIN.app/Info.plist' -print -quit)"
+          test -n "$app_plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINAPIBaseURL' "$app_plist")" = "https://api.ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINMediaBaseURL' "$app_plist")" = "https://media.ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :AYINWebBaseURL' "$app_plist")" = "https://ayin.stream"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_plist")" = "AYIN"
+
+      - name: Select available iPhone Simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          udid="$(python3 - <<'PY'
+          import json, subprocess
+          payload = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          for _, devices in reversed(list(payload["devices"].items())):
+              for device in devices:
+                  if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      print(device["udid"])
+                      raise SystemExit(0)
+          raise SystemExit("No available iPhone Simulator found")
+          PY
+          )"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $udid"
+
+      - name: Run iOS unit tests
+        working-directory: platforms/ios
+        run: |
+          set -euo pipefail
+          xcrun simctl boot "${{ steps.simulator.outputs.udid }}" || true
+          xcrun simctl bootstatus "${{ steps.simulator.outputs.udid }}" -b
+          xcodebuild             -project AYIN.xcodeproj             -scheme AYIN             -configuration Debug             -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}"             CODE_SIGNING_ALLOWED=NO             -resultBundlePath "$RUNNER_TEMP/AYINTests.xcresult"             test
+
+      - name: Upload iOS test result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-ios-xcresult
+          path: ${{ runner.temp }}/AYINTests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7
