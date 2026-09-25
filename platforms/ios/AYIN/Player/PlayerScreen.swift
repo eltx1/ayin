@@ -21,11 +21,22 @@ struct PlayerScreen: View {
                 ProgressView()
                     .tint(.white)
             } else {
-                ContentUnavailableView(
-                    "Playback unavailable",
-                    systemImage: "play.slash",
-                    description: Text(model.errorMessage ?? "AYIN could not start this video.")
-                )
+                VStack(spacing: 16) {
+                    ContentUnavailableView(
+                        "Playback unavailable",
+                        systemImage: "play.slash",
+                        description: Text(model.errorMessage ?? "AYIN could not start this video.")
+                    )
+                    Button("Try again") {
+                        Task {
+                            await model.retry(
+                                token: session.isAuthenticated ? session.token : nil,
+                                profileId: session.isAuthenticated ? session.identity?.profile.id : nil
+                            )
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
                 .foregroundStyle(.white)
             }
         }
