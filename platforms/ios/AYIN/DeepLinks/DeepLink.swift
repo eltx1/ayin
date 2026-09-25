@@ -63,7 +63,11 @@ struct PlayerDestination: Identifiable, Equatable {
     var shareURL: URL {
         switch kind {
         case .video:
-            return AppEnvironment.webBaseURL.appending(path: "watch").appending(path: slug)
+            let url = AppEnvironment.webBaseURL.appending(path: "watch").appending(path: slug)
+            guard isKids else { return url }
+            var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            components?.queryItems = [URLQueryItem(name: "kids", value: "1")]
+            return components?.url ?? url
         case .live:
             return AppEnvironment.webBaseURL.appending(path: "live").appending(path: slug)
         }
