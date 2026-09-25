@@ -29,7 +29,7 @@ struct HomeView: View {
                         .padding(.vertical)
                     }
                     .refreshable {
-                        await model.load(token: session.token)
+                        await loadForCurrentSession()
                     }
                 }
             }
@@ -40,8 +40,9 @@ struct HomeView: View {
                         Menu {
                             Button("Sign out", role: .destructive) {
                                 Task {
+                                    model.prepareForSession(scope: "guest")
                                     await session.logout()
-                                    await model.load(token: nil)
+                                    _ = await model.load(token: nil)
                                 }
                             }
                         } label: {
@@ -49,8 +50,20 @@ struct HomeView: View {
                                 .labelStyle(.iconOnly)
                         }
                         .accessibilityLabel(identity.account.displayName)
+                    } else if session.isRestoring {
+                        ProgressView()
+                            .accessibilityLabel("Restoring session")
                     } else {
-                        Button("Sign in") { showingLogin = true }
+                        Menu {
+                            Button("Sign in") { showingLogin = true }
+                            if session.restoreErrorMessage != nil, session.token != nil {
+                                Button("Retry saved session") {
+                                    Task { await session.retryRestore() }
+                                }
+                            }
+                        } label: {
+                            Text("Sign in")
+                        }
                     }
                 }
             }
@@ -58,9 +71,30 @@ struct HomeView: View {
                 LoginView()
                     .environmentObject(session)
             }
-            .task(id: session.identity?.account.id ?? "guest") {
-                await model.load(token: session.token)
+            .task(id: sessionTaskIdentity) {
+                guard !session.isRestoring else {
+                    model.prepareForSession(scope: "restoring")
+                    return
+                }
+                await loadForCurrentSession()
             }
+        }
+    }
+
+    private var sessionTaskIdentity: String {
+        if session.isRestoring { return "restoring" }
+        return session.identity?.account.id ?? "guest"
+    }
+
+    private func loadForCurrentSession() async {
+        let scope = session.identity?.account.id ?? "guest"
+        model.prepareForSession(scope: scope)
+        let token = session.isAuthenticated ? session.token : nil
+        let result = await model.load(token: token)
+        if result == .authenticationRejected {
+            session.invalidateLocalSession()
+            model.prepareForSession(scope: "guest")
+            _ = await model.load(token: nil)
         }
     }
 
