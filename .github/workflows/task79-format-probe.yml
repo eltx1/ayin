@@ -1,0 +1,35 @@
+name: Task 79 format probe
+
+on:
+  push:
+    branches: [task-79-webos-certification]
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+      - name: Emit exact Prettier output
+        run: |
+          set -euo pipefail
+          files=(
+            "apps/web/src/components/platform/tv-platform-runtime.tsx"
+            "docs/WEBOS_CERTIFICATION.md"
+            "scripts/validate-tv-packages.mjs"
+          )
+          corepack pnpm exec prettier --write "${files[@]}"
+          for file in "${files[@]}"; do
+            echo "FORMAT_FILE:$file"
+            base64 -w0 "$file"
+            echo
+          done
