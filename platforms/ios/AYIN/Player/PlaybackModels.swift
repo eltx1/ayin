@@ -7,9 +7,15 @@ struct VideoPlaybackResponse: Decodable {
             let mimeType: String
         }
 
+        struct Channel: Decodable {
+            let id: String
+        }
+
         let id: String
         let slug: String
         let title: String
+        let durationMs: Int?
+        let channel: Channel
         let source: Source
         let adaptiveSource: Source?
     }
@@ -18,10 +24,15 @@ struct VideoPlaybackResponse: Decodable {
 }
 
 struct LivePlaybackResponse: Decodable {
+    struct Channel: Decodable {
+        let id: String
+    }
+
     let slug: String
     let title: String
     let status: String
     let playbackUrl: String?
+    let channel: Channel
 }
 
 struct NativePlayback: Equatable {
@@ -29,6 +40,11 @@ struct NativePlayback: Equatable {
     let sourceURL: URL
     let shareURL: URL
     let isLive: Bool
+    let isKids: Bool
+    let videoId: String?
+    let channelId: String?
+    let durationMs: Int?
+    let protocolName: String
 }
 
 enum PlaybackError: LocalizedError {
