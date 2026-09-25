@@ -43,3 +43,4 @@ platforms/ios/DerivedData/
 *.mobileprovision
 *.p12
 *.p8
+*.cer
