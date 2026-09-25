@@ -10,9 +10,7 @@ import {
 } from "@/lib/tv-platform-runtime";
 
 export function TvPlatformRuntime() {
-  const [exitPlatform, setExitPlatform] = useState<
-    TvExitRequestDetail["platform"] | null
-  >(null);
+  const [exitPlatform, setExitPlatform] = useState<TvExitRequestDetail["platform"] | null>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => installTvPlatformRuntime(), []);
