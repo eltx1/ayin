@@ -94,6 +94,7 @@ struct LoginView: View {
             }
             .onDisappear {
                 cancelSubmission()
+                session.cancelMFA()
             }
         }
     }
