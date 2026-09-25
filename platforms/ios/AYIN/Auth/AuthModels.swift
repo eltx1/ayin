@@ -38,7 +38,8 @@ struct LoginRequest: Encodable {
 
 struct MFARequest: Encodable {
     let challengeToken: String
-    let code: String
+    let code: String?
+    let recoveryCode: String?
 }
 
 struct AuthResponse: Decodable {
