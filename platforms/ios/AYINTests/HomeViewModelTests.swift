@@ -31,11 +31,13 @@ final class HomeViewModelTests: XCTestCase {
         let model = HomeViewModel(discovery: service)
 
         model.prepareForSession(scope: "guest")
-        XCTAssertEqual(await model.load(token: nil), .failed)
+        let failedLoad = await model.load(token: nil)
+        XCTAssertEqual(failedLoad, .failed)
         XCTAssertTrue(model.rows.isEmpty)
         XCTAssertNotNil(model.errorMessage)
 
-        XCTAssertEqual(await model.load(token: nil), .loaded)
+        let recoveredLoad = await model.load(token: nil)
+        XCTAssertEqual(recoveredLoad, .loaded)
         XCTAssertEqual(model.rows.first?.title, "Recovered")
         XCTAssertNil(model.errorMessage)
     }
