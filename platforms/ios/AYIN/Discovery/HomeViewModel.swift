@@ -1,27 +1,67 @@
 import Combine
 import Foundation
 
+enum HomeLoadResult: Equatable {
+    case loaded
+    case authenticationRejected
+    case failed
+    case superseded
+}
+
 @MainActor
 final class HomeViewModel: ObservableObject {
     @Published private(set) var rows: [DiscoveryRow] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
-    private let discovery: DiscoveryService
+    private let discovery: any DiscoveryServicing
+    private var sessionScope: String?
+    private var generation = 0
 
-    init(discovery: DiscoveryService = DiscoveryService()) {
+    init(discovery: any DiscoveryServicing = DiscoveryService()) {
         self.discovery = discovery
     }
 
-    func load(token: String?) async {
-        guard !isLoading else { return }
+    func prepareForSession(scope: String) {
+        guard scope != sessionScope else { return }
+        sessionScope = scope
+        generation += 1
+        rows = []
+        errorMessage = nil
+        isLoading = false
+    }
+
+    @discardableResult
+    func load(token: String?) async -> HomeLoadResult {
+        let requestGeneration = generation
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if requestGeneration == generation {
+                isLoading = false
+            }
+        }
+
         do {
-            rows = try await discovery.home(token: token).rows
+            let response = try await discovery.home(token: token)
+            guard requestGeneration == generation, !Task.isCancelled else {
+                return .superseded
+            }
+            rows = response.rows
             errorMessage = nil
+            return .loaded
+        } catch let error as APIClientError where error.statusCode == 401 {
+            guard requestGeneration == generation, !Task.isCancelled else {
+                return .superseded
+            }
+            rows = []
+            errorMessage = nil
+            return .authenticationRejected
         } catch {
+            guard requestGeneration == generation, !Task.isCancelled else {
+                return .superseded
+            }
             errorMessage = error.localizedDescription
+            return .failed
         }
     }
 }
