@@ -35,9 +35,9 @@
     "If AYIN introduces paid digital subscriptions or feature unlocks in iOS, implement StoreKit/In-App Purchase or an explicitly permitted regional entitlement path before sale",
     "If AYIN adds Google, Facebook or another third-party primary login, add an Apple-compliant equivalent login option and backend token verification"
   ],
-  "repositoryValidationEvidenceHeadSha": "0a1ef3329852c615e060119e804690043fe3c96d",
+  "repositoryValidationEvidenceHeadSha": "f3afd7e23accd7b115f45128892aaaab38d6d2ea",
   "repositoryValidationEvidence": {
-    "iosValidationRun": 36196468080,
-    "qualityRun": 36196468074
+    "iosValidationRun": 36197977505,
+    "qualityRun": 36197977487
   }
 }
