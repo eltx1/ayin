@@ -1,0 +1,5 @@
+AYIN_TV_BUNDLE_ID = net.ayin.app.tvos
+AYIN_API_BASE_URL = https:/$()/api.ayin.stream
+AYIN_MEDIA_BASE_URL = https:/$()/media.ayin.stream
+AYIN_WEB_BASE_URL = https:/$()/ayin.stream
+#include? "Local.xcconfig"
