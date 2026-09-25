@@ -52,8 +52,10 @@ final class NativeServicesTests: XCTestCase {
 
     func testNativeAnalyticsUsesMobileSourceAndExistingEventsEndpoint() async throws {
         var captured: URLRequest?
+        var capturedBody: Data?
         TestURLProtocol.handler = { request in
             captured = request
+            capturedBody = try requestBodyData(request)
             return (
                 testHTTPResponse(for: request),
                 Data(#"{"accepted":1,"duplicateOrInvalid":0}"#.utf8)
@@ -73,7 +75,7 @@ final class NativeServicesTests: XCTestCase {
 
         let request = try XCTUnwrap(captured)
         XCTAssertEqual(request.url?.path, "/analytics/events")
-        let body = try XCTUnwrap(request.httpBody)
+        let body = try XCTUnwrap(capturedBody)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         let events = try XCTUnwrap(json["events"] as? [[String: Any]])
         let event = try XCTUnwrap(events.first)
@@ -85,6 +87,7 @@ final class NativeServicesTests: XCTestCase {
 
     func testWatchProgressReadsAndWritesExistingAPIWithBearerSession() async throws {
         var requests: [URLRequest] = []
+        var saveBody: Data?
         TestURLProtocol.handler = { request in
             requests.append(request)
             if request.httpMethod == "GET" {
@@ -93,6 +96,7 @@ final class NativeServicesTests: XCTestCase {
                     Data(#"{"positionMs":42000,"completedAt":null}"#.utf8)
                 )
             }
+            saveBody = try requestBodyData(request)
             return (
                 testHTTPResponse(for: request),
                 Data(#"{"positionMs":45000}"#.utf8)
@@ -123,8 +127,8 @@ final class NativeServicesTests: XCTestCase {
         XCTAssertEqual(requests[1].httpMethod, "PUT")
         XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Authorization"), "Bearer session-token")
 
-        let saveBody = try XCTUnwrap(requests[1].httpBody)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: saveBody) as? [String: Any])
+        let body = try XCTUnwrap(saveBody)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(json["positionMs"] as? Int, 45000)
         XCTAssertEqual(json["durationMs"] as? Int, 60000)
         XCTAssertEqual(json["profileId"] as? String, profileId)
