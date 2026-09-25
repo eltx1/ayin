@@ -8,15 +8,14 @@ AYIN declares **webOS TV 25 and webOS TV 26** as its current zero-configuration 
 
 LG currently documents these Web engines:
 
-| webOS TV | Release year | Chromium |
-| --- | ---: | ---: |
-| 26 | 2026 | 132 |
-| 25 | 2025 | 120 |
-| 24 | 2024 | 108 |
+- webOS TV 26 (2026): Chromium 132
+- webOS TV 25 (2025): Chromium 120
+- webOS TV 24 (2024): Chromium 108
 
 AYIN currently uses Next.js 16, whose documented zero-configuration browser baseline is Chrome 111+. For that reason Task 79 does **not** claim webOS TV 24 or older without a future explicit compatibility/polyfill program.
 
 Sources:
+
 - https://webostv.developer.lge.com/develop/specifications/web-api-and-web-engine
 - https://nextjs.org/docs/app/guides/upgrading/version-16
 
@@ -33,6 +32,7 @@ This follows LG's hosted-app architecture rather than introducing a webOS-specif
 `requiredMemory` is intentionally not set. LG defines that field as a **minimum memory requirement**, not a memory budget or cap; inventing a value would not prove memory fitness.
 
 Sources:
+
 - https://webostv.developer.lge.com/develop/getting-started/web-app-types
 - https://webostv.developer.lge.com/develop/references/appinfo-json
 - https://webostv.developer.lge.com/develop/getting-started/app-resources
@@ -54,6 +54,7 @@ Media Stop (413) is intentionally not mapped to Pause.
 The runtime translates those events into AYIN's existing `ayin:native-remote` contract. Focus remains handled by the shared `TvFocusScope`; Task 79 adds no webOS-specific product focus implementation.
 
 Source:
+
 - https://webostv.developer.lge.com/develop/guides/magic-remote
 
 ## Back and exit behavior
@@ -68,6 +69,7 @@ Source:
 LG explicitly documents `window.close()` for apps that provide their own exit popup.
 
 Source:
+
 - https://webostv.developer.lge.com/develop/guides/back-button
 
 ## Lifecycle
@@ -75,6 +77,7 @@ Source:
 `handlesRelaunch` remains `false`, allowing the platform to foreground AYIN automatically. The shared TV bridge listens for `webOSLaunch`, `webOSRelaunch`, `visibilitychange` and `pagehide`, maps them onto AYIN's shared lifecycle contract, pauses active media while suspended and resumes media that was playing when foregrounded.
 
 Source:
+
 - https://webostv.developer.lge.com/develop/guides/app-lifecycle-management
 
 ## Media, HLS, captions, autoplay and fullscreen
@@ -92,6 +95,7 @@ LG documents HLS support on physical webOS TVs and MSE support on current webOS 
 LG documents WebVTT support on webOS TV 26 on device, Simulator and Emulator. HLS/DRM capabilities still require physical-device acceptance for the exact production encoding/DRM combination.
 
 Sources:
+
 - https://webostv.developer.lge.com/develop/specifications/streaming-protocol-drm
 - https://webostv.developer.lge.com/develop/specifications/video-audio-260
 
@@ -102,6 +106,7 @@ Task 79 does not invent a webOS memory quota. AYIN instead keeps bounded HLS buf
 Final memory acceptance must be measured on physical LG hardware with LG Resource Monitor or `ares-device --resource-monitor`.
 
 Sources:
+
 - https://webostv.developer.lge.com/develop/tools/resource-monitor-introduction
 - https://webostv.developer.lge.com/develop/tools/cli-dev-guide
 
@@ -121,6 +126,7 @@ Task 79 does not create a webOS-specific advertising fork. AYIN retains the shar
 Google's IMA HTML5 release notes include smart-TV/WebOS fixes, but Google's additional-platform guidance says LG TV support is model-dependent and directs developers to their Google account representative. Therefore Task 79 **does not claim IMA/GAM device certification** until it is validated on the target LG hardware and confirmed for the applicable Google account/integration.
 
 Sources:
+
 - https://developers.google.com/interactive-media-ads/docs/sdks/html5/client-side/release-notes
 - https://developers.google.com/interactive-media-ads/docs/sdks/other
 
@@ -132,22 +138,21 @@ Creator TV and live remain shared product features. Task 79 only feeds LG remote
 
 Repository checks and LG hardware/store certification are deliberately separate.
 
-| Target | Current reference | Task 79 status |
-| --- | --- | --- |
-| Repository manifest/bootstrap/unit validation | GitHub Actions | Required before merge; not hardware certification |
-| Official LG CLI IPK packaging | `@webos-tools/cli` / `ares-package` | Required before merge; not device certification |
-| webOS TV 25 Simulator | Simulator 1.4.4 | **NOT VERIFIED** |
-| webOS TV 26 Simulator | Simulator 1.5.0 | **NOT VERIFIED** |
-| Current-version Emulator | Not provided by LG from webOS TV 22 onward | **NOT AVAILABLE / NOT CLAIMED** |
-| Legacy Emulator ≤ webOS TV 6.0 | Deprecated | **NOT VERIFIED** and outside AYIN baseline |
-| Physical webOS TV 25 | Real TV | **NOT VERIFIED** |
-| Physical webOS TV 26 | Real TV | **NOT VERIFIED** |
-| LG Seller Lounge submitted | Store process | **NO** |
-| LG store approved | Store process | **NO** |
+- Repository manifest/bootstrap/unit validation — GitHub Actions — required before merge; not hardware certification.
+- Official LG CLI IPK packaging — `@webos-tools/cli` / `ares-package` — required before merge; not device certification.
+- webOS TV 25 Simulator — Simulator 1.4.4 — **NOT VERIFIED**.
+- webOS TV 26 Simulator — Simulator 1.5.0 — **NOT VERIFIED**.
+- Current-version Emulator — not provided by LG from webOS TV 22 onward — **NOT AVAILABLE / NOT CLAIMED**.
+- Legacy Emulator ≤ webOS TV 6.0 — deprecated — **NOT VERIFIED** and outside AYIN baseline.
+- Physical webOS TV 25 — real TV — **NOT VERIFIED**.
+- Physical webOS TV 26 — real TV — **NOT VERIFIED**.
+- LG Seller Lounge submitted — **NO**.
+- LG store approved — **NO**.
 
 LG's current Simulator downloads list 1.4.4 for TV 25 and 1.5.0 for TV 26. LG documents that Emulator is no longer provided from webOS TV 22 onward.
 
 Sources:
+
 - https://webostv.developer.lge.com/develop/tools/simulator-installation
 - https://webostv.developer.lge.com/develop/tools/emulator-dev-guide
 - https://webostv.developer.lge.com/develop/tools/cli-introduction
