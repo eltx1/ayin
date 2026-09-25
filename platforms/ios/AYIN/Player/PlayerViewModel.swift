@@ -165,11 +165,15 @@ final class PlayerViewModel: ObservableObject {
         // Stop new periodic work before appending the final checkpoint.
         removePlaybackObservers()
 
-        if let finalTime, let finalCheckpoint = enqueueCheckpoint(
-            finalTime,
-            forceProgressSave: true
-        ) {
-            await finalCheckpoint.value
+        var checkpointToAwait = checkpointTask
+        if let finalTime {
+            checkpointToAwait = enqueueCheckpoint(
+                finalTime,
+                forceProgressSave: true
+            ) ?? checkpointToAwait
+        }
+        if let checkpointToAwait {
+            await checkpointToAwait.value
         }
 
         startupAnalyticsTask?.cancel()
