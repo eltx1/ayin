@@ -17,9 +17,9 @@
   "imaSdkIntegrated": false,
   "storeKitIntegrated": false,
   "verification": {
-    "repositoryValidation": false,
-    "simulatorBuildVerified": false,
-    "simulatorUnitTestsVerified": false,
+    "repositoryValidation": true,
+    "simulatorBuildVerified": true,
+    "simulatorUnitTestsVerified": true,
     "physicalDeviceVerified": false,
     "signedArchiveVerified": false,
     "testFlightUploaded": false,
@@ -34,5 +34,10 @@
     "Add native Google IMA iOS integration only when production ad configuration and consent requirements are ready, then validate on device",
     "If AYIN introduces paid digital subscriptions or feature unlocks in iOS, implement StoreKit/In-App Purchase or an explicitly permitted regional entitlement path before sale",
     "If AYIN adds Google, Facebook or another third-party primary login, add an Apple-compliant equivalent login option and backend token verification"
-  ]
+  ],
+  "repositoryValidationEvidenceHeadSha": "9293f0977b2088c7db58d3bd1956887953f9ee52",
+  "repositoryValidationEvidence": {
+    "iosValidationRun": 36087075318,
+    "qualityRun": 36087075253
+  }
 }
