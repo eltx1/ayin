@@ -14,12 +14,19 @@ struct DiscoveryRow: Decodable, Identifiable {
 }
 
 struct DiscoveryItem: Decodable, Identifiable {
+    struct Progress: Decodable, Equatable {
+        let positionMs: Int
+        let completedAt: String?
+    }
+
     let id: String
     let type: String
     let title: String
     let href: String
     let kicker: String
     let meta: String?
+    let artworkObjectKey: String?
+    let progress: Progress?
 }
 
 struct EmptyResponse: Decodable {}
