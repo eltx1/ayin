@@ -46,6 +46,36 @@ final class SessionControllerTests: XCTestCase {
         XCTAssertNil(controller.restoreErrorMessage)
     }
 
+    func testRecoveryCodeCompletesMFAWithoutAuthenticatorCode() async throws {
+        let store = MockSessionTokenStore()
+        let auth = MockAuthService()
+        auth.loginResponse = AuthResponse(
+            sessionToken: nil,
+            user: nil,
+            mfaRequired: true,
+            enrollmentRequired: false,
+            challengeToken: "challenge-token"
+        )
+        auth.mfaResponse = AuthResponse(
+            sessionToken: "new-session",
+            user: sampleIdentity,
+            mfaRequired: nil,
+            enrollmentRequired: nil,
+            challengeToken: nil
+        )
+        let controller = SessionController(store: store, auth: auth)
+        await controller.restore()
+
+        try await controller.login(email: "viewer@example.com", password: "password")
+        try await controller.completeMFA(recoveryCode: "RECOVERY-CODE-1234")
+
+        XCTAssertEqual(auth.lastMFAChallengeToken, "challenge-token")
+        XCTAssertNil(auth.lastMFACode)
+        XCTAssertEqual(auth.lastMFARecoveryCode, "RECOVERY-CODE-1234")
+        XCTAssertEqual(store.token, "new-session")
+        XCTAssertTrue(controller.isAuthenticated)
+    }
+
     func testLocalInvalidationClearsIdentityAndTokenImmediately() async throws {
         let store = MockSessionTokenStore(token: "valid-token")
         let auth = MockAuthService()
@@ -84,14 +114,28 @@ private final class MockSessionTokenStore: SessionTokenStore {
 private final class MockAuthService: AuthServicing {
     var identityValue: AYINIdentity?
     var identityError: Error?
+    var loginResponse: AuthResponse?
+    var mfaResponse: AuthResponse?
     var loginCalls = 0
+    var lastMFAChallengeToken: String?
+    var lastMFACode: String?
+    var lastMFARecoveryCode: String?
 
     func login(email: String, password: String) async throws -> AuthResponse {
         loginCalls += 1
+        if let loginResponse { return loginResponse }
         throw APIClientError.invalidResponse
     }
 
-    func completeMFA(challengeToken: String, code: String) async throws -> AuthResponse {
+    func completeMFA(
+        challengeToken: String,
+        code: String?,
+        recoveryCode: String?
+    ) async throws -> AuthResponse {
+        lastMFAChallengeToken = challengeToken
+        lastMFACode = code
+        lastMFARecoveryCode = recoveryCode
+        if let mfaResponse { return mfaResponse }
         throw APIClientError.invalidResponse
     }
 
