@@ -18,21 +18,29 @@ struct PlaybackService: PlaybackServicing {
             let response: VideoPlaybackResponse = try await client.request(
                 "/public/videos/\(destination.slug)/playback\(kidsQuery)"
             )
-            let adaptive = response.video.adaptiveSource
-            let source = adaptive ?? response.video.source
-            guard let mediaURL = MediaURLBuilder.url(objectKey: source.objectKey) else {
+
+            guard let mp4URL = MediaURLBuilder.url(objectKey: response.video.source.objectKey) else {
                 throw PlaybackError.invalidMediaURL
             }
+
+            let adaptiveURL = response.video.adaptiveSource.flatMap {
+                MediaURLBuilder.url(objectKey: $0.objectKey)
+            }
+            if response.video.adaptiveSource != nil, adaptiveURL == nil {
+                throw PlaybackError.invalidMediaURL
+            }
+
             return NativePlayback(
                 title: response.video.title,
-                sourceURL: mediaURL,
+                sourceURL: adaptiveURL ?? mp4URL,
+                fallbackSourceURL: adaptiveURL == nil ? nil : mp4URL,
                 shareURL: destination.shareURL,
                 isLive: false,
                 isKids: destination.isKids,
                 videoId: response.video.id,
                 channelId: response.video.channel.id,
                 durationMs: response.video.durationMs,
-                protocolName: adaptive == nil ? "MP4" : "HLS"
+                protocolName: adaptiveURL == nil ? "MP4" : "HLS"
             )
 
         case .live:
@@ -50,6 +58,7 @@ struct PlaybackService: PlaybackServicing {
             return NativePlayback(
                 title: response.title,
                 sourceURL: mediaURL,
+                fallbackSourceURL: nil,
                 shareURL: destination.shareURL,
                 isLive: true,
                 isKids: false,
