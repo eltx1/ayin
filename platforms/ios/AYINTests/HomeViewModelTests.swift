@@ -11,13 +11,15 @@ final class HomeViewModelTests: XCTestCase {
         let model = HomeViewModel(discovery: service)
 
         model.prepareForSession(scope: "account-a")
-        XCTAssertEqual(await model.load(token: "account-token"), .loaded)
+        let accountLoad = await model.load(token: "account-token")
+        XCTAssertEqual(accountLoad, .loaded)
         XCTAssertEqual(model.rows.first?.title, "Continue watching")
 
         model.prepareForSession(scope: "guest")
         XCTAssertTrue(model.rows.isEmpty)
 
-        XCTAssertEqual(await model.load(token: nil), .failed)
+        let guestLoad = await model.load(token: nil)
+        XCTAssertEqual(guestLoad, .failed)
         XCTAssertTrue(model.rows.isEmpty)
     }
 
@@ -29,10 +31,12 @@ final class HomeViewModelTests: XCTestCase {
         let model = HomeViewModel(discovery: service)
 
         model.prepareForSession(scope: "account-a")
-        XCTAssertEqual(await model.load(token: "first-token"), .loaded)
+        let firstLoad = await model.load(token: "first-token")
+        XCTAssertEqual(firstLoad, .loaded)
         XCTAssertFalse(model.rows.isEmpty)
 
-        XCTAssertEqual(await model.load(token: "revoked-token"), .authenticationRejected)
+        let revokedLoad = await model.load(token: "revoked-token")
+        XCTAssertEqual(revokedLoad, .authenticationRejected)
         XCTAssertTrue(model.rows.isEmpty)
         XCTAssertNil(model.errorMessage)
     }
