@@ -2,12 +2,22 @@
   "task": 78,
   "packageMode": "hosted-redirect",
   "declaredMinimumTizen": "9.0",
-  "currentSamsungTvRangeReviewed": ["9.0", "10.0"],
+  "currentSamsungTvRangeReviewed": [
+    "9.0",
+    "10.0"
+  ],
   "hostedContentManagerApprovalRequired": true,
   "packagedBootstrapUsesTizenApis": true,
   "packagedBootstrapTizenApiPatternSamsungApproved": false,
   "tizenApisAvailableInHostedContent": false,
-  "standardRemoteKeysExpected": ["UP", "DOWN", "LEFT", "RIGHT", "SELECT", "BACK"],
+  "standardRemoteKeysExpected": [
+    "UP",
+    "DOWN",
+    "LEFT",
+    "RIGHT",
+    "SELECT",
+    "BACK"
+  ],
   "packagedBootstrapMediaKeyRegistration": true,
   "mediaKeyRegistrationDeviceVerified": false,
   "externalOriginPolicyContentManagerVerified": false,
@@ -35,13 +45,13 @@
   "developmentPackageId": "AYINtv2026",
   "developmentApplicationId": "AYINtv2026.AYIN",
   "sellerIdentityFinalized": false,
-  "repositoryValidationEvidenceHeadSha": "37e0bc2c11980a7cd80ec2f25bf4aec35b113158",
+  "repositoryValidationEvidenceHeadSha": "f953a5ee2892cfef5daa7d2e3d7b643adf5db731",
   "repositoryValidationEvidence": {
-    "tvPackageRun": 36053966555,
-    "qualityRun": 36053966534,
-    "browserAcceptanceRun": 36053966560,
-    "securityRun": 36053966563,
-    "sharedAndroidRegressionRun": 36053966588
+    "tvPackageRun": 36075012627,
+    "qualityRun": 36075012660,
+    "browserAcceptanceRun": 36075012669,
+    "securityRun": 36075012654,
+    "sharedAndroidRegressionRun": 36075012600
   },
   "previousTask38DevelopmentPackageId": "AYINtv",
   "packageIdentityMigrationReason": "Task 38 development package ID was not the 10-character Tizen package identifier required by the current Tizen Web application specification; no Seller Office submission or approval exists to preserve.",
