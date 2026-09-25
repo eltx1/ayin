@@ -9,7 +9,7 @@ final class DeepLinkTests: XCTestCase {
 
     func testLocalizedUniversalVideoLink() throws {
         let link = DeepLink.parse(try XCTUnwrap(URL(string: "https://ayin.stream/ar/watch/demo-video")))
-        XCTAssertEqual(link, .video(slug: "demo-video"))
+        XCTAssertEqual(link, .video(slug: "demo-video", isKids: false))
     }
 
     func testKidsVideoLinkPreservesServerPolicyContext() throws {
