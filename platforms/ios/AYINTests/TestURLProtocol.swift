@@ -1,4 +1,5 @@
 import Foundation
+@testable import AYIN
 
 final class TestURLProtocol: URLProtocol {
     static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
