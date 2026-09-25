@@ -5,6 +5,11 @@ enum APIClientError: LocalizedError {
     case server(status: Int, message: String)
     case invalidURL
 
+    var statusCode: Int? {
+        if case let .server(status, _) = self { return status }
+        return nil
+    }
+
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
