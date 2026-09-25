@@ -11,10 +11,18 @@ on:
       - "apps/web/src/lib/adaptive-playback.test.ts"
       - "apps/web/src/lib/tv-platform-runtime.ts"
       - "apps/web/src/lib/tv-platform-runtime.test.ts"
+      - "apps/web/src/lib/webos-tv-bridge.ts"
+      - "apps/web/src/lib/webos-tv-bridge.test.ts"
+      - "apps/web/src/lib/webos-tv-bridge.ts"
+      - "apps/web/src/lib/webos-tv-bridge.test.ts"
       - "apps/web/src/components/platform/tv-platform-runtime.tsx"
       - "scripts/test-tizen-bootstrap.mjs"
+      - "scripts/test-webos-bootstrap.mjs"
+      - "scripts/test-webos-bootstrap.mjs"
       - "scripts/validate-tv-packages.mjs"
       - "docs/TIZEN_CERTIFICATION.md"
+      - "docs/WEBOS_CERTIFICATION.md"
+      - "docs/WEBOS_CERTIFICATION.md"
       - "docs/TV_TIZEN_WEBOS.md"
       - ".github/workflows/tv-web-packages.yml"
   push:
@@ -59,6 +67,37 @@ jobs:
           set -euo pipefail
           node --check platforms/tizen/bootstrap.js
           node scripts/test-tizen-bootstrap.mjs
+
+      - name: Validate hosted webOS bootstrap
+        run: |
+          set -euo pipefail
+          node --check platforms/webos/bootstrap.js
+          node scripts/test-webos-bootstrap.mjs
+
+      - name: Install official LG webOS CLI
+        run: |
+          set -euo pipefail
+          npm install --global @webos-tools/cli@3.2.6
+          ares-config --profile tv
+          ares -V
+
+      - name: Build and inspect LG webOS IPK
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/webos-package"
+          mkdir -p "$out"
+          ares-package -o "$out" platforms/webos
+          ipk="$(find "$out" -maxdepth 1 -type f -name '*.ipk' -print -quit)"
+          test -n "$ipk"
+          ares-package -I "$ipk"
+          cp "$ipk" "$RUNNER_TEMP/ayin-webos.ipk"
+
+      - name: Upload LG webOS IPK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-webos-ipk
+          path: ${{ runner.temp }}/ayin-webos.ipk
+          retention-days: 7
 
       - name: Build unsigned Tizen payload archive
         run: |
