@@ -48,6 +48,12 @@ final class NativeServicesTests: XCTestCase {
         XCTAssertEqual(playback.channelId, "22222222-2222-4222-8222-222222222222")
         XCTAssertEqual(playback.protocolName, "HLS")
         XCTAssertTrue(playback.sourceURL.absoluteString.contains("master.m3u8"))
+        XCTAssertTrue(playback.fallbackSourceURL?.absoluteString.contains("fallback.mp4") == true)
+
+        let fallback = try XCTUnwrap(playback.usingMP4Fallback())
+        XCTAssertEqual(fallback.protocolName, "MP4")
+        XCTAssertNil(fallback.fallbackSourceURL)
+        XCTAssertTrue(fallback.sourceURL.absoluteString.contains("fallback.mp4"))
     }
 
     func testNativeAnalyticsUsesMobileSourceAndExistingEventsEndpoint() async throws {
