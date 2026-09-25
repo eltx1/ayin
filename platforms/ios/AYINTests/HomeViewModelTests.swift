@@ -23,6 +23,23 @@ final class HomeViewModelTests: XCTestCase {
         XCTAssertTrue(model.rows.isEmpty)
     }
 
+    func testFailedDiscoveryCanRetryWithoutAuthenticationTransition() async {
+        let service = SequenceDiscoveryService([
+            .failure(URLError(.notConnectedToInternet)),
+            .success(home(title: "Recovered"))
+        ])
+        let model = HomeViewModel(discovery: service)
+
+        model.prepareForSession(scope: "guest")
+        XCTAssertEqual(await model.load(token: nil), .failed)
+        XCTAssertTrue(model.rows.isEmpty)
+        XCTAssertNotNil(model.errorMessage)
+
+        XCTAssertEqual(await model.load(token: nil), .loaded)
+        XCTAssertEqual(model.rows.first?.title, "Recovered")
+        XCTAssertNil(model.errorMessage)
+    }
+
     func testUnauthorizedAuthenticatedDiscoveryClearsRowsAndSignalsSessionInvalidation() async {
         let service = SequenceDiscoveryService([
             .success(home(title: "Private history")),
