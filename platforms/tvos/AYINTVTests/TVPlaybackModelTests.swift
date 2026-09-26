@@ -25,6 +25,15 @@ final class TVPlaybackModelTests: XCTestCase {
         XCTAssertTrue(fallback.primaryURL.absoluteString.hasSuffix("fallback.mp4"))
     }
 
+    func testSceneResumeIntentSurvivesInactiveThenBackground() {
+        var state = TVSceneResumeState()
+
+        XCTAssertTrue(state.leaveActive(wasPlaying: true))
+        XCTAssertFalse(state.leaveActive(wasPlaying: false))
+        XCTAssertTrue(state.enterActive())
+        XCTAssertFalse(state.enterActive())
+    }
+
     func testLiveAssetNeverPretendsProgressiveFallback() throws {
         let asset = TVPlaybackAsset(
             title: "Live",
