@@ -215,6 +215,32 @@ final class TVPlayerViewModel: ObservableObject {
                 }
             }
         )
+
+        notificationObservers.append(
+            center.addObserver(
+                forName: AVPlayerItem.didPlayToEndTimeNotification,
+                object: item,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self, let playback = self.playback else { return }
+                    await self.handleSuccessfulCompletion(playback: playback)
+                }
+            }
+        )
+
+        notificationObservers.append(
+            center.addObserver(
+                forName: AVPlayerItem.timeJumpedNotification,
+                object: item,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.lastAnalyticsPositionMs = self.currentPositionMs()
+                }
+            }
+        )
     }
 
     private func removeObservers() {
@@ -361,6 +387,82 @@ final class TVPlayerViewModel: ObservableObject {
         }
     }
 
+    private func handleSuccessfulCompletion(playback finished: TVPlaybackAsset) async {
+        let position = currentPositionMs() ?? finished.durationMs ?? 0
+
+        switch TVPlaybackLifecycle.completionAction(for: destination) {
+        case .finalizeVOD:
+            if let player {
+                let finalCheckpoint = enqueueCheckpoint(
+                    player.currentTime(),
+                    forceProgressSave: true
+                )
+                await finalCheckpoint?.value
+            }
+            await emit(
+                "VIDEO_COMPLETE",
+                playback: finished,
+                positionMs: position
+            )
+
+        case .reloadCurrentDestination:
+            await emit(
+                "LIVE_PLAY_COMPLETE",
+                playback: finished,
+                positionMs: position
+            )
+            await reloadCurrentDestination()
+
+        case .endLive:
+            await emit(
+                "LIVE_PLAY_COMPLETE",
+                playback: finished,
+                positionMs: position
+            )
+            player?.pause()
+            removeObservers()
+            player?.replaceCurrentItem(with: nil)
+            player = nil
+            errorMessage = "This live stream has ended."
+        }
+    }
+
+    private func reloadCurrentDestination() async {
+        guard let player else { return }
+        do {
+            let refreshed = try await service.load(destination)
+            let item = AVPlayerItem(url: refreshed.primaryURL)
+
+            removeObservers()
+            player.replaceCurrentItem(with: item)
+            playback = refreshed
+            captionTracks = refreshed.captions
+            selectedCaptionId = nil
+            subtitleText = ""
+            cuesByTrack.removeAll()
+            lastAnalyticsPositionMs = refreshed.initialOffsetMs
+            lastSavedPositionMs = nil
+            progressBaselineResolved = true
+            playAttemptStartedAt = Date()
+            startupReported = false
+            installObservers(player: player, item: item)
+
+            if refreshed.initialOffsetMs > 0 {
+                await seek(player, toMilliseconds: refreshed.initialOffsetMs)
+                lastAnalyticsPositionMs = refreshed.initialOffsetMs
+            }
+
+            dispatchStartAnalytics(refreshed)
+            player.play()
+        } catch {
+            player.pause()
+            removeObservers()
+            player.replaceCurrentItem(with: nil)
+            self.player = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func handleFailure(playback failed: TVPlaybackAsset, error: Error?) async {
         if let fallback = failed.mp4Fallback(), let player {
             let position = currentPositionMs() ?? 0
@@ -445,5 +547,6 @@ final class TVPlayerViewModel: ObservableObject {
                 continuation.resume()
             }
         }
+        lastAnalyticsPositionMs = positionMs(target)
     }
 }
