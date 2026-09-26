@@ -23,6 +23,24 @@ struct TVCatalogService {
         return try await client.request("/discovery/my-ayin?profileId=\(encoded)", token: token)
     }
 
+    func myAyinSection(
+        token: String,
+        profileId: String,
+        section: String,
+        cursor: String,
+        limit: Int = 24
+    ) async throws -> TVDiscoveryPageResponse {
+        var components = URLComponents()
+        components.path = "/discovery/my-ayin/\(section)"
+        components.queryItems = [
+            URLQueryItem(name: "profileId", value: profileId),
+            URLQueryItem(name: "cursor", value: cursor),
+            URLQueryItem(name: "limit", value: String(limit))
+        ]
+        guard let path = components.string else { throw APIClientError.invalidURL }
+        return try await client.request(path, token: token)
+    }
+
     func channel(handle: String) async throws -> TVChannelResponse {
         try await client.request("/public/channels/\(handle)")
     }
