@@ -89,20 +89,26 @@ struct TVPlayerController: UIViewControllerRepresentable {
         func playerViewControllerWillStartPictureInPicture(
             _ playerViewController: AVPlayerViewController
         ) {
-            model?.setPictureInPictureActive(true)
+            Task { @MainActor [weak self] in
+                self?.model?.setPictureInPictureActive(true)
+            }
         }
 
         func playerViewControllerDidStopPictureInPicture(
             _ playerViewController: AVPlayerViewController
         ) {
-            model?.setPictureInPictureActive(false)
+            Task { @MainActor [weak self] in
+                self?.model?.setPictureInPictureActive(false)
+            }
         }
 
         func playerViewController(
             _ playerViewController: AVPlayerViewController,
             failedToStartPictureInPictureWithError error: Error
         ) {
-            model?.setPictureInPictureActive(false)
+            Task { @MainActor [weak self] in
+                self?.model?.setPictureInPictureActive(false)
+            }
         }
 
         func playerViewController(
@@ -110,7 +116,9 @@ struct TVPlayerController: UIViewControllerRepresentable {
             willResumePlaybackAfterUserNavigatedFrom oldTime: CMTime,
             to targetTime: CMTime
         ) {
-            model?.noteUserNavigation(to: targetTime)
+            Task { @MainActor [weak self] in
+                self?.model?.noteUserNavigation(to: targetTime)
+            }
         }
     }
 }
