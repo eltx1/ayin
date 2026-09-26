@@ -10,8 +10,12 @@ import {
 } from "./warehouse-export.adapter.js";
 import {
   WAREHOUSE_SCHEMA_VERSION,
+  adFactV1Schema,
+  analyticsFactV1Schema,
+  channelDimensionV1Schema,
+  contentDimensionV1Schema,
+  revenueFactV1Schema,
   warehouseDatasetNames,
-  warehouseSchemaFor,
   type AdFactV1,
   type AnalyticsFactV1,
   type ChannelDimensionV1,
@@ -374,22 +378,20 @@ export class WarehouseExportService {
     }
   }
 
-  private cursorWhere(field: "receivedAt" | "updatedAt" | "createdAt", checkpoint: Checkpoint) {
-    if (!checkpoint.cursorAt || !checkpoint.cursorId) return {};
-    return {
-      OR: [
-        { [field]: { gt: checkpoint.cursorAt } },
-        { [field]: checkpoint.cursorAt, id: { gt: checkpoint.cursorId } },
-      ],
-    };
-  }
-
   private async readAnalytics(
     checkpoint: Checkpoint,
     take: number,
   ): Promise<Array<ExportRecord<"analytics_facts">>> {
     const rows = (await this.database.client.analyticsEvent.findMany({
-      where: this.cursorWhere("receivedAt", checkpoint),
+      where:
+        checkpoint.cursorAt && checkpoint.cursorId
+          ? {
+              OR: [
+                { receivedAt: { gt: checkpoint.cursorAt } },
+                { receivedAt: checkpoint.cursorAt, id: { gt: checkpoint.cursorId } },
+              ],
+            }
+          : {},
       orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
       take,
       select: {
@@ -410,7 +412,7 @@ export class WarehouseExportService {
     })) as AnalyticsSourceRow[];
 
     return rows.map((row) => {
-      const record = warehouseSchemaFor("analytics_facts").parse(analyticsFactFromSource(row));
+      const record = analyticsFactV1Schema.parse(analyticsFactFromSource(row));
       return {
         cursorAt: row.receivedAt,
         cursorId: row.id,
@@ -425,7 +427,15 @@ export class WarehouseExportService {
     take: number,
   ): Promise<Array<ExportRecord<"content_dimensions">>> {
     const rows = (await this.database.client.video.findMany({
-      where: this.cursorWhere("updatedAt", checkpoint),
+      where:
+        checkpoint.cursorAt && checkpoint.cursorId
+          ? {
+              OR: [
+                { updatedAt: { gt: checkpoint.cursorAt } },
+                { updatedAt: checkpoint.cursorAt, id: { gt: checkpoint.cursorId } },
+              ],
+            }
+          : {},
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       take,
       select: {
@@ -448,7 +458,7 @@ export class WarehouseExportService {
       cursorAt: row.updatedAt,
       cursorId: row.id,
       partitionDate: utcPartitionDate(row.updatedAt),
-      record: warehouseSchemaFor("content_dimensions").parse(contentDimensionFromSource(row)),
+      record: contentDimensionV1Schema.parse(contentDimensionFromSource(row)),
     }));
   }
 
@@ -457,7 +467,15 @@ export class WarehouseExportService {
     take: number,
   ): Promise<Array<ExportRecord<"channel_dimensions">>> {
     const rows = (await this.database.client.channel.findMany({
-      where: this.cursorWhere("updatedAt", checkpoint),
+      where:
+        checkpoint.cursorAt && checkpoint.cursorId
+          ? {
+              OR: [
+                { updatedAt: { gt: checkpoint.cursorAt } },
+                { updatedAt: checkpoint.cursorAt, id: { gt: checkpoint.cursorId } },
+              ],
+            }
+          : {},
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       take,
       select: {
@@ -474,7 +492,7 @@ export class WarehouseExportService {
       cursorAt: row.updatedAt,
       cursorId: row.id,
       partitionDate: utcPartitionDate(row.updatedAt),
-      record: warehouseSchemaFor("channel_dimensions").parse(channelDimensionFromSource(row)),
+      record: channelDimensionV1Schema.parse(channelDimensionFromSource(row)),
     }));
   }
 
@@ -483,7 +501,15 @@ export class WarehouseExportService {
     take: number,
   ): Promise<Array<ExportRecord<"ad_facts">>> {
     const rows = (await this.database.client.adEvent.findMany({
-      where: this.cursorWhere("createdAt", checkpoint),
+      where:
+        checkpoint.cursorAt && checkpoint.cursorId
+          ? {
+              OR: [
+                { createdAt: { gt: checkpoint.cursorAt } },
+                { createdAt: checkpoint.cursorAt, id: { gt: checkpoint.cursorId } },
+              ],
+            }
+          : {},
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take,
       select: {
@@ -506,7 +532,7 @@ export class WarehouseExportService {
       cursorAt: row.createdAt,
       cursorId: row.id,
       partitionDate: utcPartitionDate(row.occurredAt),
-      record: warehouseSchemaFor("ad_facts").parse(adFactFromSource(row)),
+      record: adFactV1Schema.parse(adFactFromSource(row)),
     }));
   }
 
@@ -515,7 +541,15 @@ export class WarehouseExportService {
     take: number,
   ): Promise<Array<ExportRecord<"revenue_facts">>> {
     const rows = (await this.database.client.earningsLedgerEntry.findMany({
-      where: this.cursorWhere("updatedAt", checkpoint),
+      where:
+        checkpoint.cursorAt && checkpoint.cursorId
+          ? {
+              OR: [
+                { updatedAt: { gt: checkpoint.cursorAt } },
+                { updatedAt: checkpoint.cursorAt, id: { gt: checkpoint.cursorId } },
+              ],
+            }
+          : {},
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       take,
       select: {
@@ -545,7 +579,7 @@ export class WarehouseExportService {
       cursorAt: row.updatedAt,
       cursorId: row.id,
       partitionDate: utcPartitionDate(row.occurredAt),
-      record: warehouseSchemaFor("revenue_facts").parse(revenueFactFromSource(row)),
+      record: revenueFactV1Schema.parse(revenueFactFromSource(row)),
     }));
   }
 
