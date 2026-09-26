@@ -28,14 +28,13 @@ struct TVContentCard: View {
                     .frame(width: 360, height: 202)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
 
-                    if let progress, progress.completedAt == nil {
-                        GeometryReader { proxy in
-                            let fraction = min(1, max(0, Double(progress.positionMs) / 7_200_000))
-                            Rectangle()
-                                .frame(width: proxy.size.width * fraction, height: 7)
-                                .frame(maxHeight: .infinity, alignment: .bottom)
-                        }
-                        .frame(width: 360, height: 202)
+                    if let progress, progress.completedAt == nil, progress.positionMs > 0 {
+                        Label(resumePosition(progress.positionMs), systemImage: "clock.arrow.circlepath")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .padding(12)
                     }
                 }
 
@@ -54,6 +53,17 @@ struct TVContentCard: View {
             }
         }
         .buttonStyle(.card)
+    }
+
+    private func resumePosition(_ milliseconds: Int) -> String {
+        let seconds = max(0, milliseconds / 1_000)
+        let hours = seconds / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let remainingSeconds = seconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d watched", hours, minutes, remainingSeconds)
+        }
+        return String(format: "%d:%02d watched", minutes, remainingSeconds)
     }
 
     private var artworkURL: URL? {
