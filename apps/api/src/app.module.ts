@@ -25,6 +25,7 @@ import { SeriesCatalogModule } from "./series-catalog/series-catalog.module.js";
 import { SocialModule } from "./social/social.module.js";
 import { TrustModule } from "./trust/trust.module.js";
 import { VideoPolicyModule } from "./video-policy/video-policy.module.js";
+import { WarehouseModule } from "./warehouse/warehouse.module.js";
 import { WatchModule } from "./watch/watch.module.js";
 
 @Module({
@@ -54,6 +55,7 @@ import { WatchModule } from "./watch/watch.module.js";
     CommunityModule,
     TrustModule,
     VideoPolicyModule,
+    WarehouseModule,
   ],
   controllers: [AppController],
 })
