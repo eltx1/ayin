@@ -204,7 +204,7 @@ export class AnalyticsRollupService {
             "qualitySwitchEvents", "adRequests", "adStarts", "adCompletes", "adClicks", "adErrors"
           )
           SELECT
-            (date_trunc('hour', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC') AS "bucketStart",
+            date_trunc('hour', "occurredAt") AS "bucketStart",
             "channelId",
             "videoId",
             COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int AS "views",
@@ -229,7 +229,7 @@ export class AnalyticsRollupService {
             AND "occurredAt" < ${to}
             AND "videoId" IS NOT NULL
             AND "channelId" IS NOT NULL
-          GROUP BY (date_trunc('hour', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", "videoId"
+          GROUP BY date_trunc('hour', "occurredAt"), "channelId", "videoId"
         `;
       },
       { maxWait: 10_000, timeout: 120_000 },
@@ -267,7 +267,7 @@ export class AnalyticsRollupService {
             "qualitySwitchEvents", "adRequests", "adStarts", "adCompletes", "adClicks", "adErrors"
           )
           SELECT
-            (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC') AS "bucketStart",
+            date_trunc('day', "occurredAt") AS "bucketStart",
             "channelId",
             "videoId",
             COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int,
@@ -292,7 +292,7 @@ export class AnalyticsRollupService {
             AND "occurredAt" < ${to}
             AND "videoId" IS NOT NULL
             AND "channelId" IS NOT NULL
-          GROUP BY (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", "videoId"
+          GROUP BY date_trunc('day', "occurredAt"), "channelId", "videoId"
         `;
 
         await tx.$executeRaw`
@@ -303,7 +303,7 @@ export class AnalyticsRollupService {
             "mp4FallbackEvents", "qualitySwitchEvents", "analyticsAdEvents", "analyticsAdErrors"
           )
           SELECT
-            (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC') AS "bucketStart",
+            date_trunc('day', "occurredAt") AS "bucketStart",
             "channelId",
             COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int,
             COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int,
@@ -327,7 +327,7 @@ export class AnalyticsRollupService {
           WHERE "occurredAt" >= ${from}
             AND "occurredAt" < ${to}
             AND "channelId" IS NOT NULL
-          GROUP BY (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId"
+          GROUP BY date_trunc('day', "occurredAt"), "channelId"
         `;
 
         await tx.$executeRaw`
@@ -335,7 +335,7 @@ export class AnalyticsRollupService {
             "bucketStart", "channelId", "adRequests", "adFills"
           )
           SELECT
-            (date_trunc('day', ae."occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC') AS "bucketStart",
+            date_trunc('day', ae."occurredAt") AS "bucketStart",
             v."channelId",
             COUNT(*) FILTER (WHERE ae."eventType" = 'REQUEST')::int,
             COUNT(*) FILTER (WHERE ae."eventType" = 'FILL')::int
@@ -344,7 +344,7 @@ export class AnalyticsRollupService {
           WHERE ae."occurredAt" >= ${from}
             AND ae."occurredAt" < ${to}
             AND ae."eventType" IN ('REQUEST', 'FILL')
-          GROUP BY (date_trunc('day', ae."occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), v."channelId"
+          GROUP BY date_trunc('day', ae."occurredAt"), v."channelId"
           ON CONFLICT ("bucketStart", "channelId")
           DO UPDATE SET
             "adRequests" = EXCLUDED."adRequests",
@@ -355,33 +355,33 @@ export class AnalyticsRollupService {
           INSERT INTO "AnalyticsChannelDailyDimensionRollup" (
             "bucketStart", "channelId", "dimension", "value", "count"
           )
-          SELECT (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", 'DEVICE', "deviceClass", COUNT(*)::int
+          SELECT date_trunc('day', "occurredAt"), "channelId", 'DEVICE', "deviceClass", COUNT(*)::int
           FROM "AnalyticsEvent"
           WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
             AND "eventName" = 'VIDEO_START' AND "channelId" IS NOT NULL
             AND "deviceClass" IS NOT NULL
-          GROUP BY (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", "deviceClass"
+          GROUP BY date_trunc('day', "occurredAt"), "channelId", "deviceClass"
           UNION ALL
-          SELECT (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", 'TRAFFIC_SOURCE', metadata->>'trafficSource', COUNT(*)::int
+          SELECT date_trunc('day', "occurredAt"), "channelId", 'TRAFFIC_SOURCE', metadata->>'trafficSource', COUNT(*)::int
           FROM "AnalyticsEvent"
           WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
             AND "eventName" = 'VIDEO_START' AND "channelId" IS NOT NULL
             AND metadata->>'trafficSource' IN ('DIRECT', 'INTERNAL', 'SEARCH', 'SOCIAL', 'EXTERNAL')
-          GROUP BY (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", metadata->>'trafficSource'
+          GROUP BY date_trunc('day', "occurredAt"), "channelId", metadata->>'trafficSource'
           UNION ALL
-          SELECT (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", 'COUNTRY', metadata->>'countryCode', COUNT(*)::int
+          SELECT date_trunc('day', "occurredAt"), "channelId", 'COUNTRY', metadata->>'countryCode', COUNT(*)::int
           FROM "AnalyticsEvent"
           WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
             AND "eventName" = 'VIDEO_START' AND "channelId" IS NOT NULL
             AND metadata->>'countryCode' ~ '^[A-Z]{2}$'
-          GROUP BY (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", metadata->>'countryCode'
+          GROUP BY date_trunc('day', "occurredAt"), "channelId", metadata->>'countryCode'
           UNION ALL
-          SELECT (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", 'PROTOCOL', metadata->>'protocol', COUNT(*)::int
+          SELECT date_trunc('day', "occurredAt"), "channelId", 'PROTOCOL', metadata->>'protocol', COUNT(*)::int
           FROM "AnalyticsEvent"
           WHERE "occurredAt" >= ${from} AND "occurredAt" < ${to}
             AND "eventName" = 'VIDEO_START' AND "channelId" IS NOT NULL
             AND metadata->>'protocol' IN ('HLS', 'MP4')
-          GROUP BY (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", metadata->>'protocol'
+          GROUP BY date_trunc('day', "occurredAt"), "channelId", metadata->>'protocol'
         `;
 
         await tx.$executeRaw`
@@ -389,7 +389,7 @@ export class AnalyticsRollupService {
             "bucketStart", "channelId", "videoId", "sessionHash", "started", "maxPositionMs"
           )
           SELECT
-            (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'),
+            date_trunc('day', "occurredAt"),
             "channelId",
             "videoId",
             "sessionHash",
@@ -401,12 +401,12 @@ export class AnalyticsRollupService {
             AND "channelId" IS NOT NULL
             AND "videoId" IS NOT NULL
             AND "eventName" IN ('VIDEO_START', 'VIDEO_PROGRESS')
-          GROUP BY (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "channelId", "videoId", "sessionHash"
+          GROUP BY date_trunc('day', "occurredAt"), "channelId", "videoId", "sessionHash"
         `;
 
         await tx.$executeRaw`
           INSERT INTO "AnalyticsPlatformSessionDailyRollup" ("bucketStart", "sessionHash")
-          SELECT DISTINCT (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'), "sessionHash"
+          SELECT DISTINCT date_trunc('day', "occurredAt"), "sessionHash"
           FROM "AnalyticsEvent"
           WHERE "occurredAt" >= ${from}
             AND "occurredAt" < ${to}
@@ -418,7 +418,7 @@ export class AnalyticsRollupService {
             "uploads", "tvStarts", "adEvents", "errors", "bufferEvents"
           )
           SELECT
-            (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC'),
+            date_trunc('day', "occurredAt"),
             COUNT(DISTINCT "sessionHash")::int,
             COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int,
             COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int,
@@ -434,7 +434,7 @@ export class AnalyticsRollupService {
           FROM "AnalyticsEvent"
           WHERE "occurredAt" >= ${from}
             AND "occurredAt" < ${to}
-          GROUP BY (date_trunc('day', "occurredAt" AT TIME ZONE 'UTC', 'UTC') AT TIME ZONE 'UTC')
+          GROUP BY date_trunc('day', "occurredAt")
         `;
       },
       { maxWait: 10_000, timeout: 120_000 },
