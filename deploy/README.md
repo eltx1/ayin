@@ -98,6 +98,8 @@ DATABASE_URL=postgresql://ayin_app:...@127.0.0.1:5432/ayin?schema=public
 AUTH_TOKEN_SECRET=...
 PAYOUT_DATA_ENCRYPTION_KEY=...
 ANALYTICS_HASH_SALT=...
+ANALYTICS_ROLLUP_INTERVAL_MS=300000
+ANALYTICS_RETENTION_DAYS=400
 R2_ACCOUNT_ID=...
 R2_BUCKET=...
 R2_ACCESS_KEY_ID=...
@@ -209,8 +211,10 @@ Application rollback never automatically reverses database migrations.
 
 - `ayin-web` receives only `web.env` and listens on `127.0.0.1:3000`.
 - `ayin-api` receives only `api.env` and listens on `127.0.0.1:4000`.
+- `ayin-analytics-worker` receives `api.env` and runs scheduled UTC analytics rollup/reconciliation plus retention cleanup.
+- `ayin-media-worker` receives `api.env` and runs media/privacy background processing.
 
-API secrets therefore do not need to exist in the web process environment. After the first successful deployment enable PM2 startup persistence for the AYIN user and verify a controlled server reboot.
+API/worker secrets therefore do not need to exist in the web process environment. After the first successful deployment enable PM2 startup persistence for the AYIN user and verify a controlled server reboot.
 
 ## Health and readiness
 
