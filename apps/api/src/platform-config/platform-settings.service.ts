@@ -110,26 +110,35 @@ export class PlatformSettingsService {
   }
 
   async listResolved() {
-    return Promise.all(
-      platformSettingKeys.map(async (key) => {
-        const definition = platformSettingCatalog[key];
-        const resolved = await this.getResolved(key);
-        return {
-          key,
-          namespace: definition.namespace,
-          label: definition.label,
-          description: definition.description,
-          control: definition.control,
-          options: "options" in definition ? definition.options : undefined,
-          unit: "unit" in definition ? definition.unit : undefined,
-          highImpact: definition.highImpact,
-          superadminOnly: definition.superadminOnly,
-          defaultValue: definition.defaultValue,
-          value: resolved.value,
-          source: resolved.source,
-        };
-      }),
-    );
+    const rows = await this.database.client.platformSetting.findMany({
+      select: {
+        namespace: true,
+        key: true,
+        schemaVersion: true,
+        value: true,
+        valueType: true,
+      },
+    });
+    const byIdentity = new Map(rows.map((row) => [`${row.namespace}:${row.key}`, row]));
+    return platformSettingKeys.map((key) => {
+      const definition = platformSettingCatalog[key];
+      const row = byIdentity.get(`${definition.namespace}:${definition.key}`) ?? null;
+      const resolved = this.resolve(definition, row);
+      return {
+        key,
+        namespace: definition.namespace,
+        label: definition.label,
+        description: definition.description,
+        control: definition.control,
+        options: "options" in definition ? definition.options : undefined,
+        unit: "unit" in definition ? definition.unit : undefined,
+        highImpact: definition.highImpact,
+        superadminOnly: definition.superadminOnly,
+        defaultValue: definition.defaultValue,
+        value: resolved.value,
+        source: resolved.source,
+      };
+    });
   }
 
   validate(key: PlatformSettingKey, rawValue: unknown): unknown {
@@ -167,41 +176,39 @@ export class PlatformSettingsService {
     registrationEnabled: boolean;
     automaticCreatorProvisioningEnabled: boolean;
   }> {
-    const [registrationEnabled, automaticCreatorProvisioningEnabled] = await Promise.all([
-      this.get("registrationEnabled"),
-      this.get("automaticCreatorProvisioningEnabled"),
+    const values = await this.getMany([
+      "registrationEnabled",
+      "automaticCreatorProvisioningEnabled",
     ]);
     return {
-      registrationEnabled: registrationEnabled as boolean,
-      automaticCreatorProvisioningEnabled: automaticCreatorProvisioningEnabled as boolean,
+      registrationEnabled: values.get("registrationEnabled") as boolean,
+      automaticCreatorProvisioningEnabled: values.get(
+        "automaticCreatorProvisioningEnabled",
+      ) as boolean,
     };
   }
 
   async getProvisioningDefaults(): Promise<PlatformProvisioningDefaults> {
-    const [
-      uploadsPlaylistName,
-      creatorTvNameTemplate,
-      autoAddPublishedUploadsToCreatorTv,
-      defaultVideoVisibility,
-      defaultCommentsEnabled,
-      defaultCreatorRevenueShareBps,
-    ] = await Promise.all([
-      this.get("uploadsPlaylistName"),
-      this.get("creatorTvNameTemplate"),
-      this.get("autoAddPublishedUploadsToCreatorTv"),
-      this.get("defaultVideoVisibility"),
-      this.get("defaultCommentsEnabled"),
-      this.get("defaultCreatorRevenueShareBps"),
+    const values = await this.getMany([
+      "uploadsPlaylistName",
+      "creatorTvNameTemplate",
+      "autoAddPublishedUploadsToCreatorTv",
+      "defaultVideoVisibility",
+      "defaultCommentsEnabled",
+      "defaultCreatorRevenueShareBps",
     ]);
 
     return {
-      uploadsPlaylistName: uploadsPlaylistName as string,
-      creatorTvNameTemplate: creatorTvNameTemplate as string,
-      autoAddPublishedUploadsToCreatorTv: autoAddPublishedUploadsToCreatorTv as boolean,
-      defaultVideoVisibility:
-        defaultVideoVisibility as PlatformProvisioningDefaults["defaultVideoVisibility"],
-      defaultCommentsEnabled: defaultCommentsEnabled as boolean,
-      defaultCreatorRevenueShareBps: defaultCreatorRevenueShareBps as number,
+      uploadsPlaylistName: values.get("uploadsPlaylistName") as string,
+      creatorTvNameTemplate: values.get("creatorTvNameTemplate") as string,
+      autoAddPublishedUploadsToCreatorTv: values.get(
+        "autoAddPublishedUploadsToCreatorTv",
+      ) as boolean,
+      defaultVideoVisibility: values.get(
+        "defaultVideoVisibility",
+      ) as PlatformProvisioningDefaults["defaultVideoVisibility"],
+      defaultCommentsEnabled: values.get("defaultCommentsEnabled") as boolean,
+      defaultCreatorRevenueShareBps: values.get("defaultCreatorRevenueShareBps") as number,
     };
   }
 
