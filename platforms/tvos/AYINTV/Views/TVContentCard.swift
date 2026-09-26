@@ -4,7 +4,7 @@ struct TVContentCard: View {
     let title: String
     let subtitle: String?
     let artworkObjectKey: String?
-    let progress: DiscoveryItem.Progress?
+    let progress: TVDiscoveryItem.Progress?
     let action: () -> Void
 
     var body: some View {
