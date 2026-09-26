@@ -35,13 +35,13 @@
     "Add Top Shelf only after a bounded server-side feed, final artwork and hardware memory validation are available",
     "Complete App Privacy metadata and signed archive/TestFlight checks before App Store submission"
   ],
-  "repositoryValidationEvidenceHeadSha": "0a6ab77a8ec4ca307bc98554331046e61af16c65",
+  "repositoryValidationEvidenceHeadSha": "71cb7fac7a0a7257a6915b93b9df3b45f619b6e4",
   "repositoryValidationEvidenceRuns": {
-    "tvosValidationRun": 36242806644,
-    "iosRegressionRun": 36242806648,
-    "qualityRun": 36242806660,
-    "browserAcceptanceRun": 36242806678,
-    "securityRun": 36242806667
+    "tvosValidationRun": 36243484389,
+    "iosRegressionRun": 36243484329,
+    "qualityRun": 36243484334,
+    "browserAcceptanceRun": 36243484316,
+    "securityRun": 36243484381
   },
   "finalDiffScope": "native-tvos-app-plus-shared-apple-auth-kids-profile-contract",
   "iosRegressionNote": "Task 81 extends the shared Apple auth identity with viewer-profile isKids state; iOS simulator build and unit tests passed on the evidence head.",
