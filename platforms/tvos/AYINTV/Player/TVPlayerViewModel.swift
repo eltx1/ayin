@@ -36,6 +36,9 @@ final class TVPlayerViewModel: ObservableObject {
     private var playAttemptStartedAt: Date?
     private var startupReported = false
     private var sceneResumeState = TVSceneResumeState()
+    private var sceneIsActive = true
+    private var pictureInPictureActive = false
+    private var userNavigatedDuringStartup = false
 
     init(
         destination: TVPlaybackDestination,
@@ -57,6 +60,7 @@ final class TVPlayerViewModel: ObservableObject {
         errorMessage = nil
         self.token = token
         self.profileId = profileId
+        userNavigatedDuringStartup = false
         defer { isLoading = false }
 
         do {
@@ -129,6 +133,7 @@ final class TVPlayerViewModel: ObservableObject {
     }
 
     func handleScene(active: Bool) {
+        sceneIsActive = active
         guard let player else { return }
 
         if active {
@@ -138,6 +143,22 @@ final class TVPlayerViewModel: ObservableObject {
             return
         }
 
+        guard !pictureInPictureActive else { return }
+        pauseForSceneDeparture(player)
+    }
+
+    func setPictureInPictureActive(_ active: Bool) {
+        pictureInPictureActive = active
+        guard !active, !sceneIsActive, let player else { return }
+        pauseForSceneDeparture(player)
+    }
+
+    func noteUserNavigation(to time: CMTime) {
+        userNavigatedDuringStartup = true
+        lastAnalyticsPositionMs = positionMs(time)
+    }
+
+    private func pauseForSceneDeparture(_ player: AVPlayer) {
         guard sceneResumeState.leaveActive(wasPlaying: player.timeControlStatus == .playing) else {
             return
         }
@@ -175,6 +196,9 @@ final class TVPlayerViewModel: ObservableObject {
         playAttemptStartedAt = nil
         startupReported = false
         sceneResumeState.reset()
+        sceneIsActive = true
+        pictureInPictureActive = false
+        userNavigatedDuringStartup = false
     }
 
     private func installObservers(player: AVPlayer, item: AVPlayerItem) {
@@ -303,14 +327,18 @@ final class TVPlayerViewModel: ObservableObject {
                 )
                 guard !Task.isCancelled, self.player === player else { return }
                 self.progressBaselineResolved = true
-                self.lastSavedPositionMs = state.positionMs
-                guard
-                    state.completedAt == nil,
-                    state.positionMs > 0,
-                    (self.currentPositionMs() ?? 0) < 2_500
-                else { return }
-                await self.seek(player, toMilliseconds: state.positionMs)
-                self.lastAnalyticsPositionMs = state.positionMs
+
+                if TVResumePolicy.shouldApplySavedPosition(
+                    positionMs: state.positionMs,
+                    completedAt: state.completedAt,
+                    userNavigated: self.userNavigatedDuringStartup
+                ) {
+                    await self.seek(player, toMilliseconds: state.positionMs)
+                    self.lastSavedPositionMs = state.positionMs
+                    self.lastAnalyticsPositionMs = state.positionMs
+                } else {
+                    self.lastSavedPositionMs = self.currentPositionMs()
+                }
             } catch {
                 self.progressBaselineResolved = false
             }
