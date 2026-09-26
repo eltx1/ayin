@@ -135,7 +135,7 @@ describe("Task 84 warehouse export fixtures", () => {
       occurredAt: new Date("2026-09-02T01:00:00.000Z"),
       finalizedAt: new Date("2026-09-02T02:00:00.000Z"),
       createdAt: new Date("2026-09-02T01:00:00.000Z"),
-      sourceUpdatedAt: new Date("2026-09-02T02:00:00.000Z"),
+      updatedAt: new Date("2026-09-02T02:00:00.000Z"),
     });
 
     expect(revenueFactV1Schema.parse(fact)).toEqual(fact);
