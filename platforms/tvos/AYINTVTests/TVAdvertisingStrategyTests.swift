@@ -7,6 +7,10 @@ final class TVAdvertisingStrategyTests: XCTestCase {
         XCTAssertEqual(TVAdvertisingStrategy.nativeIMAMinimumTvOS, 15)
     }
 
+    func testSafeConsentProviderDefaultsToLimitedAds() {
+        XCTAssertEqual(TVSafeAdvertisingConsentProvider().mode, .limitedAds)
+    }
+
     func testCreatorTVUsesServerSideAdPathOnlyWhenDAIIsAvailable() {
         XCTAssertEqual(
             TVAdvertisingStrategy.forCreatorTV(serverSideDAIAvailable: true),
