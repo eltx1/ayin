@@ -46,7 +46,9 @@ export class MediaAdaptiveProcessingService {
     workDirectory: string;
     canonicalPath: string;
     canonicalMetadata: MediaProbeMetadata;
+    signal?: AbortSignal;
   }): Promise<boolean> {
+    input.signal?.throwIfAborted();
     const settings = await this.settings.resolve(input.job);
     if (!settings.enabled) return false;
     const { width, height, durationMs } = input.canonicalMetadata;
@@ -96,6 +98,7 @@ export class MediaAdaptiveProcessingService {
 
     try {
       for (const rendition of generation.renditions) {
+        input.signal?.throwIfAborted();
         activeRendition = rendition;
         if (
           rendition.status === "READY" &&
@@ -134,6 +137,7 @@ export class MediaAdaptiveProcessingService {
             threads: settings.ffmpegThreadsPerJob,
             preset: settings.ffmpegPreset,
             segmentDurationSeconds: settings.segmentDurationSeconds,
+            signal: input.signal,
           });
           await assertScratchActualWithinLimit(
             input.canonicalPath,
@@ -156,6 +160,7 @@ export class MediaAdaptiveProcessingService {
             }),
           );
           for (const segment of packaged.segments) {
+            input.signal?.throwIfAborted();
             const key = hlsRenditionSegmentObjectKey(
               {
                 channelId: generation.channelId,
@@ -199,6 +204,7 @@ export class MediaAdaptiveProcessingService {
         }
       }
 
+      input.signal?.throwIfAborted();
       activeRendition = undefined;
       const manifestRenditions = generation.renditions.map(toPlannedRendition);
       const master = buildHlsMasterManifest(manifestRenditions, {
