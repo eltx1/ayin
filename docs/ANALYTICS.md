@@ -61,7 +61,6 @@ Admin analytics reads daily platform rollups and the daily platform-session proj
 
 Subscription totals and gained subscriptions remain sourced from the authoritative product `Subscription` table rather than analytics-event estimates.
 
-
 ## Task 83 cohort analytics
 
 Task 83 adds product-level cohort metrics without extending anonymous tracking. Cross-day D1/D7/D30 cohorts use only the existing HMAC-pseudonymous `profileHash` attached to signed-in profile analytics. Anonymous `sessionHash` values remain session-scoped and are never linked across contexts to manufacture a persistent anonymous identity.
