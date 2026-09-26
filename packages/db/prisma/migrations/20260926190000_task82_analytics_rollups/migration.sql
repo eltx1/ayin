@@ -1,9 +1,6 @@
 CREATE INDEX "AnalyticsEvent_receivedAt_idx" ON "AnalyticsEvent"("receivedAt");
 CREATE INDEX "AdEvent_createdAt_idx" ON "AdEvent"("createdAt");
 
-CREATE INDEX "AnalyticsEvent_receivedAt_idx" ON "AnalyticsEvent"("receivedAt");
-CREATE INDEX "AdEvent_createdAt_idx" ON "AdEvent"("createdAt");
-
 CREATE TABLE "AnalyticsVideoHourlyRollup" (
   "bucketStart" TIMESTAMP(3) NOT NULL,
   "channelId" UUID NOT NULL,
