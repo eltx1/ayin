@@ -5,6 +5,7 @@ import { DatabaseService } from "../database/database.service.js";
 const DAY_MS = 86_400_000;
 const DEFAULT_RETENTION_DAYS = 400;
 const LATE_ARRIVAL_SCAN_OVERLAP_MS = 15 * 60_000;
+const COHORT_MAX_HORIZON_DAYS = 30;
 const ROLLUP_ADVISORY_LOCK_KEY = 820082;
 const ROLLUP_STATE_KEY = "PRIMARY";
 
@@ -117,8 +118,17 @@ export class AnalyticsRollupService {
     if (hourlyRange) {
       await this.rebuildVideoHourly(hourlyRange.from, hourlyRange.to);
     }
+    let cohortRange: RollupRange = null;
     if (dailyRange) {
       await this.rebuildDaily(dailyRange.from, dailyRange.to);
+      const cohortFrom = utcFloorDay(
+        maxDate(
+          new Date(dailyRange.from.getTime() - COHORT_MAX_HORIZON_DAYS * DAY_MS),
+          retentionStart,
+        ),
+      );
+      cohortRange = { from: cohortFrom, to: currentDay };
+      await this.rebuildCohorts(cohortRange.from, cohortRange.to);
     }
 
     await this.database.client.$executeRaw`
@@ -136,6 +146,7 @@ export class AnalyticsRollupService {
       cutoff,
       hourlyRange,
       dailyRange,
+      cohortRange,
       retentionDays: configuredAnalyticsRetentionDays(),
     };
   }
@@ -189,9 +200,13 @@ export class AnalyticsRollupService {
         const platformSessions = await tx.analyticsPlatformSessionDailyRollup.deleteMany({
           where: { bucketStart: { lt: projectionBefore } },
         });
+        const subscriptionEpisodes = await tx.analyticsSubscriptionEpisode.deleteMany({
+          where: { subscribedAt: { lt: before } },
+        });
         return {
           deleted: raw.count,
-          projectionRowsDeleted: playbackSessions.count + platformSessions.count,
+          projectionRowsDeleted:
+            playbackSessions.count + platformSessions.count + subscriptionEpisodes.count,
         };
       },
       { maxWait: 10_000, timeout: 120_000 },
@@ -462,4 +477,419 @@ export class AnalyticsRollupService {
       { maxWait: 10_000, timeout: 120_000 },
     );
   }
+
+  async rebuildCohorts(from: Date, to: Date): Promise<void> {
+    if (from.getTime() >= to.getTime()) return;
+    const identityLookbackFrom = utcFloorDay(
+      new Date(to.getTime() - configuredAnalyticsRetentionDays() * DAY_MS),
+    );
+
+    await this.database.client.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(
+          `DO $task83$ BEGIN PERFORM pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}); END $task83$;`,
+        );
+
+        await tx.analyticsPlatformAudienceDailyRollup.deleteMany({
+          where: { bucketStart: { gte: from, lt: to } },
+        });
+        await tx.analyticsChannelAudienceDailyRollup.deleteMany({
+          where: { bucketStart: { gte: from, lt: to } },
+        });
+        await tx.analyticsPlatformCohortRollup.deleteMany({
+          where: { cohortDate: { gte: from, lt: to } },
+        });
+        await tx.analyticsChannelCohortRollup.deleteMany({
+          where: { cohortDate: { gte: from, lt: to } },
+        });
+        await tx.analyticsSubscriberCohortRollup.deleteMany({
+          where: { cohortDate: { gte: from, lt: to } },
+        });
+
+        await tx.$executeRaw`
+          WITH daily AS (
+            SELECT
+              date_trunc('day', "occurredAt") AS day,
+              "profileHash",
+              COUNT(DISTINCT "sessionHash") FILTER (
+                WHERE "eventName" = 'VIDEO_START'
+              )::int AS sessions,
+              COALESCE(SUM("durationDeltaMs") FILTER (
+                WHERE "eventName" = 'VIDEO_PROGRESS'
+              ), 0)::bigint AS "watchTimeMs",
+              COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int AS starts
+            FROM "AnalyticsEvent"
+            WHERE "occurredAt" >= ${identityLookbackFrom}
+              AND "occurredAt" < ${to}
+              AND "profileHash" IS NOT NULL
+              AND "eventName" IN ('VIDEO_START', 'VIDEO_PROGRESS')
+            GROUP BY date_trunc('day', "occurredAt"), "profileHash"
+          ),
+          active AS (
+            SELECT * FROM daily WHERE starts > 0
+          ),
+          first_seen AS (
+            SELECT "profileHash", MIN(day) AS "firstSeenDay"
+            FROM active
+            GROUP BY "profileHash"
+          )
+          INSERT INTO "AnalyticsPlatformAudienceDailyRollup" (
+            "bucketStart", "activeProfiles", "newProfiles", "returningProfiles",
+            "sessions", "watchTimeMs"
+          )
+          SELECT
+            a.day,
+            COUNT(*)::int,
+            COUNT(*) FILTER (WHERE f."firstSeenDay" = a.day)::int,
+            COUNT(*) FILTER (WHERE f."firstSeenDay" < a.day)::int,
+            COALESCE(SUM(a.sessions), 0)::int,
+            COALESCE(SUM(a."watchTimeMs"), 0)::bigint
+          FROM active a
+          JOIN first_seen f ON f."profileHash" = a."profileHash"
+          WHERE a.day >= ${from} AND a.day < ${to}
+          GROUP BY a.day
+        `;
+
+        await tx.$executeRaw`
+          WITH daily AS (
+            SELECT
+              date_trunc('day', "occurredAt") AS day,
+              "channelId",
+              "profileHash",
+              COUNT(DISTINCT "sessionHash") FILTER (
+                WHERE "eventName" = 'VIDEO_START'
+              )::int AS sessions,
+              COALESCE(SUM("durationDeltaMs") FILTER (
+                WHERE "eventName" = 'VIDEO_PROGRESS'
+              ), 0)::bigint AS "watchTimeMs",
+              COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int AS starts
+            FROM "AnalyticsEvent"
+            WHERE "occurredAt" >= ${identityLookbackFrom}
+              AND "occurredAt" < ${to}
+              AND "profileHash" IS NOT NULL
+              AND "channelId" IS NOT NULL
+              AND "eventName" IN ('VIDEO_START', 'VIDEO_PROGRESS')
+            GROUP BY date_trunc('day', "occurredAt"), "channelId", "profileHash"
+          ),
+          active AS (
+            SELECT * FROM daily WHERE starts > 0
+          ),
+          first_seen AS (
+            SELECT "channelId", "profileHash", MIN(day) AS "firstSeenDay"
+            FROM active
+            GROUP BY "channelId", "profileHash"
+          ),
+          video_days AS (
+            SELECT DISTINCT
+              date_trunc('day', "occurredAt") AS day,
+              "channelId",
+              "profileHash",
+              "videoId"
+            FROM "AnalyticsEvent"
+            WHERE "occurredAt" >= ${identityLookbackFrom}
+              AND "occurredAt" < ${to}
+              AND "eventName" = 'VIDEO_START'
+              AND "profileHash" IS NOT NULL
+              AND "channelId" IS NOT NULL
+              AND "videoId" IS NOT NULL
+          ),
+          first_video AS (
+            SELECT "channelId", "profileHash", "videoId", MIN(day) AS "firstVideoDay"
+            FROM video_days
+            GROUP BY "channelId", "profileHash", "videoId"
+          ),
+          content_return AS (
+            SELECT
+              vd.day,
+              vd."channelId",
+              vd."profileHash",
+              BOOL_OR(fv."firstVideoDay" < vd.day) AS returned
+            FROM video_days vd
+            JOIN first_video fv
+              ON fv."channelId" = vd."channelId"
+             AND fv."profileHash" = vd."profileHash"
+             AND fv."videoId" = vd."videoId"
+            GROUP BY vd.day, vd."channelId", vd."profileHash"
+          )
+          INSERT INTO "AnalyticsChannelAudienceDailyRollup" (
+            "bucketStart", "channelId", "activeProfiles", "newProfiles",
+            "returningProfiles", "sessions", "watchTimeMs", "contentReturnProfiles"
+          )
+          SELECT
+            a.day,
+            a."channelId",
+            COUNT(*)::int,
+            COUNT(*) FILTER (WHERE f."firstSeenDay" = a.day)::int,
+            COUNT(*) FILTER (WHERE f."firstSeenDay" < a.day)::int,
+            COALESCE(SUM(a.sessions), 0)::int,
+            COALESCE(SUM(a."watchTimeMs"), 0)::bigint,
+            COUNT(*) FILTER (WHERE COALESCE(cr.returned, false))::int
+          FROM active a
+          JOIN first_seen f
+            ON f."channelId" = a."channelId"
+           AND f."profileHash" = a."profileHash"
+          LEFT JOIN content_return cr
+            ON cr.day = a.day
+           AND cr."channelId" = a."channelId"
+           AND cr."profileHash" = a."profileHash"
+          WHERE a.day >= ${from} AND a.day < ${to}
+          GROUP BY a.day, a."channelId"
+        `;
+
+        await tx.$executeRaw`
+          WITH daily AS (
+            SELECT
+              date_trunc('day', "occurredAt") AS day,
+              "profileHash",
+              COUNT(DISTINCT "sessionHash") FILTER (
+                WHERE "eventName" = 'VIDEO_START'
+              )::int AS sessions,
+              COALESCE(SUM("durationDeltaMs") FILTER (
+                WHERE "eventName" = 'VIDEO_PROGRESS'
+              ), 0)::bigint AS "watchTimeMs",
+              COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int AS starts
+            FROM "AnalyticsEvent"
+            WHERE "occurredAt" >= ${identityLookbackFrom}
+              AND "occurredAt" < ${to}
+              AND "profileHash" IS NOT NULL
+              AND "eventName" IN ('VIDEO_START', 'VIDEO_PROGRESS')
+            GROUP BY date_trunc('day', "occurredAt"), "profileHash"
+          ),
+          active AS (
+            SELECT * FROM daily WHERE starts > 0
+          ),
+          members AS (
+            SELECT "profileHash", MIN(day) AS "cohortDate"
+            FROM active
+            GROUP BY "profileHash"
+          )
+          INSERT INTO "AnalyticsPlatformCohortRollup" (
+            "cohortDate", "cohortSize",
+            "d1Retained", "d7Retained", "d30Retained",
+            "d1Sessions", "d7Sessions", "d30Sessions",
+            "d1WatchTimeMs", "d7WatchTimeMs", "d30WatchTimeMs"
+          )
+          SELECT
+            m."cohortDate",
+            COUNT(*)::int AS "cohortSize",
+            CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
+              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '1 day')::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
+              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '7 days')::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
+              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '30 days')::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
+              THEN COALESCE(SUM(a.sessions) FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '1 day'
+              ), 0)::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
+              THEN COALESCE(SUM(a.sessions) FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '7 days'
+              ), 0)::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
+              THEN COALESCE(SUM(a.sessions) FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '30 days'
+              ), 0)::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
+              THEN COALESCE(SUM(a."watchTimeMs") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '1 day'
+              ), 0)::bigint END,
+            CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
+              THEN COALESCE(SUM(a."watchTimeMs") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '7 days'
+              ), 0)::bigint END,
+            CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
+              THEN COALESCE(SUM(a."watchTimeMs") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '30 days'
+              ), 0)::bigint END
+          FROM members m
+          LEFT JOIN active a
+            ON a."profileHash" = m."profileHash"
+           AND a.day IN (
+             m."cohortDate" + INTERVAL '1 day',
+             m."cohortDate" + INTERVAL '7 days',
+             m."cohortDate" + INTERVAL '30 days'
+           )
+          WHERE m."cohortDate" >= ${from} AND m."cohortDate" < ${to}
+          GROUP BY m."cohortDate"
+        `;
+
+        await tx.$executeRaw`
+          WITH daily AS (
+            SELECT
+              date_trunc('day', "occurredAt") AS day,
+              "channelId",
+              "profileHash",
+              COUNT(DISTINCT "sessionHash") FILTER (
+                WHERE "eventName" = 'VIDEO_START'
+              )::int AS sessions,
+              COALESCE(SUM("durationDeltaMs") FILTER (
+                WHERE "eventName" = 'VIDEO_PROGRESS'
+              ), 0)::bigint AS "watchTimeMs",
+              COUNT(*) FILTER (WHERE "eventName" = 'VIDEO_START')::int AS starts
+            FROM "AnalyticsEvent"
+            WHERE "occurredAt" >= ${identityLookbackFrom}
+              AND "occurredAt" < ${to}
+              AND "profileHash" IS NOT NULL
+              AND "channelId" IS NOT NULL
+              AND "eventName" IN ('VIDEO_START', 'VIDEO_PROGRESS')
+            GROUP BY date_trunc('day', "occurredAt"), "channelId", "profileHash"
+          ),
+          active AS (
+            SELECT * FROM daily WHERE starts > 0
+          ),
+          members AS (
+            SELECT "channelId", "profileHash", MIN(day) AS "cohortDate"
+            FROM active
+            GROUP BY "channelId", "profileHash"
+          ),
+          video_days AS (
+            SELECT DISTINCT
+              date_trunc('day', "occurredAt") AS day,
+              "channelId",
+              "profileHash",
+              "videoId"
+            FROM "AnalyticsEvent"
+            WHERE "occurredAt" >= ${identityLookbackFrom}
+              AND "occurredAt" < ${to}
+              AND "eventName" = 'VIDEO_START'
+              AND "profileHash" IS NOT NULL
+              AND "channelId" IS NOT NULL
+              AND "videoId" IS NOT NULL
+          ),
+          first_video AS (
+            SELECT "channelId", "profileHash", "videoId", MIN(day) AS "firstVideoDay"
+            FROM video_days
+            GROUP BY "channelId", "profileHash", "videoId"
+          ),
+          content_return AS (
+            SELECT
+              vd.day,
+              vd."channelId",
+              vd."profileHash",
+              BOOL_OR(fv."firstVideoDay" < vd.day) AS returned
+            FROM video_days vd
+            JOIN first_video fv
+              ON fv."channelId" = vd."channelId"
+             AND fv."profileHash" = vd."profileHash"
+             AND fv."videoId" = vd."videoId"
+            GROUP BY vd.day, vd."channelId", vd."profileHash"
+          )
+          INSERT INTO "AnalyticsChannelCohortRollup" (
+            "cohortDate", "channelId", "cohortSize",
+            "d1Retained", "d7Retained", "d30Retained",
+            "d1Sessions", "d7Sessions", "d30Sessions",
+            "d1WatchTimeMs", "d7WatchTimeMs", "d30WatchTimeMs",
+            "d1ContentReturnProfiles", "d7ContentReturnProfiles", "d30ContentReturnProfiles"
+          )
+          SELECT
+            m."cohortDate",
+            m."channelId",
+            COUNT(*)::int AS "cohortSize",
+            CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
+              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '1 day')::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
+              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '7 days')::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
+              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '30 days')::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
+              THEN COALESCE(SUM(a.sessions) FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '1 day'
+              ), 0)::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
+              THEN COALESCE(SUM(a.sessions) FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '7 days'
+              ), 0)::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
+              THEN COALESCE(SUM(a.sessions) FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '30 days'
+              ), 0)::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
+              THEN COALESCE(SUM(a."watchTimeMs") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '1 day'
+              ), 0)::bigint END,
+            CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
+              THEN COALESCE(SUM(a."watchTimeMs") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '7 days'
+              ), 0)::bigint END,
+            CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
+              THEN COALESCE(SUM(a."watchTimeMs") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '30 days'
+              ), 0)::bigint END,
+            CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
+              THEN COUNT(*) FILTER (
+                WHERE cr.day = m."cohortDate" + INTERVAL '1 day' AND cr.returned
+              )::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
+              THEN COUNT(*) FILTER (
+                WHERE cr.day = m."cohortDate" + INTERVAL '7 days' AND cr.returned
+              )::int END,
+            CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
+              THEN COUNT(*) FILTER (
+                WHERE cr.day = m."cohortDate" + INTERVAL '30 days' AND cr.returned
+              )::int END
+          FROM members m
+          LEFT JOIN active a
+            ON a."channelId" = m."channelId"
+           AND a."profileHash" = m."profileHash"
+           AND a.day IN (
+             m."cohortDate" + INTERVAL '1 day',
+             m."cohortDate" + INTERVAL '7 days',
+             m."cohortDate" + INTERVAL '30 days'
+           )
+          LEFT JOIN content_return cr
+            ON cr."channelId" = m."channelId"
+           AND cr."profileHash" = m."profileHash"
+           AND cr.day = a.day
+          WHERE m."cohortDate" >= ${from} AND m."cohortDate" < ${to}
+          GROUP BY m."cohortDate", m."channelId"
+        `;
+
+        await tx.$executeRaw`
+          WITH state AS (
+            SELECT date_trunc('day', "subscriberTrackingStartedAt") AS "trackingDay"
+            FROM "AnalyticsCohortState"
+            WHERE "key" = 'PRIMARY'
+          ),
+          episodes AS (
+            SELECT
+              date_trunc('day', e."subscribedAt") AS "cohortDate",
+              e."channelId",
+              e."unsubscribedAt"
+            FROM "AnalyticsSubscriptionEpisode" e
+            CROSS JOIN state s
+            WHERE e."subscribedAt" >= s."trackingDay"
+          )
+          INSERT INTO "AnalyticsSubscriberCohortRollup" (
+            "cohortDate", "channelId", "cohortSize",
+            "d1Retained", "d7Retained", "d30Retained"
+          )
+          SELECT
+            e."cohortDate",
+            e."channelId",
+            COUNT(*)::int,
+            CASE WHEN e."cohortDate" + INTERVAL '1 day' < ${to}
+              THEN COUNT(*) FILTER (
+                WHERE e."unsubscribedAt" IS NULL
+                   OR e."unsubscribedAt" >= e."cohortDate" + INTERVAL '2 days'
+              )::int END,
+            CASE WHEN e."cohortDate" + INTERVAL '7 days' < ${to}
+              THEN COUNT(*) FILTER (
+                WHERE e."unsubscribedAt" IS NULL
+                   OR e."unsubscribedAt" >= e."cohortDate" + INTERVAL '8 days'
+              )::int END,
+            CASE WHEN e."cohortDate" + INTERVAL '30 days' < ${to}
+              THEN COUNT(*) FILTER (
+                WHERE e."unsubscribedAt" IS NULL
+                   OR e."unsubscribedAt" >= e."cohortDate" + INTERVAL '31 days'
+              )::int END
+          FROM episodes e
+          WHERE e."cohortDate" >= ${from} AND e."cohortDate" < ${to}
+          GROUP BY e."cohortDate", e."channelId"
+        `;
+      },
+      { maxWait: 10_000, timeout: 180_000 },
+    );
+  }
+
 }
