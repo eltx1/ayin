@@ -45,7 +45,6 @@ jobs:
             deploy/ecosystem.config.cjs \
             deploy/postgres/README.md \
             docs/POSTGRES_SCALING.md \
-            packages/db/prisma/schema.prisma \
             packages/db/src/index.test.ts \
             packages/db/src/index.ts
       - name: Commit formatter output
