@@ -35,8 +35,7 @@ final class TVPlayerViewModel: ObservableObject {
     private var progressBaselineResolved = false
     private var playAttemptStartedAt: Date?
     private var startupReported = false
-    private var shouldResumeAfterLifecycle = false
-    private var sceneWasActive = true
+    private var sceneResumeState = TVSceneResumeState()
 
     init(
         destination: TVPlaybackDestination,
@@ -133,18 +132,15 @@ final class TVPlayerViewModel: ObservableObject {
         guard let player else { return }
 
         if active {
-            let shouldResume = shouldResumeAfterLifecycle
-            shouldResumeAfterLifecycle = false
-            sceneWasActive = true
-            if shouldResume {
+            if sceneResumeState.enterActive() {
                 player.play()
             }
             return
         }
 
-        guard sceneWasActive else { return }
-        sceneWasActive = false
-        shouldResumeAfterLifecycle = player.timeControlStatus == .playing
+        guard sceneResumeState.leaveActive(wasPlaying: player.timeControlStatus == .playing) else {
+            return
+        }
         player.pause()
         _ = enqueueCheckpoint(player.currentTime(), forceProgressSave: true)
     }
@@ -178,8 +174,7 @@ final class TVPlayerViewModel: ObservableObject {
         progressBaselineResolved = false
         playAttemptStartedAt = nil
         startupReported = false
-        shouldResumeAfterLifecycle = false
-        sceneWasActive = true
+        sceneResumeState.reset()
     }
 
     private func installObservers(player: AVPlayer, item: AVPlayerItem) {
