@@ -1,5 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+const MAX_ADMIN_PAGE = 1_000;
+
 import { DatabaseService } from "../database/database.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { adminBadRequest } from "./admin.errors.js";
@@ -599,7 +601,7 @@ export class AdminControlService {
   }
 
   private page(input: PageInput) {
-    const page = Math.max(input.page ?? 1, 1);
+    const page = Math.min(Math.max(input.page ?? 1, 1), MAX_ADMIN_PAGE);
     const take = Math.min(Math.max(input.take ?? 25, 1), 100);
     return { page, take, skip: (page - 1) * take };
   }
