@@ -287,7 +287,7 @@ export function AdminDashboard() {
           </p>
         </div>
         <div>
-          <span className={styles.statusPill}>Query-time operational view</span>
+          <span className={styles.statusPill}>Scheduled UTC rollup view</span>
           <p className={styles.muted}>{session.roles.join(" · ")}</p>
         </div>
       </header>
@@ -448,7 +448,7 @@ export function AdminDashboard() {
       <section className={styles.card} style={{ marginTop: 18 }}>
         <h2>Platform analytics</h2>
         <p className={styles.muted}>
-          Query-time V1 metrics; intentionally not advertised as realtime.
+          {analytics.freshnessNote}
         </p>
         <div className={styles.commandGrid}>
           {analyticsMetrics.map(([label, value]) => (
