@@ -140,33 +140,7 @@ struct TVLinearCapabilityResponse: Decodable {
     let hls: HLS
     let monetization: Monetization?
 
-    var preferredPlaybackURL: URL? {
-        if
-            let dai = monetization?.dai,
-            dai.available,
-            let raw = dai.playbackUrl,
-            let url = URL(string: raw),
-            url.scheme == "https"
-        {
-            return url
-        }
 
-        guard hls.available else { return nil }
-        let raw = hls.masterUrl ?? hls.url
-        guard let raw, let url = URL(string: raw), url.scheme == "https" else { return nil }
-        return url
-    }
-
-    var usesServerSideDAI: Bool {
-        guard
-            let dai = monetization?.dai,
-            dai.available,
-            let raw = dai.playbackUrl,
-            let url = URL(string: raw),
-            url.scheme == "https"
-        else { return false }
-        return true
-    }
 }
 
 struct TVPlaylistResponse: Decodable {
