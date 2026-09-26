@@ -37,17 +37,17 @@ export class MediaProcessingQueueService {
   ) {}
 
   async capacity(): Promise<MediaProcessingCapacity> {
-    const [enabled, concurrentJobs, retryLimit, leaseSeconds] = await Promise.all([
-      this.settings.get("mediaProcessingEnabled"),
-      this.settings.get("mediaProcessingConcurrentJobs"),
-      this.settings.get("mediaProcessingRetryLimit"),
-      this.settings.get("mediaProcessingLeaseSeconds"),
+    const values = await this.settings.getMany([
+      "mediaProcessingEnabled",
+      "mediaProcessingConcurrentJobs",
+      "mediaProcessingRetryLimit",
+      "mediaProcessingLeaseSeconds",
     ]);
     return {
-      enabled: enabled as boolean,
-      concurrentJobs: concurrentJobs as number,
-      retryLimit: retryLimit as number,
-      leaseSeconds: leaseSeconds as number,
+      enabled: values.get("mediaProcessingEnabled") as boolean,
+      concurrentJobs: values.get("mediaProcessingConcurrentJobs") as number,
+      retryLimit: values.get("mediaProcessingRetryLimit") as number,
+      leaseSeconds: values.get("mediaProcessingLeaseSeconds") as number,
     };
   }
 
@@ -123,29 +123,37 @@ export class MediaProcessingQueueService {
     const stableWorkerId = workerId.trim();
     this.assertWorkerId(stableWorkerId);
     const leaseToken = `${stableWorkerId}:${randomUUID()}`;
+    const values = await this.settings.getMany([
+      "mediaProcessingEnabled",
+      "mediaProcessingConcurrentJobs",
+      "mediaProcessingRetryLimit",
+      "mediaProcessingLeaseSeconds",
+      "mediaHlsEnabled",
+      "mediaHlsBackfillEnabled",
+      "mediaHlsBackfillPaused",
+    ]);
+    const capacity: MediaProcessingCapacity = {
+      enabled: values.get("mediaProcessingEnabled") as boolean,
+      concurrentJobs: values.get("mediaProcessingConcurrentJobs") as number,
+      retryLimit: values.get("mediaProcessingRetryLimit") as number,
+      leaseSeconds: values.get("mediaProcessingLeaseSeconds") as number,
+    };
+    const canClaimBackfill =
+      (values.get("mediaHlsEnabled") as boolean) &&
+      (values.get("mediaHlsBackfillEnabled") as boolean) &&
+      !(values.get("mediaHlsBackfillPaused") as boolean);
+    if (!capacity.enabled) return null;
 
     return this.database.client.$transaction(async (tx) => {
       await this.lockQueue(tx);
-      const capacity = await this.capacityInTransaction(tx);
       const now = new Date();
       await this.recoverStaleInTransaction(tx, now, capacity.retryLimit);
       await this.markStaleWorkersInTransaction(tx, now, capacity.leaseSeconds);
-      if (!capacity.enabled) return null;
 
       const activeCount = await tx.mediaProcessingJob.count({
         where: { status: { in: [...ACTIVE_STATUSES] } },
       });
       if (activeCount >= capacity.concurrentJobs) return null;
-
-      const [hlsEnabled, backfillEnabled, backfillPaused] = await Promise.all([
-        this.settings.getResolvedInTransaction(tx, "mediaHlsEnabled"),
-        this.settings.getResolvedInTransaction(tx, "mediaHlsBackfillEnabled"),
-        this.settings.getResolvedInTransaction(tx, "mediaHlsBackfillPaused"),
-      ]);
-      const canClaimBackfill =
-        (hlsEnabled.value as boolean) &&
-        (backfillEnabled.value as boolean) &&
-        !(backfillPaused.value as boolean);
 
       const candidate = await tx.mediaProcessingJob.findFirst({
         where: {
@@ -204,11 +212,9 @@ export class MediaProcessingQueueService {
     errorCode: string;
     errorMessage: string;
   }) {
+    const retryLimit = (await this.settings.get("mediaProcessingRetryLimit")) as number;
     return this.database.client.$transaction(async (tx) => {
       await this.lockQueue(tx);
-      const retryLimit = (
-        await this.settings.getResolvedInTransaction(tx, "mediaProcessingRetryLimit")
-      ).value as number;
       const now = new Date();
       const job = await tx.mediaProcessingJob.findFirst({
         where: {
@@ -291,9 +297,9 @@ export class MediaProcessingQueueService {
   async recoverStale(
     onRecovered?: (tx: Prisma.TransactionClient, result: { recovered: number }) => Promise<void>,
   ) {
+    const capacity = await this.capacity();
     return this.database.client.$transaction(async (tx) => {
       await this.lockQueue(tx);
-      const capacity = await this.capacityInTransaction(tx);
       const now = new Date();
       const recovered = await tx.mediaProcessingJob.count({
         where: { status: { in: [...ACTIVE_STATUSES] }, leaseExpiresAt: { lt: now } },
@@ -316,23 +322,6 @@ export class MediaProcessingQueueService {
     await tx.$executeRawUnsafe(
       `DO $task85$ BEGIN PERFORM pg_advisory_xact_lock(${QUEUE_ADVISORY_LOCK}); END $task85$;`,
     );
-  }
-
-  private async capacityInTransaction(
-    tx: Prisma.TransactionClient,
-  ): Promise<MediaProcessingCapacity> {
-    const [enabled, concurrentJobs, retryLimit, leaseSeconds] = await Promise.all([
-      this.settings.getResolvedInTransaction(tx, "mediaProcessingEnabled"),
-      this.settings.getResolvedInTransaction(tx, "mediaProcessingConcurrentJobs"),
-      this.settings.getResolvedInTransaction(tx, "mediaProcessingRetryLimit"),
-      this.settings.getResolvedInTransaction(tx, "mediaProcessingLeaseSeconds"),
-    ]);
-    return {
-      enabled: enabled.value as boolean,
-      concurrentJobs: concurrentJobs.value as number,
-      retryLimit: retryLimit.value as number,
-      leaseSeconds: leaseSeconds.value as number,
-    };
   }
 
   private async markStaleWorkersInTransaction(
