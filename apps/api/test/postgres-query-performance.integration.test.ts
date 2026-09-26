@@ -61,6 +61,8 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
       `);
       const discoveryPlan = planText(discovery);
       expect(discoveryPlan).not.toContain('"Node Type":"Seq Scan"');
+      expect(discoveryPlan).toContain("video_public_feed_idx");
+      expect(discoveryPlan).toContain("media_asset_playable_video_idx");
 
       const trending = await tx.$queryRawUnsafe<ExplainRow[]>(`
         EXPLAIN (FORMAT JSON)
@@ -83,7 +85,9 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
           AND "currency" = 'USD'
           AND "occurredAt" >= CURRENT_TIMESTAMP - INTERVAL '90 days'
       `);
-      expect(planText(revenue)).not.toContain('"Node Type":"Seq Scan"');
+      const revenuePlan = planText(revenue);
+      expect(revenuePlan).not.toContain('"Node Type":"Seq Scan"');
+      expect(revenuePlan).toContain("earnings_channel_currency_time_idx");
     });
   });
 
