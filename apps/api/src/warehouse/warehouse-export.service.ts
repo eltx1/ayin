@@ -329,10 +329,18 @@ export class WarehouseExportService {
       else partitions.set(record.partitionDate, [record]);
     }
 
+    const pageLast = records[records.length - 1]!;
+    const orderedPartitions = [...partitions.entries()].sort((left, right) => {
+      const leftLast = left[1][left[1].length - 1]!;
+      const rightLast = right[1][right[1].length - 1]!;
+      const timeDifference = leftLast.cursorAt.getTime() - rightLast.cursorAt.getTime();
+      return timeDifference || leftLast.cursorId.localeCompare(rightLast.cursorId);
+    });
+
     let batches = 0;
-    let lastBatchId: string | null = null;
-    for (const [partitionDate, partitionRecords] of partitions) {
-      const last = partitionRecords[partitionRecords.length - 1]!;
+    let checkpointBatchId: string | null = null;
+    for (const [partitionDate, partitionRecords] of orderedPartitions) {
+      const partitionLast = partitionRecords[partitionRecords.length - 1]!;
       const withoutId = {
         dataset,
         schemaVersion: warehouseSchemaVersions[dataset],
@@ -340,8 +348,8 @@ export class WarehouseExportService {
         cursor: {
           fromAt: checkpoint.cursorAt?.toISOString() ?? null,
           fromId: checkpoint.cursorId,
-          throughAt: last.cursorAt.toISOString(),
-          throughId: last.cursorId,
+          throughAt: partitionLast.cursorAt.toISOString(),
+          throughId: partitionLast.cursorId,
         },
         records: partitionRecords.map((item) => item.record),
       } satisfies Omit<WarehouseExportBatch, "batchId">;
@@ -351,11 +359,18 @@ export class WarehouseExportService {
       } satisfies WarehouseExportBatch;
       await this.adapter.writeBatch(batch);
       batches += 1;
-      lastBatchId = batch.batchId;
+      if (partitionRecords.some((item) => item.cursorId === pageLast.cursorId)) {
+        checkpointBatchId = batch.batchId;
+      }
     }
 
-    const last = records[records.length - 1]!;
-    await this.advanceCheckpoint(dataset, last.cursorAt, last.cursorId, lastBatchId!);
+    if (!checkpointBatchId) throw new Error("WAREHOUSE_CHECKPOINT_BATCH_MISSING");
+    await this.advanceCheckpoint(
+      dataset,
+      pageLast.cursorAt,
+      pageLast.cursorId,
+      checkpointBatchId,
+    );
     return { exportedRecords: records.length, batches };
   }
 
