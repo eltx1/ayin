@@ -142,3 +142,12 @@ enum TVResumePolicy {
         completedAt == nil && positionMs > 0 && !userNavigated
     }
 }
+
+enum TVPlaybackScenePolicy {
+    static func shouldPause(
+        sceneIsActive: Bool,
+        pictureInPictureActive: Bool
+    ) -> Bool {
+        !sceneIsActive && !pictureInPictureActive
+    }
+}
