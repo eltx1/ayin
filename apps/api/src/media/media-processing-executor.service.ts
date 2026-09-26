@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -49,7 +50,8 @@ export class MediaProcessingExecutorService {
   }
 
   async process(job: MediaProcessingJob, workerId: string, signal?: AbortSignal): Promise<void> {
-    const workDirectory = join(this.workRoot, job.id);
+    const claimScratchId = createHash("sha256").update(workerId).digest("hex").slice(0, 16);
+    const workDirectory = join(this.workRoot, `${job.id}-${claimScratchId}`);
     const inputPath = join(workDirectory, `input${sourceExtension(job.sourceMimeType)}`);
     const outputPath = join(workDirectory, "canonical.mp4");
     let heartbeatTimer: NodeJS.Timeout | null = null;
