@@ -9,12 +9,14 @@ import {
   CreatorAnalyticsController,
   PublicAnalyticsController,
 } from "./analytics.controller.js";
+import { AnalyticsRollupService } from "./analytics-rollup.service.js";
+import { AnalyticsRollupWorkerService } from "./analytics-rollup-worker.service.js";
 import { AnalyticsService } from "./analytics.service.js";
 
 @Module({
   imports: [DatabaseModule, AuthModule, AdminModule, VideoPolicyModule],
   controllers: [PublicAnalyticsController, CreatorAnalyticsController, AdminAnalyticsController],
-  providers: [AnalyticsService],
-  exports: [AnalyticsService],
+  providers: [AnalyticsService, AnalyticsRollupService, AnalyticsRollupWorkerService],
+  exports: [AnalyticsService, AnalyticsRollupService],
 })
 export class AnalyticsModule {}
