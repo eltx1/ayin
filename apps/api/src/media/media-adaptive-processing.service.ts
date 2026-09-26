@@ -137,7 +137,7 @@ export class MediaAdaptiveProcessingService {
             threads: settings.ffmpegThreadsPerJob,
             preset: settings.ffmpegPreset,
             segmentDurationSeconds: settings.segmentDurationSeconds,
-            signal: input.signal,
+            ...(input.signal ? { signal: input.signal } : {}),
           });
           await assertScratchActualWithinLimit(
             input.canonicalPath,
