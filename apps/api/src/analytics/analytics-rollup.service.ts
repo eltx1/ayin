@@ -2,7 +2,6 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 
-const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const DEFAULT_RETENTION_DAYS = 400;
 const LATE_ARRIVAL_SCAN_OVERLAP_MS = 15 * 60_000;
