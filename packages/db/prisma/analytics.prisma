@@ -258,7 +258,7 @@ model AnalyticsSubscriptionEpisode {
   updatedAt      DateTime @updatedAt
 
   @@index([channelId, subscribedAt])
-  @@index([channelId, profileHash, unsubscribedAt])
+  @@index([channelId, profileHash, unsubscribedAt], map: "analytics_subscription_profile_active_idx")
   @@index([subscribedAt])
 }
 
