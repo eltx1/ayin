@@ -32,6 +32,34 @@ export class PlatformSettingsService {
     return (await this.getResolved(key)).value;
   }
 
+  async getMany(keys: readonly PlatformSettingKey[]): Promise<Map<PlatformSettingKey, unknown>> {
+    const uniqueKeys = [...new Set(keys)];
+    if (!uniqueKeys.length) return new Map();
+    const definitions = uniqueKeys.map((key) => ({ key, definition: platformSettingCatalog[key] }));
+    const rows = await this.database.client.platformSetting.findMany({
+      where: {
+        OR: definitions.map(({ definition }) => ({
+          namespace: definition.namespace,
+          key: definition.key,
+        })),
+      },
+      select: {
+        namespace: true,
+        key: true,
+        schemaVersion: true,
+        value: true,
+        valueType: true,
+      },
+    });
+    const byIdentity = new Map(rows.map((row) => [`${row.namespace}:${row.key}`, row]));
+    return new Map(
+      definitions.map(({ key, definition }) => {
+        const row = byIdentity.get(`${definition.namespace}:${definition.key}`) ?? null;
+        return [key, this.resolve(definition, row).value] as const;
+      }),
+    );
+  }
+
   async getResolved(key: PlatformSettingKey) {
     const definition = platformSettingCatalog[key];
     const row = await this.database.client.platformSetting.findUnique({
