@@ -29,8 +29,10 @@ Public discovery and related-video queries repeatedly filter:
 
 Task 86 adds:
 
-- `video_public_feed_idx(status, visibility, removedAt, publishedAt, id)`
-- `media_asset_playable_video_idx(videoId, kind, status, removedAt, mimeType)`.
+- partial `video_public_feed_idx(publishedAt DESC, id DESC)` covering only PUBLISHED/PUBLIC/non-removed rows;
+- partial `media_asset_playable_video_idx(videoId)` covering only validated, non-removed MP4 source assets.
+
+These are deliberately partial rather than broad composite indexes: the first EXPLAIN run showed PostgreSQL preferred the existing broader indexes. The partial forms are smaller and match the actual hot-path predicates, and the regression test requires PostgreSQL to select them.
 
 Home and My AYIN previously ran video-policy lookups once per discovery section. Task 86 batches all page video IDs and performs one policy/override batch for the whole response, removing that request-level N+1 pattern.
 
