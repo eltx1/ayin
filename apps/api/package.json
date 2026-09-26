@@ -12,7 +12,8 @@
     "test:integration": "vitest run --testTimeout=30000 --fileParallelism=false test",
     "typecheck": "tsc -p tsconfig.json",
     "proof:live-provider": "tsx src/live/mux-live-provider-proof-cli.ts",
-    "start:analytics-worker": "node dist/analytics-worker.js"
+    "start:analytics-worker": "node dist/analytics-worker.js",
+    "start:warehouse-worker": "node dist/warehouse-worker.js"
   },
   "dependencies": {
     "@ayin/config": "workspace:*",

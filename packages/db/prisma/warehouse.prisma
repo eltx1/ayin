@@ -1,0 +1,12 @@
+model WarehouseExportCheckpoint {
+  dataset         String   @db.VarChar(40)
+  schemaVersion   Int
+  cursorAt        DateTime?
+  cursorId        String?  @db.VarChar(80)
+  lastBatchId     String?  @db.Char(64)
+  lastSucceededAt DateTime?
+  updatedAt       DateTime @updatedAt
+
+  @@id([dataset, schemaVersion])
+  @@index([lastSucceededAt])
+}
