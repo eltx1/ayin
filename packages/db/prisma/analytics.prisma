@@ -18,6 +18,7 @@ model AnalyticsEvent {
 
   @@index([occurredAt])
   @@index([receivedAt])
+  @@index([receivedAt, id], map: "analytics_event_export_cursor_idx")
   @@index([eventName, occurredAt])
   @@index([sessionHash, occurredAt])
   @@index([profileHash, occurredAt], map: "analytics_event_profile_time_idx")
