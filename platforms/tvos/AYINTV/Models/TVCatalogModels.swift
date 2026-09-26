@@ -12,12 +12,21 @@ struct TVMyAyinResponse: Decodable {
         let key: String
         let title: String
         let items: [TVDiscoveryItem]
+        let nextCursor: String?
         let availability: String?
+        let emptyMessage: String?
         var id: String { key }
     }
 
     let profileId: String
     let sections: [Section]
+}
+
+struct TVDiscoveryPageResponse: Decodable {
+    let items: [TVDiscoveryItem]
+    let nextCursor: String?
+    let availability: String?
+    let emptyMessage: String?
 }
 
 struct TVChannelResponse: Decodable {
