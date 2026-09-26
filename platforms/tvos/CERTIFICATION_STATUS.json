@@ -35,15 +35,15 @@
     "Add Top Shelf only after a bounded server-side feed, final artwork and hardware memory validation are available",
     "Complete App Privacy metadata and signed archive/TestFlight checks before App Store submission"
   ],
-  "repositoryValidationEvidenceHeadSha": "3a363de64583f4458b6ce5094ac5017851b3f17a",
+  "repositoryValidationEvidenceHeadSha": "e878b99eb2eff8dc5f2a73b72d1e5953a69d9f28",
   "repositoryValidationEvidenceRuns": {
-    "tvosValidationRun": 36244431088,
-    "iosRegressionRun": 36244431090,
-    "qualityRun": 36244431010,
-    "browserAcceptanceRun": 36244431267,
-    "securityRun": 36244431079
+    "tvosValidationRun": 36249615383,
+    "iosRegressionRun": 36249615340,
+    "qualityRun": 36249615354,
+    "browserAcceptanceRun": 36249615342,
+    "securityRun": 36249615341
   },
-  "finalDiffScope": "native-tvos-app-plus-shared-apple-auth-kids-profile-contract",
+  "finalDiffScope": "native-tvos-app-plus-shared-apple-contracts-final-reviewed",
   "iosRegressionNote": "Task 81 extends the shared Apple auth identity with viewer-profile isKids state; iOS simulator build and unit tests passed on the evidence head.",
   "advertisingConsentDefault": "LIMITED_ADS",
   "serverSideDAIRequiresExplicitConsent": true,
@@ -53,5 +53,6 @@
     "device": "Apple TV 4K (3rd generation)",
     "xcode": "16.4 (16F6)",
     "minimumDeclaredTvOS": "18.0"
-  }
+  },
+  "evidenceNote": "The referenced head passed tvOS simulator build/tests, iOS regression, quality, browser acceptance and security. Any later commit that changes only this evidence file does not change functional code."
 }
