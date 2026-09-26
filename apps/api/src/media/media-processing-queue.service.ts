@@ -148,8 +148,8 @@ export class MediaProcessingQueueService {
       if (!capacity.enabled) return null;
 
       const now = new Date();
-      await this.recoverStaleInTransaction(tx, now, retryLimit);
-      await this.markStaleWorkersInTransaction(tx, now, leaseSeconds);
+      await this.recoverStaleInTransaction(tx, now, capacity.retryLimit);
+      await this.markStaleWorkersInTransaction(tx, now, capacity.leaseSeconds);
 
       const activeCount = await tx.mediaProcessingJob.count({
         where: { status: { in: [...ACTIVE_STATUSES] } },
@@ -313,8 +313,8 @@ export class MediaProcessingQueueService {
       const recovered = await tx.mediaProcessingJob.count({
         where: { status: { in: [...ACTIVE_STATUSES] }, leaseExpiresAt: { lt: now } },
       });
-      await this.recoverStaleInTransaction(tx, now, capacity.retryLimit);
-      await this.markStaleWorkersInTransaction(tx, now, capacity.leaseSeconds);
+      await this.recoverStaleInTransaction(tx, now, retryLimit);
+      await this.markStaleWorkersInTransaction(tx, now, leaseSeconds);
       const result = { recovered };
       await onRecovered?.(tx, result);
       return result;
