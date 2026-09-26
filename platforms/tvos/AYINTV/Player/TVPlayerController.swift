@@ -6,10 +6,11 @@ import UIKit
 struct TVPlayerController: UIViewControllerRepresentable {
     @ObservedObject var model: TVPlayerViewModel
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
+        controller.delegate = context.coordinator
         controller.showsPlaybackControls = true
         controller.playbackControlsIncludeTransportBar = true
         controller.playbackControlsIncludeInfoViews = true
@@ -41,6 +42,7 @@ struct TVPlayerController: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        context.coordinator.model = model
         controller.player = model.player
         context.coordinator.subtitleLabel?.text = model.subtitleText
         context.coordinator.subtitleLabel?.isHidden = model.subtitleText.isEmpty
@@ -76,7 +78,39 @@ struct TVPlayerController: UIViewControllerRepresentable {
         ]
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
         var subtitleLabel: UILabel?
+        weak var model: TVPlayerViewModel?
+
+        init(model: TVPlayerViewModel) {
+            self.model = model
+        }
+
+        func playerViewControllerWillStartPictureInPicture(
+            _ playerViewController: AVPlayerViewController
+        ) {
+            model?.setPictureInPictureActive(true)
+        }
+
+        func playerViewControllerDidStopPictureInPicture(
+            _ playerViewController: AVPlayerViewController
+        ) {
+            model?.setPictureInPictureActive(false)
+        }
+
+        func playerViewController(
+            _ playerViewController: AVPlayerViewController,
+            failedToStartPictureInPictureWithError error: Error
+        ) {
+            model?.setPictureInPictureActive(false)
+        }
+
+        func playerViewController(
+            _ playerViewController: AVPlayerViewController,
+            willResumePlaybackAfterUserNavigatedFrom oldTime: CMTime,
+            to targetTime: CMTime
+        ) {
+            model?.noteUserNavigation(to: targetTime)
+        }
     }
 }
