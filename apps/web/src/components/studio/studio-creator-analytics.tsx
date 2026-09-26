@@ -358,9 +358,8 @@ export function StudioCreatorAnalytics() {
               data.cohorts.audienceDaily.slice(-7).map((row) => (
                 <p key={row.date}>
                   <strong>{new Date(row.date).toLocaleDateString()}</strong> ·{" "}
-                  {row.newProfiles.toLocaleString()} new ·{" "}
-                  {row.returningProfiles.toLocaleString()} returning ·{" "}
-                  {row.sessionsPerActiveProfile.toFixed(2)} sessions/profile ·{" "}
+                  {row.newProfiles.toLocaleString()} new · {row.returningProfiles.toLocaleString()}{" "}
+                  returning · {row.sessionsPerActiveProfile.toFixed(2)} sessions/profile ·{" "}
                   {percent(row.contentReturnRate)} returned to previously watched content
                 </p>
               ))

@@ -473,10 +473,8 @@ export function AdminDashboard() {
           analytics.cohorts.retention.slice(-10).map((cohort) => (
             <p key={cohort.cohortDate}>
               <strong>{new Date(cohort.cohortDate).toLocaleDateString()}</strong> ·{" "}
-              {cohort.cohortSize.toLocaleString()} profiles · D1{" "}
-              {cohortRetentionLabel(cohort.d1)} · D7{" "}
-              {cohortRetentionLabel(cohort.d7)} · D30{" "}
-              {cohortRetentionLabel(cohort.d30)}
+              {cohort.cohortSize.toLocaleString()} profiles · D1 {cohortRetentionLabel(cohort.d1)} ·
+              D7 {cohortRetentionLabel(cohort.d7)} · D30 {cohortRetentionLabel(cohort.d30)}
             </p>
           ))
         ) : (
@@ -487,9 +485,8 @@ export function AdminDashboard() {
           analytics.cohorts.audienceDaily.slice(-7).map((row) => (
             <p key={row.date}>
               <strong>{new Date(row.date).toLocaleDateString()}</strong> ·{" "}
-              {row.newProfiles.toLocaleString()} new ·{" "}
-              {row.returningProfiles.toLocaleString()} returning ·{" "}
-              {row.sessionsPerActiveProfile.toFixed(2)} sessions/profile
+              {row.newProfiles.toLocaleString()} new · {row.returningProfiles.toLocaleString()}{" "}
+              returning · {row.sessionsPerActiveProfile.toFixed(2)} sessions/profile
             </p>
           ))
         ) : (

@@ -425,8 +425,7 @@ export class AnalyticsService {
             activeProfiles: row.activeProfiles,
             newProfiles: row.newProfiles,
             returningProfiles: row.returningProfiles,
-            returningRate:
-              row.activeProfiles > 0 ? row.returningProfiles / row.activeProfiles : 0,
+            returningRate: row.activeProfiles > 0 ? row.returningProfiles / row.activeProfiles : 0,
             sessions: row.sessions,
             sessionsPerActiveProfile:
               row.activeProfiles > 0 ? row.sessions / row.activeProfiles : 0,
@@ -551,8 +550,7 @@ export class AnalyticsService {
           returningProfiles: row.returningProfiles,
           returningRate: row.activeProfiles > 0 ? row.returningProfiles / row.activeProfiles : 0,
           sessions: row.sessions,
-          sessionsPerActiveProfile:
-            row.activeProfiles > 0 ? row.sessions / row.activeProfiles : 0,
+          sessionsPerActiveProfile: row.activeProfiles > 0 ? row.sessions / row.activeProfiles : 0,
           watchTimeMs: Number(row.watchTimeMs),
         })),
         retention: cohortRows.map((row) => ({
