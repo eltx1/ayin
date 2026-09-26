@@ -136,6 +136,45 @@ struct TVDetailView: View {
                 }
             }
 
+        case .playlist:
+            if let playlist = model.playlist {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 34) {
+                        heroHeader(
+                            title: playlist.playlist.name,
+                            subtitle: playlist.channel.name,
+                            description: playlist.playlist.description
+                        )
+
+                        if playlist.items.isEmpty {
+                            ContentUnavailableView(
+                                "Playlist is empty",
+                                systemImage: "rectangle.stack",
+                                description: Text("This playlist has no playable videos.")
+                            )
+                        } else {
+                            LazyVGrid(
+                                columns: [GridItem(.adaptive(minimum: 360), spacing: 28)],
+                                spacing: 30
+                            ) {
+                                ForEach(playlist.items) { item in
+                                    TVContentCard(
+                                        title: item.video.title,
+                                        subtitle: playlist.channel.name,
+                                        artworkObjectKey: item.video.thumbnail?.objectKey,
+                                        progress: nil
+                                    ) {
+                                        router.open(.video(slug: item.video.slug, isKids: false))
+                                    }
+                                }
+                            }
+                            .focusSection()
+                        }
+                    }
+                    .padding(70)
+                }
+            }
+
         case .movie:
             if let movie = model.movie {
                 ScrollView {
