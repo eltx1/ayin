@@ -142,7 +142,7 @@ model AnalyticsChannelDailyDimensionRollup {
   count       Int      @default(0)
 
   @@id([bucketStart, channelId, dimension, value])
-  @@index([channelId, bucketStart, dimension])
+  @@index([channelId, bucketStart, dimension], map: "analytics_channel_dimension_bucket_idx")
 }
 
 model AnalyticsPlaybackSessionDailyRollup {
