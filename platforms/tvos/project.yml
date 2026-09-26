@@ -28,8 +28,6 @@ targets:
       - path: ../ios/AYIN/Auth/AuthService.swift
       - path: ../ios/AYIN/Auth/KeychainSessionStore.swift
       - path: ../ios/AYIN/Auth/SessionController.swift
-      - path: ../ios/AYIN/Discovery/DiscoveryModels.swift
-      - path: ../ios/AYIN/Discovery/DiscoveryService.swift
       - path: ../ios/AYIN/DeepLinks/DeepLink.swift
       - path: ../ios/AYIN/Player/PlaybackAccounting.swift
       - path: ../ios/AYIN/Player/PlaybackModels.swift
