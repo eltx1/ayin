@@ -213,7 +213,7 @@ Application rollback never automatically reverses database migrations.
 - `ayin-api` receives only `api.env` and listens on `127.0.0.1:4000`.
 - `ayin-analytics-worker` receives `api.env` and runs scheduled UTC analytics rollup/reconciliation plus retention cleanup.
 - `ayin-warehouse-worker` receives `api.env` and runs the provider-neutral incremental export boundary. With the built-in disabled adapter it performs no database export and requires no external warehouse.
-- `ayin-media-worker` receives `api.env` and runs media/privacy background processing.
+- `ayin-media-worker` receives `api.env` and runs media/privacy background processing. Media claims are PostgreSQL-leased and horizontally safe; see `docs/MEDIA_WORKER_SCALING.md` for per-process concurrency, worker registry metadata, lease recovery and multi-host requirements.
 
 API/worker secrets therefore do not need to exist in the web process environment. After the first successful deployment enable PM2 startup persistence for the AYIN user and verify a controlled server reboot.
 
