@@ -3,7 +3,7 @@ import Foundation
 
 @MainActor
 final class TVSearchViewModel: ObservableObject {
-    @Published private(set) var items: [DiscoveryItem] = []
+    @Published private(set) var items: [TVDiscoveryItem] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
