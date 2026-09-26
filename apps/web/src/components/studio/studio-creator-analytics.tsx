@@ -11,6 +11,17 @@ type Breakdown = {
   items: Array<{ value: string; count: number }>;
 };
 
+type CohortMilestone = {
+  retainedProfiles: number;
+  retentionRate: number;
+  sessions: number;
+  sessionsPerRetainedProfile: number;
+  watchTimeMs: number;
+  averageWatchTimeMsPerRetainedProfile: number;
+  contentReturnProfiles?: number;
+  contentReturnRate?: number;
+};
+
 type CreatorAnalytics = {
   periodDays: number;
   dateRange: { from: string; to: string; timezone: "UTC" };
@@ -64,6 +75,38 @@ type CreatorAnalytics = {
     fills: number | null;
     fillRate: number | null;
     note: string;
+  };
+  cohorts: {
+    minimumCohortSize: number;
+    identityScope: "SIGNED_IN_PROFILE_PSEUDONYMS";
+    privacyNote: string;
+    audienceDaily: Array<{
+      date: string;
+      activeProfiles: number;
+      newProfiles: number;
+      returningProfiles: number;
+      returningRate: number;
+      sessions: number;
+      sessionsPerActiveProfile: number;
+      watchTimeMs: number;
+      contentReturnProfiles: number;
+      contentReturnRate: number;
+    }>;
+    retention: Array<{
+      cohortDate: string;
+      cohortSize: number;
+      d1: CohortMilestone | null;
+      d7: CohortMilestone | null;
+      d30: CohortMilestone | null;
+    }>;
+    subscriberTrackingStartedAt: string | null;
+    subscriberRetention: Array<{
+      cohortDate: string;
+      cohortSize: number;
+      d1: CohortMilestone | null;
+      d7: CohortMilestone | null;
+      d30: CohortMilestone | null;
+    }>;
   };
 };
 
@@ -283,6 +326,46 @@ export function StudioCreatorAnalytics() {
           <section className={styles.panel}>
             <p className={styles.muted}>{data.geography.note}</p>
           </section>
+          <section className={styles.panel}>
+            <h2>Audience return cohorts</h2>
+            <p className={styles.muted}>{data.cohorts.privacyNote}</p>
+            <p className={styles.muted}>
+              Minimum exposed cohort: {data.cohorts.minimumCohortSize.toLocaleString()} profiles.
+            </p>
+            {data.cohorts.retention.length ? (
+              data.cohorts.retention.slice(-8).map((cohort) => (
+                <p key={cohort.cohortDate}>
+                  <strong>{new Date(cohort.cohortDate).toLocaleDateString()}</strong> ·{" "}
+                  {cohort.cohortSize.toLocaleString()} profiles · D1{" "}
+                  {cohort.d1 ? percent(cohort.d1.retentionRate) : "pending"} · D7{" "}
+                  {cohort.d7 ? percent(cohort.d7.retentionRate) : "pending"} · D30{" "}
+                  {cohort.d30 ? percent(cohort.d30.retentionRate) : "pending"}
+                </p>
+              ))
+            ) : (
+              <p className={styles.muted}>
+                No audience cohort is large enough to expose for this period.
+              </p>
+            )}
+          </section>
+          <section className={styles.panel}>
+            <h2>New vs returning audience</h2>
+            {data.cohorts.audienceDaily.length ? (
+              data.cohorts.audienceDaily.slice(-7).map((row) => (
+                <p key={row.date}>
+                  <strong>{new Date(row.date).toLocaleDateString()}</strong> ·{" "}
+                  {row.newProfiles.toLocaleString()} new ·{" "}
+                  {row.returningProfiles.toLocaleString()} returning ·{" "}
+                  {row.sessionsPerActiveProfile.toFixed(2)} sessions/profile ·{" "}
+                  {percent(row.contentReturnRate)} returned to previously watched content
+                </p>
+              ))
+            ) : (
+              <p className={styles.muted}>
+                Daily audience rows are suppressed until the privacy threshold is met.
+              </p>
+            )}
+          </section>
         </>
       ) : null}
 
@@ -297,6 +380,30 @@ export function StudioCreatorAnalytics() {
               <span className={styles.muted}>Subscribers total</span>
               <strong>{data.subscribersTotal.toLocaleString()}</strong>
             </article>
+          </section>
+          <section className={styles.panel}>
+            <h2>Subscriber retention cohorts</h2>
+            <p className={styles.muted}>
+              Available only for subscription cohorts recorded after cohort tracking started
+              {data.cohorts.subscriberTrackingStartedAt
+                ? ` on ${new Date(data.cohorts.subscriberTrackingStartedAt).toLocaleDateString()}`
+                : ""}.
+            </p>
+            {data.cohorts.subscriberRetention.length ? (
+              data.cohorts.subscriberRetention.slice(-8).map((cohort) => (
+                <p key={cohort.cohortDate}>
+                  <strong>{new Date(cohort.cohortDate).toLocaleDateString()}</strong> ·{" "}
+                  {cohort.cohortSize.toLocaleString()} subscribers · D1{" "}
+                  {cohort.d1 ? percent(cohort.d1.retentionRate) : "pending"} · D7{" "}
+                  {cohort.d7 ? percent(cohort.d7.retentionRate) : "pending"} · D30{" "}
+                  {cohort.d30 ? percent(cohort.d30.retentionRate) : "pending"}
+                </p>
+              ))
+            ) : (
+              <p className={styles.muted}>
+                No subscriber cohort is currently large enough and mature enough to expose.
+              </p>
+            )}
           </section>
           <section className={styles.panel}>
             <h2>Audience retention</h2>
