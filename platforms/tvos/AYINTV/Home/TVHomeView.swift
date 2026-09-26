@@ -47,6 +47,27 @@ struct TVHomeView: View {
                                                     router.open(href: item.href)
                                                 }
                                             }
+
+                                            if row.nextCursor != nil {
+                                                Button {
+                                                    Task {
+                                                        await model.loadMore(
+                                                            rowKey: row.key,
+                                                            token: session.isAuthenticated ? session.token : nil
+                                                        )
+                                                    }
+                                                } label: {
+                                                    VStack(spacing: 14) {
+                                                        Image(systemName: "arrow.right.circle.fill")
+                                                            .font(.system(size: 54))
+                                                        Text(model.isLoadingMore(row.key) ? "Loading…" : "More")
+                                                            .font(.headline)
+                                                    }
+                                                    .frame(width: 180, height: 202)
+                                                }
+                                                .buttonStyle(.card)
+                                                .disabled(model.isLoadingMore(row.key))
+                                            }
                                         }
                                         .padding(.horizontal, 70)
                                         .padding(.vertical, 8)
