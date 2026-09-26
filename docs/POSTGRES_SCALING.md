@@ -13,7 +13,7 @@ The immediate changes are based on:
 3. clean-PostgreSQL `EXPLAIN (FORMAT JSON)` regression tests for the hot paths changed by this task;
 4. live operational counters exposed after deployment through `GET /admin/observability/postgres`.
 
-The Admin PostgreSQL snapshot reports connection counts by `application_name`, active/idle/idle-in-transaction totals, configured pool limits, and timing aggregates from `pg_stat_statements` when that optional extension is available. Query text is deliberately not exposed by the API.
+The Admin PostgreSQL snapshot reports AYIN-role connection counts by `application_name`, active/idle/idle-in-transaction totals, configured pool limits, and timing aggregates from `pg_stat_statements` when that optional extension is available. Query text is deliberately not exposed by the API.
 
 ## Query-pattern review
 
@@ -70,7 +70,7 @@ Admin list pages already cap page size at 100. Task 86 additionally caps deep pa
 
 Task 85 already supplied the claim index `(status, priority, queuedAt)` plus lease indexes.
 
-Task 86 keeps PostgreSQL as the queue. It reduces claim contention by batching the seven media settings into one query before entering the advisory-lock transaction. The critical transaction now contains only stale-lease recovery, global active-count enforcement, candidate selection and the atomic claim transition.
+Task 86 keeps PostgreSQL as the queue. It reduces claim contention by batching the seven media settings into one query inside the advisory-lock transaction instead of issuing separate setting lookups. This preserves the current pause/global-concurrency decision while keeping the critical transaction compact: one settings read, stale-lease recovery, global active-count enforcement, candidate selection and the atomic claim transition.
 
 ## Connection pooling
 
