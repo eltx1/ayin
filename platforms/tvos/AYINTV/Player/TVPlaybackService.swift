@@ -99,13 +99,7 @@ struct TVPlaybackService: TVPlaybackServicing {
         let tv = try await tvRequest
         let linear = await linearRequest
 
-        if
-            let linear,
-            linear.hls.available,
-            let raw = linear.hls.masterUrl ?? linear.hls.url,
-            let url = URL(string: raw),
-            url.scheme == "https"
-        {
+        if let linear, let url = linear.preferredPlaybackURL {
             return TVPlaybackAsset(
                 title: tv.tv.name,
                 subtitle: tv.channel.name,
@@ -119,7 +113,7 @@ struct TVPlaybackService: TVPlaybackServicing {
                 channelId: tv.channel.id,
                 durationMs: nil,
                 isLive: true,
-                protocolName: "HLS",
+                protocolName: linear.usesServerSideDAI ? "HLS-DAI" : "HLS",
                 initialOffsetMs: 0,
                 captions: [],
                 isKids: false
