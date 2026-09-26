@@ -22,6 +22,17 @@ final class TVRouteTests: XCTestCase {
         XCTAssertEqual(TVRoute.parse(url: url), .video(slug: "demo-video", isKids: false))
     }
 
+    func testCustomMovieAndSeriesFallbackSchemesRouteNatively() throws {
+        XCTAssertEqual(
+            TVRoute.parse(url: try XCTUnwrap(URL(string: "ayin-tv://movie/example-movie"))),
+            .movie(slug: "example-movie")
+        )
+        XCTAssertEqual(
+            TVRoute.parse(url: try XCTUnwrap(URL(string: "ayin-tv://series/example-series"))),
+            .series(slug: "example-series")
+        )
+    }
+
     func testForeignOriginAndUnsafePathsAreRejected() throws {
         XCTAssertNil(TVRoute.parse(url: try XCTUnwrap(URL(string: "https://example.com/watch/demo"))))
         XCTAssertNil(TVRoute.parse(url: try XCTUnwrap(URL(string: "ayin-tv://watch/%2Fadmin"))))
