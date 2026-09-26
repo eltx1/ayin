@@ -14,7 +14,8 @@ type Breakdown = {
 type CreatorAnalytics = {
   periodDays: number;
   dateRange: { from: string; to: string; timezone: "UTC" };
-  refresh: "query-time";
+  refresh: "rollup";
+  lastRollupCheck: string | null;
   freshnessNote: string;
   views: number;
   uniqueViewersApprox: number;
@@ -177,7 +178,7 @@ export function StudioCreatorAnalytics() {
           <span className={styles.eyebrow}>Creator Studio</span>
           <h1>Analytics</h1>
           <p className={styles.muted}>
-            Persisted analytics, not fake realtime.{" "}
+            Persisted UTC rollups built from raw analytics; not realtime.{" "}
             {data?.freshnessNote ?? "Loading measured data…"}
           </p>
           {data ? <p className={styles.muted}>Date range: {rangeLabel}</p> : null}
