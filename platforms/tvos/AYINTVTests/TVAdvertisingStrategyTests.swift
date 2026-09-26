@@ -7,13 +7,13 @@ final class TVAdvertisingStrategyTests: XCTestCase {
         XCTAssertEqual(TVAdvertisingStrategy.nativeIMAMinimumTvOS, 15)
     }
 
-    func testCreatorTVUsesServerSideAdPathOnlyWhenLinearHLSIsAvailable() {
+    func testCreatorTVUsesServerSideAdPathOnlyWhenDAIIsAvailable() {
         XCTAssertEqual(
-            TVAdvertisingStrategy.forCreatorTV(linearHLSAvailable: true),
+            TVAdvertisingStrategy.forCreatorTV(serverSideDAIAvailable: true),
             .creatorTvSSAI
         )
         XCTAssertEqual(
-            TVAdvertisingStrategy.forCreatorTV(linearHLSAvailable: false),
+            TVAdvertisingStrategy.forCreatorTV(serverSideDAIAvailable: false),
             .none
         )
     }
