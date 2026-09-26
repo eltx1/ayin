@@ -25,6 +25,10 @@
             "comment": "Native AYIN Creator TV"
           },
           {
+            "/": "/c/*/playlists/*",
+            "comment": "Native AYIN playlist details"
+          },
+          {
             "/": "/c/*",
             "comment": "Native AYIN channel details"
           }
