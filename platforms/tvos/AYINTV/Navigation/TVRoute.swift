@@ -5,6 +5,7 @@ enum TVRoute: Hashable {
     case live(slug: String)
     case channel(handle: String)
     case creatorTV(handle: String)
+    case playlist(handle: String, slug: String)
     case movie(slug: String)
     case series(slug: String)
 
@@ -31,6 +32,9 @@ enum TVRoute: Hashable {
                 return .channel(handle: first)
             case "tv":
                 return .creatorTV(handle: first)
+            case "playlist", "playlists":
+                guard parts.count == 2, safe(parts[1]) else { return nil }
+                return .playlist(handle: first, slug: parts[1])
             case "movie", "movies":
                 return .movie(slug: first)
             case "series":
@@ -57,6 +61,15 @@ enum TVRoute: Hashable {
         }
         if parts.count == 2, parts[0] == "series", safe(parts[1]) {
             return .series(slug: parts[1])
+        }
+        if
+            parts.count == 4,
+            parts[0] == "c",
+            parts[2] == "playlists",
+            safe(parts[1]),
+            safe(parts[3])
+        {
+            return .playlist(handle: parts[1], slug: parts[3])
         }
         if parts.count == 2, parts[0] == "c", safe(parts[1]) {
             return .channel(handle: parts[1])
