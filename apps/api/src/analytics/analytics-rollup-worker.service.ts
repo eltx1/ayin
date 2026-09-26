@@ -43,6 +43,7 @@ export class AnalyticsRollupWorkerService {
           retentionDays: result.retentionDays,
           cleanupRan: cleanup.ran,
           rawEventsDeleted: cleanup.deleted,
+          sessionProjectionRowsDeleted: cleanup.projectionRowsDeleted,
           projectionRowsDeleted: cleanup.projectionRowsDeleted,
         });
       } catch (error) {
