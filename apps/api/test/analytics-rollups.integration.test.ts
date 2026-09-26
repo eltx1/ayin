@@ -182,15 +182,14 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
         channelId: channel.id,
         videoId: video.id,
       }),
-      ...["AD_REQUEST", "AD_START", "AD_COMPLETE", "AD_CLICK", "AD_ERROR"].map(
-        (eventName, index) =>
-          event({
-            eventName,
-            occurredAt: at(13 + index),
-            sessionHash: sessionA,
-            channelId: channel.id,
-            videoId: video.id,
-          }),
+      ...["AD_REQUEST", "AD_START", "AD_COMPLETE", "AD_CLICK", "AD_ERROR"].map((eventName, index) =>
+        event({
+          eventName,
+          occurredAt: at(13 + index),
+          sessionHash: sessionA,
+          channelId: channel.id,
+          videoId: video.id,
+        }),
       ),
       event({
         eventName: "SUBSCRIBE",
@@ -431,5 +430,4 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
     expect(await prisma.analyticsPlatformSessionDailyRollup.count()).toBe(0);
     expect(await prisma.analyticsVideoDailyRollup.count()).toBe(1);
   });
-
 });

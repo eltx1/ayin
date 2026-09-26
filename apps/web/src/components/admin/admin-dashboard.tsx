@@ -447,9 +447,7 @@ export function AdminDashboard() {
 
       <section className={styles.card} style={{ marginTop: 18 }}>
         <h2>Platform analytics</h2>
-        <p className={styles.muted}>
-          {analytics.freshnessNote}
-        </p>
+        <p className={styles.muted}>{analytics.freshnessNote}</p>
         <div className={styles.commandGrid}>
           {analyticsMetrics.map(([label, value]) => (
             <p key={label}>

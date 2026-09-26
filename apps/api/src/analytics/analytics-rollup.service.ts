@@ -77,10 +77,7 @@ export class AnalyticsRollupService {
           _min: { occurredAt: true },
         }),
       ]);
-      dirtyOccurredAt = earliestDate([
-        analyticsDirty._min.occurredAt,
-        adDirty._min.occurredAt,
-      ]);
+      dirtyOccurredAt = earliestDate([analyticsDirty._min.occurredAt, adDirty._min.occurredAt]);
     }
 
     let hourlyFrom: Date | null;

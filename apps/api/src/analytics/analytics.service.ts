@@ -318,8 +318,7 @@ export class AnalyticsService {
         },
         refresh: "rollup" as const,
         lastRollupCheck,
-        freshnessNote:
-          `Complete UTC calendar days through ${to.toISOString()}. Rollups are scheduled and rerunnable, not realtime; late-arriving raw events can revise prior windows.`,
+        freshnessNote: `Complete UTC calendar days through ${to.toISOString()}. Rollups are scheduled and rerunnable, not realtime; late-arriving raw events can revise prior windows.`,
         views,
         uniqueViewersApprox,
         uniqueViewerMethod:
@@ -425,8 +424,7 @@ export class AnalyticsService {
         timezone: "UTC" as const,
       },
       lastRollupCheck: rollupState?.lastSuccessfulAt?.toISOString() ?? null,
-      freshnessNote:
-        `Complete UTC calendar days through ${to.toISOString()}; scheduled rollups are not realtime.`,
+      freshnessNote: `Complete UTC calendar days through ${to.toISOString()}; scheduled rollups are not realtime.`,
       dauApprox: daily?.uniqueSessions ?? 0,
       mauApprox: Number(monthlySessions[0]?.count ?? 0n),
       watchTimeMs,
