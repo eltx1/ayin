@@ -111,7 +111,7 @@ type RevenueSourceRow = {
   occurredAt: Date;
   finalizedAt: Date | null;
   createdAt: Date;
-  sourceUpdatedAt: Date;
+  updatedAt: Date;
 };
 
 function iso(value: Date | null): string | null {
@@ -234,7 +234,7 @@ export function revenueFactFromSource(row: RevenueSourceRow): RevenueFactV1 {
     occurredAt: row.occurredAt.toISOString(),
     finalizedAt: iso(row.finalizedAt),
     createdAt: row.createdAt.toISOString(),
-    sourceUpdatedAt: row.sourceUpdatedAt.toISOString(),
+    sourceUpdatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -514,42 +514,35 @@ export class WarehouseExportService {
     checkpoint: Checkpoint,
     take: number,
   ): Promise<Array<ExportRecord<"revenue_facts">>> {
-    let rows: RevenueSourceRow[];
-    if (checkpoint.cursorAt && checkpoint.cursorId) {
-      rows = await this.database.client.$queryRaw<RevenueSourceRow[]>`
-        SELECT
-          "id", "channelId", "contractId", "campaignId", "videoId", "payoutId",
-          "type"::text AS "type", "state"::text AS "state",
-          "grossAmount", "amount", "currency", "revenueShareBps", "adSource",
-          "periodStart", "periodEnd", "occurredAt", "finalizedAt", "createdAt",
-          COALESCE("finalizedAt", "createdAt") AS "sourceUpdatedAt"
-        FROM "EarningsLedgerEntry"
-        WHERE (
-          COALESCE("finalizedAt", "createdAt"),
-          "id"
-        ) > (
-          ${checkpoint.cursorAt},
-          ${checkpoint.cursorId}::uuid
-        )
-        ORDER BY COALESCE("finalizedAt", "createdAt") ASC, "id" ASC
-        LIMIT ${take}
-      `;
-    } else {
-      rows = await this.database.client.$queryRaw<RevenueSourceRow[]>`
-        SELECT
-          "id", "channelId", "contractId", "campaignId", "videoId", "payoutId",
-          "type"::text AS "type", "state"::text AS "state",
-          "grossAmount", "amount", "currency", "revenueShareBps", "adSource",
-          "periodStart", "periodEnd", "occurredAt", "finalizedAt", "createdAt",
-          COALESCE("finalizedAt", "createdAt") AS "sourceUpdatedAt"
-        FROM "EarningsLedgerEntry"
-        ORDER BY COALESCE("finalizedAt", "createdAt") ASC, "id" ASC
-        LIMIT ${take}
-      `;
-    }
+    const rows = (await this.database.client.earningsLedgerEntry.findMany({
+      where: this.cursorWhere("updatedAt", checkpoint),
+      orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
+      take,
+      select: {
+        id: true,
+        channelId: true,
+        contractId: true,
+        campaignId: true,
+        videoId: true,
+        payoutId: true,
+        type: true,
+        state: true,
+        grossAmount: true,
+        amount: true,
+        currency: true,
+        revenueShareBps: true,
+        adSource: true,
+        periodStart: true,
+        periodEnd: true,
+        occurredAt: true,
+        finalizedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })) as unknown as RevenueSourceRow[];
 
     return rows.map((row) => ({
-      cursorAt: row.sourceUpdatedAt,
+      cursorAt: row.updatedAt,
       cursorId: row.id,
       partitionDate: utcPartitionDate(row.occurredAt),
       record: warehouseSchemaFor("revenue_facts").parse(revenueFactFromSource(row)),
