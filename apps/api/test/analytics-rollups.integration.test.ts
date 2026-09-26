@@ -345,10 +345,14 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
 
     expect(await prisma.analyticsEvent.count()).toBe(rawBefore);
 
-    await rollups.rebuildVideoHourly(hour, new Date(hour.getTime() + HOUR_MS));
-    await rollups.rebuildDaily(day, new Date(day.getTime() + DAY_MS));
-    await rollups.rebuildVideoHourly(hour, new Date(hour.getTime() + HOUR_MS));
-    await rollups.rebuildDaily(day, new Date(day.getTime() + DAY_MS));
+    await Promise.all([
+      rollups.rebuildVideoHourly(hour, new Date(hour.getTime() + HOUR_MS)),
+      rollups.rebuildVideoHourly(hour, new Date(hour.getTime() + HOUR_MS)),
+    ]);
+    await Promise.all([
+      rollups.rebuildDaily(day, new Date(day.getTime() + DAY_MS)),
+      rollups.rebuildDaily(day, new Date(day.getTime() + DAY_MS)),
+    ]);
 
     expect(
       await prisma.analyticsVideoDailyRollup.count({
