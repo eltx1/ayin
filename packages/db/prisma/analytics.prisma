@@ -20,6 +20,8 @@ model AnalyticsEvent {
   @@index([receivedAt])
   @@index([eventName, occurredAt])
   @@index([sessionHash, occurredAt])
+  @@index([profileHash, occurredAt], map: "analytics_event_profile_time_idx")
+  @@index([channelId, profileHash, occurredAt], map: "analytics_event_channel_profile_time_idx")
   @@index([channelId, occurredAt])
   @@index([videoId, occurredAt])
   @@index([accountId, occurredAt])
