@@ -671,13 +671,19 @@ export class AnalyticsRollupService {
           )
           SELECT
             m."cohortDate",
-            COUNT(*)::int AS "cohortSize",
+            COUNT(DISTINCT m."profileHash")::int AS "cohortSize",
             CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
-              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '1 day')::int END,
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '1 day'
+              )::int END,
             CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
-              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '7 days')::int END,
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '7 days'
+              )::int END,
             CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
-              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '30 days')::int END,
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '30 days'
+              )::int END,
             CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
               THEN COALESCE(SUM(a.sessions) FILTER (
                 WHERE a.day = m."cohortDate" + INTERVAL '1 day'
@@ -785,13 +791,19 @@ export class AnalyticsRollupService {
           SELECT
             m."cohortDate",
             m."channelId",
-            COUNT(*)::int AS "cohortSize",
+            COUNT(DISTINCT m."profileHash")::int AS "cohortSize",
             CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
-              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '1 day')::int END,
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '1 day'
+              )::int END,
             CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
-              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '7 days')::int END,
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '7 days'
+              )::int END,
             CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
-              THEN COUNT(*) FILTER (WHERE a.day = m."cohortDate" + INTERVAL '30 days')::int END,
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
+                WHERE a.day = m."cohortDate" + INTERVAL '30 days'
+              )::int END,
             CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
               THEN COALESCE(SUM(a.sessions) FILTER (
                 WHERE a.day = m."cohortDate" + INTERVAL '1 day'
@@ -817,15 +829,15 @@ export class AnalyticsRollupService {
                 WHERE a.day = m."cohortDate" + INTERVAL '30 days'
               ), 0)::bigint END,
             CASE WHEN m."cohortDate" + INTERVAL '1 day' < ${to}
-              THEN COUNT(*) FILTER (
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
                 WHERE cr.day = m."cohortDate" + INTERVAL '1 day' AND cr.returned
               )::int END,
             CASE WHEN m."cohortDate" + INTERVAL '7 days' < ${to}
-              THEN COUNT(*) FILTER (
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
                 WHERE cr.day = m."cohortDate" + INTERVAL '7 days' AND cr.returned
               )::int END,
             CASE WHEN m."cohortDate" + INTERVAL '30 days' < ${to}
-              THEN COUNT(*) FILTER (
+              THEN COUNT(DISTINCT m."profileHash") FILTER (
                 WHERE cr.day = m."cohortDate" + INTERVAL '30 days' AND cr.returned
               )::int END
           FROM members m
