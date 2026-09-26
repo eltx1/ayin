@@ -68,9 +68,9 @@ Configuration:
 - `ANALYTICS_ROLLUP_INTERVAL_MS`: default 300000 ms, clamped to 60000-3600000 ms.
 - `ANALYTICS_RETENTION_DAYS`: default 400 days, clamped to 30-3650 days.
 
-The worker performs rollup reconciliation first, then checks once per UTC day whether raw `AnalyticsEvent` retention cleanup is due. The manual Admin cleanup endpoint also reconciles rollups before deleting expired raw rows.
+The worker performs rollup reconciliation first, then checks once per UTC day whether retention cleanup is due. Cleanup atomically removes expired raw `AnalyticsEvent` rows and the session-hash projection rows at the same daily retention boundary. Anonymous aggregate rollups can remain for longer-term trends. The manual Admin cleanup endpoint also reconciles rollups before running the same cleanup path.
 
-Rollup tables are not a replacement for raw truth inside the raw retention window. Revenue truth and reconciliation remain owned by the revenue/advertising systems.
+Rollup tables are not a replacement for raw truth inside the raw retention window. Session-level rollup projections do not extend pseudonymous identity retention beyond that window. Revenue truth and reconciliation remain owned by the revenue/advertising systems.
 
 ## Verification
 
