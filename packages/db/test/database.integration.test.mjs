@@ -36,12 +36,15 @@ databaseDescribe("PostgreSQL migration bootstrap", () => {
     const previousIdleTimeout = process.env.DATABASE_POOL_IDLE_TIMEOUT_MS;
     process.env.DATABASE_POOL_IDLE_TIMEOUT_MS = "300000";
     const client = createPrismaClient(testDatabaseUrl);
+    let disconnected = false;
     try {
       await client.$queryRawUnsafe("SELECT 1");
       const startedAt = performance.now();
       await client.$disconnect();
+      disconnected = true;
       expect(performance.now() - startedAt).toBeLessThan(2_000);
     } finally {
+      if (!disconnected) await client.$disconnect().catch(() => undefined);
       if (previousIdleTimeout === undefined) delete process.env.DATABASE_POOL_IDLE_TIMEOUT_MS;
       else process.env.DATABASE_POOL_IDLE_TIMEOUT_MS = previousIdleTimeout;
     }
