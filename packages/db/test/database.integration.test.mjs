@@ -32,6 +32,22 @@ databaseDescribe("PostgreSQL migration bootstrap", () => {
     expectSuccess(runPrisma(["db", "seed"]));
   });
 
+  it("tags pooled PostgreSQL connections with the AYIN service name", async () => {
+    const previousServiceName = process.env.AYIN_SERVICE_NAME;
+    process.env.AYIN_SERVICE_NAME = "ayin-task86-pool-test";
+    const client = createPrismaClient(testDatabaseUrl);
+    try {
+      const rows = await client.$queryRawUnsafe(
+        "SELECT current_setting('application_name') AS \"applicationName\"",
+      );
+      expect(rows[0]?.applicationName).toBe("ayin-task86-pool-test");
+    } finally {
+      await client.$disconnect().catch(() => undefined);
+      if (previousServiceName === undefined) delete process.env.AYIN_SERVICE_NAME;
+      else process.env.AYIN_SERVICE_NAME = previousServiceName;
+    }
+  });
+
   it("disconnects adapter-owned pools immediately instead of waiting for pool idle timeout", async () => {
     const previousIdleTimeout = process.env.DATABASE_POOL_IDLE_TIMEOUT_MS;
     process.env.DATABASE_POOL_IDLE_TIMEOUT_MS = "300000";
