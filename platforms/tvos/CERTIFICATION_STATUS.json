@@ -35,13 +35,21 @@
     "Add Top Shelf only after a bounded server-side feed, final artwork and hardware memory validation are available",
     "Complete App Privacy metadata and signed archive/TestFlight checks before App Store submission"
   ],
-  "repositoryValidationEvidenceHeadSha": "372a4b6b316746aeaaaf495ac37ccd91c977eb4b",
+  "repositoryValidationEvidenceHeadSha": "65587d4c820365f9f939900555439674808b19e5",
   "repositoryValidationEvidenceRuns": {
-    "tvosValidationRun": 36239325545,
-    "qualityRun": 36239325549
+    "tvosValidationRun": 36242485633,
+    "iosRegressionRun": 36242485672,
+    "qualityRun": 36242485641,
+    "browserAcceptanceRun": 36242485586,
+    "securityRun": 36242485668
   },
-  "finalDiffScope": "tvos-only",
-  "iosRegressionNote": "Final Task 81 diff does not modify iOS files; tvOS compiles shared Apple-client source from main without changing it.",
+  "finalDiffScope": "tvos-plus-shared-auth-contract-and-ci-runtime-hardening",
+  "iosRegressionNote": "Task 81 extends the shared Apple auth identity with viewer-profile isKids state; final iOS simulator build and unit tests passed on the evidence head.",
   "advertisingConsentDefault": "LIMITED_ADS",
-  "serverSideDAIRequiresExplicitConsent": true
+  "serverSideDAIRequiresExplicitConsent": true,
+  "simulatorEvidence": {
+    "platform": "tvOS Simulator",
+    "minimumDeclaredTvOS": "18.0",
+    "hardwareClass": "Apple TV Simulator"
+  }
 }
