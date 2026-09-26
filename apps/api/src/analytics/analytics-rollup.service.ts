@@ -102,9 +102,7 @@ export class AnalyticsRollupService {
           : null;
       const earliestHourly = earliestDate([dirtyOccurredAt, scheduledHourlyFrom]);
       const earliestDaily = earliestDate([dirtyOccurredAt, scheduledDailyFrom]);
-      hourlyFrom = earliestHourly
-        ? utcFloorHour(maxDate(earliestHourly, retentionStart))
-        : null;
+      hourlyFrom = earliestHourly ? utcFloorHour(maxDate(earliestHourly, retentionStart)) : null;
       dailyFrom = earliestDaily ? utcFloorDay(maxDate(earliestDaily, retentionStart)) : null;
     }
 
