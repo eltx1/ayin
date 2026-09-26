@@ -132,20 +132,17 @@ export class AnalyticsRollupService {
     };
   }
 
-  async cleanupIfDue(
-    cleanup: (retentionDays: number) => Promise<{ deleted: number }>,
-    now = new Date(),
-  ) {
+  async cleanupIfDue(now = new Date()) {
     const state = await this.database.client.analyticsRollupState.findUnique({
       where: { key: ROLLUP_STATE_KEY },
       select: { lastCleanupAt: true },
     });
     const currentDay = utcFloorDay(now);
     if (state?.lastCleanupAt && state.lastCleanupAt.getTime() >= currentDay.getTime()) {
-      return { ran: false as const, deleted: 0 };
+      return { ran: false as const, deleted: 0, projectionRowsDeleted: 0 };
     }
 
-    const result = await cleanup(configuredAnalyticsRetentionDays());
+    const result = await this.deleteExpiredTruth(configuredAnalyticsRetentionDays(), now);
     await this.database.client.analyticsRollupState.upsert({
       where: { key: ROLLUP_STATE_KEY },
       create: {
@@ -155,7 +152,43 @@ export class AnalyticsRollupService {
       },
       update: { lastCleanupAt: now },
     });
-    return { ran: true as const, deleted: result.deleted };
+    return {
+      ran: true as const,
+      deleted: result.deleted,
+      projectionRowsDeleted: result.projectionRowsDeleted,
+    };
+  }
+
+  async deleteExpiredTruth(retentionDays = DEFAULT_RETENTION_DAYS, now = new Date()) {
+    const days = Math.max(30, Math.min(retentionDays, 3650));
+    const before = new Date(now.getTime() - days * DAY_MS);
+    const projectionBefore = utcFloorDay(before);
+
+    const result = await this.database.client.$transaction(
+      async (tx) => {
+        const raw = await tx.analyticsEvent.deleteMany({
+          where: { occurredAt: { lt: before } },
+        });
+        const playbackSessions = await tx.analyticsPlaybackSessionDailyRollup.deleteMany({
+          where: { bucketStart: { lt: projectionBefore } },
+        });
+        const platformSessions = await tx.analyticsPlatformSessionDailyRollup.deleteMany({
+          where: { bucketStart: { lt: projectionBefore } },
+        });
+        return {
+          deleted: raw.count,
+          projectionRowsDeleted: playbackSessions.count + platformSessions.count,
+        };
+      },
+      { maxWait: 10_000, timeout: 120_000 },
+    );
+
+    return {
+      ...result,
+      before,
+      projectionBefore,
+      retentionDays: days,
+    };
   }
 
   async rebuildVideoHourly(from: Date, to: Date): Promise<void> {
