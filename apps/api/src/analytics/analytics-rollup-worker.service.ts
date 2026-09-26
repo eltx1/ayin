@@ -18,6 +18,7 @@ function configuredIntervalMs(): number {
 @Injectable()
 export class AnalyticsRollupWorkerService {
   private stopping = false;
+  private wakeSleep: (() => void) | null = null;
 
   constructor(
     @Inject(AnalyticsRollupService) private readonly rollups: AnalyticsRollupService,
@@ -56,7 +57,7 @@ export class AnalyticsRollupWorkerService {
 
       if (this.stopping) break;
       const remainingMs = Math.max(1_000, intervalMs - (Date.now() - startedAt));
-      await sleep(remainingMs);
+      await this.sleep(remainingMs);
     }
 
     this.logger.event("info", "analytics_rollup_worker.stopped");
@@ -64,9 +65,20 @@ export class AnalyticsRollupWorkerService {
 
   stop(): void {
     this.stopping = true;
+    this.wakeSleep?.();
   }
-}
 
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+  private sleep(milliseconds: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.wakeSleep = null;
+        resolve();
+      }, milliseconds);
+      this.wakeSleep = () => {
+        clearTimeout(timer);
+        this.wakeSleep = null;
+        resolve();
+      };
+    });
+  }
 }
