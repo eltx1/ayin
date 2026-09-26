@@ -14,6 +14,9 @@ enum TVRoute: Hashable {
     }
 
     static func parse(url: URL) -> TVRoute? {
+        let encoded = url.absoluteString.lowercased()
+        guard !encoded.contains("%2f"), !encoded.contains("%5c") else { return nil }
+
         let scheme = url.scheme?.lowercased()
         if scheme == "ayin-tv" {
             let host = url.host?.lowercased() ?? ""
