@@ -125,11 +125,11 @@ export class MediaProcessingWorkerService {
       }
     } finally {
       clearInterval(heartbeatTimer);
-      await this.queue.heartbeatWorker(this.instanceId, this.active.size, "DRAINING").catch(
-        (error: unknown) => {
+      await this.queue
+        .heartbeatWorker(this.instanceId, this.active.size, "DRAINING")
+        .catch((error: unknown) => {
           this.observability.captureError(error, { source: "media.worker.registry_drain" });
-        },
-      );
+        });
       await this.writeHeartbeat("draining");
       this.logger.event("info", "media_worker.stopped_claiming", {
         instanceId: this.instanceId,
@@ -148,11 +148,11 @@ export class MediaProcessingWorkerService {
         drained = await this.waitForActive(ABORT_SETTLE_MS);
       }
 
-      await this.queue.markWorkerStopped(this.instanceId, this.active.size).catch(
-        (error: unknown) => {
+      await this.queue
+        .markWorkerStopped(this.instanceId, this.active.size)
+        .catch((error: unknown) => {
           this.observability.captureError(error, { source: "media.worker.registry_stop" });
-        },
-      );
+        });
       await this.writeHeartbeat("stopped");
       this.logger.event("info", "media_worker.stopped", {
         instanceId: this.instanceId,

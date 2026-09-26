@@ -122,43 +122,43 @@ export class MediaProcessingLifecycleService {
         });
         if (!job) return null;
 
-      const canonicalAsset = await tx.mediaAsset.upsert({
-        where: { r2ObjectKey: job.outputR2ObjectKey },
-        create: {
-          videoId: job.videoId,
-          channelId: job.video.channelId,
-          kind: "SOURCE_VIDEO",
-          status: "VALIDATED",
-          r2ObjectKey: job.outputR2ObjectKey,
-          mimeType: "video/mp4",
-          sizeBytes: BigInt(input.metadata.sizeBytes),
-          durationMs: input.metadata.durationMs,
-          width: input.metadata.width,
-          height: input.metadata.height,
-        },
-        update: {
-          videoId: job.videoId,
-          channelId: job.video.channelId,
-          kind: "SOURCE_VIDEO",
-          status: "VALIDATED",
-          mimeType: "video/mp4",
-          sizeBytes: BigInt(input.metadata.sizeBytes),
-          durationMs: input.metadata.durationMs,
-          width: input.metadata.width,
-          height: input.metadata.height,
-          removedAt: null,
-        },
-      });
-
-      if (job.inputR2ObjectKey && job.inputR2ObjectKey !== job.outputR2ObjectKey) {
-        await tx.mediaAsset.updateMany({
-          where: {
-            r2ObjectKey: job.inputR2ObjectKey,
-            id: { not: canonicalAsset.id },
+        const canonicalAsset = await tx.mediaAsset.upsert({
+          where: { r2ObjectKey: job.outputR2ObjectKey },
+          create: {
+            videoId: job.videoId,
+            channelId: job.video.channelId,
+            kind: "SOURCE_VIDEO",
+            status: "VALIDATED",
+            r2ObjectKey: job.outputR2ObjectKey,
+            mimeType: "video/mp4",
+            sizeBytes: BigInt(input.metadata.sizeBytes),
+            durationMs: input.metadata.durationMs,
+            width: input.metadata.width,
+            height: input.metadata.height,
           },
-          data: { status: "REMOVED", removedAt: new Date() },
+          update: {
+            videoId: job.videoId,
+            channelId: job.video.channelId,
+            kind: "SOURCE_VIDEO",
+            status: "VALIDATED",
+            mimeType: "video/mp4",
+            sizeBytes: BigInt(input.metadata.sizeBytes),
+            durationMs: input.metadata.durationMs,
+            width: input.metadata.width,
+            height: input.metadata.height,
+            removedAt: null,
+          },
         });
-      }
+
+        if (job.inputR2ObjectKey && job.inputR2ObjectKey !== job.outputR2ObjectKey) {
+          await tx.mediaAsset.updateMany({
+            where: {
+              r2ObjectKey: job.inputR2ObjectKey,
+              id: { not: canonicalAsset.id },
+            },
+            data: { status: "REMOVED", removedAt: new Date() },
+          });
+        }
 
         const completedAt = new Date();
         const readyChanged = await tx.mediaProcessingJob.updateMany({
@@ -186,12 +186,12 @@ export class MediaProcessingLifecycleService {
         if (readyChanged.count !== 1) throw new MediaProcessingLeaseLostError();
         const ready = await tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
         await tx.video.update({
-        where: { id: job.videoId },
-        data: {
-          durationMs: input.metadata.durationMs,
-          ...(job.video.status === "VALIDATING" ? { status: "DRAFT" as const } : {}),
-        },
-      });
+          where: { id: job.videoId },
+          data: {
+            durationMs: input.metadata.durationMs,
+            ...(job.video.status === "VALIDATING" ? { status: "DRAFT" as const } : {}),
+          },
+        });
         await tx.contentSeedItem.updateMany({
           where: { videoId: job.videoId, status: "UPLOADING" },
           data: { status: "READY", error: null },
@@ -329,7 +329,6 @@ export class MediaProcessingLifecycleService {
     });
   }
 }
-
 
 class MediaProcessingLeaseLostError extends Error {
   constructor() {

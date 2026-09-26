@@ -48,11 +48,7 @@ export class MediaProcessingExecutorService {
     this.ffmpegTimeoutMs = timeouts.ffmpegMs;
   }
 
-  async process(
-    job: MediaProcessingJob,
-    workerId: string,
-    signal?: AbortSignal,
-  ): Promise<void> {
+  async process(job: MediaProcessingJob, workerId: string, signal?: AbortSignal): Promise<void> {
     const workDirectory = join(this.workRoot, job.id);
     const inputPath = join(workDirectory, `input${sourceExtension(job.sourceMimeType)}`);
     const outputPath = join(workDirectory, "canonical.mp4");
