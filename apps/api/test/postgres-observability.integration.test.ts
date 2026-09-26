@@ -13,7 +13,7 @@ databaseDescribe("Task 86 PostgreSQL observability", () => {
   beforeAll(() => {
     previousDatabaseUrl = process.env.DATABASE_URL;
     previousServiceName = process.env.AYIN_SERVICE_NAME;
-    process.env.DATABASE_URL = testDatabaseUrl;
+    process.env.DATABASE_URL = testDatabaseUrl!;
     process.env.AYIN_SERVICE_NAME = "ayin-task86-observability-test";
     database = new DatabaseService();
   });
