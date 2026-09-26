@@ -402,19 +402,23 @@ final class TVPlayerViewModel: ObservableObject {
             }
         }
 
+        guard !playback.isLive else { return }
+
+        if !progressBaselineResolved {
+            await retryProgressBaseline(playback: playback)
+        }
+
         guard
-            !playback.isLive,
             progressBaselineResolved,
             let token,
             let videoId = playback.videoId
         else { return }
 
-        if let lastSavedPositionMs, checkpoint.positionMs < lastSavedPositionMs { return }
-        let shouldSave =
-            checkpoint.forceProgressSave ||
-            lastSavedPositionMs == nil ||
-            checkpoint.positionMs - (lastSavedPositionMs ?? 0) >= 5_000
-        guard shouldSave else { return }
+        guard TVProgressPersistence.shouldSave(
+            lastSavedPositionMs: lastSavedPositionMs,
+            currentPositionMs: checkpoint.positionMs,
+            force: checkpoint.forceProgressSave
+        ) else { return }
 
         do {
             try await progress.save(
@@ -427,6 +431,26 @@ final class TVPlayerViewModel: ObservableObject {
             lastSavedPositionMs = checkpoint.positionMs
         } catch {
             // Progress persistence is best-effort.
+        }
+    }
+
+    private func retryProgressBaseline(playback: TVPlaybackAsset) async {
+        guard
+            !playback.isLive,
+            let token,
+            let videoId = playback.videoId
+        else { return }
+
+        do {
+            let state = try await progress.progress(
+                videoId: videoId,
+                profileId: profileId,
+                token: token
+            )
+            progressBaselineResolved = true
+            lastSavedPositionMs = state.positionMs
+        } catch {
+            progressBaselineResolved = false
         }
     }
 
