@@ -1,9 +1,9 @@
 import type { Prisma } from "@ayin/db";
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { createHmac } from "node:crypto";
 import { isIP } from "node:net";
 
 import { DatabaseService } from "../database/database.service.js";
+import { analyticsPseudonym } from "./analytics-identity.js";
 import { utcFloorDay } from "./analytics-rollup.service.js";
 import type { AnalyticsEventInput } from "./analytics.schemas.js";
 
@@ -139,8 +139,8 @@ export class AnalyticsService {
         schemaVersion: event.schemaVersion,
         eventName: event.eventName,
         occurredAt: clampDate(new Date(event.occurredAt)),
-        sessionHash: this.pseudonym(event.sessionId),
-        ...(event.profileId ? { profileHash: this.pseudonym(event.profileId) } : {}),
+        sessionHash: analyticsPseudonym(event.sessionId),
+        ...(event.profileId ? { profileHash: analyticsPseudonym(event.profileId) } : {}),
         ...(derivedChannelId ? { channelId: derivedChannelId } : {}),
         ...(event.videoId ? { videoId: event.videoId } : {}),
         source: event.source,
@@ -473,9 +473,4 @@ export class AnalyticsService {
     }
   }
 
-  private pseudonym(value: string) {
-    const salt =
-      process.env.ANALYTICS_HASH_SALT ?? process.env.AUTH_TOKEN_SECRET ?? "ayin-local-analytics-v1";
-    return createHmac("sha256", salt).update(value).digest("hex");
-  }
 }
