@@ -177,9 +177,9 @@ export class AnalyticsRollupService {
 
     const result = await this.database.client.$transaction(
       async (tx) => {
-        await tx.$queryRaw`
-          SELECT pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}::bigint)
-        `;
+        await tx.$executeRawUnsafe(
+          `DO $ BEGIN PERFORM pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}); END $;`,
+        );
         const raw = await tx.analyticsEvent.deleteMany({
           where: { occurredAt: { lt: before } },
         });
@@ -209,9 +209,9 @@ export class AnalyticsRollupService {
     if (from.getTime() >= to.getTime()) return;
     await this.database.client.$transaction(
       async (tx) => {
-        await tx.$queryRaw`
-          SELECT pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}::bigint)
-        `;
+        await tx.$executeRawUnsafe(
+          `DO $ BEGIN PERFORM pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}); END $;`,
+        );
         await tx.analyticsVideoHourlyRollup.deleteMany({
           where: { bucketStart: { gte: from, lt: to } },
         });
@@ -259,9 +259,9 @@ export class AnalyticsRollupService {
     if (from.getTime() >= to.getTime()) return;
     await this.database.client.$transaction(
       async (tx) => {
-        await tx.$queryRaw`
-          SELECT pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}::bigint)
-        `;
+        await tx.$executeRawUnsafe(
+          `DO $ BEGIN PERFORM pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}); END $;`,
+        );
         await tx.analyticsVideoDailyRollup.deleteMany({
           where: { bucketStart: { gte: from, lt: to } },
         });
