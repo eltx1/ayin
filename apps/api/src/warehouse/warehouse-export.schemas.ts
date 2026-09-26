@@ -10,7 +10,13 @@ export const warehouseDatasetNames = [
 
 export type WarehouseDatasetName = (typeof warehouseDatasetNames)[number];
 
-export const WAREHOUSE_SCHEMA_VERSION = 1 as const;
+export const warehouseSchemaVersions = {
+  analytics_facts: 1,
+  content_dimensions: 1,
+  channel_dimensions: 1,
+  ad_facts: 1,
+  revenue_facts: 1,
+} as const;
 
 const isoDateTime = z.string().datetime({ offset: true });
 const nullableIsoDateTime = isoDateTime.nullable();
