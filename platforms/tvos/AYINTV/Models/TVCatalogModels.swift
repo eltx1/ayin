@@ -119,7 +119,45 @@ struct TVLinearCapabilityResponse: Decodable {
         let masterUrl: String?
     }
 
+    struct Monetization: Decodable {
+        struct DAI: Decodable {
+            let available: Bool
+            let playbackUrl: String?
+        }
+
+        let dai: DAI
+    }
+
     let hls: HLS
+    let monetization: Monetization?
+
+    var preferredPlaybackURL: URL? {
+        if
+            let dai = monetization?.dai,
+            dai.available,
+            let raw = dai.playbackUrl,
+            let url = URL(string: raw),
+            url.scheme == "https"
+        {
+            return url
+        }
+
+        guard hls.available else { return nil }
+        let raw = hls.masterUrl ?? hls.url
+        guard let raw, let url = URL(string: raw), url.scheme == "https" else { return nil }
+        return url
+    }
+
+    var usesServerSideDAI: Bool {
+        guard
+            let dai = monetization?.dai,
+            dai.available,
+            let raw = dai.playbackUrl,
+            let url = URL(string: raw),
+            url.scheme == "https"
+        else { return false }
+        return true
+    }
 }
 
 struct TVMovieResponse: Decodable {
@@ -173,7 +211,7 @@ struct TVSeriesResponse: Decodable {
         let title: String
         let slug: String
         let synopsis: String
-        let releaseYear: Int
+        let releaseYear: Int?
         let maturityRating: String
         let seasons: [Season]
     }
