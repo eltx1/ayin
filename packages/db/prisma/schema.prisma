@@ -493,6 +493,7 @@ model Video {
 
   @@index([channelId, status, publishedAt])
   @@index([status, visibility, publishedAt])
+  @@index([status, visibility, removedAt, publishedAt, id], map: "video_public_feed_idx")
   @@index([videoForm, status, visibility, publishedAt])
   @@index([scheduledPublishAt, status])
   @@index([updatedAt, id], map: "video_export_cursor_idx")
@@ -522,6 +523,7 @@ model MediaAsset {
   processingJob MediaProcessingJob? @relation("MediaProcessingFinalAsset")
 
   @@index([videoId, kind, status])
+  @@index([videoId, kind, status, removedAt, mimeType], map: "media_asset_playable_video_idx")
   @@index([channelId, kind])
 }
 
@@ -675,6 +677,7 @@ model WatchHistory {
 
   @@unique([profileId, videoId])
   @@index([profileId, lastWatchedAt])
+  @@index([lastWatchedAt, videoId], map: "watch_history_trending_time_idx")
 }
 
 model Subscription {
@@ -1035,6 +1038,7 @@ model EarningsLedgerEntry {
   payout   Payout?          @relation(fields: [payoutId], references: [id], onDelete: SetNull)
 
   @@index([channelId, occurredAt])
+  @@index([channelId, currency, occurredAt], map: "earnings_channel_currency_time_idx")
   @@index([channelId, state, occurredAt])
   @@index([contractId, occurredAt])
   @@index([payoutId])
