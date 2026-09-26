@@ -18,9 +18,9 @@
   "universalLinksEntitlementConfigured": true,
   "aasaProductionConfigured": false,
   "verification": {
-    "repositoryValidation": false,
-    "simulatorBuildVerified": false,
-    "simulatorUnitTestsVerified": false,
+    "repositoryValidation": true,
+    "simulatorBuildVerified": true,
+    "simulatorUnitTestsVerified": true,
     "physicalAppleTVVerified": false,
     "signedArchiveVerified": false,
     "testFlightUploaded": false,
@@ -34,5 +34,11 @@
     "Add native Google IMA tvOS integration only when production VOD ad tags and consent requirements are ready",
     "Add Top Shelf only after a bounded server-side feed, final artwork and hardware memory validation are available",
     "Complete App Privacy metadata and signed archive/TestFlight checks before App Store submission"
-  ]
+  ],
+  "repositoryValidationEvidenceHeadSha": "bea6662f3eb5088ad2d6d886ba71100154f37d19",
+  "repositoryValidationEvidenceRuns": {
+    "tvosValidationRun": 36207116179,
+    "iosRegressionRun": 36207116235,
+    "qualityRun": 36207116334
+  }
 }
