@@ -159,8 +159,8 @@ export class AnalyticsRollupService {
 
   async deleteExpiredTruth(retentionDays = DEFAULT_RETENTION_DAYS, now = new Date()) {
     const days = Math.max(30, Math.min(retentionDays, 3650));
-    const before = new Date(now.getTime() - days * DAY_MS);
-    const projectionBefore = utcFloorDay(before);
+    const before = utcFloorDay(new Date(now.getTime() - days * DAY_MS));
+    const projectionBefore = before;
 
     const result = await this.database.client.$transaction(
       async (tx) => {
