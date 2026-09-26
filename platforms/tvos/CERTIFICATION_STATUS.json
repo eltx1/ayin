@@ -41,5 +41,7 @@
     "qualityRun": 36239325549
   },
   "finalDiffScope": "tvos-only",
-  "iosRegressionNote": "Final Task 81 diff does not modify iOS files; tvOS compiles shared Apple-client source from main without changing it."
+  "iosRegressionNote": "Final Task 81 diff does not modify iOS files; tvOS compiles shared Apple-client source from main without changing it.",
+  "advertisingConsentDefault": "LIMITED_ADS",
+  "serverSideDAIRequiresExplicitConsent": true
 }
