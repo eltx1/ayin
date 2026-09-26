@@ -267,8 +267,8 @@ export function AdminDashboard() {
   ] as const;
 
   const analyticsMetrics = [
-    ["DAU approx", analytics.dauApprox.toLocaleString()],
-    ["MAU approx", analytics.mauApprox.toLocaleString()],
+    ["DAU approx / last complete UTC day", analytics.dauApprox.toLocaleString()],
+    ["MAU approx / 30 complete UTC days", analytics.mauApprox.toLocaleString()],
     ["Watch hours / 30d", analytics.watchHours.toFixed(1)],
     ["Uploads / 30d", analytics.uploads.toLocaleString()],
     ["TV starts / 30d", analytics.tvStarts.toLocaleString()],
