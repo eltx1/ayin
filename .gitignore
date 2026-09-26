@@ -44,3 +44,6 @@ platforms/ios/DerivedData/
 *.p12
 *.p8
 *.cer
+platforms/tvos/AYINTV.xcodeproj/
+platforms/tvos/Config/Local.xcconfig
+platforms/tvos/DerivedData/

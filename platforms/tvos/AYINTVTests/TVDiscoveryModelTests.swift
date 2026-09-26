@@ -1,0 +1,88 @@
+import XCTest
+@testable import AYINTV
+
+final class TVDiscoveryModelTests: XCTestCase {
+    func testDiscoveryDecodesArtworkAndContinueWatchingProgress() throws {
+        let data = Data(
+            """
+            {
+              "id": "video-id",
+              "type": "VIDEO",
+              "title": "Example",
+              "href": "/watch/example",
+              "kicker": "Creator",
+              "meta": "12 min",
+              "artworkObjectKey": "thumbs/example.jpg",
+              "progress": {
+                "positionMs": 42000,
+                "completedAt": null
+              }
+            }
+            """.utf8
+        )
+
+        let item = try JSONDecoder().decode(TVDiscoveryItem.self, from: data)
+        XCTAssertEqual(item.artworkObjectKey, "thumbs/example.jpg")
+        XCTAssertEqual(item.progress?.positionMs, 42_000)
+        XCTAssertNil(item.progress?.completedAt)
+    }
+
+    func testHomeRowRetainsPaginationCursor() throws {
+        let data = Data(
+            """
+            {
+              "rows": [
+                {
+                  "key": "trending",
+                  "title": "Trending",
+                  "items": [],
+                  "nextCursor": "OA",
+                  "availability": "AVAILABLE",
+                  "emptyMessage": null
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(TVDiscoveryHomeResponse.self, from: data)
+        XCTAssertEqual(response.rows.first?.nextCursor, "OA")
+        XCTAssertEqual(response.rows.first?.key, "trending")
+    }
+
+    func testMyAyinSectionRetainsPaginationCursor() throws {
+        let data = Data(
+            """
+            {
+              "profileId": "profile-id",
+              "sections": [
+                {
+                  "key": "continue-watching",
+                  "title": "Continue Watching",
+                  "items": [],
+                  "nextCursor": "OA",
+                  "availability": "AVAILABLE",
+                  "emptyMessage": null
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(TVMyAyinResponse.self, from: data)
+        XCTAssertEqual(response.sections.first?.nextCursor, "OA")
+    }
+
+    func testDiscoveryMemberwiseInitializerKeepsOptionalDefaults() {
+        let item = TVDiscoveryItem(
+            id: "id",
+            type: "VIDEO",
+            title: "Title",
+            href: "/watch/title",
+            kicker: "Creator",
+            meta: nil
+        )
+        XCTAssertNil(item.artworkObjectKey)
+        XCTAssertNil(item.progress)
+    }
+}

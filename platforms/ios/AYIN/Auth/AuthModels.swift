@@ -23,6 +23,26 @@ struct AYINIdentity: Codable, Equatable {
         let id: String
         let name: String
         let slug: String
+        let isKids: Bool
+
+        init(id: String, name: String, slug: String, isKids: Bool = false) {
+            self.id = id
+            self.name = name
+            self.slug = slug
+            self.isKids = isKids
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, slug, isKids
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            slug = try container.decode(String.self, forKey: .slug)
+            isKids = try container.decodeIfPresent(Bool.self, forKey: .isKids) ?? false
+        }
     }
 
     let account: Account

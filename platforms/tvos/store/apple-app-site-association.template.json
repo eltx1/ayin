@@ -1,0 +1,95 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appID": "<APPLE_TEAM_ID>.net.ayin.app.tvos",
+        "components": [
+          {
+            "/": "/watch/*",
+            "comment": "Native AYIN video details/playback"
+          },
+          {
+            "/": "/en/watch/*",
+            "comment": "English localized: Native AYIN video details/playback"
+          },
+          {
+            "/": "/ar/watch/*",
+            "comment": "Arabic localized: Native AYIN video details/playback"
+          },
+          {
+            "/": "/live/*",
+            "comment": "Native AYIN live playback"
+          },
+          {
+            "/": "/en/live/*",
+            "comment": "English localized: Native AYIN live playback"
+          },
+          {
+            "/": "/ar/live/*",
+            "comment": "Arabic localized: Native AYIN live playback"
+          },
+          {
+            "/": "/movies/*",
+            "comment": "Native AYIN movie details"
+          },
+          {
+            "/": "/en/movies/*",
+            "comment": "English localized: Native AYIN movie details"
+          },
+          {
+            "/": "/ar/movies/*",
+            "comment": "Arabic localized: Native AYIN movie details"
+          },
+          {
+            "/": "/series/*",
+            "comment": "Native AYIN series details"
+          },
+          {
+            "/": "/en/series/*",
+            "comment": "English localized: Native AYIN series details"
+          },
+          {
+            "/": "/ar/series/*",
+            "comment": "Arabic localized: Native AYIN series details"
+          },
+          {
+            "/": "/c/*/tv",
+            "comment": "Native AYIN Creator TV"
+          },
+          {
+            "/": "/en/c/*/tv",
+            "comment": "English localized: Native AYIN Creator TV"
+          },
+          {
+            "/": "/ar/c/*/tv",
+            "comment": "Arabic localized: Native AYIN Creator TV"
+          },
+          {
+            "/": "/c/*/playlists/*",
+            "comment": "Native AYIN playlist details"
+          },
+          {
+            "/": "/en/c/*/playlists/*",
+            "comment": "English localized: Native AYIN playlist details"
+          },
+          {
+            "/": "/ar/c/*/playlists/*",
+            "comment": "Arabic localized: Native AYIN playlist details"
+          },
+          {
+            "/": "/c/*",
+            "comment": "Native AYIN channel details"
+          },
+          {
+            "/": "/en/c/*",
+            "comment": "English localized: Native AYIN channel details"
+          },
+          {
+            "/": "/ar/c/*",
+            "comment": "Arabic localized: Native AYIN channel details"
+          }
+        ]
+      }
+    ]
+  }
+}

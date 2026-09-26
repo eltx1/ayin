@@ -42,6 +42,7 @@ export interface PublicIdentity {
     id: string;
     name: string;
     slug: string;
+    isKids: boolean;
   };
 }
 
@@ -148,6 +149,7 @@ export class AuthService {
             id: created.provisioned.profile.id,
             name: created.provisioned.profile.name,
             slug: created.provisioned.profile.slug,
+            isKids: created.provisioned.profile.isKids,
           },
         },
       };
@@ -374,7 +376,7 @@ export class AuthService {
           where: { deletedAt: null, isDefault: true },
           orderBy: { createdAt: "asc" },
           take: 1,
-          select: { id: true, name: true, slug: true },
+          select: { id: true, name: true, slug: true, isKids: true },
         },
         channelMemberships: {
           where: { role: "OWNER" },
