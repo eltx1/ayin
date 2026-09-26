@@ -33,6 +33,25 @@ final class TVRouteTests: XCTestCase {
         )
     }
 
+    func testPlaylistLinksRouteNatively() throws {
+        XCTAssertEqual(
+            TVRoute.parse(
+                url: try XCTUnwrap(
+                    URL(string: "https://ayin.stream/c/creator/playlists/favorites")
+                )
+            ),
+            .playlist(handle: "creator", slug: "favorites")
+        )
+        XCTAssertEqual(
+            TVRoute.parse(
+                url: try XCTUnwrap(
+                    URL(string: "ayin-tv://playlist/creator/favorites")
+                )
+            ),
+            .playlist(handle: "creator", slug: "favorites")
+        )
+    }
+
     func testForeignOriginAndUnsafePathsAreRejected() throws {
         XCTAssertNil(TVRoute.parse(url: try XCTUnwrap(URL(string: "https://example.com/watch/demo"))))
         XCTAssertNil(TVRoute.parse(url: try XCTUnwrap(URL(string: "ayin-tv://watch/%2Fadmin"))))
