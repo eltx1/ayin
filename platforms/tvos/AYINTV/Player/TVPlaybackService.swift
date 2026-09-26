@@ -7,13 +7,16 @@ protocol TVPlaybackServicing {
 struct TVPlaybackService: TVPlaybackServicing {
     private let client: APIClient
     private let catalog: TVCatalogService
+    private let advertisingConsent: any TVAdvertisingConsentProviding
 
     init(
         client: APIClient = APIClient(baseURL: AppEnvironment.apiBaseURL),
-        catalog: TVCatalogService = TVCatalogService()
+        catalog: TVCatalogService = TVCatalogService(),
+        advertisingConsent: any TVAdvertisingConsentProviding = TVSafeAdvertisingConsentProvider()
     ) {
         self.client = client
         self.catalog = catalog
+        self.advertisingConsent = advertisingConsent
     }
 
     func load(_ destination: TVPlaybackDestination) async throws -> TVPlaybackAsset {
@@ -99,11 +102,13 @@ struct TVPlaybackService: TVPlaybackServicing {
         let tv = try await tvRequest
         let linear = await linearRequest
 
-        if let linear, let url = linear.preferredPlaybackURL {
+        if let linear,
+           let selection = linear.playbackSelection(consentMode: advertisingConsent.mode)
+        {
             return TVPlaybackAsset(
                 title: tv.tv.name,
                 subtitle: tv.channel.name,
-                primaryURL: url,
+                primaryURL: selection.url,
                 fallbackURL: nil,
                 shareURL: AppEnvironment.webBaseURL
                     .appending(path: "c")
@@ -113,7 +118,7 @@ struct TVPlaybackService: TVPlaybackServicing {
                 channelId: tv.channel.id,
                 durationMs: nil,
                 isLive: true,
-                protocolName: linear.usesServerSideDAI ? "HLS-DAI" : "HLS",
+                protocolName: selection.usesServerSideDAI ? "HLS-DAI" : "HLS",
                 initialOffsetMs: 0,
                 captions: [],
                 isKids: false
