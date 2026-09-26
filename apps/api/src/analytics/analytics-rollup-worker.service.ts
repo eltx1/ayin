@@ -40,6 +40,8 @@ export class AnalyticsRollupWorkerService {
           hourlyTo: result.hourlyRange?.to.toISOString() ?? null,
           dailyFrom: result.dailyRange?.from.toISOString() ?? null,
           dailyTo: result.dailyRange?.to.toISOString() ?? null,
+          cohortFrom: result.cohortRange?.from.toISOString() ?? null,
+          cohortTo: result.cohortRange?.to.toISOString() ?? null,
           retentionDays: result.retentionDays,
           cleanupRan: cleanup.ran,
           rawEventsDeleted: cleanup.deleted,
