@@ -27,6 +27,29 @@ final class TVDiscoveryModelTests: XCTestCase {
         XCTAssertNil(item.progress?.completedAt)
     }
 
+    func testMyAyinSectionRetainsPaginationCursor() throws {
+        let data = Data(
+            """
+            {
+              "profileId": "profile-id",
+              "sections": [
+                {
+                  "key": "continue-watching",
+                  "title": "Continue Watching",
+                  "items": [],
+                  "nextCursor": "OA",
+                  "availability": "AVAILABLE",
+                  "emptyMessage": null
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(TVMyAyinResponse.self, from: data)
+        XCTAssertEqual(response.sections.first?.nextCursor, "OA")
+    }
+
     func testDiscoveryMemberwiseInitializerKeepsOptionalDefaults() {
         let item = TVDiscoveryItem(
             id: "id",
