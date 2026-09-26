@@ -20,6 +20,8 @@ model AnalyticsEvent {
   @@index([receivedAt])
   @@index([eventName, occurredAt])
   @@index([sessionHash, occurredAt])
+  @@index([profileHash, occurredAt], map: "analytics_event_profile_time_idx")
+  @@index([channelId, profileHash, occurredAt], map: "analytics_event_channel_profile_time_idx")
   @@index([channelId, occurredAt])
   @@index([videoId, occurredAt])
   @@index([accountId, occurredAt])
@@ -186,5 +188,95 @@ model AnalyticsRollupState {
   lastSuccessfulAt DateTime?
   lastCleanupAt    DateTime?
   updatedAt        DateTime @updatedAt
+}
+
+model AnalyticsPlatformAudienceDailyRollup {
+  bucketStart       DateTime @id
+  activeProfiles    Int      @default(0)
+  newProfiles       Int      @default(0)
+  returningProfiles Int      @default(0)
+  sessions           Int      @default(0)
+  watchTimeMs        BigInt   @default(0)
+}
+
+model AnalyticsChannelAudienceDailyRollup {
+  bucketStart           DateTime
+  channelId             String   @db.Uuid
+  activeProfiles        Int      @default(0)
+  newProfiles           Int      @default(0)
+  returningProfiles     Int      @default(0)
+  sessions              Int      @default(0)
+  watchTimeMs           BigInt   @default(0)
+  contentReturnProfiles Int      @default(0)
+
+  @@id([bucketStart, channelId])
+  @@index([channelId, bucketStart])
+}
+
+model AnalyticsPlatformCohortRollup {
+  cohortDate       DateTime @id
+  cohortSize       Int
+  d1Retained       Int?
+  d7Retained       Int?
+  d30Retained      Int?
+  d1Sessions       Int?
+  d7Sessions       Int?
+  d30Sessions      Int?
+  d1WatchTimeMs    BigInt?
+  d7WatchTimeMs    BigInt?
+  d30WatchTimeMs   BigInt?
+}
+
+model AnalyticsChannelCohortRollup {
+  cohortDate                DateTime
+  channelId                 String   @db.Uuid
+  cohortSize                Int
+  d1Retained                Int?
+  d7Retained                Int?
+  d30Retained               Int?
+  d1Sessions                Int?
+  d7Sessions                Int?
+  d30Sessions               Int?
+  d1WatchTimeMs             BigInt?
+  d7WatchTimeMs             BigInt?
+  d30WatchTimeMs            BigInt?
+  d1ContentReturnProfiles   Int?
+  d7ContentReturnProfiles   Int?
+  d30ContentReturnProfiles  Int?
+
+  @@id([cohortDate, channelId])
+  @@index([channelId, cohortDate])
+}
+
+model AnalyticsSubscriptionEpisode {
+  id             String   @id @default(uuid()) @db.Uuid
+  channelId      String   @db.Uuid
+  profileHash    String   @db.Char(64)
+  subscribedAt   DateTime
+  unsubscribedAt DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([channelId, subscribedAt])
+  @@index([channelId, profileHash, unsubscribedAt])
+  @@index([subscribedAt])
+}
+
+model AnalyticsSubscriberCohortRollup {
+  cohortDate  DateTime
+  channelId   String   @db.Uuid
+  cohortSize  Int
+  d1Retained  Int?
+  d7Retained  Int?
+  d30Retained Int?
+
+  @@id([cohortDate, channelId])
+  @@index([channelId, cohortDate])
+}
+
+model AnalyticsCohortState {
+  key                         String   @id @db.VarChar(32)
+  subscriberTrackingStartedAt DateTime
+  updatedAt                   DateTime @updatedAt
 }
 

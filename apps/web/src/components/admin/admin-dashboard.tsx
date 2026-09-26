@@ -182,6 +182,12 @@ function roleCanSee(action: RoleAction, roles: AdminRole[]): boolean {
   return action.roles.some((role) => roles.includes(role));
 }
 
+function cohortRetentionLabel(
+  milestone: AdminAnalyticsMetrics["cohorts"]["retention"][number]["d1"],
+): string {
+  return milestone ? `${(milestone.retentionRate * 100).toFixed(1)}%` : "pending";
+}
+
 export function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [analytics, setAnalytics] = useState<AdminAnalyticsMetrics | null>(null);
@@ -455,6 +461,40 @@ export function AdminDashboard() {
             </p>
           ))}
         </div>
+      </section>
+
+      <section className={styles.card} style={{ marginTop: 18 }}>
+        <h2>Platform cohorts</h2>
+        <p className={styles.muted}>{analytics.cohorts.privacyNote}</p>
+        <p className={styles.muted}>
+          Minimum exposed cohort: {analytics.cohorts.minimumCohortSize.toLocaleString()} profiles.
+        </p>
+        {analytics.cohorts.retention.length ? (
+          analytics.cohorts.retention.slice(-10).map((cohort) => (
+            <p key={cohort.cohortDate}>
+              <strong>{new Date(cohort.cohortDate).toLocaleDateString()}</strong> ·{" "}
+              {cohort.cohortSize.toLocaleString()} profiles · D1{" "}
+              {cohortRetentionLabel(cohort.d1)} · D7{" "}
+              {cohortRetentionLabel(cohort.d7)} · D30{" "}
+              {cohortRetentionLabel(cohort.d30)}
+            </p>
+          ))
+        ) : (
+          <p className={styles.muted}>No platform cohort currently meets the privacy threshold.</p>
+        )}
+        <h3>Recent new vs returning signed-in profiles</h3>
+        {analytics.cohorts.audienceDaily.length ? (
+          analytics.cohorts.audienceDaily.slice(-7).map((row) => (
+            <p key={row.date}>
+              <strong>{new Date(row.date).toLocaleDateString()}</strong> ·{" "}
+              {row.newProfiles.toLocaleString()} new ·{" "}
+              {row.returningProfiles.toLocaleString()} returning ·{" "}
+              {row.sessionsPerActiveProfile.toFixed(2)} sessions/profile
+            </p>
+          ))
+        ) : (
+          <p className={styles.muted}>Daily cohort rows are privacy-suppressed.</p>
+        )}
       </section>
     </>
   );
