@@ -9,13 +9,13 @@ import {
   type WarehouseExportBatch,
 } from "./warehouse-export.adapter.js";
 import {
-  WAREHOUSE_SCHEMA_VERSION,
   adFactV1Schema,
   analyticsFactV1Schema,
   channelDimensionV1Schema,
   contentDimensionV1Schema,
   revenueFactV1Schema,
   warehouseDatasetNames,
+  warehouseSchemaVersions,
   type AdFactV1,
   type AnalyticsFactV1,
   type ChannelDimensionV1,
@@ -263,7 +263,7 @@ export class WarehouseExportService {
       patterns: [...this.adapter.patterns],
       datasets: warehouseDatasetNames.map((dataset) => ({
         dataset,
-        schemaVersion: WAREHOUSE_SCHEMA_VERSION,
+        schemaVersion: warehouseSchemaVersions[dataset],
       })),
       pageSize: configuredWarehouseExportPageSize(),
     };
@@ -312,7 +312,7 @@ export class WarehouseExportService {
       where: {
         dataset_schemaVersion: {
           dataset,
-          schemaVersion: WAREHOUSE_SCHEMA_VERSION,
+          schemaVersion: warehouseSchemaVersions[dataset],
         },
       },
       select: { cursorAt: true, cursorId: true },
@@ -335,7 +335,7 @@ export class WarehouseExportService {
       const last = partitionRecords[partitionRecords.length - 1]!;
       const withoutId = {
         dataset,
-        schemaVersion: WAREHOUSE_SCHEMA_VERSION,
+        schemaVersion: warehouseSchemaVersions[dataset],
         partitionDate,
         cursor: {
           fromAt: checkpoint.cursorAt?.toISOString() ?? null,
@@ -596,7 +596,7 @@ export class WarehouseExportService {
         "lastBatchId", "lastSucceededAt", "updatedAt"
       )
       VALUES (
-        ${dataset}, ${WAREHOUSE_SCHEMA_VERSION}, ${cursorAt}, ${cursorId},
+        ${dataset}, ${warehouseSchemaVersions[dataset]}, ${cursorAt}, ${cursorId},
         ${lastBatchId}, ${succeededAt}, ${succeededAt}
       )
       ON CONFLICT ("dataset", "schemaVersion") DO UPDATE SET
