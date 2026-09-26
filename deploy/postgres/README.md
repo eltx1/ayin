@@ -12,7 +12,6 @@ Task 44 backup/recovery tooling:
 
 Operational policy, RPO/RTO, retention, key custody and recovery steps are documented in `docs/TASK44_BACKUP_RESTORE.md`.
 
-
 ## Traffic scaling
 
 Connection-pool budgets, query-plan regression coverage, index rationale, replica eligibility and the staged PostgreSQL scaling policy are documented in `docs/POSTGRES_SCALING.md`. Keep consistency-sensitive auth, finance, watch-write and worker-queue paths on the primary.

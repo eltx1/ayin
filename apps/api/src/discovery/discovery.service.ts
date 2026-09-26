@@ -260,8 +260,13 @@ export class DiscoveryService {
       this.loadOwnedPlaylists(accountId, 0, firstPageSize),
     ]);
 
-    const [allowedContinueWatching, allowedMyList, allowedWatchLater, allowedHistory, allowedLiked] =
-      await this.enforcePages([continueWatching, myList, watchLater, history, liked], context);
+    const [
+      allowedContinueWatching,
+      allowedMyList,
+      allowedWatchLater,
+      allowedHistory,
+      allowedLiked,
+    ] = await this.enforcePages([continueWatching, myList, watchLater, history, liked], context);
 
     return {
       profileId,
