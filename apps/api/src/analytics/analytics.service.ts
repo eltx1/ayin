@@ -482,44 +482,44 @@ export class AnalyticsService {
     const cohortMinimum = configuredCohortMinSize();
     const [daily, monthlySessions, totals, rollupState, audienceRows, cohortRows] =
       await Promise.all([
-      this.database.client.analyticsPlatformDailyRollup.findUnique({
-        where: { bucketStart: day },
-        select: { uniqueSessions: true },
-      }),
-      this.database.client.$queryRaw<CountRow[]>`
-        SELECT COUNT(DISTINCT "sessionHash")::bigint AS count
-        FROM "AnalyticsPlatformSessionDailyRollup"
-        WHERE "bucketStart" >= ${month} AND "bucketStart" < ${to}
-      `,
-      this.database.client.analyticsPlatformDailyRollup.aggregate({
-        where: { bucketStart: { gte: month, lt: to } },
-        _sum: {
-          watchTimeMs: true,
-          uploads: true,
-          tvStarts: true,
-          adEvents: true,
-          errors: true,
-        },
-      }),
-      this.database.client.analyticsRollupState.findUnique({
-        where: { key: "PRIMARY" },
-        select: { lastSuccessfulAt: true },
-      }),
-      this.database.client.analyticsPlatformAudienceDailyRollup.findMany({
-        where: {
-          bucketStart: { gte: month, lt: to },
-          activeProfiles: { gte: cohortMinimum },
-        },
-        orderBy: { bucketStart: "asc" },
-      }),
-      this.database.client.analyticsPlatformCohortRollup.findMany({
-        where: {
-          cohortDate: { gte: cohortFrom, lt: to },
-          cohortSize: { gte: cohortMinimum },
-        },
-        orderBy: { cohortDate: "asc" },
-      }),
-    ]);
+        this.database.client.analyticsPlatformDailyRollup.findUnique({
+          where: { bucketStart: day },
+          select: { uniqueSessions: true },
+        }),
+        this.database.client.$queryRaw<CountRow[]>`
+          SELECT COUNT(DISTINCT "sessionHash")::bigint AS count
+          FROM "AnalyticsPlatformSessionDailyRollup"
+          WHERE "bucketStart" >= ${month} AND "bucketStart" < ${to}
+        `,
+        this.database.client.analyticsPlatformDailyRollup.aggregate({
+          where: { bucketStart: { gte: month, lt: to } },
+          _sum: {
+            watchTimeMs: true,
+            uploads: true,
+            tvStarts: true,
+            adEvents: true,
+            errors: true,
+          },
+        }),
+        this.database.client.analyticsRollupState.findUnique({
+          where: { key: "PRIMARY" },
+          select: { lastSuccessfulAt: true },
+        }),
+        this.database.client.analyticsPlatformAudienceDailyRollup.findMany({
+          where: {
+            bucketStart: { gte: month, lt: to },
+            activeProfiles: { gte: cohortMinimum },
+          },
+          orderBy: { bucketStart: "asc" },
+        }),
+        this.database.client.analyticsPlatformCohortRollup.findMany({
+          where: {
+            cohortDate: { gte: cohortFrom, lt: to },
+            cohortSize: { gte: cohortMinimum },
+          },
+          orderBy: { cohortDate: "asc" },
+        }),
+      ]);
 
     const watchTimeMs = Number(totals._sum.watchTimeMs ?? 0n);
     return {
@@ -607,5 +607,4 @@ export class AnalyticsService {
       }
     }
   }
-
 }
