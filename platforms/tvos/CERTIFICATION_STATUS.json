@@ -35,21 +35,23 @@
     "Add Top Shelf only after a bounded server-side feed, final artwork and hardware memory validation are available",
     "Complete App Privacy metadata and signed archive/TestFlight checks before App Store submission"
   ],
-  "repositoryValidationEvidenceHeadSha": "65587d4c820365f9f939900555439674808b19e5",
+  "repositoryValidationEvidenceHeadSha": "0a6ab77a8ec4ca307bc98554331046e61af16c65",
   "repositoryValidationEvidenceRuns": {
-    "tvosValidationRun": 36242485633,
-    "iosRegressionRun": 36242485672,
-    "qualityRun": 36242485641,
-    "browserAcceptanceRun": 36242485586,
-    "securityRun": 36242485668
+    "tvosValidationRun": 36242806644,
+    "iosRegressionRun": 36242806648,
+    "qualityRun": 36242806660,
+    "browserAcceptanceRun": 36242806678,
+    "securityRun": 36242806667
   },
-  "finalDiffScope": "tvos-plus-shared-auth-contract-and-ci-runtime-hardening",
-  "iosRegressionNote": "Task 81 extends the shared Apple auth identity with viewer-profile isKids state; final iOS simulator build and unit tests passed on the evidence head.",
+  "finalDiffScope": "native-tvos-app-plus-shared-apple-auth-kids-profile-contract",
+  "iosRegressionNote": "Task 81 extends the shared Apple auth identity with viewer-profile isKids state; iOS simulator build and unit tests passed on the evidence head.",
   "advertisingConsentDefault": "LIMITED_ADS",
   "serverSideDAIRequiresExplicitConsent": true,
   "simulatorEvidence": {
     "platform": "tvOS Simulator",
-    "minimumDeclaredTvOS": "18.0",
-    "hardwareClass": "Apple TV Simulator"
+    "runtime": "tvOS 18.5",
+    "device": "Apple TV 4K (3rd generation)",
+    "xcode": "16.4 (16F6)",
+    "minimumDeclaredTvOS": "18.0"
   }
 }
