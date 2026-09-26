@@ -48,6 +48,7 @@ export function configuredAnalyticsRetentionDays(): number {
   return Math.max(30, Math.min(3650, Math.trunc(parsed)));
 }
 
+// Materialize only closed UTC buckets; the current partial hour/day remains raw-only.
 @Injectable()
 export class AnalyticsRollupService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
