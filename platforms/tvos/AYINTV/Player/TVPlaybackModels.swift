@@ -89,3 +89,22 @@ struct TVPlaybackAsset: Equatable {
         )
     }
 }
+
+enum TVPlaybackCompletionAction: Equatable {
+    case finalizeVOD
+    case reloadCurrentDestination
+    case endLive
+}
+
+enum TVPlaybackLifecycle {
+    static func completionAction(for destination: TVPlaybackDestination) -> TVPlaybackCompletionAction {
+        switch destination {
+        case .video:
+            return .finalizeVOD
+        case .creatorTV:
+            return .reloadCurrentDestination
+        case .live:
+            return .endLive
+        }
+    }
+}
