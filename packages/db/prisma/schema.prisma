@@ -1024,6 +1024,7 @@ model EarningsLedgerEntry {
   occurredAt      DateTime           @default(now())
   finalizedAt     DateTime?
   createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   channel  Channel          @relation(fields: [channelId], references: [id], onDelete: Restrict)
   contract CreatorContract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
@@ -1038,8 +1039,7 @@ model EarningsLedgerEntry {
   @@index([type, occurredAt])
   @@index([videoId, periodStart])
   @@index([campaignId, periodStart])
-  @@index([createdAt, id], map: "earnings_export_created_cursor_idx")
-  @@index([finalizedAt, id], map: "earnings_export_finalized_cursor_idx")
+  @@index([updatedAt, id], map: "earnings_export_cursor_idx")
 }
 
 model Payout {
