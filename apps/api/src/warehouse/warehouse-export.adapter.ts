@@ -6,12 +6,11 @@ import type {
 export const WAREHOUSE_EXPORT_ADAPTER = Symbol("WAREHOUSE_EXPORT_ADAPTER");
 
 export type WarehouseExportPattern =
-  | "OBJECT_BATCH"
-  | "BATCH_FILE"
-  | "DATABASE_EXPORT"
-  | "WAREHOUSE_API";
+  "OBJECT_BATCH" | "BATCH_FILE" | "DATABASE_EXPORT" | "WAREHOUSE_API";
 
-export interface WarehouseExportBatch<TDataset extends WarehouseDatasetName = WarehouseDatasetName> {
+export interface WarehouseExportBatch<
+  TDataset extends WarehouseDatasetName = WarehouseDatasetName,
+> {
   batchId: string;
   dataset: TDataset;
   schemaVersion: 1;

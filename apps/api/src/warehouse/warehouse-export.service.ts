@@ -365,12 +365,7 @@ export class WarehouseExportService {
     }
 
     if (!checkpointBatchId) throw new Error("WAREHOUSE_CHECKPOINT_BATCH_MISSING");
-    await this.advanceCheckpoint(
-      dataset,
-      pageLast.cursorAt,
-      pageLast.cursorId,
-      checkpointBatchId,
-    );
+    await this.advanceCheckpoint(dataset, pageLast.cursorAt, pageLast.cursorId, checkpointBatchId);
     return { exportedRecords: records.length, batches };
   }
 

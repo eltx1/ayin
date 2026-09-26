@@ -40,10 +40,11 @@ export const analyticsFactV1Schema = z
     deviceClass: z.string().min(1).max(24).nullable(),
     durationDeltaMs: z.number().int().min(0).nullable(),
     positionMs: z.number().int().min(0).nullable(),
-    countryCode: z.string().regex(/^[A-Z]{2}$/).nullable(),
-    trafficSource: z
-      .enum(["DIRECT", "INTERNAL", "SEARCH", "SOCIAL", "EXTERNAL"])
+    countryCode: z
+      .string()
+      .regex(/^[A-Z]{2}$/)
       .nullable(),
+    trafficSource: z.enum(["DIRECT", "INTERNAL", "SEARCH", "SOCIAL", "EXTERNAL"]).nullable(),
     protocol: z.enum(["HLS", "MP4"]).nullable(),
   })
   .strict();
@@ -89,8 +90,14 @@ export const adFactV1Schema = z
     profileHash: nullableHash64,
     sessionHash: nullableHash64,
     eventType: z.string().min(1).max(40),
-    revenue: z.string().regex(/^-?\d+(?:\.\d+)?$/).nullable(),
-    currency: z.string().regex(/^[A-Z]{3}$/).nullable(),
+    revenue: z
+      .string()
+      .regex(/^-?\d+(?:\.\d+)?$/)
+      .nullable(),
+    currency: z
+      .string()
+      .regex(/^[A-Z]{3}$/)
+      .nullable(),
     occurredAt: isoDateTime,
     createdAt: isoDateTime,
   })
@@ -107,7 +114,10 @@ export const revenueFactV1Schema = z
     payoutId: nullableUuid,
     type: z.string().min(1).max(40),
     state: z.string().min(1).max(40),
-    grossAmount: z.string().regex(/^-?\d+(?:\.\d+)?$/).nullable(),
+    grossAmount: z
+      .string()
+      .regex(/^-?\d+(?:\.\d+)?$/)
+      .nullable(),
     amount: z.string().regex(/^-?\d+(?:\.\d+)?$/),
     currency: z.string().regex(/^[A-Z]{3}$/),
     revenueShareBps: z.number().int().min(0).max(10_000).nullable(),

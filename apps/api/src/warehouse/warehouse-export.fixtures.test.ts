@@ -103,9 +103,7 @@ describe("Task 84 warehouse export fixtures", () => {
     });
 
     expect(adFactV1Schema.parse(fact)).toEqual(fact);
-    expect(fact.profileHash).toBe(
-      analyticsPseudonym("66666666-6666-4666-8666-666666666666"),
-    );
+    expect(fact.profileHash).toBe(analyticsPseudonym("66666666-6666-4666-8666-666666666666"));
     expect(fact.sessionHash).toBe(analyticsPseudonym("raw-ad-session-identifier"));
     expect(JSON.stringify(fact)).not.toContain("raw-ad-session-identifier");
     expect(fact).not.toHaveProperty("profileId");
