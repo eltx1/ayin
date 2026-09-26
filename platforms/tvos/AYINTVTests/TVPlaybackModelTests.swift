@@ -87,6 +87,30 @@ final class TVPlaybackModelTests: XCTestCase {
         )
     }
 
+    func testProgressPersistenceSupportsBackwardSeekAndForcedExitSave() {
+        XCTAssertTrue(
+            TVProgressPersistence.shouldSave(
+                lastSavedPositionMs: 60_000,
+                currentPositionMs: 40_000,
+                force: false
+            )
+        )
+        XCTAssertTrue(
+            TVProgressPersistence.shouldSave(
+                lastSavedPositionMs: 60_000,
+                currentPositionMs: 59_000,
+                force: true
+            )
+        )
+        XCTAssertFalse(
+            TVProgressPersistence.shouldSave(
+                lastSavedPositionMs: 60_000,
+                currentPositionMs: 62_000,
+                force: false
+            )
+        )
+    }
+
     func testLiveAssetNeverPretendsProgressiveFallback() throws {
         let asset = TVPlaybackAsset(
             title: "Live",
