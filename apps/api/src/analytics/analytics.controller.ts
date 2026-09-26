@@ -15,6 +15,7 @@ import { z } from "zod";
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { type HeaderBag, TrustedRegionService } from "../video-policy/trusted-region.service.js";
+import { AnalyticsRollupService } from "./analytics-rollup.service.js";
 import { analyticsBatchSchema } from "./analytics.schemas.js";
 import { AnalyticsService } from "./analytics.service.js";
 
@@ -78,7 +79,10 @@ export class CreatorAnalyticsController {
 @Controller("admin/analytics")
 @UseGuards(AuthGuard, AdminGuard)
 export class AdminAnalyticsController {
-  constructor(@Inject(AnalyticsService) private readonly analytics: AnalyticsService) {}
+  constructor(
+    @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
+    @Inject(AnalyticsRollupService) private readonly rollups: AnalyticsRollupService,
+  ) {}
 
   @Get()
   @RequireAdminRoles(...dashboardStaffRoles)
@@ -88,11 +92,12 @@ export class AdminAnalyticsController {
 
   @Post("cleanup")
   @RequireAdminRoles("OPERATIONS")
-  cleanup(@Body() body: unknown) {
+  async cleanup(@Body() body: unknown) {
     const parsed = cleanupSchema.safeParse(body ?? {});
     if (!parsed.success) {
       throw new HttpException("Invalid retention configuration.", 400);
     }
+    await this.rollups.sync();
     return this.analytics.deleteExpired(parsed.data.retentionDays);
   }
 }
