@@ -542,6 +542,7 @@ model MediaProcessingJob {
   progressPercent   Int                      @default(0)
   stage             String?                  @db.VarChar(64)
   leaseOwner        String?                  @db.VarChar(255)
+  leaseWorkerId     String?                  @db.VarChar(160)
   leaseExpiresAt    DateTime?
   heartbeatAt       DateTime?
   errorCode         String?                  @db.VarChar(128)
@@ -558,6 +559,7 @@ model MediaProcessingJob {
   @@unique([videoId, generation])
   @@index([status, priority, queuedAt])
   @@index([leaseExpiresAt])
+  @@index([leaseWorkerId, status, leaseExpiresAt], map: "media_job_worker_lease_idx")
   @@index([videoId, status])
 }
 

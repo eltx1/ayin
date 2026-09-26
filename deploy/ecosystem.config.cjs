@@ -136,7 +136,8 @@ module.exports = {
       autorestart: true,
       max_restarts: 10,
       min_uptime: "10s",
-      kill_timeout: 10000,
+      // Allow the worker's bounded graceful drain (max 300s) plus abort cleanup to finish.
+      kill_timeout: 315000,
       time: true,
     },
   ],

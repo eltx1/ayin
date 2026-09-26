@@ -82,11 +82,13 @@ export class MediaProcessingLifecycleService {
     stage: string;
     progressPercent?: number;
   }): Promise<boolean> {
+    const now = new Date();
     const changed = await this.database.client.mediaProcessingJob.updateMany({
       where: {
         id: input.jobId,
         leaseOwner: input.workerId,
         status: { in: OWNED_ACTIVE_STATUSES },
+        leaseExpiresAt: { gt: now },
       },
       data: {
         status: input.status,
@@ -104,87 +106,102 @@ export class MediaProcessingLifecycleService {
     workerId: string;
     metadata: CanonicalMediaMetadata;
   }) {
-    return this.database.client.$transaction(async (tx) => {
-      const job = await tx.mediaProcessingJob.findFirst({
-        where: {
-          id: input.jobId,
-          leaseOwner: input.workerId,
-          status: { in: OWNED_ACTIVE_STATUSES },
-        },
-        include: {
-          video: { select: { id: true, channelId: true, status: true } },
-        },
-      });
-      if (!job) return null;
-
-      const canonicalAsset = await tx.mediaAsset.upsert({
-        where: { r2ObjectKey: job.outputR2ObjectKey },
-        create: {
-          videoId: job.videoId,
-          channelId: job.video.channelId,
-          kind: "SOURCE_VIDEO",
-          status: "VALIDATED",
-          r2ObjectKey: job.outputR2ObjectKey,
-          mimeType: "video/mp4",
-          sizeBytes: BigInt(input.metadata.sizeBytes),
-          durationMs: input.metadata.durationMs,
-          width: input.metadata.width,
-          height: input.metadata.height,
-        },
-        update: {
-          videoId: job.videoId,
-          channelId: job.video.channelId,
-          kind: "SOURCE_VIDEO",
-          status: "VALIDATED",
-          mimeType: "video/mp4",
-          sizeBytes: BigInt(input.metadata.sizeBytes),
-          durationMs: input.metadata.durationMs,
-          width: input.metadata.width,
-          height: input.metadata.height,
-          removedAt: null,
-        },
-      });
-
-      if (job.inputR2ObjectKey && job.inputR2ObjectKey !== job.outputR2ObjectKey) {
-        await tx.mediaAsset.updateMany({
+    try {
+      return await this.database.client.$transaction(async (tx) => {
+        const now = new Date();
+        const job = await tx.mediaProcessingJob.findFirst({
           where: {
-            r2ObjectKey: job.inputR2ObjectKey,
-            id: { not: canonicalAsset.id },
+            id: input.jobId,
+            leaseOwner: input.workerId,
+            status: { in: OWNED_ACTIVE_STATUSES },
+            leaseExpiresAt: { gt: now },
           },
-          data: { status: "REMOVED", removedAt: new Date() },
+          include: {
+            video: { select: { id: true, channelId: true, status: true } },
+          },
         });
-      }
+        if (!job) return null;
 
-      const completedAt = new Date();
-      const ready = await tx.mediaProcessingJob.update({
-        where: { id: job.id },
-        data: {
-          finalAssetId: canonicalAsset.id,
-          status: "READY",
-          stage: "READY",
-          progressPercent: 100,
-          outputSizeBytes: BigInt(input.metadata.sizeBytes),
-          completedAt,
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          heartbeatAt: null,
-          errorCode: null,
-          errorMessage: null,
-        },
+        const canonicalAsset = await tx.mediaAsset.upsert({
+          where: { r2ObjectKey: job.outputR2ObjectKey },
+          create: {
+            videoId: job.videoId,
+            channelId: job.video.channelId,
+            kind: "SOURCE_VIDEO",
+            status: "VALIDATED",
+            r2ObjectKey: job.outputR2ObjectKey,
+            mimeType: "video/mp4",
+            sizeBytes: BigInt(input.metadata.sizeBytes),
+            durationMs: input.metadata.durationMs,
+            width: input.metadata.width,
+            height: input.metadata.height,
+          },
+          update: {
+            videoId: job.videoId,
+            channelId: job.video.channelId,
+            kind: "SOURCE_VIDEO",
+            status: "VALIDATED",
+            mimeType: "video/mp4",
+            sizeBytes: BigInt(input.metadata.sizeBytes),
+            durationMs: input.metadata.durationMs,
+            width: input.metadata.width,
+            height: input.metadata.height,
+            removedAt: null,
+          },
+        });
+
+        if (job.inputR2ObjectKey && job.inputR2ObjectKey !== job.outputR2ObjectKey) {
+          await tx.mediaAsset.updateMany({
+            where: {
+              r2ObjectKey: job.inputR2ObjectKey,
+              id: { not: canonicalAsset.id },
+            },
+            data: { status: "REMOVED", removedAt: new Date() },
+          });
+        }
+
+        const completedAt = new Date();
+        const readyChanged = await tx.mediaProcessingJob.updateMany({
+          where: {
+            id: job.id,
+            leaseOwner: input.workerId,
+            status: { in: OWNED_ACTIVE_STATUSES },
+            leaseExpiresAt: { gt: new Date() },
+          },
+          data: {
+            finalAssetId: canonicalAsset.id,
+            status: "READY",
+            stage: "READY",
+            progressPercent: 100,
+            outputSizeBytes: BigInt(input.metadata.sizeBytes),
+            completedAt,
+            leaseOwner: null,
+            leaseWorkerId: null,
+            leaseExpiresAt: null,
+            heartbeatAt: null,
+            errorCode: null,
+            errorMessage: null,
+          },
+        });
+        if (readyChanged.count !== 1) throw new MediaProcessingLeaseLostError();
+        const ready = await tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
+        await tx.video.update({
+          where: { id: job.videoId },
+          data: {
+            durationMs: input.metadata.durationMs,
+            ...(job.video.status === "VALIDATING" ? { status: "DRAFT" as const } : {}),
+          },
+        });
+        await tx.contentSeedItem.updateMany({
+          where: { videoId: job.videoId, status: "UPLOADING" },
+          data: { status: "READY", error: null },
+        });
+        return { job: ready, asset: canonicalAsset };
       });
-      await tx.video.update({
-        where: { id: job.videoId },
-        data: {
-          durationMs: input.metadata.durationMs,
-          ...(job.video.status === "VALIDATING" ? { status: "DRAFT" as const } : {}),
-        },
-      });
-      await tx.contentSeedItem.updateMany({
-        where: { videoId: job.videoId, status: "UPLOADING" },
-        data: { status: "READY", error: null },
-      });
-      return { job: ready, asset: canonicalAsset };
-    });
+    } catch (error) {
+      if (error instanceof MediaProcessingLeaseLostError) return null;
+      throw error;
+    }
   }
 
   async getOwnedJob(jobId: string, workerId: string) {
@@ -193,6 +210,7 @@ export class MediaProcessingLifecycleService {
         id: jobId,
         leaseOwner: workerId,
         status: { in: OWNED_ACTIVE_STATUSES },
+        leaseExpiresAt: { gt: new Date() },
       },
     });
   }
@@ -309,5 +327,12 @@ export class MediaProcessingLifecycleService {
         stage: "REPROCESS_QUEUED",
       },
     });
+  }
+}
+
+class MediaProcessingLeaseLostError extends Error {
+  constructor() {
+    super("The media processing lease was lost before finalization.");
+    this.name = "MediaProcessingLeaseLostError";
   }
 }

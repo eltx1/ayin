@@ -58,6 +58,7 @@ export class AdminMediaProcessingController {
           attempt: true,
           priority: true,
           leaseOwner: true,
+          leaseWorkerId: true,
           leaseExpiresAt: true,
           errorCode: true,
           errorMessage: true,

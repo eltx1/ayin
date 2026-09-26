@@ -6,6 +6,7 @@ export interface BoundedMediaProcessInput {
   timeoutMs: number;
   label: string;
   stderrLimitBytes?: number;
+  signal?: AbortSignal;
 }
 
 export async function runBoundedMediaProcess(input: BoundedMediaProcessInput): Promise<void> {
@@ -17,6 +18,7 @@ export async function runBoundedMediaProcess(input: BoundedMediaProcessInput): P
     throw new Error("Media process stderr capture limit is outside the safe range.");
   }
 
+  input.signal?.throwIfAborted();
   await new Promise<void>((resolve, reject) => {
     const child = spawn(input.executable, [...input.args], {
       stdio: ["ignore", "ignore", "pipe"],
@@ -24,6 +26,12 @@ export async function runBoundedMediaProcess(input: BoundedMediaProcessInput): P
     });
     let stderr = "";
     let timedOut = false;
+    let aborted = false;
+    const onAbort = () => {
+      aborted = true;
+      child.kill("SIGKILL");
+    };
+    input.signal?.addEventListener("abort", onAbort, { once: true });
     const timeout = setTimeout(() => {
       timedOut = true;
       child.kill("SIGKILL");
@@ -36,11 +44,15 @@ export async function runBoundedMediaProcess(input: BoundedMediaProcessInput): P
     });
     child.once("error", (error) => {
       clearTimeout(timeout);
+      input.signal?.removeEventListener("abort", onAbort);
       reject(error);
     });
     child.once("exit", (code, signal) => {
       clearTimeout(timeout);
-      if (timedOut) {
+      input.signal?.removeEventListener("abort", onAbort);
+      if (aborted) {
+        reject(new Error(`${input.label} aborted for worker shutdown.`));
+      } else if (timedOut) {
         reject(
           new Error(`${input.label} timed out after ${Math.ceil(input.timeoutMs / 1000)} seconds.`),
         );

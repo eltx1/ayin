@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
@@ -48,29 +49,49 @@ export class MediaProcessingExecutorService {
     this.ffmpegTimeoutMs = timeouts.ffmpegMs;
   }
 
-  async process(job: MediaProcessingJob, workerId: string): Promise<void> {
-    const workDirectory = join(this.workRoot, job.id);
+  async process(job: MediaProcessingJob, workerId: string, signal?: AbortSignal): Promise<void> {
+    const claimScratchId = createHash("sha256").update(workerId).digest("hex").slice(0, 16);
+    const workDirectory = join(this.workRoot, `${job.id}-${claimScratchId}`);
     const inputPath = join(workDirectory, `input${sourceExtension(job.sourceMimeType)}`);
     const outputPath = join(workDirectory, "canonical.mp4");
     let heartbeatTimer: NodeJS.Timeout | null = null;
 
+    const stopHeartbeat = () => {
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+    signal?.addEventListener("abort", stopHeartbeat, { once: true });
+
     try {
+      signal?.throwIfAborted();
       await rm(workDirectory, { recursive: true, force: true });
       await mkdir(workDirectory, { recursive: true });
       heartbeatTimer = setInterval(() => {
-        void this.queue.heartbeat(job.id, workerId).catch((error: unknown) => {
-          this.logger.warn(`Heartbeat failed for media job ${job.id}: ${errorMessage(error)}`);
-        });
-      }, 30_000);
+        void this.queue
+          .heartbeat(job.id, workerId)
+          .then((owned) => {
+            if (!owned) {
+              this.logger.warn(
+                `Heartbeat rejected for media job ${job.id}; this lease is no longer active.`,
+              );
+            }
+          })
+          .catch((error: unknown) => {
+            this.logger.warn(`Heartbeat failed for media job ${job.id}: ${errorMessage(error)}`);
+          });
+      }, 10_000);
       heartbeatTimer.unref();
 
+      signal?.throwIfAborted();
       const existingOutput = await this.tryHead(job.outputR2ObjectKey);
       let canonicalMetadata: MediaProbeMetadata;
 
       if (isVerifiedCanonical(existingOutput)) {
         await this.requireOwnedStage(job.id, workerId, "VERIFYING", "RECOVERING_FINAL_OBJECT", 90);
         await this.storage.downloadToFile(job.outputR2ObjectKey, outputPath);
-        canonicalMetadata = await this.probe(outputPath);
+        canonicalMetadata = await this.probe(outputPath, signal);
         if (
           !canonicalMetadata.width ||
           !canonicalMetadata.height ||
@@ -87,7 +108,7 @@ export class MediaProcessingExecutorService {
         await this.requireOwnedStage(job.id, workerId, "PROCESSING", "DOWNLOADING_SOURCE", 5);
         await this.storage.downloadToFile(job.inputR2ObjectKey, inputPath);
 
-        const sourceMetadata = await this.probe(inputPath);
+        const sourceMetadata = await this.probe(inputPath, signal);
         if (!sourceMetadata.width || !sourceMetadata.height || !sourceMetadata.videoCodec) {
           throw new Error("The uploaded file does not contain a readable video stream.");
         }
@@ -108,8 +129,9 @@ export class MediaProcessingExecutorService {
           crf: crf as number,
           preset: preset as string,
           timeoutMs: this.ffmpegTimeoutMs,
+          ...(signal ? { signal } : {}),
         });
-        canonicalMetadata = await this.probe(outputPath);
+        canonicalMetadata = await this.probe(outputPath, signal);
         if (
           !canonicalMetadata.width ||
           !canonicalMetadata.height ||
@@ -152,6 +174,7 @@ export class MediaProcessingExecutorService {
         workDirectory,
         canonicalPath: outputPath,
         canonicalMetadata,
+        ...(signal ? { signal } : {}),
       });
 
       if (
@@ -180,17 +203,18 @@ export class MediaProcessingExecutorService {
       this.logger.error(`Media processing job ${job.id} failed: ${message}`);
       await this.queue.requeueAfterFailure({
         jobId: job.id,
-        workerId,
+        leaseToken: workerId,
         errorCode: classifyProcessingError(error),
         errorMessage: message.slice(0, 4000),
       });
     } finally {
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      stopHeartbeat();
+      signal?.removeEventListener("abort", stopHeartbeat);
       await rm(workDirectory, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 
-  private async probe(filePath: string): Promise<MediaProbeMetadata> {
+  private async probe(filePath: string, signal?: AbortSignal): Promise<MediaProbeMetadata> {
     let stdout: string;
     try {
       ({ stdout } = await execFileAsync(
@@ -208,9 +232,13 @@ export class MediaProcessingExecutorService {
           maxBuffer: 2 * 1024 * 1024,
           timeout: this.ffprobeTimeoutMs,
           killSignal: "SIGKILL",
+          ...(signal ? { signal } : {}),
         },
       ));
     } catch (error) {
+      if (signal?.aborted) {
+        throw new Error("FFprobe aborted for worker shutdown.", { cause: error });
+      }
       if (wasKilledByTimeout(error)) {
         throw new Error(
           `FFprobe timed out after ${Math.ceil(this.ffprobeTimeoutMs / 1000)} seconds.`,
@@ -277,6 +305,9 @@ function isVerifiedCanonical(
 
 function classifyProcessingError(error: unknown): string {
   const message = errorMessage(error).toLowerCase();
+  if (message.includes("worker shutdown") || message.includes("aborted")) {
+    return "MEDIA_WORKER_SHUTDOWN";
+  }
   if (message.includes("timed out")) return "MEDIA_PROCESSING_TIMEOUT";
   if (message.includes("hls") || message.includes("rendition")) return "HLS_PROCESSING_FAILED";
   if (message.includes("ffmpeg") || message.includes("ffprobe")) return "FFMPEG_PROCESSING_FAILED";
@@ -304,6 +335,7 @@ async function runCanonicalFfmpeg(input: {
   crf: number;
   preset: string;
   timeoutMs: number;
+  signal?: AbortSignal;
 }): Promise<void> {
   const scaleFilter = `scale=-2:trunc(min(${input.maxHeight}\\,ih)/2)*2`;
   const args = [
@@ -348,5 +380,6 @@ async function runCanonicalFfmpeg(input: {
     args,
     timeoutMs: input.timeoutMs,
     label: "FFmpeg canonical transcode",
+    ...(input.signal ? { signal: input.signal } : {}),
   });
 }
