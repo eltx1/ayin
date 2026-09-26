@@ -22,6 +22,7 @@ export interface HlsTranscodeInput {
   threads: number;
   preset: string;
   segmentDurationSeconds: number;
+  signal?: AbortSignal;
 }
 
 @Injectable()
@@ -41,6 +42,7 @@ export class MediaHlsTranscoderService {
       args,
       timeoutMs: this.ffmpegTimeoutMs,
       label: `FFmpeg HLS ${input.rendition.identity}`,
+      signal: input.signal,
     });
 
     const playlistText = await readFile(playlistPath, "utf8");
