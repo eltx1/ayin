@@ -47,7 +47,9 @@ Running the same window repeatedly therefore produces the same result and cannot
 
 ### Late-arriving events
 
-The worker stores a successful processing watermark. On each pass it checks `AnalyticsEvent.receivedAt` and `AdEvent.createdAt` for rows received since that watermark, then reopens the earliest affected closed UTC window. Because reopened windows are recomputed from raw truth rather than incremented, late data revises the aggregate without double counting.
+The worker stores a successful processing watermark. On each pass it checks indexed `AnalyticsEvent.receivedAt` and `AdEvent.createdAt` with a bounded overlap around the prior watermark, then reopens the earliest affected closed UTC window. The overlap protects short commit/watermark races. If the worker was offline across one or more boundaries, reconciliation resumes from the UTC hour/day containing the previous successful watermark, so the formerly-open bucket cannot be skipped.
+
+Because reopened windows are recomputed from raw truth rather than incremented, late data revises the aggregate without double counting. Rebuild and cleanup transactions also take a PostgreSQL advisory transaction lock, so worker/manual reruns serialize safely; the successful watermark advances monotonically.
 
 Hourly video buckets are rebuilt only for completed hours. Daily dashboard buckets are rebuilt only for completed UTC days.
 
