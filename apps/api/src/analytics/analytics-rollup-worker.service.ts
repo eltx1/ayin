@@ -3,7 +3,6 @@ import { Inject, Injectable } from "@nestjs/common";
 import { ObservabilityService } from "../observability/observability.service.js";
 import { StructuredLoggerService } from "../observability/structured-logger.service.js";
 import { AnalyticsRollupService } from "./analytics-rollup.service.js";
-import { AnalyticsService } from "./analytics.service.js";
 
 const DEFAULT_INTERVAL_MS = 5 * 60_000;
 const MIN_INTERVAL_MS = 60_000;
@@ -22,7 +21,6 @@ export class AnalyticsRollupWorkerService {
 
   constructor(
     @Inject(AnalyticsRollupService) private readonly rollups: AnalyticsRollupService,
-    @Inject(AnalyticsService) private readonly analytics: AnalyticsService,
     @Inject(StructuredLoggerService) private readonly logger: StructuredLoggerService,
     @Inject(ObservabilityService) private readonly observability: ObservabilityService,
   ) {}
@@ -35,9 +33,7 @@ export class AnalyticsRollupWorkerService {
       const startedAt = Date.now();
       try {
         const result = await this.rollups.sync();
-        const cleanup = await this.rollups.cleanupIfDue((retentionDays) =>
-          this.analytics.deleteExpired(retentionDays),
-        );
+        const cleanup = await this.rollups.cleanupIfDue();
         this.logger.event("info", "analytics_rollup.completed", {
           cutoff: result.cutoff.toISOString(),
           hourlyFrom: result.hourlyRange?.from.toISOString() ?? null,
@@ -47,6 +43,7 @@ export class AnalyticsRollupWorkerService {
           retentionDays: result.retentionDays,
           cleanupRan: cleanup.ran,
           rawEventsDeleted: cleanup.deleted,
+          projectionRowsDeleted: cleanup.projectionRowsDeleted,
         });
       } catch (error) {
         this.observability.captureError(error, {
