@@ -21,7 +21,12 @@ CREATE INDEX "video_export_cursor_idx"
 CREATE INDEX "ad_event_export_cursor_idx"
   ON "AdEvent"("createdAt", "id");
 ALTER TABLE "EarningsLedgerEntry"
-  ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+  ADD COLUMN "updatedAt" TIMESTAMP(3);
+UPDATE "EarningsLedgerEntry"
+  SET "updatedAt" = "createdAt"
+  WHERE "updatedAt" IS NULL;
+ALTER TABLE "EarningsLedgerEntry"
+  ALTER COLUMN "updatedAt" SET NOT NULL;
 
 CREATE INDEX "earnings_export_cursor_idx"
   ON "EarningsLedgerEntry"("updatedAt", "id");
