@@ -42,7 +42,7 @@ export class MediaHlsTranscoderService {
       args,
       timeoutMs: this.ffmpegTimeoutMs,
       label: `FFmpeg HLS ${input.rendition.identity}`,
-      signal: input.signal,
+      ...(input.signal ? { signal: input.signal } : {}),
     });
 
     const playlistText = await readFile(playlistPath, "utf8");
