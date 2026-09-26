@@ -175,7 +175,7 @@ struct TVDetailView: View {
                     VStack(alignment: .leading, spacing: 34) {
                         heroHeader(
                             title: series.title,
-                            subtitle: "\(series.releaseYear) · \(series.maturityRating)",
+                            subtitle: seriesSubtitle(series),
                             description: series.synopsis
                         )
 
@@ -259,6 +259,13 @@ struct TVDetailView: View {
                     .frame(maxWidth: 1100, alignment: .leading)
             }
         }
+    }
+
+    private func seriesSubtitle(_ series: TVSeriesResponse.Series) -> String {
+        [series.releaseYear.map(String.init), series.maturityRating]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     private func programSection(
