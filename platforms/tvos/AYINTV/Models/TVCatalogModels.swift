@@ -160,6 +160,49 @@ struct TVLinearCapabilityResponse: Decodable {
     }
 }
 
+struct TVPlaylistResponse: Decodable {
+    struct Channel: Decodable {
+        let id: String
+        let handle: String
+        let name: String
+    }
+
+    struct Playlist: Decodable {
+        let id: String
+        let slug: String
+        let name: String
+        let description: String?
+        let visibility: String
+        let systemKey: String?
+    }
+
+    struct Item: Decodable, Identifiable {
+        struct Video: Decodable {
+            struct Thumbnail: Decodable {
+                let objectKey: String
+                let mimeType: String
+            }
+
+            let id: String
+            let slug: String
+            let title: String
+            let description: String?
+            let durationMs: Int?
+            let thumbnail: Thumbnail?
+        }
+
+        let id: String
+        let position: Int
+        let video: Video
+    }
+
+    let canonicalHandle: String
+    let redirectedFrom: String?
+    let channel: Channel
+    let playlist: Playlist
+    let items: [Item]
+}
+
 struct TVMovieResponse: Decodable {
     struct Movie: Decodable {
         struct VideoRef: Decodable {
