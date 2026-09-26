@@ -31,6 +31,10 @@ enum TVRoute: Hashable {
                 return .channel(handle: first)
             case "tv":
                 return .creatorTV(handle: first)
+            case "movie", "movies":
+                return .movie(slug: first)
+            case "series":
+                return .series(slug: first)
             default:
                 return nil
             }
