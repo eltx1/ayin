@@ -438,15 +438,6 @@ export class AnalyticsService {
     };
   }
 
-  async deleteExpired(retentionDays = 400) {
-    const days = Math.max(30, Math.min(retentionDays, 3650));
-    const before = new Date(Date.now() - days * DAY_MS);
-    const result = await this.database.client.analyticsEvent.deleteMany({
-      where: { occurredAt: { lt: before } },
-    });
-    return { deleted: result.count, before, retentionDays: days };
-  }
-
   private async dimensionBreakdown(
     channelId: string,
     from: Date,
