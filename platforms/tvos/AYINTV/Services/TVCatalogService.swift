@@ -7,13 +7,22 @@ struct TVCatalogService {
         self.client = client
     }
 
-    func search(_ query: String, limit: Int = 24) async throws -> TVSearchResponse {
+    func search(
+        _ query: String,
+        cursor: String? = nil,
+        isKids: Bool = false,
+        limit: Int = 24
+    ) async throws -> TVSearchResponse {
         var components = URLComponents()
-        components.path = "/public/search"
-        components.queryItems = [
+        components.path = isKids ? "/public/search/kids" : "/public/search"
+        var queryItems = [
             URLQueryItem(name: "q", value: query),
             URLQueryItem(name: "limit", value: String(limit))
         ]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        components.queryItems = queryItems
         guard let path = components.string else { throw APIClientError.invalidURL }
         return try await client.request(path)
     }
