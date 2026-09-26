@@ -980,6 +980,7 @@ model AdEvent {
   @@index([videoId, occurredAt])
   @@index([profileId, occurredAt])
   @@index([eventType, occurredAt])
+  @@index([createdAt])
 }
 
 model CreatorContract {

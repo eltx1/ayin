@@ -267,8 +267,8 @@ export function AdminDashboard() {
   ] as const;
 
   const analyticsMetrics = [
-    ["DAU approx", analytics.dauApprox.toLocaleString()],
-    ["MAU approx", analytics.mauApprox.toLocaleString()],
+    ["DAU approx / last complete UTC day", analytics.dauApprox.toLocaleString()],
+    ["MAU approx / 30 complete UTC days", analytics.mauApprox.toLocaleString()],
     ["Watch hours / 30d", analytics.watchHours.toFixed(1)],
     ["Uploads / 30d", analytics.uploads.toLocaleString()],
     ["TV starts / 30d", analytics.tvStarts.toLocaleString()],
@@ -287,7 +287,7 @@ export function AdminDashboard() {
           </p>
         </div>
         <div>
-          <span className={styles.statusPill}>Query-time operational view</span>
+          <span className={styles.statusPill}>Scheduled UTC rollup view</span>
           <p className={styles.muted}>{session.roles.join(" · ")}</p>
         </div>
       </header>
@@ -447,9 +447,7 @@ export function AdminDashboard() {
 
       <section className={styles.card} style={{ marginTop: 18 }}>
         <h2>Platform analytics</h2>
-        <p className={styles.muted}>
-          Query-time V1 metrics; intentionally not advertised as realtime.
-        </p>
+        <p className={styles.muted}>{analytics.freshnessNote}</p>
         <div className={styles.commandGrid}>
           {analyticsMetrics.map(([label, value]) => (
             <p key={label}>

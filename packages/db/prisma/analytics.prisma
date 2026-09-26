@@ -17,6 +17,7 @@ model AnalyticsEvent {
   metadata        Json?
 
   @@index([occurredAt])
+  @@index([receivedAt])
   @@index([eventName, occurredAt])
   @@index([sessionHash, occurredAt])
   @@index([channelId, occurredAt])
@@ -55,3 +56,135 @@ model RecommendationExposure {
   @@index([surface, createdAt])
   @@index([createdAt])
 }
+
+model AnalyticsVideoHourlyRollup {
+  bucketStart         DateTime
+  channelId           String   @db.Uuid
+  videoId             String   @db.Uuid
+  views               Int      @default(0)
+  starts              Int      @default(0)
+  watchTimeMs         BigInt   @default(0)
+  completions         Int      @default(0)
+  startupSamples      Int      @default(0)
+  startupDurationMs   BigInt   @default(0)
+  bufferEvents        Int      @default(0)
+  bufferSamples       Int      @default(0)
+  bufferDurationMs    BigInt   @default(0)
+  hlsFatalEvents      Int      @default(0)
+  mp4FallbackEvents   Int      @default(0)
+  qualitySwitchEvents Int      @default(0)
+  adRequests          Int      @default(0)
+  adStarts            Int      @default(0)
+  adCompletes         Int      @default(0)
+  adClicks            Int      @default(0)
+  adErrors            Int      @default(0)
+
+  @@id([bucketStart, videoId])
+  @@index([channelId, bucketStart])
+}
+
+model AnalyticsVideoDailyRollup {
+  bucketStart         DateTime
+  channelId           String   @db.Uuid
+  videoId             String   @db.Uuid
+  views               Int      @default(0)
+  starts              Int      @default(0)
+  watchTimeMs         BigInt   @default(0)
+  completions         Int      @default(0)
+  startupSamples      Int      @default(0)
+  startupDurationMs   BigInt   @default(0)
+  bufferEvents        Int      @default(0)
+  bufferSamples       Int      @default(0)
+  bufferDurationMs    BigInt   @default(0)
+  hlsFatalEvents      Int      @default(0)
+  mp4FallbackEvents   Int      @default(0)
+  qualitySwitchEvents Int      @default(0)
+  adRequests          Int      @default(0)
+  adStarts            Int      @default(0)
+  adCompletes         Int      @default(0)
+  adClicks            Int      @default(0)
+  adErrors            Int      @default(0)
+
+  @@id([bucketStart, videoId])
+  @@index([channelId, bucketStart])
+}
+
+model AnalyticsChannelDailyRollup {
+  bucketStart         DateTime
+  channelId           String   @db.Uuid
+  views               Int      @default(0)
+  starts              Int      @default(0)
+  watchTimeMs         BigInt   @default(0)
+  completions         Int      @default(0)
+  subscribeEvents     Int      @default(0)
+  likeEvents          Int      @default(0)
+  startupSamples      Int      @default(0)
+  startupDurationMs   BigInt   @default(0)
+  bufferEvents        Int      @default(0)
+  bufferSamples       Int      @default(0)
+  bufferDurationMs    BigInt   @default(0)
+  hlsFatalEvents      Int      @default(0)
+  mp4FallbackEvents   Int      @default(0)
+  qualitySwitchEvents Int      @default(0)
+  analyticsAdEvents   Int      @default(0)
+  analyticsAdErrors   Int      @default(0)
+  adRequests          Int      @default(0)
+  adFills             Int      @default(0)
+
+  @@id([bucketStart, channelId])
+  @@index([channelId, bucketStart])
+}
+
+model AnalyticsChannelDailyDimensionRollup {
+  bucketStart DateTime
+  channelId   String   @db.Uuid
+  dimension   String   @db.VarChar(32)
+  value       String   @db.VarChar(64)
+  count       Int      @default(0)
+
+  @@id([bucketStart, channelId, dimension, value])
+  @@index([channelId, bucketStart, dimension], map: "analytics_channel_dimension_bucket_idx")
+}
+
+model AnalyticsPlaybackSessionDailyRollup {
+  bucketStart   DateTime
+  channelId     String   @db.Uuid
+  videoId       String   @db.Uuid
+  sessionHash   String   @db.Char(64)
+  started       Boolean  @default(false)
+  maxPositionMs Int?
+
+  @@id([bucketStart, channelId, videoId, sessionHash])
+  @@index([channelId, bucketStart])
+  @@index([videoId, bucketStart])
+}
+
+model AnalyticsPlatformSessionDailyRollup {
+  bucketStart DateTime
+  sessionHash String   @db.Char(64)
+
+  @@id([bucketStart, sessionHash])
+  @@index([bucketStart])
+}
+
+model AnalyticsPlatformDailyRollup {
+  bucketStart    DateTime @id
+  uniqueSessions Int      @default(0)
+  views          Int      @default(0)
+  starts         Int      @default(0)
+  watchTimeMs    BigInt   @default(0)
+  completions    Int      @default(0)
+  uploads        Int      @default(0)
+  tvStarts       Int      @default(0)
+  adEvents       Int      @default(0)
+  errors         Int      @default(0)
+  bufferEvents   Int      @default(0)
+}
+
+model AnalyticsRollupState {
+  key              String   @id @db.VarChar(32)
+  lastSuccessfulAt DateTime?
+  lastCleanupAt    DateTime?
+  updatedAt        DateTime @updatedAt
+}
+
