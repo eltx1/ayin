@@ -3,14 +3,14 @@ import Foundation
 
 @MainActor
 final class TVHomeViewModel: ObservableObject {
-    @Published private(set) var rows: [DiscoveryRow] = []
+    @Published private(set) var rows: [TVDiscoveryRow] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
 
-    private let discovery: any DiscoveryServicing
+    private let discovery: any TVDiscoveryServicing
     private var generation = 0
 
-    init(discovery: any DiscoveryServicing = DiscoveryService()) {
+    init(discovery: any TVDiscoveryServicing = TVDiscoveryService()) {
         self.discovery = discovery
     }
 
