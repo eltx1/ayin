@@ -34,6 +34,51 @@ final class TVPlaybackModelTests: XCTestCase {
         XCTAssertFalse(state.enterActive())
     }
 
+    func testSlowResumeStillAppliesUntilViewerNavigates() {
+        XCTAssertTrue(
+            TVResumePolicy.shouldApplySavedPosition(
+                positionMs: 90_000,
+                completedAt: nil,
+                userNavigated: false
+            )
+        )
+        XCTAssertFalse(
+            TVResumePolicy.shouldApplySavedPosition(
+                positionMs: 90_000,
+                completedAt: nil,
+                userNavigated: true
+            )
+        )
+        XCTAssertFalse(
+            TVResumePolicy.shouldApplySavedPosition(
+                positionMs: 90_000,
+                completedAt: "2026-09-26T00:00:00Z",
+                userNavigated: false
+            )
+        )
+    }
+
+    func testPiPKeepsPlaybackAliveWhileSceneIsInactive() {
+        XCTAssertFalse(
+            TVPlaybackScenePolicy.shouldPause(
+                sceneIsActive: false,
+                pictureInPictureActive: true
+            )
+        )
+        XCTAssertTrue(
+            TVPlaybackScenePolicy.shouldPause(
+                sceneIsActive: false,
+                pictureInPictureActive: false
+            )
+        )
+        XCTAssertFalse(
+            TVPlaybackScenePolicy.shouldPause(
+                sceneIsActive: true,
+                pictureInPictureActive: false
+            )
+        )
+    }
+
     func testLiveAssetNeverPretendsProgressiveFallback() throws {
         let asset = TVPlaybackAsset(
             title: "Live",
