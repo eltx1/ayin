@@ -13,6 +13,21 @@ struct TVCatalogService {
         isKids: Bool = false,
         limit: Int = 24
     ) async throws -> TVSearchResponse {
+        let path = try Self.searchPath(
+            query: query,
+            cursor: cursor,
+            isKids: isKids,
+            limit: limit
+        )
+        return try await client.request(path)
+    }
+
+    static func searchPath(
+        query: String,
+        cursor: String?,
+        isKids: Bool,
+        limit: Int
+    ) throws -> String {
         var components = URLComponents()
         components.path = isKids ? "/public/search/kids" : "/public/search"
         var queryItems = [
@@ -24,7 +39,7 @@ struct TVCatalogService {
         }
         components.queryItems = queryItems
         guard let path = components.string else { throw APIClientError.invalidURL }
-        return try await client.request(path)
+        return path
     }
 
     func myAyin(token: String, profileId: String) async throws -> TVMyAyinResponse {
