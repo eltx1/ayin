@@ -44,6 +44,7 @@ export class DatabaseService implements OnModuleDestroy {
           COUNT(*) FILTER (WHERE "state" = 'idle in transaction')::bigint AS "idleInTransaction"
         FROM pg_stat_activity
         WHERE datname = current_database()
+          AND usename = current_user
       `,
       this.client.$queryRaw<ApplicationConnectionRow[]>`
         SELECT
@@ -52,6 +53,7 @@ export class DatabaseService implements OnModuleDestroy {
           COUNT(*) FILTER (WHERE "state" = 'active')::bigint AS "active"
         FROM pg_stat_activity
         WHERE datname = current_database()
+          AND usename = current_user
         GROUP BY COALESCE(NULLIF(application_name, ''), 'unknown')
         ORDER BY COUNT(*) DESC, COALESCE(NULLIF(application_name, ''), 'unknown') ASC
         LIMIT 32
