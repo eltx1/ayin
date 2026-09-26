@@ -33,6 +33,7 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
         "AnalyticsVideoDailyRollup",
         "AnalyticsVideoHourlyRollup",
         "AnalyticsEvent",
+        "AdPlacement",
         "Channel"
       CASCADE
     `);
@@ -57,7 +58,15 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
         publishedAt: new Date(),
       },
     });
-    return { channel, video };
+    const placement = await prisma.adPlacement.create({
+      data: {
+        key: `rollup-placement-${randomUUID().slice(0, 8)}`,
+        name: "Rollup placement",
+        inventoryFamily: "IN_PLAYER_VIDEO",
+        format: "PRE_ROLL",
+      },
+    });
+    return { channel, video, placement };
   }
 
   function event(
@@ -78,7 +87,7 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
   }
 
   it("matches raw truth, reruns without double counting, and revises a closed UTC window for late events", async () => {
-    const { channel, video } = await fixture();
+    const { channel, video, placement } = await fixture();
     const today = utcFloorDay(new Date());
     const day = new Date(today.getTime() - 2 * DAY_MS);
     const hour = new Date(day.getTime() + 12 * HOUR_MS);
@@ -208,6 +217,24 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
     ];
 
     await prisma.analyticsEvent.createMany({ data: initialEvents });
+    await prisma.adEvent.createMany({
+      data: [
+        {
+          placementId: placement.id,
+          videoId: video.id,
+          eventType: "REQUEST",
+          occurredAt: at(18),
+          createdAt: at(18),
+        },
+        {
+          placementId: placement.id,
+          videoId: video.id,
+          eventType: "FILL",
+          occurredAt: at(19),
+          createdAt: at(19),
+        },
+      ],
+    });
     const rawBefore = await prisma.analyticsEvent.count();
 
     const firstCutoff = new Date();
@@ -281,6 +308,8 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
       bufferEvents: 2,
       analyticsAdEvents: 5,
       analyticsAdErrors: 1,
+      adRequests: 1,
+      adFills: 1,
     });
     expect(channelDaily.watchTimeMs).toBe(30_000n);
 
@@ -362,6 +391,25 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
       ],
     });
 
+    await prisma.adEvent.createMany({
+      data: [
+        {
+          placementId: placement.id,
+          videoId: video.id,
+          eventType: "REQUEST",
+          occurredAt: at(24),
+          createdAt: lateReceivedAt,
+        },
+        {
+          placementId: placement.id,
+          videoId: video.id,
+          eventType: "FILL",
+          occurredAt: at(25),
+          createdAt: lateReceivedAt,
+        },
+      ],
+    });
+
     await rollups.sync(new Date(firstCutoff.getTime() + 2_000));
 
     const revised = await prisma.analyticsVideoDailyRollup.findUniqueOrThrow({
@@ -369,6 +417,11 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
     });
     expect(revised.views).toBe(3);
     expect(revised.watchTimeMs).toBe(35_000n);
+    const revisedChannel = await prisma.analyticsChannelDailyRollup.findUniqueOrThrow({
+      where: { bucketStart_channelId: { bucketStart: day, channelId: channel.id } },
+    });
+    expect(revisedChannel.adRequests).toBe(2);
+    expect(revisedChannel.adFills).toBe(2);
 
     const creator = await analytics.channelMetrics(channel.id, 28);
     expect(creator).toMatchObject({
@@ -377,6 +430,12 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
       uniqueViewersApprox: 3,
       watchTimeMs: 35_000,
       completionRate: 1 / 3,
+    });
+    expect(creator.advertising).toMatchObject({
+      available: true,
+      opportunities: 2,
+      fills: 2,
+      fillRate: 1,
     });
     expect(creator.dateRange.timezone).toBe("UTC");
     expect(creator.freshnessNote).toContain("not realtime");
