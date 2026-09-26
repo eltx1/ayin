@@ -131,7 +131,7 @@ export class MediaProcessingExecutorService {
           crf: crf as number,
           preset: preset as string,
           timeoutMs: this.ffmpegTimeoutMs,
-          signal,
+          ...(signal ? { signal } : {}),
         });
         canonicalMetadata = await this.probe(outputPath, signal);
         if (
@@ -176,7 +176,7 @@ export class MediaProcessingExecutorService {
         workDirectory,
         canonicalPath: outputPath,
         canonicalMetadata,
-        signal,
+        ...(signal ? { signal } : {}),
       });
 
       if (
@@ -234,7 +234,7 @@ export class MediaProcessingExecutorService {
           maxBuffer: 2 * 1024 * 1024,
           timeout: this.ffprobeTimeoutMs,
           killSignal: "SIGKILL",
-          signal,
+          ...(signal ? { signal } : {}),
         },
       ));
     } catch (error) {
@@ -382,6 +382,6 @@ async function runCanonicalFfmpeg(input: {
     args,
     timeoutMs: input.timeoutMs,
     label: "FFmpeg canonical transcode",
-    signal: input.signal,
+    ...(input.signal ? { signal: input.signal } : {}),
   });
 }
