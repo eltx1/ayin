@@ -1,5 +1,5 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool, type PoolConfig } from "pg";
+import type { PoolConfig } from "pg";
 
 import { PrismaClient } from "./generated/prisma/client.js";
 
@@ -81,7 +81,6 @@ export function createPrismaClient(
       ? { statement_timeout: settings.statementTimeoutMillis }
       : {}),
   };
-  const pool = new Pool(poolConfig);
-  const adapter = new PrismaPg(pool);
+  const adapter = new PrismaPg(poolConfig);
   return new PrismaClient({ adapter });
 }
