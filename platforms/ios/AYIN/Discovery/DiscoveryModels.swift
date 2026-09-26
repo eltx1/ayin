@@ -25,8 +25,8 @@ struct DiscoveryItem: Decodable, Identifiable {
     let href: String
     let kicker: String
     let meta: String?
-    let artworkObjectKey: String?
-    let progress: Progress?
+    let artworkObjectKey: String? = nil
+    let progress: Progress? = nil
 }
 
 struct EmptyResponse: Decodable {}
