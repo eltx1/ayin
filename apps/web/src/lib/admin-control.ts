@@ -8,7 +8,10 @@ export interface AdminPagination {
 }
 
 export interface AdminAnalyticsMetrics {
-  refresh: "query-time";
+  refresh: "rollup";
+  dateRange: { from: string; to: string; timezone: "UTC" };
+  lastRollupCheck: string | null;
+  freshnessNote: string;
   dauApprox: number;
   mauApprox: number;
   watchTimeMs: number;
