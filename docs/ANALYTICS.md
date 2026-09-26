@@ -61,6 +61,37 @@ Admin analytics reads daily platform rollups and the daily platform-session proj
 
 Subscription totals and gained subscriptions remain sourced from the authoritative product `Subscription` table rather than analytics-event estimates.
 
+
+## Task 83 cohort analytics
+
+Task 83 adds product-level cohort metrics without extending anonymous tracking. Cross-day D1/D7/D30 cohorts use only the existing HMAC-pseudonymous `profileHash` attached to signed-in profile analytics. Anonymous `sessionHash` values remain session-scoped and are never linked across contexts to manufacture a persistent anonymous identity.
+
+Scheduled rollups now materialize:
+
+- platform daily new-vs-returning signed-in profiles, session frequency and cohort watch time;
+- channel daily new-vs-returning signed-in profiles plus return-to-previously-watched-content behavior;
+- platform D1/D7/D30 profile-retention cohorts;
+- channel D1/D7/D30 audience-retention cohorts, including same-content return behavior;
+- pseudonymous subscription episodes and channel D1/D7/D30 subscriber-retention cohorts.
+
+Creator and Admin requests read these aggregate tables rather than repeating large raw-event cohort scans. Cohort rows below `ANALYTICS_COHORT_MIN_SIZE` are not returned. The default is 20 and configuration is clamped to 10-1000. Creators receive channel-level aggregate rows only; no profile hashes, session hashes, or individual viewer histories are returned. Admin receives platform-level cohort aggregates.
+
+A viewer is "new" only relative to the analytics identity lookback still available under the configured raw-event retention policy. AYIN does not persist a pseudonymous first-seen identity beyond that privacy boundary merely to preserve lifetime cohort identity.
+
+### Subscriber-retention scope
+
+Subscription retention is measured from server-side subscription episodes recorded after Task 83 tracking starts. Subscribe/unsubscribe mutations write only the channel id, HMAC-pseudonymous profile identity and lifecycle timestamps. Historical churn that occurred before this tracking boundary is not reconstructed or claimed. Episode-level pseudonyms are removed by the same configured analytics retention cleanup; aggregate cohort rows may remain for long-term trend reporting.
+
+### Cohort semantics
+
+Cohort dates and D1/D7/D30 boundaries are complete UTC calendar days. For a cohort created on day D:
+
+- D1 measures activity on D+1;
+- D7 measures activity on D+7;
+- D30 measures activity on D+30.
+
+An immature milestone remains null rather than being reported as zero. Retention denominators are the distinct pseudonymous profiles in the original cohort, not joined activity-row counts. Cohort session frequency is sessions per retained profile at the target day, and cohort watch time is measured progress-checkpoint watch time for retained profiles on that target day.
+
 ## Operational worker
 
 Production PM2 runs a dedicated `ayin-analytics-worker` process from `dist/analytics-worker.js`.
