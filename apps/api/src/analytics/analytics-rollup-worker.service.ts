@@ -44,7 +44,6 @@ export class AnalyticsRollupWorkerService {
           cleanupRan: cleanup.ran,
           rawEventsDeleted: cleanup.deleted,
           sessionProjectionRowsDeleted: cleanup.projectionRowsDeleted,
-          projectionRowsDeleted: cleanup.projectionRowsDeleted,
         });
       } catch (error) {
         this.observability.captureError(error, {
