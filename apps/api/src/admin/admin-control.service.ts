@@ -1,10 +1,10 @@
 import { Inject, Injectable } from "@nestjs/common";
 
-const MAX_ADMIN_PAGE = 1_000;
-
 import { DatabaseService } from "../database/database.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { adminBadRequest } from "./admin.errors.js";
+
+const MAX_ADMIN_PAGE = 1_000;
 
 interface PageInput {
   page?: number | undefined;
