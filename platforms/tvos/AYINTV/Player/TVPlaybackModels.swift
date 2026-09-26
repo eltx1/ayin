@@ -113,10 +113,10 @@ struct TVSceneResumeState: Equatable {
     private(set) var wasActive = true
     private(set) var shouldResume = false
 
-    mutating func leaveActive(wasPlaying: Bool) -> Bool {
+    mutating func leaveActive(shouldResumePlayback: Bool) -> Bool {
         guard wasActive else { return false }
         wasActive = false
-        shouldResume = wasPlaying
+        shouldResume = shouldResumePlayback
         return true
     }
 
