@@ -70,7 +70,8 @@ Task 81 does not assume HTML5/browser IMA works on tvOS.
 
 Current strategy:
 
-- Creator TV / FAST: use AYIN server-side linear HLS + SSAI path when available.
+- Creator TV / FAST: the app starts from a safe `LIMITED_ADS` consent mode and uses generic AYIN linear HLS in that state.
+- Google DAI server-side playback is selected only when the backend marks DAI available **and** an explicit consent provider allows it. `NON_PERSONALIZED` appends `npa=1`; `LIMITED_ADS` never selects the Google DAI URL.
 - VOD client-side ads: use Google's native IMA tvOS SDK when production ad tags, consent behavior and device validation are ready.
 - The initial Task 81 binary does not link IMA because those production inputs are not part of this task.
 
