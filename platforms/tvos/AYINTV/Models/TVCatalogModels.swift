@@ -2,7 +2,7 @@ import Foundation
 
 struct TVSearchResponse: Decodable {
     let query: String
-    let items: [DiscoveryItem]
+    let items: [TVDiscoveryItem]
     let nextCursor: String?
     let emptyMessage: String?
 }
@@ -11,7 +11,7 @@ struct TVMyAyinResponse: Decodable {
     struct Section: Decodable, Identifiable {
         let key: String
         let title: String
-        let items: [DiscoveryItem]
+        let items: [TVDiscoveryItem]
         let availability: String?
         var id: String { key }
     }
