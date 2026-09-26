@@ -21,14 +21,14 @@ final class TVDiscoveryModelTests: XCTestCase {
             """.utf8
         )
 
-        let item = try JSONDecoder().decode(DiscoveryItem.self, from: data)
+        let item = try JSONDecoder().decode(TVDiscoveryItem.self, from: data)
         XCTAssertEqual(item.artworkObjectKey, "thumbs/example.jpg")
         XCTAssertEqual(item.progress?.positionMs, 42_000)
         XCTAssertNil(item.progress?.completedAt)
     }
 
     func testDiscoveryMemberwiseInitializerKeepsOptionalDefaults() {
-        let item = DiscoveryItem(
+        let item = TVDiscoveryItem(
             id: "id",
             type: "VIDEO",
             title: "Title",
