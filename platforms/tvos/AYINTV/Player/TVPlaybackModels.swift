@@ -108,3 +108,27 @@ enum TVPlaybackLifecycle {
         }
     }
 }
+
+struct TVSceneResumeState: Equatable {
+    private(set) var wasActive = true
+    private(set) var shouldResume = false
+
+    mutating func leaveActive(wasPlaying: Bool) -> Bool {
+        guard wasActive else { return false }
+        wasActive = false
+        shouldResume = wasPlaying
+        return true
+    }
+
+    mutating func enterActive() -> Bool {
+        let resume = shouldResume
+        shouldResume = false
+        wasActive = true
+        return resume
+    }
+
+    mutating func reset() {
+        wasActive = true
+        shouldResume = false
+    }
+}
