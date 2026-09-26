@@ -77,7 +77,7 @@ CREATE TABLE "AnalyticsSubscriptionEpisode" (
 );
 CREATE INDEX "AnalyticsSubscriptionEpisode_channelId_subscribedAt_idx"
   ON "AnalyticsSubscriptionEpisode"("channelId", "subscribedAt");
-CREATE INDEX "AnalyticsSubscriptionEpisode_channelId_profileHash_unsubscribedAt_idx"
+CREATE INDEX "analytics_subscription_profile_active_idx"
   ON "AnalyticsSubscriptionEpisode"("channelId", "profileHash", "unsubscribedAt");
 CREATE INDEX "AnalyticsSubscriptionEpisode_subscribedAt_idx"
   ON "AnalyticsSubscriptionEpisode"("subscribedAt");
