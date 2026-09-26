@@ -17,6 +17,7 @@ model AnalyticsEvent {
   metadata        Json?
 
   @@index([occurredAt])
+  @@index([receivedAt])
   @@index([eventName, occurredAt])
   @@index([sessionHash, occurredAt])
   @@index([channelId, occurredAt])
