@@ -157,7 +157,7 @@ databaseDescribe("Task 83 privacy-aware cohort analytics", () => {
         eventName: "VIDEO_START",
         occurredAt: new Date(d1.getTime() + 40_000),
         sessionHash: "extra-session".padEnd(64, "x"),
-        profileHash: profiles[0],
+        profileHash: profiles[0]!,
         channelId: channel.id,
         videoId: firstVideo.id,
       }),
