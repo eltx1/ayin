@@ -456,6 +456,46 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
     expect(await prisma.analyticsEvent.count()).toBe(rawBefore + 2);
   });
 
+  it("rebuilds the last open UTC bucket after worker downtime even when the event predates the receipt overlap", async () => {
+    const { channel, video } = await fixture();
+    const currentDay = utcFloorDay(new Date());
+    const historicalDay = new Date(currentDay.getTime() - 3 * DAY_MS);
+    const watermark = new Date(historicalDay.getTime() + 23 * HOUR_MS + 55 * 60_000);
+    const eventAt = new Date(historicalDay.getTime() + 23 * HOUR_MS + 20 * 60_000);
+    const sessionHash = "e".repeat(64);
+
+    await prisma.analyticsEvent.create({
+      data: event({
+        eventName: "VIDEO_START",
+        occurredAt: eventAt,
+        receivedAt: eventAt,
+        sessionHash,
+        channelId: channel.id,
+        videoId: video.id,
+      }),
+    });
+    await prisma.analyticsRollupState.create({
+      data: { key: "PRIMARY", lastSuccessfulAt: watermark },
+    });
+
+    await rollups.sync(new Date(currentDay.getTime() + 12 * HOUR_MS));
+
+    const hourly = await prisma.analyticsVideoHourlyRollup.findUniqueOrThrow({
+      where: {
+        bucketStart_videoId: {
+          bucketStart: new Date(historicalDay.getTime() + 23 * HOUR_MS),
+          videoId: video.id,
+        },
+      },
+    });
+    const daily = await prisma.analyticsVideoDailyRollup.findUniqueOrThrow({
+      where: { bucketStart_videoId: { bucketStart: historicalDay, videoId: video.id } },
+    });
+
+    expect(hourly.views).toBe(1);
+    expect(daily.views).toBe(1);
+  });
+
   it("expires raw and session-level projections together while retaining anonymous aggregates", async () => {
     const { channel, video } = await fixture();
     const now = new Date();
