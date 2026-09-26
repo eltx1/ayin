@@ -1,40 +1,77 @@
-# AYIN V1 Analytics
+# AYIN Analytics
 
-Task 22 adds a first-party, PostgreSQL-backed analytics pipeline. It is intentionally a V1 operational analytics system, not a realtime warehouse.
+AYIN keeps first-party raw analytics in PostgreSQL and serves Creator/Admin dashboards from deterministic rollups. The system is deliberately **not realtime**.
 
-## Event contract
+## Raw event truth
 
-Clients send versioned events to `POST /analytics/events` in batches of at most 100. Every event has a client-generated UUID for idempotency, `schemaVersion: 1`, an occurrence time, a session identifier, optional profile/content identifiers, source/device metadata, and a bounded payload. The API validates every batch and uses `createMany(..., skipDuplicates: true)` so retrying the same client event does not double count it.
+Clients send versioned events to `POST /analytics/events` in batches of at most 100. Every event carries a client-generated UUID, `schemaVersion: 1`, occurrence time, pseudonymous session identity, optional content attribution and bounded telemetry.
 
-Tracked V1 event families cover app/session open, content impression/click, playback start/progress/complete/pause/seek/buffer, search and search clicks, subscribe/like/comment/share, Creator TV starts, upload lifecycle, and video ad request/start/quartile/complete/click/error.
+`AnalyticsEvent.clientEventId` is unique and ingestion uses `createMany(..., skipDuplicates: true)`. Retried client batches therefore do not create duplicate raw truth.
 
-## Sampling and batching
-
-Playback progress is emitted from the existing player checkpoint cadence rather than every second. The web client queues events, flushes after 20 events or roughly three seconds, and attempts a keepalive/beacon flush when the page is hidden or unloaded. Analytics failure never blocks playback, upload, social actions, or advertising.
-
-Watch time uses bounded `VIDEO_PROGRESS.durationDeltaMs` samples. The first checkpoint is capped to the normal 15-second cadence so resuming far into a video cannot incorrectly credit the entire seek position as watch time.
+Raw `AnalyticsEvent` rows remain authoritative for the configured retention period. Rollups can always be rebuilt from those rows while they remain retained.
 
 ## Privacy
 
-Raw client session/profile identifiers are never persisted. The API stores HMAC-SHA256 pseudonyms. Production must set a stable, secret `ANALYTICS_HASH_SALT`; `AUTH_TOKEN_SECRET` is only a compatibility fallback and the repository local default is for development/test only. Do not put email addresses, names, raw search terms, IP addresses, cookies, tokens, or other direct identifiers in analytics metadata.
+Raw client session/profile identifiers are never persisted. The API stores HMAC-SHA256 pseudonyms. Production must set an independent `ANALYTICS_HASH_SALT`.
 
-Search analytics records query length and result count, not the raw search text.
+Analytics metadata strips IP/location-like keys and raw IP-looking string values. Country analytics are coarse, trusted-edge country codes only. Search analytics do not store raw search text.
 
-## Storage and indexes
+## Task 82 rollups
 
-`AnalyticsEvent` is indexed by occurrence time, event+time, session+time, channel+time, video+time, and account+time. `clientEventId` is unique. This supports the V1 Creator Studio and Admin query patterns without introducing a warehouse prematurely.
+Task 82 adds these grains:
 
-Creator Studio metrics are calculated at request time for a bounded period: views, sampled watch time, average view duration, completion rate, top videos, and current subscriber count. Admin metrics provide approximate DAU/MAU by pseudonymous session, 30-day watch hours, uploads, Creator TV starts, ad-event volume, and tracked errors.
+- hourly video metrics;
+- daily video metrics;
+- daily channel metrics;
+- daily platform metrics;
+- daily channel dimensions for device, traffic source, country and playback protocol;
+- daily playback-session projections used to preserve cross-day distinct-viewer and retention correctness;
+- daily platform-session projections used to preserve 30-day distinct-session correctness.
 
-These endpoints are **query-time metrics**, not realtime streaming dashboards.
+Rollup counters include applicable views/starts, sampled watch time, completions, playback startup/buffering quality, HLS failures/fallbacks, quality switches, subscribe/like analytics events and ad lifecycle events. Creator ad request/fill telemetry continues to use the existing `AdEvent` truth and is folded into the channel daily rollup without inferring revenue.
 
-## Retention
+### UTC window contract
 
-`POST /admin/analytics/cleanup` deletes events older than a configured retention period. The V1 default is 400 days and the accepted range is 30–3650 days. Production operations should schedule this endpoint or an equivalent maintenance job after selecting the legal/product retention policy. A later warehouse/rollup migration can aggregate older data before deletion if long-term trend retention becomes necessary.
+All bucket boundaries are UTC and are written as exact UTC hour/day instants. Dashboard ranges use **complete UTC calendar days**. The current partial UTC day is intentionally excluded, so no response should be described as realtime.
 
-## Operational notes
+### Idempotency and reruns
 
-- Server timestamps are bounded to reject materially stale/future client timestamps.
-- Referenced video/channel IDs are validated; video events derive channel attribution from the database rather than trusting client channel attribution.
-- No analytics response is represented as revenue. Revenue attribution belongs to Task 23.
-- Existing advertising event storage remains intact; Task 22 additionally mirrors supported player-ad lifecycle events into the analytics event stream for product metrics.
+A rollup window is rebuilt with a transactional replace-from-raw operation:
+
+1. delete aggregate rows for the exact deterministic window;
+2. re-read authoritative raw events for that same window;
+3. insert the recomputed aggregate rows;
+4. commit atomically.
+
+Running the same window repeatedly therefore produces the same result and cannot accumulate duplicate counts.
+
+### Late-arriving events
+
+The worker stores a successful processing watermark. On each pass it checks `AnalyticsEvent.receivedAt` and `AdEvent.createdAt` for rows received since that watermark, then reopens the earliest affected closed UTC window. Because reopened windows are recomputed from raw truth rather than incremented, late data revises the aggregate without double counting.
+
+Hourly video buckets are rebuilt only for completed hours. Daily dashboard buckets are rebuilt only for completed UTC days.
+
+## Dashboard query path
+
+Creator Studio reads additive metrics from daily channel/video rollups and dimension rollups. Distinct viewers and retention use the smaller daily playback-session projection instead of rescanning `AnalyticsEvent`.
+
+Admin analytics reads daily platform rollups and the daily platform-session projection. DAU is the last completed UTC day; MAU is distinct pseudonymous sessions across the last 30 completed UTC days.
+
+Subscription totals and gained subscriptions remain sourced from the authoritative product `Subscription` table rather than analytics-event estimates.
+
+## Operational worker
+
+Production PM2 runs a dedicated `ayin-analytics-worker` process from `dist/analytics-worker.js`.
+
+Configuration:
+
+- `ANALYTICS_ROLLUP_INTERVAL_MS`: default 300000 ms, clamped to 60000-3600000 ms.
+- `ANALYTICS_RETENTION_DAYS`: default 400 days, clamped to 30-3650 days.
+
+The worker performs rollup reconciliation first, then checks once per UTC day whether raw `AnalyticsEvent` retention cleanup is due. The manual Admin cleanup endpoint also reconciles rollups before deleting expired raw rows.
+
+Rollup tables are not a replacement for raw truth inside the raw retention window. Revenue truth and reconciliation remain owned by the revenue/advertising systems.
+
+## Verification
+
+Task 82 includes PostgreSQL reconciliation tests that compare raw event counts/sums with video/channel/platform aggregates, rerun the same windows to prove no double counting, inject late-arriving events, rerun the affected window, and verify the aggregate changes exactly once while raw rows remain unchanged.
