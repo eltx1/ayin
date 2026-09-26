@@ -1,0 +1,19 @@
+model MediaProcessingWorker {
+  id                String   @id @db.VarChar(160)
+  hostName          String   @db.VarChar(255)
+  processId         Int
+  status            String   @db.VarChar(16)
+  cpuCapacity       Int
+  concurrencyLimit  Int
+  activeJobCount    Int      @default(0)
+  processingVersion Int
+  releaseSha        String   @db.VarChar(64)
+  startedAt         DateTime
+  heartbeatAt       DateTime
+  drainingAt        DateTime?
+  stoppedAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status, heartbeatAt], map: "media_worker_status_heartbeat_idx")
+}
