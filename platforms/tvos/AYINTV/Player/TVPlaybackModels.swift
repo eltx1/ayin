@@ -132,3 +132,13 @@ struct TVSceneResumeState: Equatable {
         shouldResume = false
     }
 }
+
+enum TVResumePolicy {
+    static func shouldApplySavedPosition(
+        positionMs: Int,
+        completedAt: String?,
+        userNavigated: Bool
+    ) -> Bool {
+        completedAt == nil && positionMs > 0 && !userNavigated
+    }
+}
