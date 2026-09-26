@@ -78,11 +78,11 @@ Raw `profileId` and `sessionId` are converted with the same HMAC pseudonymizatio
 
 Source: `EarningsLedgerEntry`, the revenue ledger truth.
 
-Cursor: `COALESCE(finalizedAt, createdAt) + id`.
+Cursor: `updatedAt + id`.
 
 Partition: UTC date of `occurredAt`.
 
-A ledger row can therefore be exported again when it is finalized. Warehouses should upsert by `recordId` and regard `sourceUpdatedAt` as the source version.
+Task 84 adds an `updatedAt` cursor to the ledger so finalization, payout reservation/release and other legitimate ledger-row updates are exportable without rescanning the full table. Warehouses should upsert by `recordId` and regard `sourceUpdatedAt` as the source version.
 
 The schema includes monetary facts, attribution IDs, revenue-share basis points and accounting period timestamps. It excludes memo text, source idempotency keys, creator account data, payout destinations, legal names and encrypted payout material.
 
