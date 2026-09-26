@@ -4,6 +4,7 @@ import { isIP } from "node:net";
 
 import { DatabaseService } from "../database/database.service.js";
 import { analyticsPseudonym } from "./analytics-identity.js";
+import { cohortMilestone, configuredCohortMinSize } from "./analytics-cohort.js";
 import { utcFloorDay } from "./analytics-rollup.service.js";
 import type { AnalyticsEventInput } from "./analytics.schemas.js";
 
@@ -185,6 +186,7 @@ export class AnalyticsService {
   async channelMetrics(channelId: string, days = 28) {
     const { periodDays, from, to } = completeUtcRange(days);
     const where = { channelId, bucketStart: { gte: from, lt: to } };
+    const cohortMinimum = configuredCohortMinSize();
 
     return this.monitoredCreatorQuery(channelId, periodDays, async () => {
       const [
@@ -199,6 +201,10 @@ export class AnalyticsService {
         protocolRows,
         retentionRows,
         rollupState,
+        audienceRows,
+        cohortRows,
+        subscriberCohortRows,
+        cohortState,
       ] = await Promise.all([
         this.database.client.analyticsChannelDailyRollup.aggregate({
           where,
@@ -277,6 +283,34 @@ export class AnalyticsService {
         this.database.client.analyticsRollupState.findUnique({
           where: { key: "PRIMARY" },
           select: { lastSuccessfulAt: true },
+        }),
+        this.database.client.analyticsChannelAudienceDailyRollup.findMany({
+          where: {
+            channelId,
+            bucketStart: { gte: from, lt: to },
+            activeProfiles: { gte: cohortMinimum },
+          },
+          orderBy: { bucketStart: "asc" },
+        }),
+        this.database.client.analyticsChannelCohortRollup.findMany({
+          where: {
+            channelId,
+            cohortDate: { gte: from, lt: to },
+            cohortSize: { gte: cohortMinimum },
+          },
+          orderBy: { cohortDate: "asc" },
+        }),
+        this.database.client.analyticsSubscriberCohortRollup.findMany({
+          where: {
+            channelId,
+            cohortDate: { gte: from, lt: to },
+            cohortSize: { gte: cohortMinimum },
+          },
+          orderBy: { cohortDate: "asc" },
+        }),
+        this.database.client.analyticsCohortState.findUnique({
+          where: { key: "PRIMARY" },
+          select: { subscriberTrackingStartedAt: true },
         }),
       ]);
 
@@ -381,6 +415,61 @@ export class AnalyticsService {
               fillRate: null,
               note: "No measured ad REQUEST telemetry exists for this period; fill is not estimated.",
             },
+        cohorts: {
+          minimumCohortSize: cohortMinimum,
+          identityScope: "SIGNED_IN_PROFILE_PSEUDONYMS" as const,
+          privacyNote:
+            "Cross-day cohort metrics use only existing pseudonymous signed-in profile analytics. Anonymous sessions are not linked across contexts, and rows below the minimum cohort size are suppressed.",
+          audienceDaily: audienceRows.map((row) => ({
+            date: row.bucketStart.toISOString(),
+            activeProfiles: row.activeProfiles,
+            newProfiles: row.newProfiles,
+            returningProfiles: row.returningProfiles,
+            returningRate:
+              row.activeProfiles > 0 ? row.returningProfiles / row.activeProfiles : 0,
+            sessions: row.sessions,
+            sessionsPerActiveProfile:
+              row.activeProfiles > 0 ? row.sessions / row.activeProfiles : 0,
+            watchTimeMs: Number(row.watchTimeMs),
+            contentReturnProfiles: row.contentReturnProfiles,
+            contentReturnRate:
+              row.activeProfiles > 0 ? row.contentReturnProfiles / row.activeProfiles : 0,
+          })),
+          retention: cohortRows.map((row) => ({
+            cohortDate: row.cohortDate.toISOString(),
+            cohortSize: row.cohortSize,
+            d1: cohortMilestone(
+              row.cohortSize,
+              row.d1Retained,
+              row.d1Sessions,
+              row.d1WatchTimeMs,
+              row.d1ContentReturnProfiles,
+            ),
+            d7: cohortMilestone(
+              row.cohortSize,
+              row.d7Retained,
+              row.d7Sessions,
+              row.d7WatchTimeMs,
+              row.d7ContentReturnProfiles,
+            ),
+            d30: cohortMilestone(
+              row.cohortSize,
+              row.d30Retained,
+              row.d30Sessions,
+              row.d30WatchTimeMs,
+              row.d30ContentReturnProfiles,
+            ),
+          })),
+          subscriberTrackingStartedAt:
+            cohortState?.subscriberTrackingStartedAt.toISOString() ?? null,
+          subscriberRetention: subscriberCohortRows.map((row) => ({
+            cohortDate: row.cohortDate.toISOString(),
+            cohortSize: row.cohortSize,
+            d1: cohortMilestone(row.cohortSize, row.d1Retained),
+            d7: cohortMilestone(row.cohortSize, row.d7Retained),
+            d30: cohortMilestone(row.cohortSize, row.d30Retained),
+          })),
+        },
       };
     });
   }
@@ -389,7 +478,10 @@ export class AnalyticsService {
     const to = utcFloorDay(new Date());
     const day = new Date(to.getTime() - DAY_MS);
     const month = new Date(to.getTime() - 30 * DAY_MS);
-    const [daily, monthlySessions, totals, rollupState] = await Promise.all([
+    const cohortFrom = new Date(to.getTime() - 90 * DAY_MS);
+    const cohortMinimum = configuredCohortMinSize();
+    const [daily, monthlySessions, totals, rollupState, audienceRows, cohortRows] =
+      await Promise.all([
       this.database.client.analyticsPlatformDailyRollup.findUnique({
         where: { bucketStart: day },
         select: { uniqueSessions: true },
@@ -413,6 +505,20 @@ export class AnalyticsService {
         where: { key: "PRIMARY" },
         select: { lastSuccessfulAt: true },
       }),
+      this.database.client.analyticsPlatformAudienceDailyRollup.findMany({
+        where: {
+          bucketStart: { gte: month, lt: to },
+          activeProfiles: { gte: cohortMinimum },
+        },
+        orderBy: { bucketStart: "asc" },
+      }),
+      this.database.client.analyticsPlatformCohortRollup.findMany({
+        where: {
+          cohortDate: { gte: cohortFrom, lt: to },
+          cohortSize: { gte: cohortMinimum },
+        },
+        orderBy: { cohortDate: "asc" },
+      }),
     ]);
 
     const watchTimeMs = Number(totals._sum.watchTimeMs ?? 0n);
@@ -433,6 +539,35 @@ export class AnalyticsService {
       tvStarts: totals._sum.tvStarts ?? 0,
       adEvents: totals._sum.adEvents ?? 0,
       errors: totals._sum.errors ?? 0,
+      cohorts: {
+        minimumCohortSize: cohortMinimum,
+        identityScope: "SIGNED_IN_PROFILE_PSEUDONYMS" as const,
+        privacyNote:
+          "Platform cohorts use existing pseudonymous signed-in profile analytics only. Anonymous sessions are not linked across contexts, and small cohorts are suppressed.",
+        audienceDaily: audienceRows.map((row) => ({
+          date: row.bucketStart.toISOString(),
+          activeProfiles: row.activeProfiles,
+          newProfiles: row.newProfiles,
+          returningProfiles: row.returningProfiles,
+          returningRate: row.activeProfiles > 0 ? row.returningProfiles / row.activeProfiles : 0,
+          sessions: row.sessions,
+          sessionsPerActiveProfile:
+            row.activeProfiles > 0 ? row.sessions / row.activeProfiles : 0,
+          watchTimeMs: Number(row.watchTimeMs),
+        })),
+        retention: cohortRows.map((row) => ({
+          cohortDate: row.cohortDate.toISOString(),
+          cohortSize: row.cohortSize,
+          d1: cohortMilestone(row.cohortSize, row.d1Retained, row.d1Sessions, row.d1WatchTimeMs),
+          d7: cohortMilestone(row.cohortSize, row.d7Retained, row.d7Sessions, row.d7WatchTimeMs),
+          d30: cohortMilestone(
+            row.cohortSize,
+            row.d30Retained,
+            row.d30Sessions,
+            row.d30WatchTimeMs,
+          ),
+        })),
+      },
     };
   }
 
