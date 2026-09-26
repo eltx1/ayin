@@ -168,7 +168,10 @@ final class TVPlayerViewModel: ObservableObject {
     }
 
     private func pauseForSceneDeparture(_ player: AVPlayer) {
-        guard sceneResumeState.leaveActive(wasPlaying: player.timeControlStatus == .playing) else {
+        let shouldResumePlayback = player.timeControlStatus != .paused
+        guard sceneResumeState.leaveActive(
+            shouldResumePlayback: shouldResumePlayback
+        ) else {
             return
         }
         player.pause()
