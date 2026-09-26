@@ -43,6 +43,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/api deploy docs
+          git add apps/api deploy docs packages/db/prisma/schema.prisma packages/db/prisma/media-workers.prisma
           git commit -m "style(task-85): format worker scaling"
           git push origin HEAD:task-85-worker-scaling
