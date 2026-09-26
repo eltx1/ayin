@@ -47,6 +47,22 @@ struct TVMyAyinView: View {
                                                     router.open(href: item.href)
                                                 }
                                             }
+
+                                            if section.nextCursor != nil {
+                                                Button {
+                                                    Task { await loadMore(section.key) }
+                                                } label: {
+                                                    VStack(spacing: 14) {
+                                                        Image(systemName: "arrow.right.circle.fill")
+                                                            .font(.system(size: 54))
+                                                        Text(model.isLoadingMore(section.key) ? "Loading…" : "More")
+                                                            .font(.headline)
+                                                    }
+                                                    .frame(width: 180, height: 202)
+                                                }
+                                                .buttonStyle(.card)
+                                                .disabled(model.isLoadingMore(section.key))
+                                            }
                                         }
                                         .padding(.horizontal, 70)
                                         .padding(.vertical, 8)
@@ -64,6 +80,15 @@ struct TVMyAyinView: View {
         .task(id: session.identity?.profile.id ?? "guest") {
             await load()
         }
+    }
+
+    private func loadMore(_ sectionKey: String) async {
+        guard
+            session.isAuthenticated,
+            let token = session.token,
+            let profileId = session.identity?.profile.id
+        else { return }
+        await model.loadMore(sectionKey: sectionKey, token: token, profileId: profileId)
     }
 
     private func load() async {
