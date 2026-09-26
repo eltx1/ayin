@@ -182,6 +182,12 @@ function roleCanSee(action: RoleAction, roles: AdminRole[]): boolean {
   return action.roles.some((role) => roles.includes(role));
 }
 
+function cohortRetentionLabel(
+  milestone: AdminAnalyticsMetrics["cohorts"]["retention"][number]["d1"],
+): string {
+  return milestone ? `${(milestone.retentionRate * 100).toFixed(1)}%` : "pending";
+}
+
 export function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [analytics, setAnalytics] = useState<AdminAnalyticsMetrics | null>(null);
@@ -456,6 +462,7 @@ export function AdminDashboard() {
           ))}
         </div>
       </section>
+
       <section className={styles.card} style={{ marginTop: 18 }}>
         <h2>Platform cohorts</h2>
         <p className={styles.muted}>{analytics.cohorts.privacyNote}</p>
@@ -467,9 +474,9 @@ export function AdminDashboard() {
             <p key={cohort.cohortDate}>
               <strong>{new Date(cohort.cohortDate).toLocaleDateString()}</strong> ·{" "}
               {cohort.cohortSize.toLocaleString()} profiles · D1{" "}
-              {cohort.d1 ? `${(cohort.d1.retentionRate * 100).toFixed(1)}%` : "pending"} · D7{" "}
-              {cohort.d7 ? `${(cohort.d7.retentionRate * 100).toFixed(1)}%` : "pending"} · D30{" "}
-              {cohort.d30 ? `${(cohort.d30.retentionRate * 100).toFixed(1)}%` : "pending"}
+              {cohortRetentionLabel(cohort.d1)} · D7{" "}
+              {cohortRetentionLabel(cohort.d7)} · D30{" "}
+              {cohortRetentionLabel(cohort.d30)}
             </p>
           ))
         ) : (
