@@ -89,7 +89,7 @@ CREATE TABLE "AnalyticsChannelDailyDimensionRollup" (
     PRIMARY KEY ("bucketStart", "channelId", "dimension", "value")
 );
 
-CREATE INDEX "AnalyticsChannelDailyDimensionRollup_channelId_bucketStart_dimension_idx"
+CREATE INDEX "analytics_channel_dimension_bucket_idx"
   ON "AnalyticsChannelDailyDimensionRollup"("channelId", "bucketStart", "dimension");
 
 CREATE TABLE "AnalyticsPlaybackSessionDailyRollup" (
