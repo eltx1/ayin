@@ -151,3 +151,15 @@ enum TVPlaybackScenePolicy {
         !sceneIsActive && !pictureInPictureActive
     }
 }
+
+enum TVProgressPersistence {
+    static func shouldSave(
+        lastSavedPositionMs: Int?,
+        currentPositionMs: Int,
+        force: Bool
+    ) -> Bool {
+        force ||
+            lastSavedPositionMs == nil ||
+            abs(currentPositionMs - (lastSavedPositionMs ?? 0)) >= 5_000
+    }
+}
