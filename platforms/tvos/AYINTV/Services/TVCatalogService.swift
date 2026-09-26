@@ -35,6 +35,10 @@ struct TVCatalogService {
         try await client.request("/public/channels/\(handle)/tv/linear")
     }
 
+    func playlist(handle: String, slug: String) async throws -> TVPlaylistResponse {
+        try await client.request("/public/channels/\(handle)/playlists/\(slug)")
+    }
+
     func movie(slug: String) async throws -> TVMovieResponse {
         try await client.request("/public/movies/\(slug)")
     }
