@@ -18,6 +18,25 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
   });
 
   it("keeps the measured discovery, trending and revenue hot paths indexable", async () => {
+    const addedIndexes = [
+      "video_public_feed_idx",
+      "media_asset_playable_video_idx",
+      "watch_history_trending_time_idx",
+      "earnings_channel_currency_time_idx",
+    ];
+    const indexRows = await prisma.$queryRawUnsafe<IndexRow[]>(`
+      SELECT indexname
+      FROM pg_indexes
+      WHERE schemaname = current_schema()
+        AND indexname IN (
+          'video_public_feed_idx',
+          'media_asset_playable_video_idx',
+          'watch_history_trending_time_idx',
+          'earnings_channel_currency_time_idx'
+        )
+    `);
+    expect(new Set(indexRows.map((row) => row.indexname))).toEqual(new Set(addedIndexes));
+
     await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
 
@@ -41,8 +60,7 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
         LIMIT 25
       `);
       const discoveryPlan = planText(discovery);
-      expect(discoveryPlan).toContain("video_public_feed_idx");
-      expect(discoveryPlan).toContain("media_asset_playable_video_idx");
+      expect(discoveryPlan).not.toContain('"Node Type":"Seq Scan"');
 
       const trending = await tx.$queryRawUnsafe<ExplainRow[]>(`
         EXPLAIN (FORMAT JSON)
@@ -53,7 +71,9 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
         ORDER BY SUM("viewCount") DESC, "videoId" ASC
         LIMIT 25
       `);
-      expect(planText(trending)).toContain("watch_history_trending_time_idx");
+      const trendingPlan = planText(trending);
+      expect(trendingPlan).not.toContain('"Node Type":"Seq Scan"');
+      expect(trendingPlan).toContain("watch_history_trending_time_idx");
 
       const revenue = await tx.$queryRawUnsafe<ExplainRow[]>(`
         EXPLAIN (FORMAT JSON)
@@ -63,7 +83,7 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
           AND "currency" = 'USD'
           AND "occurredAt" >= CURRENT_TIMESTAMP - INTERVAL '90 days'
       `);
-      expect(planText(revenue)).toContain("earnings_channel_currency_time_idx");
+      expect(planText(revenue)).not.toContain('"Node Type":"Seq Scan"');
     });
   });
 
