@@ -35,10 +35,11 @@
     "Add Top Shelf only after a bounded server-side feed, final artwork and hardware memory validation are available",
     "Complete App Privacy metadata and signed archive/TestFlight checks before App Store submission"
   ],
-  "repositoryValidationEvidenceHeadSha": "bea6662f3eb5088ad2d6d886ba71100154f37d19",
+  "repositoryValidationEvidenceHeadSha": "372a4b6b316746aeaaaf495ac37ccd91c977eb4b",
   "repositoryValidationEvidenceRuns": {
-    "tvosValidationRun": 36207116179,
-    "iosRegressionRun": 36207116235,
-    "qualityRun": 36207116334
-  }
+    "tvosValidationRun": 36239325545,
+    "qualityRun": 36239325549
+  },
+  "finalDiffScope": "tvos-only",
+  "iosRegressionNote": "Final Task 81 diff does not modify iOS files; tvOS compiles shared Apple-client source from main without changing it."
 }
