@@ -143,13 +143,22 @@ final class TVPlayerViewModel: ObservableObject {
             return
         }
 
-        guard !pictureInPictureActive else { return }
+        guard TVPlaybackScenePolicy.shouldPause(
+            sceneIsActive: sceneIsActive,
+            pictureInPictureActive: pictureInPictureActive
+        ) else { return }
         pauseForSceneDeparture(player)
     }
 
     func setPictureInPictureActive(_ active: Bool) {
         pictureInPictureActive = active
-        guard !active, !sceneIsActive, let player else { return }
+        guard
+            TVPlaybackScenePolicy.shouldPause(
+                sceneIsActive: sceneIsActive,
+                pictureInPictureActive: pictureInPictureActive
+            ),
+            let player
+        else { return }
         pauseForSceneDeparture(player)
     }
 
