@@ -52,7 +52,7 @@ If a worker crashes or loses database connectivity long enough for the lease to 
 
 ## Exactly-one finalization and idempotent output
 
-Canonical and adaptive object keys are deterministic for the video/generation. Existing verified canonical output is reused instead of blindly retranscoded.
+Canonical and adaptive object keys are deterministic for the video/generation. Existing verified canonical output is reused instead of blindly retranscoded. Local scratch directories are additionally namespaced by a hash of the unique claim token, so an expired execution and its reclaimed successor cannot corrupt each other's temporary files even on the same host.
 
 READY finalization uses:
 
