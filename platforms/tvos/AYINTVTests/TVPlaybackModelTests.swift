@@ -28,8 +28,16 @@ final class TVPlaybackModelTests: XCTestCase {
     func testSceneResumeIntentSurvivesInactiveThenBackground() {
         var state = TVSceneResumeState()
 
-        XCTAssertTrue(state.leaveActive(wasPlaying: true))
-        XCTAssertFalse(state.leaveActive(wasPlaying: false))
+        XCTAssertTrue(state.leaveActive(shouldResumePlayback: true))
+        XCTAssertFalse(state.leaveActive(shouldResumePlayback: false))
+        XCTAssertTrue(state.enterActive())
+        XCTAssertFalse(state.enterActive())
+    }
+
+    func testBufferingPlaybackIntentResumesAfterSceneReturn() {
+        var state = TVSceneResumeState()
+
+        XCTAssertTrue(state.leaveActive(shouldResumePlayback: true))
         XCTAssertTrue(state.enterActive())
         XCTAssertFalse(state.enterActive())
     }
