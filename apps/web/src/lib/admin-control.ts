@@ -20,6 +20,39 @@ export interface AdminAnalyticsMetrics {
   tvStarts: number;
   adEvents: number;
   errors: number;
+  cohorts: {
+    minimumCohortSize: number;
+    identityScope: "SIGNED_IN_PROFILE_PSEUDONYMS";
+    privacyNote: string;
+    audienceDaily: Array<{
+      date: string;
+      activeProfiles: number;
+      newProfiles: number;
+      returningProfiles: number;
+      returningRate: number;
+      sessions: number;
+      sessionsPerActiveProfile: number;
+      watchTimeMs: number;
+    }>;
+    retention: Array<{
+      cohortDate: string;
+      cohortSize: number;
+      d1: CohortMilestone | null;
+      d7: CohortMilestone | null;
+      d30: CohortMilestone | null;
+    }>;
+  };
+}
+
+export interface CohortMilestone {
+  retainedProfiles: number;
+  retentionRate: number;
+  sessions: number;
+  sessionsPerRetainedProfile: number;
+  watchTimeMs: number;
+  averageWatchTimeMsPerRetainedProfile: number;
+  contentReturnProfiles?: number;
+  contentReturnRate?: number;
 }
 
 export interface AdminGlobalSearchResult {

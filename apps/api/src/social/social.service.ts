@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+import { analyticsPseudonym } from "../analytics/analytics-identity.js";
 import { DatabaseService } from "../database/database.service.js";
 
 export class SocialError extends Error {
@@ -47,13 +48,24 @@ export class SocialService {
     if (ownsChannel)
       throw new SocialError("SELF_SUBSCRIPTION", "You cannot subscribe to your own channel.", 409);
 
+    const profileHash = analyticsPseudonym(profile.id);
     const result = await this.database.client.$transaction(async (tx) => {
       const existing = await tx.subscription.findUnique({
         where: { profileId_channelId: { profileId: profile.id, channelId } },
         select: { id: true },
       });
       if (!existing) {
-        await tx.subscription.create({ data: { profileId: profile.id, channelId } });
+        const subscription = await tx.subscription.create({
+          data: { profileId: profile.id, channelId },
+          select: { createdAt: true },
+        });
+        await tx.analyticsSubscriptionEpisode.create({
+          data: {
+            channelId,
+            profileHash,
+            subscribedAt: subscription.createdAt,
+          },
+        });
         const owners = await tx.channelMember.findMany({
           where: { channelId, role: "OWNER" },
           select: { accountId: true },
@@ -78,8 +90,24 @@ export class SocialService {
   async unsubscribe(accountId: string, channelId: string, requestedProfileId?: string) {
     const profile = await this.resolveProfile(accountId, requestedProfileId);
     await this.assertChannel(channelId);
+    const profileHash = analyticsPseudonym(profile.id);
     const count = await this.database.client.$transaction(async (tx) => {
-      await tx.subscription.deleteMany({ where: { profileId: profile.id, channelId } });
+      const deleted = await tx.subscription.deleteMany({
+        where: { profileId: profile.id, channelId },
+      });
+      if (deleted.count > 0) {
+        const activeEpisode = await tx.analyticsSubscriptionEpisode.findFirst({
+          where: { channelId, profileHash, unsubscribedAt: null },
+          orderBy: { subscribedAt: "desc" },
+          select: { id: true },
+        });
+        if (activeEpisode) {
+          await tx.analyticsSubscriptionEpisode.update({
+            where: { id: activeEpisode.id },
+            data: { unsubscribedAt: new Date() },
+          });
+        }
+      }
       return tx.subscription.count({ where: { channelId } });
     });
     return { channelId, subscribed: false, subscriberCount: count };

@@ -31,7 +31,9 @@ databaseDescribe("Task 14 social graph", () => {
   });
   beforeEach(async () => {
     vi.clearAllMocks();
-    await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account", "Channel" CASCADE');
+    await prisma.$executeRawUnsafe(
+      'TRUNCATE TABLE "AnalyticsSubscriptionEpisode", "Account", "Channel" CASCADE',
+    );
   });
   afterAll(async () => {
     await app.close();
@@ -97,6 +99,27 @@ databaseDescribe("Task 14 social graph", () => {
     expect(await prisma.notification.count({ where: { accountId: owner.user.account.id } })).toBe(
       1,
     );
+    const episode = await prisma.analyticsSubscriptionEpisode.findFirstOrThrow({
+      where: { channelId: owner.user.channel.id },
+    });
+    expect(episode.profileHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(episode.profileHash).not.toContain(viewer.user.profile.id);
+    expect(episode.unsubscribedAt).toBeNull();
+
+    const unsubscribe = await app.inject({
+      method: "DELETE",
+      url: `/social/channels/${owner.user.channel.id}/subscription`,
+      headers: { cookie: viewer.cookie },
+    });
+    expect(unsubscribe.statusCode).toBe(200);
+    expect(unsubscribe.json().subscriberCount).toBe(0);
+    expect(
+      (
+        await prisma.analyticsSubscriptionEpisode.findUniqueOrThrow({
+          where: { id: episode.id },
+        })
+      ).unsubscribedAt,
+    ).not.toBeNull();
     expect(
       (
         await app.inject({
