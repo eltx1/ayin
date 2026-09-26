@@ -6,6 +6,7 @@ const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const DEFAULT_RETENTION_DAYS = 400;
 const LATE_ARRIVAL_SCAN_OVERLAP_MS = 15 * 60_000;
+const ROLLUP_ADVISORY_LOCK_KEY = 820082;
 const ROLLUP_STATE_KEY = "PRIMARY";
 
 type RollupRange = { from: Date; to: Date } | null;
@@ -123,11 +124,16 @@ export class AnalyticsRollupService {
       await this.rebuildDaily(dailyRange.from, dailyRange.to);
     }
 
-    await this.database.client.analyticsRollupState.upsert({
-      where: { key: ROLLUP_STATE_KEY },
-      create: { key: ROLLUP_STATE_KEY, lastSuccessfulAt: cutoff },
-      update: { lastSuccessfulAt: cutoff },
-    });
+    await this.database.client.$executeRaw`
+      INSERT INTO "AnalyticsRollupState" ("key", "lastSuccessfulAt", "updatedAt")
+      VALUES (${ROLLUP_STATE_KEY}, ${cutoff}, ${cutoff})
+      ON CONFLICT ("key") DO UPDATE SET
+        "lastSuccessfulAt" = GREATEST(
+          COALESCE("AnalyticsRollupState"."lastSuccessfulAt", EXCLUDED."lastSuccessfulAt"),
+          EXCLUDED."lastSuccessfulAt"
+        ),
+        "updatedAt" = CURRENT_TIMESTAMP
+    `;
 
     return {
       cutoff,
@@ -148,15 +154,18 @@ export class AnalyticsRollupService {
     }
 
     const result = await this.deleteExpiredTruth(configuredAnalyticsRetentionDays(), now);
-    await this.database.client.analyticsRollupState.upsert({
-      where: { key: ROLLUP_STATE_KEY },
-      create: {
-        key: ROLLUP_STATE_KEY,
-        lastSuccessfulAt: now,
-        lastCleanupAt: now,
-      },
-      update: { lastCleanupAt: now },
-    });
+    await this.database.client.$executeRaw`
+      INSERT INTO "AnalyticsRollupState" (
+        "key", "lastSuccessfulAt", "lastCleanupAt", "updatedAt"
+      )
+      VALUES (${ROLLUP_STATE_KEY}, ${now}, ${now}, ${now})
+      ON CONFLICT ("key") DO UPDATE SET
+        "lastCleanupAt" = GREATEST(
+          COALESCE("AnalyticsRollupState"."lastCleanupAt", EXCLUDED."lastCleanupAt"),
+          EXCLUDED."lastCleanupAt"
+        ),
+        "updatedAt" = CURRENT_TIMESTAMP
+    `;
     return {
       ran: true as const,
       deleted: result.deleted,
@@ -171,6 +180,9 @@ export class AnalyticsRollupService {
 
     const result = await this.database.client.$transaction(
       async (tx) => {
+        await tx.$queryRaw`
+          SELECT pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}::bigint)
+        `;
         const raw = await tx.analyticsEvent.deleteMany({
           where: { occurredAt: { lt: before } },
         });
@@ -200,6 +212,9 @@ export class AnalyticsRollupService {
     if (from.getTime() >= to.getTime()) return;
     await this.database.client.$transaction(
       async (tx) => {
+        await tx.$queryRaw`
+          SELECT pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}::bigint)
+        `;
         await tx.analyticsVideoHourlyRollup.deleteMany({
           where: { bucketStart: { gte: from, lt: to } },
         });
@@ -247,6 +262,9 @@ export class AnalyticsRollupService {
     if (from.getTime() >= to.getTime()) return;
     await this.database.client.$transaction(
       async (tx) => {
+        await tx.$queryRaw`
+          SELECT pg_advisory_xact_lock(${ROLLUP_ADVISORY_LOCK_KEY}::bigint)
+        `;
         await tx.analyticsVideoDailyRollup.deleteMany({
           where: { bucketStart: { gte: from, lt: to } },
         });
