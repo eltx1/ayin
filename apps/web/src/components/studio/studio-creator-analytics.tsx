@@ -131,6 +131,10 @@ function duration(ms: number) {
   return minutes > 0 ? `${minutes}m ${remaining}s` : `${remaining}s`;
 }
 
+function subscriberTrackingLabel(value: string | null) {
+  return value ? ` on ${new Date(value).toLocaleDateString()}` : "";
+}
+
 function BreakdownPanel({
   title,
   breakdown,
@@ -385,9 +389,7 @@ export function StudioCreatorAnalytics() {
             <h2>Subscriber retention cohorts</h2>
             <p className={styles.muted}>
               Available only for subscription cohorts recorded after cohort tracking started
-              {data.cohorts.subscriberTrackingStartedAt
-                ? ` on ${new Date(data.cohorts.subscriberTrackingStartedAt).toLocaleDateString()}`
-                : ""}.
+              {subscriberTrackingLabel(data.cohorts.subscriberTrackingStartedAt)}.
             </p>
             {data.cohorts.subscriberRetention.length ? (
               data.cohorts.subscriberRetention.slice(-8).map((cohort) => (
