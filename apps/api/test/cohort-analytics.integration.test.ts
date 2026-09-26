@@ -39,8 +39,20 @@ databaseDescribe("Task 83 privacy-aware cohort analytics", () => {
     `);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     delete process.env.ANALYTICS_COHORT_MIN_SIZE;
+    await prisma.$executeRawUnsafe(`
+      TRUNCATE TABLE
+        "AnalyticsSubscriberCohortRollup",
+        "AnalyticsSubscriptionEpisode",
+        "AnalyticsChannelCohortRollup",
+        "AnalyticsPlatformCohortRollup",
+        "AnalyticsChannelAudienceDailyRollup",
+        "AnalyticsPlatformAudienceDailyRollup",
+        "AnalyticsEvent",
+        "Channel"
+      CASCADE
+    `);
   });
 
   afterAll(async () => {
