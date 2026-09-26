@@ -6,6 +6,7 @@ umask 027
 AYIN_BIN_DIR="${AYIN_BIN_DIR:-/home/ayin/bin}"
 FFMPEG_VERSION="6.0.1"
 FFMPEG_URL="https://www.johnvansickle.com/ffmpeg/old-releases/ffmpeg-6.0.1-amd64-static.tar.xz"
+FFMPEG_FALLBACK_URL="https://software.frc971.org/Build-Dependencies/www.johnvansickle.com/ffmpeg/old-releases/ffmpeg-6.0.1-amd64-static.tar.xz"
 FFMPEG_SHA256="28268bf402f1083833ea269331587f60a242848880073be8016501d864bd07a5"
 
 for required in curl tar xz sha256sum install mktemp grep; do
@@ -37,9 +38,23 @@ archive="$temp_dir/ffmpeg.tar.xz"
 extract_dir="$temp_dir/extracted"
 mkdir -p "$extract_dir"
 
-curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
-  "$FFMPEG_URL" --output "$archive"
-printf '%s  %s\n' "$FFMPEG_SHA256" "$archive" | sha256sum --check --status
+download_verified_archive() {
+  local url
+  for url in "$FFMPEG_URL" "$FFMPEG_FALLBACK_URL"; do
+    rm -f "$archive"
+    if curl --fail --location --silent --show-error --retry 3 --retry-all-errors \
+      "$url" --output "$archive" &&
+      printf '%s  %s\n' "$FFMPEG_SHA256" "$archive" | sha256sum --check --status; then
+      echo "Verified pinned FFmpeg archive from $url"
+      return 0
+    fi
+    echo "warning: pinned FFmpeg archive unavailable or checksum-invalid at $url" >&2
+  done
+  echo "error: unable to obtain checksum-verified FFmpeg $FFMPEG_VERSION runtime" >&2
+  return 69
+}
+
+download_verified_archive
 
 tar -xJf "$archive" -C "$extract_dir" --strip-components=1
 install -m 755 "$extract_dir/ffmpeg" "$AYIN_BIN_DIR/ffmpeg"
