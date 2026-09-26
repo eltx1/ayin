@@ -493,7 +493,6 @@ model Video {
 
   @@index([channelId, status, publishedAt])
   @@index([status, visibility, publishedAt])
-  @@index([status, visibility, removedAt, publishedAt, id], map: "video_public_feed_idx")
   @@index([videoForm, status, visibility, publishedAt])
   @@index([scheduledPublishAt, status])
   @@index([updatedAt, id], map: "video_export_cursor_idx")
@@ -523,7 +522,6 @@ model MediaAsset {
   processingJob MediaProcessingJob? @relation("MediaProcessingFinalAsset")
 
   @@index([videoId, kind, status])
-  @@index([videoId, kind, status, removedAt, mimeType], map: "media_asset_playable_video_idx")
   @@index([channelId, kind])
 }
 
