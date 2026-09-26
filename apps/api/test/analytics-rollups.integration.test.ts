@@ -397,4 +397,39 @@ databaseDescribe("Task 82 analytics rollup reconciliation", () => {
 
     expect(await prisma.analyticsEvent.count()).toBe(rawBefore + 2);
   });
+
+  it("expires raw and session-level projections together while retaining anonymous aggregates", async () => {
+    const { channel, video } = await fixture();
+    const now = new Date();
+    const oldDay = utcFloorDay(new Date(now.getTime() - 31 * DAY_MS));
+    const oldEventAt = new Date(oldDay.getTime() + HOUR_MS);
+    const sessionHash = "d".repeat(64);
+
+    await prisma.analyticsEvent.create({
+      data: event({
+        eventName: "VIDEO_START",
+        occurredAt: oldEventAt,
+        receivedAt: oldEventAt,
+        sessionHash,
+        channelId: channel.id,
+        videoId: video.id,
+      }),
+    });
+    await rollups.rebuildDaily(oldDay, new Date(oldDay.getTime() + DAY_MS));
+
+    expect(await prisma.analyticsEvent.count()).toBe(1);
+    expect(await prisma.analyticsPlaybackSessionDailyRollup.count()).toBe(1);
+    expect(await prisma.analyticsPlatformSessionDailyRollup.count()).toBe(1);
+    expect(await prisma.analyticsVideoDailyRollup.count()).toBe(1);
+
+    const cleanup = await rollups.deleteExpiredTruth(30, now);
+
+    expect(cleanup.deleted).toBe(1);
+    expect(cleanup.projectionRowsDeleted).toBe(2);
+    expect(await prisma.analyticsEvent.count()).toBe(0);
+    expect(await prisma.analyticsPlaybackSessionDailyRollup.count()).toBe(0);
+    expect(await prisma.analyticsPlatformSessionDailyRollup.count()).toBe(0);
+    expect(await prisma.analyticsVideoDailyRollup.count()).toBe(1);
+  });
+
 });
