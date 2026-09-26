@@ -98,6 +98,6 @@ export class AdminAnalyticsController {
       throw new HttpException("Invalid retention configuration.", 400);
     }
     await this.rollups.sync();
-    return this.analytics.deleteExpired(parsed.data.retentionDays);
+    return this.rollups.deleteExpiredTruth(parsed.data.retentionDays);
   }
 }
