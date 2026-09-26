@@ -420,6 +420,7 @@ model Channel {
   revenueDisputes    RevenueDispute[]
 
   @@index([status, createdAt])
+  @@index([updatedAt, id], map: "channel_export_cursor_idx")
 }
 
 model ChannelMember {
@@ -494,6 +495,7 @@ model Video {
   @@index([status, visibility, publishedAt])
   @@index([videoForm, status, visibility, publishedAt])
   @@index([scheduledPublishAt, status])
+  @@index([updatedAt, id], map: "video_export_cursor_idx")
 }
 
 model MediaAsset {
@@ -981,6 +983,7 @@ model AdEvent {
   @@index([profileId, occurredAt])
   @@index([eventType, occurredAt])
   @@index([createdAt])
+  @@index([createdAt, id], map: "ad_event_export_cursor_idx")
 }
 
 model CreatorContract {
@@ -1035,6 +1038,8 @@ model EarningsLedgerEntry {
   @@index([type, occurredAt])
   @@index([videoId, periodStart])
   @@index([campaignId, periodStart])
+  @@index([createdAt, id], map: "earnings_export_created_cursor_idx")
+  @@index([finalizedAt, id], map: "earnings_export_finalized_cursor_idx")
 }
 
 model Payout {
