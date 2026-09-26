@@ -8,7 +8,7 @@ enum TVAdvertisingStrategy {
     static let browserIMAIsSupported = false
     static let nativeIMAMinimumTvOS = 15
 
-    static func forCreatorTV(linearHLSAvailable: Bool) -> TVAdvertisingStrategy {
-        linearHLSAvailable ? .creatorTvSSAI : .none
+    static func forCreatorTV(serverSideDAIAvailable: Bool) -> TVAdvertisingStrategy {
+        serverSideDAIAvailable ? .creatorTvSSAI : .none
     }
 }
