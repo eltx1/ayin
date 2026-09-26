@@ -27,6 +27,29 @@ final class TVDiscoveryModelTests: XCTestCase {
         XCTAssertNil(item.progress?.completedAt)
     }
 
+    func testHomeRowRetainsPaginationCursor() throws {
+        let data = Data(
+            """
+            {
+              "rows": [
+                {
+                  "key": "trending",
+                  "title": "Trending",
+                  "items": [],
+                  "nextCursor": "OA",
+                  "availability": "AVAILABLE",
+                  "emptyMessage": null
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(TVDiscoveryHomeResponse.self, from: data)
+        XCTAssertEqual(response.rows.first?.nextCursor, "OA")
+        XCTAssertEqual(response.rows.first?.key, "trending")
+    }
+
     func testMyAyinSectionRetainsPaginationCursor() throws {
         let data = Data(
             """
