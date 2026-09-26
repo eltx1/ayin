@@ -5,6 +5,7 @@ import { DatabaseService } from "../database/database.service.js";
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 const DEFAULT_RETENTION_DAYS = 400;
+const LATE_ARRIVAL_SCAN_OVERLAP_MS = 15 * 60_000;
 const ROLLUP_STATE_KEY = "PRIMARY";
 
 type RollupRange = { from: Date; to: Date } | null;
@@ -64,16 +65,19 @@ export class AnalyticsRollupService {
 
     let dirtyOccurredAt: Date | null = null;
     if (state?.lastSuccessfulAt) {
+      const receiptScanFrom = new Date(
+        state.lastSuccessfulAt.getTime() - LATE_ARRIVAL_SCAN_OVERLAP_MS,
+      );
       const [analyticsDirty, adDirty] = await Promise.all([
         this.database.client.analyticsEvent.aggregate({
           where: {
-            receivedAt: { gt: state.lastSuccessfulAt, lte: cutoff },
+            receivedAt: { gt: receiptScanFrom, lte: cutoff },
           },
           _min: { occurredAt: true },
         }),
         this.database.client.adEvent.aggregate({
           where: {
-            createdAt: { gt: state.lastSuccessfulAt, lte: cutoff },
+            createdAt: { gt: receiptScanFrom, lte: cutoff },
           },
           _min: { occurredAt: true },
         }),
@@ -87,17 +91,20 @@ export class AnalyticsRollupService {
       hourlyFrom = utcFloorHour(retentionStart);
       dailyFrom = utcFloorDay(retentionStart);
     } else {
-      const closedHourCandidate =
+      const scheduledHourlyFrom =
         state.lastSuccessfulAt.getTime() < currentHour.getTime()
-          ? new Date(currentHour.getTime() - HOUR_MS)
+          ? utcFloorHour(state.lastSuccessfulAt)
           : null;
-      const closedDayCandidate =
+      const scheduledDailyFrom =
         state.lastSuccessfulAt.getTime() < currentDay.getTime()
-          ? new Date(currentDay.getTime() - DAY_MS)
+          ? utcFloorDay(state.lastSuccessfulAt)
           : null;
-      const earliest = earliestDate([dirtyOccurredAt, closedHourCandidate, closedDayCandidate]);
-      hourlyFrom = earliest ? utcFloorHour(maxDate(earliest, retentionStart)) : null;
-      dailyFrom = earliest ? utcFloorDay(maxDate(earliest, retentionStart)) : null;
+      const earliestHourly = earliestDate([dirtyOccurredAt, scheduledHourlyFrom]);
+      const earliestDaily = earliestDate([dirtyOccurredAt, scheduledDailyFrom]);
+      hourlyFrom = earliestHourly
+        ? utcFloorHour(maxDate(earliestHourly, retentionStart))
+        : null;
+      dailyFrom = earliestDaily ? utcFloorDay(maxDate(earliestDaily, retentionStart)) : null;
     }
 
     const hourlyRange: RollupRange =
