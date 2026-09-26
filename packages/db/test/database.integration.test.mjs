@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { createPrismaClient } from "../src/index.ts";
+
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 const corepack = process.platform === "win32" ? "corepack.cmd" : "corepack";
@@ -28,6 +30,21 @@ databaseDescribe("PostgreSQL migration bootstrap", () => {
     expectSuccess(runPrisma(["migrate", "deploy"]));
     expectSuccess(runPrisma(["db", "seed"]));
     expectSuccess(runPrisma(["db", "seed"]));
+  });
+
+  it("disconnects adapter-owned pools immediately instead of waiting for pool idle timeout", async () => {
+    const previousIdleTimeout = process.env.DATABASE_POOL_IDLE_TIMEOUT_MS;
+    process.env.DATABASE_POOL_IDLE_TIMEOUT_MS = "300000";
+    const client = createPrismaClient(testDatabaseUrl);
+    try {
+      await client.$queryRawUnsafe("SELECT 1");
+      const startedAt = performance.now();
+      await client.$disconnect();
+      expect(performance.now() - startedAt).toBeLessThan(2_000);
+    } finally {
+      if (previousIdleTimeout === undefined) delete process.env.DATABASE_POOL_IDLE_TIMEOUT_MS;
+      else process.env.DATABASE_POOL_IDLE_TIMEOUT_MS = previousIdleTimeout;
+    }
   });
 
   it("enforces important relational and value constraints", () => {
