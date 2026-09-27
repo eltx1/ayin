@@ -421,7 +421,7 @@ export class AdminOperationsDashboardService {
         to,
       ),
       this.database.client.$queryRawUnsafe<UploadedDurationRow[]>(
-        'SELECT COALESCE(SUM(v."durationMs"), 0)::bigint AS "uploadedContentMs" FROM "MediaProcessingJob" j JOIN "Video" v ON v."id" = j."videoId" WHERE j."createdAt" >= $1 AND j."createdAt" < $2 AND j."status" = \'READY\' AND v."durationMs" IS NOT NULL',
+        'SELECT COALESCE(SUM(v."durationMs"), 0)::bigint AS "uploadedContentMs" FROM "MediaProcessingJob" j JOIN "Video" v ON v."id" = j."videoId" WHERE j."updatedAt" >= $1 AND j."updatedAt" < $2 AND j."status" = \'READY\' AND v."durationMs" IS NOT NULL',
         from,
         to,
       ),
