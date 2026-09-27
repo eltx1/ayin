@@ -1,3 +1,4 @@
+import type { MediaProcessingJob } from "@ayin/db";
 import { Body, Controller, Get, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 
@@ -203,7 +204,9 @@ export class AdminMediaProcessingController {
         entityId: job.id,
         metadata: { videoId: job.videoId, generation: job.generation },
       });
-      return tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
+      return mediaJobMutationResponse(
+        await tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } }),
+      );
     });
   }
 
@@ -233,13 +236,20 @@ export class AdminMediaProcessingController {
         entityId: videoId,
         metadata: { jobId: job.id, generation: job.generation },
       });
-      return job;
+      return mediaJobMutationResponse(job);
     });
   }
 
   private uuid(value: string, code: string): string {
     const parsed = uuidSchema.safeParse(value);
     if (!parsed.success) throw adminBadRequest(code, "This identifier is invalid.");
-    return parsed.data;
+    return parsed.data.toLowerCase();
   }
+}
+
+// Prisma rows contain BigInt sizes and internal storage keys. Return the action
+// outcome the operator needs; serialization must not fail after the commit.
+function mediaJobMutationResponse(job: MediaProcessingJob) {
+  const { id, videoId, generation, status, stage, queuedAt, updatedAt } = job;
+  return { id, videoId, generation, status, stage, queuedAt, updatedAt };
 }

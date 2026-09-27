@@ -2,6 +2,7 @@ import "reflect-metadata";
 
 import { randomUUID } from "node:crypto";
 import { createPrismaClient } from "@ayin/db";
+import Fastify from "fastify";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminAuditLogService } from "../src/admin/admin-audit-log.service.js";
@@ -406,5 +407,40 @@ databaseDescribe("media generation consistency across operator paths", () => {
       status: "READY",
       leaseOwner: null,
     });
+  });
+
+  it("serializes committed retry and reprocess results through Fastify", async () => {
+    const { job, video, request } = await fixture();
+    // Test the actual controller result with Fastify serialization, using the
+    // fixture's authorized actor; HTTP guard coverage remains in the app suites.
+    const app = Fastify();
+    app.post("/retry", () => controller.retryFailed(request, job.id));
+    app.post("/reprocess", () => controller.reprocess(request, video.id));
+    try {
+      const retry = await app.inject({ method: "POST", url: "/retry" });
+      expect(retry.statusCode).toBe(200);
+      expect(retry.json()).toMatchObject({
+        id: job.id,
+        videoId: video.id,
+        status: "QUEUED",
+        generation: 1,
+      });
+      expect(retry.json()).not.toHaveProperty("stagingKey");
+      expect(retry.json()).not.toHaveProperty("sourceSizeBytes");
+      await prisma.mediaProcessingJob.update({ where: { id: job.id }, data: { status: "READY" } });
+      const reprocess = await app.inject({ method: "POST", url: "/reprocess" });
+      expect(reprocess.statusCode).toBe(200);
+      expect(reprocess.json()).toMatchObject({
+        videoId: video.id,
+        status: "QUEUED",
+        generation: 2,
+      });
+      expect(reprocess.json()).not.toHaveProperty("outputR2ObjectKey");
+      expect(
+        await prisma.adminAuditLog.count({ where: { actorAccountId: request.ayinAuth.accountId } }),
+      ).toBe(2);
+    } finally {
+      await app.close();
+    }
   });
 });
