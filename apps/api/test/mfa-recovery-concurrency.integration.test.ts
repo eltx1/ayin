@@ -94,9 +94,15 @@ databaseDescribe("MFA recovery concurrency", () => {
         .sort(),
     ).toEqual([1, 2]);
     for (const code of codes.slice(0, 2))
-      await expect(makeService().verifyChallenge(token, undefined, code)).rejects.toThrow(
-        "invalid or was already used",
-      );
+      await expect(makeService().verifyChallenge(token, undefined, code)).rejects.toMatchObject({
+        status: 401,
+        response: {
+          error: {
+            code: "UNAUTHORIZED",
+            message: "The recovery code is invalid or was already used.",
+          },
+        },
+      });
   });
   it("allows only one concurrent use of the same code", async () => {
     const { account, token } = await fixture();

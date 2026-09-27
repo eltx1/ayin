@@ -342,3 +342,5 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - External blockers: real database/browser verification runs in CI; no production or device claim.
 - Next: run complete gates on the fixed head, then remaining MFA lifecycle concurrency review before account UI.
 - Rollback: no schema changes; preserve consumed-code state and audit evidence, never restore used recovery codes.
+
+- Fixed head `14642d4d` passed state/audit-count and changed-status regressions; quality `36350419208` had 549/550 tests pass. The replay assertion reached a pre-existing Nest error-shape mismatch: the domain text is in the structured response, while Error.message is "Auth Http Error". Corrected the test to require exact HTTP 401, UNAUTHORIZED code and full domain message; no rejection, persisted-state or audit check weakened. Corrected-head full acceptance pending.
