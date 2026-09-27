@@ -256,3 +256,10 @@ All domains, page/handler entrypoints, models/migrations, workers, platforms, de
 The baseline responsive test checks 34 routes at 390px. It does not assess every visual, focus or accessible-name quality dimension. Source review confirms shared focus/reduced-motion/i18n foundations, while Admin copy, physical CSS, detail-page shell inconsistencies and missing error/step-up flows are actionable failures/gaps for Phases 2–5. These unresolved findings are the audit output, not a reason to pretend the product is finished.
 
 Phase 2 order: (2A) shared secure re-authentication and operator media/database tools; (2B) recommendation evaluation/trending; (2C) sanitized warehouse status and existing compliance/provider/analytics/live integration gaps. Do not expose internal infrastructure execution to Viewers or Creators. Preserve audited reasons, scoped roles and bounded mutations.
+
+## Implementation delta — Phase 2A
+
+- 2A.1: shared Admin re-authentication merged in PR #110 at `f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7`; quality/security and 32 browser tests passed. R19 is partially resolved: account MFA management is still open.
+- 2A.2 (validation pending): `/admin/operations/media` integrates queue/worker/recent-job and adaptive rollout evidence; `/admin/operations/database` integrates PostgreSQL connection and statement aggregates with existing SUPERADMIN restriction. No privileged write controls or SQL text added. R09 remains partially open for mutations and detailed observability.
+- Shared Sidebar/new-workspace access fetch avoids duplicate session reads in those destinations. Existing legacy workspace duplication under R16 remains.
+- Operational workspaces are read-only; their manual refresh is explicit. API failure is distinct from zero/empty metrics. Browser coverage adds role denial, error/retry, Arabic/mobile and request-count assertions. This delta does not claim completion of Phase 2 or production performance.

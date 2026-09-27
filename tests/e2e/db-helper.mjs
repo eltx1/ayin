@@ -218,6 +218,17 @@ try {
       };
       break;
     }
+    case "grant-operator-role": {
+      if (!["OPERATIONS", "SUPERADMIN"].includes(payload.role))
+        throw new Error("Unsupported test operator role.");
+      await prisma.adminRoleAssignment.upsert({
+        where: { accountId_role: { accountId: payload.accountId, role: payload.role } },
+        update: {},
+        create: { accountId: payload.accountId, role: payload.role },
+      });
+      result = { ok: true };
+      break;
+    }
     case "grant-admin": {
       await prisma.adminRoleAssignment.upsert({
         where: { accountId_role: { accountId: payload.accountId, role: "ADMIN" } },

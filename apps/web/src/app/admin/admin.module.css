@@ -762,3 +762,40 @@
   font: inherit;
   padding: 10px;
 }
+
+.operatorWorkspace {
+  min-inline-size: 0;
+}
+.operatorSection {
+  margin-block: 28px;
+}
+.operatorCaption {
+  padding: 12px;
+  text-align: start;
+  color: var(--muted);
+}
+.operatorWorkspace .table td,
+.operatorWorkspace .table th {
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.operatorWorkspace .table th[scope="row"] {
+  background: transparent;
+  position: static;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: inherit;
+}
+.operatorFacts {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  margin-block: 24px;
+}
+.operatorFacts dt {
+  color: var(--muted);
+}
+.operatorFacts dd {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}

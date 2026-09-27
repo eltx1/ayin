@@ -2,11 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import styles from "@/app/admin/admin.module.css";
 import { AppNavLink } from "@/components/ui/app-nav-link";
-import { getAdminSession, type AdminRole, type AdminSession } from "@/lib/admin-control";
+import type { AdminRole } from "@/lib/admin-control";
+import { useAdminAccess } from "./admin-access";
 
 import { AdminReauthentication } from "./admin-reauthentication";
 
@@ -45,22 +46,8 @@ function canSee(item: AdminNavigationItem, roles: AdminRole[]): boolean {
 }
 
 export function AdminSidebar() {
-  const [session, setSession] = useState<AdminSession | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    void getAdminSession()
-      .then((next) => {
-        if (active) setSession(next);
-      })
-      .catch(() => {
-        if (active) setFailed(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { session, error, loading, refresh } = useAdminAccess();
+  const failed = Boolean(error);
 
   const visible = useMemo(
     () => (session ? navigation.filter((item) => canSee(item, session.roles)) : []),
@@ -80,13 +67,20 @@ export function AdminSidebar() {
       </Link>
 
       <nav aria-label="AYIN administration" className={styles.nav}>
-        {!session && !failed ? <span className={styles.muted}>Loading access…</span> : null}
+        {loading ? <span className={styles.muted}>Loading access…</span> : null}
         {visible.map((item) => (
           <AppNavLink href={item.href} key={item.href}>
             {item.label}
           </AppNavLink>
         ))}
-        {failed ? <span className={styles.muted}>Admin access unavailable.</span> : null}
+        {failed ? (
+          <>
+            <span className={styles.muted}>Admin access unavailable.</span>
+            <button className={styles.button} onClick={refresh}>
+              Retry access
+            </button>
+          </>
+        ) : null}
       </nav>
 
       {session ? <AdminReauthentication /> : null}

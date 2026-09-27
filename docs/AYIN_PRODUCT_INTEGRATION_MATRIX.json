@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "sourceSha": "0a696122e9031e10ccca80becc1d39490f949aa3",
+  "sourceSha": "f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7",
   "method": "Deterministic tracked-source inventory; no runtime, authorization or feature-completion claims",
   "counts": {
-    "files": 1133,
-    "routes": 73,
-    "pages": 65,
+    "files": 1147,
+    "routes": 75,
+    "pages": 67,
     "controllers": 53,
     "endpoints": 357,
     "features": 73
@@ -735,6 +735,42 @@
       "file": "apps/web/src/app/admin/movies/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-movie-catalog"],
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
+    },
+    {
+      "route": "/admin/operations/database",
+      "file": "apps/web/src/app/admin/operations/database/page.tsx",
+      "kind": "page",
+      "imports": ["@/components/admin/admin-database-operations"],
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
+    },
+    {
+      "route": "/admin/operations/media",
+      "file": "apps/web/src/app/admin/operations/media/page.tsx",
+      "kind": "page",
+      "imports": ["@/components/admin/admin-media-operations"],
       "runtimeVerified": false,
       "sourceReview": {
         "surface": "Admin",
@@ -3808,7 +3844,9 @@
         "apps/web/src/app/login/page.tsx",
         "apps/web/src/app/register/page.tsx",
         "apps/web/src/app/reset-password/page.tsx",
-        "apps/web/src/app/reset-password/reset-password-form.tsx"
+        "apps/web/src/app/reset-password/reset-password-form.tsx",
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
+        "apps/web/src/lib/admin-reauthentication.ts"
       ],
       "viewerUi": [
         "apps/web/src/app/auth-form.module.css",
@@ -3820,7 +3858,10 @@
         "apps/web/src/app/reset-password/reset-password-form.tsx"
       ],
       "creatorUi": [],
-      "adminUi": [],
+      "adminUi": [
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
+        "apps/web/src/lib/admin-reauthentication.ts"
+      ],
       "pwa": "Shared web runtime; dedicated verification pending",
       "mobileWeb": "Responsive implementation present; route-level visual verification pending",
       "tvWeb": "Shared focus/media adapters; device verification pending",
@@ -3832,7 +3873,9 @@
         "apps/api/src/auth/password.service.test.ts",
         "apps/api/src/auth/session-device.test.ts",
         "apps/api/src/auth/totp.test.ts",
-        "apps/api/test/auth.integration.test.ts"
+        "apps/api/test/auth.integration.test.ts",
+        "apps/web/src/lib/admin-reauthentication.test.ts",
+        "tests/e2e/admin-reauthentication.acceptance.spec.ts"
       ],
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
@@ -4084,7 +4127,9 @@
         "apps/web/src/app/auth-form.module.css",
         "apps/web/src/app/auth-form.tsx",
         "apps/web/src/app/session-panel.tsx",
-        "apps/web/src/components/account/account-security-sessions.tsx"
+        "apps/web/src/components/account/account-security-sessions.tsx",
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
+        "apps/web/src/lib/admin-reauthentication.ts"
       ],
       "viewerUi": [
         "apps/web/src/app/auth-form.module.css",
@@ -4093,7 +4138,10 @@
         "apps/web/src/components/account/account-security-sessions.tsx"
       ],
       "creatorUi": [],
-      "adminUi": [],
+      "adminUi": [
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
+        "apps/web/src/lib/admin-reauthentication.ts"
+      ],
       "pwa": "Shared web runtime; dedicated verification pending",
       "mobileWeb": "Responsive implementation present; route-level visual verification pending",
       "tvWeb": "Shared focus/media adapters; device verification pending",
@@ -4107,6 +4155,8 @@
         "apps/api/src/auth/totp.test.ts",
         "apps/api/test/auth.integration.test.ts",
         "apps/api/test/session-management.integration.test.ts",
+        "apps/web/src/lib/admin-reauthentication.test.ts",
+        "tests/e2e/admin-reauthentication.acceptance.spec.ts",
         "tests/e2e/session-management.acceptance.spec.ts"
       ],
       "documentation": ["docs/TASK48_SESSION_MANAGEMENT.md"],
@@ -4213,8 +4263,8 @@
         "viewerRoutes": ["/login"],
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations"],
-        "disposition": "BACKEND_SURFACE_GAP",
-        "gap": "Enrollment/challenge exists; missing step-up and account MFA management calls; add guarded user re-authentication.",
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Shared Admin step-up completed and verified in PR #110 with real MFA browser flow; account MFA management remains open.",
         "remediationPhase": 2
       }
     },
@@ -4476,7 +4526,9 @@
         "apps/web/src/components/account/account-overview.tsx",
         "apps/web/src/components/account/account-privacy-controls.tsx",
         "apps/web/src/components/account/account-revenue.tsx",
-        "apps/web/src/components/account/account-security-sessions.tsx"
+        "apps/web/src/components/account/account-security-sessions.tsx",
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
+        "apps/web/src/lib/admin-reauthentication.ts"
       ],
       "viewerUi": [
         "apps/web/src/app/(viewer)/account/account.module.css",
@@ -4490,7 +4542,10 @@
         "apps/web/src/components/account/account-security-sessions.tsx"
       ],
       "creatorUi": [],
-      "adminUi": [],
+      "adminUi": [
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
+        "apps/web/src/lib/admin-reauthentication.ts"
+      ],
       "pwa": "Shared web runtime; dedicated verification pending",
       "mobileWeb": "Responsive implementation present; route-level visual verification pending",
       "tvWeb": "Shared focus/media adapters; device verification pending",
@@ -4504,6 +4559,8 @@
         "apps/api/src/auth/totp.test.ts",
         "apps/api/test/auth.integration.test.ts",
         "apps/api/test/privacy-controls.integration.test.ts",
+        "apps/web/src/lib/admin-reauthentication.test.ts",
+        "tests/e2e/admin-reauthentication.acceptance.spec.ts",
         "tests/e2e/privacy-controls.acceptance.spec.ts"
       ],
       "documentation": [
@@ -4801,10 +4858,12 @@
       "frontend": [
         "apps/web/src/app/auth-form.module.css",
         "apps/web/src/app/auth-form.tsx",
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
         "apps/web/src/components/discovery/discovery-home.tsx",
         "apps/web/src/components/discovery/discovery-row.tsx",
         "apps/web/src/components/discovery/discovery.module.css",
         "apps/web/src/components/discovery/my-ayin-library.tsx",
+        "apps/web/src/lib/admin-reauthentication.ts",
         "apps/web/src/lib/discovery.ts"
       ],
       "viewerUi": [
@@ -4817,7 +4876,10 @@
         "apps/web/src/lib/discovery.ts"
       ],
       "creatorUi": [],
-      "adminUi": [],
+      "adminUi": [
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
+        "apps/web/src/lib/admin-reauthentication.ts"
+      ],
       "pwa": "Shared web runtime; dedicated verification pending",
       "mobileWeb": "Responsive implementation present; route-level visual verification pending",
       "tvWeb": "Shared focus/media adapters; device verification pending",
@@ -4833,8 +4895,10 @@
         "apps/api/src/discovery/trending-engine.test.ts",
         "apps/api/test/auth.integration.test.ts",
         "apps/api/test/discovery.integration.test.ts",
+        "apps/web/src/lib/admin-reauthentication.test.ts",
         "apps/web/src/lib/discovery.test.ts",
-        "packages/db/src/discovery.test.mjs"
+        "packages/db/src/discovery.test.mjs",
+        "tests/e2e/admin-reauthentication.acceptance.spec.ts"
       ],
       "documentation": ["docs/TASK12_DISCOVERY.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
@@ -5409,9 +5473,9 @@
         "models": ["MediaProcessingJob", "MediaProcessingWorker"],
         "viewerRoutes": [],
         "creatorRoutes": [],
-        "adminRoutes": ["/admin/operations"],
-        "disposition": "BACKEND_SURFACE_GAP",
-        "gap": "Summary exists; detailed job operations/retry lack professional operator surface; retain fenced leases.",
+        "adminRoutes": ["/admin/operations", "/admin/operations/media"],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Read-only detailed jobs/workers/capacity workspace added in 2A.2, validation pending; retry/reprocess actions need separate concurrency and fencing review.",
         "remediationPhase": 2
       }
     },
@@ -5619,9 +5683,9 @@
         "models": ["MediaPlaybackGeneration", "MediaPlaybackRendition"],
         "viewerRoutes": [],
         "creatorRoutes": [],
-        "adminRoutes": ["/admin/operations"],
-        "disposition": "BACKEND_SURFACE_GAP",
-        "gap": "Ready rollout/backfill/recovery APIs need scoped operator workflows with step-up.",
+        "adminRoutes": ["/admin/operations", "/admin/operations/media"],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Read-only rollout controls, catalog and playback metrics added in 2A.2, validation pending; backfill/recovery mutations remain for 2A.3 with step-up and safety review.",
         "remediationPhase": 2
       }
     },
@@ -12281,6 +12345,8 @@
         "apps/web/src/app/admin/layout.tsx",
         "apps/web/src/app/admin/moderation/page.tsx",
         "apps/web/src/app/admin/movies/page.tsx",
+        "apps/web/src/app/admin/operations/database/page.tsx",
+        "apps/web/src/app/admin/operations/media/page.tsx",
         "apps/web/src/app/admin/operations/page.tsx",
         "apps/web/src/app/admin/page.tsx",
         "apps/web/src/app/admin/product-controls/page.tsx",
@@ -12295,19 +12361,23 @@
         "apps/web/src/app/admin/users/page.tsx",
         "apps/web/src/app/admin/video-ads/page.tsx",
         "apps/web/src/app/admin/videos/page.tsx",
+        "apps/web/src/components/admin/admin-access.tsx",
         "apps/web/src/components/admin/admin-advertising-control.tsx",
         "apps/web/src/components/admin/admin-catalog-localizations.tsx",
         "apps/web/src/components/admin/admin-channels.tsx",
         "apps/web/src/components/admin/admin-content-library.tsx",
         "apps/web/src/components/admin/admin-dashboard.tsx",
+        "apps/web/src/components/admin/admin-database-operations.tsx",
         "apps/web/src/components/admin/admin-feature-flags.tsx",
         "apps/web/src/components/admin/admin-kids-classification.tsx",
+        "apps/web/src/components/admin/admin-media-operations.tsx",
         "apps/web/src/components/admin/admin-moderation.tsx",
         "apps/web/src/components/admin/admin-movie-catalog.tsx",
         "apps/web/src/components/admin/admin-operations-dashboard.tsx",
         "apps/web/src/components/admin/admin-operations.tsx",
         "apps/web/src/components/admin/admin-payout-detail.tsx",
         "apps/web/src/components/admin/admin-product-controls.tsx",
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
         "apps/web/src/components/admin/admin-regional-merchandising.tsx",
         "apps/web/src/components/admin/admin-revenue-control-center.tsx",
         "apps/web/src/components/admin/admin-revenue-reconciliation.tsx",
@@ -12320,10 +12390,13 @@
         "apps/web/src/components/admin/admin-video-ads.tsx",
         "apps/web/src/components/admin/admin-videos.tsx",
         "apps/web/src/components/admin/catalog-resource-picker.tsx",
+        "apps/web/src/components/admin/operator-snapshot.tsx",
         "apps/web/src/lib/admin-advertising.ts",
         "apps/web/src/lib/admin-control.ts",
         "apps/web/src/lib/admin-operations-directory.ts",
+        "apps/web/src/lib/admin-operator.ts",
         "apps/web/src/lib/admin-product.ts",
+        "apps/web/src/lib/admin-reauthentication.ts",
         "apps/web/src/lib/admin-revenue-operations.ts"
       ],
       "viewerUi": [],
@@ -12342,6 +12415,8 @@
         "apps/web/src/app/admin/layout.tsx",
         "apps/web/src/app/admin/moderation/page.tsx",
         "apps/web/src/app/admin/movies/page.tsx",
+        "apps/web/src/app/admin/operations/database/page.tsx",
+        "apps/web/src/app/admin/operations/media/page.tsx",
         "apps/web/src/app/admin/operations/page.tsx",
         "apps/web/src/app/admin/page.tsx",
         "apps/web/src/app/admin/product-controls/page.tsx",
@@ -12356,19 +12431,23 @@
         "apps/web/src/app/admin/users/page.tsx",
         "apps/web/src/app/admin/video-ads/page.tsx",
         "apps/web/src/app/admin/videos/page.tsx",
+        "apps/web/src/components/admin/admin-access.tsx",
         "apps/web/src/components/admin/admin-advertising-control.tsx",
         "apps/web/src/components/admin/admin-catalog-localizations.tsx",
         "apps/web/src/components/admin/admin-channels.tsx",
         "apps/web/src/components/admin/admin-content-library.tsx",
         "apps/web/src/components/admin/admin-dashboard.tsx",
+        "apps/web/src/components/admin/admin-database-operations.tsx",
         "apps/web/src/components/admin/admin-feature-flags.tsx",
         "apps/web/src/components/admin/admin-kids-classification.tsx",
+        "apps/web/src/components/admin/admin-media-operations.tsx",
         "apps/web/src/components/admin/admin-moderation.tsx",
         "apps/web/src/components/admin/admin-movie-catalog.tsx",
         "apps/web/src/components/admin/admin-operations-dashboard.tsx",
         "apps/web/src/components/admin/admin-operations.tsx",
         "apps/web/src/components/admin/admin-payout-detail.tsx",
         "apps/web/src/components/admin/admin-product-controls.tsx",
+        "apps/web/src/components/admin/admin-reauthentication.tsx",
         "apps/web/src/components/admin/admin-regional-merchandising.tsx",
         "apps/web/src/components/admin/admin-revenue-control-center.tsx",
         "apps/web/src/components/admin/admin-revenue-reconciliation.tsx",
@@ -12381,10 +12460,13 @@
         "apps/web/src/components/admin/admin-video-ads.tsx",
         "apps/web/src/components/admin/admin-videos.tsx",
         "apps/web/src/components/admin/catalog-resource-picker.tsx",
+        "apps/web/src/components/admin/operator-snapshot.tsx",
         "apps/web/src/lib/admin-advertising.ts",
         "apps/web/src/lib/admin-control.ts",
         "apps/web/src/lib/admin-operations-directory.ts",
+        "apps/web/src/lib/admin-operator.ts",
         "apps/web/src/lib/admin-product.ts",
+        "apps/web/src/lib/admin-reauthentication.ts",
         "apps/web/src/lib/admin-revenue-operations.ts"
       ],
       "pwa": "Shared web runtime; dedicated verification pending",
@@ -12403,8 +12485,11 @@
         "apps/api/test/admin-operations.integration.test.ts",
         "apps/api/test/admin-settings.integration.test.ts",
         "apps/api/test/catalog-admin.integration.test.ts",
+        "apps/web/src/lib/admin-operator.test.ts",
+        "apps/web/src/lib/admin-reauthentication.test.ts",
         "packages/db/src/admin-rbac.test.mjs",
         "tests/e2e/admin-mfa.acceptance.spec.ts",
+        "tests/e2e/admin-reauthentication.acceptance.spec.ts",
         "tests/e2e/catalog-admin.acceptance.spec.ts"
       ],
       "documentation": [
@@ -12476,9 +12561,9 @@
         "models": [],
         "viewerRoutes": [],
         "creatorRoutes": [],
-        "adminRoutes": ["/admin/operations"],
-        "disposition": "BACKEND_SURFACE_GAP",
-        "gap": "Task 87 summary exists; detailed Postgres/API evidence needs operator UI; primary consistency stays authoritative.",
+        "adminRoutes": ["/admin/operations", "/admin/operations/database"],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Detailed PostgreSQL visibility added in 2A.2 preserving SUPERADMIN boundary and omitted SQL text, validation pending; detailed API observability remains open.",
         "remediationPhase": 2
       }
     },
@@ -12639,9 +12724,9 @@
         "models": ["MediaProcessingJob", "MediaProcessingWorker"],
         "viewerRoutes": [],
         "creatorRoutes": [],
-        "adminRoutes": ["/admin/operations"],
-        "disposition": "BACKEND_SURFACE_GAP",
-        "gap": "Summary exists; detailed job operations/retry lack professional operator surface; retain fenced leases.",
+        "adminRoutes": ["/admin/operations", "/admin/operations/media"],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Read-only detailed jobs/workers/capacity workspace added in 2A.2, validation pending; retry/reprocess actions need separate concurrency and fencing review.",
         "remediationPhase": 2
       }
     },
@@ -12665,10 +12750,16 @@
           "authorization": "Inspect class and method guards; static inventory is not proof of access control"
         }
       ],
-      "frontend": [],
+      "frontend": [
+        "apps/web/src/app/admin/operations/database/page.tsx",
+        "apps/web/src/components/admin/admin-database-operations.tsx"
+      ],
       "viewerUi": [],
       "creatorUi": [],
-      "adminUi": [],
+      "adminUi": [
+        "apps/web/src/app/admin/operations/database/page.tsx",
+        "apps/web/src/components/admin/admin-database-operations.tsx"
+      ],
       "pwa": "Shared web runtime; dedicated verification pending",
       "mobileWeb": "Responsive implementation present; route-level visual verification pending",
       "tvWeb": "Shared focus/media adapters; device verification pending",
@@ -12688,9 +12779,9 @@
         "models": [],
         "viewerRoutes": [],
         "creatorRoutes": [],
-        "adminRoutes": ["/admin/operations"],
-        "disposition": "BACKEND_SURFACE_GAP",
-        "gap": "Task 87 summary exists; detailed Postgres/API evidence needs operator UI; primary consistency stays authoritative.",
+        "adminRoutes": ["/admin/operations", "/admin/operations/database"],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Detailed PostgreSQL visibility added in 2A.2 preserving SUPERADMIN boundary and omitted SQL text, validation pending; detailed API observability remains open.",
         "remediationPhase": 2
       }
     },

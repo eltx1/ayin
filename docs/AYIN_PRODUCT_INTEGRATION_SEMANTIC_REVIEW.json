@@ -20,8 +20,8 @@
       "viewerRoutes": ["/login"],
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations"],
-      "disposition": "BACKEND_SURFACE_GAP",
-      "gap": "Enrollment/challenge exists; missing step-up and account MFA management calls; add guarded user re-authentication.",
+      "disposition": "PARTIAL_SURFACE",
+      "gap": "Shared Admin step-up completed and verified in PR #110 with real MFA browser flow; account MFA management remains open.",
       "remediationPhase": 2
     },
     {
@@ -66,9 +66,9 @@
       "models": ["MediaProcessingJob", "MediaProcessingWorker"],
       "viewerRoutes": [],
       "creatorRoutes": [],
-      "adminRoutes": ["/admin/operations"],
-      "disposition": "BACKEND_SURFACE_GAP",
-      "gap": "Summary exists; detailed job operations/retry lack professional operator surface; retain fenced leases.",
+      "adminRoutes": ["/admin/operations", "/admin/operations/media"],
+      "disposition": "PARTIAL_SURFACE",
+      "gap": "Read-only detailed jobs/workers/capacity workspace added in 2A.2, validation pending; retry/reprocess actions need separate concurrency and fencing review.",
       "remediationPhase": 2
     },
     {
@@ -91,9 +91,9 @@
       "models": ["MediaPlaybackGeneration", "MediaPlaybackRendition"],
       "viewerRoutes": [],
       "creatorRoutes": [],
-      "adminRoutes": ["/admin/operations"],
-      "disposition": "BACKEND_SURFACE_GAP",
-      "gap": "Ready rollout/backfill/recovery APIs need scoped operator workflows with step-up.",
+      "adminRoutes": ["/admin/operations", "/admin/operations/media"],
+      "disposition": "PARTIAL_SURFACE",
+      "gap": "Read-only rollout controls, catalog and playback metrics added in 2A.2, validation pending; backfill/recovery mutations remain for 2A.3 with step-up and safety review.",
       "remediationPhase": 2
     },
     {
@@ -487,9 +487,9 @@
       "models": [],
       "viewerRoutes": [],
       "creatorRoutes": [],
-      "adminRoutes": ["/admin/operations"],
-      "disposition": "BACKEND_SURFACE_GAP",
-      "gap": "Task 87 summary exists; detailed Postgres/API evidence needs operator UI; primary consistency stays authoritative.",
+      "adminRoutes": ["/admin/operations", "/admin/operations/database"],
+      "disposition": "PARTIAL_SURFACE",
+      "gap": "Detailed PostgreSQL visibility added in 2A.2 preserving SUPERADMIN boundary and omitted SQL text, validation pending; detailed API observability remains open.",
       "remediationPhase": 2
     },
     {
@@ -558,5 +558,6 @@
       "gap": "Native tvOS focus/player exceptions versus shared Android/Tizen/webOS UI require documented capability evidence.",
       "remediationPhase": 5
     }
-  ]
+  ],
+  "implementationReviewSha": "f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7"
 }
