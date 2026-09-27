@@ -65,13 +65,18 @@ const definitions = [
   ["Uploads", "upload", "Creator", "Broken manifest shortcut; progressive disclosure"],
   [
     "Media processing",
-    "media-processing",
+    "media-processing|media-generation|admin-media-retry",
     "Admin/internal",
     "Detailed operations API lacks adequate UI",
   ],
   ["R2", "r2|media-storage", "Internal", "Keep credentials and object operations private"],
   ["FFmpeg", "ffmpeg|media-processing", "Internal", "Retain worker/runtime boundaries"],
-  ["HLS", "adaptive|hls", "Viewer/Admin", "Operator rollout and recovery surface gap"],
+  [
+    "HLS",
+    "adaptive|hls|media-generation",
+    "Viewer/Admin",
+    "Operator rollout and recovery surface gap",
+  ],
   [
     "Adaptive playback",
     "adaptive-playback|ayin-player",
@@ -204,7 +209,7 @@ const definitions = [
   ],
   [
     "Media workers",
-    "worker|media-processing",
+    "worker|media-processing|media-generation|admin-media-retry",
     "Admin/internal",
     "Retain fencing and worker heartbeat truth",
   ],

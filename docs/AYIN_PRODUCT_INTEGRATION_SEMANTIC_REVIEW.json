@@ -61,14 +61,16 @@
       "features": ["Media processing", "Media workers"],
       "backend": [
         "admin/admin-media-processing.controller.ts",
-        "media/media-processing-queue.service.ts"
+        "media/media-processing-queue.service.ts",
+        "media/media-processing-lifecycle.service.ts",
+        "media/media-generation-safety.ts"
       ],
       "models": ["MediaProcessingJob", "MediaProcessingWorker"],
       "viewerRoutes": [],
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations", "/admin/operations/media"],
       "disposition": "PARTIAL_SURFACE",
-      "gap": "Read-only detailed jobs/workers/capacity workspace verified in PR #111. Atomic stale retry protection verified in PR #113 with four PostgreSQL regressions; generation consistency and retry/reprocess UI remain open.",
+      "gap": "Read-only detailed jobs/workers/capacity workspace verified in PR #111. Atomic retry and generation/finalization safety verified in PRs #113/#115; contextual retry/reprocess UI remains open.",
       "remediationPhase": 2
     },
     {
@@ -93,7 +95,7 @@
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations", "/admin/operations/media"],
       "disposition": "PARTIAL_SURFACE",
-      "gap": "Read-only rollout controls, catalog and playback metrics added in 2A.2, verified in PR #111; backfill/recovery mutations remain for 2A.3 with step-up and safety review.",
+      "gap": "Read-only rollout controls, catalog and playback metrics added in 2A.2, verified in PR #111; backfill/recovery concurrency, capacity and fallback-key safety verified in PR #115; action UI remains for 2A.3c with step-up and bounded confirmation.",
       "remediationPhase": 2
     },
     {
