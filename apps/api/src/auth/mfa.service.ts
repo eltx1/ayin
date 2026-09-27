@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import type { Prisma } from "@ayin/db";
 
 import { DatabaseService } from "../database/database.service.js";
+import { lockStaffRoleChanges } from "../database/staff-role-lock.js";
 import { badRequest, conflict, unauthorized } from "./auth.errors.js";
 import { AuthTokenService, type AuthTokenPayload } from "./auth-token.service.js";
 import { MfaCryptoService } from "./mfa-crypto.service.js";
@@ -234,15 +235,24 @@ export class MfaService {
   }
 
   async regenerateRecoveryCodes(accountId: string, password: string, code: string) {
-    await this.verifyPassword(accountId, password);
+    const account = await this.verifyPassword(accountId, password);
     const credential = await this.database.client.accountMfaCredential.findUnique({
       where: { accountId },
     });
     if (!credential || credential.status !== "ENABLED")
       throw conflict("MFA_NOT_ENABLED", "MFA is not enabled.");
-    await this.consumeTotp(credential, code);
     const recoveryCodes = this.generateRecoveryCodes();
     await this.database.client.$transaction(async (tx) => {
+      await this.consumeTotp(credential, code, tx);
+      // Lock order remains credential -> account, matching disable/reset.
+      // Retain the account version: regenerating codes does not revoke sessions.
+      const current = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Account"
+        WHERE id = ${accountId}::uuid
+          AND "authVersion" = ${account.authVersion} AND status = 'ACTIVE'
+        FOR NO KEY UPDATE
+      `;
+      if (current.length !== 1) throw unauthorized("The account changed. Sign in again.");
       await tx.accountMfaCredential.update({
         where: { accountId },
         data: {
@@ -264,19 +274,26 @@ export class MfaService {
         "MFA cannot be disabled while this account has an administrator role.",
       );
     }
-    await this.verifyPassword(accountId, password);
+    const account = await this.verifyPassword(accountId, password);
     const credential = await this.database.client.accountMfaCredential.findUnique({
       where: { accountId },
     });
     if (!credential || credential.status !== "ENABLED")
       throw conflict("MFA_NOT_ENABLED", "MFA is not enabled.");
-    await this.consumeTotp(credential, code);
     await this.database.client.$transaction(async (tx) => {
+      await lockStaffRoleChanges(tx);
+      if (await this.isPrivileged(accountId, tx))
+        throw conflict(
+          "MFA_REQUIRED_BY_POLICY",
+          "MFA cannot be disabled while this account has an administrator role.",
+        );
+      await this.consumeTotp(credential, code, tx);
       await tx.accountMfaCredential.delete({ where: { accountId } });
-      await tx.account.update({
-        where: { id: accountId },
+      const changed = await tx.account.updateMany({
+        where: { id: accountId, authVersion: account.authVersion, status: "ACTIVE" },
         data: { authVersion: { increment: 1 } },
       });
+      if (changed.count !== 1) throw unauthorized("The account changed. Sign in again.");
       await tx.accountSession.updateMany({
         where: { accountId, revokedAt: null },
         data: { revokedAt: new Date(), revokeReason: "MFA_DISABLED" },
@@ -295,6 +312,16 @@ export class MfaService {
     });
     if (!target) throw badRequest("MFA_ACCOUNT_NOT_FOUND", "The target account was not found.");
     await this.database.client.$transaction(async (tx) => {
+      await lockStaffRoleChanges(tx);
+      const authorized = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT a.id FROM "Account" a
+        JOIN "AdminRoleAssignment" r ON r."accountId" = a.id
+        WHERE a.id = ${actorAccountId}::uuid
+          AND a.status = 'ACTIVE' AND r.role = 'SUPERADMIN'
+        LIMIT 1
+      `;
+      if (authorized.length !== 1)
+        throw unauthorized("Superadmin access changed before the MFA reset.");
       await tx.accountMfaCredential.deleteMany({ where: { accountId: targetAccountId } });
       await tx.account.update({
         where: { id: targetAccountId },
@@ -398,6 +425,7 @@ export class MfaService {
       version: number;
     },
     code: string,
+    client: Pick<Prisma.TransactionClient, "accountMfaCredential"> = this.database.client,
   ) {
     const counter = verifyTotpCode(this.crypto.decrypt(credential.encryptedSecret), code);
     if (
@@ -406,10 +434,12 @@ export class MfaService {
     ) {
       throw unauthorized("The authentication code is invalid or was already used.");
     }
-    const result = await this.database.client.accountMfaCredential.updateMany({
+    const result = await client.accountMfaCredential.updateMany({
       where: {
         accountId: credential.accountId,
         version: credential.version,
+        status: "ENABLED",
+        encryptedSecret: credential.encryptedSecret,
         OR: [{ lastUsedCounter: null }, { lastUsedCounter: { lt: counter } }],
       },
       data: { lastUsedCounter: counter },
@@ -476,9 +506,12 @@ export class MfaService {
     if (count !== 1) throw unauthorized("The MFA request is invalid or expired.");
   }
 
-  private async isPrivileged(accountId: string) {
+  private async isPrivileged(
+    accountId: string,
+    client: Pick<Prisma.TransactionClient, "adminRoleAssignment"> = this.database.client,
+  ) {
     return (
-      (await this.database.client.adminRoleAssignment.count({
+      (await client.adminRoleAssignment.count({
         where: { accountId, role: { in: [...privilegedRoles] } },
       })) > 0
     );
