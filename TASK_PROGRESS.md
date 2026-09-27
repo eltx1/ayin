@@ -30,3 +30,9 @@ Persistent resume ledger for `docs/AYIN_EXECUTION_ROADMAP.md`.
 - [x] Task 38 — Samsung Tizen and LG webOS packages. Main merge: `6090930f827a8f95005ea1294d391304ba6df85e`. Quality CI `33335625975`, browser acceptance CI `33335626014`, and TV package validation CI `33335625968` passed. Added Samsung Tizen `config.xml`/hosted shell, LG webOS `appinfo.json`/hosted shell, shared Tizen/webOS D-pad/back/media/lifecycle adapter wired into the existing web app, structural package validation and compatibility/release documentation without forking business UI. External release verification remaining: final store artwork, Samsung/LG signing and store credentials, emulator/physical-device matrix, codec/DRM/HLS compatibility and target-runtime Google IMA behavior.
 
 Resume rule: all repository-side roadmap work through Task 38 is complete. On future continuation, verify current `main`, this ledger, roadmap and CI before starting any new task. Never report an external production check as passed without actual access.
+
+## Product integration program — 2026-09-27
+
+Task 87 is verified and merged in main at `5de155c19832e55a1d19450eb78d029432c01680` (PR #108). Quality, browser acceptance and security passed on `f32a5da34abfcc6c79e401964ad50784808e74cd`. The earlier ledger above is historical through Task 38; it is not a statement that main stops there.
+
+The new program starts at `docs/AYIN_PRODUCT_INTEGRATION_MASTER_PLAN.md`. Read `docs/AYIN_PRODUCT_INTEGRATION_CHECKPOINTS.md` before continuing. Phase 0 is complete; Phase 1 audit is complete pending its PR validation/merge; Phases 2–5 implementation has not started. Do not infer completion from source inventory alone.
