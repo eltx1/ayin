@@ -327,3 +327,17 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Workspace `/workspace/scratch/f419afa1d147/ayin-restored` was clean at `d49d151d` before disconnection. The remote branch subsequently received `c6797480` test fixes, then PR #129 merged. Fetch main and inspect status before continuing; do not assume the local checkout contains those remote changes.
 - Execution attempts repeatedly return `409 environment_offline`. GitHub connector remains usable and preserves the work; no new broad implementation phase started after disconnection.
 - Next concrete work: reproduce/fix MFA concurrency with database tests, then account MFA UI; resolve discovery policy-pagination semantics before route/IA reconstruction. Continue using the existing Web/PWA as the shared product.
+
+## Phase 2G.1 — MFA recovery-code concurrency, regression investigation
+
+- Starting SHA: `f7625fae8543dfa204a7239a900edb4b48e23cd4`; workspace restored, clean older checkout fast-forwarded after PR #130 passed quality `36347523296` and merged with expected-head protection. Checkpoint read before implementation.
+- Findings: recovery consumption reads the entire hash list, filters one hash and writes the derived list later. Distinct concurrent codes can overwrite each other's removal; the write does not recheck ENABLED status. These findings require PostgreSQL reproduction before acceptance.
+- Changes: initial test-only head adds controlled concurrent reads through the public challenge service. No production behavior changed at this stage.
+- Migrations: none.
+- Tests added: different-code concurrency with audit counts and replay rejection; same-code single use; status/version changes after read; rollback on audit failure (five cases).
+- Tests executed: typecheck pending; PostgreSQL reproduction/full gates pending. Local PostgreSQL and Chromium remain unavailable.
+- Performance measurements: none yet; security correctness is the gate for this slice.
+- Remaining issues: enrollment/confirmation and regeneration/disable/reset/role-change concurrency review before account MFA UI; discovery pagination and remaining Phase 2/Phases 3–5 remain open.
+- External blockers: real database/browser verification runs in CI; no production or device claim.
+- Next: observe regression failure on the unchanged implementation, fix the root cause, then run complete gates on the fixed head.
+- Rollback: no schema changes; preserve consumed-code state and audit evidence, never restore used recovery codes.
