@@ -346,7 +346,7 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
 
   it("fills recent pages from policy-eligible videos before computing look-ahead", async () => {
     const viewer = await register("Policy paging", "policy-paging@example.com");
-    await prisma.homeRowConfig.update({ where: { key: "new-on-ayin" }, data: { maxItems: 100 } });
+    await prisma.homeRowConfig.update({ where: { key: "new-on-ayin" }, data: { maxItems: 24 } });
     const now = Date.now();
     const visible: string[] = [];
     for (let i = 0; i < 12; i += 1) {
@@ -381,6 +381,82 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(second.statusCode).toBe(200);
     expect(second.json().items.map((item: { id: string }) => item.id)).toEqual(visible.slice(2));
     expect(second.json().nextCursor).toBeNull();
+  });
+
+  it("keeps publication and playable-media boundaries ahead of the page even with force-allow overrides", async () => {
+    const viewer = await register("Public boundaries", "public-boundaries@example.com");
+    const now = Date.now();
+    for (let i = 0; i < 7; i += 1) {
+      const video = await publishVideo(
+        viewer.user.channel.id,
+        `Ineligible ${i}`,
+        new Date(now - i * 1000),
+      );
+      await prisma.videoPolicyOverride.create({
+        data: {
+          videoId: video.id,
+          disposition: "FORCE_ALLOW",
+          actorAccountId: viewer.user.account.id,
+          reason: "Cannot bypass publication or media",
+        },
+      });
+      if (i === 0)
+        await prisma.video.update({ where: { id: video.id }, data: { status: "DRAFT" } });
+      if (i === 1)
+        await prisma.video.update({ where: { id: video.id }, data: { visibility: "UNLISTED" } });
+      if (i === 2)
+        await prisma.video.update({ where: { id: video.id }, data: { removedAt: new Date() } });
+      if (i === 3)
+        await prisma.mediaAsset.updateMany({
+          where: { videoId: video.id },
+          data: { removedAt: new Date() },
+        });
+      if (i === 4)
+        await prisma.mediaAsset.updateMany({
+          where: { videoId: video.id },
+          data: { status: "UPLOADED" },
+        });
+      if (i === 5)
+        await prisma.mediaAsset.updateMany({
+          where: { videoId: video.id },
+          data: { mimeType: "video/quicktime" },
+        });
+      if (i === 6) {
+        const channel = await prisma.channel.create({
+          data: { handle: "hidden-boundary", name: "Hidden channel", status: "HIDDEN" },
+        });
+        await prisma.video.update({ where: { id: video.id }, data: { channelId: channel.id } });
+      }
+    }
+    const eligible = await publishVideo(
+      viewer.user.channel.id,
+      "Eligible recent",
+      new Date(now - 10_000),
+    );
+    const oldMovie = await publishVideo(
+      viewer.user.channel.id,
+      "Eligible old movie",
+      new Date(now - 31 * 86_400_000),
+    );
+    await prisma.video.update({ where: { id: oldMovie.id }, data: { contentType: "MOVIE" } });
+    const recent = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=1",
+    });
+    expect(recent.statusCode).toBe(200);
+    expect(recent.json().items.map((item: { id: string }) => item.id)).toEqual([eligible.id]);
+    expect(recent.json().nextCursor).toBeNull();
+    await prisma.homeRowConfig.update({
+      where: { key: "new-on-ayin" },
+      data: { source: "MOVIES" },
+    });
+    const movies = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=1",
+    });
+    expect(movies.statusCode).toBe(200);
+    expect(movies.json().items.map((item: { id: string }) => item.id)).toEqual([oldMovie.id]);
+    expect(movies.json().nextCursor).toBeNull();
   });
 
   it("keeps database results bounded when hundreds of newer videos are unavailable", async () => {
