@@ -287,16 +287,31 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 
 - Phase 2D first CI head `453167ff7a89a25a3a5c63a99e6a3b4d1c2a9c78`: quality `36344339759` and security `36344339734` passed, including all seven new PostgreSQL cases (1.719s), 540 API integration-gate tests in 130 files (135.42s), 363 API units and 150 Web units. Browser `36344339650` passed 40/41; the new test incorrectly used the selected option label as the review-button name. Existing component source and locator log establish that the action button is "Review recovery". Corrected the locator and added an explicit selected-action assertion inside the dialog; no product behavior, authorization, audit or queue assertions weakened. Corrected-head full acceptance passed as recorded above.
 
-## Phase 2E — adaptive overview aggregation, implementation in progress
+## Phase 2E — adaptive overview aggregation, verified and merged
 
 - Starting SHA: `ee56af7bf186c449365cf3d5aecbc12c732de095`; checkpoint read and PR #127 accepted before implementation.
 - Findings: overview materializes all eligible videos/source metadata and a catalog-sized generation-ID query merely to count ready/pending videos and identify one oldest video. Existing metrics already cap sampled generations at 1,000.
 - Changes: single PostgreSQL statement returns pending/ready counts and at most one oldest-video projection using the existing eligibility/readiness predicates. Counts and oldest selection share one statement snapshot. Preserve JSON shape, published-date ordering/null fallback, role boundaries and bounded metric sampling; no UI or worker behavior changes.
 - Migrations: none.
 - Tests added: empty catalog; distinct video counting with duplicate sources/generations and excluded/private/removed/unpublished sources; readiness protocol and oldest-date semantics; 512-video fixture asserts one transferred summary row and rejects catalog materialization, with measured fixture timing.
-- Tests executed: local API typecheck/lint and 363 unit tests in 89 files passed (25.30s). Initial new fixture used a container name as a protocol enum; typecheck caught it and the fixture now uses the actual PROGRESSIVE protocol. Full CI verification pending; no local PostgreSQL execution claimed.
-- Performance measurements: before, up to N video/asset records plus ready IDs and an N-ID query parameter set; after, one catalog summary row independent of N. SQL still scans eligible data; this is bounded API transfer/memory, not constant-time database work. Fixture runtime and production load evidence pending.
+- Tests executed: local API typecheck/lint and 363 unit tests in 89 files passed (25.30s). Initial new fixture used a container name as a protocol enum; typecheck caught it and the fixture now uses the actual PROGRESSIVE protocol. Full quality `36345645385`, security `36345645384` and browser `36345645388` passed on `78221e146648210856d25785da82d2ef4518451b`. All 544 API integration-gate tests in 131 files, 363 API units, 150 Web units and 41 browser tests passed, including four new PostgreSQL cases; formatting, lint, types, clean migrations and production builds passed. No local PostgreSQL execution claimed.
+- Performance measurements: before, up to N video/asset records plus ready IDs and an N-ID query parameter set; after, one catalog summary row independent of N. SQL still scans eligible data; this is bounded API transfer/memory, not constant-time database work. CI 512-video fixture: one catalog summary row, 41ms for the overview call; four new tests 1.392s, API integration gate 134.28s, browser suite 3.8 minutes. This single fixture timing is not production load evidence.
 - Remaining issues: detailed API observability, account MFA management, policy pagination and remaining Phase 2 integrations; Phases 3–5 open.
 - External blockers: production workload/load, actual storage/provider and physical-device checks remain separate.
-- Next: full gates, review measurements and merge; continue remaining Phase 2 findings.
+- Verified ending PR head: `78221e146648210856d25785da82d2ef4518451b`; ending main SHA: `4b2d2e9f3d60e38d23accc618536a2696237c61b`, merged as PR #128 with expected-head protection.
+- Next: detailed API observability and remaining Phase 2 findings.
 - Rollback: revert aggregate implementation; no data or schema changes to reverse.
+
+## Phase 2F — detailed service observability, implementation in progress
+
+- Starting SHA: `4b2d2e9f3d60e38d23accc618536a2696237c61b`; checkpoint read, PR #128 accepted and main fetched before implementation.
+- Findings: existing detailed observability endpoint lacks a product surface; its SUPERADMIN metadata is a hard boundary even for ADMIN/OPERATIONS. Request metrics retain at most 1,000 events over 60 seconds in one process, so displayed requests/second must not be described as platform throughput. Error counters span process lifetime; worker counts are database records, not a heartbeat; local telemetry does not prove external delivery.
+- Changes: read-only `/admin/operations/observability`, linked only for SUPERADMIN, shared account-scoped loading/error/retry/fetched states, EN/AR mobile tables and explicit scope/sample-limit/empty-data text. API adds source-of-truth sample/scope metadata and private/no-store headers; no new metric collector or external adapter. Client rejects malformed snapshots instead of inventing healthy zeroes. No raw JSON, secrets or privileged mutations.
+- Migrations: none.
+- Tests added: process sample cap/expiry versus lifetime counters, client role/transport/error contract and real browser role denials/cache/failed-job evidence/error recovery/sign-out/RTL, plus explicitly mocked empty and capped sample presentation.
+- Tests executed: API/Web typecheck and lint passed; 364 API units in 90 files (35.62s) and 153 Web units in 32 files (9.73s) passed. New browser test discovery passed, existing health/trace diagnostics tests retained unchanged. Full CI pending; no local PostgreSQL/Chromium claim.
+- Performance measurements: one explicit snapshot request; existing five bounded-result database queries and process window collection reused. No polling or per-row requests. Database scan cost and production latency remain unmeasured.
+- Remaining issues: account MFA management, discovery policy pagination and remaining Phase 2 review gaps; Phases 3–5 open.
+- External blockers: no connected external telemetry or fleet-wide collector; production/hardware verification remains separate.
+- Next: full gates and review, then remaining Phase 2 findings.
+- Rollback: revert additive UI/metadata/cache headers; no stored data or schema changes.

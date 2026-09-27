@@ -157,6 +157,8 @@ export class ObservabilityService {
       releaseSha: releaseSha(),
       telemetry: this.adapterStatus(),
       api: {
+        scope: "PROCESS" as const,
+        sampleLimit: MAX_LATENCY_SAMPLES,
         windowSeconds: METRIC_WINDOW_MS / 1000,
         requests: this.apiEvents.length,
         requestsPerSecond: this.apiEvents.length / (METRIC_WINDOW_MS / 1000),
@@ -178,6 +180,7 @@ export class ObservabilityService {
         jobsWithRetries: retries,
       },
       errors: {
+        counterScope: "PROCESS_LIFETIME" as const,
         counters: Object.fromEntries(this.errorCounters),
         adIntegrationLast24Hours: adErrors,
       },
