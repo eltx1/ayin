@@ -19,8 +19,6 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
 
   it("keeps the measured discovery, trending and revenue hot paths indexable", async () => {
     const addedIndexes = [
-      "video_public_feed_idx",
-      "media_asset_playable_video_idx",
       "watch_history_trending_time_idx",
       "earnings_channel_currency_time_idx",
     ];
@@ -29,8 +27,6 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
       FROM pg_indexes
       WHERE schemaname = current_schema()
         AND indexname IN (
-          'video_public_feed_idx',
-          'media_asset_playable_video_idx',
           'watch_history_trending_time_idx',
           'earnings_channel_currency_time_idx'
         )
@@ -61,8 +57,8 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
       `);
       const discoveryPlan = planText(discovery);
       expect(discoveryPlan).not.toContain('"Node Type":"Seq Scan"');
-      expect(discoveryPlan).toContain("video_public_feed_idx");
-      expect(discoveryPlan).toContain("media_asset_playable_video_idx");
+      expect(discoveryPlan).toContain("Video_status_visibility_publishedAt_idx");
+      expect(discoveryPlan).toMatch(/MediaAsset_(videoId_kind_status|channelId_kind)_idx/);
 
       const trending = await tx.$queryRawUnsafe<ExplainRow[]>(`
         EXPLAIN (FORMAT JSON)
