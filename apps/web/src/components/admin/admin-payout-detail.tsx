@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import { apiBaseUrl, readApiError } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api";
+import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
 import {
   cancelPayoutAtProvider,
   getPayoutProviderTransfer,

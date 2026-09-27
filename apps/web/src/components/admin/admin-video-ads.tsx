@@ -8,7 +8,8 @@ import {
   type AdminAdvertisingChannelTarget,
   type AdminAdvertisingVideoTarget,
 } from "@/lib/admin-operations-directory";
-import { apiBaseUrl, readApiError } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api";
+import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
 
 interface VideoAdSettings {
   masterEnabled: boolean;

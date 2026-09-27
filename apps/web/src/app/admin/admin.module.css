@@ -728,3 +728,37 @@
     grid-template-columns: 1fr;
   }
 }
+
+.verificationDialog {
+  box-sizing: border-box;
+  background: var(--bg, #111019);
+  color: var(--text, #f6f3ff);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: var(--radius-md, 16px);
+  inline-size: min(460px, calc(100vw - 32px));
+  max-block-size: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+}
+
+.verificationDialog::backdrop {
+  background: rgb(0 0 0 / 72%);
+}
+
+.verificationDialog form {
+  display: grid;
+  gap: 12px;
+}
+
+.verificationDialog input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: var(--control-height);
+  background: rgb(255 255 255 / 6%);
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font: inherit;
+  padding: 10px;
+}

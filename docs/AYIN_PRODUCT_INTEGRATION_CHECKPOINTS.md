@@ -22,10 +22,10 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Rollback: the regression fix changes tests only. Task 87 adds no schema migration. Reverting its merge removes the operations dashboard and its settings/service additions; do not confuse this with a data rollback.
 - Merge: [PR #108](https://github.com/eltx1/ayin/pull/108), squash, expected-head protection used and success confirmed.
 
-## Phase 1 — audit complete; PR validation/merge pending
+## Phase 1 — complete, merged
 
 - Starting SHA: `5de155c19832e55a1d19450eb78d029432c01680`.
-- Latest persisted audit checkpoint SHA: `dfb2bcea480c138f8139435a77a81abeefbad385`, Draft [PR #109](https://github.com/eltx1/ayin/pull/109). Final audit revision/merge SHA will be recorded after the current validation.
+- Historical initial audit checkpoint SHA: `dfb2bcea480c138f8139435a77a81abeefbad385`, Draft [PR #109](https://github.com/eltx1/ayin/pull/109). Verified final audit head: `14f9c37870700f39455a62bcb51acaf748484b84`; ending main SHA: `99ba69657dd8db6a951f6eae7b996155617b0fd5`. PR #109 was safely squash-merged with expected-head protection.
 - Findings: see `AYIN_PRODUCT_INTEGRATION_AUDIT.md`; source inventory has 73 feature domains, 65 page routes, 8 route handlers, 53 controllers, 357 endpoint paths (355 decorators), 119 models and 57 migrations.
 - Changes: master plan; deterministic source inventory script and JSON; human evidence matrix; initial risk register and workflow baseline. Read-only production HTTP probes additionally confirmed placeholder browse destinations and static-manifest precedence; controller guards and Admin/Studio integration entrypoints were inspected. No product implementation changes yet.
 - Migrations: none.
@@ -44,3 +44,25 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Added per-entrypoint layout/error/loading boundary, role/data-ownership and mobile/RTL evidence scope for all 73 route entries. Reviewed global focus/reduced-motion, RTL inheritance and known shell gaps.
 - Verified inventory regeneration retains the authored review; formatting, schema/path integrity and deterministic generation are required for the final audit revision.
 - No product code, data, migrations, credentials or deployment changed in Phase 1. No production-performance measurement or physical-device certification claimed.
+
+### Phase 1 acceptance
+
+- Full quality run [36292626251](https://github.com/eltx1/ayin/actions/runs/36292626251), attempt 2, passed on the final audit head: format, lint, typecheck, unit/schema, 4 DB integration and 483 API integration tests, production build.
+- Attempt 1 stopped while downloading pinned FFmpeg; a read-only local download returned a verification HTML page, not the archive. The checksum was not changed or bypassed. One rerun downloaded and verified the original pinned binary successfully.
+- Local production build and isolated cache/cursor probes passed again. Incremental Next compilation 484ms is a warm build measurement, not a production performance claim.
+- Browser/security workflows did not trigger for audit-only changes; Phase 0 browser/security results remain baseline evidence, not reruns.
+
+## Phase 2A.1 — shared Admin re-authentication, in progress
+
+- Starting SHA: `99ba69657dd8db6a951f6eae7b996155617b0fd5`; checkpoint read before implementation.
+- Findings: the server already enforces step-up but Admin web error handlers only show a message. Existing observability metadata includes SUPERADMIN as a hard boundary; do not broaden access as an incidental frontend change.
+- Changes: shared Admin error handling opens a native modal only for HTTP 403 / STEP_UP_REQUIRED; manual verification entrypoint for signed-in administrators. MFA status controls code visibility; real step-up endpoint rotates the session. No automatic replay of privileged operations. Cancel/close clears form secrets and aborts pending client requests. English/Arabic labels and modal focus/RTL/responsive behavior.
+- Migrations: none; backend authorization, audit and rate limits unchanged.
+- Tests added: error-code/status discrimination, malformed response, listener cleanup, no automatic retry; browser journey for cancellation, password failure, real MFA success, mobile sizing and Arabic direction.
+- Tests executed: Web unit suite 100/100, lint, typecheck and production build passed locally; browser/full CI pending final revision.
+- Performance measurements: Web unit suite 1.14s; no product performance claim.
+- Remaining issues: detailed media/database operator integration is the next subphase; this is not completion of Phase 2A or Phase 2.
+- External blockers: local PostgreSQL unavailable; real database/browser coverage will run in CI.
+- Next phase: complete verification and review of 2A.1, then 2A.2 media/database operations.
+- Ending SHA: pending commit and gates.
+- Rollback: revert this additive UI/error-handling change; no schema or server assurance changes to reverse.

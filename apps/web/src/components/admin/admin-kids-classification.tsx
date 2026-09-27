@@ -3,7 +3,8 @@
 import { useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import { apiBaseUrl, readApiError } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api";
+import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
 
 type Maturity = "GENERAL" | "TEEN" | "MATURE";
 type AgeRestriction = "NONE" | "AGE_13_PLUS" | "AGE_18_PLUS";
