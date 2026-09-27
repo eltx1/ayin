@@ -260,6 +260,10 @@ Phase 2 order: (2A) shared secure re-authentication and operator media/database 
 ## Implementation delta — Phase 2A
 
 - 2A.1: shared Admin re-authentication merged in PR #110 at `f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7`; quality/security and 32 browser tests passed. R19 is partially resolved: account MFA management is still open.
-- 2A.2 (validation pending): `/admin/operations/media` integrates queue/worker/recent-job and adaptive rollout evidence; `/admin/operations/database` integrates PostgreSQL connection and statement aggregates with existing SUPERADMIN restriction. No privileged write controls or SQL text added. R09 remains partially open for mutations and detailed observability.
+- 2A.2 (merged and verified in PR #111): `/admin/operations/media` integrates queue/worker/recent-job and adaptive rollout evidence; `/admin/operations/database` integrates PostgreSQL connection and statement aggregates with existing SUPERADMIN restriction. No privileged write controls or SQL text added. All 33 browser tests and quality/security gates passed on `95db413a1ee228266922fda9d6da05be706452a1`; ending main `de1cc33fca438b05be1f67acb3d8ece2dca7d82c`. R09 remains partially open for mutations and detailed observability.
 - Shared Sidebar/new-workspace access fetch avoids duplicate session reads in those destinations. Existing legacy workspace duplication under R16 remains.
 - Operational workspaces are read-only; their manual refresh is explicit. API failure is distinct from zero/empty metrics. Browser coverage adds role denial, error/retry, Arabic/mobile and request-count assertions. This delta does not claim completion of Phase 2 or production performance.
+
+### R22 — media retry concurrency before operator mutations
+
+The existing controller checks a job snapshot for FAILED and subsequently updates only by id. A controlled compiled-controller probe allowed two FAILED snapshots to produce two unconditional updates/audit entries. This is not yet a PostgreSQL concurrency reproduction or a production incident. Require atomic state transition, concurrent regression, superseded-generation and worker-claim/fencing review in 2A.3 before exposing write controls. Reprocess/backfill generation interactions also require review.

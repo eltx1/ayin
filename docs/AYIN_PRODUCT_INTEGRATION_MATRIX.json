@@ -1,6 +1,14 @@
 {
   "schemaVersion": 1,
-  "sourceSha": "f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7",
+  "sourceSha": "de1cc33fca438b05be1f67acb3d8ece2dca7d82c",
+  "sourceShaMeaning": "HEAD at generation; inventory reads tracked worktree contents, including changes listed below",
+  "sourceWorkingTreeChanges": [
+    "TASK_PROGRESS.md",
+    "docs/AYIN_PRODUCT_INTEGRATION_AUDIT.md",
+    "docs/AYIN_PRODUCT_INTEGRATION_CHECKPOINTS.md",
+    "docs/AYIN_PRODUCT_INTEGRATION_SEMANTIC_REVIEW.json",
+    "scripts/audit-product-integration.mjs"
+  ],
   "method": "Deterministic tracked-source inventory; no runtime, authorization or feature-completion claims",
   "counts": {
     "files": 1147,
@@ -5475,7 +5483,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations", "/admin/operations/media"],
         "disposition": "PARTIAL_SURFACE",
-        "gap": "Read-only detailed jobs/workers/capacity workspace added in 2A.2, validation pending; retry/reprocess actions need separate concurrency and fencing review.",
+        "gap": "Read-only detailed jobs/workers/capacity workspace added in 2A.2, verified in PR #111; retry/reprocess actions need separate concurrency and fencing review.",
         "remediationPhase": 2
       }
     },
@@ -5685,7 +5693,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations", "/admin/operations/media"],
         "disposition": "PARTIAL_SURFACE",
-        "gap": "Read-only rollout controls, catalog and playback metrics added in 2A.2, validation pending; backfill/recovery mutations remain for 2A.3 with step-up and safety review.",
+        "gap": "Read-only rollout controls, catalog and playback metrics added in 2A.2, verified in PR #111; backfill/recovery mutations remain for 2A.3 with step-up and safety review.",
         "remediationPhase": 2
       }
     },
@@ -12563,7 +12571,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations", "/admin/operations/database"],
         "disposition": "PARTIAL_SURFACE",
-        "gap": "Detailed PostgreSQL visibility added in 2A.2 preserving SUPERADMIN boundary and omitted SQL text, validation pending; detailed API observability remains open.",
+        "gap": "Detailed PostgreSQL visibility added in 2A.2 preserving SUPERADMIN boundary and omitted SQL text, verified in PR #111; detailed API observability remains open.",
         "remediationPhase": 2
       }
     },
@@ -12726,7 +12734,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations", "/admin/operations/media"],
         "disposition": "PARTIAL_SURFACE",
-        "gap": "Read-only detailed jobs/workers/capacity workspace added in 2A.2, validation pending; retry/reprocess actions need separate concurrency and fencing review.",
+        "gap": "Read-only detailed jobs/workers/capacity workspace added in 2A.2, verified in PR #111; retry/reprocess actions need separate concurrency and fencing review.",
         "remediationPhase": 2
       }
     },
@@ -12781,7 +12789,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations", "/admin/operations/database"],
         "disposition": "PARTIAL_SURFACE",
-        "gap": "Detailed PostgreSQL visibility added in 2A.2 preserving SUPERADMIN boundary and omitted SQL text, validation pending; detailed API observability remains open.",
+        "gap": "Detailed PostgreSQL visibility added in 2A.2 preserving SUPERADMIN boundary and omitted SQL text, verified in PR #111; detailed API observability remains open.",
         "remediationPhase": 2
       }
     },

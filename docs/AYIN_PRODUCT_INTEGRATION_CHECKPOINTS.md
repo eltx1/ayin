@@ -67,17 +67,26 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Verified implementation SHA: `2d22fc6d0a1e7519e2ce57f643d41e3cc7f2e3e6`; ending main SHA: `f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7` via safely merged PR #110.
 - Rollback: revert this additive UI/error-handling change; no schema or server assurance changes to reverse.
 
-## Phase 2A.2 — media/database operational visibility, in progress
+## Phase 2A.2 — media/database operational visibility, complete and merged
 
 - Starting SHA: `f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7`; checkpoint read before implementation.
 - Findings: existing media queue/adaptive and PostgreSQL endpoints expose operational evidence without adequate detailed UI. Database endpoint is SUPERADMIN-only under the existing guard; this boundary remains intact. Queue retry/backfill/recovery mutations need a separate safety review before adding controls.
 - Changes: two canonical nested Operations destinations; bounded recent-job title search, workers/capacity/adaptive rollout metrics, connection pools/application counts and aggregate statement timings; no SQL text. Shared access fetch for Sidebar and new workspaces; role-aware links; cancellable reads keyed to account/roles/request revision so stale responses cannot populate a newer view. Explicit loading, no-data, failure/retry and fetched-time states, English/Arabic and keyboard-scrollable tables. Read-only surfaces only.
 - Migrations: none; no API authorization or schema changes.
 - Tests added: role matrix, uncached authenticated cancellable endpoint reads and error-vs-empty behavior; browser journey for actual media/database APIs, ADMIN denial and SUPERADMIN acceptance, error/retry, one shared session request, Arabic mobile overflow and absence of privileged writes. The browser fixture explicitly resets media state (account reset alone does not clear channels/jobs), then seeds a real failed job to exercise populated tables, title search and null-stage rendering.
-- Tests executed: local Web unit suite 109/109, lint, typecheck and production build passed. Full CI/browser/security validation pending. An initial lint finding rejected synchronous state resets inside effects; implementation was refactored to request-keyed results rather than weakening the lint rule.
-- Performance measurements: local Web unit suite 1.96s; new workspaces issue one shared session read, then two parallel media reads or one database read; browser assertion pending. No production latency/load benchmark claimed.
+- Tests executed: local Web unit suite 109/109, lint, typecheck and production build passed. Full quality run `36294290296`, security run `36294290288` and all 33 browser tests in `36294290317` passed on `95db413a1ee228266922fda9d6da05be706452a1`. An initial lint finding rejected synchronous state resets inside effects; implementation was refactored to request-keyed results rather than weakening the lint rule.
+- Performance measurements: local Web unit suite 1.96s; new workspaces issue one shared session read, then two parallel media reads or one database read; browser assertion passed. The full browser suite took 3.1 minutes. No production latency/load benchmark claimed.
 - Remaining issues: recommendation/trending evaluation, detailed observability, warehouse visibility and all other Phase 2 gaps remain open. Queue retry/backfill/recovery controls are reserved for 2A.3; this subphase is not completion of all media operator capability.
 - External blockers: local PostgreSQL and Playwright Chromium unavailable; CI runs real integration/browser tests. Physical devices remain external.
-- Ending SHA: pending validation and commit.
-- Next phase: validate/merge 2A.2, then safety-reviewed media actions in 2A.3.
+- Verified ending PR head: `95db413a1ee228266922fda9d6da05be706452a1`; ending main SHA: `de1cc33fca438b05be1f67acb3d8ece2dca7d82c`, merged as PR #111 with expected-head protection.
+- Next phase: 2A.3 safety-reviewed media actions; implementation has NOT started.
 - Rollback: revert additive routes, shared access provider and links; no database/data rollback.
+
+### 2A.2 validation follow-up and resume point
+
+- Initial head `90a6a2d43b53db185d1bc6378064193be411ca2f` passed quality/security, but browser run `36294065346` failed the empty-job assertion. The actual screenshot/trace showed a real prior Task 42 job: truncating Account does not truncate Channel and its media jobs. Isolated media fixtures retain the empty assertion and then seed a failed job, verifying populated tables/search/null-stage, error-state data clearing and both Arabic mobile destinations. Final gates above passed.
+- Visual inspection of the failed-run screenshot confirmed the mounted media workspace and existing brand/navigation. It is not comprehensive desktop/TV/device certification; Phase 5 remains required.
+- R22 before 2A.3: `AdminMediaProcessingController.retryFailed` reads FAILED, then unconditionally updates by id. A controlled compiled-controller probe with two FAILED snapshots allowed both requests, two updates and two audit records. This is a code-path reproduction with mocked transactions, not a PostgreSQL concurrency test or observed production incident. Add a real concurrent regression and conditional update before exposing retry. Also review superseded generations, retry vs worker claims, and reprocess/backfill generation creation/fencing.
+- Do not expose retry/reprocess/recovery controls before that safety work. The merged 2A.2 workspaces are read-only.
+- Resume from main `de1cc33fca438b05be1f67acb3d8ece2dca7d82c`, after reading this checkpoint and verifying remote state. Phase 2 is still incomplete; Phases 3–5 have not started.
+- This checkpoint follow-up changes documentation/inventory provenance only. Scanner syntax, deterministic output and formatting are checked separately; no new runtime acceptance is claimed.
