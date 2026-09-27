@@ -231,6 +231,11 @@ export function AdminOperations() {
             {locale === "ar" ? "عمليات الوسائط" : "Media operations"}
           </Link>
         ) : null}
+        {canOperate ? (
+          <Link className={styles.button} href={href("/admin/operations/discovery")}>
+            {locale === "ar" ? "الاكتشاف والرائج" : "Discovery & trending"}
+          </Link>
+        ) : null}
         {session?.roles.includes("SUPERADMIN") ? (
           <Link className={styles.button} href={href("/admin/operations/database")}>
             {locale === "ar" ? "عمليات PostgreSQL" : "PostgreSQL operations"}

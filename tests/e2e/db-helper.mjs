@@ -356,8 +356,44 @@ try {
       };
       break;
     }
+    case "reset-discovery-operator": {
+      await prisma.recommendationExposure.deleteMany();
+      await prisma.platformSetting.deleteMany({
+        where: { namespace: "DISCOVERY", key: "trendingEngine" },
+      });
+      result = { ok: true };
+      break;
+    }
+    case "seed-observed-recommendations": {
+      await prisma.recommendationExposure.create({
+        data: {
+          versionId: "e2e-observed-v1",
+          algorithmId: "e2e-ranked",
+          surface: "HOME",
+          mode: "PERSONALIZED",
+          rankingSize: 2,
+          itemIds: ["example-one", "example-two"],
+          components: {},
+        },
+      });
+      result = { ok: true };
+      break;
+    }
+    case "discovery-action-evidence": {
+      result = {
+        setting: await prisma.platformSetting.findUnique({
+          where: { namespace_key: { namespace: "DISCOVERY", key: "trendingEngine" } },
+          select: { value: true },
+        }),
+        audits: await prisma.adminAuditLog.findMany({
+          where: { actorAccountId: payload.accountId, action: "TRENDING_ENGINE_CONFIG_UPDATED" },
+          select: { reason: true, metadata: true },
+        }),
+      };
+      break;
+    }
     case "grant-operator-role": {
-      if (!["OPERATIONS", "SUPERADMIN"].includes(payload.role))
+      if (!["OPERATIONS", "SUPERADMIN", "FINANCE_MANAGER"].includes(payload.role))
         throw new Error("Unsupported test operator role.");
       await prisma.adminRoleAssignment.upsert({
         where: { accountId_role: { accountId: payload.accountId, role: payload.role } },

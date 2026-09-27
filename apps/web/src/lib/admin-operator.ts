@@ -2,9 +2,11 @@ import { apiBaseUrl } from "./api";
 import { readAdminApiError } from "./admin-reauthentication";
 import type { AdminRole } from "./admin-control";
 
-export function canReadMediaOperations(roles: AdminRole[]) {
+export function canReadOperations(roles: AdminRole[]) {
   return roles.some((role) => ["SUPERADMIN", "ADMIN", "OPERATIONS"].includes(role));
 }
+export const canReadMediaOperations = canReadOperations;
+
 export function canReadDatabaseOperations(roles: AdminRole[]) {
   // Existing AdminGuard treats SUPERADMIN metadata as a hard boundary.
   return roles.includes("SUPERADMIN");
