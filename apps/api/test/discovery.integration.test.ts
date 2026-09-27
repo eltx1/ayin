@@ -258,6 +258,7 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
   });
 
   it("matches authoritative policy decisions before database pagination across overrides and contexts", async () => {
+    const owner = await register("Policy parity", "policy-parity@example.com");
     const now = new Date("2026-09-27T12:00:00Z");
     const past = new Date(now.getTime() - 1);
     const future = new Date(now.getTime() + 1);
@@ -312,6 +313,14 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
         };
       }),
     );
+    await prisma.video.createMany({
+      data: fixtures.map((item) => ({
+        id: item.videoId,
+        channelId: owner.user.channel.id,
+        slug: `parity-${item.videoId}`,
+        title: "Policy parity fixture",
+      })),
+    });
     await prisma.videoPolicy.createMany({
       data: fixtures.flatMap((item) => (item.policy ? [item.policy] : [])),
     });
@@ -321,7 +330,7 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
           ? [
               {
                 ...item.override,
-                actorAccountId: randomUUID(),
+                actorAccountId: owner.user.account.id,
                 reason: "Policy SQL parity fixture",
               },
             ]
