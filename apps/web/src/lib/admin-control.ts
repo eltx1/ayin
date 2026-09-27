@@ -55,6 +55,186 @@ export interface CohortMilestone {
   contentReturnRate?: number;
 }
 
+export interface AdminOperationsDashboard {
+  generatedAt: string;
+  window: {
+    days: number;
+    from: string;
+    to: string;
+    timezone: "UTC";
+    note: string;
+  };
+  product: {
+    dauApprox: number;
+    mauApprox: number;
+    watchTimeMs: number;
+    watchHours: number;
+    uploads: number;
+    activeCreators: number;
+    activeCreatorsDefinition: string;
+    activeVideos: number;
+  };
+  media: {
+    processing: {
+      terminalJobs: number;
+      readyJobs: number;
+      failedJobs: number;
+      failureRate: number;
+      totalDurationMs: number;
+      averageDurationMs: number;
+      p95DurationMs: number;
+    };
+    hls: { playableVideos: number; readyVideos: number; readinessRate: number };
+    mp4Fallback: { events: number; starts: number; rate: number };
+    generatedStorage: {
+      canonicalBytes: string;
+      hlsBytes: string;
+      totalBytes: string;
+      totalGiB: number;
+    };
+    uploadedContentHours: number;
+    queue: {
+      globalConcurrencyLimit: number;
+      processingEnabled: boolean;
+      currentActiveJobs: number;
+      queueDepth: number;
+      oldestQueuedAgeSeconds: number;
+      workers: Array<{
+        id: string;
+        hostName: string;
+        status: string;
+        cpuCapacity: number;
+        concurrencyLimit: number;
+        activeJobCount: number;
+        processingVersion: number;
+        releaseSha: string;
+        heartbeatAt: string;
+      }>;
+    };
+  };
+  infrastructure: {
+    api: {
+      windowSeconds: number;
+      requests: number;
+      requestsPerSecond: number;
+      latencyMs: { average: number; p50: number; p95: number; max: number };
+      statusClasses: Record<string, number>;
+      error5xxRateBps: number;
+    };
+    database: {
+      status: "OK";
+      pool: { max: number; min: number; applicationName: string };
+      server: {
+        maxConnections: number | null;
+        totalConnections: number;
+        activeConnections: number;
+        idleConnections: number;
+        idleInTransactionConnections: number;
+      };
+      connectionUtilizationBps: number | null;
+    };
+    workers: {
+      activeWorkerCount: number;
+      totalWorkerConcurrency: number;
+      activeWorkerJobs: number;
+      globalConcurrencyLimit: number;
+    };
+    backup: {
+      available: boolean;
+      source: string;
+      status: string | null;
+      completedAt: string | null;
+      ageHours: number | null;
+      stage: string | null;
+      releaseSha: string | null;
+      durationSeconds: number | null;
+    };
+    syntheticMonitoring: {
+      available: boolean;
+      source: string;
+      status: string | null;
+      completedAt: string | null;
+      summary: null | { passed?: number; recovered?: number; failed?: number; skipped?: number };
+      reason?: string | null;
+    };
+  };
+  advertising: {
+    requests: number;
+    fills: number;
+    impressions: number;
+    starts: number;
+    qualifiedPlays: number;
+    technicalErrors: number;
+    fillRate: number;
+    noFill: { available: false; value: null; reason: string };
+  };
+  revenue: {
+    rows: Array<{
+      currency: string;
+      estimatedGross: string;
+      estimatedGrossComplete: boolean;
+      estimatedCreatorShare: string;
+      finalizedGross: string;
+      finalizedGrossComplete: boolean;
+      finalizedCreatorShare: string;
+    }>;
+    payoutLiability: Array<{ currency: string; amount: string }>;
+    note: string;
+  };
+  cost: {
+    provider: string;
+    mode: "UNCONFIGURED" | "MANUAL_ESTIMATE" | "MANUAL_ACTUAL";
+    currency: string;
+    complete: boolean;
+    note: string;
+    categories: Array<{ category: string; configured: boolean; monthly: string | null }>;
+    totalMonthly: string | null;
+    mediaProcessingComputeHourRate: string | null;
+  };
+  unitEconomics: {
+    currency: string;
+    costPerWatchHour: string | null;
+    storageCostPerActiveVideo: string | null;
+    processingCostPerUploadedHour: string | null;
+    revenuePerThousandQualifiedPlays: {
+      available: boolean;
+      value: string | null;
+      currency: string | null;
+      definition: string;
+      reason: string | null;
+    };
+    grossMarginEstimate: {
+      available: boolean;
+      amount: string | null;
+      rate: number | null;
+      reason: string | null;
+    };
+  };
+  alerts: {
+    thresholds: {
+      apiP95Ms: number;
+      api5xxRateBps: number;
+      dbConnectionUtilizationBps: number;
+      mediaQueueAgeSeconds: number;
+      backupAgeHours: number;
+    };
+    items: Array<{
+      severity: "CRITICAL" | "WARNING";
+      code: string;
+      message: string;
+      observed: number | string | null;
+      threshold: number | string | null;
+    }>;
+    criticalCount: number;
+    warningCount: number;
+  };
+  evidence: {
+    productionInvoicesFetched: false;
+    replicaDataUsed: false;
+    notes: string[];
+  };
+}
+
 export interface AdminGlobalSearchResult {
   kind: "ACCOUNT" | "CHANNEL" | "VIDEO" | "PAYOUT";
   id: string;
@@ -189,6 +369,10 @@ export function bulkAdminVideos(
     method: "POST",
     body: JSON.stringify({ ids, action, reason }),
   });
+}
+
+export function getAdminOperationsDashboard() {
+  return adminFetch<AdminOperationsDashboard>("/admin/operations/dashboard");
 }
 
 export function getAdminRoles() {
