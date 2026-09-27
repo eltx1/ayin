@@ -246,7 +246,52 @@ try {
           errorCode: "TEST_FAILURE",
         },
       });
-      result = { jobId: job.id };
+      result = { jobId: job.id, videoId: video.id };
+      break;
+    }
+    case "operator-action-evidence": {
+      result = {
+        jobs: await prisma.mediaProcessingJob.findMany({
+          where: { videoId: payload.videoId },
+          orderBy: { generation: "asc" },
+          select: { id: true, generation: true, status: true },
+        }),
+        audits: await prisma.adminAuditLog.findMany({
+          where: { actorAccountId: payload.accountId, action: { startsWith: "media_processing." } },
+          select: { action: true, entityId: true },
+        }),
+      };
+      break;
+    }
+    case "operator-ready-source": {
+      const job = await prisma.mediaProcessingJob.findUniqueOrThrow({
+        where: { id: payload.jobId },
+      });
+      const video = await prisma.video.findUniqueOrThrow({ where: { id: job.videoId } });
+      await prisma.mediaAsset.create({
+        data: {
+          videoId: video.id,
+          channelId: video.channelId,
+          kind: "SOURCE_VIDEO",
+          status: "VALIDATED",
+          r2ObjectKey: job.outputR2ObjectKey,
+          mimeType: "video/mp4",
+          sizeBytes: 1024n,
+          durationMs: 1000,
+          width: 640,
+          height: 360,
+        },
+      });
+      await prisma.mediaProcessingJob.update({
+        where: { id: job.id },
+        data: {
+          status: "READY",
+          stage: "READY",
+          progressPercent: 100,
+          completedAt: new Date(),
+        },
+      });
+      result = { ok: true };
       break;
     }
     case "grant-operator-role": {

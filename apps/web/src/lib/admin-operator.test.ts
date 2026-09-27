@@ -5,7 +5,9 @@ import {
   getDatabaseOperations,
   getMediaOperations,
   getAdaptiveOperations,
+  submitMediaJobAction,
 } from "./admin-operator";
+import { registerAdminVerification } from "./admin-reauthentication";
 import type { AdminRole } from "./admin-control";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -65,5 +67,63 @@ describe("operator access and requests", () => {
     await expect(getMediaOperations(new AbortController().signal)).rejects.toThrow(
       "Snapshot unavailable",
     );
+  });
+});
+
+describe("media mutations", () => {
+  it.each(["retry", "reprocess"] as const)(
+    "sends one authenticated %s to the correct entity",
+    async (action) => {
+      const fetch = vi.fn().mockResolvedValue(Response.json({ status: "QUEUED", generation: 2 }));
+      vi.stubGlobal("fetch", fetch);
+      const signal = new AbortController().signal;
+      expect(
+        await submitMediaJobAction(action, { id: "job-id", videoId: "video-id" }, signal),
+      ).toEqual({ status: "QUEUED", generation: 2 });
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(
+        expect.stringContaining(
+          action === "retry" ? "/jobs/job-id/retry" : "/videos/video-id/reprocess",
+        ),
+        { method: "POST", credentials: "include", cache: "no-store", signal },
+      );
+    },
+  );
+  it("requests step-up without automatically replaying a mutation", async () => {
+    const verify = vi.fn();
+    const unregister = registerAdminVerification(verify);
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json(
+          { error: { code: "STEP_UP_REQUIRED", message: "Verify again" } },
+          { status: 403 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetch);
+    try {
+      await expect(
+        submitMediaJobAction(
+          "retry",
+          { id: "job", videoId: "video" },
+          new AbortController().signal,
+        ),
+      ).rejects.toThrow("Verify again");
+      expect(verify).toHaveBeenCalledOnce();
+      expect(fetch).toHaveBeenCalledOnce();
+    } finally {
+      unregister();
+    }
+  });
+  it("does not retry an ambiguous network failure", async () => {
+    const fetch = vi.fn().mockRejectedValue(new TypeError("Network unavailable"));
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      submitMediaJobAction(
+        "reprocess",
+        { id: "job", videoId: "video" },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow("Network unavailable");
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });
