@@ -232,6 +232,11 @@ export function AdminOperations() {
           </Link>
         ) : null}
         {canOperate ? (
+          <Link className={styles.button} href={href("/admin/operations/warehouse")}>
+            {locale === "ar" ? "حالة تصدير البيانات" : "Data export status"}
+          </Link>
+        ) : null}
+        {canOperate ? (
           <Link className={styles.button} href={href("/admin/operations/discovery")}>
             {locale === "ar" ? "الاكتشاف والرائج" : "Discovery & trending"}
           </Link>

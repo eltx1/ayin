@@ -6,6 +6,8 @@ import { MediaModule } from "../media/media.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
 import { RecommendationModule } from "../recommendations/recommendation.module.js";
 import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
+import { WarehouseModule } from "../warehouse/warehouse.module.js";
+import { AdminWarehouseController } from "./admin-warehouse.controller.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
 import { AdminCommandCenterService } from "./admin-command-center.service.js";
@@ -42,6 +44,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
 
 @Module({
   imports: [
+    WarehouseModule,
     AuthModule,
     CreatorModule,
     MediaModule,
@@ -50,6 +53,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     VideoPolicyModule,
   ],
   controllers: [
+    AdminWarehouseController,
     AdminController,
     AdminControlController,
     AdminVideoMetadataController,

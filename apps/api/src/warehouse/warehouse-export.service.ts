@@ -269,6 +269,35 @@ export class WarehouseExportService {
     };
   }
 
+  async operatorStatus() {
+    const datasets = this.capabilities().datasets;
+    const checkpoints = await this.database.client.warehouseExportCheckpoint.findMany({
+      where: { OR: datasets },
+      take: datasets.length,
+      select: {
+        dataset: true,
+        schemaVersion: true,
+        cursorAt: true,
+        lastSucceededAt: true,
+      },
+    });
+    return {
+      configured: this.adapter.configured,
+      pageSize: configuredWarehouseExportPageSize(),
+      datasets: datasets.map(({ dataset, schemaVersion }) => {
+        const checkpoint = checkpoints.find(
+          (row) => row.dataset === dataset && row.schemaVersion === schemaVersion,
+        );
+        return {
+          dataset,
+          schemaVersion,
+          cursorAt: checkpoint?.cursorAt?.toISOString() ?? null,
+          lastSucceededAt: checkpoint?.lastSucceededAt?.toISOString() ?? null,
+        };
+      }),
+    };
+  }
+
   async exportOnce() {
     if (!this.adapter.configured) {
       return {

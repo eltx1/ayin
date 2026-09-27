@@ -50,3 +50,6 @@ Phase 2A.3c.2 bounded recovery/pause consistency merged as PR #119 (`d1c722fc`) 
 Phase 2A.3c.3 storage recovery merged as PR #121 (`03077fd1`) after quality/security and all 34 browser tests passed on `80a0175a`. Nine new PostgreSQL regressions passed within the 531-test API integration gate. Fixed false absence on storage errors, stale manifest writes, unbounded candidate materialization and lost continuation. Next: verified advanced controls, with `INCOMPLETE_HLS` selection fairness reviewed before exposing that mode. Phase 2 remains incomplete.
 
 Phase 2A.3c.4 advanced media controls merged as PR #123 (`0475932d`) after quality/security and 36 browser tests passed on `12a7b847`. Backfill, pause/resume and four reviewed recovery modes are integrated; `INCOMPLETE_HLS` remains unexposed. Phase 2B discovery evaluation/trending is in validation. Phase 2 and Phases 3–5 remain incomplete.
+
+- Product integration Phase 2B verified: PR #124 merged (`f4763ab8`); quality/security and 37 browser tests passed on `e18dfd18`, with 138 Web units and the 531-test API integration gate.
+- Phase 2C.1: sanitized warehouse status endpoint/workspace in validation. Current adapter remains disabled; no worker-health or production-readiness claim. No migration. Checkpoint tracks remaining Studio Live and later phases.
