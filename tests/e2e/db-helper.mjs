@@ -294,6 +294,68 @@ try {
       result = { ok: true };
       break;
     }
+    case "configure-adaptive-operator": {
+      const values = {
+        mediaHlsEnabled: true,
+        mediaHlsBackfillEnabled: true,
+        mediaHlsBackfillPaused: false,
+        mediaHlsBackfillBatchSize: 2,
+        mediaHlsBackfillMaxInFlight: 1,
+      };
+      for (const [key, value] of Object.entries(values)) {
+        await prisma.platformSetting.upsert({
+          where: { namespace_key: { namespace: "UPLOAD", key } },
+          create: {
+            namespace: "UPLOAD",
+            key,
+            valueType: typeof value === "boolean" ? "BOOLEAN" : "INTEGER",
+            value,
+          },
+          update: {
+            value,
+            valueType: typeof value === "boolean" ? "BOOLEAN" : "INTEGER",
+            schemaVersion: 1,
+          },
+        });
+      }
+      if (payload.videoId) {
+        const video = await prisma.video.update({
+          where: { id: payload.videoId },
+          data: { status: "PUBLISHED", visibility: "PUBLIC" },
+        });
+        await prisma.channel.update({ where: { id: video.channelId }, data: { status: "ACTIVE" } });
+      }
+      result = { ok: true };
+      break;
+    }
+    case "reset-adaptive-operator": {
+      await prisma.platformSetting.deleteMany({
+        where: {
+          namespace: "UPLOAD",
+          key: {
+            in: [
+              "mediaHlsEnabled",
+              "mediaHlsBackfillEnabled",
+              "mediaHlsBackfillPaused",
+              "mediaHlsBackfillBatchSize",
+              "mediaHlsBackfillMaxInFlight",
+            ],
+          },
+        },
+      });
+      result = { ok: true };
+      break;
+    }
+    case "adaptive-action-evidence": {
+      result = {
+        audits: await prisma.adminAuditLog.findMany({
+          where: { actorAccountId: payload.accountId, action: { startsWith: "media_adaptive." } },
+          orderBy: { createdAt: "asc" },
+          select: { action: true, metadata: true },
+        }),
+      };
+      break;
+    }
     case "grant-operator-role": {
       if (!["OPERATIONS", "SUPERADMIN"].includes(payload.role))
         throw new Error("Unsupported test operator role.");

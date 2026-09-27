@@ -11,6 +11,16 @@ import {
   type MediaJobAction,
   type MediaOperations,
 } from "@/lib/admin-operator";
+import { AdaptiveMediaActions } from "./adaptive-media-actions";
+import {
+  adaptiveLabel,
+  adaptiveDescription,
+  adaptiveFeedback,
+  submitAdaptiveAction,
+  type AdaptiveAction,
+  type AdaptiveOutcome,
+  type RecoveryMode,
+} from "@/lib/admin-adaptive-actions";
 import { useAdminAccess } from "./admin-access";
 import { OperatorSnapshot, OperatorTable } from "./operator-snapshot";
 
@@ -32,10 +42,17 @@ function MediaWorkspace() {
   const { locale, formatNumber, formatDate } = useI18n();
   const [query, setQuery] = useState("");
   const [revision, setRevision] = useState(0);
-  const [selected, setSelected] = useState<{
-    action: MediaJobAction;
-    job: MediaOperations["jobs"][number];
-  } | null>(null);
+  const [selected, setSelected] = useState<
+    | { type: "job"; action: MediaJobAction; job: MediaOperations["jobs"][number] }
+    | { type: "adaptive"; action: AdaptiveAction }
+    | null
+  >(null);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [batch, setBatch] = useState("2");
+  const [mode, setMode] = useState<RecoveryMode>("STALE_PROCESSING");
+  const [continuations, setContinuations] = useState<
+    Partial<Record<RecoveryMode, AdaptiveOutcome["continuation"]>>
+  >({});
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ error: boolean; message: string } | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -63,15 +80,26 @@ function MediaWorkspace() {
     // The original operation is never replayed after verification.
     close();
     try {
-      const outcome = await submitMediaJobAction(target.action, target.job, controller.signal);
-      if (!controller.signal.aborted)
-        setFeedback({
-          error: false,
-          message: text(
-            `${target.job.video.title}: generation ${outcome.generation} queued. The action was audited; processing is not complete.`,
-            `${target.job.video.title}: أُدرج الجيل ${formatNumber(outcome.generation)} في الطابور وسُجّل الإجراء للتدقيق. لم تكتمل المعالجة بعد.`,
-          ),
-        });
+      if (target.type === "adaptive") {
+        const outcome = await submitAdaptiveAction(target.action, controller.signal);
+        if (!controller.signal.aborted) {
+          setFeedback({ error: false, message: adaptiveFeedback(outcome, ar) });
+          if (target.action.kind === "recovery" && outcome.continuation) {
+            const recoveryMode = target.action.mode;
+            setContinuations((current) => ({ ...current, [recoveryMode]: outcome.continuation }));
+          }
+        }
+      } else {
+        const outcome = await submitMediaJobAction(target.action, target.job, controller.signal);
+        if (!controller.signal.aborted)
+          setFeedback({
+            error: false,
+            message: text(
+              `${target.job.video.title}: generation ${outcome.generation} queued. The action was audited; processing is not complete.`,
+              `${target.job.video.title}: أُدرج الجيل ${formatNumber(outcome.generation)} في الطابور وسُجّل الإجراء للتدقيق. لم تكتمل المعالجة بعد.`,
+            ),
+          });
+      }
     } catch (cause) {
       if (!controller.signal.aborted)
         setFeedback({
@@ -114,24 +142,35 @@ function MediaWorkspace() {
         }}
       >
         <h2 id="media-action-title">
-          {selected?.action === "retry"
-            ? text("Retry processing", "إعادة محاولة المعالجة")
-            : text("Reprocess video", "إعادة معالجة الفيديو")}
+          {selected?.type === "adaptive"
+            ? adaptiveLabel(selected.action, ar)
+            : selected?.action === "retry"
+              ? text("Retry processing", "إعادة محاولة المعالجة")
+              : text("Reprocess video", "إعادة معالجة الفيديو")}
         </h2>
-        <p>
-          <bdi>{selected?.job.video.title}</bdi> — {text("Generation", "الجيل")}{" "}
-          {selected ? formatNumber(selected.job.generation) : ""}
-        </p>
+        {selected?.type === "job" ? (
+          <p>
+            <bdi>{selected.job.video.title}</bdi> — {text("Generation", "الجيل")}{" "}
+            {formatNumber(selected.job.generation)}
+          </p>
+        ) : selected?.type === "adaptive" && "batchSize" in selected.action ? (
+          <p>
+            {text("Maximum items", "الحد الأقصى للعناصر")}:{" "}
+            {formatNumber(selected.action.batchSize)}
+          </p>
+        ) : null}
         <p id="media-action-description">
-          {selected?.action === "retry"
-            ? text(
-                "Queue this failed generation again. The server rejects obsolete generations or another active job. This action is audited.",
-                "إعادة إدراج هذا الجيل الفاشل في الطابور. يرفض الخادم الأجيال القديمة أو وجود مهمة نشطة أخرى. يُسجّل الإجراء للتدقيق.",
-              )
-            : text(
-                "Create a new processing generation from the validated playback source. This uses processing capacity and storage. The server checks source availability and active jobs. This action is audited.",
-                "إنشاء جيل معالجة جديد من مصدر التشغيل المعتمد. يستهلك ذلك سعة معالجة وتخزين. يتحقق الخادم من توفر المصدر والمهام النشطة. يُسجّل الإجراء للتدقيق.",
-              )}
+          {selected?.type === "adaptive"
+            ? adaptiveDescription(selected.action, ar)
+            : selected?.action === "retry"
+              ? text(
+                  "Queue this failed generation again. The server rejects obsolete generations or another active job. This action is audited.",
+                  "إعادة إدراج هذا الجيل الفاشل في الطابور. يرفض الخادم الأجيال القديمة أو وجود مهمة نشطة أخرى. يُسجّل الإجراء للتدقيق.",
+                )
+              : text(
+                  "Create a new processing generation from the validated playback source. This uses processing capacity and storage. The server checks source availability and active jobs. This action is audited.",
+                  "إنشاء جيل معالجة جديد من مصدر التشغيل المعتمد. يستهلك ذلك سعة معالجة وتخزين. يتحقق الخادم من توفر المصدر والمهام النشطة. يُسجّل الإجراء للتدقيق.",
+                )}
         </p>
         <div className={styles.actions}>
           <button className={styles.button} type="button" onClick={close}>
@@ -143,7 +182,9 @@ function MediaWorkspace() {
             disabled={busy || !selected}
             onClick={() => void submit()}
           >
-            {text("Confirm and queue", "تأكيد وإدراج في الطابور")}
+            {selected?.type === "adaptive"
+              ? text("Confirm action", "تأكيد الإجراء")
+              : text("Confirm and queue", "تأكيد وإدراج في الطابور")}
           </button>
         </div>
       </dialog>
@@ -313,7 +354,7 @@ function MediaWorkspace() {
                                   className={styles.button}
                                   type="button"
                                   disabled={busy}
-                                  onClick={() => setSelected({ action: "retry", job })}
+                                  onClick={() => setSelected({ type: "job", action: "retry", job })}
                                 >
                                   {text("Retry processing", "إعادة محاولة المعالجة")}
                                 </button>
@@ -322,7 +363,9 @@ function MediaWorkspace() {
                                 className={styles.button}
                                 type="button"
                                 disabled={busy}
-                                onClick={() => setSelected({ action: "reprocess", job })}
+                                onClick={() =>
+                                  setSelected({ type: "job", action: "reprocess", job })
+                                }
                               >
                                 {text("Reprocess video", "إعادة معالجة الفيديو")}
                               </button>
@@ -346,6 +389,21 @@ function MediaWorkspace() {
             </section>
             <section className={styles.operatorSection} aria-labelledby="adaptive-title">
               <h2 id="adaptive-title">{text("Adaptive HLS rollout", "طرح HLS التكيفي")}</h2>
+              <AdaptiveMediaActions
+                open={maintenanceOpen}
+                setOpen={setMaintenanceOpen}
+                controls={adaptive.controls}
+                superadmin={session?.roles.includes("SUPERADMIN") ?? false}
+                busy={busy}
+                ar={ar}
+                batch={batch}
+                setBatch={setBatch}
+                mode={mode}
+                setMode={setMode}
+                continuation={continuations[mode]}
+                resetScan={() => setContinuations((current) => ({ ...current, [mode]: undefined }))}
+                select={(action) => setSelected({ type: "adaptive", action })}
+              />
               <dl className={styles.operatorFacts}>
                 {[
                   [text("Generation", "إنشاء النسخ"), state(adaptive.controls.generationEnabled)],
