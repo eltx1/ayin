@@ -254,6 +254,126 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(full.json().nextCursor).toBeNull();
   });
 
+  it("fills recent pages from policy-eligible videos before computing look-ahead", async () => {
+    const viewer = await register("Policy paging", "policy-paging@example.com");
+    await prisma.homeRowConfig.update({ where: { key: "new-on-ayin" }, data: { maxItems: 100 } });
+    const now = Date.now();
+    const visible: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const video = await publishVideo(
+        viewer.user.channel.id,
+        `Policy video ${i}`,
+        new Date(now - i * 1000),
+      );
+      if (i % 3 === 2) visible.push(video.id);
+      else
+        await prisma.videoPolicy.create({
+          data: {
+            videoId: video.id,
+            ...(i % 3 === 0
+              ? { rightsExpiresAt: new Date(now - 60_000) }
+              : { allowedTerritories: ["DE"] }),
+          },
+        });
+    }
+    const first = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=2",
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().items.map((item: { id: string }) => item.id)).toEqual(visible.slice(0, 2));
+    expect(first.json().availability).toBe("AVAILABLE");
+    expect(first.json().nextCursor).toBeTruthy();
+    const second = await app.inject({
+      method: "GET",
+      url: `/public/discovery/rows/new-on-ayin?limit=2&cursor=${first.json().nextCursor}`,
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().items.map((item: { id: string }) => item.id)).toEqual(visible.slice(2));
+    expect(second.json().nextCursor).toBeNull();
+  });
+
+  it("reports an empty row when policy excludes all candidates", async () => {
+    const viewer = await register("Unavailable row", "unavailable-row@example.com");
+    for (let i = 0; i < 3; i += 1) {
+      const video = await publishVideo(viewer.user.channel.id, `Unavailable ${i}`);
+      await prisma.videoPolicy.create({ data: { videoId: video.id, blockedTerritories: ["DE"] } });
+    }
+    const response = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=1",
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ items: [], availability: "EMPTY", nextCursor: null });
+  });
+
+  it("ends row cursors at maxItems in both home and paged responses", async () => {
+    const viewer = await register("Capped row", "capped-row@example.com");
+    await prisma.homeRowConfig.update({ where: { key: "new-on-ayin" }, data: { maxItems: 2 } });
+    for (let i = 0; i < 4; i += 1)
+      await publishVideo(viewer.user.channel.id, `Capped ${i}`, new Date(Date.now() - i * 1000));
+    const home = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    const row = home.json().rows.find((row: { key: string }) => row.key === "new-on-ayin");
+    expect(row.items).toHaveLength(2);
+    expect(row.nextCursor).toBeNull();
+    const first = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=1",
+    });
+    expect(first.json().nextCursor).toBeTruthy();
+    const second = await app.inject({
+      method: "GET",
+      url: `/public/discovery/rows/new-on-ayin?limit=1&cursor=${first.json().nextCursor}`,
+    });
+    expect(second.json().items).toHaveLength(1);
+    expect(second.json().nextCursor).toBeNull();
+  });
+
+  it("fills Kids rows without allowing overrides to bypass classification", async () => {
+    const viewer = await register("Kids paging", "kids-paging@example.com");
+    const now = Date.now();
+    const eligible: string[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const video = await publishVideo(
+        viewer.user.channel.id,
+        `Kids candidate ${i}`,
+        new Date(now - i * 1000),
+      );
+      if (i >= 3) {
+        await prisma.videoPolicy.create({
+          data: {
+            videoId: video.id,
+            kidsEligible: true,
+            maturityLevel: "GENERAL",
+            ageRestriction: "NONE",
+          },
+        });
+        eligible.push(video.id);
+      } else {
+        await prisma.videoPolicyOverride.create({
+          data: {
+            videoId: video.id,
+            disposition: "FORCE_ALLOW",
+            reason: "Cannot bypass Kids classification",
+            actorAccountId: viewer.user.account.id,
+          },
+        });
+      }
+    }
+    const response = await app.inject({
+      method: "GET",
+      url: "/public/discovery/kids/rows/new-on-ayin?limit=2",
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items.map((item: { id: string }) => item.id)).toEqual(
+      eligible.slice(0, 2),
+    );
+    expect(
+      response.json().items.every((item: { href: string }) => item.href.endsWith("?kids=1")),
+    ).toBe(true);
+    expect(response.json().nextCursor).toBeTruthy();
+  });
+
   it("builds My AYIN from the selected profile and rejects cross-account profile access", async () => {
     const owner = await register("Library Owner", "task12-owner@example.com");
     const stranger = await register("Other Viewer", "task12-other@example.com");

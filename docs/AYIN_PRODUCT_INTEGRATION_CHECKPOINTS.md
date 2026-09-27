@@ -413,3 +413,18 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Request scope: one initial MFA status read, explicit refresh/focus refresh and post-mutation status reconciliation; no additional auth/me fetch and no polling. One mutation at a time with no automatic replay; browser test measures initial status count and a single delayed replacement POST. No production latency claim.
 
 - Local full production build passed (packages, API and Web; 65 static pages), with the previously known Edge stdout/stderr instrumentation warnings. Common factor/policy/rate-limit errors are localized. Final CI remains mandatory; no local browser/database execution claimed.
+
+- Phase 2G.4 accepted: final head `0f2960685bd0dc6312e362e76b0cbf72cb2cb6a0` passed quality `36355945353`, security `36355945377` and browser `36355945355`: 568 API integration-gate tests in 135 files (137.39s), 364 API units, 158 Web tests, four migration tests and all 46 browser tests (4.3 minutes). Formatting, lint, types and production builds passed. PR #134 merged with expected-head protection; ending main SHA `753ab2a5cda619edd8f9281e99de2662a0e7e59d`.
+
+## Phase 2H.1 — discovery availability before pagination, in progress
+
+- Starting SHA: `753ab2a5cda619edd8f9281e99de2662a0e7e59d`; checkpoint read and accepted main fetched.
+- Findings: recent video rows apply rights/territory/Kids policy after LIMIT and look-ahead, producing sparse or empty pages and inconsistent availability. Row cursors can exceed maxItems. Current Trending controller replaces legacy ranking with a separate policy-filtered implementation; do not conflate those paths. Policy tables intentionally have no Video ORM relation.
+- Changes: test-first recent-row/row-cap regressions; production fix pending reproduction. Keep explicit policy precedence, hard Kids boundary and post-query defense.
+- Migrations: none planned.
+- Tests added/executed: pending; previous phase counts are not acceptance.
+- Performance measurements: require bounded candidate/card results, no per-item policy queries or full catalog materialization; PostgreSQL plan/fixture measurement pending.
+- Remaining issues: My AYIN/history, manual mixed-entity and legacy ranked pagination require separate review; remaining Phase 2 and Phases 3–5 incomplete.
+- External blockers: no local PostgreSQL/Chromium; CI provides database/browser evidence. Production/provider/device measurements remain separate.
+- Next: reproduce recent-row/cap behavior, fix root cause, full gates and checkpoint.
+- Rollback: no schema or stored-state changes; retain policy enforcement if reverting query changes.
