@@ -132,6 +132,7 @@ export class MfaService {
           accountId: payload.sub,
           status: "PENDING",
           version: credentialVersion,
+          encryptedSecret: credential.encryptedSecret,
           pendingExpiresAt: { gt: now },
         },
         data: {
@@ -143,10 +144,13 @@ export class MfaService {
         },
       });
       if (result.count !== 1) return false;
-      await tx.account.update({
-        where: { id: payload.sub },
+      const account = await tx.account.updateMany({
+        where: { id: payload.sub, authVersion: payload.av, status: "ACTIVE" },
         data: { authVersion: { increment: 1 } },
       });
+      // Throw inside the transaction so the credential change also rolls back.
+      if (account.count !== 1)
+        throw conflict("MFA_ENROLLMENT_CHANGED", "The account changed during MFA enrollment.");
       await tx.accountSession.updateMany({
         where: { accountId: payload.sub, revokedAt: null },
         data: { revokedAt: now, revokeReason: "MFA_ENABLED" },
@@ -341,25 +345,35 @@ export class MfaService {
     const version = (existing?.version ?? 0) + 1;
     const pendingExpiresAt = new Date(Date.now() + pendingTtlMs);
     await this.database.client.$transaction(async (tx) => {
-      await tx.accountMfaCredential.upsert({
-        where: { accountId },
-        create: {
-          accountId,
-          encryptedSecret: this.crypto.encrypt(secret),
-          version,
-          pendingExpiresAt,
-        },
-        update: {
-          encryptedSecret: this.crypto.encrypt(secret),
-          status: "PENDING",
-          version,
-          pendingExpiresAt,
-          enabledAt: null,
-          lastUsedCounter: null,
-          recoveryCodeHashes: [],
-          recoveryCodesGeneratedAt: null,
-        },
-      });
+      const data = {
+        encryptedSecret: this.crypto.encrypt(secret),
+        version,
+        pendingExpiresAt,
+      };
+      // Compare the observed pending credential. A delayed restart must not
+      // overwrite a confirmed enrollment or another request's replacement.
+      const result = existing
+        ? await tx.accountMfaCredential.updateMany({
+            where: {
+              accountId,
+              status: "PENDING",
+              version: existing.version,
+              encryptedSecret: existing.encryptedSecret,
+            },
+            data: {
+              ...data,
+              enabledAt: null,
+              lastUsedCounter: null,
+              recoveryCodeHashes: [],
+              recoveryCodesGeneratedAt: null,
+            },
+          })
+        : await tx.accountMfaCredential.createMany({
+            data: { accountId, ...data },
+            skipDuplicates: true,
+          });
+      if (result.count !== 1)
+        throw conflict("MFA_ENROLLMENT_CHANGED", "MFA enrollment changed. Start again.");
       await this.audit(tx, accountId, "auth.mfa_enrollment_started", accountId);
     });
     const provisioningUri = buildTotpProvisioningUri(account.email, secret);
