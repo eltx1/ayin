@@ -32,7 +32,10 @@ test("service observability keeps SUPERADMIN scope and distinguishes sampled, hi
   const { user } = await registration.json();
   await enrollMfa(page.request);
   for (const role of ["OPERATIONS", "ADMIN"]) {
-    db("grant-operator-role", { accountId: user.account.id, role });
+    db(role === "ADMIN" ? "grant-admin" : "grant-operator-role", {
+      accountId: user.account.id,
+      role,
+    });
     expect((await page.request.get(`${API}/admin/observability`)).status()).toBe(403);
   }
   await page.goto("/admin/operations/observability");

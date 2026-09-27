@@ -413,8 +413,9 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await mockPreroll(page, fixture);
     await page.goto(`/watch/${fixture.slug}`);
 
-    const start = page.getByRole("button", { name: "Play video" }).last();
+    const start = page.locator('button[aria-label="Play video"][data-tv-focusable="true"]');
     await expect(start).toBeVisible();
+    await expect(start).toBeEnabled();
     expect((await harnessState(page)).imaStarted).toBe(0);
     await start.click();
     await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
