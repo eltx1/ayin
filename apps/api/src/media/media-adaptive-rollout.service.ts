@@ -380,19 +380,6 @@ export class MediaAdaptiveRolloutService {
     }
 
     if (mode === "INCOMPLETE_HLS") {
-      const rows = await this.database.client.mediaPlaybackGeneration.findMany({
-        where: {
-          status: { in: ["BUILDING", "FAILED"] },
-          updatedAt: { lt: new Date(Date.now() - RECOVERY_STALE_MS) },
-        },
-        orderBy: { updatedAt: "asc" },
-        take: Math.min(batchSize * 4, RECOVERY_SCAN_MAX_ROWS),
-        select: { id: true, videoId: true },
-      });
-      const uniqueRows = rows.filter(
-        (row, index, all) =>
-          all.findIndex((candidate) => candidate.videoId === row.videoId) === index,
-      );
       return this.database.client.$transaction(async (tx) => {
         await this.lockBackfill(tx);
         const current = await this.controls(tx);
@@ -400,26 +387,75 @@ export class MediaAdaptiveRolloutService {
           return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
         }
         const availableSlots = await this.availableBackfillSlots(tx, current.maxInFlight);
+        const limit = Math.min(batchSize, availableSlots);
+        const staleBefore = new Date(Date.now() - RECOVERY_STALE_MS);
+        // Eligibility and latest-generation selection precede LIMIT. Old blocked
+        // videos and duplicate historical generations must not consume the batch.
+        const rows =
+          limit === 0
+            ? []
+            : await tx.$queryRaw<
+                Array<{
+                  id: string;
+                  videoId: string;
+                  generation: number;
+                  updatedAt: Date;
+                }>
+              >`
+          SELECT g."id", g."videoId", g."generation", g."updatedAt"
+          FROM "MediaPlaybackGeneration" g
+          JOIN "Video" v ON v.id = g."videoId"
+          JOIN "Channel" c ON c.id = v."channelId"
+          WHERE g.status IN ('BUILDING', 'FAILED') AND g."updatedAt" < ${staleBefore}
+            AND v.status = 'PUBLISHED' AND v.visibility <> 'PRIVATE' AND v."removedAt" IS NULL
+            AND c.status = 'ACTIVE' AND c."removedAt" IS NULL
+            AND EXISTS (SELECT 1 FROM "MediaAsset" a WHERE a."videoId" = v.id
+              AND a.kind = 'SOURCE_VIDEO' AND a.status = 'VALIDATED'
+              AND a."mimeType" = 'video/mp4' AND a."removedAt" IS NULL)
+            AND NOT EXISTS (SELECT 1 FROM "MediaPlaybackGeneration" newer
+              WHERE newer."videoId" = v.id AND newer.generation > g.generation)
+            AND NOT EXISTS (SELECT 1 FROM "MediaProcessingJob" newer
+              WHERE newer."videoId" = v.id AND newer.generation > g.generation)
+            AND NOT EXISTS (SELECT 1 FROM "MediaProcessingJob" active
+              WHERE active."videoId" = v.id AND active.status IN
+                ('INGESTING', 'QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
+            AND NOT EXISTS (SELECT 1 FROM "MediaPlaybackGeneration" ready
+              WHERE ready."videoId" = v.id AND ready.status = 'READY'
+                AND ready."fallbackStatus" = 'READY' AND ready."hlsMasterStatus" = 'READY'
+                AND EXISTS (SELECT 1 FROM "MediaPlaybackRendition" r
+                  WHERE r."playbackGenerationId" = ready.id AND r.status = 'READY' AND r.protocol = 'HLS'))
+          ORDER BY g."updatedAt", g.id LIMIT ${limit}
+        `;
         let requeued = 0;
-        for (const row of uniqueRows) {
-          if (requeued >= Math.min(batchSize, availableSlots)) break;
+        for (const row of rows) {
+          await lockMediaGeneration(tx, row.videoId);
+          // Fence the observed row even against writers that do not take the
+          // advisory lock. A changed/touched generation is reconsidered later.
+          const unchanged = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT id FROM "MediaPlaybackGeneration"
+            WHERE id = ${row.id}::uuid AND status IN ('BUILDING', 'FAILED')
+              AND generation = ${row.generation} AND "updatedAt" = ${row.updatedAt}
+            FOR UPDATE
+          `;
+          if (!unchanged.length || (await hasNewerMediaGeneration(tx, row))) continue;
           const job = await this.lifecycle.createAdaptiveBackfillJob(tx, row.videoId);
           if (!job) continue;
-          requeued += 1;
-          await tx.mediaPlaybackGeneration.updateMany({
-            where: { id: row.id, status: { in: ["BUILDING", "FAILED"] } },
-            data: { status: "SUPERSEDED" },
+          await tx.mediaPlaybackGeneration.update({
+            where: { id: row.id },
+            data: { status: "SUPERSEDED", supersededAt: new Date() },
           });
+          requeued += 1;
         }
         await this.auditMutation(tx, actorAccountId, "media_adaptive.recovery", {
           mode,
           requestedBatchSize: requestedBatchSize ?? null,
-          detected: uniqueRows.length,
+          detected: rows.length,
           requeued,
+          ...(availableSlots === 0 ? { reason: "IN_FLIGHT_LIMIT" } : {}),
         });
         return {
           mode,
-          detected: uniqueRows.length,
+          detected: rows.length,
           requeued,
           ...(availableSlots === 0 ? { reason: "IN_FLIGHT_LIMIT" as const } : {}),
         };

@@ -65,6 +65,28 @@ describe("advanced media action contracts", () => {
       },
     );
   });
+  it("accepts bounded incomplete recovery without inventing a scan cursor", async () => {
+    const action: AdaptiveAction = { kind: "recovery", mode: "INCOMPLETE_HLS", batchSize: 2 };
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(Response.json({ mode: "INCOMPLETE_HLS", detected: 2, requeued: 1 }));
+    vi.stubGlobal("fetch", fetch);
+    expect(await submitAdaptiveAction(action, new AbortController().signal)).toEqual({
+      audited: true,
+      detected: 2,
+      queued: 1,
+    });
+    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({
+      mode: "INCOMPLETE_HLS",
+      batchSize: 2,
+    });
+    expect(() =>
+      readAdaptiveOutcome(action, { mode: "INCOMPLETE_HLS", detected: 1, requeued: 2 }),
+    ).toThrow();
+    expect(() =>
+      readAdaptiveOutcome(action, { mode: "INCOMPLETE_HLS", detected: 3, requeued: 1 }),
+    ).toThrow();
+  });
   it.each([0, 21, 1.5, NaN])("rejects invalid batch %s before sending", async (batchSize) => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);

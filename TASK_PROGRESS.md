@@ -56,3 +56,6 @@ Phase 2A.3c.4 advanced media controls merged as PR #123 (`0475932d`) after quali
 
 - Phase 2C.1 verified: PR #125 merged (`bc0fc5fc`), full quality/security and all 38 browser tests passed; API integration gate 533 tests.
 - Phase 2C.2 Studio Live request/credential reliability and audited chat controls in validation; no migrations or real provider readiness claim.
+
+- Phase 2C.2 verified: PR #126 merged (`be01beeb`), all gates and 40 browser tests passed on `579ba562`.
+- Phase 2D: incomplete HLS candidate selection/locking and reviewed operator control in validation; seven new database scenarios plus browser acceptance, no migration.

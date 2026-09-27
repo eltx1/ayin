@@ -1,10 +1,10 @@
 import { apiBaseUrl } from "./api";
 import { readAdminApiError } from "./admin-reauthentication";
 
-// INCOMPLETE_HLS stays unexposed until candidate-selection fairness is verified.
 export const recoveryModes = [
   "STALE_PROCESSING",
   "FAILED_BACKFILL",
+  "INCOMPLETE_HLS",
   "DB_MANIFEST_MISSING",
   "VERIFIED_HLS_MISSING_DB",
 ] as const;
@@ -74,6 +74,12 @@ export function readAdaptiveOutcome(action: AdaptiveAction, value: unknown): Ada
     if (recovered !== queued + failed) throw invalidResult();
     return { ...result, recovered, queued, failed };
   }
+  if (action.mode === "INCOMPLETE_HLS") {
+    const detected = count("detected"),
+      queued = count("requeued");
+    if (queued > detected || detected > action.batchSize) throw invalidResult();
+    return { ...result, detected, queued };
+  }
   const cursor = data.nextCursor;
   if (cursor !== null && (typeof cursor !== "string" || !uuid.test(cursor))) throw invalidResult();
   const hasMore = action.mode === "VERIFIED_HLS_MISSING_DB" ? data.hasMore : cursor !== null;
@@ -133,6 +139,7 @@ export function adaptiveLabel(action: AdaptiveAction, ar: boolean): string {
   const labels: Record<RecoveryMode, [string, string]> = {
     STALE_PROCESSING: ["Recover expired processing", "استعادة المعالجة منتهية المهلة"],
     FAILED_BACKFILL: ["Retry failed conversions", "إعادة محاولة التحويلات الفاشلة"],
+    INCOMPLETE_HLS: ["Recover incomplete adaptive playback", "استعادة التشغيل التكيفي غير المكتمل"],
     DB_MANIFEST_MISSING: ["Check missing playback files", "فحص ملفات التشغيل المفقودة"],
     VERIFIED_HLS_MISSING_DB: [
       "Reconcile unregistered playback",
@@ -174,6 +181,10 @@ export function adaptiveDescription(action: AdaptiveAction, ar: boolean): string
     return ar
       ? "إعادة إدراج التحويلات الفاشلة المؤهلة ضمن حد السعة الحالي."
       : "Requeue eligible failed conversions within the current capacity limit.";
+  if (action.mode === "INCOMPLETE_HLS")
+    return ar
+      ? "إدراج جيل جديد لأحدث عمليات التشغيل غير المكتملة التي مضى عليها عشر دقائق وكانت مؤهلة. تُستبعد الأجيال القديمة والعمل الجاري قبل تحديد الدفعة. تُحفظ نسخة MP4 وتبقى حدود السعة سارية."
+      : "Queue a new generation for eligible latest incomplete playback older than ten minutes. Obsolete generations and active work are excluded before limiting the batch. The MP4 source is preserved and capacity limits still apply.";
   if (action.mode === "DB_MANIFEST_MISSING")
     return ar
       ? "فحص حتى 250 سجل تشغيل. يُسجّل الملف المؤكد فقدانه أو فراغه كغير جاهز، وتُدرج إعادة المعالجة إذا توفرت السعة. تعذّر التحقق من التخزين يوقف العملية دون تعديل."
@@ -200,6 +211,12 @@ export function adaptiveFeedback(result: AdaptiveOutcome, ar: boolean): string {
       ar
         ? `فُحص ${result.scanned} سجلًا؛ رُصد ${result.detected}.`
         : `Scanned ${result.scanned}; detected ${result.detected}.`,
+    );
+  if (result.detected !== undefined && result.scanned === undefined)
+    parts.push(
+      ar
+        ? `اختير ${result.detected} من الأجيال المؤهلة لهذه الدفعة.`
+        : `Selected ${result.detected} eligible generations for this batch.`,
     );
   if (result.queued !== undefined)
     parts.push(
