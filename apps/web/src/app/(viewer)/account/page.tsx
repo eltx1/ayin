@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { AccountOverview } from "@/components/account/account-overview";
 import { AccountPrivacyControls } from "@/components/account/account-privacy-controls";
 import { AccountRevenue } from "@/components/account/account-revenue";
-import { AccountSecuritySessions } from "@/components/account/account-security-sessions";
+import { AccountSecurityWorkspace } from "@/components/account/account-security-workspace";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { translate } from "@/lib/i18n/translator";
 
@@ -26,7 +26,7 @@ export default async function AccountPage() {
       </header>
 
       <AccountOverview />
-      <AccountSecuritySessions />
+      <AccountSecurityWorkspace />
       <AccountPrivacyControls />
 
       <div className={styles.sectionHeading}>

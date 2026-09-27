@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Inject,
@@ -16,7 +17,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ZodType } from "zod";
 
 import { AuthConfig } from "./auth.config.js";
-import { badRequest } from "./auth.errors.js";
+import { badRequest, conflict, unauthorized } from "./auth.errors.js";
 import { AuthGuard, type AuthenticatedRequest } from "./auth.guard.js";
 import { AuthRateLimiter } from "./auth-rate-limiter.js";
 import { AuthService } from "./auth.service.js";
@@ -38,7 +39,12 @@ import {
 import { z } from "zod";
 
 const challengeStartSchema = z.object({ challengeToken: z.string().min(32).max(2_048) }).strict();
-const authenticatedEnrollmentSchema = z.object({ password: z.string().min(1).max(128) }).strict();
+const authenticatedEnrollmentSchema = z
+  .object({
+    password: z.string().min(1).max(128),
+    expectedAccountId: z.uuid().optional(),
+  })
+  .strict();
 const enrollmentVerifySchema = z
   .object({ enrollmentToken: z.string().min(32).max(2_048), code: z.string().regex(/^\d{6}$/) })
   .strict();
@@ -65,7 +71,11 @@ const stepUpSchema = z
   })
   .strict();
 const recoveryRegenerateSchema = z
-  .object({ password: z.string().min(1).max(128), code: z.string().regex(/^\d{6}$/) })
+  .object({
+    password: z.string().min(1).max(128),
+    code: z.string().regex(/^\d{6}$/),
+    expectedAccountId: z.uuid().optional(),
+  })
   .strict();
 const sessionIdSchema = z.uuid();
 
@@ -117,6 +127,7 @@ export class AuthController {
   }
 
   @Post("mfa/enrollment/start")
+  @Header("Cache-Control", "private, no-store")
   async startEnrollment(@Body() body: unknown, @Req() request: FastifyRequest) {
     const input = parseBody(challengeStartSchema, body);
     const subject = this.mfa.challengeSubject(input.challengeToken, "enroll");
@@ -125,14 +136,17 @@ export class AuthController {
   }
 
   @Post("mfa/enrollment/start-authenticated")
+  @Header("Cache-Control", "private, no-store")
   @UseGuards(AuthGuard)
   async startAuthenticatedEnrollment(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     const input = parseBody(authenticatedEnrollmentSchema, body);
+    this.assertMfaAccount(request, input.expectedAccountId);
     this.rateLimiter.consumeMfa("mfa-enrollment", request.ayinAuth.accountId);
     return this.mfa.beginAuthenticatedEnrollment(request.ayinAuth.accountId, input.password);
   }
 
   @Post("mfa/enrollment/verify")
+  @Header("Cache-Control", "private, no-store")
   @HttpCode(HttpStatus.OK)
   async verifyEnrollment(
     @Req() request: FastifyRequest,
@@ -153,7 +167,28 @@ export class AuthController {
     );
   }
 
+  @Post("mfa/enrollment/verify-authenticated")
+  @Header("Cache-Control", "private, no-store")
+  @UseGuards(AuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async verifyAuthenticatedEnrollment(
+    @Req() request: AuthenticatedRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+    @Body() body: unknown,
+  ) {
+    const input = parseBody(enrollmentVerifySchema.extend({ expectedAccountId: z.uuid() }), body);
+    this.rateLimiter.consumeMfa("mfa-enrollment-verify-account", request.ayinAuth.accountId);
+    this.assertMfaAccount(request, input.expectedAccountId);
+    if (this.mfa.enrollmentSubject(input.enrollmentToken) !== request.ayinAuth.accountId)
+      throw unauthorized("The MFA enrollment request is invalid or belongs to another account.");
+    return this.verifyEnrollment(request, reply, {
+      enrollmentToken: input.enrollmentToken,
+      code: input.code,
+    });
+  }
+
   @Post("mfa/challenge")
+  @Header("Cache-Control", "private, no-store")
   @HttpCode(HttpStatus.OK)
   async challenge(
     @Req() request: FastifyRequest,
@@ -178,12 +213,14 @@ export class AuthController {
   }
 
   @Get("mfa/status")
+  @Header("Cache-Control", "private, no-store")
   @UseGuards(AuthGuard)
   status(@Req() request: AuthenticatedRequest) {
     return this.mfa.status(request.ayinAuth.accountId);
   }
 
   @Post("mfa/step-up")
+  @Header("Cache-Control", "private, no-store")
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.OK)
   async stepUp(
@@ -203,15 +240,18 @@ export class AuthController {
   }
 
   @Post("mfa/recovery-codes/regenerate")
+  @Header("Cache-Control", "private, no-store")
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.OK)
   regenerateRecoveryCodes(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     const input = parseBody(recoveryRegenerateSchema, body);
+    this.assertMfaAccount(request, input.expectedAccountId);
     this.rateLimiter.consumeMfa("mfa-recovery-regenerate", request.ayinAuth.accountId);
     return this.mfa.regenerateRecoveryCodes(request.ayinAuth.accountId, input.password, input.code);
   }
 
   @Post("mfa/disable")
+  @Header("Cache-Control", "private, no-store")
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.OK)
   async disableMfa(
@@ -220,6 +260,7 @@ export class AuthController {
     @Body() body: unknown,
   ) {
     const input = parseBody(recoveryRegenerateSchema, body);
+    this.assertMfaAccount(request, input.expectedAccountId);
     this.rateLimiter.consumeMfa("mfa-disable", request.ayinAuth.accountId);
     const result = await this.mfa.disable(request.ayinAuth.accountId, input.password, input.code);
     reply.header("set-cookie", buildClearedSessionCookie(this.authConfig));
@@ -305,11 +346,17 @@ export class AuthController {
     return { reset: true };
   }
 
+  private assertMfaAccount(request: AuthenticatedRequest, expectedAccountId?: string) {
+    if (expectedAccountId && request.ayinAuth.accountId !== expectedAccountId)
+      throw conflict("ACCOUNT_CHANGED", "Your signed-in account changed. Reload this page.");
+  }
+
   private finishSession(
     request: FastifyRequest,
     reply: FastifyReply,
     result: Awaited<ReturnType<AuthService["login"]>>,
   ) {
+    reply.header("cache-control", "private, no-store");
     if ("mfaRequired" in result) return result;
     if (wantsBearerToken(request)) {
       return {
@@ -332,6 +379,7 @@ export class AuthController {
     token: string,
     response: Record<string, unknown>,
   ) {
+    reply.header("cache-control", "private, no-store");
     if (wantsBearerToken(request)) return { ...response, sessionToken: token };
     reply.header("set-cookie", buildSessionCookie(token, this.authConfig));
     return response;

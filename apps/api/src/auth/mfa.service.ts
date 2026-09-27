@@ -84,6 +84,7 @@ export class MfaService {
       }),
     ]);
     return {
+      accountId,
       enabled: credential?.status === "ENABLED",
       required: roles.some(({ role }) => privilegedRoles.has(role)),
       enabledAt: credential?.status === "ENABLED" ? credential.enabledAt : null,
@@ -264,7 +265,7 @@ export class MfaService {
         recoveryCodeCount: recoveryCodes.length,
       });
     });
-    return { recoveryCodes };
+    return { accountId, recoveryCodes };
   }
 
   async disable(accountId: string, password: string, code: string) {
@@ -405,6 +406,7 @@ export class MfaService {
     });
     const provisioningUri = buildTotpProvisioningUri(account.email, secret);
     return {
+      accountId,
       secret,
       provisioningUri,
       qrCodeDataUrl: await QRCode.toDataURL(provisioningUri, {
