@@ -15,6 +15,11 @@ import {
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
+import {
+  hasActiveMediaJob,
+  hasNewerMediaGeneration,
+  lockMediaGeneration,
+} from "./media-generation-safety.js";
 
 const ACTIVE_PROCESSING = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
 const ACTIVE_OR_QUEUED = ["QUEUED", ...ACTIVE_PROCESSING] as const;
@@ -131,6 +136,19 @@ export class MediaAdaptiveRolloutService {
     };
   }
 
+  async failedRetryBlockReasonInTransaction(tx: Prisma.TransactionClient) {
+    // Same ordering/capacity boundary as batch recovery, before the video lock.
+    await this.lockBackfill(tx);
+    const controls = await this.controls();
+    if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {
+      return "BACKFILL_DISABLED_OR_PAUSED" as const;
+    }
+    if ((await this.availableBackfillSlots(tx, controls.maxInFlight)) === 0) {
+      return "IN_FLIGHT_LIMIT" as const;
+    }
+    return null;
+  }
+
   async enqueueBatch(requestedBatchSize?: number, actorAccountId?: string) {
     const controls = await this.controls();
     if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {
@@ -230,16 +248,35 @@ export class MediaAdaptiveRolloutService {
           });
           return result;
         }
-        const failed = await tx.mediaProcessingJob.findMany({
-          where: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER }, status: "FAILED" },
-          orderBy: { updatedAt: "asc" },
-          take: Math.min(batchSize, availableSlots),
-          select: { id: true },
-        });
+        // Exclude obsolete/blocked jobs BEFORE limiting the batch so old failures
+        // cannot indefinitely hide eligible work. Recheck after the per-video lock.
+        const failed = await tx.$queryRaw<
+          Array<{ id: string; videoId: string; generation: number; updatedAt: Date }>
+        >`
+          SELECT j."id", j."videoId", j."generation", j."updatedAt"
+          FROM "MediaProcessingJob" j
+          WHERE j."status" = 'FAILED'
+            AND strpos(j."stagingKey", ${ADAPTIVE_BACKFILL_MARKER}) > 0
+            AND NOT EXISTS (SELECT 1 FROM "MediaProcessingJob" newer
+              WHERE newer."videoId" = j."videoId" AND newer."generation" > j."generation")
+            AND NOT EXISTS (SELECT 1 FROM "MediaPlaybackGeneration" newer
+              WHERE newer."videoId" = j."videoId" AND newer."generation" > j."generation")
+            AND NOT EXISTS (SELECT 1 FROM "MediaProcessingJob" active
+              WHERE active."videoId" = j."videoId"
+                AND active."status" IN ('INGESTING', 'QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
+          ORDER BY j."updatedAt", j."id"
+          LIMIT ${Math.min(batchSize, availableSlots)}
+        `;
         let recovered = 0;
         for (const job of failed) {
+          await lockMediaGeneration(tx, job.videoId);
+          if (
+            (await hasNewerMediaGeneration(tx, job)) ||
+            (await hasActiveMediaJob(tx, job.videoId, job.id))
+          )
+            continue;
           const changed = await tx.mediaProcessingJob.updateMany({
-            where: { id: job.id, status: "FAILED" },
+            where: { id: job.id, status: "FAILED", updatedAt: job.updatedAt },
             data: {
               status: "QUEUED",
               stage: "ADAPTIVE_BACKFILL_RETRY_QUEUED",
@@ -249,6 +286,7 @@ export class MediaAdaptiveRolloutService {
               startedAt: null,
               completedAt: null,
               leaseOwner: null,
+              leaseWorkerId: null,
               leaseExpiresAt: null,
               heartbeatAt: null,
               errorCode: null,

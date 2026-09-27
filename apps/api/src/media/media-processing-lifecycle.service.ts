@@ -3,6 +3,11 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { ADAPTIVE_BACKFILL_MARKER } from "./media-adaptive-rollout.js";
+import {
+  hasActiveMediaJob,
+  hasNewerMediaGeneration,
+  lockMediaGeneration,
+} from "./media-generation-safety.js";
 
 const OWNED_ACTIVE_STATUSES: MediaProcessingJobStatus[] = ["PROCESSING", "UPLOADING", "VERIFYING"];
 
@@ -45,13 +50,19 @@ export class MediaProcessingLifecycleService {
         return null;
       }
 
+      await lockMediaGeneration(tx, asset.videoId);
       const existing = await tx.mediaProcessingJob.findFirst({
         where: { videoId: asset.videoId },
         orderBy: { generation: "desc" },
       });
       if (existing) return existing;
 
-      const generation = 1;
+      const latestPlayback = await tx.mediaPlaybackGeneration.findFirst({
+        where: { videoId: asset.videoId },
+        orderBy: { generation: "desc" },
+        select: { generation: true },
+      });
+      const generation = (latestPlayback?.generation ?? 0) + 1;
       const channelId = asset.video.channelId;
       const job = await tx.mediaProcessingJob.create({
         data: {
@@ -83,12 +94,22 @@ export class MediaProcessingLifecycleService {
     progressPercent?: number;
   }): Promise<boolean> {
     const now = new Date();
-    const changed = await this.database.client.mediaProcessingJob.updateMany({
+    const job = await this.database.client.mediaProcessingJob.findFirst({
       where: {
         id: input.jobId,
         leaseOwner: input.workerId,
         status: { in: OWNED_ACTIVE_STATUSES },
         leaseExpiresAt: { gt: now },
+      },
+      select: { videoId: true, generation: true },
+    });
+    if (!job || (await hasNewerMediaGeneration(this.database.client, job))) return false;
+    const changed = await this.database.client.mediaProcessingJob.updateMany({
+      where: {
+        id: input.jobId,
+        leaseOwner: input.workerId,
+        status: { in: OWNED_ACTIVE_STATUSES },
+        leaseExpiresAt: { gt: new Date() },
       },
       data: {
         status: input.status,
@@ -120,7 +141,7 @@ export class MediaProcessingLifecycleService {
             video: { select: { id: true, channelId: true, status: true } },
           },
         });
-        if (!job) return null;
+        if (!job || (await hasNewerMediaGeneration(tx, job))) return null;
 
         const canonicalAsset = await tx.mediaAsset.upsert({
           where: { r2ObjectKey: job.outputR2ObjectKey },
@@ -216,6 +237,7 @@ export class MediaProcessingLifecycleService {
   }
 
   async createAdaptiveBackfillJob(tx: Prisma.TransactionClient, videoId: string) {
+    await lockMediaGeneration(tx, videoId);
     const video = await tx.video.findUnique({
       where: { id: videoId },
       select: {
@@ -288,7 +310,7 @@ export class MediaProcessingLifecycleService {
         sourceSizeBytes: source.sizeBytes,
         stagingKey: `${source.r2ObjectKey}${ADAPTIVE_BACKFILL_MARKER}${generation}`,
         inputR2ObjectKey: source.r2ObjectKey,
-        outputR2ObjectKey: source.r2ObjectKey,
+        outputR2ObjectKey: `channels/${video.channelId}/videos/${video.id}/playback/g${generation}.mp4`,
         queuedAt: new Date(),
         stage: "ADAPTIVE_BACKFILL_QUEUED",
         priority: -10,
@@ -297,6 +319,8 @@ export class MediaProcessingLifecycleService {
   }
 
   async createReprocessJob(tx: Prisma.TransactionClient, videoId: string) {
+    await lockMediaGeneration(tx, videoId);
+    if (await hasActiveMediaJob(tx, videoId)) return null;
     const video = await tx.video.findUnique({
       where: { id: videoId },
       select: {
@@ -312,7 +336,13 @@ export class MediaProcessingLifecycleService {
     });
     const source = video?.mediaAssets[0];
     if (!video || !source) return null;
-    const generation = (video.mediaProcessingJobs[0]?.generation ?? 0) + 1;
+    const latestPlayback = await tx.mediaPlaybackGeneration.findFirst({
+      where: { videoId },
+      orderBy: { generation: "desc" },
+      select: { generation: true },
+    });
+    const generation =
+      Math.max(video.mediaProcessingJobs[0]?.generation ?? 0, latestPlayback?.generation ?? 0) + 1;
     return tx.mediaProcessingJob.create({
       data: {
         videoId,

@@ -114,12 +114,22 @@ describe("MediaAdaptiveRolloutService backfill safety", () => {
   });
 
   it("caps failed backfill recovery by the remaining in-flight slots", async () => {
-    const failed = [{ id: "11111111-1111-4111-8111-111111111111" }];
+    const failed = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        videoId: "22222222-2222-4222-8222-222222222222",
+        generation: 1,
+        updatedAt: new Date(),
+      },
+    ];
     const tx = {
       $executeRawUnsafe: vi.fn().mockResolvedValue(0),
+      $executeRaw: vi.fn().mockResolvedValue(0),
+      $queryRaw: vi.fn().mockResolvedValue(failed),
+      mediaPlaybackGeneration: { findFirst: vi.fn().mockResolvedValue(null) },
       mediaProcessingJob: {
         count: vi.fn().mockResolvedValue(0),
-        findMany: vi.fn().mockResolvedValue(failed),
+        findFirst: vi.fn().mockResolvedValue(null),
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       adminAuditLog: { create: vi.fn() },
@@ -142,8 +152,7 @@ describe("MediaAdaptiveRolloutService backfill safety", () => {
     const result = await service.recover("FAILED_BACKFILL", 20);
 
     expect(result).toEqual({ mode: "FAILED_BACKFILL", recovered: 1 });
-    expect(tx.mediaProcessingJob.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 1 }),
-    );
+    expect(tx.$queryRaw.mock.calls[0]?.at(-1)).toBe(1);
+    expect(tx.mediaProcessingJob.updateMany).toHaveBeenCalledTimes(1);
   });
 });

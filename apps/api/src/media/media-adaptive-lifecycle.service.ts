@@ -2,6 +2,7 @@ import type { MediaProcessingJob, Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { hasNewerMediaGeneration } from "./media-generation-safety.js";
 import {
   canMarkAdaptiveGenerationReady,
   hlsMasterObjectKey,
@@ -55,6 +56,9 @@ export class MediaAdaptiveLifecycleService {
     plannedRenditions: readonly PlannedMediaRendition[],
   ): Promise<AdaptiveGenerationState> {
     return this.database.client.$transaction(async (tx) => {
+      if (await hasNewerMediaGeneration(tx, job)) {
+        throw new Error("This adaptive processing generation has been superseded.");
+      }
       const video = await tx.video.findUnique({
         where: { id: job.videoId },
         select: { id: true, channelId: true },
@@ -312,6 +316,8 @@ export class MediaAdaptiveLifecycleService {
         data: { heartbeatAt: now },
       });
       if (ownership.count !== 1) return { owned: false as const };
+      const job = await tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: input.jobId } });
+      if (await hasNewerMediaGeneration(tx, job)) return { owned: false as const };
 
       const generation = await tx.mediaPlaybackGeneration.findFirst({
         where: { id: input.generationId, processingJobId: input.jobId },
