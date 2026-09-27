@@ -63,3 +63,5 @@ Phase 2A.3c.4 advanced media controls merged as PR #123 (`0475932d`) after quali
 - Product integration Phase 2D: PR #127 merged (`ee56af7b`); quality/security and all 41 browser tests passed, including seven PostgreSQL recovery regressions. Phase 2E overview aggregation in progress; full acceptance pending.
 
 - Product integration Phase 2E: PR #128 merged (`4b2d2e9f`), all gates and 41 browser tests passed; 544 API integration-gate tests. Phase 2F detailed observability integration in progress; full acceptance pending.
+
+- Product integration Phase 2F accepted: PR #129 merged (`f5104bcc`); full quality/security and all 42 browser tests passed on `c6797480`, with 545 API integration-gate tests. Remaining work is recorded in the master checkpoint. Execution workspace disconnected; MFA concurrency review and later product phases are not complete.
