@@ -356,6 +356,26 @@ try {
       };
       break;
     }
+    case "reset-studio-live": {
+      await prisma.liveModerationAction.deleteMany();
+      await prisma.liveChatMessage.deleteMany();
+      await prisma.liveStream.deleteMany();
+      result = { ok: true };
+      break;
+    }
+    case "studio-live-evidence": {
+      result = {
+        streams: await prisma.liveStream.findMany({
+          where: { channelId: payload.channelId },
+          select: { id: true, title: true, chatEnabled: true, status: true },
+        }),
+        audits: await prisma.liveModerationAction.findMany({
+          where: { actorAccountId: payload.accountId },
+          select: { action: true },
+        }),
+      };
+      break;
+    }
     case "reset-warehouse-status": {
       await prisma.warehouseExportCheckpoint.deleteMany();
       result = { ok: true };

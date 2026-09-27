@@ -685,3 +685,43 @@
     min-height: 105px;
   }
 }
+
+.liveWorkspace {
+  min-inline-size: 0;
+}
+.liveFields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+.liveFields input {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+.liveCredentials {
+  overflow-wrap: anywhere;
+}
+.liveCredentials dd {
+  margin-inline-start: 0;
+  margin-block-end: 16px;
+}
+.liveCredentials code {
+  display: block;
+  user-select: all;
+}
+.liveDialog {
+  box-sizing: border-box;
+  background: var(--bg, #111019);
+  color: var(--text, #f6f3ff);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  inline-size: min(460px, calc(100vw - 32px));
+  max-block-size: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+}
+.liveDialog::backdrop {
+  background: rgb(0 0 0 / 72%);
+}

@@ -53,3 +53,6 @@ Phase 2A.3c.4 advanced media controls merged as PR #123 (`0475932d`) after quali
 
 - Product integration Phase 2B verified: PR #124 merged (`f4763ab8`); quality/security and 37 browser tests passed on `e18dfd18`, with 138 Web units and the 531-test API integration gate.
 - Phase 2C.1: sanitized warehouse status endpoint/workspace in validation. Current adapter remains disabled; no worker-health or production-readiness claim. No migration. Checkpoint tracks remaining Studio Live and later phases.
+
+- Phase 2C.1 verified: PR #125 merged (`bc0fc5fc`), full quality/security and all 38 browser tests passed; API integration gate 533 tests.
+- Phase 2C.2 Studio Live request/credential reliability and audited chat controls in validation; no migrations or real provider readiness claim.
