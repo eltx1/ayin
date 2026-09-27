@@ -76,7 +76,10 @@ export function grossMarginEstimate(input: {
   return {
     available: true as const,
     amount: formatMoneyMicros(margin),
-    rate: gross !== 0n ? Number(margin) / Number(gross) : null,
+    rate:
+      gross !== 0n
+        ? Number((margin * 1_000_000n) / gross) / 1_000_000
+        : null,
     reason: null,
   };
 }
