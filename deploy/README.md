@@ -238,6 +238,10 @@ ss -lntp
 
 Expected application/database listeners are loopback-only. Ports `3000`, `4000` and `5432` must never be public listeners.
 
+## Production operating dashboard
+
+Task 87 consolidates product, media, infrastructure, advertising, revenue, cost and alert evidence in Admin → Operations. Cost inputs remain provider-neutral/manual until a real billing adapter exists, and unavailable backup/synthetic/provider facts are never silently reported as green. See `docs/TASK87_OPERATIONS_DASHBOARD.md` and `docs/PRODUCTION_OPERATING_MODEL_TASKS_39_87.md`.
+
 ## PostgreSQL traffic scaling
 
 Task 86 keeps a single PostgreSQL primary as the current topology, adds bounded per-service pools and query-plan-backed indexes, and defines measured promotion criteria for larger resources/replicas/specialized stores. See `docs/POSTGRES_SCALING.md`. Operators can inspect live connection pressure and optional `pg_stat_statements` timings at `GET /admin/observability/postgres`.

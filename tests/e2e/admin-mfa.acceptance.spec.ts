@@ -61,4 +61,10 @@ test("administrator password login requires TOTP enrollment and subsequent MFA c
     .fill(generateTotpCode(secret!, totpCounter() + 1n));
   await page.getByRole("button", { name: "Verify" }).click();
   await expect(page).toHaveURL("/");
+
+  await page.goto("/admin/operations");
+  await expect(
+    page.getByRole("heading", { name: "Capacity, reliability & unit economics" }),
+  ).toBeVisible();
+  await expect(page.getByText("Provider invoices fetched:")).toBeVisible();
 });

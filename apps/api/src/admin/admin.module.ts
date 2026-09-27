@@ -18,6 +18,12 @@ import {
 import { AdminGovernanceService } from "./admin-governance.service.js";
 import { AdminMediaProcessingController } from "./admin-media-processing.controller.js";
 import { AdminObservabilityController } from "./admin-observability.controller.js";
+import { AdminOperationsDashboardService } from "./admin-operations-dashboard.service.js";
+import {
+  ManualOperationsCostAdapter,
+  OPERATIONS_COST_ADAPTER,
+  type OperationsCostAdapter,
+} from "./operations-cost.adapter.js";
 import { AdminProductController, PublicProductController } from "./admin-product.controller.js";
 import { AdminProductService } from "./admin-product.service.js";
 import { AdminRecommendationEvaluationController } from "./admin-recommendation-evaluation.controller.js";
@@ -70,6 +76,13 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminGovernanceService,
     AdminProductService,
     AdminTrendingService,
+    AdminOperationsDashboardService,
+    ManualOperationsCostAdapter,
+    {
+      provide: OPERATIONS_COST_ADAPTER,
+      inject: [ManualOperationsCostAdapter],
+      useFactory: (adapter: ManualOperationsCostAdapter): OperationsCostAdapter => adapter,
+    },
     CatalogAdminMediaService,
     ContentSeedingService,
   ],
@@ -82,6 +95,7 @@ import { ContentSeedingService } from "./content-seeding.service.js";
     AdminGovernanceService,
     AdminProductService,
     AdminTrendingService,
+    AdminOperationsDashboardService,
     CatalogAdminMediaService,
     ContentSeedingService,
   ],

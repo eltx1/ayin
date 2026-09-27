@@ -33,6 +33,15 @@ export class PlatformSettingsService {
   }
 
   async getMany(keys: readonly PlatformSettingKey[]): Promise<Map<PlatformSettingKey, unknown>> {
+    const resolved = await this.getManyResolved(keys);
+    return new Map([...resolved].map(([key, value]) => [key, value.value] as const));
+  }
+
+  async getManyResolved(
+    keys: readonly PlatformSettingKey[],
+  ): Promise<
+    Map<PlatformSettingKey, { value: unknown; source: "stored" | "default" | "invalid-stored" }>
+  > {
     const uniqueKeys = [...new Set(keys)];
     if (!uniqueKeys.length) return new Map();
     const definitions = uniqueKeys.map((key) => ({ key, definition: platformSettingCatalog[key] }));
@@ -55,7 +64,7 @@ export class PlatformSettingsService {
     return new Map(
       definitions.map(({ key, definition }) => {
         const row = byIdentity.get(`${definition.namespace}:${definition.key}`) ?? null;
-        return [key, this.resolve(definition, row).value] as const;
+        return [key, this.resolve(definition, row)] as const;
       }),
     );
   }

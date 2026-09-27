@@ -95,7 +95,7 @@ const quickActions: RoleAction[] = [
   },
   {
     label: "Operations",
-    detail: "Staff roles, audit, exports, compliance and support",
+    detail: "Capacity, reliability, unit economics, staff, audit and support",
     href: "/admin/operations",
     roles: ["OPERATIONS"],
   },

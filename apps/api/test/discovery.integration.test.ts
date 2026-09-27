@@ -205,9 +205,14 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
 
   it("paginates large rows without per-item queries or fake catalog entries", async () => {
     const viewer = await register("Paging Viewer", "task12-paging@example.com");
-    await publishVideo(viewer.user.channel.id, "Newest", new Date("2026-08-29T01:00:00Z"));
-    await publishVideo(viewer.user.channel.id, "Middle", new Date("2026-08-28T01:00:00Z"));
-    await publishVideo(viewer.user.channel.id, "Oldest", new Date("2026-08-27T01:00:00Z"));
+    // NEW_ON_AYIN is a rolling 30-day window. Keep ordering deterministic without
+    // letting calendar time age the pagination fixture out of the product query.
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    await publishVideo(viewer.user.channel.id, "Newest", new Date(now - day));
+    await publishVideo(viewer.user.channel.id, "Middle", new Date(now - 2 * day));
+    await publishVideo(viewer.user.channel.id, "Oldest", new Date(now - 29 * day));
+    await publishVideo(viewer.user.channel.id, "Outside new window", new Date(now - 31 * day));
 
     const first = await app.inject({
       method: "GET",
@@ -225,6 +230,28 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(second.statusCode).toBe(200);
     expect(second.json().items).toHaveLength(1);
     expect(second.json().items[0].title).toBe("Middle");
+    expect(second.json().nextCursor).toBeTruthy();
+
+    const third = await app.inject({
+      method: "GET",
+      url: `/public/discovery/rows/new-on-ayin?limit=1&cursor=${encodeURIComponent(second.json().nextCursor as string)}`,
+    });
+    expect(third.statusCode).toBe(200);
+    expect(third.json().items.map((item: { title: string }) => item.title)).toEqual(["Oldest"]);
+    expect(third.json().nextCursor).toBeNull();
+
+    // The older record exists and is public, but cannot become a look-ahead item.
+    const full = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=4",
+    });
+    expect(full.statusCode).toBe(200);
+    expect(full.json().items.map((item: { title: string }) => item.title)).toEqual([
+      "Newest",
+      "Middle",
+      "Oldest",
+    ]);
+    expect(full.json().nextCursor).toBeNull();
   });
 
   it("builds My AYIN from the selected profile and rejects cross-account profile access", async () => {

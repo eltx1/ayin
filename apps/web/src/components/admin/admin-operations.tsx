@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
+import { AdminOperationsCapacityDashboard } from "@/components/admin/admin-operations-dashboard";
 import {
   getAdminSupportAssignees,
   searchAdminComplianceChannels,
@@ -210,14 +211,17 @@ export function AdminOperations() {
           <span className={styles.eyebrow}>Operations & governance</span>
           <h1>Admin Operations</h1>
           <p className={styles.muted}>
-            Audit, support, staff security, creator compliance and safe exports are exposed only
-            when your current staff role is authorized by the protected API.
+            Capacity, reliability, unit economics, audit, support, staff security, creator
+            compliance and safe exports are exposed only when your current staff role is authorized
+            by the protected API.
           </p>
         </div>
         {session ? <span className={styles.statusPill}>{session.roles.join(" · ")}</span> : null}
       </header>
 
       {message ? <p className={styles.notice}>{message}</p> : null}
+
+      {canOperate || canCompliance ? <AdminOperationsCapacityDashboard /> : null}
 
       <section aria-label="Operations summary" className={styles.metrics}>
         {canOperate ? (
