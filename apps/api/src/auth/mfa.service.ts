@@ -412,24 +412,26 @@ export class MfaService {
       this.crypto.verifyRecoveryCode(code, hash),
     );
     if (!match) throw unauthorized("The recovery code is invalid or was already used.");
-    const remaining = credential.recoveryCodeHashes.filter((hash) => hash !== match);
     const used = await this.database.client.$transaction(async (tx) => {
-      const result = await tx.accountMfaCredential.updateMany({
-        where: {
-          accountId: credential.accountId,
-          version: credential.version,
-          recoveryCodeHashes: { has: match },
-        },
-        data: { recoveryCodeHashes: remaining },
-      });
-      if (result.count !== 1) return false;
+      // Remove from the locked current row, not a list derived before this
+      // transaction: concurrent different codes must never restore each other.
+      const [result] = await tx.$queryRaw<Array<{ remaining: number }>>`
+        UPDATE "AccountMfaCredential"
+        SET "recoveryCodeHashes" = array_remove("recoveryCodeHashes", ${match}),
+            "updatedAt" = ${new Date()}
+        WHERE "accountId" = ${credential.accountId}::uuid
+          AND version = ${credential.version} AND status = 'ENABLED'
+          AND ${match} = ANY("recoveryCodeHashes")
+        RETURNING cardinality("recoveryCodeHashes") AS remaining
+      `;
+      if (!result) return false;
       await this.audit(
         tx,
         credential.accountId,
         "auth.mfa_recovery_code_used",
         credential.accountId,
         {
-          recoveryCodesRemaining: remaining.length,
+          recoveryCodesRemaining: result.remaining,
         },
       );
       return true;
