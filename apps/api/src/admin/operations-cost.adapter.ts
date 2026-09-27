@@ -94,7 +94,7 @@ export class ManualOperationsCostAdapter implements OperationsCostAdapter {
       mediaProcessingComputeHourMicros: processingRateConfigured
         ? BigInt(Number.isSafeInteger(rateValue) && rateValue >= 0 ? rateValue : 0)
         : null,
-      mediaProcessingRateConfigured,
+      mediaProcessingRateConfigured: processingRateConfigured,
     };
   }
 }
