@@ -281,6 +281,15 @@ const schema = files.filter(
 const result = {
   schemaVersion: 1,
   sourceSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  sourceShaMeaning:
+    "HEAD at generation; inventory reads tracked worktree contents, including changes listed below",
+  sourceWorkingTreeChanges: execFileSync("git", ["diff", "--name-only", "HEAD"], {
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .filter((file) => file && file !== "docs/AYIN_PRODUCT_INTEGRATION_MATRIX.json")
+    .sort(),
   method:
     "Deterministic tracked-source inventory; no runtime, authorization or feature-completion claims",
   counts: {
