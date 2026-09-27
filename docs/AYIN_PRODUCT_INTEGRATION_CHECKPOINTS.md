@@ -347,7 +347,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 
 - Phase 2G.1 accepted: quality `36350846031`, security `36350846236` and browser `36350846065` all passed on `58a9d11a7e1de1dfbaaa39f937d653cbb3e0705a`. All 550 API integration-gate tests in 133 files (112.85s), 364 API units, 153 Web units, four migration tests and 42 browser tests (4.1 minutes) passed, including all five new PostgreSQL cases (475ms). Formatting, lint, types and production builds passed. PR #131 merged with expected-head protection; ending main SHA `bab6f8582d401af2d5396ec85a407d4582810721`.
 
-## Phase 2G.2 — MFA enrollment concurrency, under investigation
+## Phase 2G.2 — MFA enrollment concurrency, verified and merged
 
 - Starting SHA: `bab6f8582d401af2d5396ec85a407d4582810721`; checkpoint read and accepted main fetched before implementation.
 - Findings: unconditional enrollment upsert can replace a credential confirmed after the initial read; concurrent starts can return secrets sharing one version. Confirmation checks neither the observed secret nor current account authVersion at its writes.
@@ -369,3 +369,19 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Temporary regression head restores the MFA service from accepted main while retaining the new concurrency tests and verified-runtime fallback. The proposed correction is safely committed at `33b31b28` and will be restored after unchanged-code PostgreSQL evidence. This is a draft-only test-first step, never a merge candidate.
 - Unchanged-code reproduction now established on `24d5f583760a189ad187413e0d5c71c1ef2d99ce`, quality `36353115227`: verified FFmpeg preparation succeeded, all four migration tests passed, and exactly five of the six enrollment regressions failed as predicted. Delayed restart and changed-secret/account-version confirmations incorrectly fulfilled; both simultaneous-start cases returned two successes. The other 551 API integration-gate tests passed (556 total, 134 files, 138.56s); six new cases took 865ms. Audit rollback already passed. Restored the previously reviewed correction without weakening any regression assertion; final full acceptance pending.
 - Actual local fallback installation and cached runtime verification both succeeded with the original pinned archive/hash. The upstream availability blocker is resolved by verified fallback; PostgreSQL/browser correctness still requires final-head CI.
+
+- Phase 2G.2 accepted: final head `7a8a0259fca237dc9bcce7dc62cf55eb6805c217` passed quality `36353453580`, security `36353453568` and browser `36353453591`. All 556 API integration-gate tests in 134 files (123.27s), six new enrollment regressions (675ms), 364 API units, 153 Web units, five installer tests, four migration tests and 42 browser tests (4.1 minutes) passed; formatting, lint, types and production builds passed. PR #132 merged with expected-head protection; ending main SHA `8b3cddc851e2655c34501d2973ed7807a796295b`.
+
+## Phase 2G.3 — MFA management lifecycle, regression investigation
+
+- Starting SHA: `8b3cddc851e2655c34501d2973ed7807a796295b`; checkpoint read and accepted main fetched before implementation.
+- Findings: regeneration and disable consume TOTP before their mutation transaction; their later writes do not bind the verified credential/account version. TOTP consumption itself lacks ENABLED/secret fencing. Disable checks administrator policy before its writes; reset relies on the earlier controller role check. These are source findings awaiting database reproduction.
+- Changes: test-first regression suite only at this checkpoint; no production change yet.
+- Migrations: none.
+- Tests added: regeneration/disable versus changed credential/account version; audit failure restores both TOTP and mutation; disable versus administrator assignment; TOTP verification versus changed status/secret; reset versus actor demotion with another superadmin retained (ten cases).
+- Tests executed: new suite typechecked locally; real PostgreSQL execution pending. No database success claimed.
+- Performance measurements: pending; no added product requests or polling.
+- Remaining issues: establish and fix lifecycle races, integrate account MFA UI, discovery pagination, remaining Phase 2 product surfaces and Phases 3–5.
+- External blockers: local PostgreSQL provisioning unavailable; verified FFmpeg fallback restored CI execution. Production/provider/device evidence remains separate.
+- Next: reproduce on unchanged production code, apply narrowly scoped transactional/authorization fences, complete all gates, then shared account MFA UI.
+- Rollback: preserve enabled credentials, factor-consumption state and audit history; never restore consumed recovery codes or old secrets.

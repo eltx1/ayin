@@ -69,3 +69,5 @@ Phase 2A.3c.4 advanced media controls merged as PR #123 (`0475932d`) after quali
 Product integration Phase 2G.1: MFA recovery concurrency reproduced with two failing PostgreSQL regressions on unchanged code. Atomic current-row removal and ENABLED/version fencing implemented; fixed-head full acceptance pending. No MFA UI exposed yet.
 
 Phase 2G.1 accepted as PR #131 (`bab6f858`): all gates passed on `58a9d11a`, including 550 API integration-gate tests and 42 browser tests. Workspace is restored. Phase 2G.2 now reproduces and fences concurrent MFA enrollment changes before account MFA UI; full acceptance remains pending. Phase 2 overall and Phases 3–5 remain open.
+
+Phase 2G.2 accepted as PR #132 (`8b3cddc8`): quality/security and all 42 browser tests passed on `7a8a0259`, including 556 API integration-gate tests. Five previously failing PostgreSQL enrollment races now pass. Pinned FFmpeg delivery recovered using an identical-hash fallback and fail-closed tests. Phase 2G.3 investigates remaining MFA mutation/authorization races before account UI; later product phases remain open.
