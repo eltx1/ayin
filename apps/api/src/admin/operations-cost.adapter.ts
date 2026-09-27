@@ -86,7 +86,11 @@ export class ManualOperationsCostAdapter implements OperationsCostAdapter {
       currency,
       categories,
       totalMonthlyMicros: categories.reduce((total, item) => total + item.monthlyMicros, 0n),
-      complete: mode !== "UNCONFIGURED" && categories.every((item) => item.configured),
+      complete:
+        mode !== "UNCONFIGURED" &&
+        resolved.get("operationsCostModelMode")?.source === "stored" &&
+        resolved.get("operationsCostCurrency")?.source === "stored" &&
+        categories.every((item) => item.configured),
       mediaProcessingComputeHourMicros: processingRateConfigured
         ? BigInt(Number.isSafeInteger(rateValue) && rateValue >= 0 ? rateValue : 0)
         : null,
