@@ -3,6 +3,8 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
+import { lockMediaRollout } from "../platform-config/media-rollout-lock.js";
+import type { PlatformSettingKey } from "../platform-config/platform-settings.catalog.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { hlsMasterObjectKey } from "./media-architecture-v2.js";
 import {
@@ -25,7 +27,6 @@ const ACTIVE_PROCESSING = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
 const ACTIVE_OR_QUEUED = ["QUEUED", ...ACTIVE_PROCESSING] as const;
 const RECOVERY_STALE_MS = 10 * 60 * 1000;
 const METRICS_WINDOW_DAYS = 30;
-const ADAPTIVE_BACKFILL_ADVISORY_LOCK = 86192042;
 const RECOVERY_SCAN_PAGE_SIZE = 25;
 const RECOVERY_SCAN_MAX_ROWS = 250;
 
@@ -55,7 +56,18 @@ export class MediaAdaptiveRolloutService {
     @Inject(MediaProcessingStorageService) private readonly storage: MediaProcessingStorageService,
   ) {}
 
-  async controls() {
+  async controls(tx?: Prisma.TransactionClient) {
+    const values = tx
+      ? await this.settings.getManyResolvedInTransaction(tx, [
+          "mediaHlsEnabled",
+          "mediaHlsNewUploadsEnabled",
+          "mediaHlsBackfillEnabled",
+          "mediaHlsBackfillPaused",
+          "mediaHlsBackfillBatchSize",
+          "mediaHlsBackfillMaxInFlight",
+        ])
+      : null;
+    const get = (key: PlatformSettingKey) => (values ? values.get(key) : this.settings.get(key));
     const [
       generationEnabled,
       newUploadsEnabled,
@@ -65,13 +77,13 @@ export class MediaAdaptiveRolloutService {
       maxInFlightRaw,
       playbackEnabled,
     ] = await Promise.all([
-      this.settings.get("mediaHlsEnabled"),
-      this.settings.get("mediaHlsNewUploadsEnabled"),
-      this.settings.get("mediaHlsBackfillEnabled"),
-      this.settings.get("mediaHlsBackfillPaused"),
-      this.settings.get("mediaHlsBackfillBatchSize"),
-      this.settings.get("mediaHlsBackfillMaxInFlight"),
-      this.featureFlags.isEnabled(ADAPTIVE_PLAYBACK_FEATURE_FLAG),
+      get("mediaHlsEnabled"),
+      get("mediaHlsNewUploadsEnabled"),
+      get("mediaHlsBackfillEnabled"),
+      get("mediaHlsBackfillPaused"),
+      get("mediaHlsBackfillBatchSize"),
+      get("mediaHlsBackfillMaxInFlight"),
+      this.featureFlags.isEnabled(ADAPTIVE_PLAYBACK_FEATURE_FLAG, tx),
     ]);
     return {
       generationEnabled: generationEnabled as boolean,
@@ -139,7 +151,7 @@ export class MediaAdaptiveRolloutService {
   async failedRetryBlockReasonInTransaction(tx: Prisma.TransactionClient) {
     // Same ordering/capacity boundary as batch recovery, before the video lock.
     await this.lockBackfill(tx);
-    const controls = await this.controls();
+    const controls = await this.controls(tx);
     if (!controls.generationEnabled || !controls.backfillEnabled || controls.backfillPaused) {
       return "BACKFILL_DISABLED_OR_PAUSED" as const;
     }
@@ -162,8 +174,12 @@ export class MediaAdaptiveRolloutService {
 
     return this.database.client.$transaction(async (tx) => {
       await this.lockBackfill(tx);
-      const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
-      const take = Math.min(batchSize, availableSlots);
+      const current = await this.controls(tx);
+      if (!current.generationEnabled || !current.backfillEnabled || current.backfillPaused) {
+        return { enqueued: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const, jobs: [] };
+      }
+      const availableSlots = await this.availableBackfillSlots(tx, current.maxInFlight);
+      const take = Math.min(batchSize, current.batchSize, availableSlots);
       if (take === 0) {
         const result = { enqueued: 0, reason: "IN_FLIGHT_LIMIT" as const, jobs: [] };
         await this.auditMutation(tx, actorAccountId, "media_adaptive.backfill_batch", {
@@ -225,8 +241,10 @@ export class MediaAdaptiveRolloutService {
           mode,
           requestedBatchSize: requestedBatchSize ?? null,
           recovered: result.recovered,
+          requeued: result.requeued,
+          failed: result.failed,
         });
-      });
+      }, batchSize);
       return { mode, ...stale };
     }
 
@@ -237,7 +255,11 @@ export class MediaAdaptiveRolloutService {
     if (mode === "FAILED_BACKFILL") {
       return this.database.client.$transaction(async (tx) => {
         await this.lockBackfill(tx);
-        const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+        const current = await this.controls(tx);
+        if (!current.generationEnabled || !current.backfillEnabled || current.backfillPaused) {
+          return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
+        }
+        const availableSlots = await this.availableBackfillSlots(tx, current.maxInFlight);
         if (availableSlots === 0) {
           const result = { mode, recovered: 0, reason: "IN_FLIGHT_LIMIT" as const };
           await this.auditMutation(tx, actorAccountId, "media_adaptive.recovery", {
@@ -308,7 +330,11 @@ export class MediaAdaptiveRolloutService {
       const scan = await this.findMissingManifestRows(batchSize, cursor);
       return this.database.client.$transaction(async (tx) => {
         await this.lockBackfill(tx);
-        const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+        const current = await this.controls(tx);
+        if (!current.generationEnabled || !current.backfillEnabled || current.backfillPaused) {
+          return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
+        }
+        const availableSlots = await this.availableBackfillSlots(tx, current.maxInFlight);
         let detected = 0;
         let requeued = 0;
         for (const row of scan.rows) {
@@ -361,7 +387,11 @@ export class MediaAdaptiveRolloutService {
       );
       return this.database.client.$transaction(async (tx) => {
         await this.lockBackfill(tx);
-        const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+        const current = await this.controls(tx);
+        if (!current.generationEnabled || !current.backfillEnabled || current.backfillPaused) {
+          return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
+        }
+        const availableSlots = await this.availableBackfillSlots(tx, current.maxInFlight);
         let requeued = 0;
         for (const row of uniqueRows) {
           if (requeued >= Math.min(batchSize, availableSlots)) break;
@@ -391,7 +421,11 @@ export class MediaAdaptiveRolloutService {
     const scan = await this.findVerifiedHlsMissingDb(batchSize, cursor);
     return this.database.client.$transaction(async (tx) => {
       await this.lockBackfill(tx);
-      const availableSlots = await this.availableBackfillSlots(tx, controls.maxInFlight);
+      const current = await this.controls(tx);
+      if (!current.generationEnabled || !current.backfillEnabled || current.backfillPaused) {
+        return { mode, recovered: 0, reason: "BACKFILL_DISABLED_OR_PAUSED" as const };
+      }
+      const availableSlots = await this.availableBackfillSlots(tx, current.maxInFlight);
       let requeued = 0;
       for (const video of scan.videos) {
         if (requeued >= Math.min(batchSize, availableSlots)) break;
@@ -483,7 +517,7 @@ export class MediaAdaptiveRolloutService {
   }
 
   private async lockBackfill(tx: Prisma.TransactionClient): Promise<void> {
-    await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", ADAPTIVE_BACKFILL_ADVISORY_LOCK);
+    await lockMediaRollout(tx);
   }
 
   private async availableBackfillSlots(

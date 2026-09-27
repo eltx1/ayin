@@ -16,17 +16,20 @@ export type FeatureFlagUpdate = z.infer<typeof featureFlagUpdateSchema>;
 export class FeatureFlagService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  async isEnabled(key: string): Promise<boolean> {
-    const resolved = await this.resolveEnabled([key]);
+  async isEnabled(key: string, tx?: Prisma.TransactionClient): Promise<boolean> {
+    const resolved = await this.resolveEnabled([key], tx);
     return resolved[key] ?? false;
   }
 
-  async resolveEnabled(keys: readonly string[]): Promise<Record<string, boolean>> {
+  async resolveEnabled(
+    keys: readonly string[],
+    tx?: Prisma.TransactionClient,
+  ): Promise<Record<string, boolean>> {
     if (keys.length === 0) {
       return {};
     }
 
-    const flags = await this.database.client.featureFlag.findMany({
+    const flags = await (tx ?? this.database.client).featureFlag.findMany({
       where: { key: { in: [...keys] } },
       select: { enabled: true, key: true, rolloutPercentage: true },
     });

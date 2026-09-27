@@ -159,3 +159,19 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Review pause/resume concurrency: `setPaused` does not acquire the backfill lock; batch enqueue and recovery read controls before the lock. Determine the intended pause linearization contract and verify with real concurrent transactions before promising immediate pause in UI. This is a review finding, not a claim that a reproduced race is fixed.
 - Advanced UI must retain role boundaries (pause/resume SUPERADMIN only), explicit scoped confirmation, step-up without replay, batch validation, accurate result categories and audit evidence. Disabled/no-op paths do not all write an audit, so do not reuse the individual-job success text indiscriminately.
 - The machine inventory still identifies its historical `554eac65` source baseline; this checkpoint and the human audit record the newer runtime change. Refresh source inventory with the next integration audit rather than mislabeling historical evidence as current.
+
+## Phase 2A.3c.2 — bounded recovery and pause consistency, awaiting gates
+
+- Starting SHA: `926b3558a88bb3375bae5c5eed8942534bbcdd8a`; checkpoint read, main fetched unchanged, PR #118 merge and quality `36331588157` verified.
+- Findings: STALE_PROCESSING ignored its bounded request and counted rows before conditional writes; pause/settings writes did not share the mutation lock and mutation paths trusted preflight controls. Reading settings/flags through the outer client while a transaction holds a connection also unnecessarily requires another pool connection.
+- Changes: explicit recovery batches validate 1–20, select oldest expired jobs deterministically, preserve a changed lease and count actual requeued/failed transitions. Audit these results transactionally. Automatic recovery retains its unbounded housekeeping; explicit operator batches only mutate selected jobs. Pause, kill switches, batch and capacity settings share the existing backfill advisory lock through the settings service, including the generic Admin settings path. Every backfill mutation rechecks controls inside the transaction after acquiring the lock; settings/flag reads use that same transaction connection.
+- Pause contract: a batch already inside the boundary may commit first; pause waits for it and blocks subsequent backfill mutations until resume. Pause does not cancel already queued work. STALE_PROCESSING is queue lease recovery, independent of the adaptive rollout switch, as before.
+- Migrations: none.
+- Tests added: real PostgreSQL bounded batches and result/audit totals, concurrent recoveries, lease renewal race, audit rollback, stale-preflight pause/resume and a settings writer demonstrably waiting on the PostgreSQL advisory lock. Four unit cases recheck pause across every adaptive recovery mode.
+- Tests executed: local validation in progress; complete quality/security/browser CI required before merge. Not yet complete.
+- Performance measurements: manual stale selection has a database LIMIT (maximum 20) and no preliminary count query; control reads batch settings into one transaction query. No production load measurement claimed.
+- Remaining issues: advanced UI is still unexposed; storage recovery error classification and scan-cursor behavior require review before exposing storage-reconciliation modes. Phase 2 remains incomplete.
+- External blockers: local PostgreSQL/Chromium unavailable; real database/browser verification runs in CI.
+- Ending SHA: pending accepted CI head and merge.
+- Next: accept this safety prerequisite, then integrate appropriately bounded advanced actions with role/step-up/confirmation/result semantics.
+- Rollback: revert code only, no schema rollback. Preserve committed jobs, pause values and audits; reverting restores the reviewed races/unbounded operator scope.

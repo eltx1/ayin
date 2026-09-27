@@ -4,7 +4,10 @@ import { randomUUID } from "node:crypto";
 
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
-import { ADAPTIVE_BACKFILL_MARKER } from "./media-adaptive-rollout.js";
+import {
+  ADAPTIVE_BACKFILL_MARKER,
+  ADAPTIVE_BACKFILL_HARD_BATCH_MAX,
+} from "./media-adaptive-rollout.js";
 import { hasNewerMediaGeneration } from "./media-generation-safety.js";
 
 const ACTIVE_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
@@ -309,8 +312,20 @@ export class MediaProcessingQueueService {
   }
 
   async recoverStale(
-    onRecovered?: (tx: Prisma.TransactionClient, result: { recovered: number }) => Promise<void>,
+    onRecovered?: (
+      tx: Prisma.TransactionClient,
+      result: { recovered: number; requeued: number; failed: number },
+    ) => Promise<void>,
+    batchSize?: number,
   ) {
+    if (
+      batchSize !== undefined &&
+      (!Number.isInteger(batchSize) ||
+        batchSize < 1 ||
+        batchSize > ADAPTIVE_BACKFILL_HARD_BATCH_MAX)
+    ) {
+      throw new RangeError("Recovery batch size must be an integer from 1 to 20.");
+    }
     return this.database.client.$transaction(async (tx) => {
       await this.lockQueue(tx);
       const values = await this.settings.getManyResolvedInTransaction(tx, [
@@ -320,12 +335,10 @@ export class MediaProcessingQueueService {
       const retryLimit = values.get("mediaProcessingRetryLimit") as number;
       const leaseSeconds = values.get("mediaProcessingLeaseSeconds") as number;
       const now = new Date();
-      const recovered = await tx.mediaProcessingJob.count({
-        where: { status: { in: [...ACTIVE_STATUSES] }, leaseExpiresAt: { lt: now } },
-      });
-      await this.recoverStaleInTransaction(tx, now, retryLimit);
-      await this.markStaleWorkersInTransaction(tx, now, leaseSeconds);
-      const result = { recovered };
+      const result = await this.recoverStaleInTransaction(tx, now, retryLimit, batchSize);
+      // Explicit bounded operator requests only mutate the selected jobs. Automatic
+      // recovery retains its existing worker-liveness housekeeping.
+      if (batchSize === undefined) await this.markStaleWorkersInTransaction(tx, now, leaseSeconds);
       await onRecovered?.(tx, result);
       return result;
     });
@@ -362,17 +375,22 @@ export class MediaProcessingQueueService {
     tx: Prisma.TransactionClient,
     now: Date,
     retryLimit: number,
-  ): Promise<void> {
+    batchSize?: number,
+  ): Promise<{ recovered: number; requeued: number; failed: number }> {
     const stale = await tx.mediaProcessingJob.findMany({
       where: { status: { in: [...ACTIVE_STATUSES] }, leaseExpiresAt: { lt: now } },
-      select: { id: true, attempt: true },
+      orderBy: [{ leaseExpiresAt: "asc" }, { id: "asc" }],
+      ...(batchSize === undefined ? {} : { take: batchSize }),
+      select: { id: true, attempt: true, updatedAt: true },
     });
-
+    let requeued = 0;
+    let failed = 0;
     for (const job of stale) {
       const terminal = job.attempt >= retryLimit;
-      await tx.mediaProcessingJob.updateMany({
+      const changed = await tx.mediaProcessingJob.updateMany({
         where: {
           id: job.id,
+          updatedAt: job.updatedAt,
           status: { in: [...ACTIVE_STATUSES] },
           leaseExpiresAt: { lt: now },
         },
@@ -399,6 +417,9 @@ export class MediaProcessingQueueService {
               errorMessage: "The media worker stopped heartbeating; AYIN recovered the job safely.",
             },
       });
+      if (terminal) failed += changed.count;
+      else requeued += changed.count;
     }
+    return { recovered: requeued + failed, requeued, failed };
   }
 }
