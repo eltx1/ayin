@@ -1,0 +1,562 @@
+{
+  "reviewedBaselineSha": "5de155c19832e55a1d19450eb78d029432c01680",
+  "method": "Authored domain classification against controllers, models and mounted route components; not a declaration that existing UX is complete. Device/visual/runtime gaps remain explicit.",
+  "domains": [
+    {
+      "features": ["Authentication", "Accounts", "Sessions"],
+      "backend": ["auth/auth.controller.ts", "privacy/privacy.controller.ts"],
+      "models": ["Account", "AccountSession", "AccountDeletionRequest"],
+      "viewerRoutes": ["/login", "/register", "/forgot-password", "/reset-password", "/account"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/users"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Account controls exist; unify request errors and sign-in context; preserve revocation and deletion safeguards.",
+      "remediationPhase": 4
+    },
+    {
+      "features": ["MFA"],
+      "backend": ["auth/auth.controller.ts", "admin/admin.guard.ts"],
+      "models": ["AccountMfaCredential", "AccountSession"],
+      "viewerRoutes": ["/login"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/operations"],
+      "disposition": "BACKEND_SURFACE_GAP",
+      "gap": "Enrollment/challenge exists; missing step-up and account MFA management calls; add guarded user re-authentication.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Profiles"],
+      "backend": ["discovery/discovery.controller.ts"],
+      "models": ["ViewerProfile"],
+      "viewerRoutes": ["/my-ayin", "/kids"],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "PARTIAL_SURFACE",
+      "gap": "Default/Kids context and profile ownership enforced; general profile switching/management is not established by inventory.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Channels"],
+      "backend": ["creator/channel.controller.ts"],
+      "models": ["Channel", "ChannelMember", "ChannelSettings", "ChannelAppearance"],
+      "viewerRoutes": ["/c/[handle]"],
+      "creatorRoutes": ["/studio/channel", "/channel/edit"],
+      "adminRoutes": ["/admin/channels"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Shared editor wrappers are intentional; Creators discovery destination remains a placeholder.",
+      "remediationPhase": 3
+    },
+    {
+      "features": ["Uploads"],
+      "backend": ["creator/quick-upload.controller.ts", "media/media-upload.controller.ts"],
+      "models": ["Video", "MediaAsset", "MediaProcessingJob"],
+      "viewerRoutes": [],
+      "creatorRoutes": ["/upload"],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Direct R2 path and minimal flow exist; manifest path is wrong and advanced metadata copy needs simplification.",
+      "remediationPhase": 4
+    },
+    {
+      "features": ["Media processing", "Media workers"],
+      "backend": [
+        "admin/admin-media-processing.controller.ts",
+        "media/media-processing-queue.service.ts"
+      ],
+      "models": ["MediaProcessingJob", "MediaProcessingWorker"],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/operations"],
+      "disposition": "BACKEND_SURFACE_GAP",
+      "gap": "Summary exists; detailed job operations/retry lack professional operator surface; retain fenced leases.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["R2", "FFmpeg"],
+      "backend": ["media/media-storage.adapter.ts", "media/media-processing-worker.service.ts"],
+      "models": ["MediaAsset", "MediaProcessingJob"],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "INTERNAL_BY_DESIGN",
+      "gap": "Do not expose storage credentials, object operations or transcoder execution as ordinary user UI.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["HLS"],
+      "backend": [
+        "admin/admin-media-processing.controller.ts",
+        "media/media-adaptive-rollout.service.ts"
+      ],
+      "models": ["MediaPlaybackGeneration", "MediaPlaybackRendition"],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/operations"],
+      "disposition": "BACKEND_SURFACE_GAP",
+      "gap": "Ready rollout/backfill/recovery APIs need scoped operator workflows with step-up.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Adaptive playback", "Playback fallback", "Player"],
+      "backend": ["watch/watch.controller.ts"],
+      "models": ["MediaPlaybackGeneration", "MediaPlaybackRendition", "Video"],
+      "viewerRoutes": ["/watch/[slug]", "/live/[slug]", "/c/[handle]/tv"],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Keep adaptive/MP4/ad/progress contracts; browser acceptance exists, target hardware validation remains separate.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["Watch progress", "History", "My AYIN"],
+      "backend": ["watch/watch.controller.ts", "discovery/discovery.controller.ts"],
+      "models": ["WatchProgress", "WatchHistory", "WatchLaterItem", "MyListItem"],
+      "viewerRoutes": ["/my-ayin", "/watch/[slug]"],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Post-policy empty state and capped cursor issues reproduced; preserve raw scan position and profile isolation.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Playlists"],
+      "backend": ["creator/playlist.controller.ts"],
+      "models": ["Playlist", "PlaylistItem"],
+      "viewerRoutes": ["/c/[handle]/playlists/[slug]"],
+      "creatorRoutes": [
+        "/studio/playlists",
+        "/channel/playlists",
+        "/channel/playlists/[playlistId]"
+      ],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Shared component reuse is intentional; canonical entry and return context need review.",
+      "remediationPhase": 3
+    },
+    {
+      "features": ["Creator TV", "FAST"],
+      "backend": [
+        "creator/creator-tv.controller.ts",
+        "creator/creator-tv-linear-output.controller.ts"
+      ],
+      "models": ["CreatorTvChannel", "TvScheduleItem", "CreatorTvVideoPreference"],
+      "viewerRoutes": ["/c/[handle]/tv"],
+      "creatorRoutes": ["/studio/tv", "/channel/tv"],
+      "adminRoutes": ["/admin/tv"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Creator manager/player exist; top-level /tv is placeholder; provider activation remains external.",
+      "remediationPhase": 3
+    },
+    {
+      "features": ["Movies"],
+      "backend": [
+        "movie-catalog/movie-catalog.controller.ts",
+        "movie-catalog/admin-movie-catalog.controller.ts"
+      ],
+      "models": ["Movie", "MovieAvailability", "MovieArtwork"],
+      "viewerRoutes": ["/movies/[slug]"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/movies"],
+      "disposition": "PARTIAL_SURFACE",
+      "gap": "Details/Admin implemented; top-level movie browse is placeholder; upstream errors become not-found.",
+      "remediationPhase": 3
+    },
+    {
+      "features": ["Series", "Episodes"],
+      "backend": [
+        "series-catalog/series-catalog.controller.ts",
+        "series-catalog/admin-series-catalog.controller.ts"
+      ],
+      "models": ["Series", "SeriesSeason", "SeriesEpisode", "SeriesAvailability"],
+      "viewerRoutes": ["/series/[slug]"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/series"],
+      "disposition": "PARTIAL_SURFACE",
+      "gap": "Details/episode/Admin implemented; top-level series browse is placeholder.",
+      "remediationPhase": 3
+    },
+    {
+      "features": ["Clips"],
+      "backend": ["creator/clips.controller.ts"],
+      "models": ["Video"],
+      "viewerRoutes": ["/clips"],
+      "creatorRoutes": ["/upload", "/studio/content"],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Canonical /clips exists but navigation /shorts shows placeholder.",
+      "remediationPhase": 3
+    },
+    {
+      "features": ["Community"],
+      "backend": ["community/community.controller.ts"],
+      "models": [
+        "CommunityPost",
+        "CommunityPollOption",
+        "CommunityPollVote",
+        "CommunityPostComment"
+      ],
+      "viewerRoutes": ["/community", "/c/[handle]/community"],
+      "creatorRoutes": ["/studio/community"],
+      "adminRoutes": ["/admin/moderation"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Creator/feed/moderation capabilities exist; consistently handle request failures and state changes.",
+      "remediationPhase": 4
+    },
+    {
+      "features": ["Comments"],
+      "backend": ["comments/comments.controller.ts"],
+      "models": ["Comment", "CommentControl", "ChannelHiddenProfile"],
+      "viewerRoutes": ["/watch/[slug]"],
+      "creatorRoutes": ["/studio/comments"],
+      "adminRoutes": ["/admin/moderation"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Maintain contextual creator moderation and role/ownership checks; review keyboard/RTL form behavior.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["Social actions", "Notifications"],
+      "backend": ["social/social.controller.ts"],
+      "models": ["Reaction", "Subscription", "Notification"],
+      "viewerRoutes": ["/watch/[slug]", "/notifications", "/c/[handle]"],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Mounted controls/feed exist; action feedback and account-switch state need cross-route verification.",
+      "remediationPhase": 4
+    },
+    {
+      "features": ["Captions"],
+      "backend": ["creator/caption.controller.ts", "watch/watch.controller.ts"],
+      "models": ["VideoCaptionTrack"],
+      "viewerRoutes": ["/watch/[slug]"],
+      "creatorRoutes": ["/studio/content"],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Caption manager/player integration exists; accessibility, language and device behavior must be verified.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["Chapters", "Metadata"],
+      "backend": ["creator/quick-upload.controller.ts", "admin/admin-video-metadata.controller.ts"],
+      "models": ["VideoCreatorMetadata"],
+      "viewerRoutes": ["/watch/[slug]"],
+      "creatorRoutes": ["/upload", "/studio/content"],
+      "adminRoutes": ["/admin/videos"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Metadata fields are extensive; series placeholder copy is stale; disclose advanced fields progressively.",
+      "remediationPhase": 4
+    },
+    {
+      "features": ["Rights", "Maturity", "Geographic policy", "Kids"],
+      "backend": ["video-policy/video-policy.service.ts", "admin/admin-video-policy.controller.ts"],
+      "models": ["VideoPolicy", "VideoPolicyOverride", "ContentRightsDeclaration"],
+      "viewerRoutes": ["/kids", "/watch/[slug]"],
+      "creatorRoutes": ["/upload", "/studio/content"],
+      "adminRoutes": ["/admin/kids", "/admin/trust"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Policy is server authoritative; no UI/pagination simplification may bypass it; unknown region remains conservative.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Search", "Language-aware search"],
+      "backend": ["search/search.controller.ts"],
+      "models": ["Video", "Movie", "Series"],
+      "viewerRoutes": ["/search"],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Lexical/language-aware search has UI; preserve safe filters, bounded query behavior and RTL semantics.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["Lens"],
+      "backend": ["search/search.controller.ts"],
+      "models": ["CatalogSearchEmbedding"],
+      "viewerRoutes": ["/my-ayin/lens"],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Lexical fallback and optional semantic boundary exist; do not claim configured AI provider.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["Recommendations"],
+      "backend": ["recommendations/recommendation.controller.ts"],
+      "models": ["RecommendationProfileState", "RecommendationFeedback", "RecommendationExposure"],
+      "viewerRoutes": ["/", "/watch/[slug]", "/clips"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/settings"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Viewer recommendations/feedback exist; evaluate controls and configured exposure independently.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Recommendation evaluation"],
+      "backend": ["admin/admin-recommendation-evaluation.controller.ts"],
+      "models": ["RecommendationExposure"],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "BACKEND_SURFACE_GAP",
+      "gap": "Ready fixture/version/exposure/export endpoints need OPERATIONS evaluation UI; exports contain sensitive evidence and require explicit intent.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Trending"],
+      "backend": ["admin/admin-trending.controller.ts"],
+      "models": ["TrendingScoreSnapshot", "PlatformSetting"],
+      "viewerRoutes": ["/"],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "BACKEND_SURFACE_GAP",
+      "gap": "Dedicated validated/audited configuration API has no adequate Admin form.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Regional discovery"],
+      "backend": ["admin/admin-product.controller.ts", "discovery/discovery.controller.ts"],
+      "models": ["HomeRowRegionTarget", "RegionalDiscoveryAggregate"],
+      "viewerRoutes": ["/"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/product-controls"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Regional merchandising already mounted; verify cohort fallback, trusted location and UI completeness.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Localization", "Arabic/RTL"],
+      "backend": ["catalog-localization/catalog-localization.controller.ts"],
+      "models": [
+        "MovieLocalization",
+        "SeriesLocalization",
+        "SeriesSeasonLocalization",
+        "SeriesEpisodeLocalization"
+      ],
+      "viewerRoutes": ["/search", "/movies/[slug]", "/series/[slug]"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/catalog-localizations"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Viewer i18n and catalog editing exist; Admin/Studio English copy and physical CSS require complete pass.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["Analytics", "Cohorts"],
+      "backend": ["analytics/analytics.controller.ts"],
+      "models": [
+        "AnalyticsEvent",
+        "AnalyticsPlatformDailyRollup",
+        "AnalyticsChannelDailyRollup",
+        "AnalyticsPlatformCohortRollup",
+        "AnalyticsChannelCohortRollup"
+      ],
+      "viewerRoutes": [],
+      "creatorRoutes": ["/studio/analytics"],
+      "adminRoutes": ["/admin"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Already surfaced; keep suppression thresholds, date definitions and evidence limitations.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Warehouse export"],
+      "backend": [
+        "warehouse/warehouse-export.service.ts",
+        "warehouse/warehouse-export-worker.service.ts"
+      ],
+      "models": ["WarehouseExportCheckpoint"],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "INTERNAL_WITH_OPERATOR_STATUS_GAP",
+      "gap": "Worker export remains internal; add sanitized checkpoint/configuration status only where useful.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Live"],
+      "backend": ["live/live.controller.ts"],
+      "models": ["LiveStream", "LiveChatMessage", "LiveModerationAction"],
+      "viewerRoutes": ["/live/[slug]"],
+      "creatorRoutes": ["/studio/live"],
+      "adminRoutes": [],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Creator/player/chat exist; Studio live fetch failures are unhandled; provider and hardware proofs remain external.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["SSAI/DAI"],
+      "backend": ["ads/video-ad.controller.ts"],
+      "models": ["AdEvent", "PlatformSetting"],
+      "viewerRoutes": ["/watch/[slug]", "/live/[slug]", "/c/[handle]/tv"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/advertising"],
+      "disposition": "PLATFORM_BOUNDARY",
+      "gap": "Keep supported runtime adapters; provider configuration and real fill are not repository acceptance.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["Page ads", "Video ads", "Direct advertising", "GAM"],
+      "backend": [
+        "ads/advertising-control.controller.ts",
+        "ads/gam-production.controller.ts",
+        "ads/page-ad.controller.ts",
+        "ads/video-ad.controller.ts"
+      ],
+      "models": ["AdPlacement", "AdEvent", "Campaign", "Creative", "Advertiser", "VideoAdOverride"],
+      "viewerRoutes": ["/", "/watch/[slug]"],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/advertising", "/admin/video-ads"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Controls and diagnostics exist; retain consent/kill switch, masked credentials and contextual entity selectors.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Revenue", "Reconciliation", "Payouts", "Compliance"],
+      "backend": [
+        "revenue/revenue.controller.ts",
+        "revenue/revenue-reconciliation.controller.ts",
+        "revenue/payout-provider.controller.ts",
+        "revenue/creator-compliance.controller.ts"
+      ],
+      "models": [
+        "EarningsLedgerEntry",
+        "CreatorContract",
+        "RevenueSourceReport",
+        "Payout",
+        "PayoutProviderTransfer",
+        "CreatorPayoutProfile"
+      ],
+      "viewerRoutes": ["/account"],
+      "creatorRoutes": ["/studio/monetization"],
+      "adminRoutes": ["/admin/revenue", "/admin/revenue/payouts/[payoutId]"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Finance/provider/compliance surfaces exist; preserve scoped identity data, immutable ledger and step-up.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Support"],
+      "backend": ["admin/admin-governance.controller.ts"],
+      "models": ["SupportTicket"],
+      "viewerRoutes": [],
+      "creatorRoutes": ["/studio/support"],
+      "adminRoutes": ["/admin/operations"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Ticket forms/queues exist; isolate operations contexts and preserve assignment/audit.",
+      "remediationPhase": 4
+    },
+    {
+      "features": ["Moderation", "Trust & Safety"],
+      "backend": ["trust/trust.controller.ts", "admin/admin-control.controller.ts"],
+      "models": [
+        "ModerationCase",
+        "ModerationAction",
+        "ModerationAppeal",
+        "TakedownRequest",
+        "CreatorTrustState"
+      ],
+      "viewerRoutes": [],
+      "creatorRoutes": ["/studio/trust"],
+      "adminRoutes": ["/admin/trust", "/admin/moderation"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Raw UUID inputs and dense actions need contextual entity selection; preserve reasons and security.",
+      "remediationPhase": 4
+    },
+    {
+      "features": ["SEO", "Sitemaps"],
+      "backend": ["seo/seo.controller.ts", "seo/seo-sitemap-counts.controller.ts"],
+      "models": ["Video", "Movie", "Series", "Channel"],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "INTERNAL_BY_DESIGN",
+      "gap": "Align canonical routes and exclude private/placeholder content; no new public control surface needed.",
+      "remediationPhase": 3
+    },
+    {
+      "features": ["Admin"],
+      "backend": ["admin/admin.controller.ts", "admin/admin-control.controller.ts"],
+      "models": ["AdminRoleAssignment", "AdminAuditLog"],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "19 flat sidebar links; repeated session reads; group surfaces and add appropriate step-up UX.",
+      "remediationPhase": 3
+    },
+    {
+      "features": ["Observability", "Database scaling"],
+      "backend": ["admin/admin-observability.controller.ts", "database/database.service.ts"],
+      "models": [],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/operations"],
+      "disposition": "BACKEND_SURFACE_GAP",
+      "gap": "Task 87 summary exists; detailed Postgres/API evidence needs operator UI; primary consistency stays authoritative.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Backups", "Synthetic monitoring"],
+      "backend": ["admin/admin-operations-dashboard.service.ts"],
+      "models": [],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/operations"],
+      "disposition": "INTERNAL_WITH_SUMMARY",
+      "gap": "Operator status already exists, backed only by actual trusted report files; execution remains internal.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["Operations dashboard"],
+      "backend": ["admin/admin-operations-dashboard.service.ts"],
+      "models": ["PlatformSetting", "MediaProcessingJob", "EarningsLedgerEntry"],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": ["/admin/operations"],
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Task 87 verified; detailed operator actions remain separate integration work.",
+      "remediationPhase": 2
+    },
+    {
+      "features": ["PWA"],
+      "backend": [],
+      "models": [],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "PARTIAL_SURFACE",
+      "gap": "Served static manifest hides generated shortcuts; cache privacy/ownership risks and offline/update gaps reproduced.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["Android"],
+      "backend": [],
+      "models": [],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "PLATFORM_BOUNDARY",
+      "gap": "Thin shared Web shell; device/store evidence separate from structural validation.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["iOS"],
+      "backend": [],
+      "models": [],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "PLATFORM_ARCHITECTURE_GAP",
+      "gap": "Existing native ordinary UI conflicts with master principle; retain necessary native capabilities while evaluating shared Web shell.",
+      "remediationPhase": 5
+    },
+    {
+      "features": ["TV platforms"],
+      "backend": [],
+      "models": [],
+      "viewerRoutes": [],
+      "creatorRoutes": [],
+      "adminRoutes": [],
+      "disposition": "PLATFORM_BOUNDARY",
+      "gap": "Native tvOS focus/player exceptions versus shared Android/Tizen/webOS UI require documented capability evidence.",
+      "remediationPhase": 5
+    }
+  ]
+}

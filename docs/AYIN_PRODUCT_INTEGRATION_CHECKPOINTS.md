@@ -22,17 +22,25 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Rollback: the regression fix changes tests only. Task 87 adds no schema migration. Reverting its merge removes the operations dashboard and its settings/service additions; do not confuse this with a data rollback.
 - Merge: [PR #108](https://github.com/eltx1/ayin/pull/108), squash, expected-head protection used and success confirmed.
 
-## Phase 1 — in progress
+## Phase 1 — audit complete; PR validation/merge pending
 
 - Starting SHA: `5de155c19832e55a1d19450eb78d029432c01680`.
-- Latest persisted audit checkpoint SHA: `dfb2bcea480c138f8139435a77a81abeefbad385`, Draft [PR #109](https://github.com/eltx1/ayin/pull/109). Phase ending SHA remains pending because Phase 1 is not complete.
+- Latest persisted audit checkpoint SHA: `dfb2bcea480c138f8139435a77a81abeefbad385`, Draft [PR #109](https://github.com/eltx1/ayin/pull/109). Final audit revision/merge SHA will be recorded after the current validation.
 - Findings: see `AYIN_PRODUCT_INTEGRATION_AUDIT.md`; source inventory has 73 feature domains, 65 page routes, 8 route handlers, 53 controllers, 357 endpoint paths (355 decorators), 119 models and 57 migrations.
 - Changes: master plan; deterministic source inventory script and JSON; human evidence matrix; initial risk register and workflow baseline. Read-only production HTTP probes additionally confirmed placeholder browse destinations and static-manifest precedence; controller guards and Admin/Studio integration entrypoints were inspected. No product implementation changes yet.
 - Migrations: none.
 - Tests added: none; this is a source/audit artifact. Verify script syntax, deterministic output at a fixed SHA, matrix structure, paths and formatting.
 - Tests executed: inventory scanner and probe syntax checks; two scanner runs at baseline SHA were byte-identical; 355 route decorators reconciled to 357 concrete paths; read-only Service Worker and compiled DiscoveryService probes reproduced the documented cache/cursor hazards. Phase 0 results are baseline evidence, not evidence for future code.
 - Performance measurements: repository counts only. No production latency, CWV, bundle comparison or device benchmark claimed.
-- Remaining issues: complete semantic classification of candidate evidence, per-route mobile/RTL/accessibility review. Filename matching alone is explicitly insufficient for Phase 1 exit.
+- Remaining issues: implementation findings R01–R21; full visual/device acceptance and production measurements stay assigned to Phases 2–5. Semantic classification of all 73 domains and source/boundary/role/mobile/RTL evidence review of all 73 route entrypoints are complete; no claim that unresolved UI behavior passes.
 - External blockers: physical iOS/Android/TV device/store checks and real production traffic/credential-dependent integrations unavailable in this workspace. CI provides PostgreSQL integration coverage; local PostgreSQL is not installed and the package installer failed on UID/group permissions; no permission bypass attempted.
-- Next phase: finish Phase 1; then Phase 2 backend integration. Later phases are NOT started.
+- Next phase: Phase 2A secure re-authentication and media/database operator integration after audit validation. Later implementation phases are NOT started.
 - Rollback: audit files and scanner are additive; remove their commit without database or runtime effects.
+
+### Phase 1 completion delta
+
+- Starting continuation SHA: `0a696122e9031e10ccca80becc1d39490f949aa3`; its full quality gate passed in run `36292205722`.
+- Added authored semantic ownership for every requested domain, validated against actual backend files, 119 model names and mounted routes; retained source candidates separately.
+- Added per-entrypoint layout/error/loading boundary, role/data-ownership and mobile/RTL evidence scope for all 73 route entries. Reviewed global focus/reduced-motion, RTL inheritance and known shell gaps.
+- Verified inventory regeneration retains the authored review; formatting, schema/path integrity and deterministic generation are required for the final audit revision.
+- No product code, data, migrations, credentials or deployment changed in Phase 1. No production-performance measurement or physical-device certification claimed.

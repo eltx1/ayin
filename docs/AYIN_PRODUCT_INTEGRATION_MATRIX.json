@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "sourceSha": "5de155c19832e55a1d19450eb78d029432c01680",
+  "sourceSha": "0a696122e9031e10ccca80becc1d39490f949aa3",
   "method": "Deterministic tracked-source inventory; no runtime, authorization or feature-completion claims",
   "counts": {
-    "files": 1127,
+    "files": 1133,
     "routes": 73,
     "pages": 65,
     "controllers": 53,
@@ -22,7 +22,18 @@
         "@/lib/seo",
         "./page.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Known placeholder destinations R01/R03; explicit routes take precedence"
+      }
     },
     {
       "route": "/account",
@@ -38,14 +49,36 @@
         "@/lib/i18n/translator",
         "./account.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/c/[handle]/community",
       "file": "apps/web/src/app/(viewer)/c/[handle]/community/page.tsx",
       "kind": "page",
       "imports": ["../../../../../lib/api", "./community-feed"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/c/[handle]",
@@ -69,7 +102,18 @@
         "@/lib/seo-content",
         "@/lib/seo"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/c/[handle]/playlists/[slug]",
@@ -86,7 +130,18 @@
         "@/lib/seo-content",
         "@/lib/seo"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/c/[handle]/tv",
@@ -98,77 +153,198 @@
         "@/lib/api",
         "@/lib/creator-tv"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/channel/edit",
       "file": "apps/web/src/app/(viewer)/channel/edit/page.tsx",
       "kind": "page",
       "imports": ["@/components/channel/channel-editor"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/channel/playlists/[playlistId]",
       "file": "apps/web/src/app/(viewer)/channel/playlists/[playlistId]/page.tsx",
       "kind": "page",
       "imports": ["@/components/playlist/playlist-editor"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/channel/playlists",
       "file": "apps/web/src/app/(viewer)/channel/playlists/page.tsx",
       "kind": "page",
       "imports": ["@/components/playlist/playlist-manager"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/channel/tv",
       "file": "apps/web/src/app/(viewer)/channel/tv/page.tsx",
       "kind": "page",
       "imports": ["@/components/creator-tv/creator-tv-manager"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/clips",
       "file": "apps/web/src/app/(viewer)/clips/page.tsx",
       "kind": "page",
       "imports": ["next", "@/lib/seo", "../../../lib/api", "./clips-feed", "./clips.module.css"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/community-guidelines",
       "file": "apps/web/src/app/(viewer)/community-guidelines/page.tsx",
       "kind": "page",
       "imports": ["next", "@/components/legal/legal-page"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/community",
       "file": "apps/web/src/app/(viewer)/community/page.tsx",
       "kind": "page",
       "imports": ["../../../lib/api", "../c/[handle]/community/community-feed"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/cookies",
       "file": "apps/web/src/app/(viewer)/cookies/page.tsx",
       "kind": "page",
       "imports": ["next", "@/components/legal/legal-page"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/copyright",
       "file": "apps/web/src/app/(viewer)/copyright/page.tsx",
       "kind": "page",
       "imports": ["next", "@/components/legal/legal-page"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/creator-terms",
       "file": "apps/web/src/app/(viewer)/creator-terms/page.tsx",
       "kind": "page",
       "imports": ["next", "@/components/legal/legal-page"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/kids",
@@ -180,21 +356,58 @@
         "@/lib/seo",
         "./kids.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/live/[slug]",
       "file": "apps/web/src/app/(viewer)/live/[slug]/page.tsx",
       "kind": "page",
       "imports": ["./live-watch-client"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/my-ayin/lens",
       "file": "apps/web/src/app/(viewer)/my-ayin/lens/page.tsx",
       "kind": "page",
       "imports": ["./lens-client", "./lens.module.css"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": [
+          "apps/web/src/app/(viewer)/my-ayin/layout.tsx",
+          "apps/web/src/app/(viewer)/layout.tsx",
+          "apps/web/src/app/layout.tsx"
+        ],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/my-ayin",
@@ -204,14 +417,40 @@
         "@/components/discovery/my-ayin-library",
         "@/components/discovery/discovery.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": [
+          "apps/web/src/app/(viewer)/my-ayin/layout.tsx",
+          "apps/web/src/app/(viewer)/layout.tsx",
+          "apps/web/src/app/layout.tsx"
+        ],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/notifications",
       "file": "apps/web/src/app/(viewer)/notifications/page.tsx",
       "kind": "page",
       "imports": ["next", "@/components/social/notification-feed", "@/lib/seo"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/",
@@ -230,14 +469,36 @@
         "../session-panel",
         "./page.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/privacy",
       "file": "apps/web/src/app/(viewer)/privacy/page.tsx",
       "kind": "page",
       "imports": ["next", "@/components/legal/legal-page"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/search",
@@ -258,21 +519,54 @@
         "@/lib/seo",
         "./search-page.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": true,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/terms",
       "file": "apps/web/src/app/(viewer)/terms/page.tsx",
       "kind": "page",
       "imports": ["next", "@/components/legal/legal-page"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/upload",
       "file": "apps/web/src/app/(viewer)/upload/page.tsx",
       "kind": "page",
       "imports": ["@/components/upload/quick-upload"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/watch/[slug]",
@@ -297,77 +591,198 @@
         "@/lib/seo",
         "./page.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/(viewer)/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": ["apps/web/src/app/(viewer)/error.tsx"],
+        "loadingBoundaryFiles": ["apps/web/src/app/(viewer)/loading.tsx"],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": true,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/advertising",
       "file": "apps/web/src/app/admin/advertising/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-advertising-control"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/catalog-localizations",
       "file": "apps/web/src/app/admin/catalog-localizations/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-catalog-localizations"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/channels",
       "file": "apps/web/src/app/admin/channels/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-channels"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/content",
       "file": "apps/web/src/app/admin/content/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-content-library"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/feature-flags",
       "file": "apps/web/src/app/admin/feature-flags/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-feature-flags"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/kids",
       "file": "apps/web/src/app/admin/kids/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-kids-classification"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/moderation",
       "file": "apps/web/src/app/admin/moderation/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-moderation"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/movies",
       "file": "apps/web/src/app/admin/movies/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-movie-catalog"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/operations",
       "file": "apps/web/src/app/admin/operations/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-operations"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin",
       "file": "apps/web/src/app/admin/page.tsx",
       "kind": "page",
       "imports": ["next", "@/components/admin/admin-dashboard"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/product-controls",
@@ -377,7 +792,18 @@
         "@/components/admin/admin-product-controls",
         "@/components/admin/admin-regional-merchandising"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/revenue",
@@ -387,98 +813,252 @@
         "@/components/admin/admin-revenue-control-center",
         "@/components/admin/admin-revenue-reconciliation"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/revenue/payouts/[payoutId]",
       "file": "apps/web/src/app/admin/revenue/payouts/[payoutId]/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-payout-detail"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/series",
       "file": "apps/web/src/app/admin/series/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-series-catalog"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/settings",
       "file": "apps/web/src/app/admin/settings/page.tsx",
       "kind": "page",
       "imports": ["next", "./admin-settings-panel"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/trust",
       "file": "apps/web/src/app/admin/trust/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-trust-safety"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/tv",
       "file": "apps/web/src/app/admin/tv/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-tv"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/users",
       "file": "apps/web/src/app/admin/users/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-users"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/video-ads",
       "file": "apps/web/src/app/admin/video-ads/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-video-ads"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/admin/videos",
       "file": "apps/web/src/app/admin/videos/page.tsx",
       "kind": "page",
       "imports": ["@/components/admin/admin-videos"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Admin",
+        "layoutFiles": ["apps/web/src/app/admin/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/ads.txt",
       "file": "apps/web/src/app/ads.txt/route.ts",
       "kind": "handler",
       "imports": ["@/lib/api"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/api/health",
       "file": "apps/web/src/app/api/health/route.ts",
       "kind": "handler",
       "imports": ["next/server"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/app-ads.txt",
       "file": "apps/web/src/app/app-ads.txt/route.ts",
       "kind": "handler",
       "imports": ["@/lib/api"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/forgot-password",
       "file": "apps/web/src/app/forgot-password/page.tsx",
       "kind": "page",
       "imports": ["next/link", "react", "@/lib/api", "../auth-form.module.css"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/login",
       "file": "apps/web/src/app/login/page.tsx",
       "kind": "page",
       "imports": ["../auth-form"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": true,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/movies/[slug]",
@@ -496,21 +1076,54 @@
         "@/lib/seo",
         "./movie.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/register",
       "file": "apps/web/src/app/register/page.tsx",
       "kind": "page",
       "imports": ["../auth-form"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/reset-password",
       "file": "apps/web/src/app/reset-password/page.tsx",
       "kind": "page",
       "imports": ["./reset-password-form"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/series/[slug]",
@@ -528,35 +1141,90 @@
         "@/lib/seo",
         "./series.module.css"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/sitemap.xml",
       "file": "apps/web/src/app/sitemap.xml/route.ts",
       "kind": "handler",
       "imports": ["@/lib/seo", "@/lib/sitemap"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/sitemaps/[kind]/[shard]",
       "file": "apps/web/src/app/sitemaps/[kind]/[shard]/route.ts",
       "kind": "handler",
       "imports": ["next/navigation", "@/lib/sitemap"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/sitemaps/movies.xml",
       "file": "apps/web/src/app/sitemaps/movies.xml/route.ts",
       "kind": "handler",
       "imports": ["@/lib/api", "@/lib/i18n/seo", "@/lib/seo", "@/lib/sitemap"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/sitemaps/series.xml",
       "file": "apps/web/src/app/sitemaps/series.xml/route.ts",
       "kind": "handler",
       "imports": ["@/lib/api", "@/lib/i18n/seo", "@/lib/seo", "@/lib/sitemap"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/sitemaps/static.xml",
@@ -569,49 +1237,126 @@
         "@/lib/seo",
         "@/lib/sitemap"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Viewer/public",
+        "layoutFiles": ["apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Public reads must preserve publication, rights, region and Kids policy where relevant",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/analytics",
       "file": "apps/web/src/app/studio/analytics/page.tsx",
       "kind": "page",
       "imports": ["@/components/studio/studio-creator-analytics"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/channel",
       "file": "apps/web/src/app/studio/channel/page.tsx",
       "kind": "page",
       "imports": ["@/components/channel/channel-editor"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/comments",
       "file": "apps/web/src/app/studio/comments/page.tsx",
       "kind": "page",
       "imports": ["@/components/studio/studio-comments"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/community",
       "file": "apps/web/src/app/studio/community/page.tsx",
       "kind": "page",
       "imports": ["@/components/studio/studio-community-manager"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/content",
       "file": "apps/web/src/app/studio/content/page.tsx",
       "kind": "page",
       "imports": ["@/components/studio/studio-content-manager"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/live",
       "file": "apps/web/src/app/studio/live/page.tsx",
       "kind": "page",
       "imports": ["@/components/studio/studio-live-client", "../studio.module.css"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/monetization",
@@ -622,42 +1367,108 @@
         "@/components/studio/studio-monetization-insights",
         "@/components/studio/studio-revenue"
       ],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio",
       "file": "apps/web/src/app/studio/page.tsx",
       "kind": "page",
       "imports": ["@/components/studio/studio-dashboard"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/playlists",
       "file": "apps/web/src/app/studio/playlists/page.tsx",
       "kind": "page",
       "imports": ["@/components/playlist/playlist-manager"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/support",
       "file": "apps/web/src/app/studio/support/page.tsx",
       "kind": "page",
       "imports": ["@/components/studio/studio-support"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": false,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/trust",
       "file": "apps/web/src/app/studio/trust/page.tsx",
       "kind": "page",
       "imports": ["react", "../../../lib/api"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     },
     {
       "route": "/studio/tv",
       "file": "apps/web/src/app/studio/tv/page.tsx",
       "kind": "page",
       "imports": ["@/components/creator-tv/creator-tv-manager"],
-      "runtimeVerified": false
+      "runtimeVerified": false,
+      "sourceReview": {
+        "surface": "Creator",
+        "layoutFiles": ["apps/web/src/app/studio/layout.tsx", "apps/web/src/app/layout.tsx"],
+        "errorBoundaryFiles": [],
+        "loadingBoundaryFiles": [],
+        "baselineMobileOverflowTest": true,
+        "baselineArabicAssertions": false,
+        "roleReview": "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries",
+        "keyboardRtlReview": "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+        "stateReview": "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data"
+      }
     }
   ],
   "endpoints": [
@@ -3026,7 +3837,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Verify all failure and recovery states",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["auth/auth.controller.ts", "privacy/privacy.controller.ts"],
+        "models": ["Account", "AccountSession", "AccountDeletionRequest"],
+        "viewerRoutes": ["/login", "/register", "/forgot-password", "/reset-password", "/account"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/users"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Account controls exist; unify request errors and sign-in context; preserve revocation and deletion safeguards.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Sessions",
@@ -3291,7 +4112,17 @@
       "documentation": ["docs/TASK48_SESSION_MANAGEMENT.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Account switching, revocation and cache isolation",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["auth/auth.controller.ts", "privacy/privacy.controller.ts"],
+        "models": ["Account", "AccountSession", "AccountDeletionRequest"],
+        "viewerRoutes": ["/login", "/register", "/forgot-password", "/reset-password", "/account"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/users"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Account controls exist; unify request errors and sign-in context; preserve revocation and deletion safeguards.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "MFA",
@@ -3375,7 +4206,17 @@
       "documentation": ["docs/TASK47_ADMIN_MFA.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Preserve step-up and least-privileged flows",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["auth/auth.controller.ts", "admin/admin.guard.ts"],
+        "models": ["AccountMfaCredential", "AccountSession"],
+        "viewerRoutes": ["/login"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "BACKEND_SURFACE_GAP",
+        "gap": "Enrollment/challenge exists; missing step-up and account MFA management calls; add guarded user re-authentication.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Accounts",
@@ -3671,7 +4512,17 @@
       ],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Responsive account settings and deletion/export",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["auth/auth.controller.ts", "privacy/privacy.controller.ts"],
+        "models": ["Account", "AccountSession", "AccountDeletionRequest"],
+        "viewerRoutes": ["/login", "/register", "/forgot-password", "/reset-password", "/account"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/users"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Account controls exist; unify request errors and sign-in context; preserve revocation and deletion safeguards.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Profiles",
@@ -3988,7 +4839,17 @@
       "documentation": ["docs/TASK12_DISCOVERY.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Profile isolation and Kids transition",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["discovery/discovery.controller.ts"],
+        "models": ["ViewerProfile"],
+        "viewerRoutes": ["/my-ayin", "/kids"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Default/Kids context and profile ownership enforced; general profile switching/management is not established by inventory.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Channels",
@@ -4284,7 +5145,17 @@
       "documentation": ["docs/TASK08_CHANNELS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Canonical channel navigation",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["creator/channel.controller.ts"],
+        "models": ["Channel", "ChannelMember", "ChannelSettings", "ChannelAppearance"],
+        "viewerRoutes": ["/c/[handle]"],
+        "creatorRoutes": ["/studio/channel", "/channel/edit"],
+        "adminRoutes": ["/admin/channels"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Shared editor wrappers are intentional; Creators discovery destination remains a placeholder.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Uploads",
@@ -4438,7 +5309,17 @@
       "documentation": ["docs/R2_UPLOADS.md", "docs/TASK07_QUICK_UPLOAD.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Broken manifest shortcut; progressive disclosure",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["creator/quick-upload.controller.ts", "media/media-upload.controller.ts"],
+        "models": ["Video", "MediaAsset", "MediaProcessingJob"],
+        "viewerRoutes": [],
+        "creatorRoutes": ["/upload"],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Direct R2 path and minimal flow exist; manifest path is wrong and advanced metadata copy needs simplification.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Media processing",
@@ -4519,7 +5400,20 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Detailed operations API lacks adequate UI",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "admin/admin-media-processing.controller.ts",
+          "media/media-processing-queue.service.ts"
+        ],
+        "models": ["MediaProcessingJob", "MediaProcessingWorker"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "BACKEND_SURFACE_GAP",
+        "gap": "Summary exists; detailed job operations/retry lack professional operator surface; retain fenced leases.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "R2",
@@ -4545,7 +5439,17 @@
       "documentation": ["docs/R2_UPLOADS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Keep credentials and object operations private",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["media/media-storage.adapter.ts", "media/media-processing-worker.service.ts"],
+        "models": ["MediaAsset", "MediaProcessingJob"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTERNAL_BY_DESIGN",
+        "gap": "Do not expose storage credentials, object operations or transcoder execution as ordinary user UI.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "FFmpeg",
@@ -4626,7 +5530,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Retain worker/runtime boundaries",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["media/media-storage.adapter.ts", "media/media-processing-worker.service.ts"],
+        "models": ["MediaAsset", "MediaProcessingJob"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTERNAL_BY_DESIGN",
+        "gap": "Do not expose storage credentials, object operations or transcoder execution as ordinary user UI.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "HLS",
@@ -4696,7 +5610,20 @@
       "documentation": ["docs/TASK40_HLS_TRANSCODING.md", "docs/TASK42_ADAPTIVE_ROLLOUT.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Operator rollout and recovery surface gap",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "admin/admin-media-processing.controller.ts",
+          "media/media-adaptive-rollout.service.ts"
+        ],
+        "models": ["MediaPlaybackGeneration", "MediaPlaybackRendition"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "BACKEND_SURFACE_GAP",
+        "gap": "Ready rollout/backfill/recovery APIs need scoped operator workflows with step-up.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Adaptive playback",
@@ -4735,7 +5662,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Capability and failure-path verification",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["watch/watch.controller.ts"],
+        "models": ["MediaPlaybackGeneration", "MediaPlaybackRendition", "Video"],
+        "viewerRoutes": ["/watch/[slug]", "/live/[slug]", "/c/[handle]/tv"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Keep adaptive/MP4/ad/progress contracts; browser acceptance exists, target hardware validation remains separate.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Playback fallback",
@@ -4787,7 +5724,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Preserve MP4 fallback and ad hooks",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["watch/watch.controller.ts"],
+        "models": ["MediaPlaybackGeneration", "MediaPlaybackRendition", "Video"],
+        "viewerRoutes": ["/watch/[slug]", "/live/[slug]", "/c/[handle]/tv"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Keep adaptive/MP4/ad/progress contracts; browser acceptance exists, target hardware validation remains separate.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Player",
@@ -4862,7 +5809,17 @@
       "documentation": ["docs/TASK11_PLAYER.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Keyboard, touch, captions, TV focus",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["watch/watch.controller.ts"],
+        "models": ["MediaPlaybackGeneration", "MediaPlaybackRendition", "Video"],
+        "viewerRoutes": ["/watch/[slug]", "/live/[slug]", "/c/[handle]/tv"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Keep adaptive/MP4/ad/progress contracts; browser acceptance exists, target hardware validation remains separate.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Watch progress",
@@ -4918,7 +5875,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Cross-profile and native accounting consistency",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["watch/watch.controller.ts", "discovery/discovery.controller.ts"],
+        "models": ["WatchProgress", "WatchHistory", "WatchLaterItem", "MyListItem"],
+        "viewerRoutes": ["/my-ayin", "/watch/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Post-policy empty state and capped cursor issues reproduced; preserve raw scan position and profile isolation.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "History",
@@ -5025,7 +5992,17 @@
       "documentation": ["docs/TASK12_DISCOVERY.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Policy-filtered pagination and empty states",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["watch/watch.controller.ts", "discovery/discovery.controller.ts"],
+        "models": ["WatchProgress", "WatchHistory", "WatchLaterItem", "MyListItem"],
+        "viewerRoutes": ["/my-ayin", "/watch/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Post-policy empty state and capped cursor issues reproduced; preserve raw scan position and profile isolation.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "My AYIN",
@@ -5132,7 +6109,17 @@
       "documentation": ["docs/TASK12_DISCOVERY.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Library navigation and context preservation",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["watch/watch.controller.ts", "discovery/discovery.controller.ts"],
+        "models": ["WatchProgress", "WatchHistory", "WatchLaterItem", "MyListItem"],
+        "viewerRoutes": ["/my-ayin", "/watch/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Post-policy empty state and capped cursor issues reproduced; preserve raw scan position and profile isolation.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Playlists",
@@ -5245,7 +6232,21 @@
       "documentation": ["docs/TASK09_PLAYLISTS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Creator route duplication review",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["creator/playlist.controller.ts"],
+        "models": ["Playlist", "PlaylistItem"],
+        "viewerRoutes": ["/c/[handle]/playlists/[slug]"],
+        "creatorRoutes": [
+          "/studio/playlists",
+          "/channel/playlists",
+          "/channel/playlists/[playlistId]"
+        ],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Shared component reuse is intentional; canonical entry and return context need review.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Creator TV",
@@ -5349,7 +6350,20 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Top-level TV destination is placeholder",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "creator/creator-tv.controller.ts",
+          "creator/creator-tv-linear-output.controller.ts"
+        ],
+        "models": ["CreatorTvChannel", "TvScheduleItem", "CreatorTvVideoPreference"],
+        "viewerRoutes": ["/c/[handle]/tv"],
+        "creatorRoutes": ["/studio/tv", "/channel/tv"],
+        "adminRoutes": ["/admin/tv"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Creator manager/player exist; top-level /tv is placeholder; provider activation remains external.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Movies",
@@ -5458,7 +6472,20 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Top-level Movies destination is placeholder",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "movie-catalog/movie-catalog.controller.ts",
+          "movie-catalog/admin-movie-catalog.controller.ts"
+        ],
+        "models": ["Movie", "MovieAvailability", "MovieArtwork"],
+        "viewerRoutes": ["/movies/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/movies"],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Details/Admin implemented; top-level movie browse is placeholder; upstream errors become not-found.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Series",
@@ -5622,7 +6649,20 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Top-level Series destination is placeholder",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "series-catalog/series-catalog.controller.ts",
+          "series-catalog/admin-series-catalog.controller.ts"
+        ],
+        "models": ["Series", "SeriesSeason", "SeriesEpisode", "SeriesAvailability"],
+        "viewerRoutes": ["/series/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/series"],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Details/episode/Admin implemented; top-level series browse is placeholder.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Episodes",
@@ -5786,7 +6826,20 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Continue and next-episode journey",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "series-catalog/series-catalog.controller.ts",
+          "series-catalog/admin-series-catalog.controller.ts"
+        ],
+        "models": ["Series", "SeriesSeason", "SeriesEpisode", "SeriesAvailability"],
+        "viewerRoutes": ["/series/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/series"],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Details/episode/Admin implemented; top-level series browse is placeholder.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Clips",
@@ -5829,7 +6882,17 @@
       "documentation": ["docs/CLIPS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Navigation /shorts disagrees with /clips",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["creator/clips.controller.ts"],
+        "models": ["Video"],
+        "viewerRoutes": ["/clips"],
+        "creatorRoutes": ["/upload", "/studio/content"],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Canonical /clips exists but navigation /shorts shows placeholder.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Community",
@@ -5968,7 +7031,22 @@
       "documentation": ["docs/COMMUNITY_POSTS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Review feed/poll/moderation state coverage",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["community/community.controller.ts"],
+        "models": [
+          "CommunityPost",
+          "CommunityPollOption",
+          "CommunityPollVote",
+          "CommunityPostComment"
+        ],
+        "viewerRoutes": ["/community", "/c/[handle]/community"],
+        "creatorRoutes": ["/studio/community"],
+        "adminRoutes": ["/admin/moderation"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Creator/feed/moderation capabilities exist; consistently handle request failures and state changes.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Comments",
@@ -6099,7 +7177,17 @@
       "documentation": ["docs/TASK15_COMMENTS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Contextual moderation and error states",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["comments/comments.controller.ts"],
+        "models": ["Comment", "CommentControl", "ChannelHiddenProfile"],
+        "viewerRoutes": ["/watch/[slug]"],
+        "creatorRoutes": ["/studio/comments"],
+        "adminRoutes": ["/admin/moderation"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Maintain contextual creator moderation and role/ownership checks; review keyboard/RTL form behavior.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Social actions",
@@ -6208,7 +7296,17 @@
       "documentation": ["docs/TASK14_SOCIAL.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Accessible action feedback",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["social/social.controller.ts"],
+        "models": ["Reaction", "Subscription", "Notification"],
+        "viewerRoutes": ["/watch/[slug]", "/notifications", "/c/[handle]"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Mounted controls/feed exist; action feedback and account-switch state need cross-route verification.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Notifications",
@@ -6308,7 +7406,17 @@
       "documentation": ["docs/TASK14_SOCIAL.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Read/unread behavior and empty state",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["social/social.controller.ts"],
+        "models": ["Reaction", "Subscription", "Notification"],
+        "viewerRoutes": ["/watch/[slug]", "/notifications", "/c/[handle]"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Mounted controls/feed exist; action feedback and account-switch state need cross-route verification.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Captions",
@@ -6374,7 +7482,17 @@
       "documentation": ["docs/CAPTIONS_CHAPTERS_V1.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Upload/edit/playback/RTL coverage",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["creator/caption.controller.ts", "watch/watch.controller.ts"],
+        "models": ["VideoCaptionTrack"],
+        "viewerRoutes": ["/watch/[slug]"],
+        "creatorRoutes": ["/studio/content"],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Caption manager/player integration exists; accessibility, language and device behavior must be verified.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Chapters",
@@ -6412,7 +7530,20 @@
       "documentation": ["docs/CAPTIONS_CHAPTERS_V1.md", "docs/TASK51_VIDEO_METADATA_V2.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Shared metadata/player contract",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "creator/quick-upload.controller.ts",
+          "admin/admin-video-metadata.controller.ts"
+        ],
+        "models": ["VideoCreatorMetadata"],
+        "viewerRoutes": ["/watch/[slug]"],
+        "creatorRoutes": ["/upload", "/studio/content"],
+        "adminRoutes": ["/admin/videos"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Metadata fields are extensive; series placeholder copy is stale; disclose advanced fields progressively.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Metadata",
@@ -6449,7 +7580,20 @@
       "documentation": ["docs/TASK51_VIDEO_METADATA_V2.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Stale series-placeholder copy",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "creator/quick-upload.controller.ts",
+          "admin/admin-video-metadata.controller.ts"
+        ],
+        "models": ["VideoCreatorMetadata"],
+        "viewerRoutes": ["/watch/[slug]"],
+        "creatorRoutes": ["/upload", "/studio/content"],
+        "adminRoutes": ["/admin/videos"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Metadata fields are extensive; series placeholder copy is stale; disclose advanced fields progressively.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Rights",
@@ -6595,7 +7739,20 @@
       "documentation": ["docs/MODERATION_RIGHTS_TRUST.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Never weaken policy during pagination fixes",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "video-policy/video-policy.service.ts",
+          "admin/admin-video-policy.controller.ts"
+        ],
+        "models": ["VideoPolicy", "VideoPolicyOverride", "ContentRightsDeclaration"],
+        "viewerRoutes": ["/kids", "/watch/[slug]"],
+        "creatorRoutes": ["/upload", "/studio/content"],
+        "adminRoutes": ["/admin/kids", "/admin/trust"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Policy is server authoritative; no UI/pagination simplification may bypass it; unknown region remains conservative.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Maturity",
@@ -6693,7 +7850,20 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Age and Kids policy enforcement",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "video-policy/video-policy.service.ts",
+          "admin/admin-video-policy.controller.ts"
+        ],
+        "models": ["VideoPolicy", "VideoPolicyOverride", "ContentRightsDeclaration"],
+        "viewerRoutes": ["/kids", "/watch/[slug]"],
+        "creatorRoutes": ["/upload", "/studio/content"],
+        "adminRoutes": ["/admin/kids", "/admin/trust"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Policy is server authoritative; no UI/pagination simplification may bypass it; unknown region remains conservative.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Geographic policy",
@@ -6753,7 +7923,20 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Trusted region and unknown-region fail closed",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "video-policy/video-policy.service.ts",
+          "admin/admin-video-policy.controller.ts"
+        ],
+        "models": ["VideoPolicy", "VideoPolicyOverride", "ContentRightsDeclaration"],
+        "viewerRoutes": ["/kids", "/watch/[slug]"],
+        "creatorRoutes": ["/upload", "/studio/content"],
+        "adminRoutes": ["/admin/kids", "/admin/trust"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Policy is server authoritative; no UI/pagination simplification may bypass it; unknown region remains conservative.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Kids",
@@ -6814,7 +7997,20 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Dedicated safe navigation and ads",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "video-policy/video-policy.service.ts",
+          "admin/admin-video-policy.controller.ts"
+        ],
+        "models": ["VideoPolicy", "VideoPolicyOverride", "ContentRightsDeclaration"],
+        "viewerRoutes": ["/kids", "/watch/[slug]"],
+        "creatorRoutes": ["/upload", "/studio/content"],
+        "adminRoutes": ["/admin/kids", "/admin/trust"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Policy is server authoritative; no UI/pagination simplification may bypass it; unknown region remains conservative.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Search",
@@ -6922,7 +8118,17 @@
       "documentation": ["docs/TASK13_SEARCH_DETAILS.md", "docs/ayin-lens-semantic-search.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Preserve bounded query and policy enforcement",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["search/search.controller.ts"],
+        "models": ["Video", "Movie", "Series"],
+        "viewerRoutes": ["/search"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Lexical/language-aware search has UI; preserve safe filters, bounded query behavior and RTL semantics.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Language-aware search",
@@ -7055,7 +8261,17 @@
       "documentation": ["docs/TASK13_SEARCH_DETAILS.md", "docs/ayin-lens-semantic-search.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Arabic query and result validation",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["search/search.controller.ts"],
+        "models": ["Video", "Movie", "Series"],
+        "viewerRoutes": ["/search"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Lexical/language-aware search has UI; preserve safe filters, bounded query behavior and RTL semantics.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Lens",
@@ -7109,7 +8325,17 @@
       "documentation": ["docs/RECOMMENDATIONS_AND_LENS.md", "docs/ayin-lens-semantic-search.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Lexical fallback; no invented provider availability",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["search/search.controller.ts"],
+        "models": ["CatalogSearchEmbedding"],
+        "viewerRoutes": ["/my-ayin/lens"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Lexical fallback and optional semantic boundary exist; do not claim configured AI provider.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Recommendations",
@@ -7220,7 +8446,21 @@
       "documentation": ["docs/RECOMMENDATIONS_AND_LENS.md", "docs/recommendation-evaluation.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Ranking controls versus viewer simplicity",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["recommendations/recommendation.controller.ts"],
+        "models": [
+          "RecommendationProfileState",
+          "RecommendationFeedback",
+          "RecommendationExposure"
+        ],
+        "viewerRoutes": ["/", "/watch/[slug]", "/clips"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/settings"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Viewer recommendations/feedback exist; evaluate controls and configured exposure independently.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Recommendation evaluation",
@@ -7273,7 +8513,17 @@
       "documentation": ["docs/recommendation-evaluation.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Ready evaluation APIs have no dedicated surface",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-recommendation-evaluation.controller.ts"],
+        "models": ["RecommendationExposure"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "BACKEND_SURFACE_GAP",
+        "gap": "Ready fixture/version/exposure/export endpoints need OPERATIONS evaluation UI; exports contain sensitive evidence and require explicit intent.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Trending",
@@ -7314,7 +8564,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Dedicated configuration API lacks UI",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-trending.controller.ts"],
+        "models": ["TrendingScoreSnapshot", "PlatformSetting"],
+        "viewerRoutes": ["/"],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "BACKEND_SURFACE_GAP",
+        "gap": "Dedicated validated/audited configuration API has no adequate Admin form.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Regional discovery",
@@ -7386,7 +8646,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Review merchandising fields and surfaced controls",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-product.controller.ts", "discovery/discovery.controller.ts"],
+        "models": ["HomeRowRegionTarget", "RegionalDiscoveryAggregate"],
+        "viewerRoutes": ["/"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/product-controls"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Regional merchandising already mounted; verify cohort fallback, trusted location and UI completeness.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Localization",
@@ -7469,7 +8739,22 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Catalog localized; Admin text still largely English",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["catalog-localization/catalog-localization.controller.ts"],
+        "models": [
+          "MovieLocalization",
+          "SeriesLocalization",
+          "SeriesSeasonLocalization",
+          "SeriesEpisodeLocalization"
+        ],
+        "viewerRoutes": ["/search", "/movies/[slug]", "/series/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/catalog-localizations"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Viewer i18n and catalog editing exist; Admin/Studio English copy and physical CSS require complete pass.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Arabic/RTL",
@@ -7514,7 +8799,22 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Physical CSS offsets and mixed-language forms",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["catalog-localization/catalog-localization.controller.ts"],
+        "models": [
+          "MovieLocalization",
+          "SeriesLocalization",
+          "SeriesSeasonLocalization",
+          "SeriesEpisodeLocalization"
+        ],
+        "viewerRoutes": ["/search", "/movies/[slug]", "/series/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/catalog-localizations"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Viewer i18n and catalog editing exist; Admin/Studio English copy and physical CSS require complete pass.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Analytics",
@@ -7602,7 +8902,23 @@
       "documentation": ["docs/ANALYTICS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Existing dashboards; verify definitions and states",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["analytics/analytics.controller.ts"],
+        "models": [
+          "AnalyticsEvent",
+          "AnalyticsPlatformDailyRollup",
+          "AnalyticsChannelDailyRollup",
+          "AnalyticsPlatformCohortRollup",
+          "AnalyticsChannelCohortRollup"
+        ],
+        "viewerRoutes": [],
+        "creatorRoutes": ["/studio/analytics"],
+        "adminRoutes": ["/admin"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Already surfaced; keep suppression thresholds, date definitions and evidence limitations.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Cohorts",
@@ -7690,7 +9006,23 @@
       "documentation": ["docs/ANALYTICS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Already surfaced in analytics; preserve privacy thresholds",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["analytics/analytics.controller.ts"],
+        "models": [
+          "AnalyticsEvent",
+          "AnalyticsPlatformDailyRollup",
+          "AnalyticsChannelDailyRollup",
+          "AnalyticsPlatformCohortRollup",
+          "AnalyticsChannelCohortRollup"
+        ],
+        "viewerRoutes": [],
+        "creatorRoutes": ["/studio/analytics"],
+        "adminRoutes": ["/admin"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Already surfaced; keep suppression thresholds, date definitions and evidence limitations.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Warehouse export",
@@ -7723,7 +9055,20 @@
       "documentation": ["docs/WAREHOUSE_EXPORTS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Worker/internal export; status-only operator visibility useful",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "warehouse/warehouse-export.service.ts",
+          "warehouse/warehouse-export-worker.service.ts"
+        ],
+        "models": ["WarehouseExportCheckpoint"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTERNAL_WITH_OPERATOR_STATUS_GAP",
+        "gap": "Worker export remains internal; add sanitized checkpoint/configuration status only where useful.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Live",
@@ -7872,7 +9217,17 @@
       "documentation": ["docs/ADR_0072_LIVE_PROVIDER.md", "docs/LIVE_STREAMING.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Provider state, reconnect and unconfigured behavior",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["live/live.controller.ts"],
+        "models": ["LiveStream", "LiveChatMessage", "LiveModerationAction"],
+        "viewerRoutes": ["/live/[slug]"],
+        "creatorRoutes": ["/studio/live"],
+        "adminRoutes": [],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Creator/player/chat exist; Studio live fetch failures are unhandled; provider and hardware proofs remain external.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "FAST",
@@ -7982,7 +9337,20 @@
       "documentation": ["docs/FAST_LINEAR_STREAMING.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Provider activation and status truth",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "creator/creator-tv.controller.ts",
+          "creator/creator-tv-linear-output.controller.ts"
+        ],
+        "models": ["CreatorTvChannel", "TvScheduleItem", "CreatorTvVideoPreference"],
+        "viewerRoutes": ["/c/[handle]/tv"],
+        "creatorRoutes": ["/studio/tv", "/channel/tv"],
+        "adminRoutes": ["/admin/tv"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Creator manager/player exist; top-level /tv is placeholder; provider activation remains external.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "SSAI/DAI",
@@ -8004,7 +9372,17 @@
       "documentation": ["docs/TASK76_SSAI_DAI.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Runtime SDK support and external verification",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["ads/video-ad.controller.ts"],
+        "models": ["AdEvent", "PlatformSetting"],
+        "viewerRoutes": ["/watch/[slug]", "/live/[slug]", "/c/[handle]/tv"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/advertising"],
+        "disposition": "PLATFORM_BOUNDARY",
+        "gap": "Keep supported runtime adapters; provider configuration and real fill are not repository acceptance.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Page ads",
@@ -8062,7 +9440,29 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Preserve consent/no-fill collapse and kill switch",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "ads/advertising-control.controller.ts",
+          "ads/gam-production.controller.ts",
+          "ads/page-ad.controller.ts",
+          "ads/video-ad.controller.ts"
+        ],
+        "models": [
+          "AdPlacement",
+          "AdEvent",
+          "Campaign",
+          "Creative",
+          "Advertiser",
+          "VideoAdOverride"
+        ],
+        "viewerRoutes": ["/", "/watch/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/advertising", "/admin/video-ads"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Controls and diagnostics exist; retain consent/kill switch, masked credentials and contextual entity selectors.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Video ads",
@@ -8169,7 +9569,29 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Preserve ad lifecycle across platforms",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "ads/advertising-control.controller.ts",
+          "ads/gam-production.controller.ts",
+          "ads/page-ad.controller.ts",
+          "ads/video-ad.controller.ts"
+        ],
+        "models": [
+          "AdPlacement",
+          "AdEvent",
+          "Campaign",
+          "Creative",
+          "Advertiser",
+          "VideoAdOverride"
+        ],
+        "viewerRoutes": ["/", "/watch/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/advertising", "/admin/video-ads"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Controls and diagnostics exist; retain consent/kill switch, masked credentials and contextual entity selectors.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Direct advertising",
@@ -8404,7 +9826,29 @@
       "documentation": ["docs/ADVERTISING_CONTROL_CENTER.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Existing controls; contextual entity selection",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "ads/advertising-control.controller.ts",
+          "ads/gam-production.controller.ts",
+          "ads/page-ad.controller.ts",
+          "ads/video-ad.controller.ts"
+        ],
+        "models": [
+          "AdPlacement",
+          "AdEvent",
+          "Campaign",
+          "Creative",
+          "Advertiser",
+          "VideoAdOverride"
+        ],
+        "viewerRoutes": ["/", "/watch/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/advertising", "/admin/video-ads"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Controls and diagnostics exist; retain consent/kill switch, masked credentials and contextual entity selectors.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "GAM",
@@ -8449,7 +9893,29 @@
       "documentation": ["docs/GAM_PRODUCTION.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Diagnostics exist; real credentials/fill external",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "ads/advertising-control.controller.ts",
+          "ads/gam-production.controller.ts",
+          "ads/page-ad.controller.ts",
+          "ads/video-ad.controller.ts"
+        ],
+        "models": [
+          "AdPlacement",
+          "AdEvent",
+          "Campaign",
+          "Creative",
+          "Advertiser",
+          "VideoAdOverride"
+        ],
+        "viewerRoutes": ["/", "/watch/[slug]"],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/advertising", "/admin/video-ads"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Controls and diagnostics exist; retain consent/kill switch, masked credentials and contextual entity selectors.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Revenue",
@@ -8781,7 +10247,29 @@
       "documentation": ["docs/REVENUE_LEDGER.md", "docs/REVENUE_RECONCILIATION.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Currency, precision and role isolation",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "revenue/revenue.controller.ts",
+          "revenue/revenue-reconciliation.controller.ts",
+          "revenue/payout-provider.controller.ts",
+          "revenue/creator-compliance.controller.ts"
+        ],
+        "models": [
+          "EarningsLedgerEntry",
+          "CreatorContract",
+          "RevenueSourceReport",
+          "Payout",
+          "PayoutProviderTransfer",
+          "CreatorPayoutProfile"
+        ],
+        "viewerRoutes": ["/account"],
+        "creatorRoutes": ["/studio/monetization"],
+        "adminRoutes": ["/admin/revenue", "/admin/revenue/payouts/[payoutId]"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Finance/provider/compliance surfaces exist; preserve scoped identity data, immutable ledger and step-up.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Reconciliation",
@@ -8839,7 +10327,29 @@
       "documentation": ["docs/REVENUE_RECONCILIATION.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Existing imports; review status clarity",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "revenue/revenue.controller.ts",
+          "revenue/revenue-reconciliation.controller.ts",
+          "revenue/payout-provider.controller.ts",
+          "revenue/creator-compliance.controller.ts"
+        ],
+        "models": [
+          "EarningsLedgerEntry",
+          "CreatorContract",
+          "RevenueSourceReport",
+          "Payout",
+          "PayoutProviderTransfer",
+          "CreatorPayoutProfile"
+        ],
+        "viewerRoutes": ["/account"],
+        "creatorRoutes": ["/studio/monetization"],
+        "adminRoutes": ["/admin/revenue", "/admin/revenue/payouts/[payoutId]"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Finance/provider/compliance surfaces exist; preserve scoped identity data, immutable ledger and step-up.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Payouts",
@@ -8965,7 +10475,29 @@
       "documentation": ["docs/PAYOUT_PROVIDER.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Provider readiness and safe financial mutations",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "revenue/revenue.controller.ts",
+          "revenue/revenue-reconciliation.controller.ts",
+          "revenue/payout-provider.controller.ts",
+          "revenue/creator-compliance.controller.ts"
+        ],
+        "models": [
+          "EarningsLedgerEntry",
+          "CreatorContract",
+          "RevenueSourceReport",
+          "Payout",
+          "PayoutProviderTransfer",
+          "CreatorPayoutProfile"
+        ],
+        "viewerRoutes": ["/account"],
+        "creatorRoutes": ["/studio/monetization"],
+        "adminRoutes": ["/admin/revenue", "/admin/revenue/payouts/[payoutId]"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Finance/provider/compliance surfaces exist; preserve scoped identity data, immutable ledger and step-up.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Compliance",
@@ -9042,7 +10574,29 @@
       "documentation": ["docs/CREATOR_COMPLIANCE_THREAT_PRIVACY_REVIEW.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Existing surfaces; preserve sensitive-data scope",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "revenue/revenue.controller.ts",
+          "revenue/revenue-reconciliation.controller.ts",
+          "revenue/payout-provider.controller.ts",
+          "revenue/creator-compliance.controller.ts"
+        ],
+        "models": [
+          "EarningsLedgerEntry",
+          "CreatorContract",
+          "RevenueSourceReport",
+          "Payout",
+          "PayoutProviderTransfer",
+          "CreatorPayoutProfile"
+        ],
+        "viewerRoutes": ["/account"],
+        "creatorRoutes": ["/studio/monetization"],
+        "adminRoutes": ["/admin/revenue", "/admin/revenue/payouts/[payoutId]"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Finance/provider/compliance surfaces exist; preserve scoped identity data, immutable ledger and step-up.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Support",
@@ -9164,7 +10718,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Contextual support workspace",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-governance.controller.ts"],
+        "models": ["SupportTicket"],
+        "viewerRoutes": [],
+        "creatorRoutes": ["/studio/support"],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Ticket forms/queues exist; isolate operations contexts and preserve assignment/audit.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Moderation",
@@ -9292,7 +10856,23 @@
       "documentation": ["docs/MODERATION_RIGHTS_TRUST.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Raw technical IDs still exposed in forms",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["trust/trust.controller.ts", "admin/admin-control.controller.ts"],
+        "models": [
+          "ModerationCase",
+          "ModerationAction",
+          "ModerationAppeal",
+          "TakedownRequest",
+          "CreatorTrustState"
+        ],
+        "viewerRoutes": [],
+        "creatorRoutes": ["/studio/trust"],
+        "adminRoutes": ["/admin/trust", "/admin/moderation"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Raw UUID inputs and dense actions need contextual entity selection; preserve reasons and security.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "Trust & Safety",
@@ -9438,7 +11018,23 @@
       "documentation": ["docs/MODERATION_RIGHTS_TRUST.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Searchable targets without weaker enforcement",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["trust/trust.controller.ts", "admin/admin-control.controller.ts"],
+        "models": [
+          "ModerationCase",
+          "ModerationAction",
+          "ModerationAppeal",
+          "TakedownRequest",
+          "CreatorTrustState"
+        ],
+        "viewerRoutes": [],
+        "creatorRoutes": ["/studio/trust"],
+        "adminRoutes": ["/admin/trust", "/admin/moderation"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Raw UUID inputs and dense actions need contextual entity selection; preserve reasons and security.",
+        "remediationPhase": 4
+      }
     },
     {
       "feature": "SEO",
@@ -9532,7 +11128,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Align canonical browse and alias routes",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["seo/seo.controller.ts", "seo/seo-sitemap-counts.controller.ts"],
+        "models": ["Video", "Movie", "Series", "Channel"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTERNAL_BY_DESIGN",
+        "gap": "Align canonical routes and exclude private/placeholder content; no new public control surface needed.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Sitemaps",
@@ -9593,7 +11199,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "No private or placeholder routes",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["seo/seo.controller.ts", "seo/seo-sitemap-counts.controller.ts"],
+        "models": ["Video", "Movie", "Series", "Channel"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "INTERNAL_BY_DESIGN",
+        "gap": "Align canonical routes and exclude private/placeholder content; no new public control surface needed.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Admin",
@@ -10798,7 +12414,17 @@
       ],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Flat 19-link sidebar and repeated session fetches",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin.controller.ts", "admin/admin-control.controller.ts"],
+        "models": ["AdminRoleAssignment", "AdminAuditLog"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "19 flat sidebar links; repeated session reads; group surfaces and add appropriate step-up UX.",
+        "remediationPhase": 3
+      }
     },
     {
       "feature": "Observability",
@@ -10844,7 +12470,17 @@
       "documentation": ["docs/TASK43_OBSERVABILITY.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "API available; summary only in Operations",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-observability.controller.ts", "database/database.service.ts"],
+        "models": [],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "BACKEND_SURFACE_GAP",
+        "gap": "Task 87 summary exists; detailed Postgres/API evidence needs operator UI; primary consistency stays authoritative.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Backups",
@@ -10863,7 +12499,17 @@
       "documentation": ["docs/TASK44_BACKUP_RESTORE.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Local status evidence; restore drills external",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-operations-dashboard.service.ts"],
+        "models": [],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "INTERNAL_WITH_SUMMARY",
+        "gap": "Operator status already exists, backed only by actual trusted report files; execution remains internal.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Synthetic monitoring",
@@ -10882,7 +12528,17 @@
       "documentation": ["docs/TASK45_SYNTHETIC_MONITORING.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "External reports must not be fabricated",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-operations-dashboard.service.ts"],
+        "models": [],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "INTERNAL_WITH_SUMMARY",
+        "gap": "Operator status already exists, backed only by actual trusted report files; execution remains internal.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Media workers",
@@ -10974,7 +12630,20 @@
       "documentation": ["docs/MEDIA_WORKER_SCALING.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Retain fencing and worker heartbeat truth",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [
+          "admin/admin-media-processing.controller.ts",
+          "media/media-processing-queue.service.ts"
+        ],
+        "models": ["MediaProcessingJob", "MediaProcessingWorker"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "BACKEND_SURFACE_GAP",
+        "gap": "Summary exists; detailed job operations/retry lack professional operator surface; retain fenced leases.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Database scaling",
@@ -11013,7 +12682,17 @@
       "documentation": ["docs/POSTGRES_SCALING.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Detailed performance API not surfaced",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-observability.controller.ts", "database/database.service.ts"],
+        "models": [],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "BACKEND_SURFACE_GAP",
+        "gap": "Task 87 summary exists; detailed Postgres/API evidence needs operator UI; primary consistency stays authoritative.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "Operations dashboard",
@@ -11040,7 +12719,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Task 87 summary integrated; workflow grouping remains",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": ["admin/admin-operations-dashboard.service.ts"],
+        "models": ["PlatformSetting", "MediaProcessingJob", "EarningsLedgerEntry"],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": ["/admin/operations"],
+        "disposition": "INTEGRATED_WITH_GAPS",
+        "gap": "Task 87 verified; detailed operator actions remain separate integration work.",
+        "remediationPhase": 2
+      }
     },
     {
       "feature": "PWA",
@@ -11067,7 +12756,17 @@
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Duplicate manifest, unsafe/boundless cache candidates, no offline navigation",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [],
+        "models": [],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "PARTIAL_SURFACE",
+        "gap": "Served static manifest hides generated shortcuts; cache privacy/ownership risks and offline/update gaps reproduced.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "Android",
@@ -11086,7 +12785,17 @@
       "documentation": ["docs/ANDROID_TV_SHELLS.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Thin web shell; hardware/store evidence separate",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [],
+        "models": [],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "PLATFORM_BOUNDARY",
+        "gap": "Thin shared Web shell; device/store evidence separate from structural validation.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "iOS",
@@ -11105,7 +12814,17 @@
       "documentation": ["docs/IOS_DISTRIBUTION.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Independent SwiftUI ordinary UI conflicts with new Web/PWA-first goal",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [],
+        "models": [],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "PLATFORM_ARCHITECTURE_GAP",
+        "gap": "Existing native ordinary UI conflicts with master principle; retain necessary native capabilities while evaluating shared Web shell.",
+        "remediationPhase": 5
+      }
     },
     {
       "feature": "TV platforms",
@@ -11141,7 +12860,17 @@
       ],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
       "gaps": "Native exceptions require technical evidence; device/store checks external",
-      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness"
+      "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
+      "semanticReview": {
+        "backend": [],
+        "models": [],
+        "viewerRoutes": [],
+        "creatorRoutes": [],
+        "adminRoutes": [],
+        "disposition": "PLATFORM_BOUNDARY",
+        "gap": "Native tvOS focus/player exceptions versus shared Android/Tizen/webOS UI require documented capability evidence.",
+        "remediationPhase": 5
+      }
     }
   ],
   "models": [

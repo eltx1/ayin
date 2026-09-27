@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 
 // Source inventory only: matches are evidence candidates, never runtime acceptance.
 const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
@@ -317,5 +318,64 @@ const result = {
         ),
     ),
 };
+const review = JSON.parse(text("docs/AYIN_PRODUCT_INTEGRATION_SEMANTIC_REVIEW.json"));
+const classified = new Set();
+for (const domain of review.domains) {
+  for (const file of domain.backend) {
+    if (!existsSync(`apps/api/src/${file}`)) throw new Error(`Missing reviewed source: ${file}`);
+  }
+  for (const model of domain.models) {
+    if (!result.models.some((entry) => entry.model === model)) {
+      throw new Error(`Missing reviewed model: ${model}`);
+    }
+  }
+  for (const name of domain.features) {
+    const feature = features.find((entry) => entry.feature === name);
+    if (!feature || classified.has(name)) throw new Error(`Invalid reviewed feature: ${name}`);
+    classified.add(name);
+    const { features: _names, ...semanticReview } = domain;
+    feature.semanticReview = semanticReview;
+  }
+}
+if (classified.size !== features.length) throw new Error("Semantic review must cover every domain");
+const responsiveSource = text("tests/e2e/responsive.acceptance.spec.ts");
+const responsiveRoutes = responsiveSource.split("for (const route of [")[1].split("])")[0];
+for (const route of result.routes) {
+  const ancestors = [];
+  let directory = path.dirname(route.file);
+  while (directory.startsWith("apps/web/src/app")) {
+    ancestors.push(directory);
+    directory = path.dirname(directory);
+  }
+  route.sourceReview = {
+    surface: route.route.startsWith("/admin")
+      ? "Admin"
+      : route.route.startsWith("/studio") ||
+          route.route.startsWith("/channel/") ||
+          route.route === "/upload"
+        ? "Creator"
+        : "Viewer/public",
+    layoutFiles: ancestors.map((folder) => `${folder}/layout.tsx`).filter(existsSync),
+    errorBoundaryFiles: ancestors.map((folder) => `${folder}/error.tsx`).filter(existsSync),
+    loadingBoundaryFiles: ancestors.map((folder) => `${folder}/loading.tsx`).filter(existsSync),
+    baselineMobileOverflowTest:
+      route.kind === "page" &&
+      (responsiveRoutes.includes(`"${route.route}"`) || route.route === "/c/[handle]"),
+    baselineArabicAssertions: ["/login", "/search", "/watch/[slug]"].includes(route.route),
+    roleReview: route.route.startsWith("/admin")
+      ? "Server AdminGuard and scoped roles remain authoritative; per-action step-up review required"
+      : route.route.startsWith("/studio") ||
+          route.route.startsWith("/channel/") ||
+          ["/account", "/my-ayin", "/upload", "/notifications"].includes(route.route)
+        ? "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries"
+        : "Public reads must preserve publication, rights, region and Kids policy where relevant",
+    keyboardRtlReview:
+      "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+    stateReview:
+      route.route === "/[section]"
+        ? "Known placeholder destinations R01/R03; explicit routes take precedence"
+        : "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data",
+  };
+}
 writeFileSync("docs/AYIN_PRODUCT_INTEGRATION_MATRIX.json", JSON.stringify(result, null, 2) + "\n");
 console.log(JSON.stringify(result.counts));
