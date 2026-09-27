@@ -149,3 +149,22 @@ Run `node scripts/probe-product-integration-risks.mjs` from the repository root 
 `node scripts/audit-product-integration.mjs` regenerates the source matrix from tracked files at the current SHA. Two runs at the same SHA were byte-identical. All 355 HTTP decorators are represented as 357 endpoint paths, including the health/readiness array aliases; all 65 page files and 8 route handlers are represented.
 
 Still required before closing Phase 1: semantic source review of all candidate mappings; full route state/role matrix; measured mobile/RTL/keyboard/TV-focus review; loading/error/offline scenarios; production-performance evidence where available. This inventory must not be treated as a complete UX audit.
+
+## Additional semantic review and runtime checks
+
+- All 80 controller-class headers were inspected for route prefixes and guards. Public endpoints must be evaluated at method/service level too: for example PrivacyController has method-scoped AuthGuard, while AdminPrivacyController requires SUPERADMIN plus step-up. Absence of a class guard is not evidence of an authorization bug. Webhook signature validation remains its own contract.
+- Admin and Studio component headings, request entrypoints and error handling were inspected. Regional merchandising, cohort analytics, GAM diagnostics, payout-provider detail and creator compliance already have mounted surfaces. They require refinement/verification, not a duplicate implementation.
+- **R19 (high): MFA management / step-up UX gap.** Web auth implements enrollment/challenge, but searches of the Web code found no calls for `/auth/mfa/step-up`, `/auth/mfa/status`, recovery-code regeneration or disable. Privileged mutations require step-up in the API. Phase 2 must give users an appropriate guarded re-authentication flow without relaxing the backend requirement.
+- **R20 (medium): unhandled live-network failures.** `studio-live-client.tsx` uses promise chains and mutations without rejection handling; a failed initial fetch can leave users in a misleading/loading state. Add explicit loading/error/retry and action-pending handling; do not conceal unavailable providers.
+- **R21 (low): unreferenced legacy UI candidates.** `AdminRevenue` in `admin-revenue.tsx` and `StudioSummary` in `studio-summary.tsx` have no import/reference outside their definitions. Current routes mount newer control-center/analytics components. Preserve them until history and external entrypoint checks establish safe removal. `StudioRevenue`, in contrast, intentionally re-exports AccountRevenue and is genuine reuse.
+- Existing passing browser tests include a 390px responsive scan across 34 viewer/account/Studio/Admin destinations and Arabic auth/search/watch checks. These prove only their explicit invariants, not full route accessibility, visual quality or TV/device certification.
+
+### Production-build HTTP probes
+
+A locally started Next production build (same application code as the verified baseline) returned the **static** `public/manifest.webmanifest` at HTTP 200. Its description is `AYIN is a global web-first streaming and creator platform.`, `start_url` is `/`, and it has no shortcuts. The generated `app/manifest.ts` shortcut bug therefore sits behind a second, divergent authority. Consolidation must verify the actual served manifest, not merely edit the TypeScript source.
+
+The production server returned the `Ready for the next layer` placeholder at `/movies`, `/series`, `/tv`, `/creators` and `/shorts`. `/upload` and `/clips` use their real route implementations. `/uploads` has no implementation; HTTP 200 alone is not route acceptance because streamed Next responses may carry not-found UI after headers are sent. These probes did not use a database and do not certify authenticated/data-dependent actions.
+
+### Local environment boundary
+
+Local PostgreSQL is absent. Installing system packages failed on the environment's UID/group permissions, so it was not treated as an application failure or bypassed. Database-backed checks use the already successful GitHub PostgreSQL CI environment. Local HTTP probes run server and client in the same tool execution because executions have isolated network namespaces.
