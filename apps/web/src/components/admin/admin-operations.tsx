@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
+import { AdminOperationsCapacityDashboard } from "@/components/admin/admin-operations-dashboard";
 import {
   getAdminSupportAssignees,
   searchAdminComplianceChannels,
@@ -218,6 +219,8 @@ export function AdminOperations() {
       </header>
 
       {message ? <p className={styles.notice}>{message}</p> : null}
+
+      {canOperate || canCompliance ? <AdminOperationsCapacityDashboard /> : null}
 
       <section aria-label="Operations summary" className={styles.metrics}>
         {canOperate ? (
