@@ -246,6 +246,11 @@ export function AdminOperations() {
             {locale === "ar" ? "عمليات PostgreSQL" : "PostgreSQL operations"}
           </Link>
         ) : null}
+        {session?.roles.includes("SUPERADMIN") ? (
+          <Link className={styles.button} href={href("/admin/operations/observability")}>
+            {locale === "ar" ? "مراقبة الخدمة" : "Service observability"}
+          </Link>
+        ) : null}
       </nav>
       {message ? <p className={styles.notice}>{message}</p> : null}
 

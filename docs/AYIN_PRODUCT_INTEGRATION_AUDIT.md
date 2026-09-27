@@ -319,3 +319,7 @@ Selection now checks current generations, published non-private content, active 
 ### Phase 2D accepted; Phase 2E overview follow-up
 
 PR #127 (`ee56af7b`) accepted incomplete-HLS selection and operator integration on `0c71d183` with all gates, 540 API integration-gate tests and 41 browser tests passing. Phase 2E addresses the separate unbounded overview read: aggregate counts and oldest pending item inside PostgreSQL with one summary row transferred, preserving existing eligibility. Four database tests and a 512-video measurement fixture await full CI; production query latency is unmeasured.
+
+### Phase 2E accepted; detailed observability integration
+
+PR #128 (`4b2d2e9f`) passed all gates, 544 API integration-gate tests and 41 browser tests on `78221e14`. CI 512-video fixture transferred one catalog summary row in 41ms; this is not production latency evidence. Phase 2F mounts the existing SUPERADMIN observability endpoint with source-of-truth process sampling metadata, read-only scoped states and honest empty/error/disabled telemetry messaging. Local/fleet and request-window/process-lifetime evidence are distinct; acceptance pending.

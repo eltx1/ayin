@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, UseGuards } from "@nestjs/common";
+import { Controller, Get, Header, Inject, UseGuards } from "@nestjs/common";
 
 import { AuthGuard } from "../auth/auth.guard.js";
 import { DatabaseService } from "../database/database.service.js";
@@ -15,11 +15,13 @@ export class AdminObservabilityController {
   ) {}
 
   @Get()
+  @Header("Cache-Control", "private, no-store")
   snapshot() {
     return this.observability.metricsSnapshot();
   }
 
   @Get("postgres")
+  @Header("Cache-Control", "private, no-store")
   postgres() {
     return this.database.postgresPerformanceSnapshot();
   }
