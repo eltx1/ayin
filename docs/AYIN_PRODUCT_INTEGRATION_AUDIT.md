@@ -323,3 +323,7 @@ PR #127 (`ee56af7b`) accepted incomplete-HLS selection and operator integration 
 ### Phase 2E accepted; detailed observability integration
 
 PR #128 (`4b2d2e9f`) passed all gates, 544 API integration-gate tests and 41 browser tests on `78221e14`. CI 512-video fixture transferred one catalog summary row in 41ms; this is not production latency evidence. Phase 2F mounts the existing SUPERADMIN observability endpoint with source-of-truth process sampling metadata, read-only scoped states and honest empty/error/disabled telemetry messaging. Local/fleet and request-window/process-lifetime evidence are distinct; acceptance pending.
+
+### Phase 2F accepted and next security investigation
+
+PR #129 (`f5104bcc`) passed all gates on `c6797480`, including 545 API integration-gate tests and 42 browser tests. Initial browser failures were corrected using the existing ADMIN fixture and the actual mobile preroll gesture gate, without weakening assertions. Detailed service observability is integrated; external telemetry/fleet coverage remains unavailable. Source review identified MFA read/modify/write concurrency cases to reproduce before account UI integration; they are not yet tested or fixed. Execution workspace disconnected with `409 environment_offline`; all accepted implementation and resume evidence are on GitHub.
