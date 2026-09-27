@@ -140,7 +140,7 @@ export function AdminMediaOperations() {
                         <bdi>{job.status}</bdi>
                         <br />
                         <small>
-                          <bdi>{job.stage}</bdi>
+                          <bdi>{job.stage ?? "—"}</bdi>
                         </small>
                         {job.errorCode ? (
                           <p>

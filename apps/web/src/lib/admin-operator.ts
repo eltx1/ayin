@@ -27,7 +27,7 @@ export interface MediaOperations {
     id: string;
     videoId: string;
     status: string;
-    stage: string;
+    stage: string | null;
     progressPercent: number;
     attempt: number;
     updatedAt: string;

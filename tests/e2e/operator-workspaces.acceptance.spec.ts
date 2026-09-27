@@ -17,6 +17,7 @@ test("operator workspaces preserve role boundaries, empty/error states and mobil
   page,
 }) => {
   db("reset");
+  db("reset-operator-state");
   const registered = await page.request.post(`${API}/auth/register`, {
     data: {
       name: "Operations browser",
@@ -26,7 +27,9 @@ test("operator workspaces preserve role boundaries, empty/error states and mobil
     headers: { origin: WEB },
   });
   expect(registered.ok()).toBeTruthy();
-  const identity = (await registered.json()) as { user: { account: { id: string } } };
+  const identity = (await registered.json()) as {
+    user: { account: { id: string }; channel: { id: string } };
+  };
   await enrollMfa(page.request);
   db("grant-admin", { accountId: identity.user.account.id });
   let sessionReads = 0;
@@ -46,6 +49,14 @@ test("operator workspaces preserve role boundaries, empty/error states and mobil
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Adaptive HLS rollout" })).toBeVisible();
   expect(sessionReads).toBe(1);
+  db("seed-operator-job", { channelId: identity.user.channel.id });
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("Operator fixture video", { exact: true })).toBeVisible();
+  await page.getByLabel("Find a video", { exact: true }).fill("no matching title");
+  await expect(page.getByText("No titles match this search.", { exact: true })).toBeVisible();
+  await page.getByLabel("Find a video", { exact: true }).fill("");
+  await expect(page.getByText("Operator fixture video", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.route("**/admin/media-processing", (route) =>
     route.fulfill({
       status: 503,
@@ -56,14 +67,10 @@ test("operator workspaces preserve role boundaries, empty/error states and mobil
   await expect(
     page.getByRole("alert").filter({ hasText: "Queue temporarily unavailable" }),
   ).toBeVisible();
-  await expect(
-    page.getByText("No processing jobs have been reported.", { exact: true }),
-  ).not.toBeVisible();
+  await expect(page.getByText("Operator fixture video", { exact: true })).not.toBeVisible();
   await page.unroute("**/admin/media-processing");
   await page.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(
-    page.getByText("No processing jobs have been reported.", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Operator fixture video", { exact: true })).toBeVisible();
   await page.goto("/admin/operations/database");
   await expect(
     page.getByRole("alert").filter({ hasText: "Your current role cannot view" }),
@@ -79,6 +86,10 @@ test("operator workspaces preserve role boundaries, empty/error states and mobil
   await page.reload();
   await expect(page.getByRole("heading", { name: "الاتصالات حسب التطبيق" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.goto("/admin/operations/media");
+  await expect(page.getByRole("heading", { name: "عمليات الوسائط", exact: true })).toBeVisible();
+  await expect(page.getByText("Operator fixture video", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(writes).toEqual([]);
 });
