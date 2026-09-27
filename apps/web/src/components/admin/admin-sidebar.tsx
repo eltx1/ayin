@@ -8,6 +8,8 @@ import styles from "@/app/admin/admin.module.css";
 import { AppNavLink } from "@/components/ui/app-nav-link";
 import { getAdminSession, type AdminRole, type AdminSession } from "@/lib/admin-control";
 
+import { AdminReauthentication } from "./admin-reauthentication";
+
 interface AdminNavigationItem {
   label: string;
   href: string;
@@ -87,6 +89,7 @@ export function AdminSidebar() {
         {failed ? <span className={styles.muted}>Admin access unavailable.</span> : null}
       </nav>
 
+      {session ? <AdminReauthentication /> : null}
       {session ? (
         <div className={styles.muted} aria-label="Current admin roles">
           {session.roles.join(" · ")}

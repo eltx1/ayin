@@ -3,7 +3,8 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import { apiBaseUrl, readApiError } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api";
+import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
 import { getAdminSession, type AdminSession } from "@/lib/admin-control";
 
 type Report = {

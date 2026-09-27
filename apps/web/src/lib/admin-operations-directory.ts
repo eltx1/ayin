@@ -1,4 +1,5 @@
-import { apiBaseUrl, readApiError } from "./api";
+import { apiBaseUrl } from "./api";
+import { readAdminApiError as readApiError } from "./admin-reauthentication";
 import type { AdminRole } from "./admin-control";
 
 export interface AdminSupportAssignee {

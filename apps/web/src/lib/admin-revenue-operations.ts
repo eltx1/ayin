@@ -1,4 +1,5 @@
-import { apiBaseUrl, readApiError } from "./api";
+import { apiBaseUrl } from "./api";
+import { readAdminApiError as readApiError } from "./admin-reauthentication";
 
 export interface AdminChannelContract {
   id: string;
