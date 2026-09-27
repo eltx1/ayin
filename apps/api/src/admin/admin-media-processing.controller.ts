@@ -142,8 +142,10 @@ export class AdminMediaProcessingController {
           "Only a failed media processing job can be retried.",
         );
       }
-      const retried = await tx.mediaProcessingJob.update({
-        where: { id: job.id },
+      // Another retry/recovery may have queued or claimed this job since the read.
+      // PostgreSQL rechecks this predicate after waiting for a concurrent writer.
+      const changed = await tx.mediaProcessingJob.updateMany({
+        where: { id: job.id, status: "FAILED", updatedAt: job.updatedAt },
         data: {
           status: "QUEUED",
           stage: "ADMIN_RETRY_QUEUED",
@@ -153,12 +155,19 @@ export class AdminMediaProcessingController {
           startedAt: null,
           completedAt: null,
           leaseOwner: null,
+          leaseWorkerId: null,
           leaseExpiresAt: null,
           heartbeatAt: null,
           errorCode: null,
           errorMessage: null,
         },
       });
+      if (changed.count !== 1) {
+        throw adminBadRequest(
+          "MEDIA_JOB_RETRY_CONFLICT",
+          "This media processing job changed. Refresh its state before retrying.",
+        );
+      }
       await this.audit.recordInTransaction(tx, {
         actorAccountId: request.ayinAuth.accountId,
         action: "media_processing.retry",
@@ -166,7 +175,7 @@ export class AdminMediaProcessingController {
         entityId: job.id,
         metadata: { videoId: job.videoId, generation: job.generation },
       });
-      return retried;
+      return tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
     });
   }
 

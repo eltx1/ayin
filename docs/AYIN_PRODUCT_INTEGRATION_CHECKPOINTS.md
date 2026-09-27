@@ -90,3 +90,18 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Do not expose retry/reprocess/recovery controls before that safety work. The merged 2A.2 workspaces are read-only.
 - Resume from main `de1cc33fca438b05be1f67acb3d8ece2dca7d82c`, after reading this checkpoint and verifying remote state. Phase 2 is still incomplete; Phases 3–5 have not started.
 - This checkpoint follow-up changes documentation/inventory provenance only. Scanner syntax, deterministic output and formatting are checked separately; no new runtime acceptance is claimed.
+
+## Phase 2A.3a — atomic failed-job retry, validation in progress
+
+- Starting SHA: `6329fa29f19687dadd1db0ad6abccb16a7f34c38`, after PR #112 passed quality run `36294723098` and merged with expected-head protection. Checkpoint read before implementation. Restored a fresh checkout after the previous worktree's parent Git metadata became unavailable; retained the old files.
+- Findings: retry used an unconditional write after reading FAILED. Two requests could both succeed and audit, or a stale request could reset a newly acquired worker lease. Retry also retained the old `leaseWorkerId`.
+- Changes: conditional update on id, FAILED status and observed `updatedAt`; a changed snapshot returns `MEDIA_JOB_RETRY_CONFLICT`. Only the winning transition writes the audit in the same transaction. Clear the worker id alongside the other expired lease fields. No frontend mutation controls yet.
+- Migrations: none.
+- Tests added: PostgreSQL regression with a barrier after two real reads, exactly one committed retry/audit, preservation of a concurrently acquired lease, rejection after a newer failure and rollback when the audit actor foreign key fails. These exercise controller transaction behavior; existing HTTP authorization/step-up guards remain unchanged.
+- Tests executed: local formatting, API lint/typecheck and all 345 API unit tests (87 files, 30.97s) passed. Full CI including the four PostgreSQL regressions is pending in PR #113; database regressions are not yet claimed as passed.
+- Performance measurements: none; no production concurrency/load claim.
+- Remaining issues: R22 is only partially addressed. Superseded generations and concurrent retry/reprocess/backfill/recovery generation creation still require a shared consistency review. Timestamp comparison adds stale-snapshot protection but is not a new monotonic generation/revision contract. Do not expose mutation controls until that follow-up is validated.
+- External blockers: local PostgreSQL/Chromium remain unavailable; real database/browser acceptance must run in CI.
+- Ending SHA: pending validation and merge.
+- Next phase: finish 2A.3a gates, then 2A.3b generation consistency before media mutation UI. Phase 2 and Phases 3–5 remain incomplete.
+- Rollback: revert the controller change and tests; no schema/data migration. Reverting restores the known retry race.
