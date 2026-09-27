@@ -1,4 +1,5 @@
 {
+  "incrementalReviewThroughMainSha": "e94c1f5890b205dd8fe21731078d44ebc2039791",
   "reviewedBaselineSha": "5de155c19832e55a1d19450eb78d029432c01680",
   "method": "Authored domain classification against controllers, models and mounted route components; not a declaration that existing UX is complete. Device/visual/runtime gaps remain explicit.",
   "domains": [
@@ -17,11 +18,11 @@
       "features": ["MFA"],
       "backend": ["auth/auth.controller.ts", "admin/admin.guard.ts"],
       "models": ["AccountMfaCredential", "AccountSession"],
-      "viewerRoutes": ["/login"],
+      "viewerRoutes": ["/login", "/account"],
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations"],
-      "disposition": "PARTIAL_SURFACE",
-      "gap": "Shared Admin step-up completed and verified in PR #110 with real MFA browser flow; account MFA management remains open.",
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Shared Account MFA management accepted in PR #134 after recovery, enrollment and management concurrency fixes in PRs #131–#133. Account scope, revocation, one-time secrets, audit, no-store and Arabic mobile workflows verified. Broader design-system/device acceptance remains Phase 5.",
       "remediationPhase": 2
     },
     {
@@ -69,8 +70,8 @@
       "viewerRoutes": [],
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations", "/admin/operations/media"],
-      "disposition": "PARTIAL_SURFACE",
-      "gap": "Jobs/workers/capacity workspace and contextual confirmed retry/reprocess verified in PRs #111/#117. Atomic generation safety and bounded recovery/pause ordering verified in PRs #113/#115/#119. Advanced controls and storage reconciliation semantics remain open.",
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Reviewed jobs/capacity/retry/reprocess/recovery/pause accepted through PR #123; storage semantics in #121, incomplete-generation recovery in #127 and bounded overview in #128. Production worker/provider/load evidence remains separate.",
       "remediationPhase": 2
     },
     {
@@ -94,8 +95,8 @@
       "viewerRoutes": [],
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations", "/admin/operations/media"],
-      "disposition": "PARTIAL_SURFACE",
-      "gap": "Rollout metrics integrated in PR #111; generation/fallback safety in #115 and bounded recovery/pause ordering in #119. Advanced action UI remains open; storage error classification, scan continuation and catalog scan bounds require review.",
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Metrics, generation safety, reviewed advanced actions, stale incomplete-generation recovery and bounded overview accepted through PRs #123/#127/#128. Hardware, production throughput and real provider evidence remain separate.",
       "remediationPhase": 2
     },
     {
@@ -299,8 +300,8 @@
       "viewerRoutes": [],
       "creatorRoutes": [],
       "adminRoutes": [],
-      "disposition": "BACKEND_SURFACE_GAP",
-      "gap": "Ready fixture/version/exposure/export endpoints need OPERATIONS evaluation UI; exports contain sensitive evidence and require explicit intent.",
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "OPERATIONS workspace distinguishes fixture results from observed exposure evidence, preserves thresholds/attribution limits and explicit export intent; accepted PR #124. Production impact is not inferred from fixture success.",
       "remediationPhase": 2
     },
     {
@@ -310,8 +311,8 @@
       "viewerRoutes": ["/"],
       "creatorRoutes": [],
       "adminRoutes": [],
-      "disposition": "BACKEND_SURFACE_GAP",
-      "gap": "Dedicated validated/audited configuration API has no adequate Admin form.",
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "Reviewed validated/audited configuration integrated with shared step-up and draft retention in PR #124. Existing last-write-wins behavior and broader design-system/locale coverage remain review items.",
       "remediationPhase": 2
     },
     {
@@ -368,8 +369,8 @@
       "viewerRoutes": [],
       "creatorRoutes": [],
       "adminRoutes": [],
-      "disposition": "INTERNAL_WITH_OPERATOR_STATUS_GAP",
-      "gap": "Worker export remains internal; add sanitized checkpoint/configuration status only where useful.",
+      "disposition": "INTERNAL_WITH_OPERATOR_STATUS",
+      "gap": "Execution remains internal. Bounded sanitized configuration/checkpoint workspace accepted PR #125; no raw cursor, facts, credentials or export mutation exposed. Checkpoint is not worker heartbeat or provider success.",
       "remediationPhase": 2
     },
     {
@@ -380,7 +381,7 @@
       "creatorRoutes": ["/studio/live"],
       "adminRoutes": [],
       "disposition": "INTEGRATED_WITH_GAPS",
-      "gap": "Creator/player/chat exist; Studio live fetch failures are unhandled; provider and hardware proofs remain external.",
+      "gap": "Studio loading/error/retry, pending guard, drafts, reviewed key rotation, secret cleanup, ownership/audit and Arabic mobile accepted PR #126. Unbounded list and terminal provider concurrency remain review items; real provider/hardware activation remains external.",
       "remediationPhase": 2
     },
     {
@@ -490,8 +491,8 @@
       "viewerRoutes": [],
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations", "/admin/operations/database"],
-      "disposition": "PARTIAL_SURFACE",
-      "gap": "Detailed PostgreSQL visibility added in 2A.2 preserving SUPERADMIN boundary and omitted SQL text, verified in PR #111; detailed API observability remains open.",
+      "disposition": "INTEGRATED_WITH_GAPS",
+      "gap": "PostgreSQL visibility accepted PR #111 and detailed API observability PR #129, preserving SUPERADMIN and sanitized evidence. Process samples/lifetime counters/database counts are distinguished from worker heartbeats and provider availability. Production monitoring/load evidence remains separate.",
       "remediationPhase": 2
     },
     {
@@ -513,7 +514,7 @@
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations"],
       "disposition": "INTEGRATED_WITH_GAPS",
-      "gap": "Task 87 and contextual media retry/reprocess verified; detailed database read-only workspace retains SUPERADMIN boundary. Advanced actions and other operator domains remain open.",
+      "gap": "Task 87 and media/database/discovery/warehouse/observability workspaces accepted with scoped roles, shared reauthentication and audited privileged mutations. Grouped navigation, cross-domain UX and device/design verification remain later phases.",
       "remediationPhase": 2
     },
     {
