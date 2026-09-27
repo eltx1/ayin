@@ -428,3 +428,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - External blockers: no local PostgreSQL/Chromium; CI provides database/browser evidence. Production/provider/device measurements remain separate.
 - Next: reproduce recent-row/cap behavior, fix root cause, full gates and checkpoint.
 - Rollback: no schema or stored-state changes; retain policy enforcement if reverting query changes.
+
+- Test-first draft PR #135 head `05d9766d6f3bb2cfc2104fa5119ac88bf3bef3d3` runs four new HTTP regressions against unchanged discovery production code (quality `36356483923`). Correction prepared: database policy predicate before recent-video LIMIT/OFFSET, bounded ID selection and card hydration, retained post-query enforcement, availability derived from the surviving items and row-cap cursor guard.
+- Added database parity coverage for 108 policy/override combinations in eight country/Kids contexts (864 comparisons), plus a 515-video fixture with 512 newer unavailable videos that requires a full eligible page, at most four candidate/card/policy queries and at most three candidate/card rows for a two-item page. These database assertions await CI. No claim of constant database scan cost or production latency.
+- Local correction typecheck/lint and all 364 API units passed (5.36s); final fixture typecheck caught an unknown generic raw-query result, corrected with an explicit array guard. Full corrected-head gates pending.

@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { createPrismaClient } from "@ayin/db";
+import { createPrismaClient, Prisma } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { availableVideoPolicySql } from "../src/video-policy/video-policy-query.js";
+import { evaluatePolicy } from "../src/video-policy/video-policy.service.js";
+import { DatabaseService } from "../src/database/database.service.js";
 import { AppModule } from "../src/app.module.js";
 import {
   MEDIA_STORAGE_ADAPTER,
@@ -254,6 +257,93 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(full.json().nextCursor).toBeNull();
   });
 
+  it("matches authoritative policy decisions before database pagination across overrides and contexts", async () => {
+    const now = new Date("2026-09-27T12:00:00Z");
+    const past = new Date(now.getTime() - 1);
+    const future = new Date(now.getTime() + 1);
+    const policies = [
+      null,
+      {},
+      { kidsEligible: true, maturityLevel: "GENERAL" as const },
+      { kidsEligible: true, maturityLevel: "TEEN" as const },
+      {
+        kidsEligible: true,
+        maturityLevel: "GENERAL" as const,
+        ageRestriction: "AGE_13_PLUS" as const,
+      },
+      { rightsExpiresAt: past },
+      { rightsExpiresAt: now },
+      { rightsExpiresAt: future },
+      { allowedTerritories: ["DE"] },
+      { blockedTerritories: ["DE"] },
+      { allowedTerritories: ["DE"], blockedTerritories: ["DE"] },
+      {
+        kidsEligible: true,
+        maturityLevel: "GENERAL" as const,
+        rightsExpiresAt: past,
+        allowedTerritories: ["US"],
+      },
+    ];
+    const overrides = [
+      null,
+      ...(["FORCE_ALLOW", "FORCE_BLOCK"] as const).flatMap((disposition) =>
+        [null, past, now, future].map((expiresAt) => ({ disposition, expiresAt })),
+      ),
+    ];
+    const fixtures = policies.flatMap((policy) =>
+      overrides.map((override) => {
+        const videoId = randomUUID();
+        return {
+          videoId,
+          policy:
+            policy === null
+              ? null
+              : {
+                  videoId,
+                  kidsEligible: false,
+                  maturityLevel: null,
+                  ageRestriction: "NONE" as const,
+                  rightsExpiresAt: null,
+                  allowedTerritories: [] as string[],
+                  blockedTerritories: [] as string[],
+                  ...policy,
+                },
+          override: override === null ? null : { videoId, ...override },
+        };
+      }),
+    );
+    await prisma.videoPolicy.createMany({
+      data: fixtures.flatMap((item) => (item.policy ? [item.policy] : [])),
+    });
+    await prisma.videoPolicyOverride.createMany({
+      data: fixtures.flatMap((item) =>
+        item.override
+          ? [
+              {
+                ...item.override,
+                actorAccountId: randomUUID(),
+                reason: "Policy SQL parity fixture",
+              },
+            ]
+          : [],
+      ),
+    });
+    for (const isKidsProfile of [false, true]) {
+      for (const countryCode of [undefined, "DE", " us ", "ZZ"]) {
+        const context = { now, isKidsProfile, countryCode };
+        const actual = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT candidate.id FROM unnest(ARRAY[${Prisma.join(fixtures.map((item) => Prisma.sql`${item.videoId}::uuid`))}]) AS candidate(id)
+          WHERE ${availableVideoPolicySql(Prisma.sql`candidate.id`, context)}
+        `);
+        const expected = fixtures
+          .filter((item) => evaluatePolicy(item.policy, item.override, context).allowed)
+          .map((item) => item.videoId)
+          .sort();
+        expect(actual.map((item) => item.id).sort(), JSON.stringify(context)).toEqual(expected);
+      }
+    }
+  });
+
   it("fills recent pages from policy-eligible videos before computing look-ahead", async () => {
     const viewer = await register("Policy paging", "policy-paging@example.com");
     await prisma.homeRowConfig.update({ where: { key: "new-on-ayin" }, data: { maxItems: 100 } });
@@ -291,6 +381,75 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(second.statusCode).toBe(200);
     expect(second.json().items.map((item: { id: string }) => item.id)).toEqual(visible.slice(2));
     expect(second.json().nextCursor).toBeNull();
+  });
+
+  it("keeps database results bounded when hundreds of newer videos are unavailable", async () => {
+    const viewer = await register("Bounded paging", "bounded-paging@example.com");
+    const now = Date.now();
+    const videos = Array.from({ length: 515 }, (_, index) => ({
+      id: randomUUID(),
+      channelId: viewer.user.channel.id,
+      slug: `bounded-${randomUUID()}`,
+      title: `Bounded ${index}`,
+      status: "PUBLISHED" as const,
+      visibility: "PUBLIC" as const,
+      publishedAt: new Date(now - index * 1000),
+    }));
+    await prisma.video.createMany({ data: videos });
+    await prisma.mediaAsset.createMany({
+      data: videos.map((video) => ({
+        videoId: video.id,
+        channelId: video.channelId,
+        kind: "SOURCE_VIDEO" as const,
+        status: "VALIDATED" as const,
+        r2ObjectKey: `bounded/${video.id}.mp4`,
+        mimeType: "video/mp4",
+        sizeBytes: 1024n,
+      })),
+    });
+    await prisma.videoPolicy.createMany({
+      data: videos
+        .slice(0, 512)
+        .map((video) => ({ videoId: video.id, rightsExpiresAt: new Date(now - 60_000) })),
+    });
+    const database = moduleReference.get(DatabaseService).client;
+    const candidateReads = vi.spyOn(database, "$queryRaw");
+    const cardReads = vi.spyOn(database.video, "findMany");
+    const policyReads = vi.spyOn(database.videoPolicy, "findMany");
+    const overrideReads = vi.spyOn(database.videoPolicyOverride, "findMany");
+    const started = performance.now();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: "/public/discovery/rows/new-on-ayin?limit=2",
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().items.map((item: { id: string }) => item.id)).toEqual(
+        videos.slice(512, 514).map((item) => item.id),
+      );
+      expect(response.json().nextCursor).toBeTruthy();
+      expect(
+        candidateReads.mock.calls.length +
+          cardReads.mock.calls.length +
+          policyReads.mock.calls.length +
+          overrideReads.mock.calls.length,
+      ).toBeLessThanOrEqual(4);
+      for (const result of [...candidateReads.mock.results, ...cardReads.mock.results]) {
+        if (result.type === "return") {
+          const rows: unknown = await result.value;
+          if (!Array.isArray(rows)) throw new Error("Expected a bounded database row result");
+          expect(rows.length).toBeLessThanOrEqual(3);
+        }
+      }
+      console.info(
+        `Discovery bounded page: 515 candidates, 512 policy exclusions, ${(performance.now() - started).toFixed(1)}ms`,
+      );
+    } finally {
+      candidateReads.mockRestore();
+      cardReads.mockRestore();
+      policyReads.mockRestore();
+      overrideReads.mockRestore();
+    }
   });
 
   it("reports an empty row when policy excludes all candidates", async () => {
