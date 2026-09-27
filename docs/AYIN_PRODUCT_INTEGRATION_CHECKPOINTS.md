@@ -91,17 +91,24 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Resume from main `de1cc33fca438b05be1f67acb3d8ece2dca7d82c`, after reading this checkpoint and verifying remote state. Phase 2 is still incomplete; Phases 3–5 have not started.
 - This checkpoint follow-up changes documentation/inventory provenance only. Scanner syntax, deterministic output and formatting are checked separately; no new runtime acceptance is claimed.
 
-## Phase 2A.3a — atomic failed-job retry, validation in progress
+## Phase 2A.3a — atomic failed-job retry, complete and merged
 
 - Starting SHA: `6329fa29f19687dadd1db0ad6abccb16a7f34c38`, after PR #112 passed quality run `36294723098` and merged with expected-head protection. Checkpoint read before implementation. Restored a fresh checkout after the previous worktree's parent Git metadata became unavailable; retained the old files.
 - Findings: retry used an unconditional write after reading FAILED. Two requests could both succeed and audit, or a stale request could reset a newly acquired worker lease. Retry also retained the old `leaseWorkerId`.
 - Changes: conditional update on id, FAILED status and observed `updatedAt`; a changed snapshot returns `MEDIA_JOB_RETRY_CONFLICT`. Only the winning transition writes the audit in the same transaction. Clear the worker id alongside the other expired lease fields. No frontend mutation controls yet.
 - Migrations: none.
 - Tests added: PostgreSQL regression with a barrier after two real reads, exactly one committed retry/audit, preservation of a concurrently acquired lease, rejection after a newer failure and rollback when the audit actor foreign key fails. These exercise controller transaction behavior; existing HTTP authorization/step-up guards remain unchanged.
-- Tests executed: local formatting, API lint/typecheck and all 345 API unit tests (87 files, 30.97s) passed. Full CI including the four PostgreSQL regressions is pending in PR #113; database regressions are not yet claimed as passed.
-- Performance measurements: none; no production concurrency/load claim.
+- Tests executed: local formatting, API lint/typecheck and all 345 API unit tests (87 files, 30.97s) passed. Full quality `36325811865`, security `36325811875` and browser `36325811876` passed on `734235e9e38cd4523b5ec413fb5d08a1f9e9ccbb`. Quality includes clean migrations, 4 database tests, all 487 API integration tests in 124 files (including the four new PostgreSQL regressions), all unit/schema suites and the production build. All 33 browser tests passed. The initial implementation head also passed quality; the final head strengthens audit rollback verification to require the actual foreign-key error `P2003`.
+- Performance measurements: four new PostgreSQL regression cases took 829ms; full API integration suite 126.97s; browser suite 3.2 minutes. These are test timings, not production concurrency/load measurements.
 - Remaining issues: R22 is only partially addressed. Superseded generations and concurrent retry/reprocess/backfill/recovery generation creation still require a shared consistency review. Timestamp comparison adds stale-snapshot protection but is not a new monotonic generation/revision contract. Do not expose mutation controls until that follow-up is validated.
-- External blockers: local PostgreSQL/Chromium remain unavailable; real database/browser acceptance must run in CI.
-- Ending SHA: pending validation and merge.
-- Next phase: finish 2A.3a gates, then 2A.3b generation consistency before media mutation UI. Phase 2 and Phases 3–5 remain incomplete.
+- External blockers: local PostgreSQL/Chromium remain unavailable; real database/browser acceptance passed in CI. Physical-device/production checks are not claimed.
+- Verified ending PR head: `734235e9e38cd4523b5ec413fb5d08a1f9e9ccbb`; ending main SHA: `3d8e6c261f4a40df0cda785beb86263d3734a7a0`, safely merged as PR #113 with expected-head protection.
+- Next phase: 2A.3b generation consistency before media mutation UI; implementation has not started. Phase 2 and Phases 3–5 remain incomplete.
 - Rollback: revert the controller change and tests; no schema/data migration. Reverting restores the known retry race.
+
+### Resume review for 2A.3b
+
+- Read this checkpoint and verify main/PR/CI state before editing. Current completed implementation baseline is `3d8e6c261f4a40df0cda785beb86263d3734a7a0`.
+- Review a shared transaction lock for generation creation/revival across initial upload, administrator retry/reprocess, adaptive backfill and FAILED_BACKFILL recovery. The queue claim lock and backfill lock currently protect different operations; do not assume they cover these cross-path races.
+- Check latest processing and playback generations, other active jobs, stale worker finalization, lock ordering and legacy inconsistent rows. Avoid introducing a video-row/job-row deadlock or allowing obsolete failed jobs to starve bounded recovery selection. Preserve worker ownership fencing and backfill capacity/pause semantics.
+- Add real PostgreSQL concurrency regressions for the selected contract before exposing write controls. This is a review agenda, not a claim that these paths are fixed or that a particular locking design has been accepted.

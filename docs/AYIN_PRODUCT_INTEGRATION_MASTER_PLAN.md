@@ -33,3 +33,7 @@ Each phase should be a reviewable PR. Split large phases into explicitly tracked
 ## Rollback and external verification
 
 Prefer small additive commits and reversible navigation/UI changes. Never delete legacy routes without compatible aliases and usage review. Preserve data when reversing code; migrations require separate rollback analysis. No production deployment is implied by a passing build. Credentials, actual GAM fill, signed packages, store approvals, native SDK hardware tests and production load measurements remain external until performed.
+
+## Verified delivery position
+
+Phase 0 and the Phase 1 audit are merged. Phase 2A.1 re-authentication, 2A.2 read-only media/database workspaces and 2A.3a atomic failed-job retry are verified and merged through PR #113 (`3d8e6c26`). Exact acceptance SHAs and CI evidence are in the checkpoint. Next is 2A.3b generation consistency before media mutation controls. Phase 2 as a whole and Phases 3–5 remain incomplete.
