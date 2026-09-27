@@ -116,10 +116,12 @@ test("Studio Live creates once, audits chat changes and enforces channel ownersh
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.context().clearCookies();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Create live session", exact: true }),
-  ).not.toBeVisible();
+  // Locale belongs to the canonical /ar/ URL even after cookies are cleared.
+  await expect(page).toHaveURL(/\/ar\/studio\/live$/);
+  await expect(page.getByRole("button", { name: "إعادة المحاولة", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "تسجيل الدخول", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "إنشاء جلسة بث", exact: true })).not.toBeVisible();
+  expect((await page.request.get(`${API}/studio/live`)).status()).toBe(401);
 });
 
 test("Studio Live confirms rotation, retains received keys after refresh failure and never replays", async ({
