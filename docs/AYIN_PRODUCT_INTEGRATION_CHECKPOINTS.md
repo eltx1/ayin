@@ -98,7 +98,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Changes: conditional update on id, FAILED status and observed `updatedAt`; a changed snapshot returns `MEDIA_JOB_RETRY_CONFLICT`. Only the winning transition writes the audit in the same transaction. Clear the worker id alongside the other expired lease fields. No frontend mutation controls yet.
 - Migrations: none.
 - Tests added: PostgreSQL regression with a barrier after two real reads, exactly one committed retry/audit, preservation of a concurrently acquired lease, rejection after a newer failure and rollback when the audit actor foreign key fails. These exercise controller transaction behavior; existing HTTP authorization/step-up guards remain unchanged.
-- Tests executed: pending local static checks and full CI; database regressions are not yet claimed as passed.
+- Tests executed: local formatting, API lint/typecheck and all 345 API unit tests (87 files, 30.97s) passed. Full CI including the four PostgreSQL regressions is pending in PR #113; database regressions are not yet claimed as passed.
 - Performance measurements: none; no production concurrency/load claim.
 - Remaining issues: R22 is only partially addressed. Superseded generations and concurrent retry/reprocess/backfill/recovery generation creation still require a shared consistency review. Timestamp comparison adds stale-snapshot protection but is not a new monotonic generation/revision contract. Do not expose mutation controls until that follow-up is validated.
 - External blockers: local PostgreSQL/Chromium remain unavailable; real database/browser acceptance must run in CI.

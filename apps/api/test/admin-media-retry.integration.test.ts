@@ -175,7 +175,9 @@ databaseDescribe("administrator media retry transaction safety", () => {
   it("rolls back the retry if its audit record cannot be committed", async () => {
     const { job, request } = await fixture();
     request.ayinAuth.accountId = randomUUID(); // Violates the real audit actor foreign key.
-    await expect(controller(async () => {}).retryFailed(request, job.id)).rejects.toBeDefined();
+    await expect(controller(async () => {}).retryFailed(request, job.id)).rejects.toMatchObject({
+      code: "P2003",
+    });
     expect(await prisma.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } })).toEqual(
       job,
     );
