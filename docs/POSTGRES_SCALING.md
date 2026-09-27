@@ -200,9 +200,9 @@ If `pg_stat_statements` is not installed/preloaded, AYIN remains fully functiona
 
 It verifies that:
 
-- public discovery can use the new Video and playable-media indexes;
-- trending can use the recent-watch index;
-- revenue aggregation can use the channel/currency/time index;
+- public discovery remains indexable on the existing Video/MediaAsset indexes, proving no extra index is required there;
+- trending uses the new recent-watch index;
+- revenue aggregation uses the new channel/currency/time index;
 - existing search, analytics, media queue and moderation indexes remain present.
 
 These tests guard query/index compatibility. They are not substitutes for production latency/load tests.
