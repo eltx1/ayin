@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
@@ -48,6 +50,7 @@ function hasPrivilegedRole(session: AdminSession | null): boolean {
 }
 
 export function AdminOperations() {
+  const { locale, href } = useI18n();
   const [session, setSession] = useState<AdminSession | null>(null);
   const [roles, setRoles] = useState<AdminRole[]>([]);
   const [staff, setStaff] = useState<AdminStaffMember[]>([]);
@@ -219,6 +222,21 @@ export function AdminOperations() {
         {session ? <span className={styles.statusPill}>{session.roles.join(" · ")}</span> : null}
       </header>
 
+      <nav
+        className={styles.actions}
+        aria-label={locale === "ar" ? "أدوات العمليات" : "Operational tools"}
+      >
+        {canOperate ? (
+          <Link className={styles.button} href={href("/admin/operations/media")}>
+            {locale === "ar" ? "عمليات الوسائط" : "Media operations"}
+          </Link>
+        ) : null}
+        {session?.roles.includes("SUPERADMIN") ? (
+          <Link className={styles.button} href={href("/admin/operations/database")}>
+            {locale === "ar" ? "عمليات PostgreSQL" : "PostgreSQL operations"}
+          </Link>
+        ) : null}
+      </nav>
       {message ? <p className={styles.notice}>{message}</p> : null}
 
       {canOperate || canCompliance ? <AdminOperationsCapacityDashboard /> : null}

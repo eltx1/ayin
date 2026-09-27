@@ -218,6 +218,48 @@ try {
       };
       break;
     }
+    case "reset-operator-state": {
+      await prisma.$executeRawUnsafe(
+        'TRUNCATE TABLE "MediaProcessingJob", "MediaProcessingWorker" CASCADE',
+      );
+      result = { ok: true };
+      break;
+    }
+    case "seed-operator-job": {
+      const video = await prisma.video.create({
+        data: {
+          channelId: payload.channelId,
+          slug: `operator-workspace-${payload.channelId}`,
+          title: "Operator fixture video",
+          status: "DRAFT",
+        },
+      });
+      const job = await prisma.mediaProcessingJob.create({
+        data: {
+          videoId: video.id,
+          generation: 1,
+          status: "FAILED",
+          sourceMimeType: "video/mp4",
+          sourceSizeBytes: 1024n,
+          stagingKey: `test/operator/${video.id}/source.mp4`,
+          outputR2ObjectKey: `test/operator/${video.id}/output.mp4`,
+          errorCode: "TEST_FAILURE",
+        },
+      });
+      result = { jobId: job.id };
+      break;
+    }
+    case "grant-operator-role": {
+      if (!["OPERATIONS", "SUPERADMIN"].includes(payload.role))
+        throw new Error("Unsupported test operator role.");
+      await prisma.adminRoleAssignment.upsert({
+        where: { accountId_role: { accountId: payload.accountId, role: payload.role } },
+        update: {},
+        create: { accountId: payload.accountId, role: payload.role },
+      });
+      result = { ok: true };
+      break;
+    }
     case "grant-admin": {
       await prisma.adminRoleAssignment.upsert({
         where: { accountId_role: { accountId: payload.accountId, role: "ADMIN" } },

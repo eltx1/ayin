@@ -36,3 +36,5 @@ Resume rule: all repository-side roadmap work through Task 38 is complete. On fu
 Task 87 is verified and merged in main at `5de155c19832e55a1d19450eb78d029432c01680` (PR #108). Quality, browser acceptance and security passed on `f32a5da34abfcc6c79e401964ad50784808e74cd`. The earlier ledger above is historical through Task 38; it is not a statement that main stops there.
 
 The new program starts at `docs/AYIN_PRODUCT_INTEGRATION_MASTER_PLAN.md`. Read `docs/AYIN_PRODUCT_INTEGRATION_CHECKPOINTS.md` before continuing. Phase 0 is complete; Phase 1 audit is complete pending its PR validation/merge; Phases 2–5 implementation has not started. Do not infer completion from source inventory alone.
+
+Product integration continuation: Phase 1 audit merged as PR #109 (`99ba6965`); Phase 2A.1 secure Admin re-authentication merged as PR #110 (`f2440c3b`) after full quality/security and 32 browser tests. Phase 2A.2 read-only media/database workspaces are under validation; Phase 2 and later phases remain incomplete. See the persistent integration checkpoints for exact SHAs and remaining work.

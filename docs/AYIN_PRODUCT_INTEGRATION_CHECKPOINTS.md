@@ -52,17 +52,32 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Local production build and isolated cache/cursor probes passed again. Incremental Next compilation 484ms is a warm build measurement, not a production performance claim.
 - Browser/security workflows did not trigger for audit-only changes; Phase 0 browser/security results remain baseline evidence, not reruns.
 
-## Phase 2A.1 — shared Admin re-authentication, in progress
+## Phase 2A.1 — shared Admin re-authentication, complete and merged
 
 - Starting SHA: `99ba69657dd8db6a951f6eae7b996155617b0fd5`; checkpoint read before implementation.
 - Findings: the server already enforces step-up but Admin web error handlers only show a message. Existing observability metadata includes SUPERADMIN as a hard boundary; do not broaden access as an incidental frontend change.
 - Changes: shared Admin error handling opens a native modal only for HTTP 403 / STEP_UP_REQUIRED; manual verification entrypoint for signed-in administrators. MFA status controls code visibility; real step-up endpoint rotates the session. No automatic replay of privileged operations. Cancel/close clears form secrets and aborts pending client requests. English/Arabic labels and modal focus/RTL/responsive behavior.
 - Migrations: none; backend authorization, audit and rate limits unchanged.
 - Tests added: error-code/status discrimination, malformed response, listener cleanup, no automatic retry; browser journey for cancellation, password failure, real MFA success, mobile sizing and Arabic direction.
-- Tests executed: Web unit suite 100/100, lint, typecheck and production build passed locally; browser/full CI pending final revision.
+- Tests executed: Web unit suite 100/100, lint, typecheck and production build passed locally; full quality run `36293273970`, security run `36293273862` and all 32 browser tests in run `36293273908` (3.2 minutes) passed on the verified implementation SHA.
 - Performance measurements: Web unit suite 1.14s; no product performance claim.
 - Remaining issues: detailed media/database operator integration is the next subphase; this is not completion of Phase 2A or Phase 2.
 - External blockers: local PostgreSQL unavailable; real database/browser coverage will run in CI.
-- Next phase: complete verification and review of 2A.1, then 2A.2 media/database operations.
-- Ending SHA: pending commit and gates.
+- Next phase: 2A.2 media/database operational visibility.
+- Verified implementation SHA: `2d22fc6d0a1e7519e2ce57f643d41e3cc7f2e3e6`; ending main SHA: `f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7` via safely merged PR #110.
 - Rollback: revert this additive UI/error-handling change; no schema or server assurance changes to reverse.
+
+## Phase 2A.2 — media/database operational visibility, in progress
+
+- Starting SHA: `f2440c3b3d5aaf9863ba7aeeae3f69bdd08a4ef7`; checkpoint read before implementation.
+- Findings: existing media queue/adaptive and PostgreSQL endpoints expose operational evidence without adequate detailed UI. Database endpoint is SUPERADMIN-only under the existing guard; this boundary remains intact. Queue retry/backfill/recovery mutations need a separate safety review before adding controls.
+- Changes: two canonical nested Operations destinations; bounded recent-job title search, workers/capacity/adaptive rollout metrics, connection pools/application counts and aggregate statement timings; no SQL text. Shared access fetch for Sidebar and new workspaces; role-aware links; cancellable reads keyed to account/roles/request revision so stale responses cannot populate a newer view. Explicit loading, no-data, failure/retry and fetched-time states, English/Arabic and keyboard-scrollable tables. Read-only surfaces only.
+- Migrations: none; no API authorization or schema changes.
+- Tests added: role matrix, uncached authenticated cancellable endpoint reads and error-vs-empty behavior; browser journey for actual media/database APIs, ADMIN denial and SUPERADMIN acceptance, error/retry, one shared session request, Arabic mobile overflow and absence of privileged writes. The browser fixture explicitly resets media state (account reset alone does not clear channels/jobs), then seeds a real failed job to exercise populated tables, title search and null-stage rendering.
+- Tests executed: local Web unit suite 109/109, lint, typecheck and production build passed. Full CI/browser/security validation pending. An initial lint finding rejected synchronous state resets inside effects; implementation was refactored to request-keyed results rather than weakening the lint rule.
+- Performance measurements: local Web unit suite 1.96s; new workspaces issue one shared session read, then two parallel media reads or one database read; browser assertion pending. No production latency/load benchmark claimed.
+- Remaining issues: recommendation/trending evaluation, detailed observability, warehouse visibility and all other Phase 2 gaps remain open. Queue retry/backfill/recovery controls are reserved for 2A.3; this subphase is not completion of all media operator capability.
+- External blockers: local PostgreSQL and Playwright Chromium unavailable; CI runs real integration/browser tests. Physical devices remain external.
+- Ending SHA: pending validation and commit.
+- Next phase: validate/merge 2A.2, then safety-reviewed media actions in 2A.3.
+- Rollback: revert additive routes, shared access provider and links; no database/data rollback.
