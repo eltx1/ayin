@@ -113,6 +113,20 @@ describe("MediaAdaptiveRolloutService backfill safety", () => {
     expect(tx.$executeRawUnsafe).toHaveBeenCalled();
   });
 
+  it.each([
+    "FAILED_BACKFILL",
+    "DB_MANIFEST_MISSING",
+    "INCOMPLETE_HLS",
+    "VERIFIED_HLS_MISSING_DB",
+  ] as const)("rechecks a pause at the %s mutation boundary", async (mode) => {
+    const { service, jobs } = createService();
+    vi.spyOn(service, "controls")
+      .mockResolvedValueOnce(baseControls)
+      .mockResolvedValue({ ...baseControls, backfillPaused: true });
+    expect(await service.recover(mode, 1)).toMatchObject({ reason: "BACKFILL_DISABLED_OR_PAUSED" });
+    expect(jobs.count).not.toHaveBeenCalled();
+  });
+
   it("caps failed backfill recovery by the remaining in-flight slots", async () => {
     const failed = [
       {

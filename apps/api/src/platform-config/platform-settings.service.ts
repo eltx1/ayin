@@ -1,6 +1,7 @@
 import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
+import { lockMediaRollout } from "./media-rollout-lock.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
   platformSettingCatalog,
@@ -162,6 +163,17 @@ export class PlatformSettingsService {
   async setInTransaction(tx: Prisma.TransactionClient, key: PlatformSettingKey, rawValue: unknown) {
     const definition = platformSettingCatalog[key];
     const value = this.validate(key, rawValue);
+    if (
+      [
+        "mediaHlsEnabled",
+        "mediaHlsBackfillEnabled",
+        "mediaHlsBackfillPaused",
+        "mediaHlsBackfillBatchSize",
+        "mediaHlsBackfillMaxInFlight",
+      ].includes(key)
+    ) {
+      await lockMediaRollout(tx);
+    }
     return tx.platformSetting.upsert({
       where: { namespace_key: { namespace: definition.namespace, key: definition.key } },
       update: {
