@@ -213,9 +213,8 @@ test("incomplete playback recovery uses reviewed scope and commits a new generat
   await openMaintenance(page);
   await page.getByLabel("Recovery action", { exact: true }).selectOption("INCOMPLETE_HLS");
   await page.getByLabel("Maximum items per action").fill("1");
-  await page
-    .getByRole("button", { name: "Recover incomplete adaptive playback", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Review recovery", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("Recover incomplete adaptive playback");
   await expect(page.getByRole("dialog")).toContainText(
     "Obsolete generations and active work are excluded",
   );
@@ -223,7 +222,7 @@ test("incomplete playback recovery uses reviewed scope and commits a new generat
   expect(
     db("incomplete-action-evidence", { videoId, generationId, accountId: user.account.id }).jobs,
   ).toHaveLength(1);
-  await confirm(page, "Recover incomplete adaptive playback");
+  await confirm(page, "Review recovery");
   await expect(page.getByText(/Queued 1; processing is not complete/)).toBeVisible();
   const evidence = db("incomplete-action-evidence", {
     videoId,
@@ -244,7 +243,7 @@ test("incomplete playback recovery uses reviewed scope and commits a new generat
     detected: 1,
     requeued: 1,
   });
-  await confirm(page, "Recover incomplete adaptive playback");
+  await confirm(page, "Review recovery");
   await expect(page.getByText(/Capacity is full/)).toBeVisible();
   expect(
     db("incomplete-action-evidence", { videoId, generationId, accountId: user.account.id }).jobs,
