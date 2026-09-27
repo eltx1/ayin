@@ -115,6 +115,7 @@ databaseDescribe("Task 87 operations dashboard", () => {
         startedAt: new Date(yesterday.getTime() + 60_000),
         completedAt: new Date(yesterday.getTime() + 120_000),
         createdAt: yesterday,
+        updatedAt: new Date(yesterday.getTime() + 120_000),
       },
     });
 
