@@ -36,4 +36,4 @@ Prefer small additive commits and reversible navigation/UI changes. Never delete
 
 ## Verified delivery position
 
-Phase 0 and the Phase 1 audit are merged. Phase 2A.1 re-authentication, 2A.2 read-only media/database workspaces and 2A.3a/b atomic retry and generation safety are verified and merged through PR #115 (`554eac65`). Exact acceptance SHAs and CI evidence are in the checkpoint. Next is 2A.3c contextual media mutation controls. Phase 2 as a whole and Phases 3–5 remain incomplete.
+Phase 0 and the Phase 1 audit are merged. Phase 2A.1 re-authentication, 2A.2 read-only media/database workspaces and 2A.3a/b atomic retry and generation safety are verified and merged through PR #115 (`554eac65`). Exact acceptance SHAs and CI evidence are in the checkpoint. Phase 2A.3c.1 contextual retry/reprocess controls are verified and merged as PR #117 (`43d5e81b`). Next is 2A.3c.2 bounded advanced recovery/backfill controls, after reviewing recovery batch scope and pause concurrency. Phase 2 as a whole and Phases 3–5 remain incomplete.

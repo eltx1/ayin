@@ -137,17 +137,25 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Validate action success/error/pending states, fresh state after completion/conflict, exact HTTP authorization and response contracts, EN/AR/mobile/keyboard behavior and committed audit evidence. A queued job is not a completed media processing result.
 - Operator actions remain unexposed in the web product until that next implementation is accepted. Other Phase 2 domains and Phases 3–5 remain open.
 
-## Phase 2A.3c.1 — contextual media actions, implementation awaiting CI
+## Phase 2A.3c.1 — contextual media actions, verified and merged
 
 - Starting SHA: `1593ba2a76bb0010637ed2c7dbda5fc362d1d0dc`; checkpoint read, main fetched unchanged, PR #116 merge and quality `36328656478` verified before editing.
 - Findings: the media snapshot lacked generation display and actionable retry/reprocess controls. Snapshot freshness must be renewed after rejected as well as successful mutations; an interrupted response cannot establish cancellation.
 - Changes: title/generation confirmation, contextual failed-job retry and terminal-video reprocess, duplicate-submit prevention, scoped role visibility and account/role-keyed state. Shared step-up opens only after closing confirmation and never replays the operation. Refresh both snapshots after outcomes; distinguish queued work from completed processing and report transactional audit evidence. Keep search context. Server remains authoritative beyond the recent 100-job snapshot.
 - Migrations: none. No backend/worker changes.
 - Tests added: authenticated mutation transport, exact target entity, no replay after step-up or network error; real browser/HTTP/database retry/reprocess/audit, denied role, aged assurance, keyboard cancellation/focus, stale confirmation conflict and Arabic mobile dialog bounds. Browser source readiness is seeded because E2E has no running worker; no claim of media encoding/storage verification.
-- Tests executed so far: web typecheck/lint and 113 unit tests across 27 files passed (4.87s). Full CI quality/security/browser gates pending; not complete or merged.
-- Performance measurements: one mutation followed by two existing bounded snapshot reads; no per-job fetches. Unit timings are test evidence, not production load measurements.
+- Tests executed so far: web typecheck/lint and 113 unit tests across 27 files passed (4.87s). Full quality `36331086791`, security `36331086795` and browser `36331086787` passed on `92528e82fb5c0d77905b9de7f0f00798105e4dc5`. All 34 browser tests passed, including pending-state protection. Quality passed formatting, lint, types, unit/schema suites, clean migrations, 500 API tests in 126 files in the integration gate and production builds. No failing head was merged.
+- Performance measurements: one mutation followed by two existing bounded snapshot reads; no per-job fetches. CI web units 3.66s; API integration gate 124.16s; browser suite 3.3 minutes. These are test timings, not production load measurements.
 - Remaining issues: advanced bounded backfill/recovery and SUPERADMIN pause/resume deferred to 2A.3c.2; this is a reviewable subphase, not completion of 2A.3c or Phase 2.
-- External blockers: local PostgreSQL/Chromium unavailable; browser/database acceptance must run in CI.
-- Ending SHA: pending verified CI head and merge.
-- Next: verify and merge this subphase, record evidence, then implement advanced controls.
+- External blockers: local PostgreSQL/Chromium unavailable; browser/database acceptance passed in CI. Production storage/load and physical-device acceptance are not claimed.
+- Verified ending PR head: `92528e82fb5c0d77905b9de7f0f00798105e4dc5`; ending main SHA: `43d5e81b6b11b100dccce5181c45147a026a0f21`, merged as PR #117 with expected-head protection.
+- Next: 2A.3c.2 bounded recovery and backfill controls after the safety review below. Phase 2 remains incomplete; Phases 3–5 remain unstarted.
 - Rollback: revert frontend/test changes; no schema rollback. Already queued jobs and committed audits remain valid and must not be deleted.
+
+### Resume point after 2A.3c.1
+
+- Read this checkpoint and verify main/PR/CI before editing. Runtime baseline is `43d5e81b6b11b100dccce5181c45147a026a0f21`; only PR #117 was open in the pre-merge repository query, and it is now merged.
+- Advanced actions are not exposed yet. Review `MediaAdaptiveRolloutService.recover`: STALE_PROCESSING computes a batch size but delegates to `queue.recoverStale` without it; that service selects all expired active jobs and reports a count taken before conditional updates. Do not present a bounded-action UI until the actual mutation scope and result count honor that contract. Preserve existing automatic queue-recovery semantics where appropriate.
+- Review pause/resume concurrency: `setPaused` does not acquire the backfill lock; batch enqueue and recovery read controls before the lock. Determine the intended pause linearization contract and verify with real concurrent transactions before promising immediate pause in UI. This is a review finding, not a claim that a reproduced race is fixed.
+- Advanced UI must retain role boundaries (pause/resume SUPERADMIN only), explicit scoped confirmation, step-up without replay, batch validation, accurate result categories and audit evidence. Disabled/no-op paths do not all write an audit, so do not reuse the individual-job success text indiscriminately.
+- The machine inventory still identifies its historical `554eac65` source baseline; this checkpoint and the human audit record the newer runtime change. Refresh source inventory with the next integration audit rather than mislabeling historical evidence as current.
