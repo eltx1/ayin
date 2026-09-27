@@ -41,6 +41,17 @@ function canonicalPath(bucket: string, key?: string): string {
   return `/${encodeRfc3986(bucket)}${suffix}`;
 }
 
+export class R2HttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly method: string,
+    detail = "",
+  ) {
+    super(`R2 ${method} request failed (${status}). ${detail}`.trim());
+    this.name = "R2HttpError";
+  }
+}
+
 export class R2SigV4 {
   private readonly endpoint: URL;
   private readonly bucket: string;
@@ -164,7 +175,7 @@ export class R2SigV4 {
     const response = await fetch(url, request);
     if (!response.ok) {
       const detail = input.method === "HEAD" ? "" : await response.text();
-      throw new Error(`R2 ${input.method} request failed (${response.status}). ${detail}`.trim());
+      throw new R2HttpError(response.status, input.method, detail);
     }
     return response;
   }

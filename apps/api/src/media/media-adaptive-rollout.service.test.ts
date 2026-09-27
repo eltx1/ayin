@@ -11,6 +11,7 @@ function createService() {
   };
   const database = {
     client: {
+      $queryRaw: vi.fn().mockResolvedValue([]),
       mediaProcessingJob: jobs,
       mediaPlaybackGeneration: { findMany: vi.fn().mockResolvedValue([]) },
       video: { findMany: vi.fn().mockResolvedValue([]) },
@@ -91,6 +92,7 @@ describe("MediaAdaptiveRolloutService backfill safety", () => {
     };
     const database = {
       client: {
+        $queryRaw: vi.fn().mockResolvedValue([]),
         mediaProcessingJob: jobs,
         mediaPlaybackGeneration: { findMany: vi.fn().mockResolvedValue([]) },
         video: { findMany: vi.fn().mockResolvedValue([]) },
@@ -150,6 +152,7 @@ describe("MediaAdaptiveRolloutService backfill safety", () => {
     };
     const database = {
       client: {
+        $queryRaw: vi.fn().mockResolvedValue([]),
         $transaction: vi.fn(async (callback: (value: typeof tx) => unknown) => callback(tx)),
       },
     };
