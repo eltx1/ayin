@@ -65,7 +65,7 @@ The rollout overview reports:
 
 Recovery is always bounded by the requested/configured batch ceiling and never deletes the canonical MP4.
 
-- `INCOMPLETE_HLS`: requeues stale incomplete/failed adaptive generations when safe.
+- `INCOMPLETE_HLS`: selects at most the requested batch/current capacity of latest incomplete/failed generations older than ten minutes. Video/channel/source eligibility, healthy playback and active/newer generations are checked before LIMIT. The generation and observed row are locked/rechecked before a new job, supersession and audit commit together. `detected` counts selected candidates; `requeued` counts committed new jobs. No scan cursor.
 - `STALE_PROCESSING`: invokes the existing lease-based stale-worker recovery.
 - `VERIFIED_HLS_MISSING_DB`: detects deterministic manifests without corresponding DB generation state. AYIN intentionally creates a new processing generation instead of blindly adopting orphan state.
 - `DB_MANIFEST_MISSING`: HEAD-verifies DB-ready manifests, marks missing output failed, and schedules a safe new backfill generation.
@@ -83,7 +83,7 @@ Storage scan candidates use ascending UUID keysets and a maximum of 250 candidat
 
 For `DB_MANIFEST_MISSING`, pass a non-null `nextCursor` to continue. For `VERIFIED_HLS_MISSING_DB`, use `hasMore` as the continuation decision. When capacity prevents all detected candidates from being queued, the response preserves the input cursor and sets `hasMore: true`; a null cursor then means retry the first range after capacity returns. Omit the optional request cursor when null. Do not continuously retry while capacity is full, automatically replay a mutation after step-up, or treat queued work as completed HLS processing.
 
-Advanced backfill, pause/resume and four reviewed recovery modes are mounted in the Web/PWA media workspace after PR #123 acceptance. `INCOMPLETE_HLS` remains unexposed pending fair selection review. Individual video retry/reprocess controls are also available. Real PostgreSQL acceptance is recorded in the product integration checkpoint; production R2/device acceptance remains separate.
+Advanced backfill, pause/resume and four reviewed recovery modes are mounted in the Web/PWA media workspace after PR #123 acceptance. `INCOMPLETE_HLS` is added in the Phase 2D change with eligibility-before-limit and concurrency regressions; that slice is pending full acceptance in the product checkpoint. Individual video retry/reprocess controls are also available. Real PostgreSQL acceptance is recorded in the product integration checkpoint; production R2/device acceptance remains separate.
 
 ## Metrics
 

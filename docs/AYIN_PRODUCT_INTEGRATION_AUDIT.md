@@ -306,6 +306,12 @@ Source review confirms existing creator compliance, masked payout provider state
 
 Warehouse acceptance: PR #125 merged at `bc0fc5fc9174db122b4aa95cbdd4669b673f043b` after quality `36341693227`, security `36341693229` and browser `36341693234` passed on `cce80f99`. All 533 API integration-gate tests and 38 browser tests passed (128.79s / 3.6 minutes).
 
-### R20 Studio Live — Phase 2C.2, validation pending
+### R20 Studio Live — Phase 2C.2, verified and merged
 
 Existing shared Studio Live receives explicit loading/error/retry, retained drafts, a shared mutation guard, rotation confirmation, provider-neutral feedback and private in-memory one-time credentials. A successful encoder response survives a following network/list-refresh failure; authorization failures, a changed channel, hiding or leaving the page clear it. No mutation replay. Sensitive read/provision/rotation responses gain private/no-store headers. Existing channel-owned chat toggles become accessible with their transactional moderation history unchanged. Raw recording diagnostics and new terminal-state controls remain unexposed pending separate review. The stream list remains unbounded; no production provider/load/physical-device readiness claim.
+
+Studio Live acceptance: PR #126 merged at `be01beebc7c207ecfe2aec95c30684973ee28bfe` after quality `36343270412`, security `36343270422`, browser `36343270404` and credential prerequisite `36343270389` passed on `579ba562`. The first browser run exposed a test expecting English on a canonical Arabic URL; downloaded page evidence confirmed correct signed-out UI. Corrected acceptance verifies Arabic sign-in/retry and HTTP 401. All 40 browser tests passed (3.9 minutes), with 149 Web units and 533 API integration-gate tests.
+
+### Incomplete HLS — Phase 2D, validation pending
+
+Selection now checks current generations, published non-private content, active channel, validated MP4 source, healthy playback and active jobs before applying the batch/capacity limit. It reads at most 20 candidates, rechecks after generation/row locking and commits new jobs, supersession and audits together. Old ineligible rows cannot consume the candidate limit. The advanced media workspace adds the mode with existing confirmation/step-up and bounded result validation. Seven new PostgreSQL scenarios and a real operator browser journey must pass before this slice is accepted. Database scan cost still depends on catalog distribution/indexes; overview catalog materialization remains open.

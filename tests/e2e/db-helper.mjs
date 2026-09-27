@@ -346,6 +346,38 @@ try {
       result = { ok: true };
       break;
     }
+    case "seed-incomplete-playback": {
+      const row = await prisma.mediaPlaybackGeneration.create({
+        data: {
+          videoId: payload.videoId,
+          generation: 1,
+          status: "FAILED",
+          fallbackR2ObjectKey: `test/incomplete/${payload.videoId}/g1.mp4`,
+          hlsMasterR2ObjectKey: `test/incomplete/${payload.videoId}/g1.m3u8`,
+          updatedAt: new Date(Date.now() - 30 * 60_000),
+        },
+      });
+      result = { generationId: row.id };
+      break;
+    }
+    case "incomplete-action-evidence": {
+      result = {
+        generation: await prisma.mediaPlaybackGeneration.findUnique({
+          where: { id: payload.generationId },
+          select: { status: true, supersededAt: true },
+        }),
+        jobs: await prisma.mediaProcessingJob.findMany({
+          where: { videoId: payload.videoId },
+          orderBy: { generation: "asc" },
+          select: { generation: true, status: true },
+        }),
+        audits: await prisma.adminAuditLog.findMany({
+          where: { actorAccountId: payload.accountId, action: "media_adaptive.recovery" },
+          select: { metadata: true },
+        }),
+      };
+      break;
+    }
     case "adaptive-action-evidence": {
       result = {
         audits: await prisma.adminAuditLog.findMany({

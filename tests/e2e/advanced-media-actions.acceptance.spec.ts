@@ -65,7 +65,7 @@ test("advanced actions enforce role, capacity, audit/no-op and pause semantics t
       })
     ).status(),
   ).toBe(403);
-  await expect(page.locator('option[value="INCOMPLETE_HLS"]')).toHaveCount(0);
+  await expect(page.locator('option[value="INCOMPLETE_HLS"]')).toHaveCount(1);
   const convert = page.getByRole("button", { name: "Convert a catalog batch", exact: true });
   await page.getByLabel("Maximum items per action").fill("0");
   await expect(convert).toBeDisabled();
@@ -200,4 +200,52 @@ test("storage scan UI preserves manual continuation, pending protection and mode
   await expect(page.getByLabel("Recovery action", { exact: true })).toHaveValue(
     "DB_MANIFEST_MISSING",
   );
+});
+
+test("incomplete playback recovery uses reviewed scope and commits a new generation with audit", async ({
+  page,
+}) => {
+  const user = await setup(page, "incomplete");
+  const { jobId, videoId } = db("seed-operator-job", { channelId: user.channel.id });
+  db("operator-ready-source", { jobId });
+  db("configure-adaptive-operator", { videoId });
+  const { generationId } = db("seed-incomplete-playback", { videoId });
+  await openMaintenance(page);
+  await page.getByLabel("Recovery action", { exact: true }).selectOption("INCOMPLETE_HLS");
+  await page.getByLabel("Maximum items per action").fill("1");
+  await page.getByRole("button", { name: "Review recovery", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("Recover incomplete adaptive playback");
+  await expect(page.getByRole("dialog")).toContainText(
+    "Obsolete generations and active work are excluded",
+  );
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(
+    db("incomplete-action-evidence", { videoId, generationId, accountId: user.account.id }).jobs,
+  ).toHaveLength(1);
+  await confirm(page, "Review recovery");
+  await expect(page.getByText(/Queued 1; processing is not complete/)).toBeVisible();
+  const evidence = db("incomplete-action-evidence", {
+    videoId,
+    generationId,
+    accountId: user.account.id,
+  });
+  expect(evidence.generation).toMatchObject({
+    status: "SUPERSEDED",
+    supersededAt: expect.any(String),
+  });
+  expect(evidence.jobs).toEqual([
+    { generation: 1, status: "READY" },
+    { generation: 2, status: "QUEUED" },
+  ]);
+  expect(evidence.audits).toHaveLength(1);
+  expect(evidence.audits[0].metadata).toMatchObject({
+    mode: "INCOMPLETE_HLS",
+    detected: 1,
+    requeued: 1,
+  });
+  await confirm(page, "Review recovery");
+  await expect(page.getByText(/Capacity is full/)).toBeVisible();
+  expect(
+    db("incomplete-action-evidence", { videoId, generationId, accountId: user.account.id }).jobs,
+  ).toHaveLength(2);
 });
