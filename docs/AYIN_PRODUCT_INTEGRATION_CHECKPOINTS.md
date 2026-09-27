@@ -327,3 +327,20 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Workspace `/workspace/scratch/f419afa1d147/ayin-restored` was clean at `d49d151d` before disconnection. The remote branch subsequently received `c6797480` test fixes, then PR #129 merged. Fetch main and inspect status before continuing; do not assume the local checkout contains those remote changes.
 - Execution attempts repeatedly return `409 environment_offline`. GitHub connector remains usable and preserves the work; no new broad implementation phase started after disconnection.
 - Next concrete work: reproduce/fix MFA concurrency with database tests, then account MFA UI; resolve discovery policy-pagination semantics before route/IA reconstruction. Continue using the existing Web/PWA as the shared product.
+
+## Phase 2G.1 — MFA recovery-code concurrency, correction under validation
+
+- Starting SHA: `f7625fae8543dfa204a7239a900edb4b48e23cd4`; workspace restored, clean older checkout fast-forwarded after PR #130 passed quality `36347523296` and merged with expected-head protection. Checkpoint read before implementation.
+- Findings: recovery consumption reads the entire hash list, filters one hash and writes the derived list later. Distinct concurrent codes can overwrite each other's removal; the write does not recheck ENABLED status. These findings require PostgreSQL reproduction before acceptance.
+- Reproduction: unchanged production head `37d7dbbbd6dc274819ba1d5a680c6d25933ad795`, quality run `36349970543`, reproduced exactly two failures: different-code consumption restored one used hash; a credential changed to PENDING after the read still authenticated. Other 548 API integration-gate tests passed; five new cases took 662ms. No assertion was weakened.
+- Changes: atomic PostgreSQL array removal from the current credential row, conditioned on version, ENABLED status and present matching hash. Return the actual remaining count from that update for the transactional audit. Same-code contention still allows only one success; audit failure rolls back removal.
+- Migrations: none.
+- Tests added: different-code concurrency with audit counts and replay rejection; same-code single use; status/version changes after read; rollback on audit failure (five cases).
+- Tests executed: initial local typecheck passed and real PostgreSQL regression evidence recorded above. Fixed implementation passed local API typecheck, lint and all 364 unit tests in 90 files (5.79s); full fixed-head gates pending. Local PostgreSQL and Chromium remain unavailable.
+- Performance measurements: one keyed conditional UPDATE returning one scalar, then the existing audit INSERT in the same transaction; no extra read or unbounded scan. Fixed-head test runtime pending; no production latency claim.
+- Remaining issues: enrollment/confirmation and regeneration/disable/reset/role-change concurrency review before account MFA UI; discovery pagination and remaining Phase 2/Phases 3–5 remain open.
+- External blockers: real database/browser verification runs in CI; no production or device claim.
+- Next: run complete gates on the fixed head, then remaining MFA lifecycle concurrency review before account UI.
+- Rollback: no schema changes; preserve consumed-code state and audit evidence, never restore used recovery codes.
+
+- Fixed head `14642d4d` passed state/audit-count and changed-status regressions; quality `36350419208` had 549/550 tests pass. The replay assertion reached a pre-existing Nest error-shape mismatch: the domain text is in the structured response, while Error.message is "Auth Http Error". Corrected the test to require exact HTTP 401, UNAUTHORIZED code and full domain message; no rejection, persisted-state or audit check weakened. Corrected-head full acceptance pending.
