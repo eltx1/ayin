@@ -184,3 +184,19 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - `findMissingManifestRows` marks a short page exhausted even if its loop stopped early after reaching the requested batch size. Verify continuation when unvisited rows remain in that page; do not weaken cursor expectations.
 - `pendingCandidates` materializes the entire eligible catalog before slicing. Mutation count is bounded, but read/scan cost is not yet catalog-size independent. Review bounded candidate selection and stable cursors before promising scalable batch operations.
 - Updated semantic review and machine inventory record PRs #117/#119 against this baseline. Source scanning is inventory evidence, not a substitute for runtime acceptance. No production storage, load or physical-device acceptance is claimed.
+
+## Phase 2A.3c.3 — storage recovery correctness, validation in progress
+
+- Starting SHA: `474bace77b5c6327b8027e3faa253ba33ab8f11d`; checkpoint read, remote main fetched unchanged, PR #120 quality `36333240948` passed and no open PRs found.
+- Findings: every HEAD error was treated as absence; missing size metadata became zero. A short scan page could lose continuation after reaching the result limit. Candidate selection materialized the whole catalog, orphan checks issued per-video SQL, and capacity exhaustion could skip unqueued candidates. A changed manifest was not fenced against stale verification.
+- Changes: typed R2 HTTP failures; only HEAD 404 or confirmed zero-length objects count as unusable. Authentication, outage, timeout, network and invalid metadata failures abort before mutations. Compare the observed manifest key/timestamp under the generation lock. Stable UUID keyset scans survive deleted anchors and preserve unvisited short-page rows. Candidate selection applies eligibility before a database LIMIT of at most 250; latest-job/playback reads are batched. Maintenance selection now orders by UUID, not publication date. Overview catalog reads are unchanged and remain a separate performance concern.
+- Continuation contract: orphan recovery preserves the input cursor when capacity prevents enqueueing all detected candidates. `hasMore` is authoritative: true with a null cursor means retry the initial range when capacity returns, not completion. Already queued candidates are filtered on the next scan. Cursor consumers must use this contract before the advanced UI is exposed.
+- Migrations: none.
+- Tests added: typed HEAD failures and invalid/zero/nonempty metadata; PostgreSQL regressions for uncertain storage, all-or-nothing verification, short-page/deleted-anchor continuation, changed manifests, capacity resumption and 260 eligible videos with a query-count bound independent of candidate count.
+- Tests executed: 361 local API unit tests passed in 26.76s. New integration test type narrowing and query instrumentation are being validated. Full quality/security/browser gates remain required; no merge or completion is claimed.
+- Performance measurements: implementation limits candidate materialization and storage HEADs to 250 per orphan scan. PostgreSQL query-count/timing evidence is pending CI; no production latency/load claim.
+- Remaining issues: advanced controls remain unexposed; Phase 2 is incomplete. An object can change after HEAD without a database update; this is not a storage transaction or object-version guarantee.
+- External blockers: local PostgreSQL/Chromium unavailable; real database/browser acceptance must run in CI. Storage faults are simulated; production R2/device acceptance is not claimed.
+- Ending SHA: pending validation and merge.
+- Next phase: finish same-head gates, then advanced media controls with precise cursor/result, role, step-up and audit semantics.
+- Rollback: revert code, no schema rollback. Preserve already committed recovery jobs and audits. Reverting restores false-absence and skipped-candidate risks.

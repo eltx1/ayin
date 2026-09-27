@@ -103,8 +103,13 @@ export class MediaProcessingStorageService {
     this.assertR2();
     return this.withDeadline("metadata request", this.r2MetadataTimeoutMs, async (signal) => {
       const response = await new R2SigV4(this.config).request({ method: "HEAD", key, signal });
+      const length = response.headers.get("content-length");
+      const sizeBytes = Number(length);
+      if (length === null || !/^\d+$/.test(length) || !Number.isSafeInteger(sizeBytes)) {
+        throw new Error("R2 returned invalid object size metadata.");
+      }
       return {
-        sizeBytes: Number(response.headers.get("content-length") ?? "0"),
+        sizeBytes,
         contentType: response.headers.get("content-type"),
         etag: response.headers.get("etag"),
       };

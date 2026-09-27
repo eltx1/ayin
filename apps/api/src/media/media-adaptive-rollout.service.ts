@@ -1,4 +1,4 @@
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -6,6 +6,7 @@ import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 import { lockMediaRollout } from "../platform-config/media-rollout-lock.js";
 import type { PlatformSettingKey } from "../platform-config/platform-settings.catalog.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+import { R2HttpError } from "./r2-sigv4.js";
 import { hlsMasterObjectKey } from "./media-architecture-v2.js";
 import {
   ADAPTIVE_BACKFILL_HARD_BATCH_MAX,
@@ -338,8 +339,15 @@ export class MediaAdaptiveRolloutService {
         let detected = 0;
         let requeued = 0;
         for (const row of scan.rows) {
+          await lockMediaGeneration(tx, row.videoId);
           const changed = await tx.mediaPlaybackGeneration.updateMany({
-            where: { id: row.id, status: "READY", hlsMasterStatus: "READY" },
+            where: {
+              id: row.id,
+              status: "READY",
+              hlsMasterStatus: "READY",
+              updatedAt: row.updatedAt,
+              hlsMasterR2ObjectKey: row.hlsMasterR2ObjectKey,
+            },
             data: {
               status: "FAILED",
               hlsMasterStatus: "FAILED",
@@ -427,8 +435,12 @@ export class MediaAdaptiveRolloutService {
       }
       const availableSlots = await this.availableBackfillSlots(tx, current.maxInFlight);
       let requeued = 0;
+      let capacityLimited = false;
       for (const video of scan.videos) {
-        if (requeued >= Math.min(batchSize, availableSlots)) break;
+        if (requeued >= Math.min(batchSize, availableSlots)) {
+          capacityLimited = true;
+          break;
+        }
         const job = await this.lifecycle.createAdaptiveBackfillJob(tx, video.id);
         if (job) requeued += 1;
       }
@@ -444,7 +456,10 @@ export class MediaAdaptiveRolloutService {
         detected: scan.videos.length,
         requeued,
         scanned: scan.scanned,
-        nextCursor: scan.nextCursor,
+        // Revisit this range when capacity returns; queued videos are filtered out.
+        // hasMore is authoritative when the initial (null) cursor must be retried.
+        nextCursor: capacityLimited ? (cursor ?? null) : scan.nextCursor,
+        hasMore: capacityLimited || scan.nextCursor !== null,
         policy: "REPROCESS_VERIFIED_ORPHAN_IN_NEW_GENERATION",
         ...(availableSlots === 0 ? { reason: "IN_FLIGHT_LIMIT" as const } : {}),
       };
@@ -452,7 +467,12 @@ export class MediaAdaptiveRolloutService {
   }
 
   private async findMissingManifestRows(batchSize: number, cursor?: string) {
-    const missing: Array<{ id: string; videoId: string; hlsMasterR2ObjectKey: string }> = [];
+    const missing: Array<{
+      id: string;
+      videoId: string;
+      hlsMasterR2ObjectKey: string;
+      updatedAt: Date;
+    }> = [];
     let nextCursor = cursor ?? null;
     let scanned = 0;
     let exhausted = false;
@@ -460,11 +480,14 @@ export class MediaAdaptiveRolloutService {
     while (missing.length < batchSize && scanned < RECOVERY_SCAN_MAX_ROWS && !exhausted) {
       const take = Math.min(RECOVERY_SCAN_PAGE_SIZE, RECOVERY_SCAN_MAX_ROWS - scanned);
       const rows = await this.database.client.mediaPlaybackGeneration.findMany({
-        where: { status: "READY", hlsMasterStatus: "READY" },
+        where: {
+          status: "READY",
+          hlsMasterStatus: "READY",
+          ...(nextCursor ? { id: { gt: nextCursor } } : {}),
+        },
         orderBy: { id: "asc" },
         take,
-        ...(nextCursor ? { cursor: { id: nextCursor }, skip: 1 } : {}),
-        select: { id: true, videoId: true, hlsMasterR2ObjectKey: true },
+        select: { id: true, videoId: true, hlsMasterR2ObjectKey: true, updatedAt: true },
       });
       if (rows.length === 0) {
         exhausted = true;
@@ -476,7 +499,7 @@ export class MediaAdaptiveRolloutService {
         if (!(await this.objectExists(row.hlsMasterR2ObjectKey))) missing.push(row);
         if (missing.length >= batchSize || scanned >= RECOVERY_SCAN_MAX_ROWS) break;
       }
-      if (rows.length < take) exhausted = true;
+      if (rows.length < take && nextCursor === rows.at(-1)?.id) exhausted = true;
     }
 
     return { rows: missing, scanned, nextCursor: exhausted ? null : nextCursor };
@@ -488,20 +511,31 @@ export class MediaAdaptiveRolloutService {
     let scanned = 0;
     let nextCursor: string | null = cursor ?? null;
 
+    // One bounded query finds the latest job per candidate; no per-video SQL loop.
+    const latestJobs = candidates.length
+      ? await this.database.client.$queryRaw<Array<{ videoId: string; generation: number }>>`
+      SELECT v.id AS "videoId", j.generation
+      FROM "Video" v
+      CROSS JOIN LATERAL (
+        SELECT generation FROM "MediaProcessingJob"
+        WHERE "videoId" = v.id ORDER BY generation DESC LIMIT 1
+      ) j
+      WHERE v.id IN (${Prisma.join(candidates.map((video) => Prisma.sql`${video.id}::uuid`))})
+    `
+      : [];
+    const existing = latestJobs.length
+      ? await this.database.client.mediaPlaybackGeneration.findMany({
+          where: { OR: latestJobs.map(({ videoId, generation }) => ({ videoId, generation })) },
+          select: { videoId: true },
+        })
+      : [];
+    const existingIds = new Set(existing.map((row) => row.videoId));
+    const jobsByVideo = new Map(latestJobs.map((job) => [job.videoId, job]));
     for (const video of candidates) {
       nextCursor = video.id;
       scanned += 1;
-      const latestJob = await this.database.client.mediaProcessingJob.findFirst({
-        where: { videoId: video.id },
-        orderBy: { generation: "desc" },
-        select: { generation: true },
-      });
-      if (!latestJob) continue;
-      const generationRow = await this.database.client.mediaPlaybackGeneration.findUnique({
-        where: { videoId_generation: { videoId: video.id, generation: latestJob.generation } },
-        select: { id: true },
-      });
-      if (generationRow) continue;
+      const latestJob = jobsByVideo.get(video.id);
+      if (!latestJob || existingIds.has(video.id)) continue;
       const manifestKey = hlsMasterObjectKey({
         channelId: video.channelId,
         videoId: video.id,
@@ -625,36 +659,27 @@ export class MediaAdaptiveRolloutService {
   }
 
   private async pendingCandidates(limit: number, afterVideoId?: string): Promise<CatalogVideo[]> {
-    const videos = await this.catalogVideos();
-    if (!videos.length) return [];
-    const cursorIndex = afterVideoId ? videos.findIndex((video) => video.id === afterVideoId) : -1;
-    const pool = cursorIndex >= 0 ? videos.slice(cursorIndex + 1) : videos;
-    if (!pool.length) return [];
-    const poolIds = pool.map((video) => video.id);
-    const ready = await this.database.client.mediaPlaybackGeneration.findMany({
-      where: {
-        videoId: { in: poolIds },
-        status: "READY",
-        fallbackStatus: "READY",
-        hlsMasterStatus: "READY",
-        renditions: { some: { status: "READY", protocol: "HLS" } },
-      },
-      distinct: ["videoId"],
-      select: { videoId: true },
-    });
-    const active = await this.database.client.mediaProcessingJob.findMany({
-      where: {
-        videoId: { in: poolIds },
-        status: { in: [...ACTIVE_OR_QUEUED] },
-      },
-      distinct: ["videoId"],
-      select: { videoId: true },
-    });
-    const blocked = new Set([
-      ...ready.map((row) => row.videoId),
-      ...active.map((row) => row.videoId),
-    ]);
-    return pool.filter((video) => !blocked.has(video.id)).slice(0, limit);
+    const candidates = await this.database.client.$queryRaw<CatalogVideo[]>`
+      SELECT v.id, v."channelId", v."publishedAt", v."createdAt",
+        jsonb_build_array(jsonb_build_object('id', a.id, 'r2ObjectKey', a."r2ObjectKey",
+          'width', a.width, 'height', a.height, 'durationMs', a."durationMs")) AS "mediaAssets"
+      FROM "Video" v JOIN "Channel" c ON c.id = v."channelId"
+      JOIN LATERAL (SELECT id, "r2ObjectKey", width, height, "durationMs"
+        FROM "MediaAsset" WHERE "videoId" = v.id AND kind = 'SOURCE_VIDEO'
+          AND status = 'VALIDATED' AND "mimeType" = 'video/mp4' AND "removedAt" IS NULL
+        ORDER BY "createdAt" DESC, id DESC LIMIT 1) a ON true
+      WHERE v.status = 'PUBLISHED' AND v.visibility <> 'PRIVATE' AND v."removedAt" IS NULL
+        AND c.status = 'ACTIVE' AND c."removedAt" IS NULL
+        AND (${afterVideoId ?? null}::uuid IS NULL OR v.id > ${afterVideoId ?? null}::uuid)
+        AND NOT EXISTS (SELECT 1 FROM "MediaPlaybackGeneration" g WHERE g."videoId" = v.id
+          AND g.status = 'READY' AND g."fallbackStatus" = 'READY' AND g."hlsMasterStatus" = 'READY'
+          AND EXISTS (SELECT 1 FROM "MediaPlaybackRendition" r WHERE r."playbackGenerationId" = g.id
+            AND r.status = 'READY' AND r.protocol = 'HLS'))
+        AND NOT EXISTS (SELECT 1 FROM "MediaProcessingJob" j WHERE j."videoId" = v.id
+          AND j.status IN ('INGESTING', 'QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
+      ORDER BY v.id LIMIT ${Math.min(limit, RECOVERY_SCAN_MAX_ROWS)}
+    `;
+    return candidates;
   }
 
   private catalogVideos(): Promise<CatalogVideo[]> {
@@ -697,9 +722,16 @@ export class MediaAdaptiveRolloutService {
   private async objectExists(key: string): Promise<boolean> {
     try {
       const object = await this.storage.headObject(key);
+      if (!Number.isSafeInteger(object.sizeBytes) || object.sizeBytes < 0) {
+        throw new Error("Cannot verify storage object size.");
+      }
       return object.sizeBytes > 0;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof R2HttpError && error.method === "HEAD" && error.status === 404)
+        return false;
+      // Permissions, timeouts, configuration failures and outages are not absence.
+      // Propagate before entering the database mutation transaction.
+      throw error;
     }
   }
 }
