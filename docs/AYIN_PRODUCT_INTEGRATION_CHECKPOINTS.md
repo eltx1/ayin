@@ -185,7 +185,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - `pendingCandidates` materializes the entire eligible catalog before slicing. Mutation count is bounded, but read/scan cost is not yet catalog-size independent. Review bounded candidate selection and stable cursors before promising scalable batch operations.
 - Updated semantic review and machine inventory record PRs #117/#119 against this baseline. Source scanning is inventory evidence, not a substitute for runtime acceptance. No production storage, load or physical-device acceptance is claimed.
 
-## Phase 2A.3c.3 — storage recovery correctness, validation in progress
+## Phase 2A.3c.3 — storage recovery correctness, verified and merged
 
 - Starting SHA: `474bace77b5c6327b8027e3faa253ba33ab8f11d`; checkpoint read, remote main fetched unchanged, PR #120 quality `36333240948` passed and no open PRs found.
 - Findings: every HEAD error was treated as absence; missing size metadata became zero. A short scan page could lose continuation after reaching the result limit. Candidate selection materialized the whole catalog, orphan checks issued per-video SQL, and capacity exhaustion could skip unqueued candidates. A changed manifest was not fenced against stale verification.
@@ -193,10 +193,18 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Continuation contract: orphan recovery preserves the input cursor when capacity prevents enqueueing all detected candidates. `hasMore` is authoritative: true with a null cursor means retry the initial range when capacity returns, not completion. Already queued candidates are filtered on the next scan. Cursor consumers must use this contract before the advanced UI is exposed.
 - Migrations: none.
 - Tests added: typed HEAD failures and invalid/zero/nonempty metadata; PostgreSQL regressions for uncertain storage, all-or-nothing verification, short-page/deleted-anchor continuation, changed manifests, capacity resumption and 260 eligible videos with a query-count bound independent of candidate count.
-- Tests executed: 361 local API unit tests passed in 26.76s. New integration test type narrowing and query instrumentation are being validated. Full quality/security/browser gates remain required; no merge or completion is claimed.
-- Performance measurements: implementation limits candidate materialization and storage HEADs to 250 per orphan scan. PostgreSQL query-count/timing evidence is pending CI; no production latency/load claim.
+- Tests executed: local formatting, API lint/typecheck and 361 unit tests passed (26.76s). Full quality `36334516303`, security `36334516289` and browser `36334516292` passed on `80a0175ad423797d93b542b950b20dd615ca5c0a`. The API integration gate passed 531 tests across 128 files (including unit suites), with all nine new PostgreSQL regressions passing. All 113 Web unit tests and all 34 browser tests passed. Formatting, lint, types, schema tests, clean migrations and production builds passed.
+- Performance measurements: orphan candidate materialization and HEAD checks are bounded at 250 per request. The real PostgreSQL test proves the 250-candidate and 10-candidate scans use the same number of Prisma operations, at most 15, without per-video SQL checks. Nine new regressions took 2.002s; API integration gate 104.91s; browser suite 3.4 minutes. These are test measurements, not production latency/load evidence; database execution may still depend on catalog distribution and indexes.
 - Remaining issues: advanced controls remain unexposed; Phase 2 is incomplete. An object can change after HEAD without a database update; this is not a storage transaction or object-version guarantee.
 - External blockers: local PostgreSQL/Chromium unavailable; real database/browser acceptance must run in CI. Storage faults are simulated; production R2/device acceptance is not claimed.
-- Ending SHA: pending validation and merge.
-- Next phase: finish same-head gates, then advanced media controls with precise cursor/result, role, step-up and audit semantics.
+- Verified ending PR head: `80a0175ad423797d93b542b950b20dd615ca5c0a`; ending main SHA: `03077fd11a10f1e60b7c78ad95325c1ab0afffc3`, merged as PR #121 with expected-head protection.
+- Next phase: advanced media controls with precise cursor/result, role, step-up and audit semantics, subject to the mode-specific review below. Phase 2 remains incomplete; Phases 3–5 are not started.
 - Rollback: revert code, no schema rollback. Preserve already committed recovery jobs and audits. Reverting restores false-absence and skipped-candidate risks.
+
+### Resume point after 2A.3c.3
+
+- Read this checkpoint and verify remote main/PR/CI before editing. Runtime baseline: `03077fd11a10f1e60b7c78ad95325c1ab0afffc3`. Only PR #121 was open during the runtime change, and it is merged.
+- The next UI slice can integrate verified backfill, pause/resume, failed/stale recovery and the reviewed storage modes with explicit scoped confirmation. Preserve no automatic replay, role boundaries, transactional audit distinctions and capacity-dependent continuation. Do not add a generic raw response console.
+- Review `INCOMPLETE_HLS` before exposing that specific mode: it limits old BUILDING/FAILED rows before checking current eligibility, then deduplicates by video. Old blocked/obsolete rows may hide eligible work indefinitely. This is a source-review finding, not a reproduced or fixed regression. Either establish and test a fair bounded selection contract or keep that mode unexposed while shipping the verified actions.
+- Old Task 42 documentation has been corrected to describe generation-specific MP4 copies, pause ordering, audit/no-op semantics and storage cursor/error contracts. Existing source inventory still explicitly identifies its historical `d1c722fc` baseline; this checkpoint records newer runtime acceptance without relabeling inventory evidence.
+- No migration, production R2, physical-device or production load validation. Do not claim the entire advanced-media integration, Phase 2 or the product program is complete.

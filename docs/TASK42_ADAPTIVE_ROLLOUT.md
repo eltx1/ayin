@@ -34,7 +34,7 @@ Backfill candidates must be:
 - owned by an active, non-removed channel; and
 - backed by a validated canonical `video/mp4` source.
 
-Videos with a complete adaptive generation or any active/queued processing generation are skipped idempotently. A backfill job reuses the already-validated canonical MP4 as both input and output, so it does not retranscode or delete the canonical fallback.
+Videos with a complete adaptive generation or any active/queued processing generation are skipped idempotently. A backfill job copies the already-validated canonical MP4 into a generation-specific fallback key. It does not retranscode or delete the source fallback; the independent output avoids cross-generation key and asset ownership collisions.
 
 ## Bounded backfill operations
 
@@ -46,7 +46,7 @@ Operations are exposed through aggregate, typed admin actions under `/admin/medi
 - `POST .../backfill/resume` — allow claims again; it does not automatically flood the queue.
 - `POST .../recovery` — one of the predefined recovery modes below.
 
-All mutating operations are admin-audited. The queue itself refuses to claim backfill jobs while generation/backfill is disabled or the durable pause is active. Normal upload jobs remain claimable.
+Committed recovery/backfill actions and pause/resume changes are admin-audited transactionally. Disabled/paused fast exits perform no mutation and do not necessarily create an audit; clients must not report an audit for every no-op response. All mutation routes require recent Admin step-up; pause/resume are SUPERADMIN-only. The queue itself refuses to claim backfill jobs while generation/backfill is disabled or the durable pause is active. Normal upload jobs remain claimable.
 
 ## Operational visibility
 
@@ -70,6 +70,20 @@ Recovery is always bounded by the requested/configured batch ceiling and never d
 - `VERIFIED_HLS_MISSING_DB`: detects deterministic manifests without corresponding DB generation state. AYIN intentionally creates a new processing generation instead of blindly adopting orphan state.
 - `DB_MANIFEST_MISSING`: HEAD-verifies DB-ready manifests, marks missing output failed, and schedules a safe new backfill generation.
 - `FAILED_BACKFILL`: resets a bounded set of failed backfill jobs for retry.
+
+## Recovery verification and continuation (product integration follow-up)
+
+Explicit `STALE_PROCESSING` requests select at most 20 expired jobs and report actual requeued/failed transitions; automatic worker recovery keeps its separate housekeeping behavior. It is independent of the adaptive backfill pause.
+
+Pause and rollout settings share the mutation lock. A batch already inside that boundary may commit first; pause waits, then blocks subsequent backfill mutations and claims. It does not cancel existing jobs or stop work already claimed.
+
+Storage checks distinguish confirmed unusable output (typed HEAD 404 or valid zero length) from uncertainty. Permissions, outages, network errors, timeouts and invalid size metadata abort the scan before recovery mutations. A manifest observation is rechecked against its database key/timestamp under the generation lock. This is not an atomic transaction with object storage: an object can change after HEAD without a database update.
+
+Storage scan candidates use ascending UUID keysets and a maximum of 250 candidates per request. Maintenance order is no longer publication order. The overview's catalog read is unchanged; this scan limit does not establish catalog-independent database execution time or production load acceptance.
+
+For `DB_MANIFEST_MISSING`, pass a non-null `nextCursor` to continue. For `VERIFIED_HLS_MISSING_DB`, use `hasMore` as the continuation decision. When capacity prevents all detected candidates from being queued, the response preserves the input cursor and sets `hasMore: true`; a null cursor then means retry the first range after capacity returns. Omit the optional request cursor when null. Do not continuously retry while capacity is full, automatically replay a mutation after step-up, or treat queued work as completed HLS processing.
+
+Advanced controls are not yet mounted in the Web/PWA. Individual video retry/reprocess controls are available. Real PostgreSQL acceptance is recorded in the product integration checkpoint; production R2/device acceptance remains separate.
 
 ## Metrics
 
