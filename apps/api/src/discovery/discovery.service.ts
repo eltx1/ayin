@@ -144,19 +144,25 @@ export class DiscoveryService {
         (!normalized.isKidsProfile || isKidsDiscoverySourceAllowed(row.source)),
     );
 
+    const loadedRows = await Promise.all(
+      visibleRows.map(async (row) => ({
+        row,
+        page: await this.loadRowPage(row, normalized, 0, Math.min(firstPageSize, row.maxItems)),
+      })),
+    );
+    const enforcedPages = await this.enforcePages(
+      loadedRows.map((entry) => entry.page),
+      normalized,
+    );
+
     return {
-      rows: await Promise.all(
-        visibleRows.map(async (row) => ({
-          key: row.key,
-          title: row.title,
-          source: row.source,
-          maxItems: row.maxItems,
-          ...(await this.enforcePage(
-            await this.loadRowPage(row, normalized, 0, Math.min(firstPageSize, row.maxItems)),
-            normalized,
-          )),
-        })),
-      ),
+      rows: loadedRows.map(({ row }, index) => ({
+        key: row.key,
+        title: row.title,
+        source: row.source,
+        maxItems: row.maxItems,
+        ...enforcedPages[index]!,
+      })),
     };
   }
 
@@ -254,22 +260,30 @@ export class DiscoveryService {
       this.loadOwnedPlaylists(accountId, 0, firstPageSize),
     ]);
 
+    const [
+      allowedContinueWatching,
+      allowedMyList,
+      allowedWatchLater,
+      allowedHistory,
+      allowedLiked,
+    ] = await this.enforcePages([continueWatching, myList, watchLater, history, liked], context);
+
     return {
       profileId,
       sections: [
         {
           key: "continue-watching",
           title: "Continue Watching",
-          ...(await this.enforcePage(continueWatching, context)),
+          ...allowedContinueWatching!,
         },
-        { key: "my-list", title: "My List", ...(await this.enforcePage(myList, context)) },
+        { key: "my-list", title: "My List", ...allowedMyList! },
         {
           key: "watch-later",
           title: "Watch Later",
-          ...(await this.enforcePage(watchLater, context)),
+          ...allowedWatchLater!,
         },
-        { key: "history", title: "Watch History", ...(await this.enforcePage(history, context)) },
-        { key: "liked", title: "Liked Content", ...(await this.enforcePage(liked, context)) },
+        { key: "history", title: "Watch History", ...allowedHistory! },
+        { key: "liked", title: "Liked Content", ...allowedLiked! },
         { key: "playlists", title: "Playlists", ...playlists },
       ],
     };
@@ -366,13 +380,26 @@ export class DiscoveryService {
     page: DiscoveryPage,
     context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
-    const videoIds = page.items.filter((item) => item.type === "VIDEO").map((item) => item.id);
-    if (!videoIds.length) return page;
+    return (await this.enforcePages([page], context))[0]!;
+  }
+
+  private async enforcePages(
+    pages: readonly DiscoveryPage[],
+    context: DiscoveryContext,
+  ): Promise<DiscoveryPage[]> {
+    const videoIds = [
+      ...new Set(
+        pages.flatMap((page) =>
+          page.items.filter((item) => item.type === "VIDEO").map((item) => item.id),
+        ),
+      ),
+    ];
+    if (!videoIds.length) return [...pages];
     const allowed = await this.videoPolicy.filterAvailableVideoIds(videoIds, {
       countryCode: context.availabilityCountryCode,
       isKidsProfile: context.isKidsProfile,
     });
-    return {
+    return pages.map((page) => ({
       ...page,
       items: page.items
         .filter((item) => item.type !== "VIDEO" || allowed.has(item.id))
@@ -381,7 +408,7 @@ export class DiscoveryService {
             ? { ...item, href: kidsSafeHref(item.href) }
             : item,
         ),
-    };
+    }));
   }
 
   private async loadRowPage(

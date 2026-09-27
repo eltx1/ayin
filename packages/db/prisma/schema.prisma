@@ -675,6 +675,7 @@ model WatchHistory {
 
   @@unique([profileId, videoId])
   @@index([profileId, lastWatchedAt])
+  @@index([lastWatchedAt, videoId], map: "watch_history_trending_time_idx")
 }
 
 model Subscription {
@@ -1035,6 +1036,7 @@ model EarningsLedgerEntry {
   payout   Payout?          @relation(fields: [payoutId], references: [id], onDelete: SetNull)
 
   @@index([channelId, occurredAt])
+  @@index([channelId, currency, occurredAt], map: "earnings_channel_currency_time_idx")
   @@index([channelId, state, occurredAt])
   @@index([contractId, occurredAt])
   @@index([payoutId])

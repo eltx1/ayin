@@ -238,6 +238,10 @@ ss -lntp
 
 Expected application/database listeners are loopback-only. Ports `3000`, `4000` and `5432` must never be public listeners.
 
+## PostgreSQL traffic scaling
+
+Task 86 keeps a single PostgreSQL primary as the current topology, adds bounded per-service pools and query-plan-backed indexes, and defines measured promotion criteria for larger resources/replicas/specialized stores. See `docs/POSTGRES_SCALING.md`. Operators can inspect live connection pressure and optional `pg_stat_statements` timings at `GET /admin/observability/postgres`.
+
 ## PostgreSQL backup / recovery gate
 
 Local PostgreSQL is the zero-budget launch topology, but local-only backups are not sufficient recovery protection. Before production data is at risk:
