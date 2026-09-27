@@ -328,7 +328,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Execution attempts repeatedly return `409 environment_offline`. GitHub connector remains usable and preserves the work; no new broad implementation phase started after disconnection.
 - Next concrete work: reproduce/fix MFA concurrency with database tests, then account MFA UI; resolve discovery policy-pagination semantics before route/IA reconstruction. Continue using the existing Web/PWA as the shared product.
 
-## Phase 2G.1 — MFA recovery-code concurrency, correction under validation
+## Phase 2G.1 — MFA recovery-code concurrency, verified and merged
 
 - Starting SHA: `f7625fae8543dfa204a7239a900edb4b48e23cd4`; workspace restored, clean older checkout fast-forwarded after PR #130 passed quality `36347523296` and merged with expected-head protection. Checkpoint read before implementation.
 - Findings: recovery consumption reads the entire hash list, filters one hash and writes the derived list later. Distinct concurrent codes can overwrite each other's removal; the write does not recheck ENABLED status. These findings require PostgreSQL reproduction before acceptance.
@@ -344,3 +344,28 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Rollback: no schema changes; preserve consumed-code state and audit evidence, never restore used recovery codes.
 
 - Fixed head `14642d4d` passed state/audit-count and changed-status regressions; quality `36350419208` had 549/550 tests pass. The replay assertion reached a pre-existing Nest error-shape mismatch: the domain text is in the structured response, while Error.message is "Auth Http Error". Corrected the test to require exact HTTP 401, UNAUTHORIZED code and full domain message; no rejection, persisted-state or audit check weakened. Corrected-head full acceptance pending.
+
+- Phase 2G.1 accepted: quality `36350846031`, security `36350846236` and browser `36350846065` all passed on `58a9d11a7e1de1dfbaaa39f937d653cbb3e0705a`. All 550 API integration-gate tests in 133 files (112.85s), 364 API units, 153 Web units, four migration tests and 42 browser tests (4.1 minutes) passed, including all five new PostgreSQL cases (475ms). Formatting, lint, types and production builds passed. PR #131 merged with expected-head protection; ending main SHA `bab6f8582d401af2d5396ec85a407d4582810721`.
+
+## Phase 2G.2 — MFA enrollment concurrency, under investigation
+
+- Starting SHA: `bab6f8582d401af2d5396ec85a407d4582810721`; checkpoint read and accepted main fetched before implementation.
+- Findings: unconditional enrollment upsert can replace a credential confirmed after the initial read; concurrent starts can return secrets sharing one version. Confirmation checks neither the observed secret nor current account authVersion at its writes.
+- Tests added: delayed restart versus confirmation; two simultaneous initial/pending starts; confirmation versus changed secret/account version; audit rollback (six cases).
+- Tests executed: local typecheck passed for the test-only change. Unchanged-code PostgreSQL reproduction running on `06e986d5759ea9d41156ca5be40c2a149afca545`, draft PR #132. No acceptance claimed.
+- Changes under review: conditional pending replacement / insert-if-absent; confirmation binds observed secret and conditionally increments the active account's observed authVersion, throwing within the transaction to roll back credential changes on conflict.
+- Migrations: none.
+- Performance measurements: keyed credential write and existing account/audit writes; no catalog scans, extra polling or automatic mutation replay. Runtime pending.
+- Remaining issues: regeneration/disable/reset and role-change concurrency, account MFA UI, discovery policy pagination and remaining product phases.
+- External blockers: PostgreSQL/browser execution requires CI; production/device evidence remains separate.
+- Next: establish regression evidence, run full corrected-head gates, then continue lifecycle review and account UI.
+- Rollback: no schema changes; preserve enabled credentials, consumed factors and audit history; do not restore old enrollment secrets.
+
+- Phase 2G.2 initial CI `36352506834` stopped before PostgreSQL tests: pinned FFmpeg preparation exited 1 without diagnostic output. Direct retrieval of that exact upstream archive returned HTML (`One moment, please…`), SHA256 `e3bce4030920f6d342aec245812fe225ee3f537aab63bd21767ebdf4e7f44848`, not the required archive hash. Integrity verification remains unchanged. One failed-job rerun requested. No regression reproduction or full acceptance is claimed yet.
+- Local correction passed API typecheck/lint and 364 unit tests in 90 files (5.81s). Attempt to provision local PostgreSQL was blocked by execution-environment setgroups/seteuid permissions; no privilege workaround attempted. This does not substitute for PostgreSQL or browser gates.
+- Failed-job attempt 2 (`108714295271`) again stopped at pinned FFmpeg installation before database tests. Repeated retry did not resolve the external archive delivery problem. Local full `pnpm build` passed (API, packages and Web; all 65 static pages), with pre-existing Edge-runtime stdout/stderr instrumentation warnings. Corrected code remains a draft pending genuine PostgreSQL reproduction and complete CI acceptance. Do not substitute the HTML hash, skip media verification, or claim the master program complete.
+- External runtime recovery: located a public mirror at `https://software.frc971.org/Build-Dependencies/www.johnvansickle.com/ffmpeg/old-releases/ffmpeg-6.0.1-amd64-static.tar.xz`; downloaded bytes match the existing pinned SHA256 `28268bf402f1083833ea269331587f60a242848880073be8016501d864bd07a5` exactly. Add fallback only after failed download/integrity validation, keep the same required hash for both sources, fail closed before extraction, and bound connection/download time. Extract as the current user without restoring archived ownership/permissions; explicit binary install mode remains 755.
+- Five installer tests passed, covering primary success, invalid HTML fallback, network fallback, both-invalid rejection, both-network-failure rejection and cached reuse; reject cases never extract/install. Tests are part of root `pnpm test`. No runtime upgrade or checksum relaxation.
+- Temporary regression head restores the MFA service from accepted main while retaining the new concurrency tests and verified-runtime fallback. The proposed correction is safely committed at `33b31b28` and will be restored after unchanged-code PostgreSQL evidence. This is a draft-only test-first step, never a merge candidate.
+- Unchanged-code reproduction now established on `24d5f583760a189ad187413e0d5c71c1ef2d99ce`, quality `36353115227`: verified FFmpeg preparation succeeded, all four migration tests passed, and exactly five of the six enrollment regressions failed as predicted. Delayed restart and changed-secret/account-version confirmations incorrectly fulfilled; both simultaneous-start cases returned two successes. The other 551 API integration-gate tests passed (556 total, 134 files, 138.56s); six new cases took 865ms. Audit rollback already passed. Restored the previously reviewed correction without weakening any regression assertion; final full acceptance pending.
+- Actual local fallback installation and cached runtime verification both succeeded with the original pinned archive/hash. The upstream availability blocker is resolved by verified fallback; PostgreSQL/browser correctness still requires final-head CI.
