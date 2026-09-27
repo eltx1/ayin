@@ -160,7 +160,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Advanced UI must retain role boundaries (pause/resume SUPERADMIN only), explicit scoped confirmation, step-up without replay, batch validation, accurate result categories and audit evidence. Disabled/no-op paths do not all write an audit, so do not reuse the individual-job success text indiscriminately.
 - The machine inventory still identifies its historical `554eac65` source baseline; this checkpoint and the human audit record the newer runtime change. Refresh source inventory with the next integration audit rather than mislabeling historical evidence as current.
 
-## Phase 2A.3c.2 — bounded recovery and pause consistency, awaiting gates
+## Phase 2A.3c.2 — bounded recovery and pause consistency, verified and merged
 
 - Starting SHA: `926b3558a88bb3375bae5c5eed8942534bbcdd8a`; checkpoint read, main fetched unchanged, PR #118 merge and quality `36331588157` verified.
 - Findings: STALE_PROCESSING ignored its bounded request and counted rows before conditional writes; pause/settings writes did not share the mutation lock and mutation paths trusted preflight controls. Reading settings/flags through the outer client while a transaction holds a connection also unnecessarily requires another pool connection.
@@ -168,10 +168,19 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Pause contract: a batch already inside the boundary may commit first; pause waits for it and blocks subsequent backfill mutations until resume. Pause does not cancel already queued work. STALE_PROCESSING is queue lease recovery, independent of the adaptive rollout switch, as before.
 - Migrations: none.
 - Tests added: real PostgreSQL bounded batches and result/audit totals, concurrent recoveries, lease renewal race, audit rollback, stale-preflight pause/resume and a settings writer demonstrably waiting on the PostgreSQL advisory lock. Four unit cases recheck pause across every adaptive recovery mode.
-- Tests executed: local validation in progress; complete quality/security/browser CI required before merge. Not yet complete.
-- Performance measurements: manual stale selection has a database LIMIT (maximum 20) and no preliminary count query; control reads batch settings into one transaction query. No production load measurement claimed.
+- Tests executed: local API lint/typecheck and all 350 unit tests passed (23.46s). Full quality `36332695630`, security `36332695651` and browser `36332695627` passed on `cc134a58516813b34c5811ff4b41b95ea6a0d543`. All seven new PostgreSQL regressions passed; the API integration gate passed 511 tests across 127 files, including unit suites. All 34 browser tests passed. Formatting, types, unit/schema suites, clean migrations and production builds passed.
+- Performance measurements: manual stale selection has a database LIMIT (maximum 20) and no preliminary count query; control reads batch settings into one transaction query. Seven new PostgreSQL scenarios took 1.431s; API integration gate 125.98s; browser suite 3.2 minutes. No production load measurement claimed.
 - Remaining issues: advanced UI is still unexposed; storage recovery error classification and scan-cursor behavior require review before exposing storage-reconciliation modes. Phase 2 remains incomplete.
 - External blockers: local PostgreSQL/Chromium unavailable; real database/browser verification runs in CI.
-- Ending SHA: pending accepted CI head and merge.
-- Next: accept this safety prerequisite, then integrate appropriately bounded advanced actions with role/step-up/confirmation/result semantics.
+- Verified ending PR head: `cc134a58516813b34c5811ff4b41b95ea6a0d543`; ending main SHA: `d1c722fc0e1f048bbdcc918b76d68dab481f0d8b`, merged as PR #119 with expected-head protection.
+- Next: 2A.3c.3 review storage reconciliation correctness, then integrate advanced controls with role/step-up/confirmation/result semantics. Individual video actions are already integrated in PR #117; Phase 2 remains incomplete.
 - Rollback: revert code only, no schema rollback. Preserve committed jobs, pause values and audits; reverting restores the reviewed races/unbounded operator scope.
+
+### Resume point after 2A.3c.2
+
+- Read this checkpoint and verify remote main/PR/CI before editing. Verified runtime baseline is `d1c722fc0e1f048bbdcc918b76d68dab481f0d8b`. No other open PR existed before PR #119 was created.
+- Bounded queue recovery and pause ordering are verified prerequisites; advanced controls are not yet mounted. Preserve the distinction between requeued jobs and terminal failures, and between a committed pause and cancellation of existing work.
+- Review before exposing storage recovery: `objectExists` catches every storage error and returns false; DB_MANIFEST_MISSING can consequently treat an outage/403 as an absent object. `R2SigV4.request` currently throws an untyped Error for HTTP failures. Distinguish confirmed absence from inability to verify and test that uncertain storage never downgrades healthy playback.
+- `findMissingManifestRows` marks a short page exhausted even if its loop stopped early after reaching the requested batch size. Verify continuation when unvisited rows remain in that page; do not weaken cursor expectations.
+- `pendingCandidates` materializes the entire eligible catalog before slicing. Mutation count is bounded, but read/scan cost is not yet catalog-size independent. Review bounded candidate selection and stable cursors before promising scalable batch operations.
+- Updated semantic review and machine inventory record PRs #117/#119 against this baseline. Source scanning is inventory evidence, not a substitute for runtime acceptance. No production storage, load or physical-device acceptance is claimed.

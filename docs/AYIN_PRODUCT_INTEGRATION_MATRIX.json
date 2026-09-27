@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha": "554eac6507a29b3013f3206ea2fea35b80460594",
+  "sourceSha": "d1c722fc0e1f048bbdcc918b76d68dab481f0d8b",
   "sourceShaMeaning": "HEAD at generation; inventory reads tracked worktree contents, including changes listed below",
   "sourceWorkingTreeChanges": [
     "TASK_PROGRESS.md",
@@ -12,7 +12,7 @@
   ],
   "method": "Deterministic tracked-source inventory; no runtime, authorization or feature-completion claims",
   "counts": {
-    "files": 1151,
+    "files": 1154,
     "routes": 75,
     "pages": 67,
     "controllers": 53,
@@ -5472,11 +5472,13 @@
         "apps/api/src/media/media-processing-worker.service.test.ts",
         "apps/api/test/admin-media-retry.integration.test.ts",
         "apps/api/test/media-generation-safety.integration.test.ts",
-        "apps/api/test/media-processing-queue.integration.test.ts"
+        "apps/api/test/media-processing-queue.integration.test.ts",
+        "apps/api/test/media-recovery-controls.integration.test.ts",
+        "tests/e2e/media-actions.acceptance.spec.ts"
       ],
       "documentation": [],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
-      "gaps": "Detailed operations API lacks adequate UI",
+      "gaps": "Individual media actions integrated; advanced recovery controls remain",
       "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
       "semanticReview": {
         "backend": [
@@ -5490,7 +5492,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations", "/admin/operations/media"],
         "disposition": "PARTIAL_SURFACE",
-        "gap": "Read-only detailed jobs/workers/capacity workspace verified in PR #111. Atomic retry and generation/finalization safety verified in PRs #113/#115; contextual retry/reprocess UI remains open.",
+        "gap": "Jobs/workers/capacity workspace and contextual confirmed retry/reprocess verified in PRs #111/#117. Atomic generation safety and bounded recovery/pause ordering verified in PRs #113/#115/#119. Advanced controls and storage reconciliation semantics remain open.",
         "remediationPhase": 2
       }
     },
@@ -5685,6 +5687,7 @@
         "apps/api/test/media-adaptive-lifecycle.integration.test.ts",
         "apps/api/test/media-generation-safety.integration.test.ts",
         "apps/api/test/media-hls-transcoder.integration.test.ts",
+        "apps/api/test/media-recovery-controls.integration.test.ts",
         "apps/web/src/lib/adaptive-playback.test.ts",
         "tests/e2e/adaptive-rollout.acceptance.spec.ts",
         "tests/e2e/player-hls.acceptance.spec.ts"
@@ -5703,7 +5706,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations", "/admin/operations/media"],
         "disposition": "PARTIAL_SURFACE",
-        "gap": "Read-only rollout controls, catalog and playback metrics added in 2A.2, verified in PR #111; backfill/recovery concurrency, capacity and fallback-key safety verified in PR #115; action UI remains for 2A.3c with step-up and bounded confirmation.",
+        "gap": "Rollout metrics integrated in PR #111; generation/fallback safety in #115 and bounded recovery/pause ordering in #119. Advanced action UI remains open; storage error classification, scan continuation and catalog scan bounds require review.",
         "remediationPhase": 2
       }
     },
@@ -12733,7 +12736,9 @@
         "apps/api/src/media/media-processing-worker.service.test.ts",
         "apps/api/test/admin-media-retry.integration.test.ts",
         "apps/api/test/media-generation-safety.integration.test.ts",
-        "apps/api/test/media-processing-queue.integration.test.ts"
+        "apps/api/test/media-processing-queue.integration.test.ts",
+        "apps/api/test/media-recovery-controls.integration.test.ts",
+        "tests/e2e/media-actions.acceptance.spec.ts"
       ],
       "documentation": ["docs/MEDIA_WORKER_SCALING.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
@@ -12751,7 +12756,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations", "/admin/operations/media"],
         "disposition": "PARTIAL_SURFACE",
-        "gap": "Read-only detailed jobs/workers/capacity workspace verified in PR #111. Atomic retry and generation/finalization safety verified in PRs #113/#115; contextual retry/reprocess UI remains open.",
+        "gap": "Jobs/workers/capacity workspace and contextual confirmed retry/reprocess verified in PRs #111/#117. Atomic generation safety and bounded recovery/pause ordering verified in PRs #113/#115/#119. Advanced controls and storage reconciliation semantics remain open.",
         "remediationPhase": 2
       }
     },
@@ -12797,7 +12802,7 @@
       ],
       "documentation": ["docs/POSTGRES_SCALING.md"],
       "status": "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
-      "gaps": "Detailed performance API not surfaced",
+      "gaps": "PostgreSQL visibility integrated; other observability surfaces remain",
       "evidenceMethod": "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
       "semanticReview": {
         "backend": ["admin/admin-observability.controller.ts", "database/database.service.ts"],
@@ -12843,7 +12848,7 @@
         "creatorRoutes": [],
         "adminRoutes": ["/admin/operations"],
         "disposition": "INTEGRATED_WITH_GAPS",
-        "gap": "Task 87 verified; detailed operator actions remain separate integration work.",
+        "gap": "Task 87 and contextual media retry/reprocess verified; detailed database read-only workspace retains SUPERADMIN boundary. Advanced actions and other operator domains remain open.",
         "remediationPhase": 2
       }
     },

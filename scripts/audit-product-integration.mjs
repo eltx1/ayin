@@ -65,15 +65,15 @@ const definitions = [
   ["Uploads", "upload", "Creator", "Broken manifest shortcut; progressive disclosure"],
   [
     "Media processing",
-    "media-processing|media-generation|admin-media-retry",
+    "media-processing|media-generation|media-recovery|media-actions|admin-media-retry",
     "Admin/internal",
-    "Detailed operations API lacks adequate UI",
+    "Individual media actions integrated; advanced recovery controls remain",
   ],
   ["R2", "r2|media-storage", "Internal", "Keep credentials and object operations private"],
   ["FFmpeg", "ffmpeg|media-processing", "Internal", "Retain worker/runtime boundaries"],
   [
     "HLS",
-    "adaptive|hls|media-generation",
+    "adaptive|hls|media-generation|media-recovery",
     "Viewer/Admin",
     "Operator rollout and recovery surface gap",
   ],
@@ -209,7 +209,7 @@ const definitions = [
   ],
   [
     "Media workers",
-    "worker|media-processing|media-generation|admin-media-retry",
+    "worker|media-processing|media-generation|media-recovery|media-actions|admin-media-retry",
     "Admin/internal",
     "Retain fencing and worker heartbeat truth",
   ],
@@ -217,7 +217,7 @@ const definitions = [
     "Database scaling",
     "postgres|database",
     "Admin/internal",
-    "Detailed performance API not surfaced",
+    "PostgreSQL visibility integrated; other observability surfaces remain",
   ],
   [
     "Operations dashboard",
