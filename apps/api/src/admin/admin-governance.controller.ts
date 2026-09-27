@@ -15,6 +15,7 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { adminBadRequest, adminForbidden } from "./admin.errors.js";
 import { AdminGovernanceService } from "./admin-governance.service.js";
+import { AdminOperationsDashboardService } from "./admin-operations-dashboard.service.js";
 import {
   AdminGuard,
   type AdminAuthenticatedRequest,
@@ -125,8 +126,16 @@ export class SupportTicketController {
 export class AdminGovernanceController {
   constructor(
     @Inject(AdminGovernanceService) private readonly governance: AdminGovernanceService,
+    @Inject(AdminOperationsDashboardService)
+    private readonly operationsDashboard: AdminOperationsDashboardService,
     @Inject(MfaService) private readonly mfa: MfaService,
   ) {}
+
+  @Get("dashboard")
+  @RequireAdminRoles("OPERATIONS", "FINANCE_MANAGER")
+  dashboard() {
+    return this.operationsDashboard.snapshot();
+  }
 
   @Get("roles")
   @RequireAdminRoles("OPERATIONS")
