@@ -11,11 +11,15 @@ export function OperatorSnapshot<T>({
   allowed,
   load,
   children,
+  revision: externalRevision = 0,
+  readOnly = true,
 }: {
   title: string;
   allowed: boolean;
   load: (signal: AbortSignal) => Promise<T>;
   children: (data: T) => ReactNode;
+  revision?: number;
+  readOnly?: boolean;
 }) {
   const {
     session,
@@ -32,7 +36,7 @@ export function OperatorSnapshot<T>({
     error: string;
     updatedAt: Date | null;
   } | null>(null);
-  const key = `${session?.accountId ?? ""}:${session?.roles.join(",") ?? ""}:${revision}`;
+  const key = `${session?.accountId ?? ""}:${session?.roles.join(",") ?? ""}:${revision}:${externalRevision}`;
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   useEffect(() => {
     if (!allowed || !session) return;
@@ -64,9 +68,13 @@ export function OperatorSnapshot<T>({
           <Link href={href("/admin/operations")}>{ar ? "العمليات" : "Operations"}</Link>
           <h1>{title}</h1>
           <p className={styles.muted}>
-            {ar
-              ? "لقطة للقراءة فقط. حدّثها للاطلاع على الحالة الحالية."
-              : "Read-only snapshot. Refresh to see the current state."}
+            {readOnly
+              ? ar
+                ? "لقطة للقراءة فقط. حدّثها للاطلاع على الحالة الحالية."
+                : "Read-only snapshot. Refresh to see the current state."
+              : ar
+                ? "حدّث اللقطة للاطلاع على الحالة الحالية. تُراجع صلاحية كل إجراء عند تنفيذه."
+                : "Refresh to see the current state. Every action is checked again when submitted."}
           </p>
         </div>
         {allowed ? (

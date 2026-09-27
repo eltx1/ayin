@@ -26,6 +26,7 @@ export interface MediaOperations {
   jobs: Array<{
     id: string;
     videoId: string;
+    generation: number;
     status: string;
     stage: string | null;
     progressPercent: number;
@@ -104,3 +105,33 @@ export const getAdaptiveOperations = (signal: AbortSignal) =>
   snapshot<AdaptiveOperations>("/admin/media-processing/adaptive-rollout", signal);
 export const getDatabaseOperations = (signal: AbortSignal) =>
   snapshot<DatabaseOperations>("/admin/observability/postgres", signal);
+
+export type MediaJobAction = "retry" | "reprocess";
+export interface MediaJobOutcome {
+  id: string;
+  videoId: string;
+  generation: number;
+  status: "QUEUED";
+  stage: string;
+  queuedAt: string;
+  updatedAt: string;
+}
+
+export async function submitMediaJobAction(
+  action: MediaJobAction,
+  job: Pick<MediaOperations["jobs"][number], "id" | "videoId">,
+  signal: AbortSignal,
+): Promise<MediaJobOutcome> {
+  const path =
+    action === "retry"
+      ? `jobs/${encodeURIComponent(job.id)}/retry`
+      : `videos/${encodeURIComponent(job.videoId)}/reprocess`;
+  const response = await fetch(`${apiBaseUrl}/admin/media-processing/${path}`, {
+    method: "POST",
+    credentials: "include",
+    cache: "no-store",
+    signal,
+  });
+  if (!response.ok) throw new Error(await readAdminApiError(response));
+  return response.json() as Promise<MediaJobOutcome>;
+}

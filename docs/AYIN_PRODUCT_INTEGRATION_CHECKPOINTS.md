@@ -136,3 +136,18 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Add contextual retry/reprocess controls to the existing media workspace, using video titles and generation state. Keep advanced backfill/recovery controls bounded and clearly scoped; pause/resume remain SUPERADMIN-only. Preserve the shared step-up dialog's no-automatic-replay behavior.
 - Validate action success/error/pending states, fresh state after completion/conflict, exact HTTP authorization and response contracts, EN/AR/mobile/keyboard behavior and committed audit evidence. A queued job is not a completed media processing result.
 - Operator actions remain unexposed in the web product until that next implementation is accepted. Other Phase 2 domains and Phases 3–5 remain open.
+
+## Phase 2A.3c.1 — contextual media actions, implementation awaiting CI
+
+- Starting SHA: `1593ba2a76bb0010637ed2c7dbda5fc362d1d0dc`; checkpoint read, main fetched unchanged, PR #116 merge and quality `36328656478` verified before editing.
+- Findings: the media snapshot lacked generation display and actionable retry/reprocess controls. Snapshot freshness must be renewed after rejected as well as successful mutations; an interrupted response cannot establish cancellation.
+- Changes: title/generation confirmation, contextual failed-job retry and terminal-video reprocess, duplicate-submit prevention, scoped role visibility and account/role-keyed state. Shared step-up opens only after closing confirmation and never replays the operation. Refresh both snapshots after outcomes; distinguish queued work from completed processing and report transactional audit evidence. Keep search context. Server remains authoritative beyond the recent 100-job snapshot.
+- Migrations: none. No backend/worker changes.
+- Tests added: authenticated mutation transport, exact target entity, no replay after step-up or network error; real browser/HTTP/database retry/reprocess/audit, denied role, aged assurance, keyboard cancellation/focus, stale confirmation conflict and Arabic mobile dialog bounds. Browser source readiness is seeded because E2E has no running worker; no claim of media encoding/storage verification.
+- Tests executed so far: web typecheck/lint and 113 unit tests across 27 files passed (4.87s). Full CI quality/security/browser gates pending; not complete or merged.
+- Performance measurements: one mutation followed by two existing bounded snapshot reads; no per-job fetches. Unit timings are test evidence, not production load measurements.
+- Remaining issues: advanced bounded backfill/recovery and SUPERADMIN pause/resume deferred to 2A.3c.2; this is a reviewable subphase, not completion of 2A.3c or Phase 2.
+- External blockers: local PostgreSQL/Chromium unavailable; browser/database acceptance must run in CI.
+- Ending SHA: pending verified CI head and merge.
+- Next: verify and merge this subphase, record evidence, then implement advanced controls.
+- Rollback: revert frontend/test changes; no schema rollback. Already queued jobs and committed audits remain valid and must not be deleted.
