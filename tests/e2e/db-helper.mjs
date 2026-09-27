@@ -356,6 +356,33 @@ try {
       };
       break;
     }
+    case "reset-warehouse-status": {
+      await prisma.warehouseExportCheckpoint.deleteMany();
+      result = { ok: true };
+      break;
+    }
+    case "seed-warehouse-status": {
+      await prisma.warehouseExportCheckpoint.create({
+        data: {
+          dataset: "analytics_facts",
+          schemaVersion: 1,
+          cursorAt: new Date("2026-09-01T10:00:00Z"),
+          cursorId: "private-cursor",
+          lastBatchId: "private-batch",
+          lastSucceededAt: new Date("2026-09-01T10:05:00Z"),
+        },
+      });
+      await prisma.warehouseExportCheckpoint.create({
+        data: {
+          dataset: "analytics_facts",
+          schemaVersion: 99,
+          cursorId: "future-cursor",
+          lastSucceededAt: new Date("2026-09-01T11:00:00Z"),
+        },
+      });
+      result = { ok: true };
+      break;
+    }
     case "reset-discovery-operator": {
       await prisma.recommendationExposure.deleteMany();
       await prisma.platformSetting.deleteMany({

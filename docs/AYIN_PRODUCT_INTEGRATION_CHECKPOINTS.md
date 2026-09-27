@@ -224,17 +224,32 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Next: verify this UI slice, then continue remaining backend-product integrations with the master audit as the coverage baseline.
 - Rollback: revert frontend/tests, no schema rollback; preserve already queued jobs, settings and audits.
 
-## Phase 2B — recommendation evaluation and trending, validation in progress
+## Phase 2B — recommendation evaluation and trending, verified and merged
 
 - Starting SHA: `0475932d53f57db32332c6522791f7336d5b1ce7`; checkpoint read and Phase 2A.3c.4 accepted before this phase. Remote main fetched after PR #123 merge; only that PR was open during the preceding implementation.
 - Findings: OPERATIONS evaluation and trending endpoints exist without dedicated product surfaces. Offline fixture versions are baseline/balanced/watch-only; they are not production release identifiers. Observed exposure coverage cannot establish recall for unshown candidates. Trending mutations already require step-up, a reason and a transactional audit.
 - Changes: `/admin/operations/discovery` linked from Operations for authorized staff. Distinct offline fixture comparisons and observed versions; explicit samples of at most 100 exposures over 14 days with attribution coverage and recorded outcomes, never inferred production recall. Trending controls show ranking/audience first, advanced weights/caps behind details, bounded validation, preserved drafts, change review, required reason, shared step-up without replay and transactional-audit feedback. Role/account-scoped state, authenticated no-store reads, error/retry states, EN/AR/mobile/keyboard controls. Detailed exposure score components and raw exports remain internal debugging data rather than a raw JSON product surface.
 - Migrations: none. No API behavior or native UI changes.
 - Tests added: authoritative API/client validation parity, bounded authenticated observed reads, attribution summary, exact settings/audit-reason transport, malformed config rejection and no automatic replay. Real browser/HTTP/database journey covers denied role, navigation, fixed-fixture failure, empty/seeded observed data, required limits/reason, step-up, preserved draft, pending guard, committed audit, upstream error/retry, signed-out access and Arabic mobile confirmation.
-- Tests executed: local Web types/lint and 138 units in 29 files passed (5.17s); helper syntax and browser discovery checked. Full quality/security/browser gates pending; no acceptance or merge claimed.
-- Performance measurements: initial evaluation uses two parallel reads plus one independent settings read. Observed sampling is explicit and bounded at 100 exposures, with no per-row fetches or polling. The existing export service may still process many attributed event rows; no catalog-independent query/load claim. CI timings pending.
-- Ending SHA: pending acceptance and merge.
+- Tests executed: local Web types/lint and 138 units in 29 files passed (5.17s); helper syntax and browser discovery checked. Full quality `36340688996`, security `36340688991` and browser `36340689004` passed on `e18dfd182bbd906ba33e6d0fba337d276c44ab17`. Formatting, lint, types, all unit/schema suites, clean migrations, 531 API integration-gate tests across 128 files and production builds passed. All 37 browser tests passed, including the new real HTTP/database journey.
+- Performance measurements: initial evaluation uses two parallel reads plus one independent settings read. Observed sampling is explicit and bounded at 100 exposures, with no per-row fetches or polling. The existing export service may still process many attributed event rows; no catalog-independent query/load claim. CI browser suite: 3.7 minutes.
+- Verified ending PR head: `e18dfd182bbd906ba33e6d0fba337d276c44ab17`; ending main SHA: `f4763ab83bca8530d96d3678c1c3adc3c047a830`, merged as PR #124 with expected-head protection.
 - Next: sanitized warehouse status and Creator/live, compliance/provider/analytics integration review (2C), after this phase passes all gates.
 - Rollback: revert UI/routes/test fixtures only. Preserve saved settings and audit history; no schema rollback. Existing trending writes remain last-write-wins, without a new multi-operator revision contract.
 - External blockers: local PostgreSQL/Chromium unavailable; browser/database acceptance runs in CI. No production telemetry, real-device or load verification claimed.
 - Remaining issues: other Phase 2 domains, `INCOMPLETE_HLS` selection fairness, overview read cost and Phases 3–5 remain open. No production/device claims.
+
+## Phase 2C.1 — warehouse operational visibility, implementation in progress
+
+- Starting SHA: `f4763ab83bca8530d96d3678c1c3adc3c047a830`; checkpoint read, PR #124 accepted and remote main fetched before implementation.
+- Findings: warehouse exports have durable dataset/version checkpoints but no operator surface or durable worker heartbeat. The deployed module binds a disabled adapter. Existing compliance, payout-provider and privacy-aware cohort surfaces are mounted; do not duplicate them. Studio Live network/pending/credential workflows need a separate reviewed slice.
+- Scope: OPERATIONS-authorized, uncached, read-only status; one bounded projection of current dataset/version checkpoints, configuration and scheduling context. Never expose cursor identifiers, batch IDs, raw facts, secrets or a new export-execution endpoint. Historical checkpoint success does not establish current worker health.
+- Changes: read-only `/admin/warehouse-status` and `/admin/operations/warehouse`, linked from Operations, with shared role/account-scoped loading/error/retry UI, EN/AR and mobile table scrolling. Adapter configuration, batch cap, configured interval and current-version delivery timestamps only. No delivery or worker behavior changes.
+- Migrations: none.
+- Tests added: bounded current-version database projection, field redaction and read-failure propagation; authenticated cancellable client reads and error/no-retry handling. Browser journey covers real auth/roles, database checkpoints, no-store response, historical success under a disabled adapter, excluded future schema, errors/retry, no mutations, Arabic mobile and sign-out.
+- Tests executed: local API/Web types and lint passed; 363 API units (89 files, 25.91s) and 140 Web units (30 files, 7.68s) passed. Helper syntax and browser test discovery passed. Full CI quality/security/browser acceptance pending.
+- Performance measurements: one database query, at most five current-version checkpoint rows; one explicit UI snapshot request, no polling or per-dataset requests. No production latency/load evidence.
+- Ending SHA: pending acceptance/merge.
+- Remaining issues/external blockers: disabled connector by design, no independent worker heartbeat; production delivery and local PostgreSQL/Chromium unavailable. Real browser/database verification runs in CI. Studio Live and remaining Phase 2/Phases 3–5 remain open.
+- Next: finish and verify this slice, then Studio Live reliability and remaining Phase 2 findings. Phases 3–5 remain open.
+- Rollback: remove status endpoint/UI only; preserve export checkpoints and delivery semantics.
