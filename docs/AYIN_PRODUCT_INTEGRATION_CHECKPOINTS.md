@@ -239,7 +239,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - External blockers: local PostgreSQL/Chromium unavailable; browser/database acceptance runs in CI. No production telemetry, real-device or load verification claimed.
 - Remaining issues: other Phase 2 domains, `INCOMPLETE_HLS` selection fairness, overview read cost and Phases 3–5 remain open. No production/device claims.
 
-## Phase 2C.1 — warehouse operational visibility, implementation in progress
+## Phase 2C.1 — warehouse operational visibility, verified and merged
 
 - Starting SHA: `f4763ab83bca8530d96d3678c1c3adc3c047a830`; checkpoint read, PR #124 accepted and remote main fetched before implementation.
 - Findings: warehouse exports have durable dataset/version checkpoints but no operator surface or durable worker heartbeat. The deployed module binds a disabled adapter. Existing compliance, payout-provider and privacy-aware cohort surfaces are mounted; do not duplicate them. Studio Live network/pending/credential workflows need a separate reviewed slice.
@@ -247,9 +247,24 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Changes: read-only `/admin/warehouse-status` and `/admin/operations/warehouse`, linked from Operations, with shared role/account-scoped loading/error/retry UI, EN/AR and mobile table scrolling. Adapter configuration, batch cap, configured interval and current-version delivery timestamps only. No delivery or worker behavior changes.
 - Migrations: none.
 - Tests added: bounded current-version database projection, field redaction and read-failure propagation; authenticated cancellable client reads and error/no-retry handling. Browser journey covers real auth/roles, database checkpoints, no-store response, historical success under a disabled adapter, excluded future schema, errors/retry, no mutations, Arabic mobile and sign-out.
-- Tests executed: local API/Web types and lint passed; 363 API units (89 files, 25.91s) and 140 Web units (30 files, 7.68s) passed. Helper syntax and browser test discovery passed. Full CI quality/security/browser acceptance pending.
-- Performance measurements: one database query, at most five current-version checkpoint rows; one explicit UI snapshot request, no polling or per-dataset requests. No production latency/load evidence.
-- Ending SHA: pending acceptance/merge.
+- Tests executed: local API/Web types and lint passed; 363 API units (89 files, 25.91s) and 140 Web units (30 files, 7.68s) passed. Helper syntax and browser test discovery passed. Full quality `36341693227`, security `36341693229` and browser `36341693234` passed on `cce80f99d2b70259570d8303a9fca177cd29fd96`. Formatting, lint, types, all unit/schema suites, clean migrations, 533 API integration-gate tests across 129 files and production builds passed. All 38 browser tests passed.
+- Performance measurements: one database query, at most five current-version checkpoint rows; one explicit UI snapshot request, no polling or per-dataset requests. CI API integration gate: 128.79s; browser suite: 3.6 minutes. No production latency/load evidence.
+- Verified ending PR head: `cce80f99d2b70259570d8303a9fca177cd29fd96`; ending main SHA: `bc0fc5fc9174db122b4aa95cbdd4669b673f043b`, merged as PR #125 with expected-head protection.
 - Remaining issues/external blockers: disabled connector by design, no independent worker heartbeat; production delivery and local PostgreSQL/Chromium unavailable. Real browser/database verification runs in CI. Studio Live and remaining Phase 2/Phases 3–5 remain open.
 - Next: finish and verify this slice, then Studio Live reliability and remaining Phase 2 findings. Phases 3–5 remain open.
 - Rollback: remove status endpoint/UI only; preserve export checkpoints and delivery semantics.
+
+## Phase 2C.2 — Studio Live reliability, implementation in progress
+
+- Starting SHA: `bc0fc5fc9174db122b4aa95cbdd4669b673f043b`; checkpoint read, PR #125 accepted and remote main fetched before implementation.
+- Findings: initial and mutation network errors are unhandled, loading misrepresents provider availability, duplicate submissions are possible and credential rotation has no confirmation. Existing channel-owned chat toggle has transactional moderation evidence but no Studio control.
+- Scope: improve the existing shared Web surface, preserve server ownership/provider gates and no automatic mutation replay; keep one-time keys in memory and preserve a successful credential response across a subsequent network refresh failure. Add explicit cache protection to sensitive Studio read/credential responses. Integrate the existing chat toggle. Do not expose raw recording diagnostics or claim real provider acceptance.
+- Changes: explicit loading/error/retry and sign-in entry, draft retention, one pending guard, reviewed key rotation, validated one-time encoder responses, no replay, provider-neutral playable feedback, contextual viewer links and channel-owned chat control. Clear secrets on hide/auth failure/channel change/page departure; restore from page cache re-reads state without replay. EN/AR layout and keyboard/mobile confirmation reuse Studio styles. API list/provision/rotation responses are private/no-store.
+- Migrations: none. Existing provider/ownership/moderation transaction behavior is unchanged.
+- Tests added: title/date validation, exact authenticated uncached transport, typed flat/nested errors, malformed results and no credential retries. Browser tests cover real create/pending protection, failed-create draft retention, chat evidence and cross-channel denial; separately mock provider responses for rotation/cancel, uncertain network outcomes, key retention after read failure, hide, no browser storage, provider confirmation, Arabic mobile and keyboard.
+- Tests executed: local API/Web typecheck and lint passed; all 149 Web units in 31 files passed (6.22s). E2E helper syntax and discovery passed. Full quality/security/browser acceptance pending.
+- Performance measurements: one initial list read; each explicit mutation has one state refresh; no polling/per-stream requests. Existing list remains unbounded. No production latency/load claim.
+- Ending SHA: pending acceptance/merge.
+- Remaining issues: terminal live-state mutations need separate provider/concurrency review; Studio stream list remains unbounded; production provider/encoder and physical-device verification external.
+- Next: verify this slice, then remaining Phase 2 correctness/integration findings before route and design phases.
+- Rollback: revert UI/cache-header changes, preserve created live sessions, provider resources and moderation history. Never restore invalidated stream keys.

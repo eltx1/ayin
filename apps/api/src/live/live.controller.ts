@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  Header,
   HttpException,
   Inject,
   Param,
@@ -80,6 +81,7 @@ export class StudioLiveController {
   constructor(@Inject(LiveService) private readonly live: LiveService) {}
 
   @Get()
+  @Header("Cache-Control", "private, no-store")
   async list(@Req() request: AuthenticatedRequest) {
     return call(() => this.live.studioStreams(request.ayinAuth.accountId));
   }
@@ -90,11 +92,13 @@ export class StudioLiveController {
   }
 
   @Post(":id/provision")
+  @Header("Cache-Control", "private, no-store")
   async provision(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return call(() => this.live.provision(request.ayinAuth.accountId, id));
   }
 
   @Post(":id/rotate-key")
+  @Header("Cache-Control", "private, no-store")
   async rotate(@Req() request: AuthenticatedRequest, @Param("id") id: string) {
     return call(() => this.live.rotateKey(request.ayinAuth.accountId, id));
   }
