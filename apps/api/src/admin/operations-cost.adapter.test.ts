@@ -38,10 +38,9 @@ describe("Task 87 provider-neutral cost adapter", () => {
       ["operationsCostModelMode", { value: "MANUAL_ESTIMATE", source: "stored" }],
       ["operationsCostCurrency", { value: "USD", source: "stored" }],
       ["operationsMediaProcessingComputeHourMicros", { value: 2_500_000, source: "stored" }],
-      ...categoryKeys.map((key, index) => [
-        key,
-        { value: (index + 1) * 1_000_000, source: "stored" },
-      ] as const),
+      ...categoryKeys.map(
+        (key, index) => [key, { value: (index + 1) * 1_000_000, source: "stored" }] as const,
+      ),
     ]);
     const adapter = new ManualOperationsCostAdapter({
       getManyResolved: vi.fn(async () => resolved),

@@ -921,7 +921,11 @@ export const platformSettingCatalog = {
     key: "operationsCostCurrency",
     valueType: "STRING",
     defaultValue: "USD",
-    schema: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/),
+    schema: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/),
     section: "operationsEconomics",
     label: "Operations cost currency",
     description:

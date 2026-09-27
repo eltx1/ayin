@@ -4,10 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import {
-  getAdminOperationsDashboard,
-  type AdminOperationsDashboard,
-} from "@/lib/admin-control";
+import { getAdminOperationsDashboard, type AdminOperationsDashboard } from "@/lib/admin-control";
 
 function percent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
@@ -163,8 +160,8 @@ export function AdminOperationsCapacityDashboard() {
             {percent(data.media.processing.failureRate)})
           </p>
           <p>
-            Processing avg <strong>{duration(data.media.processing.averageDurationMs)}</strong> · p95{" "}
-            <strong>{duration(data.media.processing.p95DurationMs)}</strong>
+            Processing avg <strong>{duration(data.media.processing.averageDurationMs)}</strong> ·
+            p95 <strong>{duration(data.media.processing.p95DurationMs)}</strong>
           </p>
           <p>
             Uploaded content <strong>{data.media.uploadedContentHours.toFixed(2)}h</strong>
@@ -248,10 +245,7 @@ export function AdminOperationsCapacityDashboard() {
           <p>
             Backup{" "}
             <strong>
-              {statusLabel(
-                data.infrastructure.backup.available,
-                data.infrastructure.backup.status,
-              )}
+              {statusLabel(data.infrastructure.backup.available, data.infrastructure.backup.status)}
             </strong>
           </p>
           <p>
@@ -306,13 +300,17 @@ export function AdminOperationsCapacityDashboard() {
                 <p>
                   Estimated gross{" "}
                   <strong>
-                    {row.estimatedGrossComplete ? row.estimatedGross : `${row.estimatedGross} partial`}
+                    {row.estimatedGrossComplete
+                      ? row.estimatedGross
+                      : `${row.estimatedGross} partial`}
                   </strong>
                 </p>
                 <p>
                   Final gross{" "}
                   <strong>
-                    {row.finalizedGrossComplete ? row.finalizedGross : `${row.finalizedGross} partial`}
+                    {row.finalizedGrossComplete
+                      ? row.finalizedGross
+                      : `${row.finalizedGross} partial`}
                   </strong>
                 </p>
                 <p>
@@ -338,7 +336,9 @@ export function AdminOperationsCapacityDashboard() {
           </p>
           <p>
             Total monthly{" "}
-            <strong>{money(data.cost.totalMonthly, data.cost.complete ? data.cost.currency : null)}</strong>
+            <strong>
+              {money(data.cost.totalMonthly, data.cost.complete ? data.cost.currency : null)}
+            </strong>
           </p>
           <div className={styles.auditList}>
             {data.cost.categories.map((item) => (
@@ -363,7 +363,10 @@ export function AdminOperationsCapacityDashboard() {
         <h2>Unit economics</h2>
         <section className={styles.metrics}>
           {[
-            ["Cost / watch hour", money(data.unitEconomics.costPerWatchHour, data.unitEconomics.currency)],
+            [
+              "Cost / watch hour",
+              money(data.unitEconomics.costPerWatchHour, data.unitEconomics.currency),
+            ],
             [
               "Storage cost / active video",
               money(data.unitEconomics.storageCostPerActiveVideo, data.unitEconomics.currency),

@@ -40,10 +40,7 @@ export class PlatformSettingsService {
   async getManyResolved(
     keys: readonly PlatformSettingKey[],
   ): Promise<
-    Map<
-      PlatformSettingKey,
-      { value: unknown; source: "stored" | "default" | "invalid-stored" }
-    >
+    Map<PlatformSettingKey, { value: unknown; source: "stored" | "default" | "invalid-stored" }>
   > {
     const uniqueKeys = [...new Set(keys)];
     if (!uniqueKeys.length) return new Map();

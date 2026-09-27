@@ -152,10 +152,7 @@ export class AdminOperationsDashboardService {
     const api5xxRateBps = rateBps(api5xx, apiMetrics.api.requests);
     const dbConnectionUtilizationBps =
       databaseMetrics.server.maxConnections && databaseMetrics.server.maxConnections > 0
-        ? rateBps(
-            databaseMetrics.server.totalConnections,
-            databaseMetrics.server.maxConnections,
-          )
+        ? rateBps(databaseMetrics.server.totalConnections, databaseMetrics.server.maxConnections)
         : null;
 
     const thresholds: OperationsAlertThresholds = {
@@ -193,20 +190,15 @@ export class AdminOperationsDashboardService {
         ? parseMoneyMicros(revenue.rows[0]!.finalizedGross)
         : null;
     const finalizedCreatorShareMicros =
-      revenue.rows.length === 1
-        ? parseMoneyMicros(revenue.rows[0]!.finalizedCreatorShare)
-        : 0n;
+      revenue.rows.length === 1 ? parseMoneyMicros(revenue.rows[0]!.finalizedCreatorShare) : 0n;
 
-    const costModelUsable =
-      costSnapshot.mode !== "UNCONFIGURED" && costSnapshot.complete;
+    const costModelUsable = costSnapshot.mode !== "UNCONFIGURED" && costSnapshot.complete;
     const totalCostMicros = costSnapshot.totalMonthlyMicros;
     const storageCostMicros = costByCategory(costSnapshot.categories, "objectStorage");
 
     const revenuePerThousandQualifiedPlays =
       finalizedGrossMicros !== null && advertising.qualifiedPlays > 0
-        ? formatMoneyMicros(
-            (finalizedGrossMicros * 1_000n) / BigInt(advertising.qualifiedPlays),
-          )
+        ? formatMoneyMicros((finalizedGrossMicros * 1_000n) / BigInt(advertising.qualifiedPlays))
         : null;
 
     let processingCostPerUploadedHour: string | null = null;
@@ -235,8 +227,7 @@ export class AdminOperationsDashboardService {
       finalizedGrossMicros,
       finalizedCreatorShareMicros,
       totalCostMicros,
-      grossCoverageComplete:
-        revenue.rows.length === 1 && revenue.rows[0]!.finalizedGrossComplete,
+      grossCoverageComplete: revenue.rows.length === 1 && revenue.rows[0]!.finalizedGrossComplete,
     });
 
     return {
@@ -409,7 +400,7 @@ export class AdminOperationsDashboardService {
     const [processingRows, uploadRows, hlsRows, storageRows, fallbackTotals] = await Promise.all([
       this.database.client.$queryRawUnsafe<ProcessingStatsRow[]>(
         [
-          'SELECT COUNT(*) FILTER (WHERE "status" IN (\'READY\',\'FAILED\',\'CANCELLED\'))::bigint AS "terminalJobs",',
+          "SELECT COUNT(*) FILTER (WHERE \"status\" IN ('READY','FAILED','CANCELLED'))::bigint AS \"terminalJobs\",",
           'COUNT(*) FILTER (WHERE "status" = \'READY\')::bigint AS "readyJobs",',
           'COUNT(*) FILTER (WHERE "status" = \'FAILED\')::bigint AS "failedJobs",',
           'COALESCE(SUM(EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL), 0)::double precision AS "totalDurationMs",',
@@ -485,11 +476,11 @@ export class AdminOperationsDashboardService {
   private async advertisingMetrics(from: Date, to: Date) {
     const rows = await this.database.client.$queryRawUnsafe<AdFactsRow[]>(
       [
-        'SELECT COUNT(*) FILTER (WHERE "eventType" = \'REQUEST\')::bigint AS requests,',
-        'COUNT(*) FILTER (WHERE "eventType" = \'FILL\')::bigint AS fills,',
-        'COUNT(*) FILTER (WHERE "eventType" = \'IMPRESSION\')::bigint AS impressions,',
-        'COUNT(*) FILTER (WHERE "eventType" = \'START\')::bigint AS starts,',
-        'COUNT(*) FILTER (WHERE "eventType" = \'ERROR\')::bigint AS errors',
+        "SELECT COUNT(*) FILTER (WHERE \"eventType\" = 'REQUEST')::bigint AS requests,",
+        "COUNT(*) FILTER (WHERE \"eventType\" = 'FILL')::bigint AS fills,",
+        "COUNT(*) FILTER (WHERE \"eventType\" = 'IMPRESSION')::bigint AS impressions,",
+        "COUNT(*) FILTER (WHERE \"eventType\" = 'START')::bigint AS starts,",
+        "COUNT(*) FILTER (WHERE \"eventType\" = 'ERROR')::bigint AS errors",
         'FROM "AdEvent" WHERE "occurredAt" >= $1 AND "occurredAt" < $2',
       ].join(" "),
       from,
@@ -525,7 +516,7 @@ export class AdminOperationsDashboardService {
           'SELECT "currency",',
           'COUNT(*) FILTER (WHERE "state" = \'ESTIMATED\')::bigint AS "estimatedRows",',
           'COUNT("grossAmount") FILTER (WHERE "state" = \'ESTIMATED\')::bigint AS "estimatedGrossRows",',
-          'COUNT(*) FILTER (WHERE "state" IN (\'FINAL\',\'ADJUSTMENT\'))::bigint AS "finalizedRows",',
+          "COUNT(*) FILTER (WHERE \"state\" IN ('FINAL','ADJUSTMENT'))::bigint AS \"finalizedRows\",",
           'COUNT("grossAmount") FILTER (WHERE "state" IN (\'FINAL\',\'ADJUSTMENT\'))::bigint AS "finalizedGrossRows",',
           'COALESCE(SUM("grossAmount") FILTER (WHERE "state" = \'ESTIMATED\'), 0)::text AS "estimatedGross",',
           'COALESCE(SUM("grossAmount") FILTER (WHERE "state" IN (\'FINAL\',\'ADJUSTMENT\')), 0)::text AS "finalizedGross",',
@@ -560,8 +551,7 @@ export class AdminOperationsDashboardService {
         currency: row.currency,
         amount: row.amount,
       })),
-      note:
-        "Gross revenue is shown only from stored grossAmount facts. Creator share uses immutable ledger amount facts. Liability is finalized/adjustment creator share not yet paid, including pending/processing payouts.",
+      note: "Gross revenue is shown only from stored grossAmount facts. Creator share uses immutable ledger amount facts. Liability is finalized/adjustment creator share not yet paid, including pending/processing payouts.",
     };
   }
 
