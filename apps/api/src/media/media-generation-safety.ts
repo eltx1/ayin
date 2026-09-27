@@ -12,7 +12,9 @@ export const ACTIVE_MEDIA_JOB_STATUSES = [
 // Batch callers take their capacity lock first, then this lock, then write rows.
 // Hash collisions only serialize unrelated videos; they cannot weaken isolation.
 export async function lockMediaGeneration(tx: Prisma.TransactionClient, videoId: string) {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(86192043, hashtext(${videoId}))`;
+  // UUID input may use upper-case hex while PostgreSQL returns lower-case hex.
+  const canonicalVideoId = videoId.toLowerCase();
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(86192043, hashtext(${canonicalVideoId}))`;
 }
 
 export async function hasNewerMediaGeneration(

@@ -118,7 +118,7 @@ databaseDescribe("media generation consistency across operator paths", () => {
   it("serializes two reprocess requests into one generation and one audit", async () => {
     const { video, request } = await fixture("READY");
     const results = await Promise.allSettled([
-      controller.reprocess(request, video.id),
+      controller.reprocess(request, video.id.toUpperCase()),
       controller.reprocess(request, video.id),
     ]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
