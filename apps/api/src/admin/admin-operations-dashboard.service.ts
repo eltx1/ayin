@@ -211,6 +211,7 @@ export class AdminOperationsDashboardService {
 
     let processingCostPerUploadedHour: string | null = null;
     if (
+      costSnapshot.mode !== "UNCONFIGURED" &&
       costSnapshot.mediaProcessingComputeHourMicros !== null &&
       media.processing.totalDurationMs > 0 &&
       media.uploadedContentHours > 0
@@ -382,7 +383,7 @@ export class AdminOperationsDashboardService {
         _sum: { watchTimeMs: true, uploads: true },
       }),
       this.database.client.$queryRawUnsafe<CountRow[]>(
-        'SELECT COUNT(DISTINCT v."channelId")::bigint AS count FROM "Video" v JOIN "Channel" c ON c."id" = v."channelId" WHERE v."createdAt" >= $1 AND v."createdAt" < $2 AND v."status" <> \\'REMOVED\\' AND c."status" <> \\'REMOVED\\' AND c."removedAt" IS NULL',
+        'SELECT COUNT(DISTINCT v."channelId")::bigint AS count FROM "Video" v JOIN "Channel" c ON c."id" = v."channelId" WHERE v."createdAt" >= $1 AND v."createdAt" < $2 AND v."status" <> \'REMOVED\' AND c."status" <> \'REMOVED\' AND c."removedAt" IS NULL',
         from,
         to,
       ),
@@ -408,31 +409,31 @@ export class AdminOperationsDashboardService {
     const [processingRows, uploadRows, hlsRows, storageRows, fallbackTotals] = await Promise.all([
       this.database.client.$queryRawUnsafe<ProcessingStatsRow[]>(
         [
-          'SELECT COUNT(*) FILTER (WHERE "status" IN (\\'READY\\',\\'FAILED\\',\\'CANCELLED\\'))::bigint AS "terminalJobs",',
-          'COUNT(*) FILTER (WHERE "status" = \\'READY\\')::bigint AS "readyJobs",',
-          'COUNT(*) FILTER (WHERE "status" = \\'FAILED\\')::bigint AS "failedJobs",',
+          'SELECT COUNT(*) FILTER (WHERE "status" IN (\'READY\',\'FAILED\',\'CANCELLED\'))::bigint AS "terminalJobs",',
+          'COUNT(*) FILTER (WHERE "status" = \'READY\')::bigint AS "readyJobs",',
+          'COUNT(*) FILTER (WHERE "status" = \'FAILED\')::bigint AS "failedJobs",',
           'COALESCE(SUM(EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL), 0)::double precision AS "totalDurationMs",',
-          'AVG(EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL)::double precision AS "averageDurationMs",',
-          'PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL)::double precision AS "p95DurationMs"',
+          '(AVG(EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL))::double precision AS "averageDurationMs",',
+          '(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL))::double precision AS "p95DurationMs"',
           'FROM "MediaProcessingJob" WHERE "createdAt" >= $1 AND "createdAt" < $2',
         ].join(" "),
         from,
         to,
       ),
       this.database.client.$queryRawUnsafe<UploadedDurationRow[]>(
-        'SELECT COALESCE(SUM(v."durationMs"), 0)::bigint AS "uploadedContentMs" FROM "MediaProcessingJob" j JOIN "Video" v ON v."id" = j."videoId" WHERE j."createdAt" >= $1 AND j."createdAt" < $2 AND j."status" = \\'READY\\' AND v."durationMs" IS NOT NULL',
+        'SELECT COALESCE(SUM(v."durationMs"), 0)::bigint AS "uploadedContentMs" FROM "MediaProcessingJob" j JOIN "Video" v ON v."id" = j."videoId" WHERE j."createdAt" >= $1 AND j."createdAt" < $2 AND j."status" = \'READY\' AND v."durationMs" IS NOT NULL',
         from,
         to,
       ),
       this.database.client.$queryRawUnsafe<HlsReadinessRow[]>(
         [
           'SELECT COUNT(*)::bigint AS "playableVideos",',
-          'COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM "MediaPlaybackGeneration" g WHERE g."videoId" = v."id" AND g."status" = \\'READY\\' AND g."fallbackStatus" = \\'READY\\' AND g."hlsMasterStatus" = \\'READY\\' AND EXISTS (SELECT 1 FROM "MediaPlaybackRendition" r WHERE r."playbackGenerationId" = g."id" AND r."status" = \\'READY\\' AND r."protocol" = \\'HLS\\')))::bigint AS "hlsReadyVideos"',
-          'FROM "Video" v WHERE v."status" = \\'PUBLISHED\\' AND v."removedAt" IS NULL AND EXISTS (SELECT 1 FROM "MediaAsset" a WHERE a."videoId" = v."id" AND a."kind" = \\'SOURCE_VIDEO\\' AND a."status" = \\'VALIDATED\\' AND a."removedAt" IS NULL AND a."mimeType" = \\'video/mp4\\')',
+          'COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM "MediaPlaybackGeneration" g WHERE g."videoId" = v."id" AND g."status" = \'READY\' AND g."fallbackStatus" = \'READY\' AND g."hlsMasterStatus" = \'READY\' AND EXISTS (SELECT 1 FROM "MediaPlaybackRendition" r WHERE r."playbackGenerationId" = g."id" AND r."status" = \'READY\' AND r."protocol" = \'HLS\')))::bigint AS "hlsReadyVideos"',
+          'FROM "Video" v WHERE v."status" = \'PUBLISHED\' AND v."removedAt" IS NULL AND EXISTS (SELECT 1 FROM "MediaAsset" a WHERE a."videoId" = v."id" AND a."kind" = \'SOURCE_VIDEO\' AND a."status" = \'VALIDATED\' AND a."removedAt" IS NULL AND a."mimeType" = \'video/mp4\')',
         ].join(" "),
       ),
       this.database.client.$queryRawUnsafe<GeneratedStorageRow[]>(
-        'SELECT COALESCE((SELECT SUM(COALESCE(j."outputSizeBytes", 0)) FROM "MediaProcessingJob" j WHERE j."status" = \\'READY\\'), 0)::bigint AS "canonicalBytes", COALESCE((SELECT SUM(g."hlsOutputSizeBytes") FROM "MediaPlaybackGeneration" g WHERE g."status" = \\'READY\\'), 0)::bigint AS "hlsBytes"',
+        'SELECT COALESCE((SELECT SUM(COALESCE(j."outputSizeBytes", 0)) FROM "MediaProcessingJob" j WHERE j."status" = \'READY\'), 0)::bigint AS "canonicalBytes", COALESCE((SELECT SUM(g."hlsOutputSizeBytes") FROM "MediaPlaybackGeneration" g WHERE g."status" = \'READY\'), 0)::bigint AS "hlsBytes"',
       ),
       this.database.client.analyticsChannelDailyRollup.aggregate({
         where: { bucketStart: { gte: from, lt: to } },
@@ -484,11 +485,11 @@ export class AdminOperationsDashboardService {
   private async advertisingMetrics(from: Date, to: Date) {
     const rows = await this.database.client.$queryRawUnsafe<AdFactsRow[]>(
       [
-        'SELECT COUNT(*) FILTER (WHERE "eventType" = \\'REQUEST\\')::bigint AS requests,',
-        'COUNT(*) FILTER (WHERE "eventType" = \\'FILL\\')::bigint AS fills,',
-        'COUNT(*) FILTER (WHERE "eventType" = \\'IMPRESSION\\')::bigint AS impressions,',
-        'COUNT(*) FILTER (WHERE "eventType" = \\'START\\')::bigint AS starts,',
-        'COUNT(*) FILTER (WHERE "eventType" = \\'ERROR\\')::bigint AS errors',
+        'SELECT COUNT(*) FILTER (WHERE "eventType" = \'REQUEST\')::bigint AS requests,',
+        'COUNT(*) FILTER (WHERE "eventType" = \'FILL\')::bigint AS fills,',
+        'COUNT(*) FILTER (WHERE "eventType" = \'IMPRESSION\')::bigint AS impressions,',
+        'COUNT(*) FILTER (WHERE "eventType" = \'START\')::bigint AS starts,',
+        'COUNT(*) FILTER (WHERE "eventType" = \'ERROR\')::bigint AS errors',
         'FROM "AdEvent" WHERE "occurredAt" >= $1 AND "occurredAt" < $2',
       ].join(" "),
       from,
@@ -522,14 +523,14 @@ export class AdminOperationsDashboardService {
       this.database.client.$queryRawUnsafe<RevenueWindowRow[]>(
         [
           'SELECT "currency",',
-          'COUNT(*) FILTER (WHERE "state" = \\'ESTIMATED\\')::bigint AS "estimatedRows",',
-          'COUNT("grossAmount") FILTER (WHERE "state" = \\'ESTIMATED\\')::bigint AS "estimatedGrossRows",',
-          'COUNT(*) FILTER (WHERE "state" IN (\\'FINAL\\',\\'ADJUSTMENT\\'))::bigint AS "finalizedRows",',
-          'COUNT("grossAmount") FILTER (WHERE "state" IN (\\'FINAL\\',\\'ADJUSTMENT\\'))::bigint AS "finalizedGrossRows",',
-          'COALESCE(SUM("grossAmount") FILTER (WHERE "state" = \\'ESTIMATED\\'), 0)::text AS "estimatedGross",',
-          'COALESCE(SUM("grossAmount") FILTER (WHERE "state" IN (\\'FINAL\\',\\'ADJUSTMENT\\')), 0)::text AS "finalizedGross",',
-          'COALESCE(SUM("amount") FILTER (WHERE "state" = \\'ESTIMATED\\'), 0)::text AS "estimatedCreatorShare",',
-          'COALESCE(SUM("amount") FILTER (WHERE "state" IN (\\'FINAL\\',\\'ADJUSTMENT\\')), 0)::text AS "finalizedCreatorShare"',
+          'COUNT(*) FILTER (WHERE "state" = \'ESTIMATED\')::bigint AS "estimatedRows",',
+          'COUNT("grossAmount") FILTER (WHERE "state" = \'ESTIMATED\')::bigint AS "estimatedGrossRows",',
+          'COUNT(*) FILTER (WHERE "state" IN (\'FINAL\',\'ADJUSTMENT\'))::bigint AS "finalizedRows",',
+          'COUNT("grossAmount") FILTER (WHERE "state" IN (\'FINAL\',\'ADJUSTMENT\'))::bigint AS "finalizedGrossRows",',
+          'COALESCE(SUM("grossAmount") FILTER (WHERE "state" = \'ESTIMATED\'), 0)::text AS "estimatedGross",',
+          'COALESCE(SUM("grossAmount") FILTER (WHERE "state" IN (\'FINAL\',\'ADJUSTMENT\')), 0)::text AS "finalizedGross",',
+          'COALESCE(SUM("amount") FILTER (WHERE "state" = \'ESTIMATED\'), 0)::text AS "estimatedCreatorShare",',
+          'COALESCE(SUM("amount") FILTER (WHERE "state" IN (\'FINAL\',\'ADJUSTMENT\')), 0)::text AS "finalizedCreatorShare"',
           'FROM "EarningsLedgerEntry" WHERE "occurredAt" >= $1 AND "occurredAt" < $2 GROUP BY "currency" ORDER BY "currency" ASC',
         ].join(" "),
         from,
@@ -537,8 +538,8 @@ export class AdminOperationsDashboardService {
       ),
       this.database.client.$queryRawUnsafe<LiabilityRow[]>(
         [
-          'WITH unassigned AS (SELECT "currency", COALESCE(SUM("amount"), 0) AS amount FROM "EarningsLedgerEntry" WHERE "state" IN (\\'FINAL\\',\\'ADJUSTMENT\\') AND "payoutId" IS NULL GROUP BY "currency"),',
-          'in_flight AS (SELECT "currency", COALESCE(SUM("amount"), 0) AS amount FROM "Payout" WHERE "status" IN (\\'PENDING\\',\\'PROCESSING\\') GROUP BY "currency")',
+          'WITH unassigned AS (SELECT "currency", COALESCE(SUM("amount"), 0) AS amount FROM "EarningsLedgerEntry" WHERE "state" IN (\'FINAL\',\'ADJUSTMENT\') AND "payoutId" IS NULL GROUP BY "currency"),',
+          'in_flight AS (SELECT "currency", COALESCE(SUM("amount"), 0) AS amount FROM "Payout" WHERE "status" IN (\'PENDING\',\'PROCESSING\') GROUP BY "currency")',
           'SELECT COALESCE(u."currency", p."currency") AS "currency", (COALESCE(u.amount, 0) + COALESCE(p.amount, 0))::text AS amount',
           'FROM unassigned u FULL OUTER JOIN in_flight p ON p."currency" = u."currency" ORDER BY COALESCE(u."currency", p."currency") ASC',
         ].join(" "),
