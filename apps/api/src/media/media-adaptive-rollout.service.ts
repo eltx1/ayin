@@ -99,22 +99,8 @@ export class MediaAdaptiveRolloutService {
 
   async overview() {
     const controls = await this.controls();
-    const videos = await this.catalogVideos();
-    const videoIds = videos.map((video) => video.id);
-    const [readyRows, queued, processing, failed, metrics] = await Promise.all([
-      videoIds.length
-        ? this.database.client.mediaPlaybackGeneration.findMany({
-            where: {
-              videoId: { in: videoIds },
-              status: "READY",
-              fallbackStatus: "READY",
-              hlsMasterStatus: "READY",
-              renditions: { some: { status: "READY", protocol: "HLS" } },
-            },
-            distinct: ["videoId"],
-            select: { videoId: true },
-          })
-        : [],
+    const [catalog, queued, processing, failed, metrics] = await Promise.all([
+      this.catalogSummary(),
       this.database.client.mediaProcessingJob.count({
         where: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER }, status: "QUEUED" },
       }),
@@ -129,20 +115,17 @@ export class MediaAdaptiveRolloutService {
       }),
       this.metrics(),
     ]);
-    const readyIds = new Set(readyRows.map((row) => row.videoId));
-    const pending = videos.filter((video) => !readyIds.has(video.id));
-    const oldest = pending[0];
     return {
       controls,
       catalog: {
-        eligible: pending.length,
+        eligible: catalog.pending,
         queued,
         processing,
-        adaptiveReady: readyIds.size,
+        adaptiveReady: catalog.ready,
         failed,
-        fallbackOnly: pending.length,
-        oldestPending: oldest
-          ? { videoId: oldest.id, publishedAt: oldest.publishedAt ?? oldest.createdAt }
+        fallbackOnly: catalog.pending,
+        oldestPending: catalog.oldestVideoId
+          ? { videoId: catalog.oldestVideoId, publishedAt: catalog.oldestPublishedAt }
           : null,
       },
       metrics,
@@ -718,41 +701,49 @@ export class MediaAdaptiveRolloutService {
     return candidates;
   }
 
-  private catalogVideos(): Promise<CatalogVideo[]> {
-    return this.database.client.video.findMany({
-      where: {
-        status: "PUBLISHED",
-        visibility: { not: "PRIVATE" },
-        removedAt: null,
-        channel: { status: "ACTIVE", removedAt: null },
-        mediaAssets: {
-          some: {
-            kind: "SOURCE_VIDEO",
-            status: "VALIDATED",
-            mimeType: "video/mp4",
-            removedAt: null,
-          },
-        },
-      },
-      orderBy: [{ publishedAt: "asc" }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        channelId: true,
-        publishedAt: true,
-        createdAt: true,
-        mediaAssets: {
-          where: {
-            kind: "SOURCE_VIDEO",
-            status: "VALIDATED",
-            mimeType: "video/mp4",
-            removedAt: null,
-          },
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { id: true, r2ObjectKey: true, width: true, height: true, durationMs: true },
-        },
-      },
-    });
+  private async catalogSummary() {
+    // Aggregate in PostgreSQL: never transfer the entire catalog, asset metadata
+    // or a catalog-sized IN list into the API process. Counts and oldest item
+    // share one statement snapshot; database work still depends on catalog size.
+    const [row] = await this.database.client.$queryRaw<
+      Array<{
+        pending: bigint;
+        ready: bigint;
+        oldestVideoId: string | null;
+        oldestPublishedAt: Date | null;
+      }>
+    >`
+      WITH catalog AS (
+        SELECT v.id, v."publishedAt", v."createdAt",
+          EXISTS (SELECT 1 FROM "MediaPlaybackGeneration" g
+            WHERE g."videoId" = v.id AND g.status = 'READY'
+              AND g."fallbackStatus" = 'READY' AND g."hlsMasterStatus" = 'READY'
+              AND EXISTS (SELECT 1 FROM "MediaPlaybackRendition" r
+                WHERE r."playbackGenerationId" = g.id
+                  AND r.status = 'READY' AND r.protocol = 'HLS')) AS ready
+        FROM "Video" v JOIN "Channel" c ON c.id = v."channelId"
+        WHERE v.status = 'PUBLISHED' AND v.visibility <> 'PRIVATE' AND v."removedAt" IS NULL
+          AND c.status = 'ACTIVE' AND c."removedAt" IS NULL
+          AND EXISTS (SELECT 1 FROM "MediaAsset" a WHERE a."videoId" = v.id
+            AND a.kind = 'SOURCE_VIDEO' AND a.status = 'VALIDATED'
+            AND a."mimeType" = 'video/mp4' AND a."removedAt" IS NULL)
+      ), totals AS (
+        SELECT COUNT(*) FILTER (WHERE NOT ready) AS pending,
+          COUNT(*) FILTER (WHERE ready) AS ready FROM catalog
+      )
+      SELECT totals.*, oldest.id AS "oldestVideoId",
+        COALESCE(oldest."publishedAt", oldest."createdAt") AS "oldestPublishedAt"
+      FROM totals LEFT JOIN LATERAL (
+        SELECT id, "publishedAt", "createdAt" FROM catalog WHERE NOT ready
+        ORDER BY "publishedAt" ASC NULLS LAST, "createdAt" ASC, id ASC LIMIT 1
+      ) oldest ON TRUE
+    `;
+    if (!row) throw new Error("Adaptive catalog summary is unavailable.");
+    const pending = Number(row.pending),
+      ready = Number(row.ready);
+    if (!Number.isSafeInteger(pending) || !Number.isSafeInteger(ready))
+      throw new Error("Adaptive catalog counts exceed supported precision.");
+    return { ...row, pending, ready };
   }
 
   private async objectExists(key: string): Promise<boolean> {

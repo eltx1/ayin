@@ -269,7 +269,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Next: verify this slice, then remaining Phase 2 correctness/integration findings before route and design phases.
 - Rollback: revert UI/cache-header changes, preserve created live sessions, provider resources and moderation history. Never restore invalidated stream keys.
 
-## Phase 2D — incomplete HLS selection and integration, implementation in progress
+## Phase 2D — incomplete HLS selection and integration, verified and merged
 
 - Starting SHA: `be01beebc7c207ecfe2aec95c30684973ee28bfe`; checkpoint read, PR #126 accepted and main fetched before implementation.
 - Findings: INCOMPLETE_HLS limits stale playback rows before checking video/source eligibility, current generations or active jobs, then deduplicates. Blocked/obsolete rows can permanently hide eligible work; pre-lock snapshots can change.
@@ -277,11 +277,26 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Changes: eligibility and latest-generation SQL selection before the batch limit, transactional capacity serialization, locked generation/timestamp recheck, canonical backfill lifecycle reuse and atomic supersession/audit. Reviewed EN/AR operator action validates distinct detected/requeued results without inventing a continuation cursor.
 - Migrations: none.
 - Tests added: seven PostgreSQL cases for starvation, historical duplicates, eligibility, capacity concurrency, changed candidates and audit rollback; client contract validation and real browser recovery/cancel/capacity evidence.
-- Tests executed: local API/Web typecheck and lint passed; 363 API units in 89 files (22.83s) and 150 Web units in 31 files (5.44s) passed. Browser discovery and helper syntax passed. PostgreSQL and browser execution require CI; full gates and ending SHA pending.
+- Tests executed: local API/Web typecheck and lint passed; 363 API units in 89 files (22.83s) and 150 Web units in 31 files (5.44s) passed. Browser discovery and helper syntax passed. Full quality `36344865230`, security `36344865242` and browser `36344865271` passed on `0c71d183f24dc960d94fd30cc028a27b4b48f75e`: 540 API integration-gate tests in 130 files, all seven new database cases, 363 API units, 150 Web units and all 41 browser tests; formatting, lint, types, clean migrations and production builds passed.
 - Performance measurements: selected rows and per-candidate processing bounded by batch/capacity (maximum 20); eligibility SQL may scan more database rows and no catalog-independent execution or production-load claim is made.
 - External blockers: no local PostgreSQL/Chromium; production storage, encoding and physical-device acceptance remain separate.
-- Next: run full gates on the reviewed head, resolve failures, then continue remaining Phase 2 findings.
+- Verified ending PR head: `0c71d183f24dc960d94fd30cc028a27b4b48f75e`; ending main SHA: `ee56af7bf186c449365cf3d5aecbc12c732de095`, merged as PR #127 with expected-head protection. CI integration gate: 113.43s; seven new cases: 1.220s; browser suite: 3.7 minutes.
+- Next: overview aggregation and remaining Phase 2 findings.
 - Remaining issues: overview catalog materialization, detailed API observability, account MFA management, discovery policy pagination and other Phase 2 review gaps; Phases 3–5 remain open. General profile CRUD is not established by current controllers and must not be invented as production-ready integration.
 - Rollback: revert selection/UI code; preserve new generations/jobs and audits. Do not revive superseded generations automatically.
 
-- Phase 2D first CI head `453167ff7a89a25a3a5c63a99e6a3b4d1c2a9c78`: quality `36344339759` and security `36344339734` passed, including all seven new PostgreSQL cases (1.719s), 540 API integration-gate tests in 130 files (135.42s), 363 API units and 150 Web units. Browser `36344339650` passed 40/41; the new test incorrectly used the selected option label as the review-button name. Existing component source and locator log establish that the action button is "Review recovery". Corrected the locator and added an explicit selected-action assertion inside the dialog; no product behavior, authorization, audit or queue assertions weakened. Corrected-head full acceptance pending.
+- Phase 2D first CI head `453167ff7a89a25a3a5c63a99e6a3b4d1c2a9c78`: quality `36344339759` and security `36344339734` passed, including all seven new PostgreSQL cases (1.719s), 540 API integration-gate tests in 130 files (135.42s), 363 API units and 150 Web units. Browser `36344339650` passed 40/41; the new test incorrectly used the selected option label as the review-button name. Existing component source and locator log establish that the action button is "Review recovery". Corrected the locator and added an explicit selected-action assertion inside the dialog; no product behavior, authorization, audit or queue assertions weakened. Corrected-head full acceptance passed as recorded above.
+
+## Phase 2E — adaptive overview aggregation, implementation in progress
+
+- Starting SHA: `ee56af7bf186c449365cf3d5aecbc12c732de095`; checkpoint read and PR #127 accepted before implementation.
+- Findings: overview materializes all eligible videos/source metadata and a catalog-sized generation-ID query merely to count ready/pending videos and identify one oldest video. Existing metrics already cap sampled generations at 1,000.
+- Changes: single PostgreSQL statement returns pending/ready counts and at most one oldest-video projection using the existing eligibility/readiness predicates. Counts and oldest selection share one statement snapshot. Preserve JSON shape, published-date ordering/null fallback, role boundaries and bounded metric sampling; no UI or worker behavior changes.
+- Migrations: none.
+- Tests added: empty catalog; distinct video counting with duplicate sources/generations and excluded/private/removed/unpublished sources; readiness protocol and oldest-date semantics; 512-video fixture asserts one transferred summary row and rejects catalog materialization, with measured fixture timing.
+- Tests executed: local API typecheck/lint and 363 unit tests in 89 files passed (25.30s). Initial new fixture used a container name as a protocol enum; typecheck caught it and the fixture now uses the actual PROGRESSIVE protocol. Full CI verification pending; no local PostgreSQL execution claimed.
+- Performance measurements: before, up to N video/asset records plus ready IDs and an N-ID query parameter set; after, one catalog summary row independent of N. SQL still scans eligible data; this is bounded API transfer/memory, not constant-time database work. Fixture runtime and production load evidence pending.
+- Remaining issues: detailed API observability, account MFA management, policy pagination and remaining Phase 2 integrations; Phases 3–5 open.
+- External blockers: production workload/load, actual storage/provider and physical-device checks remain separate.
+- Next: full gates, review measurements and merge; continue remaining Phase 2 findings.
+- Rollback: revert aggregate implementation; no data or schema changes to reverse.
