@@ -415,7 +415,7 @@ export class AdminOperationsDashboardService {
           'COALESCE(SUM(EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL), 0)::double precision AS "totalDurationMs",',
           '(AVG(EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL))::double precision AS "averageDurationMs",',
           '(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM ("completedAt" - "startedAt")) * 1000) FILTER (WHERE "completedAt" IS NOT NULL AND "startedAt" IS NOT NULL))::double precision AS "p95DurationMs"',
-          'FROM "MediaProcessingJob" WHERE "createdAt" >= $1 AND "createdAt" < $2',
+          'FROM "MediaProcessingJob" WHERE "updatedAt" >= $1 AND "updatedAt" < $2',
         ].join(" "),
         from,
         to,
