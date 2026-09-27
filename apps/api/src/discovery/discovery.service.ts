@@ -1,4 +1,4 @@
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -8,6 +8,7 @@ import {
   kidsSafeHref,
 } from "../kids/kids-policy.js";
 import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
+import { availableVideoPolicySql } from "../video-policy/video-policy-query.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
 const playableAssetStates = ["VALIDATED"] as const;
@@ -399,19 +400,42 @@ export class DiscoveryService {
       countryCode: context.availabilityCountryCode,
       isKidsProfile: context.isKidsProfile,
     });
-    return pages.map((page) => ({
-      ...page,
-      items: page.items
+    return pages.map((page) => {
+      const items = page.items
         .filter((item) => item.type !== "VIDEO" || allowed.has(item.id))
         .map((item) =>
           context.isKidsProfile && item.type === "VIDEO"
             ? { ...item, href: kidsSafeHref(item.href) }
             : item,
-        ),
-    }));
+        );
+      return {
+        ...page,
+        items,
+        availability:
+          page.availability === "UNAVAILABLE"
+            ? "UNAVAILABLE"
+            : items.length
+              ? "AVAILABLE"
+              : "EMPTY",
+      };
+    });
   }
 
   private async loadRowPage(
+    row: { id: string; source: string; maxItems: number },
+    context: DiscoveryContext,
+    offset: number,
+    limit: number,
+  ): Promise<DiscoveryPage> {
+    const page = await this.loadSourcePage(row, context, offset, limit);
+    return {
+      ...page,
+      nextCursor:
+        page.nextCursor && decodeCursor(page.nextCursor) < row.maxItems ? page.nextCursor : null,
+    };
+  }
+
+  private async loadSourcePage(
     row: { id: string; source: string; maxItems: number },
     context: DiscoveryContext,
     offset: number,
@@ -435,7 +459,7 @@ export class DiscoveryService {
       case "POPULAR_NOW":
         return this.loadRankedVideos(hoursAgo(24), offset, limit, "Popular Now");
       case "NEW_ON_AYIN":
-        return this.loadRecentVideos(offset, limit, daysAgo(30), "New on AYIN");
+        return this.loadRecentVideos(context, offset, limit, daysAgo(30), "New on AYIN");
       case "BECAUSE_YOU_WATCHED":
         return context.profileId
           ? this.loadBecauseYouWatched(context.profileId, offset, limit)
@@ -443,7 +467,7 @@ export class DiscoveryService {
       case "POPULAR_REGION":
         return this.loadRankedVideos(hoursAgo(24), offset, limit, "Popular in your region");
       case "MOVIES":
-        return this.loadRecentVideos(offset, limit, undefined, "Movies", "MOVIE");
+        return this.loadRecentVideos(context, offset, limit, undefined, "Movies", "MOVIE");
       case "SERIES":
         return this.loadSeries(context, offset, limit);
       case "CREATOR_TV":
@@ -453,7 +477,7 @@ export class DiscoveryService {
           ? this.loadCreatorsYouFollow(context.profileId, offset, limit)
           : emptyPage("Sign in to see creators you follow.", "UNAVAILABLE");
       case "RECENTLY_ADDED":
-        return this.loadRecentVideos(offset, limit, undefined, "Recently Added");
+        return this.loadRecentVideos(context, offset, limit, undefined, "Recently Added");
       case "EDITOR_PICKS":
         return this.loadManualItems(row.id, offset, limit);
       default:
@@ -487,25 +511,42 @@ export class DiscoveryService {
   }
 
   private async loadRecentVideos(
+    context: DiscoveryContext,
     offset: number,
     limit: number,
     publishedAfter: Date | undefined,
     kicker: string,
     contentType?: "MOVIE",
   ): Promise<DiscoveryPage> {
+    // Policy tables deliberately have no ORM relation. Select only one bounded
+    // page of eligible IDs in PostgreSQL, then hydrate cards in one batch.
+    const candidates = await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT v.id FROM "Video" v
+      JOIN "Channel" c ON c.id = v."channelId"
+      WHERE v.status = 'PUBLISHED' AND v.visibility = 'PUBLIC' AND v."removedAt" IS NULL
+        AND c.status = 'ACTIVE' AND c."removedAt" IS NULL
+        AND EXISTS (SELECT 1 FROM "MediaAsset" m WHERE m."videoId" = v.id
+          AND m.kind = 'SOURCE_VIDEO' AND m.status = 'VALIDATED'
+          AND m."removedAt" IS NULL AND m."mimeType" = 'video/mp4')
+        AND ${publishedAfter ? Prisma.sql`v."publishedAt" >= ${publishedAfter}` : Prisma.sql`TRUE`}
+        AND ${contentType ? Prisma.sql`v."contentType" = ${contentType}::"VideoContentType"` : Prisma.sql`TRUE`}
+        AND ${availableVideoPolicySql(Prisma.sql`v.id`, { countryCode: context.availabilityCountryCode, isKidsProfile: context.isKidsProfile })}
+      ORDER BY v."publishedAt" DESC, v.id DESC
+      LIMIT ${limit + 1} OFFSET ${offset}
+    `);
+    if (!candidates.length) return emptyPage("Nothing is available in this row yet.");
     const records = await this.database.client.video.findMany({
       where: {
-        ...publicVideoWhere,
-        ...(publishedAfter ? { publishedAt: { gte: publishedAfter } } : {}),
-        ...(contentType ? { contentType } : {}),
+        AND: [publicVideoWhere, { id: { in: candidates.map((candidate) => candidate.id) } }],
       },
-      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-      skip: offset,
-      take: limit + 1,
       select: videoCardSelect,
     });
+    const byId = new Map(records.map((record) => [record.id, record]));
     return paged(
-      records.map((video) => toVideoItem(video, kicker)),
+      candidates.flatMap(({ id }) => {
+        const video = byId.get(id);
+        return video ? [toVideoItem(video, kicker)] : [];
+      }),
       offset,
       limit,
     );

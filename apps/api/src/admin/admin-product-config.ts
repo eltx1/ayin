@@ -28,7 +28,7 @@ export const homeRowPatchSchema = z.object({
   source: homeRowSourceSchema.optional(),
   audience: homeRowAudienceSchema.optional(),
   enabled: z.boolean().optional(),
-  maxItems: z.number().int().min(1).max(100).optional(),
+  maxItems: z.number().int().min(1).max(40).optional(),
   regionPersonalizationRequired: z.boolean().optional(),
   targetRegions: z.array(regionCodeSchema).max(64).optional(),
   reason: z.string().trim().min(3).max(500),

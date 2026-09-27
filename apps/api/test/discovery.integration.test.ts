@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { createPrismaClient } from "@ayin/db";
+import { createPrismaClient, Prisma } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { availableVideoPolicySql } from "../src/video-policy/video-policy-query.js";
+import { evaluatePolicy } from "../src/video-policy/video-policy.service.js";
+import { DatabaseService } from "../src/database/database.service.js";
 import { AppModule } from "../src/app.module.js";
 import {
   MEDIA_STORAGE_ADAPTER,
@@ -252,6 +255,367 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
       "Oldest",
     ]);
     expect(full.json().nextCursor).toBeNull();
+  });
+
+  it("matches authoritative policy decisions before database pagination across overrides and contexts", async () => {
+    const owner = await register("Policy parity", "policy-parity@example.com");
+    const now = new Date("2026-09-27T12:00:00Z");
+    const past = new Date(now.getTime() - 1);
+    const future = new Date(now.getTime() + 1);
+    const policies = [
+      null,
+      {},
+      { kidsEligible: true, maturityLevel: "GENERAL" as const },
+      { kidsEligible: true, maturityLevel: "TEEN" as const },
+      {
+        kidsEligible: true,
+        maturityLevel: "GENERAL" as const,
+        ageRestriction: "AGE_13_PLUS" as const,
+      },
+      { rightsExpiresAt: past },
+      { rightsExpiresAt: now },
+      { rightsExpiresAt: future },
+      { allowedTerritories: ["DE"] },
+      { blockedTerritories: ["DE"] },
+      { allowedTerritories: ["DE"], blockedTerritories: ["DE"] },
+      {
+        kidsEligible: true,
+        maturityLevel: "GENERAL" as const,
+        rightsExpiresAt: past,
+        allowedTerritories: ["US"],
+      },
+    ];
+    const overrides = [
+      null,
+      ...(["FORCE_ALLOW", "FORCE_BLOCK"] as const).flatMap((disposition) =>
+        [null, past, now, future].map((expiresAt) => ({ disposition, expiresAt })),
+      ),
+    ];
+    const fixtures = policies.flatMap((policy) =>
+      overrides.map((override) => {
+        const videoId = randomUUID();
+        return {
+          videoId,
+          policy:
+            policy === null
+              ? null
+              : {
+                  videoId,
+                  kidsEligible: false,
+                  maturityLevel: null,
+                  ageRestriction: "NONE" as const,
+                  rightsExpiresAt: null,
+                  allowedTerritories: [] as string[],
+                  blockedTerritories: [] as string[],
+                  ...policy,
+                },
+          override: override === null ? null : { videoId, ...override },
+        };
+      }),
+    );
+    await prisma.video.createMany({
+      data: fixtures.map((item) => ({
+        id: item.videoId,
+        channelId: owner.user.channel.id,
+        slug: `parity-${item.videoId}`,
+        title: "Policy parity fixture",
+      })),
+    });
+    await prisma.videoPolicy.createMany({
+      data: fixtures.flatMap((item) => (item.policy ? [item.policy] : [])),
+    });
+    await prisma.videoPolicyOverride.createMany({
+      data: fixtures.flatMap((item) =>
+        item.override
+          ? [
+              {
+                ...item.override,
+                actorAccountId: owner.user.account.id,
+                reason: "Policy SQL parity fixture",
+              },
+            ]
+          : [],
+      ),
+    });
+    for (const isKidsProfile of [false, true]) {
+      for (const countryCode of [undefined, "DE", " us ", "ZZ"]) {
+        const context = { now, isKidsProfile, countryCode };
+        const actual = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT candidate.id FROM unnest(ARRAY[${Prisma.join(fixtures.map((item) => Prisma.sql`${item.videoId}::uuid`))}]) AS candidate(id)
+          WHERE ${availableVideoPolicySql(Prisma.sql`candidate.id`, context)}
+        `);
+        const expected = fixtures
+          .filter((item) => evaluatePolicy(item.policy, item.override, context).allowed)
+          .map((item) => item.videoId)
+          .sort();
+        expect(actual.map((item) => item.id).sort(), JSON.stringify(context)).toEqual(expected);
+      }
+    }
+  });
+
+  it("fills recent pages from policy-eligible videos before computing look-ahead", async () => {
+    const viewer = await register("Policy paging", "policy-paging@example.com");
+    await prisma.homeRowConfig.update({ where: { key: "new-on-ayin" }, data: { maxItems: 24 } });
+    const now = Date.now();
+    const visible: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const video = await publishVideo(
+        viewer.user.channel.id,
+        `Policy video ${i}`,
+        new Date(now - i * 1000),
+      );
+      if (i % 3 === 2) visible.push(video.id);
+      else
+        await prisma.videoPolicy.create({
+          data: {
+            videoId: video.id,
+            ...(i % 3 === 0
+              ? { rightsExpiresAt: new Date(now - 60_000) }
+              : { allowedTerritories: ["DE"] }),
+          },
+        });
+    }
+    const first = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=2",
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().items.map((item: { id: string }) => item.id)).toEqual(visible.slice(0, 2));
+    expect(first.json().availability).toBe("AVAILABLE");
+    expect(first.json().nextCursor).toBeTruthy();
+    const second = await app.inject({
+      method: "GET",
+      url: `/public/discovery/rows/new-on-ayin?limit=2&cursor=${first.json().nextCursor}`,
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().items.map((item: { id: string }) => item.id)).toEqual(visible.slice(2));
+    expect(second.json().nextCursor).toBeNull();
+  });
+
+  it("keeps publication and playable-media boundaries ahead of the page even with force-allow overrides", async () => {
+    const viewer = await register("Public boundaries", "public-boundaries@example.com");
+    const now = Date.now();
+    for (let i = 0; i < 7; i += 1) {
+      const video = await publishVideo(
+        viewer.user.channel.id,
+        `Ineligible ${i}`,
+        new Date(now - i * 1000),
+      );
+      await prisma.videoPolicyOverride.create({
+        data: {
+          videoId: video.id,
+          disposition: "FORCE_ALLOW",
+          actorAccountId: viewer.user.account.id,
+          reason: "Cannot bypass publication or media",
+        },
+      });
+      if (i === 0)
+        await prisma.video.update({ where: { id: video.id }, data: { status: "DRAFT" } });
+      if (i === 1)
+        await prisma.video.update({ where: { id: video.id }, data: { visibility: "UNLISTED" } });
+      if (i === 2)
+        await prisma.video.update({ where: { id: video.id }, data: { removedAt: new Date() } });
+      if (i === 3)
+        await prisma.mediaAsset.updateMany({
+          where: { videoId: video.id },
+          data: { removedAt: new Date() },
+        });
+      if (i === 4)
+        await prisma.mediaAsset.updateMany({
+          where: { videoId: video.id },
+          data: { status: "UPLOADED" },
+        });
+      if (i === 5)
+        await prisma.mediaAsset.updateMany({
+          where: { videoId: video.id },
+          data: { mimeType: "video/quicktime" },
+        });
+      if (i === 6) {
+        const channel = await prisma.channel.create({
+          data: { handle: "hidden-boundary", name: "Hidden channel", status: "HIDDEN" },
+        });
+        await prisma.video.update({ where: { id: video.id }, data: { channelId: channel.id } });
+      }
+    }
+    const eligible = await publishVideo(
+      viewer.user.channel.id,
+      "Eligible recent",
+      new Date(now - 10_000),
+    );
+    const oldMovie = await publishVideo(
+      viewer.user.channel.id,
+      "Eligible old movie",
+      new Date(now - 31 * 86_400_000),
+    );
+    await prisma.video.update({ where: { id: oldMovie.id }, data: { contentType: "MOVIE" } });
+    const recent = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=1",
+    });
+    expect(recent.statusCode).toBe(200);
+    expect(recent.json().items.map((item: { id: string }) => item.id)).toEqual([eligible.id]);
+    expect(recent.json().nextCursor).toBeNull();
+    await prisma.homeRowConfig.update({
+      where: { key: "new-on-ayin" },
+      data: { source: "MOVIES" },
+    });
+    const movies = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=1",
+    });
+    expect(movies.statusCode).toBe(200);
+    expect(movies.json().items.map((item: { id: string }) => item.id)).toEqual([oldMovie.id]);
+    expect(movies.json().nextCursor).toBeNull();
+  });
+
+  it("keeps database results bounded when hundreds of newer videos are unavailable", async () => {
+    const viewer = await register("Bounded paging", "bounded-paging@example.com");
+    const now = Date.now();
+    const videos = Array.from({ length: 515 }, (_, index) => ({
+      id: randomUUID(),
+      channelId: viewer.user.channel.id,
+      slug: `bounded-${randomUUID()}`,
+      title: `Bounded ${index}`,
+      status: "PUBLISHED" as const,
+      visibility: "PUBLIC" as const,
+      publishedAt: new Date(now - index * 1000),
+    }));
+    await prisma.video.createMany({ data: videos });
+    await prisma.mediaAsset.createMany({
+      data: videos.map((video) => ({
+        videoId: video.id,
+        channelId: video.channelId,
+        kind: "SOURCE_VIDEO" as const,
+        status: "VALIDATED" as const,
+        r2ObjectKey: `bounded/${video.id}.mp4`,
+        mimeType: "video/mp4",
+        sizeBytes: 1024n,
+      })),
+    });
+    await prisma.videoPolicy.createMany({
+      data: videos
+        .slice(0, 512)
+        .map((video) => ({ videoId: video.id, rightsExpiresAt: new Date(now - 60_000) })),
+    });
+    const database = moduleReference.get(DatabaseService).client;
+    const candidateReads = vi.spyOn(database, "$queryRaw");
+    const cardReads = vi.spyOn(database.video, "findMany");
+    const policyReads = vi.spyOn(database.videoPolicy, "findMany");
+    const overrideReads = vi.spyOn(database.videoPolicyOverride, "findMany");
+    const started = performance.now();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: "/public/discovery/rows/new-on-ayin?limit=2",
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().items.map((item: { id: string }) => item.id)).toEqual(
+        videos.slice(512, 514).map((item) => item.id),
+      );
+      expect(response.json().nextCursor).toBeTruthy();
+      expect(
+        candidateReads.mock.calls.length +
+          cardReads.mock.calls.length +
+          policyReads.mock.calls.length +
+          overrideReads.mock.calls.length,
+      ).toBeLessThanOrEqual(4);
+      for (const result of [...candidateReads.mock.results, ...cardReads.mock.results]) {
+        if (result.type === "return") {
+          const rows: unknown = await result.value;
+          if (!Array.isArray(rows)) throw new Error("Expected a bounded database row result");
+          expect(rows.length).toBeLessThanOrEqual(3);
+        }
+      }
+      console.info(
+        `Discovery bounded page: 515 candidates, 512 policy exclusions, ${(performance.now() - started).toFixed(1)}ms`,
+      );
+    } finally {
+      candidateReads.mockRestore();
+      cardReads.mockRestore();
+      policyReads.mockRestore();
+      overrideReads.mockRestore();
+    }
+  });
+
+  it("reports an empty row when policy excludes all candidates", async () => {
+    const viewer = await register("Unavailable row", "unavailable-row@example.com");
+    for (let i = 0; i < 3; i += 1) {
+      const video = await publishVideo(viewer.user.channel.id, `Unavailable ${i}`);
+      await prisma.videoPolicy.create({ data: { videoId: video.id, blockedTerritories: ["DE"] } });
+    }
+    const response = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=1",
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ items: [], availability: "EMPTY", nextCursor: null });
+  });
+
+  it("ends row cursors at maxItems in both home and paged responses", async () => {
+    const viewer = await register("Capped row", "capped-row@example.com");
+    await prisma.homeRowConfig.update({ where: { key: "new-on-ayin" }, data: { maxItems: 2 } });
+    for (let i = 0; i < 4; i += 1)
+      await publishVideo(viewer.user.channel.id, `Capped ${i}`, new Date(Date.now() - i * 1000));
+    const home = await app.inject({ method: "GET", url: "/public/discovery/home" });
+    const row = home.json().rows.find((row: { key: string }) => row.key === "new-on-ayin");
+    expect(row.items).toHaveLength(2);
+    expect(row.nextCursor).toBeNull();
+    const first = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=1",
+    });
+    expect(first.json().nextCursor).toBeTruthy();
+    const second = await app.inject({
+      method: "GET",
+      url: `/public/discovery/rows/new-on-ayin?limit=1&cursor=${first.json().nextCursor}`,
+    });
+    expect(second.json().items).toHaveLength(1);
+    expect(second.json().nextCursor).toBeNull();
+  });
+
+  it("fills Kids rows without allowing overrides to bypass classification", async () => {
+    const viewer = await register("Kids paging", "kids-paging@example.com");
+    const now = Date.now();
+    const eligible: string[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const video = await publishVideo(
+        viewer.user.channel.id,
+        `Kids candidate ${i}`,
+        new Date(now - i * 1000),
+      );
+      if (i >= 3) {
+        await prisma.videoPolicy.create({
+          data: {
+            videoId: video.id,
+            kidsEligible: true,
+            maturityLevel: "GENERAL",
+            ageRestriction: "NONE",
+          },
+        });
+        eligible.push(video.id);
+      } else {
+        await prisma.videoPolicyOverride.create({
+          data: {
+            videoId: video.id,
+            disposition: "FORCE_ALLOW",
+            reason: "Cannot bypass Kids classification",
+            actorAccountId: viewer.user.account.id,
+          },
+        });
+      }
+    }
+    const response = await app.inject({
+      method: "GET",
+      url: "/public/discovery/kids/rows/new-on-ayin?limit=2",
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items.map((item: { id: string }) => item.id)).toEqual(
+      eligible.slice(0, 2),
+    );
+    expect(
+      response.json().items.every((item: { href: string }) => item.href.endsWith("?kids=1")),
+    ).toBe(true);
+    expect(response.json().nextCursor).toBeTruthy();
   });
 
   it("builds My AYIN from the selected profile and rejects cross-account profile access", async () => {

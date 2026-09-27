@@ -248,12 +248,12 @@ export function AdminProductControls() {
                     <input
                       aria-label={`${row.key} item limit`}
                       min={1}
-                      max={100}
+                      max={40}
                       type="number"
                       value={row.maxItems}
                       onChange={(event) =>
                         updateRowDraft(row.id, {
-                          maxItems: Math.max(1, Math.min(100, Number(event.target.value))),
+                          maxItems: Math.max(1, Math.min(40, Number(event.target.value))),
                         })
                       }
                     />

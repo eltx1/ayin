@@ -413,3 +413,27 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Request scope: one initial MFA status read, explicit refresh/focus refresh and post-mutation status reconciliation; no additional auth/me fetch and no polling. One mutation at a time with no automatic replay; browser test measures initial status count and a single delayed replacement POST. No production latency claim.
 
 - Local full production build passed (packages, API and Web; 65 static pages), with the previously known Edge stdout/stderr instrumentation warnings. Common factor/policy/rate-limit errors are localized. Final CI remains mandatory; no local browser/database execution claimed.
+
+- Phase 2G.4 accepted: final head `0f2960685bd0dc6312e362e76b0cbf72cb2cb6a0` passed quality `36355945353`, security `36355945377` and browser `36355945355`: 568 API integration-gate tests in 135 files (137.39s), 364 API units, 158 Web tests, four migration tests and all 46 browser tests (4.3 minutes). Formatting, lint, types and production builds passed. PR #134 merged with expected-head protection; ending main SHA `753ab2a5cda619edd8f9281e99de2662a0e7e59d`.
+
+## Phase 2H.1 — discovery availability before pagination, in progress
+
+- Starting SHA: `753ab2a5cda619edd8f9281e99de2662a0e7e59d`; checkpoint read and accepted main fetched.
+- Findings: recent video rows apply rights/territory/Kids policy after LIMIT and look-ahead, producing sparse or empty pages and inconsistent availability. Row cursors can exceed maxItems. Current Trending controller replaces legacy ranking with a separate policy-filtered implementation; do not conflate those paths. Policy tables intentionally have no Video ORM relation.
+- Changes: test-first recent-row/row-cap regressions; production fix pending reproduction. Keep explicit policy precedence, hard Kids boundary and post-query defense.
+- Migrations: none planned.
+- Tests added/executed: pending; previous phase counts are not acceptance.
+- Performance measurements: require bounded candidate/card results, no per-item policy queries or full catalog materialization; PostgreSQL plan/fixture measurement pending.
+- Remaining issues: My AYIN/history, manual mixed-entity and legacy ranked pagination require separate review; remaining Phase 2 and Phases 3–5 incomplete.
+- External blockers: no local PostgreSQL/Chromium; CI provides database/browser evidence. Production/provider/device measurements remain separate.
+- Next: reproduce recent-row/cap behavior, fix root cause, full gates and checkpoint.
+- Rollback: no schema or stored-state changes; retain policy enforcement if reverting query changes.
+
+- Test-first draft PR #135 head `05d9766d6f3bb2cfc2104fa5119ac88bf3bef3d3` runs four new HTTP regressions against unchanged discovery production code (quality `36356483923`). Correction prepared: database policy predicate before recent-video LIMIT/OFFSET, bounded ID selection and card hydration, retained post-query enforcement, availability derived from the surviving items and row-cap cursor guard.
+- Added database parity coverage for 108 policy/override combinations in eight country/Kids contexts (864 comparisons), plus a 515-video fixture with 512 newer unavailable videos that requires a full eligible page, at most four candidate/card/policy queries and at most three candidate/card rows for a two-item page. These database assertions await CI. No claim of constant database scan cost or production latency.
+- Local correction typecheck/lint and all 364 API units passed (5.36s); final fixture typecheck caught an unknown generic raw-query result, corrected with an explicit array guard. Full corrected-head gates pending.
+
+- Unchanged-code quality `36356483923` completed: three new product regressions failed as predicted (empty availability, cursor beyond maxItems and sparse Kids row); the fourth fixture failed before its assertion because maxItems=100 violates the existing database 1–40 CHECK. Other 568 tests passed (572 total, 135 files, 105.40s). Correct fixture to 24 without changing page assertions. This exposed a real existing Admin API/UI mismatch (accepted 100 vs database 40); align both to 40 and add validator boundary coverage, preserving the database constraint.
+- Added public-boundary coverage ensuring FORCE_ALLOW cannot let draft/unlisted/removed/hidden-channel/unplayable media consume page slots, and Movies remains content-type filtered without inheriting NEW_ON_AYIN's 30-day cutoff. Full final-head acceptance remains pending.
+
+- First corrected head `607a6555`, quality `36356719029`: prior empty/cap/Kids regressions and the bounded fixture passed; the latter measured 11.5ms for 515 candidates/512 exclusions. Two failures were fixture setup: the already-corrected row limit and missing actual Video/actor records in policy parity. Migrations define foreign keys even though Prisma has no relation fields. Add real parent fixtures; retain all 864 comparisons. 572/574 integration-gate tests passed (143.30s); no final acceptance yet.

@@ -35,6 +35,17 @@ describe("admin product controls", () => {
     expect(parsed.success).toBe(false);
   });
 
+  it("matches the database home-row item limit", () => {
+    expect(
+      homeRowPatchSchema.safeParse({ maxItems: 40, reason: "Set maximum supported size" }).success,
+    ).toBe(true);
+    for (const maxItems of [0, 41, 100, 1.5]) {
+      expect(homeRowPatchSchema.safeParse({ maxItems, reason: "Invalid row size" }).success).toBe(
+        false,
+      );
+    }
+  });
+
   it("requires an audit reason for home row mutations", () => {
     expect(homeRowPatchSchema.safeParse({ enabled: false }).success).toBe(false);
     expect(
