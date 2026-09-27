@@ -83,9 +83,24 @@ test("media actions require confirmation and fresh assurance, queue once and ret
   await expect(verification).not.toBeVisible();
   await expect(retry).toBeVisible();
   expect(writes).toBe(1); // Successful verification did not replay the action.
+  let releaseRequest!: () => void;
+  const pendingRequest = new Promise<void>((resolve) => {
+    releaseRequest = resolve;
+  });
+  await page.route(`**/jobs/${jobId}/retry`, async (route) => {
+    await pendingRequest;
+    await route.continue();
+  });
   await retry.click();
   await confirmation.getByRole("button", { name: "Confirm and queue" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Submitting media action" }),
+  ).toBeVisible();
+  await expect(retry).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Reprocess video", exact: true })).toBeDisabled();
+  releaseRequest();
   await expect(page.getByRole("status").filter({ hasText: "generation 1 queued" })).toBeVisible();
+  await page.unroute(`**/jobs/${jobId}/retry`);
   await expect(retry).not.toBeVisible();
   expect(writes).toBe(2);
   let evidence = db("operator-action-evidence", { videoId, accountId: user.account.id });
