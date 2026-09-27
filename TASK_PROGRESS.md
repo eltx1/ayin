@@ -59,3 +59,5 @@ Phase 2A.3c.4 advanced media controls merged as PR #123 (`0475932d`) after quali
 
 - Phase 2C.2 verified: PR #126 merged (`be01beeb`), all gates and 40 browser tests passed on `579ba562`.
 - Phase 2D: incomplete HLS candidate selection/locking and reviewed operator control in validation; seven new database scenarios plus browser acceptance, no migration.
+
+- Product integration Phase 2D: PR #127 merged (`ee56af7b`); quality/security and all 41 browser tests passed, including seven PostgreSQL recovery regressions. Phase 2E overview aggregation in progress; full acceptance pending.

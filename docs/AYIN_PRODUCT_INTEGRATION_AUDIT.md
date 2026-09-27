@@ -315,3 +315,7 @@ Studio Live acceptance: PR #126 merged at `be01beebc7c207ecfe2aec95c30684973ee28
 ### Incomplete HLS — Phase 2D, validation pending
 
 Selection now checks current generations, published non-private content, active channel, validated MP4 source, healthy playback and active jobs before applying the batch/capacity limit. It reads at most 20 candidates, rechecks after generation/row locking and commits new jobs, supersession and audits together. Old ineligible rows cannot consume the candidate limit. The advanced media workspace adds the mode with existing confirmation/step-up and bounded result validation. Seven new PostgreSQL scenarios and a real operator browser journey must pass before this slice is accepted. Database scan cost still depends on catalog distribution/indexes; overview catalog materialization remains open.
+
+### Phase 2D accepted; Phase 2E overview follow-up
+
+PR #127 (`ee56af7b`) accepted incomplete-HLS selection and operator integration on `0c71d183` with all gates, 540 API integration-gate tests and 41 browser tests passing. Phase 2E addresses the separate unbounded overview read: aggregate counts and oldest pending item inside PostgreSQL with one summary row transferred, preserving existing eligibility. Four database tests and a 512-video measurement fixture await full CI; production query latency is unmeasured.
