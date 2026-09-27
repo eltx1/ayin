@@ -211,8 +211,9 @@ export function AdminOperations() {
           <span className={styles.eyebrow}>Operations & governance</span>
           <h1>Admin Operations</h1>
           <p className={styles.muted}>
-            Audit, support, staff security, creator compliance and safe exports are exposed only
-            when your current staff role is authorized by the protected API.
+            Capacity, reliability, unit economics, audit, support, staff security, creator
+            compliance and safe exports are exposed only when your current staff role is authorized
+            by the protected API.
           </p>
         </div>
         {session ? <span className={styles.statusPill}>{session.roles.join(" · ")}</span> : null}
