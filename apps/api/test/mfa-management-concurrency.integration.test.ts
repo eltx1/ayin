@@ -32,10 +32,10 @@ databaseDescribe("MFA management concurrency", () => {
     passwordHash = await passwords.hash(password);
   });
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account" CASCADE');
+    await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account", "AdminRoleAssignment" CASCADE');
   });
   afterAll(async () => {
-    await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account" CASCADE');
+    await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account", "AdminRoleAssignment" CASCADE');
     await prisma.$disconnect();
   });
   async function fixture() {
