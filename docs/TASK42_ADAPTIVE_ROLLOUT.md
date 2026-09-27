@@ -83,7 +83,7 @@ Storage scan candidates use ascending UUID keysets and a maximum of 250 candidat
 
 For `DB_MANIFEST_MISSING`, pass a non-null `nextCursor` to continue. For `VERIFIED_HLS_MISSING_DB`, use `hasMore` as the continuation decision. When capacity prevents all detected candidates from being queued, the response preserves the input cursor and sets `hasMore: true`; a null cursor then means retry the first range after capacity returns. Omit the optional request cursor when null. Do not continuously retry while capacity is full, automatically replay a mutation after step-up, or treat queued work as completed HLS processing.
 
-Advanced controls are not yet mounted in the Web/PWA. Individual video retry/reprocess controls are available. Real PostgreSQL acceptance is recorded in the product integration checkpoint; production R2/device acceptance remains separate.
+Advanced backfill, pause/resume and four reviewed recovery modes are mounted in the Web/PWA media workspace after PR #123 acceptance. `INCOMPLETE_HLS` remains unexposed pending fair selection review. Individual video retry/reprocess controls are also available. Real PostgreSQL acceptance is recorded in the product integration checkpoint; production R2/device acceptance remains separate.
 
 ## Metrics
 
