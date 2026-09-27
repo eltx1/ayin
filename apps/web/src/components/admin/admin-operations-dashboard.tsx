@@ -316,7 +316,10 @@ export function AdminOperationsCapacityDashboard() {
                   </strong>
                 </p>
                 <p>
-                  Creator share <strong>{row.finalizedCreatorShare}</strong>
+                  Estimated creator share <strong>{row.estimatedCreatorShare}</strong>
+                </p>
+                <p>
+                  Final creator share <strong>{row.finalizedCreatorShare}</strong>
                 </p>
               </div>
             ))
@@ -337,6 +340,18 @@ export function AdminOperationsCapacityDashboard() {
             Total monthly{" "}
             <strong>{money(data.cost.totalMonthly, data.cost.complete ? data.cost.currency : null)}</strong>
           </p>
+          <div className={styles.auditList}>
+            {data.cost.categories.map((item) => (
+              <div className={styles.cardInset} key={item.category}>
+                <span className={styles.muted}>{item.category}</span>
+                <strong>
+                  {item.configured && item.monthly
+                    ? `${data.cost.currency} ${item.monthly}`
+                    : "Not configured"}
+                </strong>
+              </div>
+            ))}
+          </div>
           <p className={styles.muted}>{data.cost.note}</p>
           <Link className={styles.button} href="/admin/settings">
             Configure costs & thresholds
