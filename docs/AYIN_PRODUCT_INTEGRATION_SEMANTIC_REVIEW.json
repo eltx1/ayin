@@ -70,7 +70,7 @@
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations", "/admin/operations/media"],
       "disposition": "PARTIAL_SURFACE",
-      "gap": "Read-only detailed jobs/workers/capacity workspace verified in PR #111. Atomic retry and generation/finalization safety verified in PRs #113/#115; contextual retry/reprocess UI remains open.",
+      "gap": "Jobs/workers/capacity workspace and contextual confirmed retry/reprocess verified in PRs #111/#117. Atomic generation safety and bounded recovery/pause ordering verified in PRs #113/#115/#119. Advanced controls and storage reconciliation semantics remain open.",
       "remediationPhase": 2
     },
     {
@@ -95,7 +95,7 @@
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations", "/admin/operations/media"],
       "disposition": "PARTIAL_SURFACE",
-      "gap": "Read-only rollout controls, catalog and playback metrics added in 2A.2, verified in PR #111; backfill/recovery concurrency, capacity and fallback-key safety verified in PR #115; action UI remains for 2A.3c with step-up and bounded confirmation.",
+      "gap": "Rollout metrics integrated in PR #111; generation/fallback safety in #115 and bounded recovery/pause ordering in #119. Advanced action UI remains open; storage error classification, scan continuation and catalog scan bounds require review.",
       "remediationPhase": 2
     },
     {
@@ -513,7 +513,7 @@
       "creatorRoutes": [],
       "adminRoutes": ["/admin/operations"],
       "disposition": "INTEGRATED_WITH_GAPS",
-      "gap": "Task 87 verified; detailed operator actions remain separate integration work.",
+      "gap": "Task 87 and contextual media retry/reprocess verified; detailed database read-only workspace retains SUPERADMIN boundary. Advanced actions and other operator domains remain open.",
       "remediationPhase": 2
     },
     {
@@ -561,5 +561,5 @@
       "remediationPhase": 5
     }
   ],
-  "implementationReviewSha": "de1cc33fca438b05be1f67acb3d8ece2dca7d82c"
+  "implementationReviewSha": "d1c722fc0e1f048bbdcc918b76d68dab481f0d8b"
 }
