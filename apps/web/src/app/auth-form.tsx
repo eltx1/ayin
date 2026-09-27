@@ -1,11 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
+import { MfaEnrollmentSecret, MfaRecoveryCodes } from "@/components/auth/mfa-secrets";
 import { apiBaseUrl, readApiError } from "@/lib/api";
 
 import styles from "./auth-form.module.css";
@@ -32,25 +32,56 @@ export function AuthForm({ mode }: { mode: Mode }) {
   const [challenge, setChallenge] = useState<MfaChallenge | null>(null);
   const [enrollment, setEnrollment] = useState<Enrollment | null>(null);
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const pending = useRef(false);
+  const activeRequest = useRef<AbortController | null>(null);
+  const form = useRef<HTMLFormElement | null>(null);
+
+  useEffect(() => {
+    const clear = () => {
+      activeRequest.current?.abort();
+      pending.current = false;
+      setSubmitting(false);
+      setChallenge(null);
+      setEnrollment(null);
+      setRecoveryCodes(null);
+      setError(null);
+      form.current?.reset();
+    };
+    window.addEventListener("pagehide", clear);
+    return () => {
+      activeRequest.current?.abort();
+      window.removeEventListener("pagehide", clear);
+    };
+  }, []);
 
   function finishLogin() {
+    setRecoveryCodes(null);
+    setEnrollment(null);
+    setChallenge(null);
     router.push(href("/"));
     router.refresh();
   }
 
-  async function startEnrollment(challengeToken: string) {
+  async function startEnrollment(challengeToken: string, signal: AbortSignal) {
     const response = await fetch(`${apiBaseUrl}/auth/mfa/enrollment/start`, {
       method: "POST",
       credentials: "include",
+      cache: "no-store",
+      signal,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ challengeToken }),
     });
     if (!response.ok) throw new Error(await readApiError(response));
-    setEnrollment((await response.json()) as Enrollment);
+    const result = (await response.json()) as Enrollment;
+    if (!signal.aborted) setEnrollment(result);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending.current) return;
+    pending.current = true;
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setError(null);
     setSubmitting(true);
     const data = new FormData(event.currentTarget);
@@ -72,6 +103,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
         {
           method: "POST",
           credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         },
@@ -81,27 +114,37 @@ export function AuthForm({ mode }: { mode: Mode }) {
         return;
       }
       const result = (await response.json()) as Partial<MfaChallenge>;
+      if (controller.signal.aborted) return;
       if (result.mfaRequired && result.challengeToken) {
         const nextChallenge = result as MfaChallenge;
         setChallenge(nextChallenge);
-        if (nextChallenge.enrollmentRequired) await startEnrollment(nextChallenge.challengeToken);
+        if (nextChallenge.enrollmentRequired)
+          await startEnrollment(nextChallenge.challengeToken, controller.signal);
         return;
       }
       router.push(href(mode === "register" ? "/?welcome=1" : "/"));
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("auth.connectionError"));
+      if (!controller.signal.aborted)
+        setError(cause instanceof Error ? cause.message : t("auth.connectionError"));
     } finally {
-      setSubmitting(false);
+      if (activeRequest.current === controller) {
+        pending.current = false;
+        setSubmitting(false);
+      }
     }
   }
 
   async function submitMfa(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!challenge) return;
+    if (!challenge || pending.current) return;
+    pending.current = true;
+    const controller = new AbortController();
+    activeRequest.current = controller;
     setError(null);
     setSubmitting(true);
     const value = String(new FormData(event.currentTarget).get("mfaCode") ?? "").trim();
+    event.currentTarget.reset();
 
     try {
       const response = await fetch(
@@ -109,6 +152,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
         {
           method: "POST",
           credentials: "include",
+          cache: "no-store",
+          signal: controller.signal,
           headers: { "content-type": "application/json" },
           body: JSON.stringify(
             enrollment
@@ -125,15 +170,20 @@ export function AuthForm({ mode }: { mode: Mode }) {
         return;
       }
       const result = (await response.json()) as { recoveryCodes?: string[] };
+      if (controller.signal.aborted) return;
       if (result.recoveryCodes?.length) {
+        setEnrollment(null);
         setRecoveryCodes(result.recoveryCodes);
         return;
       }
       finishLogin();
     } catch {
-      setError(t("auth.connectionError"));
+      if (!controller.signal.aborted) setError(t("auth.connectionError"));
     } finally {
-      setSubmitting(false);
+      if (activeRequest.current === controller) {
+        pending.current = false;
+        setSubmitting(false);
+      }
     }
   }
 
@@ -148,16 +198,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         {recoveryCodes ? (
           <>
             <p className={styles.eyebrow}>{t("auth.mfaEnabled")}</p>
-            <h1>{t("auth.recoveryTitle")}</h1>
-            <p className={styles.intro}>{t("auth.recoveryIntro")}</p>
-            <ul className={styles.recoveryCodes} aria-label={t("auth.recoveryTitle")} dir="ltr">
-              {recoveryCodes.map((code) => (
-                <li key={code}>{code}</li>
-              ))}
-            </ul>
-            <button className={styles.primary} onClick={finishLogin} type="button">
-              {t("auth.savedCodes")}
-            </button>
+            <MfaRecoveryCodes codes={recoveryCodes} onDone={finishLogin} headingLevel={1} />
           </>
         ) : challenge ? (
           <>
@@ -165,22 +206,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
             <h1>{enrollment ? t("auth.secureAdmin") : t("auth.twoStep")}</h1>
             <p className={styles.intro}>{enrollment ? t("auth.scanQr") : t("auth.enterCode")}</p>
             {enrollment ? (
-              <div className={styles.provisioning}>
-                <Image
-                  alt={t("auth.secureAdmin")}
-                  height={240}
-                  src={enrollment.qrCodeDataUrl}
-                  unoptimized
-                  width={240}
-                />
-                <details>
-                  <summary>{t("auth.cannotScan")}</summary>
-                  <p>{t("auth.manualKey")}</p>
-                  <code dir="ltr">{enrollment.secret}</code>
-                </details>
-              </div>
+              <MfaEnrollmentSecret enrollment={enrollment} label={t("auth.secureAdmin")} />
             ) : null}
-            <form className={styles.form} onSubmit={submitMfa}>
+            <form ref={form} className={styles.form} onSubmit={submitMfa}>
               <label>
                 <span>
                   {enrollment ? t("auth.authenticationCode") : t("auth.authenticationRecoveryCode")}
@@ -217,7 +245,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
             <p className={styles.intro}>
               {registering ? t("auth.registerIntro") : t("auth.signInIntro")}
             </p>
-            <form className={styles.form} onSubmit={submit}>
+            <form ref={form} className={styles.form} onSubmit={submit}>
               {registering ? (
                 <label>
                   <span>{t("auth.name")}</span>

@@ -372,7 +372,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 
 - Phase 2G.2 accepted: final head `7a8a0259fca237dc9bcce7dc62cf55eb6805c217` passed quality `36353453580`, security `36353453568` and browser `36353453591`. All 556 API integration-gate tests in 134 files (123.27s), six new enrollment regressions (675ms), 364 API units, 153 Web units, five installer tests, four migration tests and 42 browser tests (4.1 minutes) passed; formatting, lint, types and production builds passed. PR #132 merged with expected-head protection; ending main SHA `8b3cddc851e2655c34501d2973ed7807a796295b`.
 
-## Phase 2G.3 — MFA management lifecycle, regression investigation
+## Phase 2G.3 — MFA management lifecycle, verified and merged
 
 - Starting SHA: `8b3cddc851e2655c34501d2973ed7807a796295b`; checkpoint read and accepted main fetched before implementation.
 - Findings: regeneration and disable consume TOTP before their mutation transaction; their later writes do not bind the verified credential/account version. TOTP consumption itself lacks ENABLED/secret fencing. Disable checks administrator policy before its writes; reset relies on the earlier controller role check. These are source findings awaiting database reproduction.
@@ -389,3 +389,27 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Share the existing staff-role transaction lock identity with disable/reset, rechecking administrator-disable policy and the reset actor's active SUPERADMIN membership after acquiring it. Ordinary challenges and regeneration do not acquire the staff-role lock. Preserve credential-then-account lock order; no account-first MFA lock introduced.
 - Local API typecheck/lint and 364 units in 90 files passed (5.52s). Typecheck caught an attempted ORM relationship absent from the actual role schema; active actor membership now uses an explicit parameterized join. Fixture cleanup explicitly truncates standalone AdminRoleAssignment rows as well as Account; all ten regression assertions remain unchanged. Real PostgreSQL and final full acceptance remain pending.
 - Performance scope: keyed credential/account predicates, one bounded actor-membership join and existing audit/session writes. Additional role serialization applies only to disable/reset and existing staff mutations, not ordinary login. No production latency measurement or migration.
+
+- Phase 2G.3 reproduction: unchanged head `7e7b85895bdecffa77e92e5a59dd238c106215e5`, quality `36353990148`, failed exactly all ten new cases; other 556 tests passed (566 total in 135 files, 119.48s). No assertions weakened.
+- Accepted head `86e3c56a684a57f1d128368209dd8cb8f1aad2df` passed quality `36354271180`, security `36354271233` and browser `36354271209`: all 566 API integration-gate tests in 135 files (120.54s), ten new cases (1.397s), 364 API units, 153 Web units, four migration tests and 42 browser tests (3.6 minutes). Formatting, lint, types and production builds passed. PR #133 merged with expected-head protection; ending main SHA `7dd84648956829de34a655532f03a0e5c1c2e4cd`.
+
+## Phase 2G.4 — shared account MFA product integration, in progress
+
+- Starting SHA: `7dd84648956829de34a655532f03a0e5c1c2e4cd`; checkpoint read and accepted main fetched before integration.
+- Findings: account MFA status/start/regeneration/disable APIs have no account management surface; QR/recovery presentation exists only in sign-in. Sensitive status/start/code responses need explicit private/no-store handling. Account management should bind mutations to the account whose status the viewer reviewed, including enrollment confirmation.
+- Changes planned: shared QR/recovery components reused by sign-in and Account; account status/loading/error/retry, enrollment, one-time codes, reviewed regeneration/disable with existing factors/policy, explicit account scope, no automatic replay, EN/AR/responsive/accessibility and page-leave secret cleanup. Use an authenticated enrollment-confirmation wrapper for the account flow while retaining existing sign-in enrollment behavior.
+- Migrations: none planned.
+- Tests added/executed: pending implementation; existing 566 API/42 browser baseline above is not acceptance of the new UI.
+- Performance measurements: target one status request, no additional auth/me request and no polling; measure after implementation.
+- Remaining issues: finish MFA UI and browser acceptance, discovery policy pagination, remaining Phase 2 review and Phases 3–5.
+- External blockers: production/provider/device evidence remains separate; database/browser gates use CI.
+- Next: implement, critically review, verify role/account boundaries and real browser workflows, checkpoint.
+- Rollback: remove additive surfaces/wrapper fields, retain accepted security fixes and audit/credential state; never restore consumed factors or log secrets.
+
+- Phase 2G.4 implemented for review: account status/refresh/retry, password-confirmed setup, shared QR/manual key and one-time code list, reviewed factor-protected regeneration/disable, required-role visibility, safe cancellation/focus, page-leave secret cleanup, BFCache account reload and explicit account-switch recovery. Successful enrollment refreshes the session list to reflect revocations. Existing sign-in uses the same secret components and cancels in-flight responses on page leave.
+- API additions are backward-compatible account identifiers/optional expected-account fields, an AuthGuard-protected confirmation wrapper that also binds the enrollment-token subject, and private/no-store headers for sensitive MFA/session responses. Existing login enrollment contract, server policy, factors and audits remain authoritative; no native product duplication.
+- Tests added: five Web transport/parser/account-scope cases, two PostgreSQL HTTP authorization/cache cases, four browser workflows (enrollment/replacement/one-time display and session revocation; reviewed disable; Arabic mobile error recovery/required-role policy; real account-switch secret cleanup). Browser fixtures only inspect credential status, sessions and audit metadata, never fetch stored secrets.
+- Local API/Web types and lint passed after correcting effect-driven loading to asynchronous response callbacks; 364 API unit tests (6.74s) and 158 Web tests (1.22s) passed. Four new browser tests discovered successfully; PostgreSQL/browser execution and final production-build evidence pending.
+- Request scope: one initial MFA status read, explicit refresh/focus refresh and post-mutation status reconciliation; no additional auth/me fetch and no polling. One mutation at a time with no automatic replay; browser test measures initial status count and a single delayed replacement POST. No production latency claim.
+
+- Local full production build passed (packages, API and Web; 65 static pages), with the previously known Edge stdout/stderr instrumentation warnings. Common factor/policy/rate-limit errors are localized. Final CI remains mandatory; no local browser/database execution claimed.

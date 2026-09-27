@@ -355,4 +355,87 @@ databaseDescribe("Task 47 administrator MFA", () => {
     expect(selfReset.statusCode).toBe(400);
     expect(selfReset.json().error.code).toBe("SELF_MFA_RESET_BLOCKED");
   });
+  it("binds account-management mutations to the viewed account and keeps MFA status private", async () => {
+    const account = await register("account-mfa-scope@example.com");
+    const other = await register("other-mfa-scope@example.com");
+    const status = await app.inject({
+      method: "GET",
+      url: "/auth/mfa/status",
+      headers: { cookie: account.cookie },
+    });
+    expect(status.statusCode).toBe(200);
+    expect(status.headers["cache-control"]).toBe("private, no-store");
+    expect(status.json()).toMatchObject({ accountId: account.accountId, enabled: false });
+    for (const path of ["enrollment/start-authenticated", "recovery-codes/regenerate", "disable"]) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/auth/mfa/${path}`,
+        headers: { cookie: account.cookie },
+        payload: {
+          password,
+          expectedAccountId: other.accountId,
+          ...(path.startsWith("enrollment") ? {} : { code: "123456" }),
+        },
+      });
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.code).toBe("ACCOUNT_CHANGED");
+    }
+    expect(await prisma.accountMfaCredential.count()).toBe(0);
+  });
+
+  it("confirms account enrollment only with the current matching session and token", async () => {
+    const account = await register("account-mfa-confirm@example.com");
+    const other = await register("other-mfa-confirm@example.com");
+    const start = await app.inject({
+      method: "POST",
+      url: "/auth/mfa/enrollment/start-authenticated",
+      headers: { cookie: account.cookie },
+      payload: { password, expectedAccountId: account.accountId },
+    });
+    expect(start.statusCode).toBe(201);
+    expect(start.headers["cache-control"]).toBe("private, no-store");
+    const enrollment = start.json();
+    expect(enrollment.accountId).toBe(account.accountId);
+    const code = generateTotpCode(enrollment.secret, totpCounter());
+    for (const [cookie, expectedAccountId, expectedStatus] of [
+      [undefined, account.accountId, 401],
+      [other.cookie, account.accountId, 409],
+      [other.cookie, other.accountId, 401],
+    ] as const) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/mfa/enrollment/verify-authenticated",
+        headers: cookie ? { cookie } : {},
+        payload: { enrollmentToken: enrollment.enrollmentToken, code, expectedAccountId },
+      });
+      expect(response.statusCode).toBe(expectedStatus);
+      expect(response.headers["set-cookie"]).toBeUndefined();
+    }
+    expect(
+      (
+        await prisma.accountMfaCredential.findUniqueOrThrow({
+          where: { accountId: account.accountId },
+        })
+      ).status,
+    ).toBe("PENDING");
+    const confirmed = await app.inject({
+      method: "POST",
+      url: "/auth/mfa/enrollment/verify-authenticated",
+      headers: { cookie: account.cookie },
+      payload: {
+        enrollmentToken: enrollment.enrollmentToken,
+        code,
+        expectedAccountId: account.accountId,
+      },
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.headers["cache-control"]).toBe("private, no-store");
+    expect(confirmed.json().recoveryCodes).toHaveLength(10);
+    expect(confirmed.headers["set-cookie"]).toBeDefined();
+    expect(
+      await prisma.adminAuditLog.count({
+        where: { action: "auth.mfa_enabled", actorAccountId: account.accountId },
+      }),
+    ).toBe(1);
+  });
 });

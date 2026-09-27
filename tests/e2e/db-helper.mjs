@@ -491,6 +491,22 @@ try {
       result = { ok: true };
       break;
     }
+    case "account-mfa-evidence": {
+      result = {
+        credential: await prisma.accountMfaCredential.findUnique({
+          where: { accountId: payload.accountId },
+          select: { status: true, version: true },
+        }),
+        activeSessions: await prisma.accountSession.count({
+          where: { accountId: payload.accountId, revokedAt: null, expiresAt: { gt: new Date() } },
+        }),
+        audits: await prisma.adminAuditLog.findMany({
+          where: { actorAccountId: payload.accountId, action: { startsWith: "auth.mfa_" } },
+          select: { action: true, metadata: true },
+        }),
+      };
+      break;
+    }
     case "ledger": {
       const ledger = await prisma.earningsLedgerEntry.findFirstOrThrow({
         where: { channelId: payload.channelId, idempotencyKey: payload.idempotencyKey },

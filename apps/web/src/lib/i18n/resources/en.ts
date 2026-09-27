@@ -286,6 +286,50 @@ export const enMessages = {
   "player.controls": "Playback controls",
   "player.seek": "Seek video",
   "player.chapterMarkers": "Chapter markers",
+  "account.mfaTitle": "Two-step verification",
+  "account.mfaIntro": "Add an authenticator code to protect sign-in and sensitive account changes.",
+  "account.mfaEnabled": "Two-step verification is on",
+  "account.mfaDisabled": "Two-step verification is off",
+  "account.mfaRequired":
+    "Your administrator role requires two-step verification. It cannot be turned off here.",
+  "account.mfaRemaining": "{count} recovery codes remaining",
+  "account.mfaEnable": "Set up two-step verification",
+  "account.mfaRegenerate": "Replace recovery codes",
+  "account.mfaDisable": "Turn off two-step verification",
+  "account.mfaStartIntro":
+    "Confirm your current password to create a setup key for your authenticator app.",
+  "account.mfaRegenerateReview":
+    "All existing recovery codes will stop working. Save the new codes before leaving this page. Your authenticator and current sessions will stay active.",
+  "account.mfaDisableReview":
+    "This removes your authenticator and recovery codes and signs out every device, including this one. Confirm your current password and an authenticator code to continue.",
+  "account.mfaCancel": "Cancel",
+  "account.mfaPassword": "Current password",
+  "account.mfaConfirmEnrollment": "Connect your authenticator",
+  "account.mfaConfirmRegenerate": "Confirm replacement",
+  "account.mfaConfirmDisable": "Confirm and sign out",
+  "account.mfaLoading": "Loading verification settings…",
+  "account.mfaRetry": "Retry settings",
+  "account.mfaRefresh": "Refresh settings",
+  "account.mfaWorking": "Verifying…",
+  "account.mfaStart": "Continue to setup",
+  "account.mfaEnabledSuccess":
+    "Two-step verification is now on. Other sessions have been signed out. Save your recovery codes.",
+  "account.mfaCodesSuccess":
+    "Recovery codes replaced. Save these new codes; the old ones no longer work.",
+  "account.mfaSessionExpired": "Sign in to manage two-step verification.",
+  "account.mfaAccountChanged":
+    "Your signed-in account changed. Reload the account page before continuing.",
+  "account.mfaLoadError":
+    "Verification settings could not be loaded. Retry to see the current state.",
+  "account.mfaActionError":
+    "The result could not be confirmed. Refresh settings before trying another action.",
+  "account.mfaExpires": "Complete setup before {time}.",
+  "account.mfaReviewTitle": "Review this security change",
+  "account.mfaReloadAccount": "Reload account",
+  "account.mfaCheckDetails":
+    "Verification failed. Check the details you entered. If setup has expired, cancel and start again.",
+  "account.mfaSetupChanged": "Setup changed before verification finished. Cancel and start again.",
+  "account.mfaRateLimited": "Too many verification attempts. Wait a little before trying again.",
 } as const;
 
 export type TranslationKey = keyof typeof enMessages;
