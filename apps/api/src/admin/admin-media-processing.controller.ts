@@ -4,9 +4,14 @@ import { z } from "zod";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { DatabaseService } from "../database/database.service.js";
 import { MediaAdaptiveRolloutService } from "../media/media-adaptive-rollout.service.js";
-import { ADAPTIVE_RECOVERY_MODES } from "../media/media-adaptive-rollout.js";
+import { ADAPTIVE_RECOVERY_MODES, isAdaptiveBackfillJob } from "../media/media-adaptive-rollout.js";
 import { MediaProcessingLifecycleService } from "../media/media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "../media/media-processing-queue.service.js";
+import {
+  hasActiveMediaJob,
+  hasNewerMediaGeneration,
+  lockMediaGeneration,
+} from "../media/media-generation-safety.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { adminBadRequest } from "./admin.errors.js";
 import {
@@ -17,7 +22,6 @@ import {
 } from "./admin.guard.js";
 
 const uuidSchema = z.string().uuid();
-const terminalStatuses = new Set(["READY", "FAILED", "CANCELLED"]);
 const batchSchema = z.object({ batchSize: z.number().int().min(1).max(20).optional() }).strict();
 const recoverySchema = z
   .object({
@@ -142,6 +146,30 @@ export class AdminMediaProcessingController {
           "Only a failed media processing job can be retried.",
         );
       }
+      if (isAdaptiveBackfillJob(job)) {
+        const blocked = await this.adaptiveRollout.failedRetryBlockReasonInTransaction(tx);
+        if (blocked) {
+          throw adminBadRequest(
+            "ADAPTIVE_RETRY_BLOCKED",
+            blocked === "IN_FLIGHT_LIMIT"
+              ? "Wait for an active adaptive backfill job to finish before retrying."
+              : "Adaptive backfill is disabled or paused.",
+          );
+        }
+      }
+      await lockMediaGeneration(tx, job.videoId);
+      if (await hasNewerMediaGeneration(tx, job)) {
+        throw adminBadRequest(
+          "MEDIA_JOB_SUPERSEDED",
+          "A newer processing generation exists for this video.",
+        );
+      }
+      if (await hasActiveMediaJob(tx, job.videoId, job.id)) {
+        throw adminBadRequest(
+          "MEDIA_PROCESSING_ALREADY_ACTIVE",
+          "This video already has an active or queued processing generation.",
+        );
+      }
       // Another retry/recovery may have queued or claimed this job since the read.
       // PostgreSQL rechecks this predicate after waiting for a concurrent writer.
       const changed = await tx.mediaProcessingJob.updateMany({
@@ -184,12 +212,8 @@ export class AdminMediaProcessingController {
   async reprocess(@Req() request: AdminAuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
     const videoId = this.uuid(videoIdRaw, "INVALID_VIDEO_ID");
     return this.database.client.$transaction(async (tx) => {
-      const latest = await tx.mediaProcessingJob.findFirst({
-        where: { videoId },
-        orderBy: { generation: "desc" },
-        select: { status: true },
-      });
-      if (latest && !terminalStatuses.has(latest.status)) {
+      await lockMediaGeneration(tx, videoId);
+      if (await hasActiveMediaJob(tx, videoId)) {
         throw adminBadRequest(
           "MEDIA_PROCESSING_ALREADY_ACTIVE",
           "This video already has an active or queued processing generation.",

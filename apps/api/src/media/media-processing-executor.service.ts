@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, rm } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -9,6 +9,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { MediaAdaptiveProcessingService } from "./media-adaptive-processing.service.js";
+import { isAdaptiveBackfillJob } from "./media-adaptive-rollout.js";
 import { MediaAutoThumbnailService } from "./media-auto-thumbnail.service.js";
 import { runBoundedMediaProcess } from "./media-process-runner.js";
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
@@ -113,31 +114,41 @@ export class MediaProcessingExecutorService {
           throw new Error("The uploaded file does not contain a readable video stream.");
         }
 
-        const [threads, maxHeight, crf, preset] = await Promise.all([
-          this.settings.get("mediaProcessingFfmpegThreadsPerJob"),
-          this.settings.get("mediaProcessingMaxHeight"),
-          this.settings.get("mediaProcessingVideoCrf"),
-          this.settings.get("mediaProcessingPreset"),
-        ]);
-        await this.requireOwnedStage(job.id, workerId, "PROCESSING", "FFMPEG_TRANSCODING", 20);
-        await runCanonicalFfmpeg({
-          executable: this.ffmpegPath,
-          inputPath,
-          outputPath,
-          threads: threads as number,
-          maxHeight: maxHeight as number,
-          crf: crf as number,
-          preset: preset as string,
-          timeoutMs: this.ffmpegTimeoutMs,
-          ...(signal ? { signal } : {}),
-        });
-        canonicalMetadata = await this.probe(outputPath, signal);
         if (
-          !canonicalMetadata.width ||
-          !canonicalMetadata.height ||
-          !canonicalMetadata.videoCodec
+          isAdaptiveBackfillJob(job) &&
+          isVerifiedCanonical(await this.tryHead(job.inputR2ObjectKey))
         ) {
-          throw new Error("FFmpeg did not produce a readable canonical video stream.");
+          // Give the generation its own immutable fallback key without re-encoding
+          // the already validated MP4. Older jobs/assets retain their own keys.
+          await copyFile(inputPath, outputPath);
+          canonicalMetadata = sourceMetadata;
+        } else {
+          const [threads, maxHeight, crf, preset] = await Promise.all([
+            this.settings.get("mediaProcessingFfmpegThreadsPerJob"),
+            this.settings.get("mediaProcessingMaxHeight"),
+            this.settings.get("mediaProcessingVideoCrf"),
+            this.settings.get("mediaProcessingPreset"),
+          ]);
+          await this.requireOwnedStage(job.id, workerId, "PROCESSING", "FFMPEG_TRANSCODING", 20);
+          await runCanonicalFfmpeg({
+            executable: this.ffmpegPath,
+            inputPath,
+            outputPath,
+            threads: threads as number,
+            maxHeight: maxHeight as number,
+            crf: crf as number,
+            preset: preset as string,
+            timeoutMs: this.ffmpegTimeoutMs,
+            ...(signal ? { signal } : {}),
+          });
+          canonicalMetadata = await this.probe(outputPath, signal);
+          if (
+            !canonicalMetadata.width ||
+            !canonicalMetadata.height ||
+            !canonicalMetadata.videoCodec
+          ) {
+            throw new Error("FFmpeg did not produce a readable canonical video stream.");
+          }
         }
 
         await this.requireOwnedStage(job.id, workerId, "UPLOADING", "UPLOADING_CANONICAL", 80);

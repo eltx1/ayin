@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { ADAPTIVE_BACKFILL_MARKER } from "./media-adaptive-rollout.js";
+import { hasNewerMediaGeneration } from "./media-generation-safety.js";
 
 const ACTIVE_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
 const QUEUE_ADVISORY_LOCK = 86192028;
@@ -230,19 +231,25 @@ export class MediaProcessingQueueService {
       });
       if (!job) return null;
 
-      const terminal = job.attempt >= retryLimit;
+      const superseded = await hasNewerMediaGeneration(tx, job);
+      const terminal = superseded || job.attempt >= retryLimit;
       const backoffSeconds = Math.min(60, 2 ** Math.max(0, job.attempt));
-      return tx.mediaProcessingJob.update({
-        where: { id: job.id },
+      const changed = await tx.mediaProcessingJob.updateMany({
+        where: {
+          id: job.id,
+          leaseOwner: input.leaseToken,
+          status: { in: [...ACTIVE_STATUSES] },
+          leaseExpiresAt: { gt: new Date() },
+        },
         data: terminal
           ? {
               status: "FAILED",
-              stage: "FAILED",
+              stage: superseded ? "SUPERSEDED" : "FAILED",
               leaseOwner: null,
               leaseWorkerId: null,
               leaseExpiresAt: null,
               heartbeatAt: null,
-              errorCode: input.errorCode.slice(0, 128),
+              errorCode: superseded ? "MEDIA_GENERATION_SUPERSEDED" : input.errorCode.slice(0, 128),
               errorMessage: input.errorMessage,
             }
           : {
@@ -257,6 +264,9 @@ export class MediaProcessingQueueService {
               errorMessage: input.errorMessage,
             },
       });
+      return changed.count === 1
+        ? tx.mediaProcessingJob.findUnique({ where: { id: job.id } })
+        : null;
     });
   }
 
