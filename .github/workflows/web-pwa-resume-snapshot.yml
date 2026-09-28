@@ -1,0 +1,52 @@
+name: Isolated Web PWA continuation snapshot
+
+on:
+  push:
+    branches:
+      - web-pwa-phase-2-route-integrity
+    paths:
+      - .github/workflows/web-pwa-resume-snapshot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable repository-pinned package manager
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Restore locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Capture tracked source and dependency-only archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ayin-continuation"
+          git rev-parse HEAD > "$RUNNER_TEMP/ayin-continuation/SOURCE_SHA.txt"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/ayin-continuation/source.tar.gz" HEAD
+          find . -type d -name node_modules -prune -print0 > "$RUNNER_TEMP/ayin-dependency-paths"
+          tar --null -czf "$RUNNER_TEMP/ayin-continuation/dependencies.tar.gz" -T "$RUNNER_TEMP/ayin-dependency-paths"
+          corepack_home="${COREPACK_HOME:-$HOME/.cache/node/corepack}"
+          if test -d "$corepack_home"; then
+            tar -czf "$RUNNER_TEMP/ayin-continuation/package-manager.tar.gz" -C "$corepack_home" .
+          fi
+          cd "$RUNNER_TEMP/ayin-continuation"
+          sha256sum ./*.tar.gz > SHA256SUMS
+      - name: Preserve isolated validation inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-continuation-snapshot
+          path: ${{ runner.temp }}/ayin-continuation
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
