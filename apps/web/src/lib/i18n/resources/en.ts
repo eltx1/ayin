@@ -1,4 +1,26 @@
 export const enMessages = {
+  "tvStatus.title": "Broadcast status",
+  "tvStatus.retry": "Retry",
+  "tvStatus.refresh": "Refresh broadcast status",
+  "tvStatus.loading": "Checking broadcast status…",
+  "tvStatus.error":
+    "Broadcast status could not be loaded. Retry or reload Creator TV if your account changed.",
+  "tvStatus.signIn": "Sign in",
+  "tvStatus.schedule": "Upcoming schedule",
+  "tvStatus.empty": "No eligible programs scheduled",
+  "tvStatus.programs": "{count} scheduled programs",
+  "tvStatus.output": "Continuous broadcast",
+  "tvStatus.checked": "Checked at",
+  "tvStatus.unconfigured": "Not configured",
+  "tvStatus.ready": "Output available",
+  "tvStatus.failed": "Needs attention",
+  "tvStatus.stopped": "Stopped",
+  "tvStatus.waiting": "Output not available yet",
+  "tvStatus.snapshot":
+    "This is the latest reported state. A schedule or available output does not confirm uninterrupted playback. Refresh to check again.",
+  "tvStatus.fallback":
+    "When continuous broadcasting is unavailable, Creator TV can play eligible scheduled videos directly. Playback still depends on content availability.",
+  "tvStatus.manifest": "Last broadcast file update: {time}",
   "meta.home.title": "Watch, Stream & Discover",
   "meta.home.description":
     "Watch creator videos, streaming, playlists and connected-TV experiences on AYIN.",

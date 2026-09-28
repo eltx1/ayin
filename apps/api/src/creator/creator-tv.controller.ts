@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  Header,
   HttpException,
   Inject,
   Param,
@@ -90,7 +91,18 @@ export class CreatorTvController {
     );
   }
 
+  @Get("tv/:tvChannelId/linear/summary")
+  @Header("Cache-Control", "private, no-store")
+  async linearSummary(
+    @Req() request: AuthenticatedRequest,
+    @Param("tvChannelId") tvChannelIdRaw: string,
+  ) {
+    const tvChannelId = parseUuid(tvChannelIdRaw, "This Creator TV link is invalid.");
+    return runTvOperation(() => this.linear.creatorSummary(ownerActor(request), tvChannelId));
+  }
+
   @Get("tv/:tvChannelId/linear")
+  @Header("Cache-Control", "private, no-store")
   async linearStatus(
     @Req() request: AuthenticatedRequest,
     @Param("tvChannelId") tvChannelIdRaw: string,
@@ -100,6 +112,7 @@ export class CreatorTvController {
   }
 
   @Post("tv/:tvChannelId/linear/provision")
+  @Header("Cache-Control", "private, no-store")
   async provisionLinear(
     @Req() request: AuthenticatedRequest,
     @Param("tvChannelId") tvChannelIdRaw: string,
@@ -109,6 +122,7 @@ export class CreatorTvController {
   }
 
   @Post("tv/:tvChannelId/linear/reconcile")
+  @Header("Cache-Control", "private, no-store")
   async reconcileLinear(
     @Req() request: AuthenticatedRequest,
     @Param("tvChannelId") tvChannelIdRaw: string,
@@ -118,6 +132,7 @@ export class CreatorTvController {
   }
 
   @Post("tv/:tvChannelId/linear/stop")
+  @Header("Cache-Control", "private, no-store")
   async stopLinear(
     @Req() request: AuthenticatedRequest,
     @Param("tvChannelId") tvChannelIdRaw: string,

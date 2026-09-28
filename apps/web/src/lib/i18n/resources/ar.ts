@@ -1,6 +1,27 @@
 import type { TranslationKey } from "./en";
 
 export const arMessages = {
+  "tvStatus.title": "حالة بث القناة",
+  "tvStatus.retry": "إعادة المحاولة",
+  "tvStatus.refresh": "تحديث حالة البث",
+  "tvStatus.loading": "جارٍ التحقق من حالة البث…",
+  "tvStatus.error": "تعذر تحميل حالة البث. أعد المحاولة أو أعد تحميل صفحة القناة إذا تغير حسابك.",
+  "tvStatus.signIn": "تسجيل الدخول",
+  "tvStatus.schedule": "جدول البرامج القادم",
+  "tvStatus.empty": "لا توجد برامج مؤهلة في الجدول",
+  "tvStatus.programs": "عدد البرامج المجدولة: {count}",
+  "tvStatus.output": "البث المتواصل",
+  "tvStatus.checked": "وقت التحقق",
+  "tvStatus.unconfigured": "غير مُعدّ",
+  "tvStatus.ready": "مخرج البث متاح",
+  "tvStatus.failed": "يحتاج إلى مراجعة",
+  "tvStatus.stopped": "متوقف",
+  "tvStatus.waiting": "مخرج البث غير متاح بعد",
+  "tvStatus.snapshot":
+    "هذه آخر حالة مُبلّغ عنها. وجود جدول أو مخرج للبث لا يؤكد استمرار التشغيل دون انقطاع. حدّث الحالة للتحقق مجددًا.",
+  "tvStatus.fallback":
+    "عند عدم توفر البث المتواصل، يمكن للقناة تشغيل الفيديوهات المجدولة المؤهلة مباشرةً، وفق توفر المحتوى.",
+  "tvStatus.manifest": "آخر تحديث لملف البث: {time}",
   "meta.home.title": "شاهد وابث واكتشف",
   "meta.home.description":
     "شاهد فيديوهات صنّاع المحتوى والبث وقوائم التشغيل وتجارب التلفزيون المتصل على AYIN.",

@@ -6,6 +6,10 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
+import {
+  CREATOR_TV_LINEAR_PROVIDER,
+  type LinearStreamingProvider,
+} from "../src/creator/creator-tv-linear.provider.js";
 import { CreatorTvService } from "../src/creator/creator-tv.service.js";
 import {
   MEDIA_STORAGE_ADAPTER,
@@ -140,6 +144,103 @@ databaseDescribe("Task 10 Creator TV V1", () => {
     });
     return { id, publishedAt };
   }
+
+  it("serves only an owned private summary without provider secrets or duplicate library hydration", async () => {
+    const owner = await register("TV status", "tv-status@example.com");
+    const outsider = await register("Other TV", "tv-status-other@example.com");
+    const id = owner.user.creatorTv.id;
+    const provider = moduleReference.get<LinearStreamingProvider>(CREATOR_TV_LINEAR_PROVIDER);
+    const state = vi.spyOn(provider, "getState").mockResolvedValue({
+      providerKey: "owned-test",
+      configured: true,
+      status: "READY",
+      hlsUrl: "https://private.invalid/stream?secret=value",
+      providerResourceId: "private-resource",
+      lastPlanGeneratedAt: new Date().toISOString(),
+      message: "/private/credentials/provider-error",
+      monitoring: {
+        runningOccurrenceKey: "private-occurrence",
+        lastTransitionAt: null,
+        scheduleDriftMs: 0,
+        maxScheduleDriftMs: 0,
+        recoveryCount: 0,
+        lastManifestAt: null,
+        lastError: "/private/error",
+      },
+    });
+    const management = vi.spyOn(moduleReference.get(CreatorTvService), "getManagement");
+    const provision = vi.spyOn(provider, "provision");
+    const reconcile = vi.spyOn(provider, "reconcile");
+    const stop = vi.spyOn(provider, "stop");
+    try {
+      const url = `/creator/tv/${id}/linear/summary`;
+      expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+      expect(
+        (await app.inject({ method: "GET", url, headers: { cookie: outsider.cookie } })).statusCode,
+      ).toBe(403);
+      expect(state).not.toHaveBeenCalled();
+      const response = await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } });
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["cache-control"]).toBe("private, no-store");
+      expect(response.json()).toMatchObject({
+        tvChannelId: id,
+        output: { configured: true, status: "READY", available: true },
+        schedule: { programCount: 0 },
+      });
+      expect(response.body).not.toMatch(
+        /private|providerResourceId|message|lastError|hlsUrl|objectKey/,
+      );
+      expect(state).toHaveBeenCalledExactlyOnceWith(id);
+      expect(management).not.toHaveBeenCalled();
+      expect(provision).not.toHaveBeenCalled();
+      expect(reconcile).not.toHaveBeenCalled();
+      expect(stop).not.toHaveBeenCalled();
+      state.mockResolvedValue({
+        providerKey: "test",
+        configured: true,
+        status: "READY",
+        hlsUrl: null,
+        providerResourceId: null,
+        lastPlanGeneratedAt: null,
+        message: null,
+      });
+      const missingOutput = await app.inject({
+        method: "GET",
+        url,
+        headers: { cookie: owner.cookie },
+      });
+      expect(missingOutput.json().output.available).toBe(false);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("rejects a secondary TV schedule mismatch before reading or starting its provider", async () => {
+    const owner = await register("Secondary TV", "tv-secondary@example.com");
+    const secondary = await prisma.creatorTvChannel.create({
+      data: { channelId: owner.user.channel.id, slug: "secondary-tv", name: "Secondary TV" },
+    });
+    const provider = moduleReference.get<LinearStreamingProvider>(CREATOR_TV_LINEAR_PROVIDER);
+    const state = vi.spyOn(provider, "getState");
+    const provision = vi.spyOn(provider, "provision");
+    const reconcile = vi.spyOn(provider, "reconcile");
+    try {
+      for (const suffix of ["summary", "", "provision", "reconcile"]) {
+        const response = await app.inject({
+          method: suffix === "provision" || suffix === "reconcile" ? "POST" : "GET",
+          url: `/creator/tv/${secondary.id}/linear${suffix ? "/" + suffix : ""}`,
+          headers: { cookie: owner.cookie },
+        });
+        expect(response.statusCode).toBe(409);
+        expect(response.json().error.code).toBe("CREATOR_TV_PLAN_CHANGED");
+      }
+      expect(state).not.toHaveBeenCalled();
+      expect(provision).not.toHaveBeenCalled();
+      expect(reconcile).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 
   it("keeps every registered channel TV polished and off-air when its eligible library is empty", async () => {
     const owner = await register("Empty TV", "task10-empty@example.com");

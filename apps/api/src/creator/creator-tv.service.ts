@@ -772,10 +772,7 @@ export class CreatorTvService {
     return tv;
   }
 
-  private async assertCanManageChannel(
-    actor: CreatorTvEditActor,
-    channelId: string,
-  ): Promise<void> {
+  async assertCanManageChannel(actor: CreatorTvEditActor, channelId: string): Promise<void> {
     if (actor.kind === "owner") {
       const membership = await this.database.client.channelMember.findFirst({
         where: { accountId: actor.accountId, channelId, role: "OWNER" },

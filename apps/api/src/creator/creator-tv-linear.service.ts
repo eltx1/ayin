@@ -44,16 +44,36 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
 
   async status(actor: CreatorTvEditActor, tvChannelId: string, now = new Date()) {
     const target = await this.authorizedTarget(actor, tvChannelId);
-    const plan = await this.buildPlanByHandle(target.handle, now);
+    const plan = await this.buildTargetPlan(target, now);
     return {
       state: await this.provider.getState(tvChannelId),
       plan: summarizePlan(plan),
     };
   }
 
+  async creatorSummary(actor: CreatorTvEditActor, tvChannelId: string, now = new Date()) {
+    const { state, plan } = await this.status(actor, tvChannelId, now);
+    return {
+      tvChannelId,
+      checkedAt: now.toISOString(),
+      output: {
+        configured: state.configured,
+        status: state.status,
+        available: state.configured && state.status === "READY" && Boolean(state.hlsUrl),
+        lastPlanGeneratedAt: state.lastPlanGeneratedAt,
+        lastManifestAt: state.monitoring?.lastManifestAt ?? null,
+      },
+      schedule: {
+        generatedAt: plan.generatedAt,
+        programCount: plan.programCount,
+      },
+      fallback: plan.fallback,
+    };
+  }
+
   async provision(actor: CreatorTvEditActor, tvChannelId: string, now = new Date()) {
     const target = await this.authorizedTarget(actor, tvChannelId);
-    const plan = await this.buildPlanByHandle(target.handle, now);
+    const plan = await this.buildTargetPlan(target, now);
     try {
       const state = await this.provider.provision(plan);
       this.ensureReconciliation(tvChannelId, target.handle, state);
@@ -65,7 +85,7 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
 
   async reconcile(actor: CreatorTvEditActor, tvChannelId: string, now = new Date()) {
     const target = await this.authorizedTarget(actor, tvChannelId);
-    const plan = await this.buildPlanByHandle(target.handle, now);
+    const plan = await this.buildTargetPlan(target, now);
     try {
       const state = await this.provider.reconcile(plan);
       this.ensureReconciliation(tvChannelId, target.handle, state);
@@ -168,7 +188,7 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
         this.clearReconciliation(tvChannelId);
         return;
       }
-      const plan = await this.buildPlanByHandle(handle, new Date());
+      const plan = await this.buildTargetPlan({ id: tvChannelId, handle }, new Date());
       await this.provider.reconcile(plan);
     } catch {
       // Provider state remains authoritative. A later bounded reconciliation can recover it.
@@ -191,8 +211,20 @@ export class CreatorTvLinearService implements OnModuleInit, OnModuleDestroy {
     });
     if (!tv)
       throw new CreatorTvError("CREATOR_TV_NOT_FOUND", "This Creator TV could not be found.", 404);
-    await this.creatorTv.getManagement(actor, tv.channelId);
+    await this.creatorTv.assertCanManageChannel(actor, tv.channelId);
     return { id: tv.id, channelId: tv.channelId, handle: tv.channel.handle };
+  }
+
+  private async buildTargetPlan(target: { id: string; handle: string }, now: Date) {
+    const plan = await this.buildPlanByHandle(target.handle, now);
+    if (plan.tvChannelId !== target.id) {
+      throw new CreatorTvError(
+        "CREATOR_TV_PLAN_CHANGED",
+        "The channel's primary TV changed. Reload Creator TV before continuing.",
+        409,
+      );
+    }
+    return plan;
   }
 
   private mapProviderError(error: unknown): Error {
