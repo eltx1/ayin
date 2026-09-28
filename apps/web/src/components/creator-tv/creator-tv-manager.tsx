@@ -19,7 +19,9 @@ type DraftPreference = {
   sortOrder: string;
 };
 
-export function CreatorTvManager() {
+export function CreatorTvManager({ embedded = false }: { embedded?: boolean } = {}) {
+  // The Studio layout owns its main landmark; standalone creator routes retain theirs.
+  const Surface = embedded ? "div" : "main";
   const [data, setData] = useState<CreatorTvManagementResponse | null>(null);
   const [drafts, setDrafts] = useState<Record<string, DraftPreference>>({});
   const [loading, setLoading] = useState(true);
@@ -95,22 +97,22 @@ export function CreatorTvManager() {
   }
 
   if (loading) {
-    return <main className={styles.manager}>Loading Creator TV…</main>;
+    return <Surface className={styles.manager}>Loading Creator TV…</Surface>;
   }
   if (error && !data) {
     return (
-      <main className={styles.manager}>
+      <Surface className={styles.manager}>
         <p className={styles.error}>{error}</p>
         <Link className={styles.backLink} href="/">
           Back to AYIN
         </Link>
-      </main>
+      </Surface>
     );
   }
   if (!data) return null;
 
   return (
-    <main className={styles.manager}>
+    <Surface className={styles.manager}>
       <header className={styles.managerHeader}>
         <div>
           <span className={styles.eyebrow}>Creator TV</span>
@@ -240,7 +242,7 @@ export function CreatorTvManager() {
 
       {message ? <p className={styles.notice}>{message}</p> : null}
       {error ? <p className={`${styles.notice} ${styles.error}`}>{error}</p> : null}
-    </main>
+    </Surface>
   );
 }
 
