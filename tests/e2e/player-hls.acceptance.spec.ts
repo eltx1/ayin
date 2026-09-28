@@ -381,7 +381,10 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await mockNoAds(page, fixture.id);
     await page.goto(`/watch/${fixture.slug}`);
 
-    await expect(page.locator("video:visible")).toHaveAttribute("data-native-hls-source", /master\.m3u8$/);
+    await expect(page.locator("video:visible")).toHaveAttribute(
+      "data-native-hls-source",
+      /master\.m3u8$/,
+    );
     await expect.poll(async () => (await harnessState(page)).hlsAttachCalls).toBe(0);
     await expect(page.getByLabel("Playback quality")).toHaveCount(0);
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
