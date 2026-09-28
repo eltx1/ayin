@@ -713,13 +713,11 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
       data: activity.map((item) => ({ ...item, type: "LIKE" as const })),
     });
     await prisma.videoPolicy.createMany({
-      data: videos
-        .slice(512)
-        .map((video) => ({
-          videoId: video.id,
-          kidsEligible: true,
-          maturityLevel: "GENERAL" as const,
-        })),
+      data: videos.slice(512).map((video) => ({
+        videoId: video.id,
+        kidsEligible: true,
+        maturityLevel: "GENERAL" as const,
+      })),
     });
     const database = moduleReference.get(DatabaseService).client;
     const reads = vi.spyOn(database, "$queryRaw");
@@ -779,6 +777,7 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
         name: "Private",
         slug: "private",
         visibility: "PRIVATE",
+        isPublic: false,
       },
     });
     const playlist = await prisma.playlist.create({
