@@ -449,3 +449,15 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - Audit semantic classifications refreshed for previously accepted MFA, media/HLS, recommendation evaluation, trending, warehouse, live and observability integration. Machine inventory retains its original source baseline/counts; semantic review updates are explicitly separate. Regenerate the tracked-source inventory after restoring execution, rather than falsely relabeling old inventory as current.
 - Next: restore execution, read this checkpoint, fetch accepted main, complete policy-before-pagination review for My AYIN/history, mixed editor picks and legacy ranked loaders, then finish remaining Phase 2 exposure/workflow classification and enter Phase 3 canonical routes/IA. Known route/PWA issues remain: /shorts versus /clips, /uploads versus /upload, placeholder destinations, duplicate manifests and broad service-worker caching/deletion behavior. Keep Web/PWA as product source of truth.
 - Remaining external evidence: actual provider activation, stores, physical devices, production latency/load and monitoring configuration are not established by repository tests.
+
+## Phase 2H.2 — library and mixed discovery pagination, in progress
+
+- Starting SHA: `72f2f11459dd4f79ff3a3e1ed7c832ee98de1083`; execution restored, clean older main fast-forwarded, checkpoint read, PR #136 quality `36357554905` verified and no open PRs found.
+- Findings: My AYIN activity loaders still apply distribution policy after page selection. Editor picks slice mixed references before resolving availability. Legacy ranked videos page aggregate IDs before publication/policy filtering. Because-you-watched can select an unavailable anchor. Review all callers and preserve profile ownership and Kids boundaries.
+- Changes/tests: test-first PostgreSQL regressions pending; production implementation not yet changed.
+- Migrations: none planned.
+- Performance: require bounded database results and batch hydration; do not materialize all activity or editor references.
+- Remaining issues: finish this discovery contract and remaining Phase 2 surface classification; Phases 3–5 remain open.
+- External blockers: local PostgreSQL/Chromium absent; database/browser acceptance via CI. Previous workspace disconnection is resolved, not a current blocker.
+- Next: reproduce, implement eligibility-before-pagination, run full gates, measure and checkpoint; refresh source inventory against the accepted baseline.
+- Rollback: no stored-state changes; preserve authorization and policy enforcement.
