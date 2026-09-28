@@ -99,7 +99,11 @@ export function TvFocusScope({ children, className }: TvFocusScopeProperties) {
     if (!root) {
       return;
     }
-    const elements = visibleFocusableElements(root);
+    const modal =
+      event.target instanceof Element ? event.target.closest<HTMLDialogElement>("dialog[open]") : null;
+    // A geometric target behind a modal remains visible but must never receive focus.
+    const scope = modal && root.contains(modal) ? modal : root;
+    const elements = visibleFocusableElements(scope);
     if (elements.length === 0) {
       return;
     }

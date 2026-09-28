@@ -1,0 +1,114 @@
+.page {
+  margin-inline: auto;
+  max-inline-size: 1120px;
+  padding: clamp(36px, 6vw, 80px) var(--page-gutter);
+}
+
+.header {
+  margin-block-end: clamp(28px, 4vw, 48px);
+  max-inline-size: 720px;
+}
+
+.header h1 {
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+  margin: 0 0 16px;
+}
+
+.header p {
+  color: var(--muted-strong);
+  font-size: 1.08rem;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.categories {
+  display: grid;
+  gap: 0 48px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.categories > a {
+  align-items: center;
+  border-block-end: 1px solid var(--border);
+  color: var(--foreground);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  min-block-size: 124px;
+  padding: 24px 4px;
+  text-decoration: none;
+}
+
+.categories strong {
+  display: block;
+  font-size: 1.35rem;
+  font-weight: 650;
+  margin-block-end: 8px;
+}
+
+.categories strong + span {
+  color: var(--muted);
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.categories > a:hover strong {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+.categories > a:focus-visible,
+.actions > :focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 5px;
+}
+
+.arrow {
+  color: var(--muted-strong);
+  flex: 0 0 auto;
+  font-size: 1.5rem;
+}
+
+.status {
+  background: var(--surface-subtle);
+  border-radius: 12px;
+  color: var(--muted-strong);
+  line-height: 1.7;
+  padding: 28px;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.actions a,
+.actions button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--foreground);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  min-block-size: 44px;
+  padding: 8px 16px;
+  text-decoration: none;
+}
+
+@media (max-width: 640px) {
+  .categories {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .categories > a {
+    min-block-size: 112px;
+  }
+}

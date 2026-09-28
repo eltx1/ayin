@@ -1,0 +1,71 @@
+.dialog {
+  background: var(--background);
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  box-shadow: var(--shadow-floating);
+  color: var(--foreground);
+  inline-size: min(440px, calc(100vw - 32px));
+  margin-block: auto;
+  margin-inline: auto;
+  max-block-size: calc(100dvh - 32px - var(--ayin-safe-top) - var(--ayin-safe-bottom));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 70%);
+}
+
+.header {
+  align-items: center;
+  background: var(--background);
+  border-block-end: 1px solid var(--border);
+  display: flex;
+  gap: 16px;
+  inset-block-start: 0;
+  justify-content: space-between;
+  padding: 16px 20px;
+  position: sticky;
+  z-index: 1;
+}
+
+.header h2 {
+  font-size: 1.08rem;
+  line-height: 1.4;
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.header button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: inherit;
+  cursor: pointer;
+  flex: 0 0 44px;
+  font-size: 1.5rem;
+  block-size: 44px;
+}
+
+.content {
+  padding: 20px;
+}
+
+.dialog button:focus-visible,
+.dialog a:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 3px;
+}
+
+@media (max-width: 600px) {
+  .dialog {
+    inline-size: calc(100vw - 24px);
+    max-block-size: calc(100dvh - 24px - var(--ayin-safe-top) - var(--ayin-safe-bottom));
+  }
+
+  .content {
+    padding: 16px;
+  }
+}
