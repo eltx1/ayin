@@ -1,0 +1,327 @@
+diff --git a/apps/web/src/app/movies/[slug]/page.tsx b/apps/web/src/app/movies/[slug]/page.tsx
+index 3d47fc1..2626a8f 100644
+--- a/apps/web/src/app/movies/[slug]/page.tsx
++++ b/apps/web/src/app/movies/[slug]/page.tsx
+@@ -8,6 +8,7 @@ import { localizePath } from "@/lib/i18n/routing";
+ import { getRequestLocale } from "@/lib/i18n/server";
+ import { buildMovieJsonLd, buildMovieMetadata, getPublicMovie } from "@/lib/movie-catalog";
+ import { serializeJsonLd } from "@/lib/seo";
++import { trustedApiRegionHeaders } from "@/lib/trusted-region";
+ import styles from "./movie.module.css";
+ 
+ type MoviePageProps = { params: Promise<{ slug: string }> };
+@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: MoviePageProps): Promise<Meta
+   const [{ slug: requested }, locale] = await Promise.all([params, getRequestLocale()]);
+   const slug = normalizeSlug(requested);
+   if (!slug) return { title: "Movie not found | AYIN", robots: { index: false, follow: false } };
+-  const movie = await getPublicMovie(slug, locale);
++  const movie = await getPublicMovie(slug, locale, await trustedApiRegionHeaders());
+   return movie
+     ? buildMovieMetadata(movie, locale)
+     : { title: "Movie not found | AYIN", robots: { index: false, follow: false } };
+@@ -41,7 +42,7 @@ export default async function MoviePage({ params }: MoviePageProps) {
+   if (!canonicalSlug) notFound();
+   if (requested !== canonicalSlug) redirect(localizePath(`/movies/${canonicalSlug}`, locale));
+ 
+-  const movie = await getPublicMovie(canonicalSlug, locale);
++  const movie = await getPublicMovie(canonicalSlug, locale, await trustedApiRegionHeaders());
+   if (!movie) notFound();
+ 
+   const poster = mediaAssetUrl(movie.poster?.objectKey);
+diff --git a/apps/web/src/app/series/[slug]/page.tsx b/apps/web/src/app/series/[slug]/page.tsx
+index 7ae9bb2..85fe78f 100644
+--- a/apps/web/src/app/series/[slug]/page.tsx
++++ b/apps/web/src/app/series/[slug]/page.tsx
+@@ -8,6 +8,7 @@ import { localizePath } from "@/lib/i18n/routing";
+ import { getRequestLocale } from "@/lib/i18n/server";
+ import { buildSeriesJsonLd, buildSeriesMetadata, getPublicSeries } from "@/lib/series-catalog";
+ import { serializeJsonLd } from "@/lib/seo";
++import { trustedApiRegionHeaders } from "@/lib/trusted-region";
+ import styles from "./series.module.css";
+ 
+ type SeriesPageProps = {
+@@ -32,7 +33,7 @@ export async function generateMetadata({ params }: SeriesPageProps): Promise<Met
+   const [{ slug: requested }, locale] = await Promise.all([params, getRequestLocale()]);
+   const slug = normalizeSlug(requested);
+   if (!slug) return { title: "Series not found | AYIN", robots: { index: false, follow: false } };
+-  const series = await getPublicSeries(slug, locale);
++  const series = await getPublicSeries(slug, locale, await trustedApiRegionHeaders());
+   return series
+     ? buildSeriesMetadata(series, locale)
+     : { title: "Series not found | AYIN", robots: { index: false, follow: false } };
+@@ -47,7 +48,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
+   const canonicalSlug = normalizeSlug(requested);
+   if (!canonicalSlug) notFound();
+   if (requested !== canonicalSlug) redirect(localizePath(`/series/${canonicalSlug}`, locale));
+-  const series = await getPublicSeries(canonicalSlug, locale);
++  const series = await getPublicSeries(canonicalSlug, locale, await trustedApiRegionHeaders());
+   if (!series) notFound();
+ 
+   const requestedSeason = Number(query.season);
+diff --git a/apps/web/src/components/viewer/viewer-shell.tsx b/apps/web/src/components/viewer/viewer-shell.tsx
+index 44e4cc0..06677fb 100644
+--- a/apps/web/src/components/viewer/viewer-shell.tsx
++++ b/apps/web/src/components/viewer/viewer-shell.tsx
+@@ -17,6 +17,8 @@ import {
+   type NavigationFlagState,
+ } from "@/lib/navigation";
+ 
++import { canonicalPublicPath } from "@/lib/public-route-aliases";
++
+ import footerStyles from "./viewer-footer.module.css";
+ import styles from "./viewer-shell.module.css";
+ 
+@@ -96,7 +98,8 @@ function NavigationLinks({
+         (!item.featureFlag || flags[item.featureFlag as NavigationFeatureFlag] === true),
+     )
+     .map((item) => {
+-      const active = itemIsActive(pathname, item.href);
++      const target = canonicalPublicPath(item.href);
++      const active = itemIsActive(pathname, target);
+       const translationKey = navigationKeys[item.key];
+       const label = translationKey ? t(translationKey) : item.label;
+       return (
+@@ -105,7 +108,7 @@ function NavigationLinks({
+           className={`${styles.navLink} ${active ? styles.navLinkActive : ""}`}
+           data-tv-focus-id={`${surface}-${item.key}`}
+           data-tv-focusable="true"
+-          href={href(item.href)}
++          href={href(target)}
+           key={item.key}
+         >
+           {label}
+diff --git a/apps/web/src/lib/i18n/resources/ar.ts b/apps/web/src/lib/i18n/resources/ar.ts
+index 389f3f3..b056c68 100644
+--- a/apps/web/src/lib/i18n/resources/ar.ts
++++ b/apps/web/src/lib/i18n/resources/ar.ts
+@@ -1,6 +1,24 @@
+ import type { TranslationKey } from "./en";
+ 
+ export const arMessages = {
++  "browse.moviesDescription": "اكتشف فيلمك القادم وتصفّح الأفلام المتاحة للمشاهدة على AYIN.",
++  "browse.seriesDescription": "اكتشف مسلسلًا، واختر موسمًا وحلقة للمشاهدة.",
++  "browse.tvDescription": "تصفّح قنوات صنّاع المحتوى وتعرّف على ما يُعرض في جداولها.",
++  "browse.creatorsDescription": "تعرّف على صنّاع المحتوى واكتشف قنوات تستحق المتابعة.",
++  "browse.categories": "أقسام التصفح",
++  "browse.pages": "صفحات التصفح",
++  "browse.more": "تصفّح المزيد",
++  "browse.firstPage": "العودة إلى البداية",
++  "browse.errorTitle": "تعذّر تحميل هذه الصفحة",
++  "browse.errorDescription": "أعد المحاولة أو ارجع إلى البداية لمتابعة التصفح.",
++  "browse.invalidPage": "رابط التصفح غير صالح",
++  "browse.retry": "إعادة المحاولة",
++  "browse.emptyTitle": "لا يوجد محتوى متاح هنا بعد",
++  "browse.endTitle": "وصلت إلى نهاية النتائج",
++  "browse.emptyDescription": "اكتشف قسمًا آخر أو ابحث عن محتوى للمشاهدة.",
++  "browse.minutes": "{count} دقيقة",
++  "browse.episodes": "{count} حلقة",
++
+   "merch.loading": "جارٍ تحميل إعدادات المنتج…",
+   "merch.loadError": "تعذر تحميل إعدادات المنتج.",
+   "merch.retry": "إعادة تحميل إعدادات المنتج",
+diff --git a/apps/web/src/lib/i18n/resources/en.ts b/apps/web/src/lib/i18n/resources/en.ts
+index f4598d2..7d36511 100644
+--- a/apps/web/src/lib/i18n/resources/en.ts
++++ b/apps/web/src/lib/i18n/resources/en.ts
+@@ -1,4 +1,23 @@
+ export const enMessages = {
++  "browse.moviesDescription": "Find your next film. Browse the movies available to watch on AYIN.",
++  "browse.seriesDescription": "Discover a series, choose a season and pick an episode.",
++  "browse.tvDescription": "Explore creator channels and see what is playing on their TV schedules.",
++  "browse.creatorsDescription":
++    "Meet the creators behind the videos. Find a channel to make your own.",
++  "browse.categories": "Browse categories",
++  "browse.pages": "Browsing pages",
++  "browse.more": "Browse more",
++  "browse.firstPage": "Back to the beginning",
++  "browse.errorTitle": "This page could not be loaded",
++  "browse.errorDescription": "Try again, or return to the beginning to continue browsing.",
++  "browse.invalidPage": "This browsing link is no longer valid",
++  "browse.retry": "Try again",
++  "browse.emptyTitle": "Nothing available here yet",
++  "browse.endTitle": "You have reached the end",
++  "browse.emptyDescription": "Explore another category or search for something to watch.",
++  "browse.minutes": "{count} min",
++  "browse.episodes": "{count} episodes",
++
+   "merch.loading": "Loading product controls…",
+   "merch.loadError": "Product controls could not be loaded.",
+   "merch.retry": "Retry product controls",
+@@ -48,7 +67,7 @@ export const enMessages = {
+   "nav.series": "Series",
+   "nav.tv": "TV",
+   "nav.creators": "Creators",
+-  "nav.shorts": "Shorts / Clips",
++  "nav.shorts": "Clips",
+   "nav.kids": "Kids",
+   "nav.myAyin": "My AYIN",
+   "nav.search": "Search",
+diff --git a/apps/web/src/lib/movie-catalog.ts b/apps/web/src/lib/movie-catalog.ts
+index 25e3b3a..13c3216 100644
+--- a/apps/web/src/lib/movie-catalog.ts
++++ b/apps/web/src/lib/movie-catalog.ts
+@@ -1,4 +1,5 @@
+ import type { Metadata } from "next";
++import { cache } from "react";
+ 
+ import { apiBaseUrl } from "@/lib/api";
+ import { mediaAssetUrl } from "@/lib/channel";
+@@ -42,16 +43,23 @@ export interface MovieArtwork {
+   altText: string | null;
+ }
+ 
+-export async function getPublicMovie(slug: string, locale: Locale): Promise<PublicMovie | null> {
+-  const params = new URLSearchParams({ locale });
+-  const response = await fetch(
+-    `${apiBaseUrl}/public/movies/${encodeURIComponent(slug)}?${params.toString()}`,
+-    { next: { revalidate: 60 } },
+-  );
+-  if (!response.ok) return null;
+-  const body = (await response.json()) as { movie: PublicMovie | null };
+-  return body.movie;
+-}
++export const getPublicMovie = cache(
++  async (
++    slug: string,
++    locale: Locale,
++    trustedHeaders: Record<string, string> = {},
++  ): Promise<PublicMovie | null> => {
++    const params = new URLSearchParams({ locale });
++    const response = await fetch(
++      `${apiBaseUrl}/public/movies/${encodeURIComponent(slug)}?${params.toString()}`,
++      { cache: "no-store", headers: trustedHeaders, signal: AbortSignal.timeout(10_000) },
++    );
++    if (response.status === 404) return null;
++    if (!response.ok) throw new Error(`Catalog request failed (${response.status}).`);
++    const body = (await response.json()) as { movie: PublicMovie | null };
++    return body.movie;
++  },
++);
+ 
+ export function buildMovieMetadata(movie: PublicMovie, locale: Locale): Metadata {
+   const path = `/movies/${movie.slug}`;
+diff --git a/apps/web/src/lib/navigation.test.ts b/apps/web/src/lib/navigation.test.ts
+index 12e7031..72a5709 100644
+--- a/apps/web/src/lib/navigation.test.ts
++++ b/apps/web/src/lib/navigation.test.ts
+@@ -10,7 +10,7 @@ describe("viewer navigation architecture", () => {
+       "Series",
+       "TV",
+       "Creators",
+-      "Shorts / Clips",
++      "Clips",
+       "Kids",
+       "My AYIN",
+       "Search",
+diff --git a/apps/web/src/lib/navigation.ts b/apps/web/src/lib/navigation.ts
+index f3ec8b2..e124731 100644
+--- a/apps/web/src/lib/navigation.ts
++++ b/apps/web/src/lib/navigation.ts
+@@ -21,8 +21,8 @@ export const navigationItems = [
+   },
+   {
+     id: "shorts",
+-    label: "Shorts / Clips",
+-    href: "/shorts",
++    label: "Clips",
++    href: "/clips",
+     featureFlag: "navigation.shorts",
+   },
+   { id: "kids", label: "Kids", href: "/kids", featureFlag: "navigation.kids" },
+diff --git a/apps/web/src/lib/series-catalog.ts b/apps/web/src/lib/series-catalog.ts
+index e72f4aa..bd662bc 100644
+--- a/apps/web/src/lib/series-catalog.ts
++++ b/apps/web/src/lib/series-catalog.ts
+@@ -1,4 +1,5 @@
+ import type { Metadata } from "next";
++import { cache } from "react";
+ 
+ import { apiBaseUrl } from "@/lib/api";
+ import { mediaAssetUrl } from "@/lib/channel";
+@@ -61,16 +62,23 @@ export interface PublicSeries {
+   firstEpisode: PublicSeriesEpisode | null;
+ }
+ 
+-export async function getPublicSeries(slug: string, locale: Locale): Promise<PublicSeries | null> {
+-  const params = new URLSearchParams({ locale });
+-  const response = await fetch(
+-    `${apiBaseUrl}/public/series/${encodeURIComponent(slug)}?${params.toString()}`,
+-    { next: { revalidate: 60 } },
+-  );
+-  if (!response.ok) return null;
+-  const body = (await response.json()) as { series: PublicSeries };
+-  return body.series;
+-}
++export const getPublicSeries = cache(
++  async (
++    slug: string,
++    locale: Locale,
++    trustedHeaders: Record<string, string> = {},
++  ): Promise<PublicSeries | null> => {
++    const params = new URLSearchParams({ locale });
++    const response = await fetch(
++      `${apiBaseUrl}/public/series/${encodeURIComponent(slug)}?${params.toString()}`,
++      { cache: "no-store", headers: trustedHeaders, signal: AbortSignal.timeout(10_000) },
++    );
++    if (response.status === 404) return null;
++    if (!response.ok) throw new Error(`Catalog request failed (${response.status}).`);
++    const body = (await response.json()) as { series: PublicSeries };
++    return body.series;
++  },
++);
+ 
+ export function buildSeriesMetadata(series: PublicSeries, locale: Locale): Metadata {
+   const path = `/series/${series.slug}`;
+diff --git a/apps/web/src/lib/trusted-region.ts b/apps/web/src/lib/trusted-region.ts
+index d44b292..15df6d7 100644
+--- a/apps/web/src/lib/trusted-region.ts
++++ b/apps/web/src/lib/trusted-region.ts
+@@ -1,6 +1,7 @@
+ import { headers } from "next/headers";
++import { cache } from "react";
+ 
+-export async function trustedApiRegionHeaders(): Promise<Record<string, string>> {
++export const trustedApiRegionHeaders = cache(async (): Promise<Record<string, string>> => {
+   const incoming = await headers();
+   const country = incoming.get("cf-ipcountry")?.trim().toUpperCase();
+   const token = process.env.AYIN_INTERNAL_EDGE_TOKEN?.trim();
+@@ -9,4 +10,4 @@ export async function trustedApiRegionHeaders(): Promise<Record<string, string>>
+     "x-ayin-edge-country": country,
+     "x-ayin-edge-token": token,
+   };
+-}
++});
+diff --git a/apps/web/src/proxy.ts b/apps/web/src/proxy.ts
+index 3f272c2..6e6e3e3 100644
+--- a/apps/web/src/proxy.ts
++++ b/apps/web/src/proxy.ts
+@@ -15,6 +15,8 @@ import {
+   stripLocalePrefix,
+ } from "@/lib/i18n/routing";
+ 
++import { canonicalPublicPath } from "@/lib/public-route-aliases";
++
+ const SAFE_TRACE_ID = /^[A-Za-z0-9._:-]{8,128}$/;
+ const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+ 
+@@ -107,6 +109,20 @@ export function proxy(request: NextRequest) {
+     );
+   }
+ 
++  const routeLocale = resolveRouteLocale({
++    pathname,
++    cookieLocale: request.cookies.get(localeCookieName)?.value ?? null,
++  });
++  const canonicalPath = canonicalPublicPath(pathname, routeLocale);
++  if (canonicalPath !== pathname) {
++    const target = request.nextUrl.clone();
++    target.pathname = canonicalPath;
++    // Locale preferences vary by request; do not let a CDN reuse this redirect.
++    const response = persistLocale(NextResponse.redirect(target, 308), routeLocale);
++    response.headers.set("Cache-Control", "private, no-store");
++    return decorateResponse(response, requestId, correlationId);
++  }
++
+   const pathLocale = localeFromPath(pathname);
+   if (pathLocale === defaultLocale) {
+     const target = request.nextUrl.clone();
