@@ -1,9 +1,18 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+const args = process.argv.slice(2);
+if (args.length > 1 || (args.length === 1 && args[0] !== "--stdout")) {
+  throw new Error("Usage: node scripts/audit-product-integration.mjs [--stdout]");
+}
+const stdoutOnly = args[0] === "--stdout";
+
 // Source inventory only: matches are evidence candidates, never runtime acceptance.
-const files = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n");
+const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" })
+  .split("\0")
+  .filter(Boolean);
 const text = (path) => readFileSync(path, "utf8");
 const source = files.filter((path) => /\.(tsx?|mjs|js|swift|kt|prisma|css|md|yml|xml)$/.test(path));
 const routes = files
@@ -275,7 +284,7 @@ const features = definitions.map(([feature, pattern, audience, gaps]) => {
       files.filter((p) => p.startsWith("docs/") && p.endsWith(".md")),
     ),
     status: "SOURCE_INVENTORIED_RUNTIME_REVIEW_REQUIRED",
-    gaps,
+    historicalCandidateGap: gaps,
     evidenceMethod:
       "Filename/route matching finds candidates; it does not establish semantic completeness or runtime correctness",
   };
@@ -284,7 +293,7 @@ const schema = files.filter(
   (path) => path.startsWith("packages/db/prisma/") && path.endsWith(".prisma"),
 );
 const result = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   sourceSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   sourceShaMeaning:
     "HEAD at generation; inventory reads tracked worktree contents, including changes listed below",
@@ -297,6 +306,9 @@ const result = {
     .sort(),
   method:
     "Deterministic tracked-source inventory; no runtime, authorization or feature-completion claims",
+  currentAcceptanceAuthority: "docs/AYIN_FEATURE_SURFACE_MATRIX.md",
+  historicalReviewWarning:
+    "Candidate gaps and semanticReview are dated authored evidence, not assertions of current missing functionality. Reconcile them with the current matrix and master checkpoint.",
   counts: {
     files: files.length,
     routes: routes.length,
@@ -320,6 +332,15 @@ const result = {
     (p) => p.startsWith("deploy/") || p.startsWith(".github/workflows/"),
   ),
   flags: files.filter((p) => /feature-flag/.test(p)),
+  backendFiles: source.filter((p) => p.startsWith("apps/api/src/") && !p.includes(".test.")),
+  trackedFileEvidence: files.map((file) => {
+    const regular = lstatSync(file).isFile();
+    return {
+      file,
+      kind: regular ? "file" : "non-regular",
+      sha256: regular ? createHash("sha256").update(readFileSync(file)).digest("hex") : null,
+    };
+  }),
   reviewCandidates: source
     .filter((p) => /^(apps|packages)\//.test(p))
     .flatMap((file) =>
@@ -333,6 +354,7 @@ const result = {
     ),
 };
 const review = JSON.parse(text("docs/AYIN_PRODUCT_INTEGRATION_SEMANTIC_REVIEW.json"));
+result.semanticReviewUpdatesThroughMainSha = review.incrementalReviewThroughMainSha;
 const classified = new Set();
 for (const domain of review.domains) {
   for (const file of domain.backend) {
@@ -384,12 +406,15 @@ for (const route of result.routes) {
         ? "Private data/mutations require server session and ownership checks; shared layouts are not authorization boundaries"
         : "Public reads must preserve publication, rights, region and Kids policy where relevant",
     keyboardRtlReview:
-      "Root i18n/direction and global focus styles present; route-family visual, label, focus-order and mixed-direction verification is a Phase 5 acceptance item",
+      "Root i18n/direction and global focus styles present; visual, label, focus-order and mixed-direction verification remains separate",
     stateReview:
-      route.route === "/[section]"
-        ? "Known placeholder destinations R01/R03; explicit routes take precedence"
-        : "Inspect mounted component loading/empty/error states; API failures must not be mistaken for not-found or empty data",
+      "Inspect current mounted components and checkpoint; a source inventory does not prove loading/empty/error or runtime acceptance",
   };
 }
-writeFileSync("docs/AYIN_PRODUCT_INTEGRATION_MATRIX.json", JSON.stringify(result, null, 2) + "\n");
-console.log(JSON.stringify(result.counts));
+const output = JSON.stringify(result, null, 2) + "\n";
+if (stdoutOnly) {
+  process.stdout.write(output);
+} else {
+  writeFileSync("docs/AYIN_PRODUCT_INTEGRATION_MATRIX.json", output);
+  console.log(JSON.stringify(result.counts));
+}
