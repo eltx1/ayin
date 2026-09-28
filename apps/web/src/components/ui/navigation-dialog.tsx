@@ -1,7 +1,14 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import {\n  type KeyboardEvent as ReactKeyboardEvent,\n  type ReactNode,\n  useEffect,\n  useId,\n  useRef,\n  useState,\n} from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";

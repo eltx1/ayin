@@ -184,7 +184,9 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     }
   });
 
-  await test.step(\n    "desktop keeps the same hierarchy without horizontal document overflow",\n    async () => {
+  await test.step(
+    "desktop keeps the same hierarchy without horizontal document overflow",
+    async () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     for (const route of [
       "/",

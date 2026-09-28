@@ -145,7 +145,9 @@ test("configuration failures, disabled categories and long custom labels remain 
   fixture.fail = true;
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/browse?lang=en");
-  await expect(page.locator("main:visible").getByRole("alert")).toContainText(\n    "Browse is unavailable",\n  );
+  await expect(page.locator("main:visible").getByRole("alert")).toContainText(
+    "Browse is unavailable",
+  );
   await expect(page.locator("main").getByRole("link", { name: "Search" })).toBeVisible();
   fixture.fail = false;
   fixture.flags["navigation.movies"] = false;
