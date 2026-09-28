@@ -17,9 +17,14 @@ test("stdout inventory is deterministic, complete for tracked files and does not
   assert.equal(first.schemaVersion, 2);
   assert.equal(first.currentAcceptanceAuthority, "docs/AYIN_FEATURE_SURFACE_MATRIX.md");
   assert.match(first.sourceSha, /^[a-f0-9]{40}$/);
-  const files = execFileSync("git", ["ls-files", "-z"], options).split("\0").filter(Boolean);
+  const files = execFileSync("git", ["ls-files", "-z"], options)
+    .split("\0")
+    .filter(Boolean);
   assert.equal(first.counts.files, files.length);
-  assert.deepEqual(first.trackedFileEvidence.map((entry) => entry.file), files);
+  assert.deepEqual(
+    first.trackedFileEvidence.map((entry) => entry.file),
+    files,
+  );
   const evidence = first.trackedFileEvidence.find((entry) => entry.file === command);
   assert.equal(evidence.sha256, createHash("sha256").update(readFileSync(command)).digest("hex"));
   assert.equal(first.counts.routes, first.routes.length);
