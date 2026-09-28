@@ -9,7 +9,7 @@ const command = "scripts/audit-product-integration.mjs";
 const options = { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 };
 const readReport = () => JSON.parse(execFileSync(process.execPath, [command, "--stdout"], options));
 
-test("stdout inventory is deterministic, complete for tracked files and does not rewrite history", () => {
+test("stdout inventory preserves deterministic source evidence and history", () => {
   const original = readFileSync(historical);
   const first = readReport();
   assert.deepEqual(readReport(), first);
@@ -17,16 +17,14 @@ test("stdout inventory is deterministic, complete for tracked files and does not
   assert.equal(first.schemaVersion, 2);
   assert.equal(first.currentAcceptanceAuthority, "docs/AYIN_FEATURE_SURFACE_MATRIX.md");
   assert.match(first.sourceSha, /^[a-f0-9]{40}$/);
-  const files = execFileSync("git", ["ls-files", "-z"], options)
-    .split("\0")
-    .filter(Boolean);
+  const tracked = execFileSync("git", ["ls-files", "-z"], options);
+  const files = tracked.split("\0").filter(Boolean);
+  const evidenceFiles = first.trackedFileEvidence.map((entry) => entry.file);
   assert.equal(first.counts.files, files.length);
-  assert.deepEqual(
-    first.trackedFileEvidence.map((entry) => entry.file),
-    files,
-  );
+  assert.deepEqual(evidenceFiles, files);
   const evidence = first.trackedFileEvidence.find((entry) => entry.file === command);
-  assert.equal(evidence.sha256, createHash("sha256").update(readFileSync(command)).digest("hex"));
+  const expectedHash = createHash("sha256").update(readFileSync(command)).digest("hex");
+  assert.equal(evidence.sha256, expectedHash);
   assert.equal(first.counts.routes, first.routes.length);
   assert.equal(first.counts.pages, first.routes.filter((route) => route.kind === "page").length);
   assert.equal(first.counts.endpoints, first.endpoints.length);
@@ -51,7 +49,8 @@ test("stdout inventory is deterministic, complete for tracked files and does not
 
 test("unsupported arguments fail before any document mutation", () => {
   const original = readFileSync(historical);
-  for (const args of [["--unknown"], ["--stdout", "--unknown"]]) {
+  const invalidArguments = [["--unknown"], ["--stdout", "--unknown"]];
+  for (const args of invalidArguments) {
     const result = spawnSync(process.execPath, [command, ...args], options);
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /Usage:/);
