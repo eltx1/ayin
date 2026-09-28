@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Inject, Param, Patch, Put, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Inject,
+  Param,
+  Patch,
+  Put,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
@@ -26,11 +37,13 @@ export class AdminProductController {
   constructor(@Inject(AdminProductService) private readonly product: AdminProductService) {}
 
   @Get()
+  @Header("Cache-Control", "private, no-store")
   getSnapshot() {
     return this.product.getAdminSnapshot();
   }
 
   @Patch("home-rows/:rowId")
+  @Header("Cache-Control", "private, no-store")
   @RequireAdminStepUp()
   patchRow(
     @Req() request: AdminAuthenticatedRequest,
@@ -48,6 +61,7 @@ export class AdminProductController {
   }
 
   @Put("home-rows/order")
+  @Header("Cache-Control", "private, no-store")
   @RequireAdminStepUp()
   reorderRows(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     const input = this.parse(
@@ -60,6 +74,7 @@ export class AdminProductController {
   }
 
   @Put("home-rows/:rowId/manual-items")
+  @Header("Cache-Control", "private, no-store")
   @RequireAdminStepUp()
   replaceManualItems(
     @Req() request: AdminAuthenticatedRequest,
@@ -82,6 +97,7 @@ export class AdminProductController {
   }
 
   @Put("global")
+  @Header("Cache-Control", "private, no-store")
   @RequireAdminStepUp()
   updateControls(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     const input = this.parse(

@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { AdminRegionalMerchandising } from "./admin-regional-merchandising";
 import styles from "@/app/admin/admin.module.css";
 import {
   getAdminProductControls,
+  mergeHomeRowFields,
+  parseRegionTargets,
   patchAdminHomeRow,
   reorderAdminHomeRows,
   replaceAdminHomeRowManualItems,
@@ -28,11 +32,18 @@ const homeRowSources = [
   "EDITOR_PICKS",
 ] as const;
 
-function manualText(row: AdminHomeRow): string {
+function manualText(row: Pick<AdminHomeRow, "manualItems">): string {
   return row.manualItems.map((item) => `${item.entityType}:${item.entityId}`).join("\n");
 }
 
 export function AdminProductControls() {
+  const { t } = useI18n();
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [regionDrafts, setRegionDrafts] = useState<Record<string, string>>({});
   const [rows, setRows] = useState<AdminHomeRow[]>([]);
   const [manualDrafts, setManualDrafts] = useState<Record<string, string>>({});
   const [controls, setControls] = useState<ProductControls | null>(null);
@@ -40,47 +51,73 @@ export function AdminProductControls() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  function applySnapshot(snapshot: Awaited<ReturnType<typeof getAdminProductControls>>) {
-    setRows(snapshot.rows);
-    setControls(snapshot.controls);
-    setManualDrafts(Object.fromEntries(snapshot.rows.map((row) => [row.id, manualText(row)])));
-  }
-
-  async function refresh() {
-    applySnapshot(await getAdminProductControls());
-  }
-
   useEffect(() => {
-    let active = true;
-    void getAdminProductControls()
+    mounted.current = true;
+    const controller = new AbortController();
+    void getAdminProductControls(controller.signal)
       .then((snapshot) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setRows(snapshot.rows);
         setControls(snapshot.controls);
         setManualDrafts(Object.fromEntries(snapshot.rows.map((row) => [row.id, manualText(row)])));
+        setRegionDrafts(
+          Object.fromEntries(snapshot.rows.map((row) => [row.id, row.targetRegions.join(", ")])),
+        );
       })
-      .catch((error) => {
-        if (active) {
-          setMessage(error instanceof Error ? error.message : "Controls could not be loaded.");
-        }
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted)
+          setError(cause instanceof Error ? cause.message : "Controls could not be loaded.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
     return () => {
-      active = false;
+      mounted.current = false;
+      controller.abort();
     };
-  }, []);
+  }, [revision]);
 
-  async function mutate(operation: () => Promise<unknown>, success: string) {
+  async function mutate<T>(
+    operation: () => Promise<T>,
+    success: string,
+    apply: (result: T) => void,
+  ) {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setMessage(null);
+    setError(null);
     try {
-      await operation();
-      await refresh();
-      setMessage(success);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The change could not be saved.");
+      const result = await operation();
+      if (mounted.current) {
+        apply(result);
+        setMessage(success);
+      }
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : t("merch.saveError"));
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (mounted.current) setBusy(false);
     }
+  }
+
+  function saveRegions(row: AdminHomeRow) {
+    void mutate(
+      () => {
+        let targetRegions: string[];
+        try {
+          targetRegions = parseRegionTargets(regionDrafts[row.id] ?? "");
+        } catch {
+          throw new Error(t("merch.invalidRegions"));
+        }
+        return patchAdminHomeRow(row.id, { targetRegions, reason });
+      },
+      t("merch.savedRegions"),
+      (result) => {
+        setRows((current) => mergeHomeRowFields(current, row.id, result, ["targetRegions"]));
+        setRegionDrafts((current) => ({ ...current, [row.id]: result.targetRegions.join(", ") }));
+      },
+    );
   }
 
   function updateRowDraft(rowId: string, patch: Partial<AdminHomeRow>) {
@@ -103,6 +140,13 @@ export function AdminProductControls() {
           reason,
         ),
       "Home row order updated.",
+      (result) =>
+        setRows((current) =>
+          result.rowIds.flatMap((id, position) => {
+            const row = current.find((item) => item.id === id);
+            return row ? [{ ...row, position }] : [];
+          }),
+        ),
     );
   }
 
@@ -127,10 +171,33 @@ export function AdminProductControls() {
     });
   }
 
-  if (!controls) return <p className={styles.muted}>Loading product controls…</p>;
+  if (loading)
+    return (
+      <p role="status" className={styles.muted}>
+        {t("merch.loading")}
+      </p>
+    );
+  if (!controls)
+    return (
+      <section className={styles.card}>
+        <p role="alert">{t("merch.loadError")}</p>
+        {error && <p className={styles.muted}>{error}</p>}
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setLoading(true);
+            setRevision((current) => current + 1);
+          }}
+        >
+          {t("merch.retry")}
+        </button>
+      </section>
+    );
 
   return (
-    <>
+    <fieldset className={styles.workspaceFields} disabled={busy} aria-busy={busy}>
+      <legend className={styles.visuallyHidden}>{t("merch.settings")}</legend>
       <header className={styles.header}>
         <div>
           <span className={styles.eyebrow}>Product controls</span>
@@ -141,11 +208,12 @@ export function AdminProductControls() {
         </div>
       </header>
 
+      {error ? <p role="alert">{error}</p> : null}
+      {message ? <p role="status">{message}</p> : null}
       <label className={styles.field}>
-        <span>Audit reason</span>
-        <input value={reason} onChange={(event) => setReason(event.target.value)} />
+        <span>{t("merch.reason")}</span>
+        <input maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
       </label>
-      {message ? <p className={styles.muted}>{message}</p> : null}
 
       <section className={styles.card}>
         <h2>Home Builder</h2>
@@ -153,6 +221,7 @@ export function AdminProductControls() {
           Rename, source, audience, limits, regional requirements and manual Editor Picks update the
           public discovery feed without a deployment.
         </p>
+        {rows.length === 0 ? <p role="status">{t("merch.empty")}</p> : null}
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -214,6 +283,15 @@ export function AdminProductControls() {
                                   reason,
                                 ),
                               "Manual featured items updated.",
+                              (result) => {
+                                setRows((current) =>
+                                  mergeHomeRowFields(current, row.id, result, ["manualItems"]),
+                                );
+                                setManualDrafts((current) => ({
+                                  ...current,
+                                  [row.id]: manualText(result),
+                                }));
+                              },
                             )
                           }
                         >
@@ -224,6 +302,7 @@ export function AdminProductControls() {
                   </td>
                   <td>
                     <select
+                      aria-label={`${row.key} source`}
                       value={row.source}
                       onChange={(event) => updateRowDraft(row.id, { source: event.target.value })}
                     >
@@ -236,6 +315,7 @@ export function AdminProductControls() {
                   </td>
                   <td>
                     <select
+                      aria-label={`${row.key} audience`}
                       value={row.audience}
                       onChange={(event) => updateRowDraft(row.id, { audience: event.target.value })}
                     >
@@ -260,11 +340,16 @@ export function AdminProductControls() {
                   </td>
                   <td>
                     <button
-                      disabled={busy}
+                      aria-label={`${row.key} enabled`}
+                      disabled={busy || reason.trim().length < 3}
                       onClick={() =>
                         void mutate(
                           () => patchAdminHomeRow(row.id, { enabled: !row.enabled, reason }),
                           row.enabled ? "Row disabled." : "Row enabled.",
+                          (result) =>
+                            setRows((current) =>
+                              mergeHomeRowFields(current, row.id, result, ["enabled"]),
+                            ),
                         )
                       }
                     >
@@ -272,11 +357,16 @@ export function AdminProductControls() {
                     </button>
                   </td>
                   <td>
-                    <button disabled={busy || index === 0} onClick={() => moveRow(index, -1)}>
+                    <button
+                      aria-label={`${row.key} move up`}
+                      disabled={busy || reason.trim().length < 3 || index === 0}
+                      onClick={() => moveRow(index, -1)}
+                    >
                       ↑
                     </button>{" "}
                     <button
-                      disabled={busy || index === rows.length - 1}
+                      aria-label={`${row.key} move down`}
+                      disabled={busy || reason.trim().length < 3 || index === rows.length - 1}
                       onClick={() => moveRow(index, 1)}
                     >
                       ↓
@@ -297,6 +387,16 @@ export function AdminProductControls() {
                               reason,
                             }),
                           "Home row updated.",
+                          (result) =>
+                            setRows((current) =>
+                              mergeHomeRowFields(current, row.id, result, [
+                                "title",
+                                "source",
+                                "audience",
+                                "maxItems",
+                                "regionPersonalizationRequired",
+                              ]),
+                            ),
                         )
                       }
                     >
@@ -309,6 +409,14 @@ export function AdminProductControls() {
           </table>
         </div>
       </section>
+
+      <AdminRegionalMerchandising
+        rows={rows}
+        drafts={regionDrafts}
+        onDraftChange={(id, value) => setRegionDrafts((current) => ({ ...current, [id]: value }))}
+        onSave={saveRegions}
+        disabled={busy || reason.trim().length < 3}
+      />
 
       <section className={styles.card}>
         <h2>Main navigation</h2>
@@ -462,11 +570,12 @@ export function AdminProductControls() {
           void mutate(
             () => updateAdminProductControls(controls, reason),
             "Global product controls updated.",
+            setControls,
           )
         }
       >
         {busy ? "Saving…" : "Save global controls"}
       </button>
-    </>
+    </fieldset>
   );
 }

@@ -1,4 +1,23 @@
 export const enMessages = {
+  "merch.loading": "Loading product controls…",
+  "merch.loadError": "Product controls could not be loaded.",
+  "merch.retry": "Retry product controls",
+  "merch.saveError": "The change could not be confirmed. Your draft is preserved.",
+  "merch.invalidRegions": "Use up to 64 two-letter country codes, separated by commas or spaces.",
+  "merch.savedRegions": "Regional targets saved. Other drafts are unchanged.",
+  "merch.settings": "Product and regional settings",
+  "merch.reason": "Audit reason",
+  "merch.empty": "No home rows are configured.",
+  "merch.regionalTitle": "Regional merchandising",
+  "merch.regionalHelp":
+    "Optional two-letter country codes determine where each Home row appears. Leave blank for global availability. Targeting uses trusted coarse region signals; AYIN has no default country and does not require storing viewer IP addresses.",
+  "merch.row": "Home row",
+  "merch.regions": "Target regions",
+  "merch.save": "Save",
+  "merch.regionLabel": "{row} target regions",
+  "merch.regionPlaceholder": "Global (blank) or DE, JP, BR",
+  "merch.saveRegions": "Save regions",
+
   "tvStatus.title": "Broadcast status",
   "tvStatus.retry": "Retry",
   "tvStatus.refresh": "Refresh broadcast status",

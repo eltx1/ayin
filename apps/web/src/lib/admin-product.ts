@@ -48,11 +48,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export const getAdminProductControls = () =>
-  request<AdminProductSnapshot>("/admin/product-controls");
+export const getAdminProductControls = (signal?: AbortSignal) =>
+  request<AdminProductSnapshot>("/admin/product-controls", signal ? { signal } : undefined);
 
 export const patchAdminHomeRow = (rowId: string, body: Record<string, unknown>) =>
-  request<AdminHomeRow>(`/admin/product-controls/home-rows/${rowId}`, {
+  request<Omit<AdminHomeRow, "manualItems">>(`/admin/product-controls/home-rows/${rowId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
@@ -68,13 +68,43 @@ export const replaceAdminHomeRowManualItems = (
   items: Array<{ entityType: "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST"; entityId: string }>,
   reason: string,
 ) =>
-  request<AdminHomeRow>(`/admin/product-controls/home-rows/${rowId}/manual-items`, {
-    method: "PUT",
-    body: JSON.stringify({ items, reason }),
-  });
+  request<Omit<AdminHomeRow, "targetRegions">>(
+    `/admin/product-controls/home-rows/${rowId}/manual-items`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ items, reason }),
+    },
+  );
 
 export const updateAdminProductControls = (controls: ProductControls, reason: string) =>
   request<ProductControls>("/admin/product-controls/global", {
     method: "PUT",
     body: JSON.stringify({ ...controls, reason }),
   });
+
+export function parseRegionTargets(value: string): string[] {
+  const regions = [
+    ...new Set(
+      value
+        .split(/[\s,]+/)
+        .map((part) => part.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+  if (regions.length > 64 || regions.some((region) => !/^[A-Z]{2}$/.test(region))) {
+    throw new Error("INVALID_REGIONS");
+  }
+  return regions;
+}
+
+export function mergeHomeRowFields(
+  rows: AdminHomeRow[],
+  id: string,
+  result: Partial<AdminHomeRow>,
+  fields: Array<keyof AdminHomeRow>,
+): AdminHomeRow[] {
+  const patch = Object.fromEntries(
+    fields.filter((field) => result[field] !== undefined).map((field) => [field, result[field]]),
+  );
+  return rows.map((row) => (row.id === id ? { ...row, ...patch } : row));
+}
