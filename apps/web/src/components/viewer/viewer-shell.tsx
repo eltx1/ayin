@@ -138,7 +138,10 @@ function ViewerChrome({ children }: { children: ReactNode }) {
                   </Link>
                 </nav>
                 <h3 className={styles.menuHeading}>{t("navigation.createManage")}</h3>
-                <nav aria-label={t("shell.accountCreatorNavigation")} className={styles.accountMenu}>
+                <nav
+                  aria-label={t("shell.accountCreatorNavigation")}
+                  className={styles.accountMenu}
+                >
                   <Link data-tv-focusable="true" href={href("/upload")}>
                     {t("shell.createUpload")}
                   </Link>

@@ -43,7 +43,7 @@ test.beforeAll(() => {
   db("reset");
 });
 
-test("mobile and tablet layouts keep primary viewer and console paths reachable", async ({ page }) => {
+test("responsive viewer, account, Studio and Admin paths remain usable", async ({ page }) => {
   test.setTimeout(180_000);
   const registration = await page.request.post(`${API}/auth/register`, {
     data: {
@@ -60,7 +60,7 @@ test("mobile and tablet layouts keep primary viewer and console paths reachable"
   await enrollMfa(page.request);
   db("grant-admin", { accountId: identity.user.account.id });
 
-  await test.step("phone layout keeps core viewer, account, creator and admin surfaces app-ready", async () => {
+  await test.step("phone layout preserves viewer and workspace journeys", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     for (const route of [
       "/",
@@ -123,14 +123,18 @@ test("mobile and tablet layouts keep primary viewer and console paths reachable"
     await page.keyboard.press("Escape");
 
     await page.goto("/upload", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Upload your video", exact: true })).toBeVisible();
+    const uploadTitle = page.getByRole("heading", { name: "Upload your video", exact: true });
+    await expect(uploadTitle).toBeVisible();
     await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
     await expect(page.getByText("Skip Studio. Publish fast.", { exact: false })).toHaveCount(0);
     await expect(page.getByText(/Cloudflare R2/i)).toHaveCount(0);
     await expect(page.getByText(/direct-to-R2/i)).toHaveCount(0);
     await page.goto("/account", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Your AYIN account", exact: true })).toBeVisible();
-    await expect(page.getByText(identity.user.account.displayName, { exact: true })).toBeVisible();
+    const accountTitle = page.getByRole("heading", { name: "Your AYIN account", exact: true });
+    await expect(accountTitle).toBeVisible();
+    const accountContent = page.locator("main").first();
+    const accountName = accountContent.getByText(identity.user.account.displayName, { exact: true });
+    await expect(accountName).toBeVisible();
     await expect(page.getByRole("heading", { name: "Earnings & payouts" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Payment details" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Request payout" })).toBeVisible();
