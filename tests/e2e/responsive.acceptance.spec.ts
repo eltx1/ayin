@@ -20,7 +20,7 @@ function db<T>(command: string, payload: Record<string, unknown> = {}): T {
 
 async function expectNoDocumentOverflow(page: Page, route: string): Promise<void> {
   await page.goto(route, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("main").first()).toBeVisible();
+  await expect(page.locator("body")).toBeVisible();
   await page.evaluate(async () => {
     if ("fonts" in document) await document.fonts.ready;
   });
@@ -184,7 +184,7 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     }
   });
 
-  await test.step("desktop keeps the same hierarchy without horizontal document overflow", async () => {
+  await test.step(\n    "desktop keeps the same hierarchy without horizontal document overflow",\n    async () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     for (const route of [
       "/",

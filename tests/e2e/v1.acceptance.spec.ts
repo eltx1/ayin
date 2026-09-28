@@ -141,7 +141,7 @@ test("V1 critical journeys remain launchable end to end", async ({ page }) => {
       }),
     ).toEqual({ playlistItems: 1, tvUsesUploads: true });
     await page.goto(`/c/${creator.user.channel.handle}`);
-    await expect(page.getByText("E2E Launch Film")).toBeVisible();
+    await expect(\n      page\n        .getByRole("region", { name: "Videos", exact: true })\n        .getByRole("heading", { name: "E2E Launch Film", exact: true }),\n    ).toBeVisible();
   });
 
   await test.step("5. watch progress persists and resumes", async () => {

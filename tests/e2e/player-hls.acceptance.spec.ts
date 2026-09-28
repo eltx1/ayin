@@ -354,7 +354,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
 
     await expect(page.getByLabel("Playback quality")).toHaveCount(0);
     await expect.poll(async () => (await harnessState(page)).hlsAttachCalls).toBe(0);
-    await expect(page.locator("video")).toHaveAttribute("src", /canonical\.mp4$/);
+    await expect(page.locator("video:visible")).toHaveAttribute("src", /canonical\.mp4$/);
 
     hlsFixture = db<HlsFixture>("configure-hls-playback", {
       enabled: true,
@@ -369,7 +369,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await mockNoAds(page, fixture.id);
     await page.goto(`/watch/${fixture.slug}`);
 
-    await expect(page.locator("video")).toHaveAttribute("src", /fallback\.mp4$/);
+    await expect(page.locator("video:visible")).toHaveAttribute("src", /fallback\.mp4$/);
     await expect.poll(async () => (await harnessState(page)).hlsLoadCalls).toBe(1);
     await page.waitForTimeout(150);
     expect((await harnessState(page)).hlsAttachCalls).toBe(1);
@@ -381,7 +381,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await mockNoAds(page, fixture.id);
     await page.goto(`/watch/${fixture.slug}`);
 
-    await expect(page.locator("video")).toHaveAttribute("data-native-hls-source", /master\.m3u8$/);
+    await expect(page.locator("video:visible")).toHaveAttribute("data-native-hls-source", /master\.m3u8$/);
     await expect.poll(async () => (await harnessState(page)).hlsAttachCalls).toBe(0);
     await expect(page.getByLabel("Playback quality")).toHaveCount(0);
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
@@ -397,7 +397,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await expect.poll(async () => (await harnessState(page)).hlsLoadCalls).toBe(1);
     await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
-    await expect(page.locator("video")).toHaveCount(1);
+    await expect(page.locator("video:visible")).toHaveCount(1);
   });
 
   test("mobile preroll preserves the user-gesture gate with HLS", async ({ browser }) => {
@@ -420,7 +420,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await start.click();
     await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
-    await expect(page.locator("video")).toHaveAttribute("playsinline", "");
+    await expect(page.locator("video:visible")).toHaveAttribute("playsinline", "");
     await context.close();
   });
 
@@ -449,7 +449,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       hls.emit("error", { fatal: true, type: "otherError", details: "fatalDecodeFailure" });
     });
 
-    await expect(page.locator("video")).toHaveAttribute("src", /fallback\.mp4$/);
+    await expect(page.locator("video:visible")).toHaveAttribute("src", /fallback\.mp4$/);
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(1);
     await page.waitForTimeout(3_300);
 

@@ -60,11 +60,11 @@ test("canonical directories expose real content across desktop, mobile, RTL and 
     for (const entry of entries) {
       const prefix = viewport.locale === "ar" ? "/ar" : "";
       await page.goto(`${prefix}${entry.route}?lang=${viewport.locale}`);
-      await expect(page.locator("main h1")).toHaveText(
+      await expect(page.locator("main h1:visible")).toHaveText(
         viewport.locale === "ar" ? entry.ar : entry.title,
       );
       await expect(
-        page.locator("main").getByRole("link", { name: new RegExp(`^${entry.name}`) }),
+        page.locator("main:visible").getByRole("link", { name: new RegExp(`^${entry.name}`) }),
       ).toHaveAttribute("href", `${prefix}${entry.href}`);
       await expect(page.locator("html")).toHaveAttribute(
         "dir",
@@ -86,7 +86,7 @@ test("canonical directories expose real content across desktop, mobile, RTL and 
   }
   await page.goto("/movies?lang=en");
   await page
-    .locator("main")
+    .locator("main:visible")
     .getByRole("link", { name: /^Catalog E2E Published Movie/ })
     .click();
   await expect(
@@ -95,7 +95,7 @@ test("canonical directories expose real content across desktop, mobile, RTL and 
   await expect(page.getByRole("link", { name: "Watch movie", exact: true })).toBeVisible();
   await page.goto("/series?lang=en");
   await page
-    .locator("main")
+    .locator("main:visible")
     .getByRole("link", { name: /^Catalog E2E Published Series/ })
     .click();
   await expect(page.getByRole("heading", { name: "Pilot", exact: true })).toBeVisible();
@@ -148,5 +148,5 @@ test("legacy aliases preserve query and locale, and the served manifest has live
   ]);
   await page.goto("/ar/shorts?source=old");
   await expect(page).toHaveURL(/\/ar\/clips\?source=old$/);
-  await expect(page.locator("main")).toBeVisible();
+  await expect(page.locator("main:visible")).toBeVisible();
 });

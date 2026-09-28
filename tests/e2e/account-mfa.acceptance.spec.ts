@@ -230,6 +230,6 @@ test("account switches clear setup secrets and require a fresh account workspace
   await expect(region.getByAltText("Two-step verification", { exact: true })).toHaveCount(0);
   await expect(region.getByRole("button", { name: "Enable MFA", exact: true })).toHaveCount(0);
   await region.getByRole("button", { name: "Reload account", exact: true }).click();
-  await expect(page.getByText("account-mfa-after-switch", { exact: true })).toBeVisible();
+  await expect(\n    page\n      .getByRole("region", { name: "Account identity" })\n      .getByText("account-mfa-after-switch", { exact: true }),\n  ).toBeVisible();
   await expect(region.getByText("Two-step verification is off", { exact: true })).toBeVisible();
 });

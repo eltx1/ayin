@@ -99,7 +99,7 @@ test("Browse and primary navigation share one configuration across responsive EN
     await page.setViewportSize(viewport);
     const before = { ...fixture.reads };
     await page.goto(`${prefix}/browse?lang=${viewport.locale}`);
-    await expect(page.locator("main h1")).toHaveText(
+    await expect(page.locator("main h1:visible")).toHaveText(
       viewport.locale === "ar" ? "استكشف AYIN" : "Explore AYIN",
     );
     const categories = page.locator("main nav");
@@ -134,7 +134,7 @@ test("Browse and primary navigation share one configuration across responsive EN
   }
   await page.locator("main nav a[href='/movies']").click();
   await expect(page).toHaveURL(/\/movies$/);
-  await expect(page.locator("main h1")).toHaveText("Movies");
+  await expect(page.locator("main h1:visible")).toHaveText("Movies");
   const primary = page.getByRole("navigation", { name: "Primary navigation", exact: true });
   await expect(primary.getByRole("link", { name: "Browse", exact: true })).toHaveAttribute(
     "aria-current",
@@ -149,7 +149,7 @@ test("configuration failures, disabled categories and long custom labels remain 
   fixture.fail = true;
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/browse?lang=en");
-  await expect(page.getByRole("alert")).toContainText("Browse is unavailable");
+  await expect(page.locator("main:visible").getByRole("alert")).toContainText(\n    "Browse is unavailable",\n  );
   await expect(page.locator("main").getByRole("link", { name: "Search" })).toBeVisible();
   fixture.fail = false;
   fixture.flags["navigation.movies"] = false;
