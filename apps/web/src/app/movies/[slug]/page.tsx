@@ -8,6 +8,7 @@ import { localizePath } from "@/lib/i18n/routing";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { buildMovieJsonLd, buildMovieMetadata, getPublicMovie } from "@/lib/movie-catalog";
 import { serializeJsonLd } from "@/lib/seo";
+import { trustedApiRegionHeaders } from "@/lib/trusted-region";
 import styles from "./movie.module.css";
 
 type MoviePageProps = { params: Promise<{ slug: string }> };
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: MoviePageProps): Promise<Meta
   const [{ slug: requested }, locale] = await Promise.all([params, getRequestLocale()]);
   const slug = normalizeSlug(requested);
   if (!slug) return { title: "Movie not found | AYIN", robots: { index: false, follow: false } };
-  const movie = await getPublicMovie(slug, locale);
+  const movie = await getPublicMovie(slug, locale, await trustedApiRegionHeaders());
   return movie
     ? buildMovieMetadata(movie, locale)
     : { title: "Movie not found | AYIN", robots: { index: false, follow: false } };
@@ -41,7 +42,7 @@ export default async function MoviePage({ params }: MoviePageProps) {
   if (!canonicalSlug) notFound();
   if (requested !== canonicalSlug) redirect(localizePath(`/movies/${canonicalSlug}`, locale));
 
-  const movie = await getPublicMovie(canonicalSlug, locale);
+  const movie = await getPublicMovie(canonicalSlug, locale, await trustedApiRegionHeaders());
   if (!movie) notFound();
 
   const poster = mediaAssetUrl(movie.poster?.objectKey);

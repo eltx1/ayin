@@ -1,6 +1,7 @@
 import {
   Controller,
   Get,
+  Header,
   Headers,
   HttpException,
   Inject,
@@ -16,6 +17,7 @@ import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-re
 import { DiscoveryError, DiscoveryService, type DiscoveryContext } from "./discovery.service.js";
 import { RegionalDiscoveryService } from "./regional-discovery.service.js";
 import { TrendingService } from "./trending.service.js";
+import { parseDirectoryQuery } from "../video-policy/catalog-directory-query.js";
 
 const listQuerySchema = z
   .object({
@@ -33,6 +35,20 @@ export class PublicDiscoveryController {
     @Inject(TrendingService) private readonly trending: TrendingService,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
   ) {}
+
+  @Get("creators")
+  @Header("Cache-Control", "private, no-store")
+  async creators(@Query() query: unknown) {
+    const { limit, cursor } = parseDirectoryQuery(query);
+    return this.discovery.getCreatorDirectory("creators", limit, cursor);
+  }
+
+  @Get("tv")
+  @Header("Cache-Control", "private, no-store")
+  async tv(@Query() query: unknown) {
+    const { limit, cursor } = parseDirectoryQuery(query);
+    return this.discovery.getCreatorDirectory("tv", limit, cursor);
+  }
 
   @Get("home")
   async home(

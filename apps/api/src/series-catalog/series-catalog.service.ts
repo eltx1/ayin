@@ -1,9 +1,14 @@
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 
 import { CatalogAdminMediaService } from "../admin/catalog-admin-media.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
+import {
+  availableVideoPolicySql,
+  publicPlayableVideoSql,
+} from "../video-policy/video-policy-query.js";
+import { catalogAvailabilitySql, directoryPage } from "../video-policy/catalog-directory-query.js";
 import {
   isSafeSeriesSlug,
   nextCatalogEpisode,
@@ -632,6 +637,39 @@ export class SeriesCatalogService {
       if (publicSeries) result.push(publicSeries);
     }
     return result;
+  }
+
+  async listPublicDirectory(limit: number, cursor?: string, countryCode?: string) {
+    const now = new Date();
+    const candidates = await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT s.id FROM "Series" s WHERE s.status = 'PUBLISHED'
+        AND ${catalogAvailabilitySql("SERIES", Prisma.sql`s.id`, countryCode, now)}
+        AND ${cursor ? Prisma.sql`s.id > ${cursor}::uuid` : Prisma.sql`TRUE`}
+        AND EXISTS (
+          SELECT 1 FROM "SeriesSeason" season JOIN "SeriesEpisode" episode ON episode."seasonId" = season.id
+          JOIN "Video" v ON v.id = episode."videoId"
+          WHERE season."seriesId" = s.id AND episode.status = 'PUBLISHED'
+            AND (episode."releaseDate" IS NULL OR episode."releaseDate" <= ${now})
+            AND ${publicPlayableVideoSql()}
+            AND ${availableVideoPolicySql(Prisma.sql`v.id`, { countryCode, now })}
+        )
+      ORDER BY s.id ASC LIMIT ${limit + 1}
+    `);
+    const page = directoryPage(candidates, limit);
+    if (!page.items.length) return { items: [], nextCursor: page.nextCursor };
+    const rows = await this.database.client.series.findMany({
+      where: { id: { in: page.items.map((item) => item.id) }, status: "PUBLISHED" },
+      orderBy: { id: "asc" },
+      include: seriesInclude,
+    });
+    // Retain the catalog's current episode/rights shaping. Directory responses are
+    // compacted after localization; full detail hydration remains a measured follow-up.
+    const items = [];
+    for (const row of rows) {
+      const item = await this.publicShape(await this.hydrate(row), countryCode);
+      if (item) items.push(item);
+    }
+    return { items, nextCursor: page.nextCursor };
   }
 
   async getPublicBySlug(slug: string, countryCode?: string) {

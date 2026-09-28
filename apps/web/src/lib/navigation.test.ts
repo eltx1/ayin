@@ -10,7 +10,7 @@ describe("viewer navigation architecture", () => {
       "Series",
       "TV",
       "Creators",
-      "Shorts / Clips",
+      "Clips",
       "Kids",
       "My AYIN",
       "Search",

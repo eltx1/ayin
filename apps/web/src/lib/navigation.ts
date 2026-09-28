@@ -21,8 +21,8 @@ export const navigationItems = [
   },
   {
     id: "shorts",
-    label: "Shorts / Clips",
-    href: "/shorts",
+    label: "Clips",
+    href: "/clips",
     featureFlag: "navigation.shorts",
   },
   { id: "kids", label: "Kids", href: "/kids", featureFlag: "navigation.kids" },

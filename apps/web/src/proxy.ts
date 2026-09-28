@@ -15,6 +15,8 @@ import {
   stripLocalePrefix,
 } from "@/lib/i18n/routing";
 
+import { canonicalPublicPath } from "@/lib/public-route-aliases";
+
 const SAFE_TRACE_ID = /^[A-Za-z0-9._:-]{8,128}$/;
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
@@ -105,6 +107,20 @@ export function proxy(request: NextRequest) {
       requestId,
       correlationId,
     );
+  }
+
+  const routeLocale = resolveRouteLocale({
+    pathname,
+    cookieLocale: request.cookies.get(localeCookieName)?.value ?? null,
+  });
+  const canonicalPath = canonicalPublicPath(pathname, routeLocale);
+  if (canonicalPath !== pathname) {
+    const target = request.nextUrl.clone();
+    target.pathname = canonicalPath;
+    // Locale preferences vary by request; do not let a CDN reuse this redirect.
+    const response = persistLocale(NextResponse.redirect(target, 308), routeLocale);
+    response.headers.set("Cache-Control", "private, no-store");
+    return decorateResponse(response, requestId, correlationId);
   }
 
   const pathLocale = localeFromPath(pathname);

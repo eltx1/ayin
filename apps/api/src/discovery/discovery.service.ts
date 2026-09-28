@@ -13,6 +13,7 @@ import {
   publicPlayableVideoSql,
 } from "../video-policy/video-policy-query.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
+import { directoryPage } from "../video-policy/catalog-directory-query.js";
 
 const playableAssetStates = ["VALIDATED"] as const;
 const completedThumbnailAssetStates = ["UPLOADED", "VALIDATED"] as const;
@@ -694,6 +695,55 @@ export class DiscoveryService {
       undefined,
       Prisma.sql`v."channelId" = ${recent.video.channelId}::uuid AND v.id <> ${recent.videoId}::uuid`,
     );
+  }
+
+  async getCreatorDirectory(kind: "creators" | "tv", limit: number, cursor?: string) {
+    if (kind === "creators") {
+      const channels = await this.database.client.channel.findMany({
+        where: { status: "ACTIVE", removedAt: null, ...(cursor ? { id: { gt: cursor } } : {}) },
+        orderBy: { id: "asc" },
+        take: limit + 1,
+        select: { id: true, handle: true, name: true },
+      });
+      const page = directoryPage(channels, limit);
+      return {
+        ...page,
+        items: page.items.map((channel) => ({
+          id: channel.id,
+          type: "CHANNEL" as const,
+          title: channel.name,
+          href: `/c/${encodeURIComponent(channel.handle)}`,
+          kicker: "Creator",
+          meta: `@${channel.handle}`,
+          artworkObjectKey: null,
+        })),
+      };
+    }
+    // Public channel TV routes resolve the primary TV only. Never list a secondary
+    // output under a primary route or label ACTIVE configuration as live playback.
+    const channels = await this.database.client.$queryRaw<
+      Array<{ id: string; handle: string; name: string; tvName: string }>
+    >(Prisma.sql`
+      SELECT c.id, c.handle, c.name, tv.name AS "tvName"
+      FROM "Channel" c JOIN "CreatorTvChannel" tv ON tv.id = c."primaryTvChannelId" AND tv."channelId" = c.id
+      WHERE c.status = 'ACTIVE' AND c."removedAt" IS NULL
+        AND tv.status = 'ACTIVE' AND tv."disabledAt" IS NULL
+        AND ${cursor ? Prisma.sql`c.id > ${cursor}::uuid` : Prisma.sql`TRUE`}
+      ORDER BY c.id ASC LIMIT ${limit + 1}
+    `);
+    const page = directoryPage(channels, limit);
+    return {
+      ...page,
+      items: page.items.map((channel) => ({
+        id: channel.id,
+        type: "CREATOR_TV" as const,
+        title: channel.tvName,
+        href: `/c/${encodeURIComponent(channel.handle)}/tv`,
+        kicker: "Creator TV",
+        meta: channel.name,
+        artworkObjectKey: null,
+      })),
+    };
   }
 
   private async loadCreatorTv(offset: number, limit: number): Promise<DiscoveryPage> {

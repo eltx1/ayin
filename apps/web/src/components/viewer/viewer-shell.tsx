@@ -17,6 +17,8 @@ import {
   type NavigationFlagState,
 } from "@/lib/navigation";
 
+import { canonicalPublicPath } from "@/lib/public-route-aliases";
+
 import footerStyles from "./viewer-footer.module.css";
 import styles from "./viewer-shell.module.css";
 
@@ -96,7 +98,8 @@ function NavigationLinks({
         (!item.featureFlag || flags[item.featureFlag as NavigationFeatureFlag] === true),
     )
     .map((item) => {
-      const active = itemIsActive(pathname, item.href);
+      const target = canonicalPublicPath(item.href);
+      const active = itemIsActive(pathname, target);
       const translationKey = navigationKeys[item.key];
       const label = translationKey ? t(translationKey) : item.label;
       return (
@@ -105,7 +108,7 @@ function NavigationLinks({
           className={`${styles.navLink} ${active ? styles.navLinkActive : ""}`}
           data-tv-focus-id={`${surface}-${item.key}`}
           data-tv-focusable="true"
-          href={href(item.href)}
+          href={href(target)}
           key={item.key}
         >
           {label}
