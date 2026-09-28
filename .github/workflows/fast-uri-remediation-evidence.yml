@@ -6,6 +6,7 @@ on:
       - web-pwa-phase-3-information-architecture
     paths:
       - .github/workflows/fast-uri-remediation-evidence.yml
+      - apps/api/src/runtime-uri-security.test.ts
   workflow_dispatch:
 
 permissions:

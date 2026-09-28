@@ -39,7 +39,14 @@ for (const consumer of consumers) {
     });
 
     it("rejects unbalanced authority brackets before a host decision", () => {
-      expect(uri.parse("https://[@127.0.0.1/private").error).toMatch(/host is malformed/i);
+      const malformed = [
+        "https://[fe80",
+        "https://user@[@127.0.0.1:8123/admin",
+        "https://user@prefix]@127.0.0.1:8123/admin",
+      ];
+      for (const input of malformed) {
+        expect(uri.parse(input).error).toMatch(/host is malformed/i);
+      }
     });
 
     it("normalizes percent-encoded ASCII host case consistently", () => {
