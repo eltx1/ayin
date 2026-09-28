@@ -468,3 +468,24 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 
 - Unchanged-code reproduction `36367824062`: seven product regressions failed as predicted (five personal lists, popular ranking, watched anchor); mixed-editor fixture setup hit the existing Playlist visibility/isPublic CHECK. Set isPublic=false for that private fixture without changing assertions. Other 576 tests passed (584 total, 135 files, 146.74s).
 - First corrected head `a07b5429` stopped at formatting: Prettier required a second pass to stabilize one chained map expression. Reformat and explicitly re-check before publishing. No product assertion was weakened; full corrected-head database/browser acceptance pending.
+
+- Phase 2H.2 accepted: final head `8f75425af67844a928bc09a677be6cb8ccfb5b78` passed quality `36368239538`, security `36368239536` and browser `36368239572`. All 585 integration-gate tests (135 files, 146.77s), 365 API units, 158 Web tests, four migration tests and 46 browser tests (4.4 minutes) passed, together with formatting, lint, types and production builds. Kids library fixture measured 44.2ms in CI for 515 activities per section/512 exclusions. This measures the fixture, not production latency or constant scan cost.
+- PR #137 merged with expected-head protection; ending main SHA `030a487f8f37f457fc94087cc27e5716646d603f`. No migrations. Remaining series context hydration performance gap remains explicit.
+
+## Phase 2I.1 — Creator TV output visibility, in progress
+
+- Starting SHA: `030a487f8f37f457fc94087cc27e5716646d603f`; checkpoint read and accepted main fetched.
+- Findings: Creator TV viewer playback exists but the creator workspace lacks output state. Existing raw provider messages can contain infrastructure details. Management authorization unnecessarily loads the full rotation, and a secondary TV ID can be paired with the primary TV schedule. Provider status is a snapshot, not proof of current playback or heartbeat.
+- Changes planned: sanitized owner-only read surface, primary-plan identity fence, shared lightweight authorization, private/no-store responses and shared Web/PWA status UI with EN/AR, retry/loading and clear schedule/output separation. Preserve existing API contracts; no new provider mutation controls until their audit/concurrency review.
+- Migrations: none planned.
+- Tests added/executed: pending; prior phase acceptance does not cover these changes.
+- Performance: eliminate duplicate management-library hydration for linear authorization; one explicit status request, no polling. Measure request count, not production latency.
+- Remaining issues: provider mutation audit/concurrency, series hydration, remaining Phase 2 review and Phases 3–5.
+- External blockers: database/browser evidence via CI; production providers and physical devices remain unverified.
+- Next: implement, review authorization/identity/data minimization, full gates and checkpoint.
+- Rollback: additive read surface/UI may be removed without changing stored data; retain ownership and plan identity boundaries.
+
+- Phase 2I.1 implemented for review: additive sanitized summary excludes provider IDs, URLs, raw messages/errors and source paths; owner authorization reuses the existing membership guard without hydrating management. Status/provision/reconcile and background reconciliation verify schedule TV identity; stopping an owned old output remains possible. Existing raw API response contracts are retained and private linear routes use no-store.
+- Shared Creator TV status panel separates schedule count from output availability; EN/AR, loading, explicit refresh, failure/retry, sign-in recovery, abort on unmount/supersession and focus/BFCache refresh. No polling or mutation controls. Reported READY without an output URL is not presented as available; even available output is not claimed as uninterrupted playback.
+- Added two PostgreSQL cases covering owner/outsider/anonymous boundaries, secret exclusion, no provider mutations, absence of duplicate management hydration and secondary-plan rejection before provider calls. Added two Web contract tests and two browser workflows, including real unconfigured output, Arabic mobile, session loss, retry and a clearly synthetic READY fixture.
+- Local API/Web typecheck and lint passed; 365 API unit tests (6.83s) and 160 Web tests (2.27s) passed. Database/browser/build acceptance is pending CI; no migration or production latency measurement.

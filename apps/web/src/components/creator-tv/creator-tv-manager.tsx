@@ -11,6 +11,7 @@ import {
 } from "@/lib/creator-tv";
 
 import styles from "./creator-tv.module.css";
+import { CreatorTvStatus } from "./creator-tv-status";
 
 type DraftPreference = {
   included: boolean;
@@ -123,6 +124,8 @@ export function CreatorTvManager() {
           Watch TV
         </Link>
       </header>
+
+      <CreatorTvStatus key={data.tv.id} tvChannelId={data.tv.id} />
 
       <section className={styles.managerCard}>
         <h2>Automatic programming</h2>
