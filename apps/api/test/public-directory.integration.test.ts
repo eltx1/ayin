@@ -52,6 +52,11 @@ databaseDescribe("Web/PWA public directories", () => {
       data: { id: id(n), name: `Creator ${n}`, handle: `directory-${n}` },
     });
   }
+  async function policyActor() {
+    return prisma.account.create({
+      data: { email: "directory-policy@example.test", displayName: "Directory policy fixture" },
+    });
+  }
   async function video(channelId: string) {
     return prisma.video.create({
       data: {
@@ -170,7 +175,7 @@ databaseDescribe("Web/PWA public directories", () => {
       data: {
         videoId: v.id,
         disposition: "FORCE_BLOCK",
-        actorAccountId: randomUUID(),
+        actorAccountId: (await policyActor()).id,
         reason: "directory fixture",
       },
     });
@@ -186,7 +191,7 @@ databaseDescribe("Web/PWA public directories", () => {
       data: {
         videoId: v.id,
         disposition: "FORCE_ALLOW",
-        actorAccountId: randomUUID(),
+        actorAccountId: (await policyActor()).id,
         reason: "directory fixture",
       },
     });
