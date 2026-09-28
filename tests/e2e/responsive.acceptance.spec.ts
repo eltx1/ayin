@@ -187,27 +187,24 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     }
   });
 
-  await test.step(
-    "desktop keeps the same hierarchy without horizontal document overflow",
-    async () => {
-      await page.setViewportSize({ width: 1440, height: 900 });
-      for (const route of [
-        "/",
-        "/search",
-        "/upload",
-        "/account",
-        "/studio",
-        "/studio/content",
-        "/admin",
-        "/admin/revenue",
-        "/admin/operations",
-      ]) {
-        await expectNoDocumentOverflow(page, route);
-      }
-      await page.goto("/", { waitUntil: "domcontentloaded" });
-      await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
-      await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeHidden();
-      await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
-    },
-  );
+  await test.step("desktop keeps the same hierarchy without horizontal document overflow", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    for (const route of [
+      "/",
+      "/search",
+      "/upload",
+      "/account",
+      "/studio",
+      "/studio/content",
+      "/admin",
+      "/admin/revenue",
+      "/admin/operations",
+    ]) {
+      await expectNoDocumentOverflow(page, route);
+    }
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+  });
 });
