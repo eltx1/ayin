@@ -435,6 +435,45 @@ try {
       result = { ok: true };
       break;
     }
+    case "reset-merchandising-workspace": {
+      await prisma.homeRowConfig.deleteMany({ where: { key: { startsWith: "e2e-merch-" } } });
+      result = { ok: true };
+      break;
+    }
+    case "seed-merchandising-workspace": {
+      const rows = [];
+      for (const [index, key] of ["e2e-merch-one", "e2e-merch-two"].entries()) {
+        rows.push(
+          await prisma.homeRowConfig.create({
+            data: {
+              key,
+              title: key,
+              source: "RECENTLY_ADDED",
+              audience: "ALL",
+              position: 500 + index,
+              maxItems: 8,
+              enabled: false,
+            },
+          }),
+        );
+      }
+      result = { rows };
+      break;
+    }
+    case "merchandising-evidence": {
+      result = {
+        rows: await prisma.homeRowConfig.findMany({
+          where: { key: { startsWith: "e2e-merch-" } },
+          orderBy: { key: "asc" },
+          select: { title: true, regionTargets: { select: { regionCode: true } } },
+        }),
+        audits: await prisma.adminAuditLog.findMany({
+          where: { actorAccountId: payload.accountId, action: "HOME_ROW_UPDATED" },
+          select: { reason: true, metadata: true },
+        }),
+      };
+      break;
+    }
     case "reset-discovery-operator": {
       await prisma.recommendationExposure.deleteMany();
       await prisma.platformSetting.deleteMany({

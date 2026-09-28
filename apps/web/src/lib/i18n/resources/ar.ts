@@ -1,6 +1,25 @@
 import type { TranslationKey } from "./en";
 
 export const arMessages = {
+  "merch.loading": "جارٍ تحميل إعدادات المنتج…",
+  "merch.loadError": "تعذر تحميل إعدادات المنتج.",
+  "merch.retry": "إعادة تحميل إعدادات المنتج",
+  "merch.saveError": "تعذر تأكيد التغيير. تم الاحتفاظ بمسودتك.",
+  "merch.invalidRegions": "استخدم حتى 64 رمز دولة من حرفين، مفصولة بفواصل أو مسافات.",
+  "merch.savedRegions": "تم حفظ المناطق المستهدفة والاحتفاظ بالمسودات الأخرى.",
+  "merch.settings": "إعدادات المنتج والمناطق",
+  "merch.reason": "سبب التغيير",
+  "merch.empty": "لا توجد صفوف مُعدّة للصفحة الرئيسية.",
+  "merch.regionalTitle": "عرض المحتوى حسب المنطقة",
+  "merch.regionalHelp":
+    "تحدد رموز الدول المكوّنة من حرفين مكان ظهور صفوف الصفحة الرئيسية. اترك الحقل فارغًا للعرض عالميًا. يعتمد الاستهداف على إشارات منطقة موثوقة وتقريبية، دون دولة افتراضية أو ضرورة لتخزين عناوين IP للمشاهدين.",
+  "merch.row": "صف الصفحة الرئيسية",
+  "merch.regions": "المناطق المستهدفة",
+  "merch.save": "حفظ",
+  "merch.regionLabel": "المناطق المستهدفة لصف {row}",
+  "merch.regionPlaceholder": "عالمي (فارغ) أو DE, JP, BR",
+  "merch.saveRegions": "حفظ المناطق",
+
   "tvStatus.title": "حالة بث القناة",
   "tvStatus.retry": "إعادة المحاولة",
   "tvStatus.refresh": "تحديث حالة البث",
