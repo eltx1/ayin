@@ -30,6 +30,8 @@ function NavigationGroup({
           aria-controls={id}
           className={styles.groupToggle}
           data-active={active || undefined}
+          data-tv-focusable="true"
+          data-tv-focus-id={`${id}-group`}
           type="button"
           onClick={() => setExpanded((value) => !value)}
         >

@@ -50,13 +50,11 @@ export const navigationEn = {
   "browse.loading": "Loading browse options…",
   "browse.unavailable": "Browse is unavailable right now. Try again or search AYIN.",
   "browse.empty": "No browse categories are available right now. You can still search AYIN.",
-  "browse.retry": "Try again",
   "browse.movies": "Films to settle into, from new releases to discoveries.",
   "browse.series": "Follow a story, one episode at a time.",
   "browse.creators": "Find channels and people worth following.",
   "browse.clips": "Short videos for a little inspiration or a quick break.",
   "browse.kids": "A dedicated place for younger viewers.",
-  "browse.more": "More to explore",
 } as const;
 
 export const navigationAr: Record<keyof typeof navigationEn, string> = {
@@ -111,11 +109,9 @@ export const navigationAr: Record<keyof typeof navigationEn, string> = {
   "browse.loading": "جارٍ تحميل أقسام التصفح…",
   "browse.unavailable": "التصفح غير متاح الآن. أعد المحاولة أو ابحث في AYIN.",
   "browse.empty": "لا توجد أقسام تصفح متاحة الآن. ما زال بإمكانك البحث في AYIN.",
-  "browse.retry": "إعادة المحاولة",
   "browse.movies": "أفلام تستحق المشاهدة، من الإصدارات الجديدة إلى الاكتشافات المميزة.",
   "browse.series": "تابع الحكاية حلقة بعد أخرى.",
   "browse.creators": "اكتشف قنوات ومنشئين يستحقون المتابعة.",
   "browse.clips": "فيديوهات قصيرة للإلهام أو للاستراحة.",
   "browse.kids": "مساحة مخصصة للمشاهدين الأصغر سنًا.",
-  "browse.more": "المزيد للاستكشاف",
 };
