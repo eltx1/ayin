@@ -8,6 +8,7 @@ import { localizePath } from "@/lib/i18n/routing";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { buildSeriesJsonLd, buildSeriesMetadata, getPublicSeries } from "@/lib/series-catalog";
 import { serializeJsonLd } from "@/lib/seo";
+import { trustedApiRegionHeaders } from "@/lib/trusted-region";
 import styles from "./series.module.css";
 
 type SeriesPageProps = {
@@ -32,7 +33,7 @@ export async function generateMetadata({ params }: SeriesPageProps): Promise<Met
   const [{ slug: requested }, locale] = await Promise.all([params, getRequestLocale()]);
   const slug = normalizeSlug(requested);
   if (!slug) return { title: "Series not found | AYIN", robots: { index: false, follow: false } };
-  const series = await getPublicSeries(slug, locale);
+  const series = await getPublicSeries(slug, locale, await trustedApiRegionHeaders());
   return series
     ? buildSeriesMetadata(series, locale)
     : { title: "Series not found | AYIN", robots: { index: false, follow: false } };
@@ -47,7 +48,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
   const canonicalSlug = normalizeSlug(requested);
   if (!canonicalSlug) notFound();
   if (requested !== canonicalSlug) redirect(localizePath(`/series/${canonicalSlug}`, locale));
-  const series = await getPublicSeries(canonicalSlug, locale);
+  const series = await getPublicSeries(canonicalSlug, locale, await trustedApiRegionHeaders());
   if (!series) notFound();
 
   const requestedSeason = Number(query.season);

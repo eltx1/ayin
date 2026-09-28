@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 
 import { apiBaseUrl } from "@/lib/api";
 import { mediaAssetUrl } from "@/lib/channel";
@@ -42,16 +43,23 @@ export interface MovieArtwork {
   altText: string | null;
 }
 
-export async function getPublicMovie(slug: string, locale: Locale): Promise<PublicMovie | null> {
-  const params = new URLSearchParams({ locale });
-  const response = await fetch(
-    `${apiBaseUrl}/public/movies/${encodeURIComponent(slug)}?${params.toString()}`,
-    { next: { revalidate: 60 } },
-  );
-  if (!response.ok) return null;
-  const body = (await response.json()) as { movie: PublicMovie | null };
-  return body.movie;
-}
+export const getPublicMovie = cache(
+  async (
+    slug: string,
+    locale: Locale,
+    trustedHeaders: Record<string, string> = {},
+  ): Promise<PublicMovie | null> => {
+    const params = new URLSearchParams({ locale });
+    const response = await fetch(
+      `${apiBaseUrl}/public/movies/${encodeURIComponent(slug)}?${params.toString()}`,
+      { cache: "no-store", headers: trustedHeaders, signal: AbortSignal.timeout(10_000) },
+    );
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`Catalog request failed (${response.status}).`);
+    const body = (await response.json()) as { movie: PublicMovie | null };
+    return body.movie;
+  },
+);
 
 export function buildMovieMetadata(movie: PublicMovie, locale: Locale): Metadata {
   const path = `/movies/${movie.slug}`;

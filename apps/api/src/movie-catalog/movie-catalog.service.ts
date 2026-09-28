@@ -1,9 +1,14 @@
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 
 import { CatalogAdminMediaService } from "../admin/catalog-admin-media.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
+import {
+  availableVideoPolicySql,
+  publicPlayableVideoSql,
+} from "../video-policy/video-policy-query.js";
+import { catalogAvailabilitySql, directoryPage } from "../video-policy/catalog-directory-query.js";
 import {
   isMovieAvailableInTerritory,
   isSafeMovieSlug,
@@ -358,6 +363,46 @@ export class MovieCatalogService {
       .map(toPublicMovieCard);
   }
 
+  async listPublicDirectory(limit: number, cursor?: string, countryCode?: string) {
+    const now = new Date();
+    const candidates = await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT m.id FROM "Movie" m JOIN "Video" v ON v.id = m."primaryVideoId"
+      WHERE m.status = 'PUBLISHED' AND ${publicPlayableVideoSql()}
+        AND ${catalogAvailabilitySql("MOVIE", Prisma.sql`m.id`, countryCode, now)}
+        AND ${availableVideoPolicySql(Prisma.sql`v.id`, { countryCode, now })}
+        AND ${cursor ? Prisma.sql`m.id > ${cursor}::uuid` : Prisma.sql`TRUE`}
+      ORDER BY m.id ASC LIMIT ${limit + 1}
+    `);
+    const page = directoryPage(candidates, limit);
+    if (!page.items.length) return { items: [], nextCursor: page.nextCursor };
+    const rows = await this.database.client.movie.findMany({
+      where: { id: { in: page.items.map((item) => item.id) }, status: "PUBLISHED" },
+      orderBy: { id: "asc" },
+      include: {
+        genres: { include: { genre: true } },
+        artwork: true,
+        availability: true,
+        localizations: true,
+      },
+    });
+    const hydrated = await this.hydrateMany(rows);
+    const allowed = await this.videoPolicy.filterAvailableVideoIds(
+      hydrated.flatMap((movie) => (movie.primaryVideoId ? [movie.primaryVideoId] : [])),
+      { countryCode },
+    );
+    return {
+      items: hydrated
+        .filter(
+          (movie) =>
+            movie.primaryVideoId &&
+            allowed.has(movie.primaryVideoId) &&
+            this.isPubliclyAvailable(movie, countryCode),
+        )
+        .map(toPublicMovieCard),
+      nextCursor: page.nextCursor,
+    };
+  }
+
   private async getAdminRow(movieId: string) {
     return this.database.client.movie.findUnique({
       where: { id: movieId },
@@ -371,10 +416,20 @@ export class MovieCatalogService {
   }
 
   private async hydrate(row: MovieWithRelations): Promise<HydratedMovie> {
-    const videoIds = [row.primaryVideoId, row.trailerVideoId].filter((value): value is string =>
-      Boolean(value),
-    );
-    const assetIds = row.artwork.map((item) => item.mediaAssetId);
+    return (await this.hydrateMany([row]))[0]!;
+  }
+
+  private async hydrateMany(rows: MovieWithRelations[]): Promise<HydratedMovie[]> {
+    const videoIds = [
+      ...new Set(
+        rows
+          .flatMap((row) => [row.primaryVideoId, row.trailerVideoId])
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ];
+    const assetIds = [
+      ...new Set(rows.flatMap((row) => row.artwork.map((item) => item.mediaAssetId))),
+    ];
     const [videos, assets] = await Promise.all([
       videoIds.length
         ? this.database.client.video.findMany({
@@ -406,7 +461,7 @@ export class MovieCatalogService {
     ]);
     const videosById = new Map(videos.map((video) => [video.id, video]));
     const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
-    return {
+    return rows.map((row) => ({
       ...row,
       primaryVideo: row.primaryVideoId ? (videosById.get(row.primaryVideoId) ?? null) : null,
       trailerVideo: row.trailerVideoId ? (videosById.get(row.trailerVideoId) ?? null) : null,
@@ -415,7 +470,7 @@ export class MovieCatalogService {
         ...item,
         asset: assetsById.get(item.mediaAssetId) ?? null,
       })),
-    };
+    }));
   }
 
   private isPubliclyAvailable(movie: HydratedMovie, countryCode?: string | null) {

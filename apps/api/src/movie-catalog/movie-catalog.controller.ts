@@ -1,8 +1,9 @@
-import { Controller, Get, Headers, Inject, Param, Query } from "@nestjs/common";
+import { Controller, Get, Header, Headers, Inject, Param, Query } from "@nestjs/common";
 import { z } from "zod";
 
 import { CatalogLocalizationService } from "../catalog-localization/catalog-localization.service.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
+import { parseDirectoryQuery } from "../video-policy/catalog-directory-query.js";
 import { MovieCatalogService } from "./movie-catalog.service.js";
 
 const listQuerySchema = z
@@ -22,6 +23,7 @@ export class PublicMovieCatalogController {
   ) {}
 
   @Get()
+  @Header("Cache-Control", "private, no-store")
   async list(@Query() query: unknown, @Headers() headers: HeaderBag) {
     const parsed = listQuerySchema.safeParse(query);
     const limit = parsed.success ? (parsed.data.limit ?? 24) : 24;
@@ -31,7 +33,20 @@ export class PublicMovieCatalogController {
     return { items: await this.localization.localizeMovies(items, locale) };
   }
 
+  @Get("directory")
+  @Header("Cache-Control", "private, no-store")
+  async directory(@Query() query: unknown, @Headers() headers: HeaderBag) {
+    const { limit, cursor, locale } = parseDirectoryQuery(query);
+    const page = await this.catalog.listPublicDirectory(
+      limit,
+      cursor,
+      this.trustedRegion.countryFromHeaders(headers),
+    );
+    return { ...page, items: await this.localization.localizeMovies(page.items, locale) };
+  }
+
   @Get(":slug")
+  @Header("Cache-Control", "private, no-store")
   async detail(
     @Param("slug") slug: string,
     @Query("locale") locale: string | undefined,

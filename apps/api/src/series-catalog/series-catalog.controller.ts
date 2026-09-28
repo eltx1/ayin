@@ -1,8 +1,9 @@
-import { Controller, Get, Headers, Inject, Param, Query } from "@nestjs/common";
+import { Controller, Get, Header, Headers, Inject, Param, Query } from "@nestjs/common";
 import { z } from "zod";
 
 import { CatalogLocalizationService } from "../catalog-localization/catalog-localization.service.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
+import { parseDirectoryQuery } from "../video-policy/catalog-directory-query.js";
 import { SeriesCatalogService } from "./series-catalog.service.js";
 
 const listQuerySchema = z
@@ -23,6 +24,7 @@ export class PublicSeriesCatalogController {
   ) {}
 
   @Get()
+  @Header("Cache-Control", "private, no-store")
   async list(@Query() query: unknown, @Headers() headers: HeaderBag) {
     const parsed = listQuerySchema.safeParse(query);
     const countryCode = this.trustedRegion.countryFromHeaders(headers);
@@ -33,7 +35,32 @@ export class PublicSeriesCatalogController {
     return { items: await this.localization.localizeSeriesList(items, locale) };
   }
 
+  @Get("directory")
+  @Header("Cache-Control", "private, no-store")
+  async directory(@Query() query: unknown, @Headers() headers: HeaderBag) {
+    const { limit, cursor, locale } = parseDirectoryQuery(query);
+    const page = await this.catalog.listPublicDirectory(
+      limit,
+      cursor,
+      this.trustedRegion.countryFromHeaders(headers),
+    );
+    const localized = await this.localization.localizeSeriesList(page.items, locale);
+    return {
+      nextCursor: page.nextCursor,
+      items: localized.map((item) => ({
+        id: item.id,
+        title: item.title,
+        slug: item.slug,
+        releaseYear: item.releaseYear,
+        artwork: item.artwork,
+        locale: item.locale,
+        episodeCount: item.episodeCount,
+      })),
+    };
+  }
+
   @Get("video/:videoId/context")
+  @Header("Cache-Control", "private, no-store")
   async videoContext(
     @Param("videoId") videoId: string,
     @Query("locale") locale: string | undefined,
@@ -47,6 +74,7 @@ export class PublicSeriesCatalogController {
   }
 
   @Get(":slug")
+  @Header("Cache-Control", "private, no-store")
   async detail(
     @Param("slug") slug: string,
     @Query("locale") locale: string | undefined,

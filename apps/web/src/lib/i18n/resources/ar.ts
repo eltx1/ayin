@@ -1,6 +1,24 @@
 import type { TranslationKey } from "./en";
 
 export const arMessages = {
+  "browse.moviesDescription": "اكتشف فيلمك القادم وتصفّح الأفلام المتاحة للمشاهدة على AYIN.",
+  "browse.seriesDescription": "اكتشف مسلسلًا، واختر موسمًا وحلقة للمشاهدة.",
+  "browse.tvDescription": "تصفّح قنوات صنّاع المحتوى وتعرّف على ما يُعرض في جداولها.",
+  "browse.creatorsDescription": "تعرّف على صنّاع المحتوى واكتشف قنوات تستحق المتابعة.",
+  "browse.categories": "أقسام التصفح",
+  "browse.pages": "صفحات التصفح",
+  "browse.more": "تصفّح المزيد",
+  "browse.firstPage": "العودة إلى البداية",
+  "browse.errorTitle": "تعذّر تحميل هذه الصفحة",
+  "browse.errorDescription": "أعد المحاولة أو ارجع إلى البداية لمتابعة التصفح.",
+  "browse.invalidPage": "رابط التصفح غير صالح",
+  "browse.retry": "إعادة المحاولة",
+  "browse.emptyTitle": "لا يوجد محتوى متاح هنا بعد",
+  "browse.endTitle": "وصلت إلى نهاية النتائج",
+  "browse.emptyDescription": "اكتشف قسمًا آخر أو ابحث عن محتوى للمشاهدة.",
+  "browse.minutes": "{count} دقيقة",
+  "browse.episodes": "{count} حلقة",
+
   "merch.loading": "جارٍ تحميل إعدادات المنتج…",
   "merch.loadError": "تعذر تحميل إعدادات المنتج.",
   "merch.retry": "إعادة تحميل إعدادات المنتج",
