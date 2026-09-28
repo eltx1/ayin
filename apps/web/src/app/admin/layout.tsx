@@ -12,10 +12,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <div className={styles.shell}>
         <div className={workspaceStyles.frame}>
           <AdminSidebar />
-          <div className={styles.content}>
+          <main className={styles.content}>
             <AdminBreadcrumbs />
             {children}
-          </div>
+          </main>
         </div>
       </div>
     </AdminAccessProvider>

@@ -19,10 +19,10 @@ export default function StudioTrustPage() {
     return () => controller.abort();
   }, []);
   return (
-    <main>
+    <div>
       <h1>Trust &amp; Safety</h1>
       <p>Your moderation notices, trust status and appeal history.</p>
       <pre>{JSON.stringify(data, null, 2)}</pre>
-    </main>
+    </div>
   );
 }

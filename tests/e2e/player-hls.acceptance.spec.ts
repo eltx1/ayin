@@ -338,7 +338,10 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await quality.selectOption("level-1");
     await expect(quality).toHaveValue("level-1");
 
-    const stage = page.locator('[data-player-stage="true"]');
+    const player = page.getByRole("region", { name: "HLS Player E2E player", exact: true });
+    await expect(player).toHaveCount(1);
+    const stage = player.locator('[data-player-stage="true"]');
+    await expect(stage).toHaveCount(1);
     await stage.focus();
     await page.keyboard.press("k");
     await expect.poll(async () => (await harnessState(page)).pauseCalls).toBeGreaterThan(0);

@@ -12,10 +12,10 @@ export default function StudioLayout({ children }: { children: ReactNode }) {
     <div className={styles.shell}>
       <div className={workspaceStyles.frame}>
         <WorkspaceSidebar kind="studio" groups={studioNavigation} />
-        <div className={styles.content}>
+        <main className={styles.content}>
           <WorkspaceBreadcrumbs kind="studio" groups={studioNavigation} />
           {children}
-        </div>
+        </main>
       </div>
     </div>
   );

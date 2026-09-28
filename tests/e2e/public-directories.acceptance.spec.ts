@@ -106,21 +106,23 @@ test("catalog pagination can reach all titles and invalid links have a recovery 
 }) => {
   seed(true);
   await page.goto("/movies");
-  const titles = await page.locator("main ul > li strong").allTextContents();
+  await expect(page.getByRole("main")).toHaveCount(1);
+  await expect(page.getByRole("main").locator("ul > li strong")).toHaveCount(24);
+  const titles = await page.getByRole("main").locator("ul > li strong").allTextContents();
   expect(titles).toHaveLength(24);
   await page.getByRole("link", { name: "Browse more", exact: true }).click();
   await expect(page).toHaveURL(/cursor=/);
-  await expect(page.locator("main ul > li strong")).toHaveCount(3);
-  const rest = await page.locator("main ul > li strong").allTextContents();
+  await expect(page.getByRole("main").locator("ul > li strong")).toHaveCount(3);
+  const rest = await page.getByRole("main").locator("ul > li strong").allTextContents();
   expect(new Set([...titles, ...rest]).size).toBe(27);
   await page.getByRole("link", { name: "Back to the beginning", exact: true }).click();
-  await expect(page.locator("main ul > li strong")).toHaveCount(24);
+  await expect(page.getByRole("main").locator("ul > li strong")).toHaveCount(24);
   await page.goto("/movies?cursor=invalid");
   await expect(
     page.getByRole("heading", { name: "This browsing link is no longer valid" }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Back to the beginning", exact: true }).click();
-  await expect(page.locator("main ul > li strong")).toHaveCount(24);
+  await expect(page.getByRole("main").locator("ul > li strong")).toHaveCount(24);
 });
 
 test("legacy aliases preserve query and locale, and the served manifest has live shortcuts", async ({

@@ -20,7 +20,9 @@ function db<T>(command: string, payload: Record<string, unknown> = {}): T {
 
 async function expectNoDocumentOverflow(page: Page, route: string): Promise<void> {
   await page.goto(route, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("body")).toBeVisible();
+  const content = page.getByRole("main");
+  await expect(content, `${route} has one accessible main landmark`).toHaveCount(1);
+  await expect(content).toBeVisible();
   await page.evaluate(async () => {
     if ("fonts" in document) await document.fonts.ready;
   });
@@ -110,7 +112,13 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
       await expect(mobileNavigation.getByRole("link", { name: label, exact: true })).toBeVisible();
     }
     expect(await mobileNavigation.getByRole("link").count()).toBeLessThanOrEqual(5);
-    await expect(page.locator("header a[href='/upload']")).toBeVisible();
+    const uploadAction = page.getByRole("banner").getByRole("link", {
+      name: "Create / Upload",
+      exact: true,
+    });
+    await expect(uploadAction).toHaveCount(1);
+    await expect(uploadAction).toBeVisible();
+    await expect(uploadAction).toHaveAttribute("href", "/upload");
     await page.getByRole("button", { name: "Open menu", exact: true }).click();
     const accountMenu = page.getByRole("navigation", { name: "Account navigation", exact: true });
     for (const label of ["Account", "Notifications", "My channel"]) {
@@ -128,7 +136,17 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
       exact: true,
     });
     await expect(uploadTitle).toBeVisible();
-    await expect(page.getByRole("button", { name: "Publish video", exact: true })).toBeVisible();
+    const uploadWorkspace = page.getByRole("region", {
+      name: "Bring your next video to AYIN.",
+      exact: true,
+    });
+    await expect(
+      uploadWorkspace.getByText("Select a video to upload", { exact: true }),
+    ).toBeVisible();
+    await expect(uploadWorkspace.locator('input[type="file"]')).toBeEnabled();
+    // Publish belongs to the selected-video editor, not the initial empty picker.
+    // The real upload/publish journey remains in v1.acceptance.spec.ts.
+    await expect(uploadWorkspace.getByRole("button", { name: "Publish video" })).toHaveCount(0);
     await expect(page.getByText("Skip Studio. Publish fast.", { exact: false })).toHaveCount(0);
     await expect(page.getByText(/Cloudflare R2/i)).toHaveCount(0);
     await expect(page.getByText(/direct-to-R2/i)).toHaveCount(0);
