@@ -114,11 +114,7 @@ test("Browse and primary navigation share one configuration across responsive EN
           : "Mobile navigation"
         : "Primary navigation";
     // Localized aria labels come from the product, not a second fixture translation map.
-    const primary = page.locator("nav").filter({ has: page.locator("a[aria-current='page']") });
-    const navigationRegion =
-      viewport.locale === "ar"
-        ? primary.filter({ visible: true }).last()
-        : page.getByRole("navigation", { name: label, exact: true });
+    const navigationRegion = page.getByRole("navigation", { name: label, exact: true });
     await expect(navigationRegion.getByRole("link")).toHaveCount(5);
     await expect(navigationRegion.locator(`a[href="${prefix}/browse"]`)).toHaveAttribute(
       "aria-current",
