@@ -20,7 +20,7 @@ function db<T>(command: string, payload: Record<string, unknown> = {}): T {
 
 async function expectNoDocumentOverflow(page: Page, route: string): Promise<void> {
   await page.goto(route, { waitUntil: "domcontentloaded" });
-  await expect(page.locator("body")).toBeVisible();
+  await expect(page.locator("main").first()).toBeVisible();
   await page.evaluate(async () => {
     if ("fonts" in document) await document.fonts.ready;
   });
@@ -43,9 +43,7 @@ test.beforeAll(() => {
   db("reset");
 });
 
-test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces", async ({
-  page,
-}) => {
+test("mobile and tablet layouts keep primary viewer and console paths reachable", async ({ page }) => {
   test.setTimeout(180_000);
   const registration = await page.request.post(`${API}/auth/register`, {
     data: {
@@ -57,7 +55,7 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
   });
   expect(registration.ok()).toBeTruthy();
   const identity = (await registration.json()) as {
-    user: { account: { id: string }; channel: { handle: string } };
+    user: { account: { id: string; displayName: string }; channel: { handle: string } };
   };
   await enrollMfa(page.request);
   db("grant-admin", { accountId: identity.user.account.id });
@@ -79,27 +77,29 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
       "/channel/tv",
       "/studio",
       "/studio/content",
+      "/studio/playlists",
+      "/studio/tv",
       "/studio/analytics",
       "/studio/comments",
       "/studio/community",
       "/studio/live",
       "/studio/monetization",
-      "/studio/playlists",
+      "/studio/support",
       "/studio/trust",
-      "/studio/tv",
+      "/studio/channel",
       "/admin",
       "/admin/users",
       "/admin/channels",
       "/admin/content",
-      "/admin/moderation",
+      "/admin/videos",
       "/admin/operations",
       "/admin/product-controls",
-      "/admin/revenue",
       "/admin/settings",
+      "/admin/revenue",
+      "/admin/moderation",
       "/admin/trust",
       "/admin/tv",
       "/admin/video-ads",
-      "/admin/videos",
     ]) {
       await expectNoDocumentOverflow(page, route);
     }
@@ -123,13 +123,14 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
     await page.keyboard.press("Escape");
 
     await page.goto("/upload", { waitUntil: "networkidle" });
-    await expect(
-      page.getByRole("heading", { name: "Bring your next video to AYIN." }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Upload your video", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
+    await expect(page.getByText("Skip Studio. Publish fast.", { exact: false })).toHaveCount(0);
     await expect(page.getByText(/Cloudflare R2/i)).toHaveCount(0);
     await expect(page.getByText(/direct-to-R2/i)).toHaveCount(0);
     await page.goto("/account", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Account", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your AYIN account", exact: true })).toBeVisible();
+    await expect(page.getByText(identity.user.account.displayName, { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Earnings & payouts" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Payment details" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Request payout" })).toBeVisible();
@@ -137,6 +138,7 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
     await expect(page.getByText(/Manual payout V1/i)).toHaveCount(0);
 
     await page.goto("/studio", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Your creator command center" })).toBeVisible();
     await page.getByRole("button", { name: "Open Studio navigation" }).click();
     const studio = page.getByRole("dialog").getByRole("navigation", { name: "Creator Studio" });
     await expect(studio).toBeVisible();
@@ -150,6 +152,7 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
     await page.keyboard.press("Escape");
 
     await page.goto("/admin", { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { name: "Platform overview" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Verify session", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Open Admin navigation" }).click();
     const admin = page.getByRole("dialog").getByRole("navigation", { name: "AYIN administration" });
@@ -179,7 +182,17 @@ test("AYIN V2 stays responsive across viewer, account, Studio and Admin surfaces
 
   await test.step("desktop keeps the same hierarchy without horizontal document overflow", async () => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    for (const route of ["/", "/search", "/upload", "/account", "/studio", "/admin", "/admin/revenue"]) {
+    for (const route of [
+      "/",
+      "/search",
+      "/upload",
+      "/account",
+      "/studio",
+      "/studio/content",
+      "/admin",
+      "/admin/revenue",
+      "/admin/operations",
+    ]) {
       await expectNoDocumentOverflow(page, route);
     }
     await page.goto("/", { waitUntil: "domcontentloaded" });

@@ -75,7 +75,11 @@ export const adminNavigation: readonly WorkspaceNavigationGroup[] = [
       { label: "navigation.movies", href: "/admin/movies", roles: operations },
       { label: "navigation.series", href: "/admin/series", roles: operations },
       { label: "navigation.kids", href: "/admin/kids", roles: moderation },
-      { label: "navigation.localizations", href: "/admin/catalog-localizations", roles: operations },
+      {
+        label: "navigation.localizations",
+        href: "/admin/catalog-localizations",
+        roles: operations,
+      },
       { label: "navigation.creatorTv", href: "/admin/tv", roles: operations },
     ],
   },

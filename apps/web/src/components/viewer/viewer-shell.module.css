@@ -308,20 +308,32 @@
   }
 }
 
-:global(html:is([data-tv-platform="tizen"], [data-tv-platform="webos"], [data-tv-platform="android-tv"], [data-tv-platform="fire-tv"]))
-  .desktopNavigation[data-tv-visible="true"] {
+:global(html[data-tv-platform="tizen"]) .desktopNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="webos"]) .desktopNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="android-tv"]) .desktopNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="fire-tv"]) .desktopNavigation[data-tv-visible="true"] {
   display: flex;
 }
 
-:global(html:is([data-tv-platform="tizen"], [data-tv-platform="webos"], [data-tv-platform="android-tv"], [data-tv-platform="fire-tv"]))
-  .drawerProductNavigation[data-tv-visible="true"] {
+:global(html[data-tv-platform="tizen"]) .drawerProductNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="webos"]) .drawerProductNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="android-tv"]) .drawerProductNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="fire-tv"]) .drawerProductNavigation[data-tv-visible="true"] {
   display: grid;
 }
 
-:global(html:is([data-tv-platform="tizen"], [data-tv-platform="webos"], [data-tv-platform="android-tv"], [data-tv-platform="fire-tv"]))
-  :is(.desktopNavigation, .drawerProductNavigation)[data-tv-visible="false"],
-:global(html:is([data-tv-platform="tizen"], [data-tv-platform="webos"], [data-tv-platform="android-tv"], [data-tv-platform="fire-tv"]))
-  .mobileNavigation {
+:global(html[data-tv-platform="tizen"]) .desktopNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="webos"]) .desktopNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="android-tv"]) .desktopNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="fire-tv"]) .desktopNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="tizen"]) .drawerProductNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="webos"]) .drawerProductNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="android-tv"]) .drawerProductNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="fire-tv"]) .drawerProductNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="tizen"]) .mobileNavigation,
+:global(html[data-tv-platform="webos"]) .mobileNavigation,
+:global(html[data-tv-platform="android-tv"]) .mobileNavigation,
+:global(html[data-tv-platform="fire-tv"]) .mobileNavigation {
   display: none;
 }
 

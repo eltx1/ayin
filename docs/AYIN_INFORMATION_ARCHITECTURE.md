@@ -22,32 +22,39 @@ Existing web/mobile/TV visibility controls are retained. TV styling recognizes t
 
 ## Creator Studio
 
-The existing twelve destinations are preserved exactly once in the navigation model:
+The existing twelve destinations are preserved exactly once in the navigation model.
 
-| Group | Existing destinations |
-| --- | --- |
-| Overview | Dashboard |
-| Content | Content, Playlists, Live, TV |
-| Audience & community | Analytics, Comments, Community |
-| Earnings | Monetization |
-| Channel | Channel settings, Trust & safety, Support |
+**Overview:** Dashboard.
+
+**Content:** Content, Playlists, Live and TV.
+
+**Audience & community:** Analytics, Comments and Community.
+
+**Earnings:** Monetization.
+
+**Channel:** Channel settings, Trust & safety and Support.
 
 Single-destination groups are direct links, not unnecessary extra clicks. Multi-destination groups are expandable; the active route's group opens automatically. Quick Upload is a separate primary action, not another expanded form or wizard. Captions/chapters remain contextual content-editing capabilities rather than empty navigation pages. All legacy creator routes remain available.
 
 ## Admin
 
-The existing nineteen destinations are grouped without changing their role visibility:
+The existing nineteen destinations are grouped without changing their role visibility.
 
-| Group | Existing destinations |
-| --- | --- |
-| Overview | Dashboard |
-| Content | Content Library, Videos, Movies, Series, Kids Classification, Localized Metadata, Creator TV |
-| Users & creators | Users, Channels |
-| Monetization | Advertising, Video Ads, Revenue |
-| Safety | Moderation, Trust & Safety |
-| Product & discovery | Product Controls, Feature Flags |
-| Operations | Operations & Audit |
-| Settings | Settings |
+**Overview:** Dashboard.
+
+**Content:** Content Library, Videos, Movies, Series, Kids Classification, Localized Metadata and Creator TV.
+
+**Users & creators:** Users and Channels.
+
+**Monetization:** Advertising, Video Ads and Revenue.
+
+**Safety:** Moderation and Trust & Safety.
+
+**Product & discovery:** Product Controls and Feature Flags.
+
+**Operations:** Operations & Audit.
+
+**Settings:** Settings.
 
 SUPERADMIN and ADMIN retain the existing broad navigation visibility. Other roles retain the exact prior scopes. Content moderation visibility does not gain catalog writes; finance does not gain user management; advertising does not gain revenue or operations mutations. Empty groups disappear. The shared Admin access provider remains the only navigation session source, and one existing reauthentication component remains mounted. There is no second MFA implementation or frontend-only protection.
 
@@ -66,5 +73,7 @@ The new components use existing AYIN tokens, logical CSS properties, minimum 44p
 Pure tests cover all destinations, role filtering, locale/path matching, translation completeness, flags, custom order, legacy aliases, duplicate keys/URLs and unsafe destinations. Browser tests cover shared configuration request counts, five-choice navigation, real catalog links, network recovery, long labels, responsive EN/AR, modal keyboard/remote containment, direct upload, Studio groups, finance navigation and an actual forbidden user-management API request.
 
 Existing responsive route and account/MFA journeys are retained and adapted to the new disclosure controls. CI retains public directory and navigation screenshots for actual inspection. Synthetic navigation settings are isolated browser fixtures; they do not enable production categories, invent catalog inventory or certify a physical TV.
+
+Initial candidate `ea2669a407c58ff9574573f9edd3430792058318` failed quality run `36383285202` on formatting in eight files. Browser run `36383285245` generated/migrated/seeded the database and compiled the Web bundle but failed strict TypeScript before browser tests: CSS module lookups may be undefined, while `NavigationDialog.triggerClassName` did not explicitly allow that value. The repair preserves `exactOptionalPropertyTypes`, changes the component's optional styling contract, normalizes formatting and restores all historical responsive route/content assertions inadvertently omitted from the first test adaptation. No failed browser journey is called successful and no assertion is suppressed. That candidate's source inventory `36383285250` and security workflow `36383285174` succeeded; final-head acceptance remains required.
 
 No schema migration, provider activation, credential change, native signing or production-data mutation is part of this phase. Full design-system normalization, page redesign, account-session consolidation, control-center transformation, installed PWA behavior, measured performance, advertising policy acceptance and physical-device/store readiness remain their subsequent master phases.

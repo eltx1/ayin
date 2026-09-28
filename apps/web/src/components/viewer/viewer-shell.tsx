@@ -76,7 +76,8 @@ function ProductLinks({
 function ViewerChrome({ children }: { children: ReactNode }) {
   const { href, t } = useI18n();
   const { flags, identity, controls } = useViewerProduct();
-  const model = useMemo(() => buildViewerNavigation(flags, controls?.navigation), [flags, controls]);
+  const navigation = controls?.navigation;
+  const model = useMemo(() => buildViewerNavigation(flags, navigation), [flags, navigation]);
   const announcement = controls?.announcement;
   const createHref = identity ? "/upload" : "/register";
   const device = controls?.deviceVisibility;

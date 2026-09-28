@@ -15,7 +15,11 @@ const destinations = (groups: typeof adminNavigation) =>
 
 describe("workspace information architecture", () => {
   it("keeps all existing Admin and Studio destinations exactly once", () => {
-    for (const [groups, count] of [[adminNavigation, 19], [studioNavigation, 12]] as const) {
+    const inventories = [
+      { groups: adminNavigation, count: 19 },
+      { groups: studioNavigation, count: 12 },
+    ];
+    for (const { groups, count } of inventories) {
       const hrefs = destinations(groups);
       expect(hrefs).toHaveLength(count);
       expect(new Set(hrefs).size).toBe(count);

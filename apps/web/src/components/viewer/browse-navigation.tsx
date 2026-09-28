@@ -16,7 +16,8 @@ import styles from "./browse-navigation.module.css";
 export function BrowseNavigation() {
   const { href, t, direction } = useI18n();
   const { flags, controls, navigationStatus, retryNavigation } = useViewerProduct();
-  const model = useMemo(() => buildViewerNavigation(flags, controls?.navigation), [flags, controls]);
+  const navigation = controls?.navigation;
+  const model = useMemo(() => buildViewerNavigation(flags, navigation), [flags, navigation]);
 
   if (navigationStatus === "loading") {
     return (

@@ -19,7 +19,7 @@ export function NavigationDialog({
   label: string;
   title: string;
   trigger: ReactNode;
-  triggerClassName?: string;
+  triggerClassName?: string | undefined;
   children: ReactNode;
 }) {
   const { t, direction } = useI18n();
