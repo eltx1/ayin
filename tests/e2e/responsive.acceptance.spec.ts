@@ -135,8 +135,10 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     await page.goto("/account", { waitUntil: "networkidle" });
     const accountTitle = page.getByRole("heading", { name: "Account", exact: true });
     await expect(accountTitle).toBeVisible();
-    const accountContent = page.locator("main").first();
-    const accountName = accountContent.getByText(identity.user.account.displayName, { exact: true });
+    const accountContent = page.locator("main:visible");
+    const accountName = accountContent.getByText(identity.user.account.displayName, {
+      exact: true,
+    });
     await expect(accountName).toBeVisible();
     await expect(page.getByRole("heading", { name: "Earnings & payouts" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Payment details" })).toBeVisible();
