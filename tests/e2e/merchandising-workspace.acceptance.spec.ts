@@ -60,7 +60,8 @@ test("merchandising retries once, preserves unrelated drafts, requires step-up a
   expect(reads).toBe(1);
   await page.unroute(snapshotUrl);
   await page.getByRole("button", { name: "Retry product controls", exact: true }).click();
-  const regions = page.getByRole("region", { name: "Regional merchandising", exact: true });
+  const workspace = page.getByRole("group", { name: "Product and regional settings", exact: true });
+  const regions = workspace.getByRole("region", { name: "Regional merchandising", exact: true });
   await expect(regions).toBeVisible();
   expect(reads).toBe(2);
   expect((await page.request.get(snapshotUrl)).headers()["cache-control"]).toBe(
@@ -79,7 +80,7 @@ test("merchandising retries once, preserves unrelated drafts, requires step-up a
     .getByRole("button", { name: "Save regions", exact: true });
   await target.fill("invalid");
   await save.click();
-  await expect(page.getByRole("alert")).toHaveText(
+  await expect(workspace.getByRole("alert")).toHaveText(
     "Use up to 64 two-letter country codes, separated by commas or spaces.",
   );
   expect(writes).toBe(0);
@@ -133,7 +134,7 @@ test("merchandising retries once, preserves unrelated drafts, requires step-up a
   await page.route(`${snapshotUrl}/home-rows/${rows[0].id}`, (route) => route.abort("failed"));
   await target.fill("BR");
   await save.click();
-  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(workspace.getByRole("alert")).toBeVisible();
   await expect(target).toHaveValue("BR");
   await expect(other).toHaveValue("Preserved other-row draft");
   expect(db("merchandising-evidence", { accountId: user.account.id }).audits).toHaveLength(1);
