@@ -48,6 +48,7 @@ jobs:
           pnpm view fast-uri@4.1.5 dist --json > "$RUNNER_TEMP/fast-uri-review/registry-4.1.5.json"
           pnpm install --frozen-lockfile --ignore-scripts
           pnpm audit:prod
+          pnpm --filter @ayin/api exec vitest run src/runtime-uri-security.test.ts | tee "$RUNNER_TEMP/fast-uri-review/regression-results.txt"
           pnpm why fast-uri --recursive > "$RUNNER_TEMP/fast-uri-review/dependency-paths.txt"
           git diff --check
           git diff -- pnpm-workspace.yaml pnpm-lock.yaml > "$RUNNER_TEMP/fast-uri-review/remediation.patch"
