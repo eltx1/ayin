@@ -211,4 +211,3 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     },
   );
 });
-
