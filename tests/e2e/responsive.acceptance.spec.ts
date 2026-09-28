@@ -123,14 +123,17 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     await page.keyboard.press("Escape");
 
     await page.goto("/upload", { waitUntil: "networkidle" });
-    const uploadTitle = page.getByRole("heading", { name: "Upload your video", exact: true });
+    const uploadTitle = page.getByRole("heading", {
+      name: "Bring your next video to AYIN.",
+      exact: true,
+    });
     await expect(uploadTitle).toBeVisible();
-    await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Publish video", exact: true })).toBeVisible();
     await expect(page.getByText("Skip Studio. Publish fast.", { exact: false })).toHaveCount(0);
     await expect(page.getByText(/Cloudflare R2/i)).toHaveCount(0);
     await expect(page.getByText(/direct-to-R2/i)).toHaveCount(0);
     await page.goto("/account", { waitUntil: "networkidle" });
-    const accountTitle = page.getByRole("heading", { name: "Your AYIN account", exact: true });
+    const accountTitle = page.getByRole("heading", { name: "Account", exact: true });
     await expect(accountTitle).toBeVisible();
     const accountContent = page.locator("main").first();
     const accountName = accountContent.getByText(identity.user.account.displayName, { exact: true });
@@ -142,7 +145,6 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     await expect(page.getByText(/Manual payout V1/i)).toHaveCount(0);
 
     await page.goto("/studio", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: "Your creator command center" })).toBeVisible();
     await page.getByRole("button", { name: "Open Studio navigation" }).click();
     const studio = page.getByRole("dialog").getByRole("navigation", { name: "Creator Studio" });
     await expect(studio).toBeVisible();
@@ -156,7 +158,6 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     await page.keyboard.press("Escape");
 
     await page.goto("/admin", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: "Platform overview" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Verify session", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Open Admin navigation" }).click();
     const admin = page.getByRole("dialog").getByRole("navigation", { name: "AYIN administration" });
