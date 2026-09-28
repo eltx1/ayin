@@ -37,12 +37,13 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
   const [navigationStatus, setNavigationStatus] =
     useState<ViewerProductContextValue["navigationStatus"]>("loading");
   const [attempt, setAttempt] = useState(0);
-  const retryNavigation = useCallback(() => setAttempt((value) => value + 1), []);
+  const retryNavigation = useCallback(() => {
+    setNavigationStatus("loading");
+    setAttempt((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-    setNavigationStatus("loading");
-
     // One shared pair of public reads for both the shell and Browse, never per link.
     void Promise.all([
       fetch(`${apiBaseUrl}/platform/navigation`, {
