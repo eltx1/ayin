@@ -37,3 +37,14 @@ export function availableVideoPolicySql(videoId: Prisma.Sql, context: VideoPolic
       )
     )`;
 }
+
+// Callers bind the Video table to alias v. These hard publication/media
+// boundaries cannot be bypassed by a distribution-policy FORCE_ALLOW override.
+export function publicPlayableVideoSql() {
+  return Prisma.sql`v.status = 'PUBLISHED' AND v.visibility = 'PUBLIC' AND v."removedAt" IS NULL
+    AND EXISTS (SELECT 1 FROM "Channel" c WHERE c.id = v."channelId"
+      AND c.status = 'ACTIVE' AND c."removedAt" IS NULL)
+    AND EXISTS (SELECT 1 FROM "MediaAsset" m WHERE m."videoId" = v.id
+      AND m.kind = 'SOURCE_VIDEO' AND m.status = 'VALIDATED'
+      AND m."removedAt" IS NULL AND m."mimeType" = 'video/mp4')`;
+}

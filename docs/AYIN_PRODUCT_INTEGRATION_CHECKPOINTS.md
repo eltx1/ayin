@@ -461,3 +461,7 @@ Read this file before every phase. Verify the remote branch and CI rather than t
 - External blockers: local PostgreSQL/Chromium absent; database/browser acceptance via CI. Previous workspace disconnection is resolved, not a current blocker.
 - Next: reproduce, implement eligibility-before-pagination, run full gates, measure and checkpoint; refresh source inventory against the accepted baseline.
 - Rollback: no stored-state changes; preserve authorization and policy enforcement.
+
+- Draft PR #137 starts with eight unchanged-code regressions on `a9ddd191e0e54b3abd6f23feb71ade4e0f38f3aa` (quality `36367824062`). Correction selects activity IDs and mixed editor references with policy/publication/media predicates before LIMIT/OFFSET; hydrates only those bounded IDs; eligible watched anchor and ranked aggregation preserve ordering. Common publication SQL is shared with recent discovery, with final policy/publication defense retained.
+- Added a ninth database case for 515 activities in each Kids section (512 unclassified), checking complete eligible rows, bounded candidate reads/results, Kids links and cross-account rejection. No full activity/catalog/editor-list materialization or per-item query loop. Database scan cost still depends on data/indexes.
+- Local production correction passed typecheck/lint and all 365 API units (6.17s); PostgreSQL and full final-head acceptance pending. No migration.

@@ -8,7 +8,10 @@ import {
   kidsSafeHref,
 } from "../kids/kids-policy.js";
 import { SeriesCatalogService } from "../series-catalog/series-catalog.service.js";
-import { availableVideoPolicySql } from "../video-policy/video-policy-query.js";
+import {
+  availableVideoPolicySql,
+  publicPlayableVideoSql,
+} from "../video-policy/video-policy-query.js";
 import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
 const playableAssetStates = ["VALIDATED"] as const;
@@ -253,11 +256,11 @@ export class DiscoveryService {
     }
     const profileId = context.profileId;
     const [continueWatching, myList, watchLater, history, liked, playlists] = await Promise.all([
-      this.loadContinueWatching(profileId, 0, firstPageSize, context.availabilityCountryCode),
-      this.loadMyList(profileId, 0, firstPageSize),
-      this.loadWatchLater(profileId, 0, firstPageSize),
-      this.loadHistory(profileId, 0, firstPageSize),
-      this.loadLiked(profileId, 0, firstPageSize),
+      this.loadContinueWatching(profileId, 0, firstPageSize, context),
+      this.loadMyList(profileId, 0, firstPageSize, context),
+      this.loadWatchLater(profileId, 0, firstPageSize, context),
+      this.loadHistory(profileId, 0, firstPageSize, context),
+      this.loadLiked(profileId, 0, firstPageSize, context),
       this.loadOwnedPlaylists(accountId, 0, firstPageSize),
     ]);
 
@@ -311,27 +314,31 @@ export class DiscoveryService {
     switch (section) {
       case "continue-watching":
         return this.enforcePage(
-          await this.loadContinueWatching(
-            context.profileId,
-            offset,
-            limit,
-            context.availabilityCountryCode,
-          ),
+          await this.loadContinueWatching(context.profileId, offset, limit, context),
           context,
         );
       case "watch-later":
         return this.enforcePage(
-          await this.loadWatchLater(context.profileId, offset, limit),
+          await this.loadWatchLater(context.profileId, offset, limit, context),
           context,
         );
       case "history":
-        return this.enforcePage(await this.loadHistory(context.profileId, offset, limit), context);
+        return this.enforcePage(
+          await this.loadHistory(context.profileId, offset, limit, context),
+          context,
+        );
       case "liked":
-        return this.enforcePage(await this.loadLiked(context.profileId, offset, limit), context);
+        return this.enforcePage(
+          await this.loadLiked(context.profileId, offset, limit, context),
+          context,
+        );
       case "playlists":
         return this.loadOwnedPlaylists(accountId, offset, limit);
       case "my-list":
-        return this.enforcePage(await this.loadMyList(context.profileId, offset, limit), context);
+        return this.enforcePage(
+          await this.loadMyList(context.profileId, offset, limit, context),
+          context,
+        );
       default:
         throw new DiscoveryError(
           "SECTION_NOT_FOUND",
@@ -447,25 +454,26 @@ export class DiscoveryService {
     switch (row.source) {
       case "CONTINUE_WATCHING":
         return context.profileId
-          ? this.loadContinueWatching(
-              context.profileId,
-              offset,
-              limit,
-              context.availabilityCountryCode,
-            )
+          ? this.loadContinueWatching(context.profileId, offset, limit, context)
           : emptyPage("Sign in to continue watching across AYIN.", "UNAVAILABLE");
       case "TRENDING_WORLDWIDE":
-        return this.loadRankedVideos(daysAgo(7), offset, limit, "Trending Worldwide");
+        return this.loadRankedVideos(daysAgo(7), offset, limit, "Trending Worldwide", context);
       case "POPULAR_NOW":
-        return this.loadRankedVideos(hoursAgo(24), offset, limit, "Popular Now");
+        return this.loadRankedVideos(hoursAgo(24), offset, limit, "Popular Now", context);
       case "NEW_ON_AYIN":
         return this.loadRecentVideos(context, offset, limit, daysAgo(30), "New on AYIN");
       case "BECAUSE_YOU_WATCHED":
         return context.profileId
-          ? this.loadBecauseYouWatched(context.profileId, offset, limit)
+          ? this.loadBecauseYouWatched(context.profileId, offset, limit, context)
           : emptyPage("Sign in and watch something to unlock this row.", "UNAVAILABLE");
       case "POPULAR_REGION":
-        return this.loadRankedVideos(hoursAgo(24), offset, limit, "Popular in your region");
+        return this.loadRankedVideos(
+          hoursAgo(24),
+          offset,
+          limit,
+          "Popular in your region",
+          context,
+        );
       case "MOVIES":
         return this.loadRecentVideos(context, offset, limit, undefined, "Movies", "MOVIE");
       case "SERIES":
@@ -479,7 +487,7 @@ export class DiscoveryService {
       case "RECENTLY_ADDED":
         return this.loadRecentVideos(context, offset, limit, undefined, "Recently Added");
       case "EDITOR_PICKS":
-        return this.loadManualItems(row.id, offset, limit);
+        return this.loadManualItems(row.id, offset, limit, context);
       default:
         return emptyPage("This discovery source is not available yet.", "UNAVAILABLE");
     }
@@ -517,17 +525,13 @@ export class DiscoveryService {
     publishedAfter: Date | undefined,
     kicker: string,
     contentType?: "MOVIE",
+    extraFilter: Prisma.Sql = Prisma.sql`TRUE`,
   ): Promise<DiscoveryPage> {
     // Policy tables deliberately have no ORM relation. Select only one bounded
     // page of eligible IDs in PostgreSQL, then hydrate cards in one batch.
     const candidates = await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT v.id FROM "Video" v
-      JOIN "Channel" c ON c.id = v."channelId"
-      WHERE v.status = 'PUBLISHED' AND v.visibility = 'PUBLIC' AND v."removedAt" IS NULL
-        AND c.status = 'ACTIVE' AND c."removedAt" IS NULL
-        AND EXISTS (SELECT 1 FROM "MediaAsset" m WHERE m."videoId" = v.id
-          AND m.kind = 'SOURCE_VIDEO' AND m.status = 'VALIDATED'
-          AND m."removedAt" IS NULL AND m."mimeType" = 'video/mp4')
+      WHERE ${publicPlayableVideoSql()} AND ${extraFilter}
         AND ${publishedAfter ? Prisma.sql`v."publishedAt" >= ${publishedAfter}` : Prisma.sql`TRUE`}
         AND ${contentType ? Prisma.sql`v."contentType" = ${contentType}::"VideoContentType"` : Prisma.sql`TRUE`}
         AND ${availableVideoPolicySql(Prisma.sql`v.id`, { countryCode: context.availabilityCountryCode, isKidsProfile: context.isKidsProfile })}
@@ -557,15 +561,14 @@ export class DiscoveryService {
     offset: number,
     limit: number,
     kicker: string,
+    context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
-    const ranked = await this.database.client.watchHistory.groupBy({
-      by: ["videoId"],
-      where: { lastWatchedAt: { gte: since } },
-      _sum: { viewCount: true },
-      orderBy: [{ _sum: { viewCount: "desc" } }, { videoId: "asc" }],
-      skip: offset,
-      take: limit + 1,
-    });
+    const ranked = await this.database.client.$queryRaw<Array<{ videoId: string }>>(Prisma.sql`
+      SELECT h."videoId" FROM "WatchHistory" h JOIN "Video" v ON v.id = h."videoId"
+      WHERE h."lastWatchedAt" >= ${since} AND ${eligibleVideoSql(context)}
+      GROUP BY h."videoId" ORDER BY SUM(h."viewCount") DESC, h."videoId" ASC
+      LIMIT ${limit + 1} OFFSET ${offset}
+    `);
     const ids = ranked.map((entry) => entry.videoId);
     if (ids.length === 0) {
       return emptyPage("Not enough real viewing activity exists for this ranking yet.");
@@ -582,22 +585,60 @@ export class DiscoveryService {
     return paged(ordered, offset, limit);
   }
 
+  private async activityCandidates(
+    source: "continue-watching" | "history" | "watch-later" | "my-list" | "liked",
+    profileId: string,
+    offset: number,
+    limit: number,
+    context: DiscoveryContext,
+  ) {
+    const table = {
+      "continue-watching": Prisma.sql`"WatchProgress"`,
+      history: Prisma.sql`"WatchHistory"`,
+      "watch-later": Prisma.sql`"WatchLaterItem"`,
+      "my-list": Prisma.sql`"MyListItem"`,
+      liked: Prisma.sql`"Reaction"`,
+    }[source];
+    const time =
+      source === "history" || source === "continue-watching"
+        ? Prisma.sql`a."lastWatchedAt"`
+        : Prisma.sql`a."createdAt"`;
+    const filter =
+      source === "continue-watching"
+        ? Prisma.sql`a."completedAt" IS NULL AND a."positionMs" > 0`
+        : source === "liked"
+          ? Prisma.sql`a.type = 'LIKE'`
+          : Prisma.sql`TRUE`;
+    const rows = await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT a.id FROM ${table} a JOIN "Video" v ON v.id = a."videoId"
+      WHERE a."profileId" = ${profileId}::uuid AND ${filter} AND ${eligibleVideoSql(context)}
+      ORDER BY ${time} DESC, a.id DESC LIMIT ${limit + 1} OFFSET ${offset}
+    `);
+    return rows.map((row) => row.id);
+  }
+
   private async loadContinueWatching(
     profileId: string,
     offset: number,
     limit: number,
-    countryCode?: string,
+    context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
+    const ids = await this.activityCandidates(
+      "continue-watching",
+      profileId,
+      offset,
+      limit,
+      context,
+    );
     const records = await this.database.client.watchProgress.findMany({
       where: {
         profileId,
+        id: { in: ids },
         completedAt: null,
         positionMs: { gt: 0 },
         video: publicVideoWhere,
       },
       orderBy: [{ lastWatchedAt: "desc" }, { id: "desc" }],
-      skip: offset,
-      take: limit + 1,
       select: {
         positionMs: true,
         completedAt: true,
@@ -606,7 +647,7 @@ export class DiscoveryService {
     });
     const contexts = await this.seriesCatalog.getPublicContextsForVideos(
       records.map((record) => record.video.id),
-      countryCode,
+      context.availabilityCountryCode,
     );
     return paged(
       records.map((record) => {
@@ -635,29 +676,23 @@ export class DiscoveryService {
     profileId: string,
     offset: number,
     limit: number,
+    context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
+    const ids = await this.activityCandidates("history", profileId, 0, 0, context);
     const recent = await this.database.client.watchHistory.findFirst({
-      where: { profileId, video: publicVideoWhere },
-      orderBy: [{ lastWatchedAt: "desc" }, { id: "desc" }],
+      where: { id: { in: ids }, profileId, video: publicVideoWhere },
       select: { videoId: true, video: { select: { channelId: true, title: true } } },
     });
-    if (!recent) {
+    if (!recent)
       return emptyPage("Watch something first and AYIN will build this row from real activity.");
-    }
-    const records = await this.database.client.video.findMany({
-      where: {
-        AND: [publicVideoWhere, { channelId: recent.video.channelId, id: { not: recent.videoId } }],
-      },
-      orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
-      skip: offset,
-      take: limit + 1,
-      select: videoCardSelect,
-    });
-    return paged(
-      records.map((video) => toVideoItem(video, `Because you watched ${recent.video.title}`)),
+    return this.loadRecentVideos(
+      context,
       offset,
       limit,
-      "There are no other eligible videos from this creator yet.",
+      undefined,
+      `Because you watched ${recent.video.title}`,
+      undefined,
+      Prisma.sql`v."channelId" = ${recent.video.channelId}::uuid AND v.id <> ${recent.videoId}::uuid`,
     );
   }
 
@@ -726,12 +761,12 @@ export class DiscoveryService {
     profileId: string,
     offset: number,
     limit: number,
+    context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
+    const ids = await this.activityCandidates("watch-later", profileId, offset, limit, context);
     const records = await this.database.client.watchLaterItem.findMany({
-      where: { profileId, video: publicVideoWhere },
+      where: { id: { in: ids }, profileId, video: publicVideoWhere },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      skip: offset,
-      take: limit + 1,
       select: { video: { select: videoCardSelect } },
     });
     return paged(
@@ -746,12 +781,12 @@ export class DiscoveryService {
     profileId: string,
     offset: number,
     limit: number,
+    context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
+    const ids = await this.activityCandidates("my-list", profileId, offset, limit, context);
     const records = await this.database.client.myListItem.findMany({
-      where: { profileId, video: publicVideoWhere },
+      where: { id: { in: ids }, profileId, video: publicVideoWhere },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      skip: offset,
-      take: limit + 1,
       select: { video: { select: videoCardSelect } },
     });
     return paged(
@@ -766,12 +801,12 @@ export class DiscoveryService {
     profileId: string,
     offset: number,
     limit: number,
+    context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
+    const ids = await this.activityCandidates("history", profileId, offset, limit, context);
     const records = await this.database.client.watchHistory.findMany({
-      where: { profileId, video: publicVideoWhere },
+      where: { id: { in: ids }, profileId, video: publicVideoWhere },
       orderBy: [{ lastWatchedAt: "desc" }, { id: "desc" }],
-      skip: offset,
-      take: limit + 1,
       select: { video: { select: videoCardSelect } },
     });
     return paged(
@@ -786,12 +821,18 @@ export class DiscoveryService {
     profileId: string,
     offset: number,
     limit: number,
+    context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
+    const ids = await this.activityCandidates("liked", profileId, offset, limit, context);
     const records = await this.database.client.reaction.findMany({
-      where: { profileId, type: "LIKE", videoId: { not: null }, video: publicVideoWhere },
+      where: {
+        id: { in: ids },
+        profileId,
+        type: "LIKE",
+        videoId: { not: null },
+        video: publicVideoWhere,
+      },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      skip: offset,
-      take: limit + 1,
       select: { video: { select: videoCardSelect } },
     });
     const items = records.flatMap((record) =>
@@ -844,13 +885,31 @@ export class DiscoveryService {
     rowId: string,
     offset: number,
     limit: number,
+    context: DiscoveryContext,
   ): Promise<DiscoveryPage> {
-    const manual = await this.database.client.homeRowManualItem.findMany({
-      where: { rowId },
-      orderBy: [{ position: "asc" }, { id: "asc" }],
-      skip: offset,
-      take: limit + 1,
-    });
+    const manual = await this.database.client.$queryRaw<
+      Array<{
+        entityType: "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST";
+        entityId: string;
+      }>
+    >(Prisma.sql`
+      SELECT pick."entityType", pick."entityId" FROM "HomeRowManualItem" pick
+      WHERE pick."rowId" = ${rowId}::uuid AND (
+        (pick."entityType" = 'VIDEO' AND EXISTS (
+          SELECT 1 FROM "Video" v WHERE v.id = pick."entityId" AND ${eligibleVideoSql(context)}
+        )) OR (pick."entityType" = 'CHANNEL' AND EXISTS (
+          SELECT 1 FROM "Channel" c WHERE c.id = pick."entityId" AND c.status = 'ACTIVE' AND c."removedAt" IS NULL
+        )) OR (pick."entityType" = 'CREATOR_TV' AND EXISTS (
+          SELECT 1 FROM "CreatorTvChannel" tv JOIN "Channel" c ON c.id = tv."channelId"
+          WHERE tv.id = pick."entityId" AND tv.status = 'ACTIVE' AND tv."disabledAt" IS NULL
+            AND c.status = 'ACTIVE' AND c."removedAt" IS NULL
+        )) OR (pick."entityType" = 'PLAYLIST' AND EXISTS (
+          SELECT 1 FROM "Playlist" p JOIN "Channel" c ON c.id = p."channelId"
+          WHERE p.id = pick."entityId" AND p.visibility = 'PUBLIC' AND p."deletedAt" IS NULL
+            AND c.status = 'ACTIVE' AND c."removedAt" IS NULL
+        ))
+      ) ORDER BY pick.position ASC, pick.id ASC LIMIT ${limit + 1} OFFSET ${offset}
+    `);
     if (manual.length === 0) {
       return emptyPage("No editor picks have been selected yet.");
     }
@@ -956,6 +1015,13 @@ export class DiscoveryService {
     });
     return paged(items, offset, limit, "No eligible editor picks are available right now.");
   }
+}
+
+function eligibleVideoSql(context: DiscoveryContext) {
+  return Prisma.sql`(${publicPlayableVideoSql()}) AND (${availableVideoPolicySql(Prisma.sql`v.id`, {
+    countryCode: context.availabilityCountryCode,
+    isKidsProfile: context.isKidsProfile,
+  })})`;
 }
 
 function toVideoItem(video: VideoCardRecord, kicker: string): DiscoveryItem {
