@@ -40,16 +40,15 @@ export function WorkspaceSidebar({
             <small>{t(studio ? "studio.brand" : "navigation.adminBrand")}</small>
           </span>
         </Link>
-        <div className={styles.mobileTrigger}>
-          <NavigationDialog
-            label={t(studio ? "navigation.openStudio" : "navigation.openAdmin")}
-            title={label}
-            triggerClassName={styles.menuButton}
-            trigger={<span aria-hidden="true">☰</span>}
-          >
-            <GroupedNavigation groups={groups} label={label} />
-          </NavigationDialog>
-        </div>
+        {/* Only the trigger is responsive-hidden; an open modal must remain operable. */}
+        <NavigationDialog
+          label={t(studio ? "navigation.openStudio" : "navigation.openAdmin")}
+          title={label}
+          triggerClassName={`${styles.menuButton} ${styles.mobileTrigger}`}
+          trigger={<span aria-hidden="true">☰</span>}
+        >
+          <GroupedNavigation groups={groups} label={label} />
+        </NavigationDialog>
       </div>
       {studio ? (
         <Link className={styles.createAction} href={href("/upload")}>
