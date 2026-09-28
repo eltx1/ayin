@@ -9,15 +9,15 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     display_override: ["window-controls-overlay", "standalone", "minimal-ui"],
-    background_color: "#05070d",
-    theme_color: "#05070d",
+    background_color: "#03030a",
+    theme_color: "#03030a",
     orientation: "any",
     categories: ["entertainment", "video", "social"],
     shortcuts: [
       {
-        name: "Uploads",
-        short_name: "Uploads",
-        url: "/uploads",
+        name: "Upload video",
+        short_name: "Upload",
+        url: "/upload",
         icons: [{ src: "/icons/ayin-192.svg", sizes: "192x192", type: "image/svg+xml" }],
       },
       {

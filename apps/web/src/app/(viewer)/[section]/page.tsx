@@ -1,76 +1,43 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { PublicDirectory } from "@/components/viewer/public-directory";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { localizePath } from "@/lib/i18n/routing";
+import { translate } from "@/lib/i18n/translator";
+import { isDirectorySection } from "@/lib/public-directory";
+import { absoluteUrl } from "@/lib/seo";
 
-import { EmptyState } from "@/components/viewer/view-states";
-import { metadataRobots } from "@/lib/seo";
-
-import styles from "./page.module.css";
-
-const sectionCopy = {
-  movies: {
-    title: "Movies",
-    description: "Feature-length discovery will live here as the AYIN catalog comes online.",
-  },
-  series: {
-    title: "Series",
-    description: "Series, seasons and episodes will gather here in a TV-friendly browsing surface.",
-  },
-  tv: {
-    title: "TV",
-    description: "Creator TV and future linear experiences will share this focused destination.",
-  },
-  creators: {
-    title: "Creators",
-    description: "Discover channels and the people building what comes next on AYIN.",
-  },
-  shorts: {
-    title: "Shorts / Clips",
-    description:
-      "Fast, lightweight discovery will arrive here without complicating long-form viewing.",
-  },
-  kids: {
-    title: "Kids",
-    description: "A dedicated family-oriented surface is reserved here for a later product phase.",
-  },
-  "my-ayin": {
-    title: "My AYIN",
-    description: "Continue Watching, lists, subscriptions and history will come together here.",
-  },
-  search: {
-    title: "Search",
-    description: "Search across AYIN as the catalog and discovery data become available.",
-  },
-} as const;
-
-interface SectionPageProperties {
+type Props = {
   params: Promise<{ section: string }>;
-}
-
-export async function generateMetadata({ params }: SectionPageProperties): Promise<Metadata> {
-  const { section } = await params;
-  const copy = sectionCopy[section as keyof typeof sectionCopy];
-  if (!copy) return { robots: metadataRobots(false) };
+  searchParams: Promise<{ cursor?: string | string[] }>;
+};
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+  const [{ section }, query, locale] = await Promise.all([
+    params,
+    searchParams,
+    getRequestLocale(),
+  ]);
+  if (!isDirectorySection(section)) return { robots: { index: false, follow: false } };
   return {
-    title: copy.title,
-    description: copy.description,
-    robots: metadataRobots(false),
+    title: translate(locale, `nav.${section}`),
+    description: translate(locale, `browse.${section}Description`),
+    alternates: {
+      canonical: absoluteUrl(localizePath(`/${section}`, locale)),
+      languages: {
+        en: absoluteUrl(`/${section}`),
+        ar: absoluteUrl(`/ar/${section}`),
+        "x-default": absoluteUrl(`/${section}`),
+      },
+    },
+    robots: { index: !query.cursor, follow: true },
   };
 }
-
-export default async function SectionPage({ params }: SectionPageProperties) {
-  const { section } = await params;
-  const copy = sectionCopy[section as keyof typeof sectionCopy];
-  if (!copy) {
-    notFound();
-  }
-
-  return (
-    <main className={styles.page}>
-      <div className={styles.heading}>
-        <p>AYIN</p>
-        <h1>{copy.title}</h1>
-      </div>
-      <EmptyState description={copy.description} title="Ready for the next layer" />
-    </main>
-  );
+export default async function SectionPage({ params, searchParams }: Props) {
+  const [{ section }, query, locale] = await Promise.all([
+    params,
+    searchParams,
+    getRequestLocale(),
+  ]);
+  if (!isDirectorySection(section)) notFound();
+  return <PublicDirectory section={section} locale={locale} cursor={query.cursor} />;
 }

@@ -1,0 +1,74 @@
+.page {
+  width: min(100%, var(--content-max));
+  margin-inline: auto;
+  padding: clamp(1.5rem, 4vw, 4rem) var(--shell-gutter) calc(6rem + var(--ayin-safe-bottom));
+}
+.header {
+  margin-block-end: 2rem;
+}
+.back {
+  color: var(--muted);
+  text-decoration: none;
+}
+.header h1 {
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  line-height: 1.1;
+  margin-block: 1rem;
+}
+.header p {
+  color: var(--muted);
+  max-width: 46rem;
+  line-height: 1.6;
+}
+.categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-start: 1.5rem;
+}
+.categories a,
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  color: var(--foreground);
+}
+.categories a[aria-current="page"] {
+  background: var(--surface-elevated, #22182c);
+  border-color: var(--muted);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
+  gap: 2rem 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.grid li {
+  min-width: 0;
+}
+.grid li > a {
+  width: 100%;
+}
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-block-start: 2rem;
+}
+.page a:focus-visible {
+  outline: 3px solid var(--foreground);
+  outline-offset: 4px;
+}
+@media (max-width: 480px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem 0.75rem;
+  }
+}
