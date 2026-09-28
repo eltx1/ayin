@@ -33,6 +33,7 @@ export function NavigationDialog({
   const pathname = usePathname();
   const id = useId();
   const dialog = useRef<HTMLDialogElement>(null);
+  const triggerElement = useRef<HTMLButtonElement>(null);
   const [opened, setOpened] = useState(false);
 
   useEffect(() => {
@@ -55,9 +56,36 @@ export function NavigationDialog({
     dialog.current?.close();
   }
 
+  function trapTab(event: ReactKeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== "Tab") return;
+    const focusable = [
+      ...event.currentTarget.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ].filter((element) => element.getClientRects().length > 0);
+    const first = focusable[0];
+    const last = focusable.at(-1);
+    if (!first || !last) return;
+
+    const active = document.activeElement;
+    if (!event.currentTarget.contains(active)) {
+      event.preventDefault();
+      first.focus();
+      return;
+    }
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
     <>
       <button
+        ref={triggerElement}
         aria-label={label}
         aria-controls={id}
         aria-expanded={opened}
@@ -80,8 +108,14 @@ export function NavigationDialog({
         dir={direction}
         className={styles.dialog}
         aria-labelledby={`${id}-title`}
-        onClose={() => setOpened(false)}
+        onClose={() => {
+          setOpened(false);
+          if (triggerElement.current?.isConnected) {
+            triggerElement.current.focus({ preventScroll: true });
+          }
+        }}
         onCancel={(event) => event.stopPropagation()}
+        onKeyDown={trapTab}
       >
         <TvFocusScope>
           <header className={styles.header}>
