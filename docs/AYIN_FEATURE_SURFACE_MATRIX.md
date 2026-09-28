@@ -1,205 +1,123 @@
 # AYIN feature surface matrix
 
-## Authority and evidence
+## Current authority and evidence
 
-This is the human backend-to-product inventory for the current Web/PWA master goal. Read [the master checkpoint](AYIN_WEB_PWA_MASTER_CHECKPOINT.md) for exact accepted commits and phase status. AYIN remains one Web/PWA product, with platform capability adapters rather than independently maintained ordinary product UIs.
+This is the backend-to-product inventory for the current Web/PWA master phases 0–16. AYIN at `https://ayin.stream` remains one canonical Web/PWA product with platform capability adapters. Read [the master checkpoint](AYIN_WEB_PWA_MASTER_CHECKPOINT.md) for accepted heads, tests, deployment, unresolved risks and the next phase.
 
-The entries below reconcile all **73 domain labels** in the historical [source inventory](AYIN_PRODUCT_INTEGRATION_MATRIX.json) and [authored audit](AYIN_PRODUCT_INTEGRATION_AUDIT.md). Related capabilities share an entry where their authorization and product surfaces are the same. Historical filename matches are not runtime coverage. Full per-endpoint, visual, device and production acceptance remains open; this document does not mark the master audit complete.
+The complete detailed capability entries, API/controller paths, authorization boundaries, intended audiences, Web/PWA/mobile routes, missing UX and test requirements are preserved in [the detailed baseline matrix](AYIN_FEATURE_SURFACE_DETAIL_BASELINE_140.md). **That document is a historical snapshot, not a second current authority.** Its pending-PR and obsolete-placeholder statements are superseded by the dated reconciliation below. All 73 authored domain labels remain in scope; no capability or security requirement is deleted by consolidating this index.
 
-Source baseline: accepted main `912e64b3ef91644abe9b8c2475ea3faffb519597`. The route implementation in PR #140 is under review. API source paths below are relative to `apps/api/src/`; Viewer, Creator and Admin paths identify Web/PWA destinations, not new access permissions. Mobile/PWA access uses those same responsive routes unless an entry explicitly says internal or native. Physical-device verification is separate.
+Source inventory schema v2 is generated with `node scripts/audit-product-integration.mjs --stdout`. It includes every tracked-file hash, route/import/layout candidate, controller/endpoint path, backend file, model, migration, worker, platform, workflow, feature and authored semantic classification. Filename matches and historical semantic review are not runtime or authorization proof. The historical committed JSON remains history, not a current generated report.
 
-**Test notation:** existing test inventory means the named domain's `tests` entries in the historical JSON; it is source evidence, not a new successful run. New route tests are `apps/api/test/public-directory.integration.test.ts`, `apps/web/src/lib/public-directory.test.ts`, `apps/web/src/lib/public-route-integrity.test.ts` and `tests/e2e/public-directories.acceptance.spec.ts`. Exact execution results belong in the checkpoint. A hidden navigation link is never an authorization control.
+## Fresh source evidence — 2026-09-28
 
-## Identity and personal library
+Accepted product baseline: main `39731c6a8a069e92732f95c4b7db7afa30cbb5c2`, including PR #140. Deployment `36379170040` and its verified immutable artifact `10952038374` establish this release at deployment time; the checkpoint records the exact proof and health boundary.
 
-### Authentication, Sessions, Accounts
+Inspected source artifact: run `36379315415`, artifact `10952330981`, ZIP SHA-256 `bd3453054040c2654edee2dae5cb59af154b14c9d68ca5318c8f0ffae4a6adab`. Checked-out source `dcfd1351e22a8cffff0309e06b90a76b8bc3af25` is the clean PR #141 test-merge snapshot for head `81dbdaa7847e972913e44c8c4656896aed945657`, not a main commit. It contains 1220 tracked files, 78 Web routes (70 pages and 8 handlers), 54 controllers, 364 endpoint paths, 73 authored feature labels, 119 models, 57 migrations, 285 backend source files, 8 worker-named source files, 113 platform files and 50 deployment/workflow files. These are snapshot counts; later edits change them. Static workers are not running worker instances.
 
-**Backend/API:** `auth/auth.controller.ts`, `privacy/privacy.controller.ts`. **Audience/authorization:** Viewer account owner; scoped Admin user operations remain separately guarded. **Web/PWA/mobile:** `/login`, `/register`, `/forgot-password`, `/reset-password`, `/account`; Admin `/admin/users`. **Status/action:** existing surfaces with gaps; unify request failures, sign-in return context and the Account hub without weakening revocation, CSRF, ownership, privacy export/deletion or audit. Not internal-only. **Tests:** existing auth/session/privacy inventory; full account-switch and simplified-workflow regression remains required.
+## Accepted deltas that supersede the detailed baseline
 
-### MFA
+### Public catalog and canonical routes
 
-**Backend/API:** `auth/auth.controller.ts`, `admin/admin.guard.ts`. **Audience/authorization:** authenticated account ownership for enrollment/recovery; server roles and current step-up for privileged operations. **Web/PWA/mobile:** `/login`, `/account`, privileged Admin confirmation. **Status/action:** historical Account MFA acceptance through PR #134 follows recovery/enrollment/concurrency fixes in #131–#133. Retain one-time secrets, revocation, no-store and audit. Full design/device acceptance remains open. Not internal-only. **Tests:** historical account-MFA unit/integration/browser journeys; revalidate after navigation/workflow consolidation.
+**Capabilities:** Channels, Movies, Series, Episodes, Creator TV, FAST, Clips, Uploads, PWA, Localization, Arabic/RTL, SEO and Sitemaps where affected by the route change.
 
-### Profiles
+**Backend/API:** existing `discovery/discovery.controller.ts`, Movie/Series catalog controllers/services, trusted-region context and VideoPolicy; source paths are relative to `apps/api/src/`. **Authorization:** eligible public catalog/channel/TV reads; creator/Admin mutations keep existing server guards. **Audience/surfaces:** Viewer `/movies`, `/series`, `/tv`, `/creators` are real localized server-rendered directories, not placeholders. Details preserve the Viewer shell. `/shorts` redirects to `/clips`; `/uploads` redirects to `/upload`, preserving locale/query. One generated manifest owns correct Upload/TV shortcuts. Web/PWA/mobile share these routes.
 
-**Backend/API:** `discovery/discovery.controller.ts`. **Audience/authorization:** Viewer profile ownership and Kids policy context. **Web/PWA/mobile:** `/my-ayin`, `/kids`. **Status/action:** partial surface; default/Kids context exists, but general profile switching/management is not established merely by the inventory. Do not invent an implemented profile manager. **Tests:** existing discovery/profile isolation tests; account switching and private-cache boundaries require explicit acceptance.
+**Status:** accepted PR #140, not pending. Directory reads are bounded and rights-aware, with keyset continuation, primary-TV ownership, no-store trusted context, genuine-404 discrimination and Movie batch hydration. Configuration ACTIVE is not proof of FAST/provider delivery. **Missing UX/action:** complete design/accessibility, failed-artwork fallback, full detail translation, all notification/SEO/deep links and large-catalog acceptance remain open. Per-series hydration remains a measured performance follow-up. Manifest repair is not complete PWA acceptance. **Tests:** directory unit/query contracts; PostgreSQL policy/territory/date/parity/traversal/owner fixtures; browser EN/AR/RTL, continuation, links, aliases, manifest and overflow; existing catalog tests retained. Exact successful runs and reviewed screenshots are in the checkpoint.
+
+### Shared Admin access and earlier integrated workspaces
+
+**Capabilities:** Admin, MFA, Regional discovery, Recommendation evaluation, Trending, Media processing, Media workers, HLS, Observability, Database scaling, Warehouse export and Operations dashboard.
+
+**Status:** do not infer missing implementation from old generator gap strings. Current `AdminSidebar` already consumes `useAdminAccess`; shared session and reauthentication work is not an open reimplementation task. Earlier reviewed media-generation/recovery, application/database/warehouse status, discovery evaluation/trending and scoped merchandising improvements remain implemented. PR #139 accepted scoped draft/request recovery. **Audience/authorization:** role-scoped Admin/Operations; detailed observability retains its SUPERADMIN boundary; privileged mutations retain current MFA, confirmation and transactional audit. **Missing UX/action:** 19-link flat Admin navigation, coherent control centers, contextual entity selection, localization and complete workflow regression remain current master work. Internal command execution does not become Viewer/Creator UI. **Tests:** retain earlier Admin/MFA/ownership/media/concurrency/operator/browser suites and revalidate changed journeys. Production/provider success cannot be inferred from fixtures.
+
+## Complete domain coverage and next acceptance
+
+Every group below inherits the exact controller/model/surface/test detail in its named section of the preserved detailed matrix. The explicit current statuses and actions here take precedence. Ordinary responsive routes are available through the shared Web/PWA; actual device and standalone-mode acceptance is separate. Link visibility never replaces server authorization.
+
+### Authentication, Sessions, Accounts, MFA, Profiles
+
+**Audience:** Viewer/account owner; separately guarded Admin user/security operations. **Surfaces:** `/login`, `/register`, `/forgot-password`, `/reset-password`, `/account`, `/my-ayin`, `/kids`, `/admin/users`. **Authorization:** session/profile ownership, CSRF, revocation, export/deletion safeguards and scoped Admin roles/step-up. **Status/action:** account and MFA surfaces exist; general profile management is not established by inventory. Simplify the Account hub, sign-in return context and error recovery without exposing one-time secrets or private state. **Tests:** auth/session/privacy/MFA/profile isolation plus account-switch and cache-boundary acceptance after consolidation. Not internal-only.
 
 ### Watch progress, History, My AYIN
 
-**Backend/API:** `watch/watch.controller.ts`, `discovery/discovery.controller.ts`. **Audience/authorization:** authenticated Viewer/profile-scoped actions and public playback policy. **Web/PWA/mobile:** `/my-ayin`, `/watch/[slug]`. **Status/action:** existing surfaces; make Continue Watching, History, Watch Later, Likes and subscriptions discoverable. Recheck post-policy empty states and capped cursors while preserving scan position and profile isolation. Not internal-only. **Tests:** existing watch/discovery suites; historical defect status must be verified against current code rather than assumed open or fixed.
+**Audience:** authenticated Viewer/profile owner. **Backend:** Watch/discovery controllers. **Surfaces:** `/my-ayin`, `/watch/[slug]`. **Status/action:** existing personal library; make Continue Watching, Watch Later, Likes, History and subscriptions discoverable. Verify current post-policy empty/cursor behavior instead of assuming historical findings remain open. **Tests:** watch/discovery/profile isolation and continuation; no cross-account caching. Not internal-only.
 
-## Creator and catalog
+### Channels, Uploads, Playlists
 
-### Channels
+**Audience:** eligible public Viewer reads; creator channel membership for editing. **Backend:** channel, quick-upload, media-upload and playlist controllers. **Surfaces:** `/creators`, `/c/[handle]`, `/upload`, `/studio/channel`, `/studio/content`, `/studio/playlists`, existing `/channel/*` aliases/editors and public playlist details. **Status/action:** preserve real directories and direct R2/multipart retry/presign/stall/progress. Keep ordinary upload minimal and advanced metadata optional; simplify publish persistence atomically. Shared legacy editor wrappers are deliberate reuse, not duplicate products. **Tests:** upload/metadata/playlist/channel, large-upload/cancel/retry and save/publish/ownership journeys. Not internal-only.
 
-**Backend/API:** `creator/channel.controller.ts`; new public creator directory in `discovery/discovery.controller.ts`. **Audience/authorization:** public active/non-removed channel reads; creator membership for management; separate Admin guards. **Web/PWA/mobile:** `/creators`, `/c/[handle]`, `/studio/channel`, `/channel/edit`, `/admin/channels`. **Status/action:** the real bounded creator index is implemented in PR #140 pending acceptance. Shared editor wrappers are intentional reuse; do not create a second channel product. **Tests:** new route/integration/browser tests plus existing channel tests.
+### Movies, Series, Episodes, Creator TV, FAST, Clips
 
-### Uploads
+**Audience:** policy-eligible public Viewer; creator-owned TV/Clips management; separately guarded catalog/provider Admin. **Surfaces:** real directories/details, Watch episode context, `/clips`, public channel TV, `/studio/tv`, `/admin/movies`, `/admin/series`, `/admin/tv`. **Status/action:** route repair accepted as above; preserve release/territory/maturity/ownership rules. Complete detail/episode/short-form UX and provider command audit/concurrency review. Actual FAST output and hardware require independent evidence. **Tests:** catalog/TV/Clips and rights-aware traversal, plus future consolidated journeys. No public provider credentials or commands.
 
-**Backend/API:** `creator/quick-upload.controller.ts`, `media/media-upload.controller.ts`. **Audience/authorization:** authenticated creator and upload ownership, signed upload sessions and server validation. **Web/PWA/mobile:** `/upload`; old `/uploads` redirects there. **Status/action:** direct R2/multipart flow exists; corrected manifest shortcut is under review. Preserve retries, presign renewal, stall handling and monotonic progress. Simplify publish/details safely and keep advanced metadata optional. **Tests:** existing upload/media suites; large-upload, cancellation and publish persistence journeys remain required.
+### Captions, Chapters, Metadata
 
-### Playlists
+**Audience:** eligible Viewer playback and creator-owned editing; separate Admin metadata writes. **Surfaces:** Watch, `/upload`, `/studio/content`, `/admin/videos`. **Status/action:** existing capability; use contextual editors and optional advanced settings. The remaining `Series / episode placeholder` label in `video-metadata-fields.tsx:298` needs real creator-permission/metadata review before replacement. SEO/tags/captions/manual thumbnails must not become ordinary upload requirements. **Tests:** metadata/upload/caption/watch contracts and language/keyboard/RTL rendering. Not internal-only.
 
-**Backend/API:** `creator/playlist.controller.ts`. **Audience/authorization:** public eligible playlist reads; creator channel membership for writes. **Web/PWA/mobile:** `/c/[handle]/playlists/[slug]`, `/studio/playlists`, `/channel/playlists`, `/channel/playlists/[playlistId]`. **Status/action:** integrated with gaps; shared components are intentional. Clarify canonical entry and return context, use named video selectors and preserve ordering/ownership. **Tests:** existing playlist inventory and creator/browser journeys.
+### Community, Comments, Social actions, Notifications, Live
 
-### Movies
-
-**Backend/API:** `movie-catalog/movie-catalog.controller.ts`, `movie-catalog/admin-movie-catalog.controller.ts`, existing catalog/VideoPolicy services. **Audience/authorization:** public availability-filtered reads; guarded catalog Admin mutations. **Web/PWA/mobile:** `/movies`, `/movies/[slug]`, `/admin/movies`. **Status/action:** PR #140 replaces the placeholder with localized SSR browse and bounded continuation, filters catalog/video rights before page limits, batches movie hydration, distinguishes upstream failure from missing content and adds the Viewer shell to details. Final design, concurrent-state and production performance acceptance remain open. **Tests:** new strict-query, territorial parity, 80-title traversal, private/removed/unplayable exclusion and browser directory/detail tests; existing catalog suites retained.
-
-### Series, Episodes
-
-**Backend/API:** `series-catalog/series-catalog.controller.ts`, `series-catalog/admin-series-catalog.controller.ts`, catalog/VideoPolicy services. **Audience/authorization:** public catalog/episode eligibility; separately guarded Admin mutations. **Web/PWA/mobile:** `/series`, `/series/[slug]`, Watch episode context, `/admin/series`. **Status/action:** PR #140 adds the real localized index, eligible released-episode filtering and compact directory responses, preserving legacy no-rights-row global availability. Seasons/episodes/details already exist. Full per-series hydration remains a measured performance follow-up; do not claim an N+1 fix for this domain. **Tests:** new directory/release/privacy/parity tests and real browser links; existing series/context tests remain authoritative.
-
-### Creator TV, FAST
-
-**Backend/API:** `creator/creator-tv.controller.ts`, `creator/creator-tv-linear-output.controller.ts`, new discovery TV directory. **Audience/authorization:** public eligible playback; creator membership for schedules; separately guarded Admin/provider operations. **Web/PWA/mobile:** `/tv`, `/c/[handle]/tv`, `/studio/tv`, `/channel/tv`, `/admin/tv`. **Status/action:** PR #140 lists only each active channel's active, correctly owned primary TV, never a secondary output under the primary route. Configuration marked ACTIVE is not a claim of live provider playback. Keep provider activation/credentials, command concurrency and audit review separate. **Tests:** new primary/secondary/owner/disabled tests plus existing TV/FAST contracts; actual hardware/provider output remains external evidence.
-
-### Clips
-
-**Backend/API:** `creator/clips.controller.ts`. **Audience/authorization:** public eligible clips; creator-owned creation/editing. **Web/PWA/mobile:** `/clips`, `/upload`, `/studio/content`; `/shorts` becomes a locale/query-preserving alias. **Status/action:** one Clips product, with existing saved `navigation.shorts` configuration preserved and destinations normalized. Dedicated short-form UX/ad policy remains later acceptance. **Tests:** new navigation/alias contracts and browser redirect journey; existing clips tests retained.
-
-### Captions
-
-**Backend/API:** `creator/caption.controller.ts`, `watch/watch.controller.ts`. **Audience/authorization:** public eligible playback tracks; creator ownership for editing. **Web/PWA/mobile:** Watch player and `/studio/content`. **Status/action:** manager/player integration exists; simplify contextual editing and verify language, accessibility, keyboard and target-device rendering. Not an operations screen. **Tests:** existing caption/watch tests; device/subtitle acceptance remains open.
-
-### Chapters, Metadata
-
-**Backend/API:** `creator/quick-upload.controller.ts`, `admin/admin-video-metadata.controller.ts`. **Audience/authorization:** creator ownership and separately guarded Admin metadata writes; public eligible chapter reads. **Web/PWA/mobile:** `/upload`, `/studio/content`, `/watch/[slug]`, `/admin/videos`. **Status/action:** extensive fields already exist; progressively disclose advanced controls and remove stale Series-unavailable copy after checking actual creator permissions. Never make SEO, tags, captions or manual thumbnails mandatory for ordinary upload. **Tests:** existing metadata/upload/watch tests and atomic save/publish regression after simplification.
-
-## Social and live
-
-### Community
-
-**Backend/API:** `community/community.controller.ts`. **Audience/authorization:** eligible public feed; authenticated/creator-owned writes; server moderation roles. **Web/PWA/mobile:** `/community`, `/c/[handle]/community`, `/studio/community`, `/admin/moderation`. **Status/action:** features exist; redesign the minimal feed and remove inconsistent inline styling. Preserve poll/moderation semantics and clear failure/pending states. **Tests:** existing community inventory; full EN/AR/mobile and moderated-state browser coverage remains open.
-
-### Comments
-
-**Backend/API:** `comments/comments.controller.ts`. **Audience/authorization:** authenticated eligible Viewer actions, creator contextual moderation and Admin roles. **Web/PWA/mobile:** `/watch/[slug]`, `/studio/comments`, `/admin/moderation`. **Status/action:** integrated; retain ownership/reasons/abuse protections while simplifying moderation. Review keyboard, RTL and action recovery. **Tests:** existing comments/trust/browser inventory.
-
-### Social actions, Notifications
-
-**Backend/API:** `social/social.controller.ts`. **Audience/authorization:** Viewer account/profile-scoped actions; public channel context. **Web/PWA/mobile:** Watch, `/notifications`, `/c/[handle]`. **Status/action:** mounted controls/feed exist; verify success/failure feedback, account-switch cleanup and correct localized destination links. Do not cache another account's personalized state. **Tests:** existing social/notification tests and cross-route/account regression.
-
-### Live
-
-**Backend/API:** `live/live.controller.ts`. **Audience/authorization:** public eligible live watch; creator stream ownership; privileged provider/key operations. **Web/PWA/mobile:** `/live/[slug]`, `/studio/live`. **Status/action:** historical PR #126 accepted recovery/pending/drafts/key rotation/secret cleanup/ownership/audit and Arabic mobile. Unbounded listing and terminal provider-command concurrency remain review items. Real provider/hardware activation is not established by passing fixtures. **Tests:** existing live/API/browser tests; provider and device plans remain separate.
-
-## Rights, discovery and localization
+**Audience:** eligible public feeds/playback; authenticated Viewer actions; creator-owned management and scoped moderation. **Surfaces:** `/community`, channel Community, Watch, `/notifications`, `/live/[slug]`, `/studio/community`, `/studio/comments`, `/studio/live`. **Status/action:** existing surfaces need coherent design, pending/error/empty handling and correctly localized links. Preserve live secret cleanup, key rotation, draft recovery, ownership and audit; listing bounds and terminal provider-command concurrency remain review items. **Tests:** community/comments/social/notification/live, account-switch cleanup, moderation and reconnect. Real provider delivery is external evidence.
 
 ### Rights, Maturity, Geographic policy, Kids
 
-**Backend/API:** `video-policy/video-policy.service.ts`, `admin/admin-video-policy.controller.ts`, trusted-region and catalog policies. **Audience/authorization:** Viewer eligibility enforced server-side; creator-owned declarations; separately guarded Admin policy/moderation decisions. **Web/PWA/mobile:** `/kids`, Watch, upload/content editors, `/admin/kids`, `/admin/trust`. **Status/action:** never bypass policy to make a directory fuller. Unknown region remains conservative; exact territory and date-boundary semantics must agree with existing catalog rules. Replace consumer-facing legal/developer caveats without falsely claiming legal approval. Kids monetization remains a separate strict policy decision. **Tests:** existing policy/Kids suites plus new SQL-versus-policy, trusted-header, publication and media eligibility tests. Full profile switching and advertising compliance are not certified here.
+**Audience:** server-enforced Viewer eligibility; creator-owned declarations; scoped Admin policy decisions. **Backend:** VideoPolicy, catalog rights and trusted-region boundaries. **Surfaces:** Kids, Watch, content editors, `/admin/kids`, `/admin/trust`. **Status/action:** preserve conservative unknown-region behavior, date/territory parity and hard playable/public requirements. Remove developer/legal caveats from consumer copy without claiming legal certification. Kids monetization requires a separate strict current-policy decision. **Tests:** policy/Kids/profile/territorial SQL parity plus advertising and transition acceptance. Low-level enforcement remains internal.
 
-### Search, Language-aware search
+### Search, Language-aware search, Lens, Recommendations
 
-**Backend/API:** `search/search.controller.ts`. **Audience/authorization:** public eligibility-filtered discovery, scoped context where required. **Web/PWA/mobile:** `/search`. **Status/action:** lexical/language-aware UI exists; preserve bounded query behavior, rights/maturity filters, localization and RTL. Improve empty/error/loading and result hierarchy without converting every public page to client rendering. **Tests:** existing search suites; measured query/latency and locale browser acceptance remain open.
+**Audience:** public/profile-safe Viewer discovery and existing authenticated Lens context. **Backend:** search/recommendation controllers and optional semantic-provider boundary. **Surfaces:** `/search`, `/my-ayin/lens`, Home, Watch, Clips. **Status/action:** retain bounded language-aware queries, rights/maturity, lexical fallback and exposure attribution; no invented provider availability or production lift. Improve hierarchy and state handling while preserving public server rendering. **Tests:** search/Lens/recommendation/privacy/exposure and locale journeys; production latency requires measurement.
 
-### Lens
+### Recommendation evaluation, Trending, Regional discovery
 
-**Backend/API:** `search/search.controller.ts`, `CatalogSearchEmbedding` boundary. **Audience/authorization:** Viewer with existing authenticated/profile requirements. **Web/PWA/mobile:** `/my-ayin/lens`. **Status/action:** lexical fallback and optional semantic boundary exist; no claim that an external AI provider is configured. Keep operational provider settings out of ordinary Viewer UI. **Tests:** existing Lens/search inventory and provider-disabled/fallback cases.
-
-### Recommendations
-
-**Backend/API:** `recommendations/recommendation.controller.ts`. **Audience/authorization:** Viewer public/profile-safe recommendations and feedback; Admin configuration remains privileged. **Web/PWA/mobile:** Home, Watch, Clips; existing Admin settings/discovery workspaces. **Status/action:** verify recommendations, versions and exposure attribution independently; never present fixture scores as measured production improvement. **Tests:** existing recommendation/privacy/exposure suites and full Viewer journeys.
-
-### Recommendation evaluation, Trending
-
-**Backend/API:** `admin/admin-recommendation-evaluation.controller.ts`, `admin/admin-trending.controller.ts`. **Audience/authorization:** OPERATIONS controls; mutations keep required step-up and audit. **Web/PWA/mobile:** existing discovery Operations workspace, not a Viewer diagnostic screen. **Status/action:** historical PR #124 provides fixed-fixture comparisons, versions/exposure evidence/export intent and reviewed trending configuration. Retain draft preservation, attribution limits and last-write-wins caveats; improve grouped navigation and localization. **Tests:** historical discovery-operator unit/integration/browser tests; production impact remains unverified.
-
-### Regional discovery
-
-**Backend/API:** `admin/admin-product.controller.ts`, `discovery/discovery.controller.ts`. **Audience/authorization:** public safe discovery; server-scoped Admin/OPERATIONS merchandising writes with step-up/audit. **Web/PWA/mobile:** Home and `/admin/product-controls`. **Status/action:** PR #139's recovery/single-snapshot/scoped-save behavior is accepted at the recorded main. Preserve unrelated drafts, trusted location, cohort fallback and explicit regional validation; don't replay writes after identity verification. **Tests:** `admin-product.test.ts` and merchandising workspace browser journeys; complete design remains later.
+**Audience:** scoped Admin/Operations control, not Viewer diagnostics; Viewer consumes safe resulting content. **Backend:** Admin evaluation/trending/product controls and discovery. **Surfaces:** existing discovery Operations workspace, `/admin/product-controls`, Home. **Status/action:** earlier integration and PR #139 draft recovery are accepted; group navigation, preserve fixture/version/exposure/export distinctions, unrelated drafts, validation, step-up and audit. **Tests:** operator/merchandising/API/browser; ranking improvement is not claimed from fixed fixtures.
 
 ### Localization, Arabic/RTL
 
-**Backend/API:** `catalog-localization/catalog-localization.controller.ts`, catalog localization models and Web i18n/locale routing. **Audience/authorization:** Viewer locale choice; permission-scoped creator/Admin editing. **Web/PWA/mobile:** Search, catalog directories/details, `/admin/catalog-localizations` and shared Web shells. **Status/action:** EN/AR directories are part of PR #140; existing Admin/Studio English copy, physical-direction CSS and full detail translation require route-by-route review. Do not claim universal RTL acceptance from a shared stylesheet. **Tests:** existing i18n/localization suites plus directory/alias/RTL browser journeys; broader accessibility/device checks remain open.
-
-## Analytics and finance
+**Audience:** Viewer locale choice; permission-scoped creator/Admin editing. **Backend:** catalog-localization controllers/models and Web i18n/routing. **Surfaces:** shared shells/catalog/search and `/admin/catalog-localizations`. **Status/action:** directory EN/AR/RTL acceptance is real but not universal. Review English-only Admin/Studio copy, physical-direction CSS, long mixed-script text, focus and complete details. **Tests:** i18n/catalog/localization and route-by-route responsive/keyboard/RTL acceptance.
 
 ### Analytics, Cohorts
 
-**Backend/API:** `analytics/analytics.controller.ts` and event/daily/cohort rollups. **Audience/authorization:** creator-owned aggregates and scoped Admin analytics; privacy suppression remains mandatory. **Web/PWA/mobile:** `/studio/analytics`, `/admin`. **Status/action:** already surfaced; preserve minimum cohorts, date definitions and evidence distinctions. Consolidate filters and avoid loading all datasets on first paint. Never fabricate revenue, viewers or cohort results. **Tests:** existing analytics/rollup/privacy suites; real data latency and load measurements remain separate.
-
-### Warehouse export
-
-**Backend/API:** `warehouse/warehouse-export.service.ts`, `warehouse/warehouse-export-worker.service.ts`, `WarehouseExportCheckpoint`. **Audience/authorization:** internal worker execution; sanitized scoped Operations read-only summary. **Web/PWA/mobile:** existing Operations warehouse status workspace, not a Viewer/Creator export console. **Status/action:** historical PR #125 accepted bounded sanitized configuration/checkpoint status. No raw facts, credentials, arbitrary execution or export mutation UI; checkpoint progress is not a heartbeat or provider-success claim. **Tests:** existing warehouse/status/privacy tests; production export verification remains external.
+**Audience:** creator-owned aggregates and scoped Admin. **Backend:** analytics controllers and rollups. **Surfaces:** `/studio/analytics`, `/admin`. **Status/action:** dashboards exist; consolidate filters and lazy loading while retaining cohort suppression, dates and metric definitions. **Tests:** analytics/rollup/privacy; measured latency and production data remain separate. Never fabricate counts/revenue.
 
 ### Revenue, Reconciliation, Payouts, Compliance
 
-**Backend/API:** `revenue/revenue.controller.ts`, `revenue/revenue-reconciliation.controller.ts`, `revenue/payout-provider.controller.ts`, `revenue/creator-compliance.controller.ts`. **Audience/authorization:** creator-owned earnings/submissions; separate finance Admin roles, current step-up, transactional audit and immutable ledger controls. Reconciliation is Admin-facing, not an ordinary creator mutation. **Web/PWA/mobile:** current Account earnings area, `/studio/monetization`, `/admin/revenue`, `/admin/revenue/payouts/[payoutId]`. **Status/action:** existing surfaces/provider capability states need coherent Finance sub-navigation and named entity selectors. Preserve scoped identity data and high-risk confirmation. Never infer provider readiness, completed payouts or approved compliance from configuration alone. **Tests:** existing ledger/reconciliation/payout/compliance authorization/integration suites; actual provider credentials/commercial approvals are separate blockers.
+**Audience:** creator-owned earnings/submissions and separate finance Admin roles; reconciliation mutations are Admin-only. **Backend:** revenue, reconciliation, payout-provider and creator-compliance controllers. **Surfaces:** current Account earnings, `/studio/monetization`, `/admin/revenue`, payout details. **Status/action:** build coherent Finance navigation and named selectors; preserve immutable ledger, sensitive identity scope, current step-up, transactional audit and high-risk confirmation. **Tests:** ledger/reconciliation/payout/compliance/IDOR and simplified-workflow regression. Provider configuration is not completed transfers or compliance approval.
 
-## Advertising
+### Page ads, Video ads, Direct advertising, GAM, SSAI/DAI
 
-### Page ads, Video ads, Direct advertising, GAM
+**Audience:** consent-eligible public inventory; separately guarded advertising Admin and provider diagnostics. **Backend:** advertising-control, page/video-ad and GAM production controllers; supported runtime adapters. **Surfaces:** current Home/Watch/player/Live/TV hooks and `/admin/advertising`, `/admin/video-ads`. **Status/action:** consolidate Admin entrypoints later; retain logical placements, consent, kill switch, masked credentials, seller files, clean no-fill and content recovery. Full-surface inventory, density/CLS, official-policy research and native-app distinctions remain Phase 11. No default ads on auth/upload/Studio/Admin/sensitive Account/finance; Kids remains separately gated. **Tests:** ad runtime/consent/diagnostics/player/fallback and blocked-script/navigation/device/no-fill. No invented fill, revenue, SDK compatibility or provider delivery.
 
-**Backend/API:** `ads/advertising-control.controller.ts`, `ads/gam-production.controller.ts`, `ads/page-ad.controller.ts`, `ads/video-ad.controller.ts`. **Audience/authorization:** public consent/placement decisions; advertising Admin configuration and direct campaign controls remain server-guarded. **Web/PWA/mobile:** existing Home/Watch placements and `/admin/advertising`, `/admin/video-ads`. **Status/action:** consolidate the two Admin entrypoints into one coherent control center later. Retain logical placements, consent, emergency kill switch, masked credentials, no-fill/content recovery and seller files. A deliberate full-public-surface inventory, density/CLS measurement and current official Google policy review remain Phase 11. No default monetization on auth, upload, Studio, Admin or sensitive Account/finance forms. **Tests:** existing ad runtime/consent/diagnostics/player suites; no-fill/blocked-script/navigation/TV/native acceptance remains explicit. Real fill/revenue is not fabricated.
+### Support, Moderation, Trust & Safety
 
-### SSAI/DAI
+**Audience:** creator-owned tickets/trust workflows and assigned/scoped Admin/moderators. **Backend:** governance, trust and Admin control controllers. **Surfaces:** `/studio/support`, `/studio/trust`, contextual comments/content, `/admin/operations`, `/admin/trust`, `/admin/moderation`. **Status/action:** focused contexts and named selectors instead of UUIDs; preserve reasons, ownership, assignment, MFA, audit and destructive confirmation. **Tests:** support/governance/trust/moderation/IDOR and role-specific workflow regression. Not public diagnostic controls.
 
-**Backend/API:** `ads/video-ad.controller.ts` and supported runtime adapters. **Audience/authorization:** Viewer playback and privileged provider configuration/diagnostics. **Web/PWA/mobile:** Watch, Live, Creator TV and Advertising diagnostics. **Status/action:** preserve the provider/technical boundary; configured, supported and actually delivering are different states. Native SDK/app inventory cannot be assumed equivalent to GPT inside a WebView. **Tests:** existing SSAI/DAI/player contracts; official documentation, real provider and physical-device evidence required separately.
+### Media processing, Media workers, HLS
 
-## Safety and support
-
-### Support
-
-**Backend/API:** `admin/admin-governance.controller.ts`. **Audience/authorization:** creator-owned tickets; assigned/scoped Admin operations. **Web/PWA/mobile:** `/studio/support`, current `/admin/operations`. **Status/action:** ticket forms/queues exist; isolate the support context from unrelated operations, preserve assignment and audit, improve entity links and recovery. **Tests:** existing governance/support authorization and workflow tests.
-
-### Moderation, Trust & Safety
-
-**Backend/API:** `trust/trust.controller.ts`, `admin/admin-control.controller.ts`. **Audience/authorization:** creator-owned trust workflows and separately scoped moderation/Admin actions. **Web/PWA/mobile:** `/studio/trust`, `/admin/trust`, `/admin/moderation`, contextual comments/content. **Status/action:** replace raw UUID entry and dense action walls with named selectors and focused panels, retaining reasons, ownership, MFA, audit and destructive confirmation. Never hide enforcement solely in navigation. **Tests:** existing trust/moderation/IDOR/ownership suites and new consolidated-workflow security regression when changed.
-
-## Internal and operational systems
-
-### Media processing, Media workers
-
-**Backend/API:** `admin/admin-media-processing.controller.ts`, `media/media-processing-queue.service.ts`, `media/media-processing-lifecycle.service.ts`, `media/media-generation-safety.ts`. **Audience/authorization:** internal worker claims/leases/heartbeats; guarded Operations summaries and reviewed mutations; creator-owned processing progress only. **Web/PWA/mobile:** `/admin/operations`, `/admin/operations/media`, relevant owned upload progress. **Status/action:** historical reviewed jobs/capacity/retry/reprocess/recovery/pause acceptance through #123, generation recovery #127 and bounded overview #128 must remain intact. Keep atomic claims, leases, generation safety, step-up, confirmation and audit. No arbitrary transcoder/queue commands for normal users. **Tests:** existing queue/generation/storage/lease/operator suites; real throughput, provider and multi-host capacity evidence remains separate.
+**Audience:** internal generation/queue execution; guarded Operations summaries/recovery; creator-owned progress and eligible Viewer playback. **Backend:** media-processing controller, queue/lifecycle/generation-safety/rollout services. **Surfaces:** upload progress, player, `/admin/operations`, `/admin/operations/media`. **Status/action:** preserve accepted generation fencing, atomic claims, leases/heartbeats, stale-generation recovery, bounded reads, pause/retry/reprocess and audited step-up. No arbitrary transcoder/queue commands for ordinary users. **Tests:** media/storage/lease/generation/operator/integration; throughput and multi-host production evidence remain separate.
 
 ### R2, FFmpeg
 
-**Backend/API:** `media/media-storage.adapter.ts`, `media/media-processing-worker.service.ts`. **Audience/authorization:** internal storage/transcoding only. **Web/PWA/mobile:** no standalone user control surface; expose safe outcomes/progress through existing upload/Operations views. **Status/action:** deliberately internal. Never expose storage credentials, object operations or command execution merely to increase UI coverage. **Tests:** existing media/storage/FFmpeg runtime and integration fixtures; production capacity and recovery remain separately measured.
+**Audience:** internal/background-only. **Backend:** storage adapter and processing worker. **Surface:** no standalone user console; only safe progress/outcomes in upload and Operations. **Status/action:** remain internal by design; never expose credentials, object commands or arbitrary execution for UI coverage. **Tests:** storage/FFmpeg/runtime/integration; production capacity/restore requires actual measurement.
 
-### HLS, Adaptive playback, Playback fallback, Player
+### Adaptive playback, Playback fallback, Player
 
-**Backend/API:** `watch/watch.controller.ts`, `admin/admin-media-processing.controller.ts`, `media/media-adaptive-rollout.service.ts`, existing Web player adapters. **Audience/authorization:** eligible Viewer playback; guarded Operations rollout/recovery; internal media generation. **Web/PWA/mobile:** `/watch/[slug]`, `/live/[slug]`, `/c/[handle]/tv`, Operations media workspace. **Status/action:** preserve ABR, canonical MP4 fallback, captions, progress and ad failure recovery. Generation/recovery history is not real hardware certification. Keep the video dominant and advanced processing controls out of Viewer UI. **Tests:** existing adaptive/player/HLS/operator suites; real startup/buffering/ABR, mobile/remote and fallback measurements remain required.
+**Audience:** policy-eligible Viewer. **Backend:** Watch and supported media/native adapters. **Surfaces:** Watch, Live and channel TV. **Status/action:** keep video dominant and preserve ABR, canonical MP4 fallback, captions, progress and ad failure recovery. **Tests:** player/HLS/fallback/browser; startup, buffering, mobile/remote and hardware acceptance remain explicit. No exposed processing controls.
 
 ### SEO, Sitemaps
 
-**Backend/API:** `seo/seo.controller.ts`, `seo/seo-sitemap-counts.controller.ts`, Web metadata/canonical routing. **Audience/authorization:** public eligible index metadata; internal sitemap generation excludes private/unavailable content. **Web/PWA/mobile:** ordinary content pages and machine-readable routes, not a new end-user settings console. **Status/action:** align canonical paths/aliases, preserve locale/deep links, distinguish upstream error from not-found and remove obsolete placeholder indexing. **Tests:** existing SEO/sitemap rights tests and new route/metadata contracts; crawl/production evidence remains separate.
+**Audience:** public machine-readable metadata, with internal generation and eligibility filtering. **Backend:** SEO/sitemap controllers and Web metadata. **Surfaces:** public canonical content/metadata, not an end-user console. **Status/action:** accepted aliases remove high-value placeholder entries; complete all sitemap/canonical/locale/deep-link review and retain private-content exclusion. **Tests:** existing sitemap/rights/metadata/route contracts; production crawl is separate.
 
-### Admin
+### Admin, Operations dashboard, Observability, Database scaling
 
-**Backend/API:** `admin/admin.controller.ts`, `admin/admin-control.controller.ts` and domain-specific guards. **Audience/authorization:** server-scoped Admin roles and MFA, never link visibility alone. **Web/PWA/mobile:** `/admin` and existing domain pages. **Status/action:** replace the flat navigation with grouped role-aware control centers, shared scoped session reads, breadcrumbs and mobile navigation. Not accepted by this route repair. **Tests:** existing Admin authorization/browser inventory and complete master role/security regression after consolidation.
+**Audience:** server-scoped Admin/Operations; detailed observability retains SUPERADMIN. **Backend:** Admin control/operations/observability and database services. **Surfaces:** Admin domain pages, Operations and media/database/discovery/warehouse/observability drill-downs. **Status/action:** existing shared access and truthful sanitized summaries remain; transform flat navigation, breadcrumbs, mobile controls and domain workflows without arbitrary SQL or unnecessary indexes/replicas. **Tests:** role/MFA/audit/bounded-query/operator/browser; database plans and production latency remain measured follow-ups.
 
-### Observability, Database scaling
+### Warehouse export, Backups, Synthetic monitoring
 
-**Backend/API:** `admin/admin-observability.controller.ts`, `database/database.service.ts`. **Audience/authorization:** existing SUPERADMIN boundary for detailed evidence; internal measurement sources. **Web/PWA/mobile:** `/admin/operations`, `/admin/operations/database`. **Status/action:** historical #111/#129 expose sanitized PostgreSQL/application evidence. Distinguish process samples, lifetime counters and DB counts from worker heartbeats/provider health. No arbitrary SQL, raw sensitive queries, replica routing or indexes without evidence. **Tests:** existing observability/query/role tests; production plans, connections and latency remain separate.
+**Audience:** internal/background-only execution; scoped Operations read-only summaries. **Backend:** warehouse worker/checkpoint and trusted Operations report producers. **Surfaces:** existing Operations status workspaces only. **Status/action:** retain sanitized bounded checkpoints and actual missing/stale/report status; no raw warehouse facts, credentials, arbitrary exports, backup/restore or probe buttons for ordinary users. Checkpoints are not heartbeats. **Tests:** status/report/warehouse/privacy contracts; actual export/backup/restore/synthetic health requires observed external evidence.
 
-### Backups, Synthetic monitoring
+### PWA, Android, iOS, TV platforms
 
-**Backend/API:** `admin/admin-operations-dashboard.service.ts` and trusted report producers. **Audience/authorization:** scoped Operations summaries; execution/restore/probing remains internal. **Web/PWA/mobile:** `/admin/operations`. **Status/action:** summaries must reflect actual trusted report files, including stale/missing state. Do not fabricate successful backups, restore drills or synthetic health. No ordinary Viewer/Creator action surface. **Tests:** existing dashboard/report contract tests; real backup/restore/production probes need observed evidence.
+**Audience:** Viewer/creator shared product with normal server authorization and platform capability exceptions. **Backend:** shared APIs; Web manifest/service worker and existing Android/iOS/Tizen/webOS/tvOS code. **Status/action:** manifest/aliases accepted; full PWA bounded static caching, account isolation, no private/upload/ad/media caches, controller-change update sequencing, offline/reconnect and installability remain open. Preserve Android's shared shell and useful bridges. Assess duplicated ordinary iOS UI against current Apple policy without blindly rewriting required native auth/player/focus. Routine Web changes versus native SDK/permission/entitlement releases must be explicit. **Tests:** existing structural/build/platform contracts, then installed-PWA/native/device matrices. No signing, store submission/approval or physical-device claim from source/browser checks.
 
-### Operations dashboard
+## Acceptance rule
 
-**Backend/API:** `admin/admin-operations-dashboard.service.ts` and domain workspaces. **Audience/authorization:** role-scoped Admin/Operations; privileged writes retain shared step-up/audit. **Web/PWA/mobile:** `/admin/operations` with media/database/discovery/warehouse/observability drill-down. **Status/action:** Task 87 and historical operator improvements exist. Grouped information architecture, cross-domain task flow and mobile/visual/device acceptance remain current master work. **Tests:** existing Operations, MFA, audit and bounded-read tests; no blanket production certification.
-
-## Web/PWA and native boundaries
-
-### PWA
-
-**Backend/API:** Web manifest, service worker, registration/update and shared API/network behavior. **Audience/authorization:** public static shell; account/auth/upload/advertising/media responses must retain their own privacy/network semantics. **Web/PWA/mobile:** same canonical product routes. **Status/action:** PR #140 establishes one generated manifest and fixes Upload/TV shortcuts. Raster/maskable assets, install metadata, controller-change update sequencing, safe bounded caches, offline/reconnect, cross-origin API assumptions and account-switch isolation remain Phase 9. Do not call a manifest repair full PWA acceptance. **Tests:** new manifest/alias tests; full installed-PWA/service-worker acceptance not yet complete.
-
-### Android
-
-**Backend/API:** existing Android shell/bridge and shared AYIN APIs. **Audience/authorization:** platform capability adapter preserving normal server authorization and safe sessions. **Web/PWA/mobile:** intended hosted shared Web product; retain app links, back/file picker/fullscreen/player/share and supported native capabilities. **Status/action:** audit current code before changing architecture; platform structural tests are not Play approval or physical-device validation. Distinguish routine Web-only changes from native SDK/permission/entitlement releases. **Tests:** existing platform structural/build checks; current official policy, device and store evidence required in Phase 15.
-
-### iOS
-
-**Backend/API:** existing Swift authentication/discovery/player code and shared APIs. **Audience/authorization:** platform-native capability/session boundary plus unchanged API controls. **Web/PWA/mobile:** current native ordinary UI duplicates part of the product and requires a careful hosted/hybrid assessment. **Status/action:** architecture gap remains; preserve genuinely required native auth/AVPlayer/bridge features rather than blindly rewriting. Apple policy/minimum functionality, universal links, ATT/ad SDK and lifecycle must be verified against current official documentation. **Tests:** existing structural/build tests where toolchain exists; no signing, store or physical-device claim.
-
-### TV platforms
-
-**Backend/API:** existing Tizen/webOS/Android TV/tvOS adapters and shared APIs. **Audience/authorization:** platform capability/focus/player boundary, normal API authorization. **Web/PWA/mobile:** shared product where technically supported; native tvOS exceptions must remain explicit. **Status/action:** preserve remote focus, back/lifecycle, HLS/captions and supported ad integration without copying ordinary business logic. Emulator, hardware, submission and approval are separate statuses. **Tests:** existing platform contracts and device test matrices; only observed stages may be accepted.
-
-## Required acceptance follow-through
-
-Every entry marked existing or implemented still needs its current phase's explicit behavioral, security, visual and performance evidence. The main purpose of this inventory is to prevent both orphaned user-facing capabilities and pointless exposure of internal APIs. Current PR #140 repairs high-value public entrypoints; it does not complete the full master modernization. Update this inventory after each accepted phase without overwriting historical evidence or inventing production/provider success.
+Implemented or inventoried is not complete. Each user-facing capability needs a discoverable appropriate surface plus its relevant behavioral/security/visual/performance evidence; each internal capability needs an explicit reason to remain internal. Review the full detailed baseline alongside these current deltas until every master phase is accepted. Do not expose internal APIs merely to fill a matrix, delete working capabilities without UI, or treat historical remediation phase numbers as current master acceptance.
