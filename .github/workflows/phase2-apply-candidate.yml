@@ -1,0 +1,46 @@
+name: Apply verified phase 2 review candidate
+
+on:
+  push:
+    branches:
+      - web-pwa-phase-2-route-integrity
+    paths:
+      - .github/workflows/phase2-apply-candidate.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.ref == 'refs/heads/web-pwa-phase-2-route-integrity'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Apply only the exact locally validated source delta
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' \
+            'ab2468f94c4f559858f02d1618f880861bc3d7ff98ee55e386dc0bc406827c5b  .ayin-candidate/api.patch' \
+            'da704888ce6e0a596c6e4340282579584aab2960503ec58ac1fa484cef57d2bd  .ayin-candidate/web.patch' | sha256sum --check
+          git apply --check .ayin-candidate/api.patch
+          git apply --check .ayin-candidate/web.patch
+          git apply .ayin-candidate/api.patch
+          git apply .ayin-candidate/web.patch
+          git add apps tests
+          candidate_tree=$(git write-tree)
+          test "$(git rev-parse "$candidate_tree:apps")" = 'bc488eb9772510e8e99e2d23d41082a32e19fa06'
+          test "$(git rev-parse "$candidate_tree:tests")" = '1fdaf9704731c39f64fac1cac0e0d5b7c8d26e51'
+          git rm -r .ayin-candidate
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat: wire rights-aware directories and canonical navigation'
+          remote_head=$(git ls-remote origin refs/heads/web-pwa-phase-2-route-integrity | cut -f1)
+          test "$remote_head" = "$EXPECTED_HEAD"
+          git push origin HEAD:refs/heads/web-pwa-phase-2-route-integrity
+          printf 'Published review candidate: %s\n' "$(git rev-parse HEAD)"
