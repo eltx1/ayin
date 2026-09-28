@@ -618,6 +618,287 @@ databaseDescribe("Task 12 discovery and My AYIN", () => {
     expect(response.json().nextCursor).toBeTruthy();
   });
 
+  it.each(["continue-watching", "watch-later", "my-list", "history", "liked"])(
+    "paginates eligible %s activity without losing later videos",
+    async (section) => {
+      const owner = await register("Library pagination", "library-pagination@example.com");
+      const profileId = owner.user.profile.id;
+      const ids: string[] = [];
+      const now = Date.now();
+      for (let i = 0; i < 7; i += 1) {
+        const video = await publishVideo(owner.user.channel.id, `Library item ${i}`);
+        ids.push(video.id);
+        const at = new Date(now - i * 1000);
+        await prisma.watchProgress.create({
+          data: { profileId, videoId: video.id, positionMs: 12000, lastWatchedAt: at },
+        });
+        await prisma.watchHistory.create({
+          data: { profileId, videoId: video.id, lastWatchedAt: at },
+        });
+        await prisma.watchLaterItem.create({
+          data: { profileId, videoId: video.id, createdAt: at },
+        });
+        await prisma.myListItem.create({ data: { profileId, videoId: video.id, createdAt: at } });
+        await prisma.reaction.create({
+          data: { profileId, videoId: video.id, type: "LIKE", createdAt: at },
+        });
+        if (i < 4)
+          await prisma.videoPolicy.create({
+            data: { videoId: video.id, allowedTerritories: ["DE"] },
+          });
+      }
+      const base = `/discovery/my-ayin/${section}?limit=2`;
+      const first = await app.inject({
+        method: "GET",
+        url: base,
+        headers: { cookie: owner.cookie },
+      });
+      expect(first.statusCode).toBe(200);
+      expect(first.json().items.map((item: { id: string }) => item.id)).toEqual(ids.slice(4, 6));
+      expect(first.json().nextCursor).toBeTruthy();
+      if (section === "continue-watching")
+        expect(first.json().items[0].progress.positionMs).toBe(12000);
+      const second = await app.inject({
+        method: "GET",
+        url: `${base}&cursor=${first.json().nextCursor}`,
+        headers: { cookie: owner.cookie },
+      });
+      expect(second.statusCode).toBe(200);
+      expect(second.json().items.map((item: { id: string }) => item.id)).toEqual(ids.slice(6));
+      expect(second.json().nextCursor).toBeNull();
+    },
+  );
+
+  it("fills every Kids library section from the owned profile and keeps reads bounded", async () => {
+    const owner = await register("Kids library", "kids-library@example.com");
+    const stranger = await register("Other library", "other-library@example.com");
+    const profileId = owner.user.profile.id;
+    await prisma.viewerProfile.update({ where: { id: profileId }, data: { isKids: true } });
+    const now = Date.now();
+    const videos = Array.from({ length: 515 }, (_, index) => ({
+      id: randomUUID(),
+      channelId: owner.user.channel.id,
+      slug: `kids-library-${randomUUID()}`,
+      title: `Kids library ${index}`,
+      status: "PUBLISHED" as const,
+      visibility: "PUBLIC" as const,
+      publishedAt: new Date(now - index * 1000),
+    }));
+    await prisma.video.createMany({ data: videos });
+    await prisma.mediaAsset.createMany({
+      data: videos.map((video) => ({
+        videoId: video.id,
+        channelId: video.channelId,
+        kind: "SOURCE_VIDEO" as const,
+        status: "VALIDATED" as const,
+        r2ObjectKey: `kids-library/${video.id}.mp4`,
+        mimeType: "video/mp4",
+        sizeBytes: 1024n,
+      })),
+    });
+    const activity = videos.map((video, index) => ({
+      profileId,
+      videoId: video.id,
+      createdAt: new Date(now - index * 1000),
+    }));
+    await prisma.watchProgress.createMany({
+      data: activity.map((item) => ({ ...item, lastWatchedAt: item.createdAt, positionMs: 2000 })),
+    });
+    await prisma.watchHistory.createMany({
+      data: activity.map((item) => ({ ...item, lastWatchedAt: item.createdAt })),
+    });
+    await prisma.watchLaterItem.createMany({ data: activity });
+    await prisma.myListItem.createMany({ data: activity });
+    await prisma.reaction.createMany({
+      data: activity.map((item) => ({ ...item, type: "LIKE" as const })),
+    });
+    await prisma.videoPolicy.createMany({
+      data: videos.slice(512).map((video) => ({
+        videoId: video.id,
+        kidsEligible: true,
+        maturityLevel: "GENERAL" as const,
+      })),
+    });
+    const database = moduleReference.get(DatabaseService).client;
+    const reads = vi.spyOn(database, "$queryRaw");
+    const started = performance.now();
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: "/discovery/my-ayin",
+        headers: { cookie: owner.cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      for (const section of response
+        .json()
+        .sections.filter((entry: { key: string }) => entry.key !== "playlists")) {
+        expect(section.items.map((item: { id: string }) => item.id)).toEqual(
+          videos.slice(512).map((video) => video.id),
+        );
+        expect(section.items.every((item: { href: string }) => item.href.endsWith("?kids=1"))).toBe(
+          true,
+        );
+        expect(section.nextCursor).toBeNull();
+      }
+      expect(reads.mock.calls.length).toBeLessThanOrEqual(5);
+      for (const result of reads.mock.results) {
+        const rows: unknown = await result.value;
+        if (!Array.isArray(rows)) throw new Error("Expected bounded activity rows");
+        expect(rows.length).toBeLessThanOrEqual(9);
+      }
+      console.info(
+        `Kids library: 515 activities per section, 512 excluded, ${(performance.now() - started).toFixed(1)}ms`,
+      );
+    } finally {
+      reads.mockRestore();
+    }
+    const denied = await app.inject({
+      method: "GET",
+      url: `/discovery/my-ayin/history?profileId=${profileId}`,
+      headers: { cookie: stranger.cookie },
+    });
+    expect(denied.statusCode).toBe(403);
+  });
+
+  it("fills mixed editor pages after resolving missing, private and policy-blocked entries", async () => {
+    const owner = await register("Editor paging", "editor-paging@example.com");
+    const row = await prisma.homeRowConfig.update({
+      where: { key: "new-on-ayin" },
+      data: { source: "EDITOR_PICKS", maxItems: 4 },
+    });
+    const blocked = await publishVideo(owner.user.channel.id, "Blocked pick");
+    await prisma.videoPolicy.create({
+      data: { videoId: blocked.id, rightsExpiresAt: new Date(Date.now() - 1000) },
+    });
+    const video = await publishVideo(owner.user.channel.id, "Available pick");
+    const privateList = await prisma.playlist.create({
+      data: {
+        channelId: owner.user.channel.id,
+        name: "Private",
+        slug: "private",
+        visibility: "PRIVATE",
+        isPublic: false,
+      },
+    });
+    const playlist = await prisma.playlist.create({
+      data: {
+        channelId: owner.user.channel.id,
+        name: "Public",
+        slug: "public",
+        visibility: "PUBLIC",
+      },
+    });
+    const tv = await prisma.creatorTvChannel.create({
+      data: { channelId: owner.user.channel.id, name: "Pick TV", slug: "pick-tv" },
+    });
+    const picks = [
+      { entityType: "VIDEO" as const, entityId: randomUUID() },
+      { entityType: "VIDEO" as const, entityId: blocked.id },
+      { entityType: "PLAYLIST" as const, entityId: privateList.id },
+      { entityType: "VIDEO" as const, entityId: video.id },
+      { entityType: "CHANNEL" as const, entityId: owner.user.channel.id },
+      { entityType: "PLAYLIST" as const, entityId: playlist.id },
+      { entityType: "CREATOR_TV" as const, entityId: tv.id },
+    ];
+    await prisma.homeRowManualItem.createMany({
+      data: picks.map((pick, position) => ({ ...pick, rowId: row.id, position })),
+    });
+    const first = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=2",
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().items.map((item: { id: string }) => item.id)).toEqual([
+      video.id,
+      owner.user.channel.id,
+    ]);
+    expect(first.json().nextCursor).toBeTruthy();
+    const second = await app.inject({
+      method: "GET",
+      url: `/public/discovery/rows/new-on-ayin?limit=2&cursor=${first.json().nextCursor}`,
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().items.map((item: { id: string }) => item.id)).toEqual([
+      playlist.id,
+      tv.id,
+    ]);
+    expect(second.json().nextCursor).toBeNull();
+  });
+
+  it("ranks only eligible popular videos before taking a page", async () => {
+    const owner = await register("Ranked paging", "ranked-paging@example.com");
+    await prisma.homeRowConfig.update({
+      where: { key: "new-on-ayin" },
+      data: { source: "POPULAR_NOW" },
+    });
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const video = await publishVideo(owner.user.channel.id, `Ranked ${i}`);
+      ids.push(video.id);
+      await prisma.watchHistory.create({
+        data: { profileId: owner.user.profile.id, videoId: video.id, viewCount: 10 - i },
+      });
+      if (i === 0)
+        await prisma.video.update({ where: { id: video.id }, data: { visibility: "PRIVATE" } });
+      if (i === 1)
+        await prisma.videoPolicy.create({
+          data: { videoId: video.id, blockedTerritories: ["DE"] },
+        });
+    }
+    const first = await app.inject({
+      method: "GET",
+      url: "/public/discovery/rows/new-on-ayin?limit=2",
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().items.map((item: { id: string }) => item.id)).toEqual(ids.slice(2, 4));
+    expect(first.json().nextCursor).toBeTruthy();
+    const second = await app.inject({
+      method: "GET",
+      url: `/public/discovery/rows/new-on-ayin?limit=2&cursor=${first.json().nextCursor}`,
+    });
+    expect(second.json().items.map((item: { id: string }) => item.id)).toEqual(ids.slice(4));
+    expect(second.json().nextCursor).toBeNull();
+  });
+
+  it("uses an eligible watched anchor and fills same-creator recommendations", async () => {
+    const owner = await register("Because paging", "because-paging@example.com");
+    const other = await register("Other anchor", "other-anchor@example.com");
+    await prisma.homeRowConfig.update({
+      where: { key: "new-on-ayin" },
+      data: { source: "BECAUSE_YOU_WATCHED" },
+    });
+    const hiddenAnchor = await publishVideo(other.user.channel.id, "Unavailable anchor");
+    const anchor = await publishVideo(owner.user.channel.id, "Available anchor");
+    await prisma.videoPolicy.create({
+      data: { videoId: hiddenAnchor.id, allowedTerritories: ["DE"] },
+    });
+    await prisma.watchHistory.createMany({
+      data: [
+        { profileId: owner.user.profile.id, videoId: hiddenAnchor.id, lastWatchedAt: new Date() },
+        {
+          profileId: owner.user.profile.id,
+          videoId: anchor.id,
+          lastWatchedAt: new Date(Date.now() - 1000),
+        },
+      ],
+    });
+    const unavailable = await publishVideo(owner.user.channel.id, "Unavailable recommendation");
+    await prisma.videoPolicy.create({
+      data: { videoId: unavailable.id, rightsExpiresAt: new Date(Date.now() - 1000) },
+    });
+    const expected = await publishVideo(owner.user.channel.id, "Available recommendation");
+    const response = await app.inject({
+      method: "GET",
+      url: "/discovery/rows/new-on-ayin?limit=1",
+      headers: { cookie: owner.cookie },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().items).toMatchObject([
+      { id: expected.id, kicker: "Because you watched Available anchor" },
+    ]);
+    expect(response.json().nextCursor).toBeNull();
+  });
+
   it("builds My AYIN from the selected profile and rejects cross-account profile access", async () => {
     const owner = await register("Library Owner", "task12-owner@example.com");
     const stranger = await register("Other Viewer", "task12-other@example.com");
