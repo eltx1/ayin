@@ -1,4 +1,5 @@
 .shell {
+  --shell-gutter: var(--page-gutter);
   background: var(--background);
   min-block-size: 100dvh;
 }
