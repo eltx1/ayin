@@ -52,3 +52,13 @@ Local baseline Web suite: 190 tests. Foundation suite: 201 tests. Local Web type
 Phase 4A intentionally does not create a public developer showcase route. All new primitives have a real product consumer. Full tables/filters/pagination grouping, tabs/segmented controls, contextual editor panels, form groups, modal/drawer/confirmation generalization, toast lifecycle and domain card variants remain subsequent Phase 4 work, with actual consumer journeys and focused PRs. No unimplemented item is considered complete. Phase 5–7 route-by-route design, finance form density and localization remain separate. Do not remove working backend capabilities for lacking new styling.
 
 No new query, upload, ad/provider, native permission or security-policy behavior is introduced. Keep the adopted fast-uri patch on rollback; revert only presentation changes. Measure complete performance separately from limited build evidence and never equate a screenshot or token test with physical-device/store certification.
+
+## Phase 4B candidate — native form and data presentation
+
+`components/ui/data-workspace.tsx` adds FieldGroup (native fieldset/legend with disabled propagation), DataTable (caption, real header/row semantics and keyboard-focusable local overflow container), and PageControls (native disabled Previous/Next plus named page status). They reuse existing tokens/actions, add no framework and never infer permissions, fake metrics or network behavior. All are adopted in creator playlists rather than a public component demo. Table cells are not an ARIA grid or added to the Tab sequence; links remain normal keyboard targets.
+
+The playlist consumer preserves its single Studio main/standalone main ownership, uses scoped EN/AR names and links, retains protected Uploads and private-preview rules, and distinguishes unavailable data from zero records or no matching filters. Presentation pages contain at most 12 real rows from the owned snapshot; the server API remains a collection read, not newly paginated. Fields stay disabled until owned data loads, and creation never auto-replays after an ambiguous network result.
+
+Tests render actual primitives/initial states, validate token existence, retain all translations without key collisions, test complete traversal/filter clamp/cancellation/response shape, and exercise authenticated browser creation/recovery/RTL. Full dialogs, tabs, contextual editors and all-route visual/accessibility acceptance remain open. Read the checkpoint for current execution results rather than treating component availability as certification.
+
+Official guidance checked 2026-09-29: https://www.w3.org/WAI/ARIA/apg/patterns/table/ ; https://www.w3.org/WAI/tutorials/forms/grouping/ ; https://react.dev/reference/react/useEffect .

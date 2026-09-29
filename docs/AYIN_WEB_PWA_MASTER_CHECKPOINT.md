@@ -10,7 +10,7 @@ Detailed implementation and evidence through the Phase 4A candidate are preserve
 
 ## Current main and master boundaries
 
-Accepted main at this review: `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`; PR #142 merged and deployed. Current PR #143, `web-pwa-phase-4-design-foundations`, has green implementation checks at `b6a1120f693c590927e461cac87fdb68bcac4889`; the subsequent documentation head still requires its applicable checks and final review before merge. No Phase 4A production deployment is claimed yet.
+Accepted main: `2b7ea943f13fb9acfde542c820a5b93ce2e81ce6`; PR #143 is merged and deployed. Its final acceptance and actual deployment proof are recorded below. Current work is focused Phase 4B on `web-pwa-phase-4b-creator-library`; it is not accepted or deployed yet. GitHub source edits and the existing Actions pipelines are sufficient; no additional connector or server credentials are requested.
 
 Phase 0 baseline recovery, focused Phase 1 source reconciliation, focused Phase 2 routes and Phase 3 information architecture are accepted with the recorded boundaries. Phase 4A is only the foundation subphase: full Phase 4 interactions, forms, tables and editor components remain open. Phases 5–8 whole Viewer/Creator/Admin redesign and complete feature integration; Phases 9–14 PWA, measured performance, current-policy advertising, visual/E2E/security acceptance; Phase 15 platform readiness after Web/PWA gates; and Phase 16 whole-project documentation consolidation remain open. No complete master-goal claim.
 
@@ -28,7 +28,7 @@ Phase 0 baseline recovery, focused Phase 1 source reconciliation, focused Phase 
 
 ## Phase 4A — foundation and regression recovery, 2026-09-29
 
-**Starting SHA:** `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`. **Branch/PR:** `web-pwa-phase-4-design-foundations`, #143. **Recovered head:** `df7fd31f1a0fca1caeb2a8dabf38a64c0d4f21e7`. **Validated implementation:** `b6a1120f693c590927e461cac87fdb68bcac4889`. **Ending accepted/merged/deployed SHA:** pending final documentation-head acceptance; not fabricated.
+**Starting SHA:** `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`. **Branch/PR:** `web-pwa-phase-4-design-foundations`, #143. **Recovered head:** `df7fd31f1a0fca1caeb2a8dabf38a64c0d4f21e7`. **Validated implementation:** `b6a1120f693c590927e461cac87fdb68bcac4889`. **Final accepted head:** `ddec929bd6c554553c7e6ada6c1eddc093e4ad61`. **Merged/deployed SHA:** `2b7ea943f13fb9acfde542c820a5b93ce2e81ce6`.
 
 **Inspected:** all 29 changed paths, original/migrated tokens, contrast/native-control/render tests, UI primitives and real Viewer/Studio/Admin consumers, image leaf/SSR card/dimensions, proxy/locale request semantics, real Next-adapter browser tests, historical Live test/interception/trace, CI/source artifacts and visual evidence. Shared Button and existing callers are reused. No backend rewrite or new UI dependency.
 
@@ -48,6 +48,36 @@ Phase 0 baseline recovery, focused Phase 1 source reconciliation, focused Phase 
 
 **Migrations/security/operations:** no schema, API guard, ownership, MFA, financial, rights, moderation, provider credential or native changes. No production data mutation. The source archive excludes local credentials/dependencies/untracked data; supported connector/Actions reads and normal file writes suffice. No network/browser restriction is bypassed.
 
-**Remaining risks and next:** final documentation-head gates/review, expected-head merge, actual main and deployment proof. Then continue focused Phase 4 components with real consumers, not a public demo page: grouped forms, responsive data presentation/filtering, tabs and contextual editors. Keep full route redesign, PWA lifecycle, measured performance, advertising/provider/native and security-phase advisory triage separate. The master goal is not complete.
+**Remaining risks and next:** final-head acceptance and deployment are now verified below. Continue focused Phase 4 components with real consumers, not a public demo page: grouped forms, responsive data presentation/filtering, tabs and contextual editors. Keep full route redesign, PWA lifecycle, measured performance, advertising/provider/native and security-phase advisory triage separate. The master goal is not complete.
 
 **Rollback:** revert presentation/locale changes through a reviewed validated release as appropriate; no DB rollback. Retain adopted fast-uri security remediation and deterministic tests even when independently reverting navigation/presentation. Reviews are author-side unless explicitly recorded otherwise.
+
+## Phase 4A final acceptance and deployment — observed 2026-09-29
+
+Final head `ddec929bd6c554553c7e6ada6c1eddc093e4ad61` passed quality `36573847499`, browser `36573847522`, security `36573847485` and inventory `36573847534`. Author-side reviews `5353184304`/`5353224380` are not independent approvals. PR #143 merged at `2b7ea943f13fb9acfde542c820a5b93ce2e81ce6`, confirmed by current main. No open PR was present when this continuation started.
+
+Deployment `36575681352`, job `109430554214`, passed the validated-main/superseded-release checks, exact-commit deployment, isolated account and direct-origin health. Downloaded proof `11037950698`, verified ZIP SHA-256 `e979f21fc4e1f8ecc0f4ebc6e478a4eb3e62c2516155ebb3517b21478b33ac14`. `deploy-proof.env` records release `2b7ea943f13fb9acfde542c820a5b93ce2e81ce6`, validation `36574929915`, deploy `36575681352`, attempt 1, account `ayin`. Cloudflare sync `36575897825` reports success. This establishes the release at deployment time, not blanket product/device certification.
+
+Current source was restored from artifact `11035098688`, ZIP SHA-256 `97797e7a76522e873b95bb9ac7a6e0ef8df5a3e7c9481ee492a72e307994995f`. All 1263 tracked-file hashes matched inventory snapshot `a96eaae00b97137bad7082d0f4f021342f0f8c8a`; the reconstructed Git tree `7038c96e1aeebe4e74bccc5c7ac64ac86ace86d9` equals accepted main. The snapshot is a PR test merge, not main. Cached compatible Web tooling was restored; this does not replace final frozen-install/backend/security CI.
+
+## Current Phase 4B — shared form/data components with an owned playlist consumer
+
+**Starting SHA:** `2b7ea943f13fb9acfde542c820a5b93ce2e81ce6`. **Branch:** `web-pwa-phase-4b-creator-library`. **Ending accepted/merged/deployed SHA:** pending.
+
+**Inspected:** design tokens/primitives/tests and actual playlist manager/editor wrappers, playlist client and authenticated controllers/service, creation response selection, list ordering/capabilities, typed translator, existing responsive/design/browser journeys, full restored source/CI/deployment proof. Original Web baseline passed 216 tests in 46 files locally.
+
+**Findings:** initial list failure appeared alongside empty-library copy; no local search/visibility filter or bounded presentation existed. Creation success followed by refresh failure was misleadingly reported as failed creation. The client incorrectly typed a create response as a full library summary although the server returns no itemCount/capabilities/timestamps. Reads did not propagate cancellation to the playlist request, and synchronous duplicate submit protection was absent.
+
+**Implementation:** native FieldGroup, DataTable and PageControls reuse existing action/field/status tokens and primitives; real adoption in Studio/legacy standalone playlists. A single table, labelled controls, 12-row presentation pages, local combined name/description/visibility filtering, scoped links and typed EN/AR retain actual record values, system status and private-preview behavior. No fabricated summary fields or capability decisions. The existing API still returns the owned collection; this is not backend pagination or a DB performance claim.
+
+**Workflow safety:** reads keep credentials/no-store and gain AbortSignal/stale-response cleanup. Loading/error/empty/filter-no-match are distinct. Native form submission and a synchronous guard prevent concurrent duplicate creates. A committed create followed by failed refresh is explicitly distinguished; an unconfirmed mutation is never retried automatically. Both cases require a read-only reload before another create; draft and acknowledged-success state are preserved appropriately. Existing server ownership, protected Uploads policy and transactions are untouched.
+
+**Tests:** 11 new local semantic/filter/request/translation tests plus retained landmark assertions; scoped suite now 227/227 in 49 files. Typegen/TypeScript and the complete local production Web build passed. Added real browser journeys for 27 owned records, complete bounded traversal, one read per snapshot rather than per filter/page, failed-load recovery, private-preview exclusion, EN/AR/mobile, duplicate submission, committed-refresh failure and lost-response read-only recovery. Only this deliberately intercepted browser spec blocks service workers; no production/PWA change. Fixture setup fails closed unless APP_ENV=test and matching database settings point to the dedicated local ayin_e2e database. Final-head CI and screenshots are pending, not claimed successful.
+
+**UI/migrations/security:** only the two existing creator playlist entrypoints plus reusable primitives; no public demo route, dependency, API authorization, MFA, schema migration, provider activation, financial or native change. Unrelated playlist item editor CSS and URLs remain intact. The create response type now matches the already-existing server response instead of synthesizing fake zero/capability fields.
+
+**Performance/visual:** local filtering does not add requests, and presentation is bounded to 12 rows. Same-environment production-build entry-asset gzip comparison: playlist JS 37435→39312, Studio 37383→38399, Admin 42872→43888, Browse 40976→41992 bytes; each selected CSS union decreased 593 bytes. This measures the union of route-manifest entry files at gzip level 9, not all browser transfer/dynamic imports/CWV/backend latency. Shared translation resources add 1016 JS bytes outside the playlist-specific change. No speedup claimed. Actual browser screenshots remain pending. Existing CI screenshot collection already includes `design-*.png` so no workflow edit is needed.
+
+**Next:** run exact-head full quality/security/browser/inventory gates, inspect actual screenshot artifacts, fix material findings, review and merge with expected-head protection; then observe production proof. Continue remaining Phase 4 interactions with real consumers. Full redesign/PWA/performance/ads/native/master acceptance is not complete.
+
+**Rollback:** revert this focused creator presentation/client change through the existing validated release pipeline; no DB rollback. Retain adopted URI security fixes and earlier locale/MFA/rights corrections.

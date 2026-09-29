@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { I18nProvider } from "@/components/i18n/i18n-provider";
+
 import { ChannelEditor } from "@/components/channel/channel-editor";
 import { CreatorTvManager } from "@/components/creator-tv/creator-tv-manager";
 import { PlaylistManager } from "@/components/playlist/playlist-manager";
@@ -16,19 +18,29 @@ const editors = [
 describe("creator editor landmark ownership", () => {
   for (const { name, Editor } of editors) {
     it(`${name} preserves a main landmark on standalone creator routes`, () => {
-      const html = renderToStaticMarkup(<Editor />);
+      const html = renderToStaticMarkup(
+        <I18nProvider locale="en">
+          <Editor />
+        </I18nProvider>,
+      );
       expect(html.match(/<main(?:\s|>)/g)).toHaveLength(1);
       expect(html.match(/<\/main>/g)).toHaveLength(1);
     });
 
     it(`${name} defers the main landmark to the Studio layout when embedded`, () => {
-      const content = renderToStaticMarkup(<Editor embedded />);
+      const content = renderToStaticMarkup(
+        <I18nProvider locale="en">
+          <Editor embedded />
+        </I18nProvider>,
+      );
       expect(content).not.toMatch(/<main(?:\s|>)/);
       expect(content).not.toContain('role="main"');
       const html = renderToStaticMarkup(
-        <main>
-          <Editor embedded />
-        </main>,
+        <I18nProvider locale="en">
+          <main>
+            <Editor embedded />
+          </main>
+        </I18nProvider>,
       );
       expect(html.match(/<main(?:\s|>)/g)).toHaveLength(1);
       expect(html.match(/<\/main>/g)).toHaveLength(1);
