@@ -2,13 +2,15 @@ import type { Locale } from "./config";
 import { arMessages } from "./resources/ar";
 import { enMessages, type TranslationKey as CoreTranslationKey } from "./resources/en";
 import { navigationAr, navigationEn } from "./resources/navigation";
+import { studioFeedbackAr, studioFeedbackEn } from "./resources/studio-feedback";
 
-export type TranslationKey = CoreTranslationKey | keyof typeof navigationEn;
+export type TranslationKey =
+  CoreTranslationKey | keyof typeof navigationEn | keyof typeof studioFeedbackEn;
 
-const english = { ...enMessages, ...navigationEn };
+const english = { ...enMessages, ...navigationEn, ...studioFeedbackEn };
 const resources: Record<Locale, Partial<Record<TranslationKey, string>>> = {
   en: english,
-  ar: { ...arMessages, ...navigationAr },
+  ar: { ...arMessages, ...navigationAr, ...studioFeedbackAr },
 };
 
 export type TranslationValues = Record<string, string | number>;

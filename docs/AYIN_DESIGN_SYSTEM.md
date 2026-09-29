@@ -2,7 +2,7 @@
 
 ## Scope and authority
 
-AYIN retains its existing dark/violet entertainment identity and canonical Web/PWA product. This document describes the **Phase 4A foundation**, not completion of every page redesign or the whole master goal. Read `AYIN_WEB_PWA_MASTER_CHECKPOINT.md` for exact phase, validation and deployment status. Existing Viewer, creator and Admin server permissions are unchanged.
+AYIN retains its existing dark/violet entertainment identity and canonical Web/PWA product. This document describes the **accepted Phase 4A foundation and the Phase 4B candidate**, not completion of every page redesign or the whole master goal. Read `AYIN_WEB_PWA_MASTER_CHECKPOINT.md` for exact phase, validation and deployment status. Existing Viewer, creator and Admin server permissions are unchanged.
 
 ## Audited foundations and decisions
 
@@ -47,8 +47,27 @@ Official sources checked on **2026-09-29**:
 
 Unit tests render real primitives and cards, check labels/native constraints/zero metrics/message semantics, calculate token contrast, retain safe-area/palette compatibility and verify lazy decorative image markup. Browser scenarios use seeded real catalogs and authenticated creator/Admin workflows, intentionally fail an image then serve valid image bytes, compare artwork dimensions, check RTL/overflow/landmarks and preserve screenshots. Test fixtures never enable production flags or invent production content.
 
-Local baseline Web suite: 190 tests. Foundation suite: 201 tests. Local Web type generation/typecheck, Web lint and production build have passed; exact frozen dependency, API/integration, security and real-browser acceptance belongs to final-head CI. Local Node is 22.16.0; CI is pinned to 24.19.0. The restored local tooling snapshot is not claimed as the accepted transitive production dependency graph.
+Historical local baseline Web suite: 190 tests; initial foundation suite: 201 tests. Accepted Phase 4A with locale regressions passed 216 local Web tests, and its final exact-head quality/security/browser/inventory gates passed as recorded in the checkpoint. The Phase 4B candidate currently passes 225 local Web tests; its full CI/browser acceptance is separate. Local Web type generation/typecheck, Web lint and production build have passed; exact frozen dependency, API/integration, security and real-browser acceptance belongs to final-head CI. Local Node is 22.16.0; CI is pinned to 24.19.0. The restored local tooling snapshot is not claimed as the accepted transitive production dependency graph.
 
 Phase 4A intentionally does not create a public developer showcase route. All new primitives have a real product consumer. Full tables/filters/pagination grouping, tabs/segmented controls, contextual editor panels, form groups, modal/drawer/confirmation generalization, toast lifecycle and domain card variants remain subsequent Phase 4 work, with actual consumer journeys and focused PRs. No unimplemented item is considered complete. Phase 5–7 route-by-route design, finance form density and localization remain separate. Do not remove working backend capabilities for lacking new styling.
 
 No new query, upload, ad/provider, native permission or security-policy behavior is introduced. Keep the adopted fast-uri patch on rollback; revert only presentation changes. Measure complete performance separately from limited build evidence and never equate a screenshot or token test with physical-device/store certification.
+
+## Phase 4B candidate — native data and form consumers
+
+**FormSection and TextAreaField:** extend the existing primitives without a new client foundation. Native fieldset/legend preserve grouping and disabled semantics; visible instructions are associated by ID, and multiline fields retain required/minimum/maximum length, native resizing, helper/error descriptions and caller accessibility attributes. Support uses these for the real ticket form; the optional priority is in a native disclosure rather than another mandatory step.
+
+**Disclosure:** native details/summary preserve keyboard state without manually mirrored aria-expanded. Support uses it for additional options and ticket details; Comments uses it only for long text. It has no external library or unnecessary motion. Rendered hidden content remains part of the existing bounded response, not a claim of lazy API loading.
+
+**DataTable:** real table/caption with explicit column and row header scopes, stable internal row keys, logical alignment and a named focusable local scroll region. Comments is the actual first consumer, not a demo route. Data is the existing private latest-100 snapshot; filters never masquerade as global server search. Mobile horizontal scrolling remains local to the table while the document fits its viewport. Column layouts preserve native table semantics rather than breaking them with grid roles or display tricks.
+
+**Read and write states:** the uncached read helper distinguishes loading, successful empty, populated and failed responses and suppresses superseded results. It is not an identity manager or an automatic mutation retry system. Support shows an acknowledged send separately from a failed list refresh, disables pending fields, preserves drafts on failures and warns when the write outcome is uncertain. No server policy is relaxed and no consumer-facing Admin diagnostic copy is introduced.
+
+Current official sources for this subphase, checked 2026-09-29:
+
+- https://www.w3.org/WAI/tutorials/forms/grouping/
+- https://www.w3.org/WAI/tutorials/tables/two-headers/
+- https://www.w3.org/WAI/tutorials/tables/caption-summary/
+- https://playwright.dev/docs/network#missing-network-events-and-service-workers
+
+The native component/unit checks are not complete browser or physical-device certification. Actual generated screenshots, role/ownership and error/write journeys must pass before subphase acceptance. Shared tabs/segmented controls, full pagination and filtered server query workflows, modal/confirmation/editor generalization, toast lifecycle and complete domain-card adoption remain subsequent work; no unused fake showcase is added to claim coverage.
