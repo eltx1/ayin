@@ -85,7 +85,14 @@ function isDocumentNavigation(request: NextRequest): boolean {
   if (request.headers.get("rsc") === "1") return false;
   if (request.headers.get("next-router-prefetch") === "1") return false;
   const destination = request.headers.get("sec-fetch-dest");
-  return !destination || destination === "document" || destination === "empty";
+  // Next strips internal Flight/prefetch headers before Proxy. Fetch metadata
+  // survives normalization, so an `empty` destination is never a document.
+  // Older clients without fetch metadata must explicitly request HTML; a
+  // generic */* or absent Accept header cannot mutate a language preference.
+  if (destination) return destination === "document";
+  return (request.headers.get("accept") ?? "")
+    .split(",")
+    .some((type) => type.trim().split(";")[0]?.toLowerCase() === "text/html");
 }
 
 export function proxy(request: NextRequest) {

@@ -31,6 +31,27 @@ describe("locale preference side effects", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
+  it.each([
+    { "sec-fetch-dest": "empty", accept: "*/*" },
+    { "sec-fetch-dest": "empty", accept: "text/html" },
+    { "sec-fetch-dest": "iframe", accept: "text/html" },
+    { accept: "text/x-component" },
+    { accept: "*/*" },
+    {},
+  ])("does not persist for normalized data requests without Flight headers: %j", (headers) => {
+    const response = proxy(request("/ar/browse", { ...headers, cookie: "ayin_locale=en" }));
+    expect(response.headers.get("x-middleware-request-x-ayin-locale")).toBe("ar");
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("retains document switches for clients that explicitly request HTML without fetch metadata", () => {
+    const response = proxy(
+      request("/ar/browse?lang=en", { cookie: "ayin_locale=ar", accept: "text/html, */*;q=0.8" }),
+    );
+    expect(response.headers.get("location")).toBe("https://ayin.stream/browse");
+    expect(response.cookies.get("ayin_locale")?.value).toBe("en");
+  });
+
   it.each(["HEAD", "POST"])("never persists a new preference on %s", (method) => {
     const response = proxy(request("/ar/browse", { cookie: "ayin_locale=en" }, method));
     expect(response.headers.get("set-cookie")).toBeNull();
