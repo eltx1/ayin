@@ -22,6 +22,9 @@ export function WorkspaceBreadcrumbs({
   const location = workspaceLocation(pathname, groups);
   if (!location) return null;
   const atRoot = location.item.href === root;
+  const groupLabel = t(location.group.label);
+  const itemLabel = t(location.item.label);
+  const showGroup = location.group.items.length > 1 && groupLabel !== itemLabel;
 
   return (
     <nav aria-label={t("navigation.location")} className={styles.breadcrumbs}>
@@ -35,12 +38,12 @@ export function WorkspaceBreadcrumbs({
         </li>
         {!atRoot ? (
           <>
-            {location.group.items.length > 1 ? <li>{t(location.group.label)}</li> : null}
+            {showGroup ? <li>{groupLabel}</li> : null}
             <li>
               {location.detail ? (
-                <Link href={href(location.item.href)}>{t(location.item.label)}</Link>
+                <Link href={href(location.item.href)}>{itemLabel}</Link>
               ) : (
-                <span aria-current="page">{t(location.item.label)}</span>
+                <span aria-current="page">{itemLabel}</span>
               )}
             </li>
             {location.detail ? (

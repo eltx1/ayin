@@ -116,17 +116,25 @@ export function getStudioAnalytics(days = 28): Promise<StudioAnalytics> {
   return studioFetch(`/creator/studio/analytics?days=${encodeURIComponent(String(days))}`);
 }
 
-export async function getStudioContent(filters?: {
-  query?: string;
-  status?: string;
-  visibility?: string;
-}): Promise<{ channel: StudioOverview["channel"]; videos: StudioVideo[] }> {
+export async function getStudioContent(
+  filters?: {
+    query?: string;
+    status?: string;
+    visibility?: string;
+  },
+  signal?: AbortSignal,
+): Promise<{ channel: StudioOverview["channel"]; videos: StudioVideo[] }> {
   const params = new URLSearchParams();
   if (filters?.query) params.set("query", filters.query);
   if (filters?.status) params.set("status", filters.status);
   if (filters?.visibility) params.set("visibility", filters.visibility);
   const suffix = params.size ? `?${params.toString()}` : "";
-  return studioFetch(`/creator/studio/content${suffix}`);
+  const response = await studioFetch<{ channel: StudioOverview["channel"]; videos: StudioVideo[] }>(
+    `/creator/studio/content${suffix}`,
+    signal ? { signal } : undefined,
+  );
+  if (!Array.isArray(response.videos)) throw new Error("Invalid content response");
+  return response;
 }
 
 export function updateStudioVideo(
@@ -227,6 +235,7 @@ export function removeStudioCaption(videoId: string, trackId: string) {
     `/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}`,
     {
       method: "DELETE",
+      body: "{}",
     },
   );
 }
@@ -234,12 +243,14 @@ export function removeStudioCaption(videoId: string, trackId: string) {
 export function unpublishStudioVideo(videoId: string) {
   return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}/unpublish`, {
     method: "POST",
+    body: "{}",
   });
 }
 
 export function removeStudioVideo(videoId: string) {
   return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}`, {
     method: "DELETE",
+    body: "{}",
   });
 }
 

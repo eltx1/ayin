@@ -1,344 +1,190 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
-import styles from "@/app/studio/studio.module.css";
+import { useContentI18n } from "@/lib/i18n/content-copy";
+import { DataTable, type TableColumn } from "@/components/ui/data-presentation";
 import {
-  getStudioContent,
-  removeStudioVideo,
-  type StudioVideo,
-  unpublishStudioVideo,
-  updateStudioVideo,
-} from "@/lib/studio";
+  ActionButton,
+  ActionLink,
+  DataBadge,
+  FormSection,
+  PageHeader,
+  SelectField,
+  StatusNotice,
+  TextField,
+} from "@/components/ui/design-system";
+import { contentStatuses, contentVisibility } from "@/lib/content-editor";
+import { getStudioContent, type StudioVideo } from "@/lib/studio";
+import { useRemoteResource } from "@/lib/use-remote-resource";
+import type { ContentTranslationKey } from "@/lib/i18n/content-copy";
 
-import {
-  buildMetadataPayload,
-  metadataDraftFromApi,
-  type MetadataDraft,
-  VideoMetadataFields,
-} from "../upload/video-metadata-fields";
-
-import { StudioCaptionManager } from "./studio-caption-manager";
-
-type Draft = Pick<
-  StudioVideo,
-  "title" | "description" | "visibility" | "commentsEnabled" | "tvIncluded"
-> & { metadata: MetadataDraft };
+import { StudioVideoEditor } from "./studio-video-editor";
+import styles from "./studio-content.module.css";
 
 export function StudioContentManager() {
-  const [videos, setVideos] = useState<StudioVideo[]>([]);
+  const { t, href, formatDate } = useContentI18n();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [visibility, setVisibility] = useState("");
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ query: "", status: "", visibility: "" });
+  const load = useCallback((signal: AbortSignal) => getStudioContent(filters, signal), [filters]);
+  const { state, reload } = useRemoteResource(load);
+  const [selected, setSelected] = useState<StudioVideo | null>(null);
+  const [notice, setNotice] = useState<ContentTranslationKey | null>(null);
 
-  const filters = useMemo(() => ({ query, status, visibility }), [query, status, visibility]);
-
-  useEffect(() => {
-    let active = true;
-    const timer = window.setTimeout(() => {
-      void getStudioContent(filters)
-        .then((response) => {
-          if (!active) return;
-          setVideos(response.videos);
-          setDrafts(
-            Object.fromEntries(
-              response.videos.map((video) => [
-                video.id,
-                {
-                  title: video.title,
-                  description: video.description,
-                  visibility: video.visibility,
-                  commentsEnabled: video.commentsEnabled,
-                  tvIncluded: video.tvIncluded,
-                  metadata: metadataDraftFromApi(video.metadata as Record<string, unknown> | null),
-                },
-              ]),
-            ),
-          );
-          setError(null);
-        })
-        .catch((caught) => {
-          if (active)
-            setError(caught instanceof Error ? caught.message : "Content could not be loaded.");
-        })
-        .finally(() => {
-          if (active) setLoading(false);
-        });
-    }, 180);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [filters]);
-
-  async function refresh() {
-    const response = await getStudioContent(filters);
-    setVideos(response.videos);
+  function close() {
+    setSelected(null);
+    reload();
+    window.requestAnimationFrame(() => document.getElementById("content-search")?.focus());
   }
 
-  async function save(video: StudioVideo) {
-    const draft = drafts[video.id];
-    if (!draft) return;
-    setBusyId(video.id);
-    setMessage(null);
-    setError(null);
-    try {
-      const { metadata, ...basic } = draft;
-      await updateStudioVideo(video.id, {
-        ...basic,
-        ...buildMetadataPayload(metadata, { includeEmpty: true, includeRights: false }),
-      });
-      await refresh();
-      setMessage(`Saved “${draft.title}”.`);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The video could not be saved.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function unpublish(video: StudioVideo) {
-    setBusyId(video.id);
-    setMessage(null);
-    setError(null);
-    try {
-      await unpublishStudioVideo(video.id);
-      await refresh();
-      setMessage(`“${video.title}” is now unpublished.`);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The video could not be unpublished.");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function remove(video: StudioVideo) {
-    if (!window.confirm(`Remove “${video.title}”? This keeps a soft-delete record.`)) return;
-    setBusyId(video.id);
-    setMessage(null);
-    setError(null);
-    try {
-      await removeStudioVideo(video.id);
-      await refresh();
-      setMessage(`“${video.title}” was removed.`);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The video could not be removed.");
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const columns: TableColumn<StudioVideo>[] = [
+    {
+      key: "title",
+      heading: t("content.title"),
+      rowHeader: true,
+      render: (video) => <strong dir="auto">{video.title}</strong>,
+    },
+    {
+      key: "status",
+      heading: t("content.status"),
+      render: (video) => (
+        <DataBadge tone={video.status === "PUBLISHED" ? "success" : "neutral"}>
+          {t(contentStatuses[video.status] ?? "content.other")}
+        </DataBadge>
+      ),
+    },
+    {
+      key: "visibility",
+      heading: t("content.visibility"),
+      render: (video) => t(contentVisibility[video.visibility] ?? "content.other"),
+    },
+    {
+      key: "updated",
+      heading: t("content.updated"),
+      render: (video) => formatDate(video.updatedAt),
+    },
+    {
+      key: "actions",
+      heading: t("content.actions"),
+      render: (video) => (
+        <ActionButton
+          tone="secondary"
+          onClick={() => {
+            setNotice(null);
+            setSelected(video);
+          }}
+        >
+          {t("content.edit")}
+        </ActionButton>
+      ),
+    },
+  ];
 
   return (
     <>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Creator Studio</span>
-          <h1>Content</h1>
-          <p className={styles.muted}>
-            Edit only what you need. Publishing remains a separate Quick Upload flow.
-          </p>
-        </div>
-      </header>
-
-      <section aria-label="Content filters" className={styles.filters}>
-        <input
-          aria-label="Search videos"
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search your videos"
-          value={query}
+      {!selected ? (
+        <PageHeader
+          title={t("studio.content")}
+          description={t("content.intro")}
+          actions={<ActionLink href={href("/upload")}>{t("content.upload")}</ActionLink>}
         />
-        <select
-          aria-label="Filter by status"
-          onChange={(event) => setStatus(event.target.value)}
-          value={status}
-        >
-          <option value="">All statuses</option>
-          <option value="PUBLISHED">Published</option>
-          <option value="DRAFT">Draft</option>
-          <option value="UPLOADING">Uploading</option>
-          <option value="VALIDATING">Validating</option>
-          <option value="SCHEDULED">Scheduled</option>
-          <option value="REMOVED">Removed</option>
-        </select>
-        <select
-          aria-label="Filter by visibility"
-          onChange={(event) => setVisibility(event.target.value)}
-          value={visibility}
-        >
-          <option value="">All visibility</option>
-          <option value="PUBLIC">Public</option>
-          <option value="UNLISTED">Unlisted</option>
-          <option value="PRIVATE">Private</option>
-        </select>
-      </section>
-
-      {message ? <p className={styles.notice}>{message}</p> : null}
-      {error ? <p className={styles.error}>{error}</p> : null}
-      {loading ? <p className={styles.muted}>Loading content…</p> : null}
-
-      <section className={styles.videoGrid}>
-        {!loading && videos.length === 0 ? (
-          <p className={styles.muted}>No videos match these filters.</p>
-        ) : null}
-        {videos.map((video) => {
-          const draft = drafts[video.id] ?? {
-            title: video.title,
-            description: video.description,
-            visibility: video.visibility,
-            commentsEnabled: video.commentsEnabled,
-            tvIncluded: video.tvIncluded,
-            metadata: metadataDraftFromApi(video.metadata as Record<string, unknown> | null),
-          };
-          const disabled = busyId === video.id || video.status === "REMOVED";
-          return (
-            <article className={styles.card} key={video.id}>
-              <div className={styles.cardHeader}>
-                <div>
-                  <strong>{video.title}</strong>
-                  <p className={styles.muted}>
-                    {video.status.toLowerCase()} · updated{" "}
-                    {new Date(video.updatedAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-
-              <div className={styles.formGrid}>
-                <input
-                  disabled={disabled}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [video.id]: { ...draft, title: event.target.value },
-                    }))
-                  }
-                  value={draft.title}
-                />
-                <select
-                  disabled={disabled}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [video.id]: {
-                        ...draft,
-                        visibility: event.target.value as Draft["visibility"],
-                      },
-                    }))
-                  }
-                  value={draft.visibility}
-                >
-                  <option value="PUBLIC">Public</option>
-                  <option value="UNLISTED">Unlisted</option>
-                  <option value="PRIVATE">Private</option>
-                </select>
-                <textarea
-                  disabled={disabled}
-                  maxLength={20_000}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [video.id]: { ...draft, description: event.target.value || null },
-                    }))
-                  }
-                  placeholder="Optional description"
-                  value={draft.description ?? ""}
-                />
-              </div>
-
-              <details className={styles.panel}>
-                <summary>
-                  <strong>Advanced metadata</strong>
-                  <span className={styles.muted}> Optional · SEO stays automatic</span>
-                </summary>
-                <div className={styles.formGrid}>
-                  <VideoMetadataFields
-                    disabled={disabled}
-                    showRights={false}
-                    value={draft.metadata}
-                    onChange={(metadata) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [video.id]: { ...draft, metadata },
-                      }))
-                    }
-                  />
-                </div>
-                <p className={styles.muted}>
-                  Rights basis: {video.metadata?.rightsBasis ?? "standard publish declaration"}.
-                  Rights records remain managed by AYIN&apos;s rights domain rather than duplicated
-                  here.
-                </p>
-              </details>
-
-              <StudioCaptionManager disabled={disabled} videoId={video.id} />
-
-              <div className={styles.toggleRow}>
-                <label>
-                  <input
-                    checked={draft.commentsEnabled}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [video.id]: { ...draft, commentsEnabled: event.target.checked },
-                      }))
-                    }
-                    type="checkbox"
-                  />
-                  Comments
-                </label>
-                <label>
-                  <input
-                    checked={draft.tvIncluded}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [video.id]: { ...draft, tvIncluded: event.target.checked },
-                      }))
-                    }
-                    type="checkbox"
-                  />
-                  Creator TV
-                </label>
-              </div>
-
-              <div className={styles.actions}>
-                <button
-                  className={styles.primary}
-                  disabled={disabled}
-                  onClick={() => void save(video)}
-                  type="button"
-                >
-                  {busyId === video.id ? "Working…" : "Save"}
-                </button>
-                {video.status === "PUBLISHED" ? (
-                  <button
-                    className={styles.secondary}
-                    disabled={disabled}
-                    onClick={() => void unpublish(video)}
-                    type="button"
-                  >
-                    Unpublish
-                  </button>
-                ) : null}
-                <button
-                  className={styles.danger}
-                  disabled={disabled}
-                  onClick={() => void remove(video)}
-                  type="button"
-                >
-                  Remove
-                </button>
-              </div>
-            </article>
-          );
-        })}
-      </section>
+      ) : null}
+      {selected ? (
+        <StudioVideoEditor
+          key={selected.id}
+          video={selected}
+          onClose={close}
+          onCommitted={(message) => {
+            setNotice(message);
+            close();
+          }}
+        />
+      ) : (
+        <div className={styles.library}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              setNotice(null);
+              setFilters({ query: query.trim(), status, visibility });
+            }}
+          >
+            <FormSection id="content-filters" legend={t("content.filters")} layout="inline">
+              <TextField
+                id="content-search"
+                label={t("content.search")}
+                placeholder={t("content.searchHint")}
+                value={query}
+                maxLength={200}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <SelectField
+                id="content-filter-status"
+                label={t("content.status")}
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+              >
+                <option value="">{t("content.allStatus")}</option>
+                {Object.entries(contentStatuses).map(([value, key]) => (
+                  <option key={value} value={value}>
+                    {t(key)}
+                  </option>
+                ))}
+              </SelectField>
+              <SelectField
+                id="content-filter-visibility"
+                label={t("content.visibility")}
+                value={visibility}
+                onChange={(event) => setVisibility(event.target.value)}
+              >
+                <option value="">{t("content.allVisibility")}</option>
+                {Object.entries(contentVisibility).map(([value, key]) => (
+                  <option key={value} value={value}>
+                    {t(key)}
+                  </option>
+                ))}
+              </SelectField>
+            </FormSection>
+            <div className={styles.actions}>
+              <ActionButton type="submit" pending={state.status === "loading"}>
+                {t("content.apply")}
+              </ActionButton>
+              <ActionButton tone="secondary" onClick={reload} disabled={state.status === "loading"}>
+                {t("content.retry")}
+              </ActionButton>
+            </div>
+          </form>
+          {notice ? (
+            <StatusNotice tone="success" announce="polite">
+              {t(notice)}
+            </StatusNotice>
+          ) : null}
+          {state.status === "loading" ? (
+            <StatusNotice announce="polite">{t("content.loading")}</StatusNotice>
+          ) : null}
+          {state.status === "error" ? (
+            <StatusNotice tone="danger" announce="assertive">
+              {t("content.loadError")}
+            </StatusNotice>
+          ) : null}
+          {state.status === "ready" && !state.data.videos.length ? (
+            <StatusNotice>{t("content.empty")}</StatusNotice>
+          ) : null}
+          {state.status === "ready" && state.data.videos.length > 0 ? (
+            <>
+              <p className={styles.hint}>{t("content.limit")}</p>
+              <DataTable
+                caption={t("content.count", { count: state.data.videos.length })}
+                scrollLabel={t("content.library")}
+                rows={state.data.videos}
+                columns={columns}
+                rowKey={(video) => video.id}
+              />
+            </>
+          ) : null}
+        </div>
+      )}
     </>
   );
 }
