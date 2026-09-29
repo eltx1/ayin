@@ -1,5 +1,7 @@
 # Phase 4C — focused creator content editor
 
+**Current reviewed implementation:** `2ebc0c119e68437452a4bee3306ce7be62c784d2` passed all exact-head gates and source/visual review; final documentation/merge/deployment remain separate. Earlier pending/test-count entries below are the chronological implementation record and are superseded by the final section.
+
 ## Scope and baseline
 
 Starting accepted/deployed main: `02e37ce7186eb72f62c940847c630dbc5c8ef159`, tree `02df2edcbba42c546930cda67c6ccf7512dd35d8`. Branch: `web-pwa-phase-4c-content-editor`. This is a focused continuation of the shared design system with a real Studio consumer, not completion of master phases 4–16. Final reviewed/merged/deployed SHAs belong in the canonical checkpoint.
@@ -32,7 +34,7 @@ Three new browser journeys are authored, not yet accepted: actual owned drafts, 
 
 ## Measured selected entry assets
 
-Same locked source baseline and same local dependency layout; production builds before and after. Deduplicate the route's `entryJSFiles` and `entryCSSFiles` from Next client-reference manifests, gzip each selected file at level 9 and sum. This is selected entry-file aggregation, not complete dynamic imports, browser/CDN transfer, field Core Web Vitals or API/DB/player/upload latency.
+Both verified source snapshots use the same local dependency/tooling layout; production builds before and after. Deduplicate the route's `entryJSFiles` and `entryCSSFiles` from Next client-reference manifests, gzip each selected file at level 9 and sum. This is selected entry-file aggregation, not complete dynamic imports, browser/CDN transfer, field Core Web Vitals or API/DB/player/upload latency.
 
 | Route           | Before gzip JS | Final gzip JS | Before gzip CSS | Final gzip CSS |
 | --------------- | -------------: | ------------: | --------------: | -------------: |
@@ -61,3 +63,15 @@ Three new client contract cases make this regression deterministic: correct meth
 A fourth browser journey now creates a genuinely owned draft, completes its upload via the established isolated storage fixture, mirrors the existing tested worker-finalization fixture and publishes through the actual API. It verifies cross-origin unpublish is still rejected with 403 and leaves the publication unchanged, confirmation cancellation sends nothing, browser unpublish sends JSON once and persists DRAFT/null publishedAt, and a real prepared/finalized caption can be removed once. The WebVTT object is supplied by the isolated E2E adapter, not claimed as real R2 transport. Existing whole-suite tests and the other-account 404/removal assertions remain. Exact repaired-head CI and screenshots are required before acceptance; no retry-until-green or deleted assertion.
 
 The selected-asset table above records the initial UI candidate before this three-request payload correction. It is historical measured evidence, not a newly claimed repaired-head runtime/CWV benchmark.
+
+## Final source and visual review — 2026-09-29
+
+Implementation2ebc0c119e68437452a4bee3306ce7be62c784d2, exact tree3c10c3ed777831e81ae46ce9c106828ccac9a35b matched the complete local source. Quality36607573341, browser36607573376, security36607573335 and inventory36607573349 all succeeded; author-side review5356461735, no open review threads returned. Local250 Web tests/54files, full Web lint/format/production build succeeded. This is author-side evidence, not independent approval. Closing docs-only head and actual release must still be checked.
+
+Visual artifact11051565717 for green2677ecb was verified (SHA256 bba9804d8bf6415faa5b0307dcf089cf4a1278195912928025e6c169c4953a4d); its Arabic390px image revealed a clipped third tab and duplicate headings despite the initial document-overflow test passing. Corrected mobile labels wrap fully with minimum44px targets; added checks for tablist/button/text bounds rather than only document width. Selected video has one primary h1; repeated translated group/page breadcrumbs are omitted without dropping actual navigation or generic detail privacy. Three new breadcrumb rendering tests retain root, distinct groups, locale links and no internal-ID output.
+
+Final artifact11052800099 SHA256 d34750c6d679437a3a6131e027a565bf55ffe24c08ea1aaff79944503149aa26 was downloaded and verified. All four new content images were inspected: desktop library/editor, Arabic390px and settled disabled-action element. Labels now fit. The disabled Remove text is readable in its viewport-contained capture and settled full capture; no speculative global CSS opacity change was made for the earlier off-viewport capture. The desktop full image follows deliberate scrolling to the action, so sticky-sidebar position reflects that scroll offset. These observations are not certification of every historical screenshot/device.
+
+Current selected-entry before/after method re-run: Content JS44001→49700, Studio40381→40420, Admin45803→45820, Browse43763 unchanged, Home50194 unchanged; CSS Content/Studio16669→17016, Admin11494→11655, Browse21075→21236, Home14361 unchanged. Earlier table is preserved as chronological initial-candidate evidence; the canonical performance report carries these final values. No field-CWV, full dynamic-transfer, DB/API/player/upload/memory speedup claim.
+
+The master still requires complete design/action patterns, whole Viewer/Creator/Admin journey work, feature coverage, PWA/performance/advertising/visual/E2E/security/native acceptance. Follow-on read-only audit found similarly malformed Admin mutation callers; they must be handled in a separate focused phase with real role/MFA/audit/origin proof. Same-document history draft recovery, long-list opening scroll context, legacy inner-copy localization and deeper caption-operation recovery are explicit subsequent creator work, not silently solved here.
