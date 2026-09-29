@@ -1,0 +1,157 @@
+name: Prepare reviewed design Git objects
+
+on:
+  push:
+    branches:
+      - web-pwa-phase-4-design-foundations
+    paths:
+      - .github/workflows/phase4-reviewed-objects.yml
+
+permissions:
+  contents: write
+
+jobs:
+  objects:
+    if: github.ref == 'refs/heads/web-pwa-phase-4-design-foundations'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Verify reviewed source and store Git objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { mkdirSync, writeFileSync } from 'node:fs';
+          import { gunzipSync } from 'node:zlib';
+          import assert from 'node:assert/strict';
+          import path from 'node:path';
+
+          const repository = 'eltx1/ayin';
+          assert.equal(process.env.GITHUB_REPOSITORY, repository);
+          const base = '96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a';
+          const baseTree = '89f2201616e3c52e87a6fe96e31ea8bb4f64f02b';
+          const expectedTree = '611e6f043c06b392b2a3ebae781d96e01dc2f473';
+          const patchDigest = 'a09dbe0910b020cd19f8dbd670d9445f1050be75da94cea671702c6b1703c520';
+          const chunks = [
+            'd11ed683a26957bc3dd84b54ad3b26fc9b99a2cf',
+            'cda51f9998a68b01d45d2d3dfb8c8f93433bc087',
+            '5bb553ff5c4a2946229c23389ce5501549294d4d',
+            'e672505aea2c9f3920a8c8a87ad6eca4f6aba8d0',
+            'd32429e5195bfd0e46ed80a3cd6f259a39c5522a',
+            '87769fdcd964a377a1a7eec9a1ca916e5bf60168',
+            '189e2f6ce406504b5c3b308895692dc3ab05fc43',
+            'c51f03e50ba795609bebd978066ff4ab161f175a',
+            'e284e29016773179a28a443af45664c6dadc19b3',
+            'd2cb50089a8962fd07297c1f6fa771dceb04542f',
+          ];
+          const allowed = [
+            '.github/workflows/e2e.yml',
+            'apps/web/src/app/(viewer)/browse/page.tsx',
+            'apps/web/src/app/globals.css',
+            'apps/web/src/components/admin/admin-dashboard.tsx',
+            'apps/web/src/components/playlist/playlist-management.module.css',
+            'apps/web/src/components/playlist/playlist-manager.tsx',
+            'apps/web/src/components/studio/studio-dashboard.tsx',
+            'apps/web/src/components/ui/design-system.module.css',
+            'apps/web/src/components/ui/design-system.test.tsx',
+            'apps/web/src/components/ui/design-system.tsx',
+            'apps/web/src/components/ui/design-tokens.test.ts',
+            'apps/web/src/components/viewer/browse-navigation.module.css',
+            'apps/web/src/components/viewer/media-artwork.tsx',
+            'apps/web/src/components/viewer/media-card.module.css',
+            'apps/web/src/components/viewer/media-card.test.tsx',
+            'apps/web/src/components/viewer/media-card.tsx',
+            'apps/web/src/components/viewer/public-directory.module.css',
+            'apps/web/src/components/viewer/public-directory.tsx',
+            'apps/web/src/components/viewer/view-states.module.css',
+            'apps/web/src/styles/design-tokens.css',
+            'docs/AYIN_DESIGN_SYSTEM.md',
+            'docs/AYIN_FEATURE_SURFACE_MATRIX.md',
+            'docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md',
+            'docs/PERFORMANCE_BASELINE_AND_RESULTS.md',
+            'tests/e2e/design-foundations.acceptance.spec.ts',
+          ].sort();
+          const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+          assert.equal(git('rev-parse', 'HEAD'), base);
+          assert.equal(git('rev-parse', 'HEAD^{tree}'), baseTree);
+          assert.equal(git('status', '--porcelain'), '');
+
+          // Only repository Git object endpoints are allowed. No refs, commits,
+          // workflows, environments, deployment APIs or server secrets are touched.
+          async function objectRequest(suffix, body) {
+            assert.match(suffix, /^git\/(?:blobs(?:\/[a-f0-9]{40})?|trees)$/);
+            const response = await fetch(`https://api.github.com/repos/${repository}/${suffix}`, {
+              method: body ? 'POST' : 'GET',
+              headers: {
+                authorization: `Bearer ${process.env.GH_TOKEN}`,
+                accept: 'application/vnd.github+json',
+                'content-type': 'application/json',
+                'x-github-api-version': '2022-11-28',
+              },
+              ...(body ? { body: JSON.stringify(body) } : {}),
+              signal: AbortSignal.timeout(30000),
+            });
+            if (!response.ok) throw new Error(`Git object request failed: ${response.status}`);
+            return response.json();
+          }
+          const buffers = [];
+          for (const sha of chunks) {
+            const blob = await objectRequest(`git/blobs/${sha}`);
+            assert.equal(blob.encoding, 'base64');
+            const bytes = Buffer.from(blob.content, 'base64');
+            const actual = createHash('sha1')
+              .update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+            assert.equal(actual, sha);
+            buffers.push(bytes);
+          }
+          const patch = gunzipSync(Buffer.concat(buffers), { maxOutputLength: 262144 });
+          assert.equal(patch.length, 83135);
+          assert.equal(createHash('sha256').update(patch).digest('hex'), patchDigest);
+          const patchFile = path.join(process.env.RUNNER_TEMP, 'reviewed-phase4.patch');
+          writeFileSync(patchFile, patch);
+          git('apply', '--index', '--check', patchFile);
+          git('apply', '--index', patchFile);
+          git('diff', '--cached', '--check');
+          const changed = git('diff', '--cached', '--name-only', '-z').split('\0').filter(Boolean).sort();
+          assert.deepEqual(changed, allowed);
+          assert.equal(git('write-tree'), expectedTree);
+
+          const entries = [];
+          for (const file of allowed) {
+            const bytes = execFileSync('git', ['show', `:${file}`]);
+            const result = await objectRequest('git/blobs', {
+              content: bytes.toString('base64'), encoding: 'base64',
+            });
+            assert.equal(result.sha, git('rev-parse', `:${file}`));
+            entries.push({ path: file, mode: '100644', type: 'blob', sha: result.sha });
+          }
+          const tree = await objectRequest('git/trees', { base_tree: baseTree, tree: entries });
+          assert.equal(tree.sha, expectedTree);
+          const evidence = path.join(process.env.RUNNER_TEMP, 'design-object-evidence');
+          mkdirSync(evidence, { recursive: true });
+          writeFileSync(path.join(evidence, 'result.json'), JSON.stringify({
+            base, baseTree, candidateTree: tree.sha, patchDigest,
+            workflowSha: process.env.WORKFLOW_SHA, entries,
+            refMutation: false, commitCreated: false, deployment: false,
+          }, null, 2) + '\n');
+          console.log(`Verified candidate tree ${tree.sha}; no branch changed.`);
+          NODE
+      - name: Preserve object verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-reviewed-git-objects
+          path: ${{ runner.temp }}/design-object-evidence/result.json
+          retention-days: 7
+          if-no-files-found: error
