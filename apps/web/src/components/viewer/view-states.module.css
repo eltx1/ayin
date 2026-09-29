@@ -20,9 +20,9 @@
 }
 
 .state h2 {
-  font-size: clamp(1.9rem, 4vw, 3.2rem);
-  letter-spacing: -0.045em;
-  line-height: 1.04;
+  font-size: var(--text-heading);
+  letter-spacing: -0.015em;
+  line-height: var(--leading-heading);
   margin: 1.3rem 0 0;
 }
 
@@ -33,20 +33,20 @@
 }
 
 .action {
-  margin-top: 1.4rem;
+  margin-block-start: var(--space-5);
 }
 
 .action button,
 .action a {
   align-items: center;
-  background: var(--brand-gradient);
+  background: var(--action-fill);
   border: 1px solid rgb(255 255 255 / 16%);
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   box-shadow: 0 12px 30px rgb(88 8 248 / 20%);
   color: white;
   cursor: pointer;
   display: inline-flex;
-  font-weight: 820;
+  font-weight: 650;
   justify-content: center;
   min-height: var(--control-height);
   padding: 0.75rem 1rem;
@@ -76,7 +76,7 @@
   animation: state-shimmer 1.5s ease-in-out infinite;
   background: linear-gradient(90deg, #0d0a17, #1b142d, #0d0a17);
   background-size: 220% 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-control);
   height: 1.8rem;
   margin-bottom: 1.3rem;
   width: min(18rem, 50vw);

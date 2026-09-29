@@ -10,9 +10,9 @@ The current feature inventory is [AYIN_FEATURE_SURFACE_MATRIX.md](AYIN_FEATURE_S
 
 ## Current main and phase boundaries
 
-Last re-read main: `64df1952ba041b95c30e3139760bd9410059c5dc`. PR #142 is the current Phase 3 work on `web-pwa-phase-3-information-architecture`. It remains draft until final-head acceptance and review; no Phase 3 merge/deployment is yet claimed in this entry.
+Current accepted main: `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`. PR #142 is merged and deployed with independently rechecked evidence below. Current work is Phase 4A on `web-pwa-phase-4-design-foundations`; it is not accepted yet. Earlier run observations in this ledger describe their original moment, not current blockers.
 
-Phase 0 baseline recovery, focused Phase 1 source reconciliation and focused Phase 2 route integrity are accepted with the boundaries below. Phase 3 information architecture is implemented and under final review. Phases 4–8 design system, full Viewer/Creator/Admin transformation and full capability-to-surface acceptance remain open. Phases 9–14 PWA lifecycle, measured performance, official-policy advertising, all-route visual acceptance, complete E2E and simplified-workflow security remain open. Phase 15 platform preparation must follow Web/PWA gates and current official policy research. Phase 16 full documentation consolidation remains open. Preserve earlier integrated operator, creator and financial features.
+Phase 0 baseline recovery, focused Phase 1 source reconciliation and focused Phase 2 route integrity are accepted with the boundaries below. Phase 3 information architecture is accepted; Phase 4A foundations are under implementation/review. Phases 4–8 design system, full Viewer/Creator/Admin transformation and full capability-to-surface acceptance remain open. Phases 9–14 PWA lifecycle, measured performance, official-policy advertising, all-route visual acceptance, complete E2E and simplified-workflow security remain open. Phase 15 platform preparation must follow Web/PWA gates and current official policy research. Phase 16 full documentation consolidation remains open. Preserve earlier integrated operator, creator and financial features.
 
 ## Accepted predecessors
 
@@ -20,13 +20,13 @@ PR #139: scoped merchandising cancellation/drafts and audited step-up workflow. 
 
 PR #140: real Movies/Series/TV/Creators directories, policy-aware keyset pagination, primary-TV ownership, canonical Clips/Upload aliases, manifest authority/shortcuts and catalog detail shells. Final head `d4e66ad3d5c9e4239944d674cd982db3afb4e0d6`; merge `39731c6a8a069e92732f95c4b7db7afa30cbb5c2`. Quality `36377946484`, browser `36377946464`, security `36377946520`; author-side reviews `5333986738`, `5334016117`. Missing actor Account fixtures were repaired without weakening foreign keys or rolling discovery policy. Twelve seeded directory screenshots were inspected; this is not physical-TV/production data evidence.
 
-Last independently observed production release: `39731c6a8a069e92732f95c4b7db7afa30cbb5c2`. Validation `36378738334`; deployment `36379170040`, job `108791137393`; direct-origin health and immutable proof artifact `10952038374`, archive SHA-256 `73d59985ffd39be4a769657960d5965244091ef90ab179410fe52d9c92775303`. Cloudflare sync `36379289647` succeeded. No later production state is implied.
+Previous independently observed Phase 2 release: `39731c6a8a069e92732f95c4b7db7afa30cbb5c2` (superseded by the verified Phase 3 release below). Validation `36378738334`; deployment `36379170040`, job `108791137393`; direct-origin health and immutable proof artifact `10952038374`, archive SHA-256 `73d59985ffd39be4a769657960d5965244091ef90ab179410fe52d9c92775303`. Cloudflare sync `36379289647` succeeded. No later production state is implied.
 
 PR #141: deterministic source inventory/semantic reconciliation. Final head `88230732bfb81b3a522a7fc802ada6f84ad69c16`; merge `64df1952ba041b95c30e3139760bd9410059c5dc`. Quality `36380336982`, inventory `36380336245`; author-side review `5334252911`. The historical source snapshot counted 73 feature labels, 70 pages, eight handlers, 54 controllers, 364 endpoint paths, 119 models and 57 migrations; later additions change totals. Static inventory does not prove full behavior or authorization.
 
 ## Phase 3 implementation and browser recovery
 
-Starting SHA: `64df1952ba041b95c30e3139760bd9410059c5dc`. Initial navigation commit: `fdeb9082192ba255b364f76f5bb68095952cd521`. Recovered navigation head: `9e7a9b98fb385b46bf4b88079379d2c6b15fb3f7`. Studio repair: `b3ac3810b1c578d9ba3bab2a95081eadcb8e0564`. Ending accepted/merged/deployed SHAs remain pending.
+Starting SHA: `64df1952ba041b95c30e3139760bd9410059c5dc`. Initial navigation commit: `fdeb9082192ba255b364f76f5bb68095952cd521`. Recovered navigation head: `9e7a9b98fb385b46bf4b88079379d2c6b15fb3f7`. Studio repair: `b3ac3810b1c578d9ba3bab2a95081eadcb8e0564`. Final Phase 3 head `dd7b3e9682a272d8c3fd4f333456450e55fa69eb` merged as `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`; see the acceptance and deployment entry below.
 
 Inspected systems: Viewer shell, public controls/flags/locale, Studio/Admin layout/navigation/role/session/MFA, TV focus and Back handling, public catalog/deep links, shared creator editors, browser fixtures/CI/screenshots, source inventory, dependency graph and upstream URI fixes. [Information architecture](AYIN_INFORMATION_ARCHITECTURE.md) records the actual hierarchy.
 
@@ -56,8 +56,32 @@ No complete local application build is claimed for the current branch. Local Nod
 
 Performance: no new speedup claim. Existing limited Phase 2 gzip script measurements remain in `PERFORMANCE_BASELINE_AND_RESULTS.md`; shared request-count assertions are not CWV/DB/player/upload evidence. Measure before/after and keep later-phase regression gates.
 
-Next: observe final exact-head quality/security/inventory/browser checks; inspect retained images and source diff; resolve review findings; only then mark PR #142 ready and merge with expected-head protection. Verify actual main and existing deployment/direct-origin/Cloudflare proof. Then begin Phase 4 design-system normalization from accepted main without asking the user to resend it.
+The Phase 3 acceptance plan above is now satisfied by the actual merge/gate/deployment evidence below. Do not re-run the resolved publication workaround or ask for an extra desktop connection. Next work is the focused Phase 4A foundation, followed by remaining Phase 4 components and later master phases.
 
 Remaining risks: the moderate advisory needs explicit triage; app-wide visual/accessibility, account synchronization, catalog concurrent-policy/per-series hydration, PWA cache/update/offline behavior, advertising/provider and native/device/store acceptance remain open. Do not infer that one green phase completes the master goal.
 
 Rollback: separate the navigation revert from the adopted security fix. Do not restore vulnerable URI versions just to revert UI. No database rollback or production-data reversal is needed for this phase. All reviews recorded above are author-side unless explicitly stated otherwise.
+
+## Phase 3 acceptance re-read and Phase 4A start — 2026-09-29
+
+PR #142 is merged, not pending: final reviewed head `dd7b3e9682a272d8c3fd4f333456450e55fa69eb`, merged main `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`, source tree `89f2201616e3c52e87a6fe96e31ea8bb4f64f02b`. Quality `36504244566`, browser `36504244498`, security `36504244483`, inventory `36504244533` succeeded; author-side final review `5346404231` is not an independent approval. Earlier pending/publication statements above are historical and superseded by this entry.
+
+Re-read the merge and actual main; no open PR was present. Downloaded source artifact `11006441878`, verified ZIP SHA-256 `0819ab35693eddbcfc0f511ab2e9a132e2bf78768a32fc0c019944f6fae9b6ff`, all 1251 tracked-file hashes, and exact Git tree parity with merged main. Source archive commit `929cf7527ce40d93b2b85985bec5ecfd5b7f02da` is a PR test-merge snapshot, not main.
+
+Actual Phase 3 deployment `36505563759`, job `109206107284`, succeeded including exact validated commit and direct-origin health. Downloaded proof artifact `11006692748`; archive SHA-256 `e0257992c5832989a2fbb7c1013945fcfa6cd36af990e32dce6cd6fe1190a07d`. Proof records release `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`, validation `36505103030`, deployment `36505563759`, attempt 1, isolated account `ayin`. This proves that release at deployment time only. No additional desktop connector is required.
+
+**Phase 4A starting SHA:** `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`. **Branch:** `web-pwa-phase-4-design-foundations` (pre-existing at exactly that SHA; no unmerged work overwritten). This is a focused design-system foundation subphase, not full Phase 4 or final route redesign acceptance.
+
+**Inspected:** global palette/spacing/elevation/focus/safe-area/motion styles, shared Button/focus package, all existing UI primitives, Viewer cards/heroes/states/directories/Browse, Studio/Admin shells/dashboards, forms/playlist workflows, source inventory and CI. Preserve accepted navigation/security code. Found absent image-load recovery, repeated headers/actions/stats, small gradient text and undefined new-system typography roles. Existing tokens are moved intact; add semantic roles rather than recoloring all pages blindly.
+
+**Baseline:** 190 Web unit tests passed locally on the accepted source before edits. Local Node 22.16.0 satisfies engines but differs from CI-pinned Node 24.19.0. Restored Web test/build dependencies match declared versions; original transitive URI dependencies in the old local tooling snapshot are not the accepted production graph. Use local results only for scoped Web/component checks; exact frozen install, API/security/audit/browser acceptance remains CI. An attempted package-manager bootstrap tried to reinstall after lock mismatch and failed DNS; it did not alter tracked dependency files. No network restriction bypass.
+
+**Changes, tests, visual/performance evidence, ending SHA and review:** in progress; acceptance requires recorded final-head gates. No schema/API/auth/ownership/MFA/financial/rights/provider/native changes. Keep the adopted URI security remediation. Rollback the focused presentation PR without database rollback. Next: validate reusable design primitives, adopted surfaces and failed artwork, then proceed with remaining Phase 4 interactions/tables/forms before full page redesign.
+
+### Phase 4A implemented candidate — pre-CI local evidence
+
+Changes: retained original global tokens in a single imported token file; new semantic text/action/status/typography/control roles; reusable server-compatible headers, native buttons/links, explicitly labelled input/select fields, status/badges and actual-data metric lists; source-keyed client image-error leaf with stable decorative fallback. Adopted in Browse/directories, Studio overview/playlists, Admin overview/search. Removed only migrated duplicate selectors; did not alter backend functions, queries, rights, roles, MFA, provider configuration or upload behavior.
+
+Local results: 201/201 Web tests (45 files), including 11 new foundation/token/card tests; Next type generation and TypeScript, full Web lint and formatting, and production Web build passed. New browser journeys for image failure/recovery/dimensions/RTL and real playlist creation/Admin semantics are authored, not yet run. CI images must be inspected before acceptance. The existing historical browser/security/integration suites remain enabled; exact-head acceptance is pending.
+
+Design evidence and component coverage: `docs/AYIN_DESIGN_SYSTEM.md`. All new components have a real current consumer; remaining Phase 4 interaction/table/editor/toast work is explicitly not accepted. No new UI dependency. Performance before/after manifest evidence is being collected on comparable local builds; no speedup, field Core Web Vitals, DB latency or player/upload claim.

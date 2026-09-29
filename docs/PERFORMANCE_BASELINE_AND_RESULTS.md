@@ -27,3 +27,23 @@ Local Chromium refused navigation with `ERR_BLOCKED_BY_ADMINISTRATOR`. No browse
 Verify current official Core Web Vitals guidance when Phase 10 executes. Collect representative field/lab LCP, INP and CLS, complete route JavaScript including dynamic modules, real request counts/TTFB, CPU/network constraints, query counts/plans/latency and connection use, discovery/search, per-series episode hydration, player/ABR/MP4 startup, upload preparation/concurrency/retry, Admin/Studio first-use and safe PWA cache/startup behavior.
 
 Do not add indexes, replicas, sharding or new stores based on these limited bundle numbers. Do not claim the redesign's full performance gate is green without those measurements. Record production, local fixture, CI browser, emulator and physical-device evidence separately.
+
+## Phase 4A foundation comparison — 2026-09-29
+
+Both local production Web builds succeeded on Node 22.16.0 with identical restored Web dependency versions. Before is the exact accepted tree `89f2201616e3c52e87a6fe96e31ea8bb4f64f02b` (main `96bb5e3`); after is the Phase 4A candidate. This comparison sums unique JS/CSS paths in each route's `page_client-reference-manifest.js` entry, gzipping individual files at level 9. It is **not** the older Phase 2 HTML-script method, an observed browser/CDN transfer, complete dynamic imports, field CWV or production performance. Do not compare numbers across these different methods.
+
+**Movies/Series/TV/Creators directories:** initial-entry JS gzip 38,267 → 38,841 bytes; CSS gzip 17,847 → 21,107 bytes.
+
+**/browse:** initial-entry JS gzip 39,097 → 39,153 bytes; CSS gzip 9,013 → 11,527 bytes.
+
+**Home:** initial-entry JS gzip 45,412 → 45,571 bytes; CSS gzip 17,847 → 14,351 bytes.
+
+**studio:** initial-entry JS gzip 36,335 → 37,383 bytes; CSS gzip 13,235 → 16,814 bytes.
+
+**studio/playlists:** initial-entry JS gzip 36,406 → 37,435 bytes; CSS gzip 15,155 → 16,814 bytes.
+
+**admin:** initial-entry JS gzip 41,809 → 42,872 bytes; CSS gzip 7,948 → 11,527 bytes.
+
+**/watch/[slug]:** initial-entry JS gzip 52,551 → 52,617 bytes; CSS gzip 17,847 → 14,351 bytes.
+
+The new primitives do not fetch data; only the image-error leaf adds client behavior and no replacement image request. These small build deltas do not establish a speedup. Existing backend/query/upload/player logic is unchanged; complete laboratory/field/network/DB/startup measurements remain the later performance phase. Source/CI validation and screenshots remain separate gates.

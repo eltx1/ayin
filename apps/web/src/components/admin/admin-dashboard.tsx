@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
+
+import {
+  ActionButton,
+  DataBadge,
+  MetricList,
+  PageHeader,
+  TextField,
+} from "@/components/ui/design-system";
 
 import styles from "@/app/admin/admin.module.css";
 import {
@@ -284,19 +292,17 @@ export function AdminDashboard() {
 
   return (
     <>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Control Center</span>
-          <h1>AYIN Admin</h1>
-          <p className={styles.muted}>
-            Search, operate, moderate, publish and observe AYIN through protected, audited controls.
-          </p>
-        </div>
-        <div>
-          <span className={styles.statusPill}>Scheduled UTC rollup view</span>
-          <p className={styles.muted}>{session.roles.join(" · ")}</p>
-        </div>
-      </header>
+      <PageHeader
+        title="AYIN Admin"
+        eyebrow="Control Center"
+        description="Search, operate, moderate, publish and observe AYIN through protected, audited controls."
+        actions={
+          <div>
+            <DataBadge>Scheduled UTC rollup view</DataBadge>
+            <p className={styles.muted}>{session.roles.join(" · ")}</p>
+          </div>
+        }
+      />
 
       {error ? <p className={styles.error}>{error}</p> : null}
 
@@ -322,20 +328,18 @@ export function AdminDashboard() {
           Find records available to your current admin role from one protected search.
         </p>
         <form className={styles.toolbar} onSubmit={runSearch}>
-          <input
+          <TextField
+            id="admin-global-search"
+            label="Search AYIN administration"
             aria-label="Search AYIN administration"
             minLength={2}
             placeholder="Email, creator, channel, video, payout reference…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <button
-            className={styles.button}
-            disabled={searching || query.trim().length < 2}
-            type="submit"
-          >
+          <ActionButton pending={searching} disabled={query.trim().length < 2} type="submit">
             {searching ? "Searching…" : "Search"}
-          </button>
+          </ActionButton>
         </form>
         {searchResults.length ? (
           <div className={styles.searchResults}>
@@ -360,14 +364,10 @@ export function AdminDashboard() {
         ) : null}
       </section>
 
-      <section aria-label="Platform counters" className={styles.metrics}>
-        {metrics.map(([label, value]) => (
-          <article className={styles.metric} key={label}>
-            <span className={styles.muted}>{label}</span>
-            <strong>{value.toLocaleString()}</strong>
-          </article>
-        ))}
-      </section>
+      <MetricList
+        label="Platform counters"
+        items={metrics.map(([label, value]) => ({ label, value: value.toLocaleString() }))}
+      />
 
       <section className={styles.commandGrid}>
         <article className={styles.card}>
