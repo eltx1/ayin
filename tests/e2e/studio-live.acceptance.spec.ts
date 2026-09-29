@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
 // A newly controlling worker can bypass page.route even when the write succeeds.
 // Scope isolation to this suite; PWA and other browser journeys keep workers enabled.
 // https://playwright.dev/docs/network#missing-network-events-and-service-workers
- test.use({ serviceWorkers: "block" });
+test.use({ serviceWorkers: "block" });
 
 const API = "http://127.0.0.1:3001",
   WEB = "http://127.0.0.1:3000";
