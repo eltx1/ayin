@@ -259,3 +259,27 @@
     color: GrayText;
   }
 }
+
+.formSection {
+  border: 0;
+  margin: 0;
+  min-inline-size: 0;
+  padding: 0;
+}
+.formSection > legend {
+  color: var(--text-primary);
+  font-size: var(--text-heading);
+  font-weight: 650;
+  line-height: var(--leading-heading);
+  padding: 0;
+}
+.sectionFields {
+  display: grid;
+  gap: var(--space-5);
+  margin-block-start: var(--space-5);
+  min-inline-size: 0;
+}
+.field > textarea.input {
+  min-block-size: 9rem;
+  resize: vertical;
+}

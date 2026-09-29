@@ -47,3 +47,19 @@ Both local production Web builds succeeded on Node 22.16.0 with identical restor
 **/watch/[slug]:** initial-entry JS gzip 52,551 → 52,617 bytes; CSS gzip 17,847 → 14,351 bytes.
 
 The new primitives do not fetch data; only the image-error leaf adds client behavior and no replacement image request. These small build deltas do not establish a speedup. Existing backend/query/upload/player logic is unchanged; complete laboratory/field/network/DB/startup measurements remain the later performance phase. Source/CI validation and screenshots remain separate gates.
+
+## Phase 4B data/form candidate comparison — 2026-09-29
+
+Both local production Web builds passed with identical in-root restored Web dependencies and Node 22.16.0, using the same local API/media environment values. Before is accepted main `2b7ea943f13fb9acfde542c820a5b93ce2e81ce6` (tree `7038c96e1aeebe4e74bccc5c7ac64ac86ace86d9`); after is the current Phase 4B source candidate. As in Phase 4A, sum unique JS/CSS entry paths in each route's `page_client-reference-manifest.js`, gzipping each file at level 9. This is not field performance, actual transfer, complete dynamic imports, hydration time or CI's exact frozen dependency/toolchain acceptance.
+
+**Studio Comments:** entry JS gzip 36,034 → 39,980 bytes; CSS gzip 16,814 → 17,556 bytes.
+
+**Studio Support:** entry JS gzip 36,179 → 40,126 bytes; CSS gzip 16,814 → 17,556 bytes.
+
+**Home:** entry JS gzip 47,368 → 49,121 bytes; CSS gzip 14,351 → 14,351 bytes.
+
+**Admin overview:** entry JS gzip 42,853 → 44,738 bytes; CSS gzip 11,527 → 12,380 bytes.
+
+New feedback translations in the shared typed resources contribute to common-entry cost; native form/table/disclosure, bounded filtering and independent request states contribute to the changed Studio entries. These additions are explicitly reported, not a speedup claim. Filtering operates on the already-loaded latest-100 snapshot, adds no requests or backend queries, and never pretends to search all comments. The full performance phase must measure actual transfer/hydration/latency and assess route-local translation splitting. No new dependency, video/player runtime, database index or caching scheme is introduced.
+
+An initial local baseline build failed because the restored cache used node_modules symlinks outside Turbopack's root. Materializing those cached directories inside the isolated local build root resolved the tooling layout; no network/browser policy or application constraint was bypassed. Both successful builds use the same corrected in-root layout. Local builds do not replace the final pinned CI, browser/visual, API/security or deployed-SHA gates.

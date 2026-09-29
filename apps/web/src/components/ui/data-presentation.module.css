@@ -1,0 +1,94 @@
+.tableRegion {
+  border-block: 1px solid var(--border-strong);
+  inline-size: 100%;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+.tableRegion:focus-visible,
+.disclosure > summary:focus-visible {
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+.table {
+  border-collapse: collapse;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  inline-size: 100%;
+  line-height: var(--leading-copy);
+  min-inline-size: 36rem;
+  table-layout: fixed;
+  text-align: start;
+}
+.table caption {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  padding-block: var(--space-3);
+  text-align: start;
+}
+.table th,
+.table td {
+  border-block-end: 1px solid var(--border);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  padding: var(--space-4);
+  text-align: start;
+  vertical-align: top;
+}
+.table thead th {
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: 650;
+}
+.table th[data-compact] {
+  inline-size: 10rem;
+}
+.table tbody tr:last-child > * {
+  border-block-end: 0;
+}
+.table tbody tr:focus-within {
+  background: var(--surface-raised);
+}
+.table p {
+  margin-block: var(--space-2) 0;
+}
+.disclosure {
+  border-block-start: 1px solid var(--border-strong);
+  min-inline-size: 0;
+}
+.disclosure > summary {
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  line-height: var(--leading-copy);
+  min-block-size: var(--control-target);
+  overflow-wrap: anywhere;
+  padding: var(--space-3) 0;
+}
+.disclosure > summary::marker {
+  color: var(--text-muted);
+}
+.disclosure[open] > summary {
+  font-weight: 600;
+}
+.disclosureBody {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-copy);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  padding-block: 0 var(--space-4);
+}
+.disclosureBody p {
+  white-space: pre-wrap;
+}
+@media (forced-colors: active) {
+  .tableRegion,
+  .table th,
+  .table td,
+  .disclosure {
+    border-color: CanvasText;
+  }
+}

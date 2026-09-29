@@ -1,158 +1,275 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
-import styles from "@/app/studio/studio.module.css";
-import { createSupportTicket, getMySupportTickets, type SupportTicket } from "@/lib/support";
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { Disclosure } from "@/components/ui/data-presentation";
+import {
+  ActionButton,
+  ActionLink,
+  DataBadge,
+  FormSection,
+  PageHeader,
+  SelectField,
+  StatusNotice,
+  TextAreaField,
+  TextField,
+} from "@/components/ui/design-system";
+import type { TranslationKey } from "@/lib/i18n/translator";
+import {
+  createSupportTicket,
+  getMySupportTickets,
+  isUncertainSupportFailure,
+  SupportRequestError,
+  validateSupportDraft,
+  type SupportTicket,
+} from "@/lib/support";
+import { useRemoteResource } from "@/lib/use-remote-resource";
 
-import supportStyles from "./studio-support.module.css";
+import styles from "./studio-feedback.module.css";
 
-const categories = [
-  "GENERAL",
-  "ACCOUNT",
-  "CONTENT",
-  "MONETIZATION",
-  "ADVERTISING",
-  "TECHNICAL",
-  "RIGHTS",
-  "OTHER",
-] as const;
+const categories = {
+  GENERAL: "feedback.categoryGeneral",
+  ACCOUNT: "feedback.categoryAccount",
+  CONTENT: "feedback.categoryContent",
+  MONETIZATION: "feedback.categoryMonetization",
+  ADVERTISING: "feedback.categoryAdvertising",
+  TECHNICAL: "feedback.categoryTechnical",
+  RIGHTS: "feedback.categoryRights",
+  OTHER: "feedback.categoryOther",
+} as const satisfies Record<string, TranslationKey>;
+const priorities = {
+  LOW: "feedback.priorityLow",
+  NORMAL: "feedback.priorityNormal",
+  HIGH: "feedback.priorityHigh",
+  URGENT: "feedback.priorityUrgent",
+} as const satisfies Record<SupportTicket["priority"], TranslationKey>;
+const statuses = {
+  OPEN: "feedback.statusOpen",
+  IN_PROGRESS: "feedback.statusInProgress",
+  WAITING: "feedback.statusWaiting",
+  RESOLVED: "feedback.statusResolved",
+  CLOSED: "feedback.statusClosed",
+} as const satisfies Record<SupportTicket["status"], TranslationKey>;
 
 export function StudioSupport() {
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [category, setCategory] = useState<(typeof categories)[number]>("GENERAL");
+  const { t, href, formatDate } = useI18n();
+  const { state, reload } = useRemoteResource(getMySupportTickets);
+  const [category, setCategory] = useState<keyof typeof categories>("GENERAL");
   const [priority, setPriority] = useState<SupportTicket["priority"]>("NORMAL");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      setTickets((await getMySupportTickets()).items);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Support tickets could not be loaded.");
-    }
-  }, []);
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  const [errors, setErrors] = useState({ subject: false, description: false });
+  const [outcome, setOutcome] = useState<"sent" | "error" | "uncertain" | null>(null);
+  const needsSignIn =
+    state.status === "error" &&
+    state.error instanceof SupportRequestError &&
+    [401, 403].includes(state.error.status);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-  async function submit() {
-    if (subject.trim().length < 4 || description.trim().length < 10) return;
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending.current || needsSignIn) return;
+    const invalid = validateSupportDraft(subject, description);
+    setErrors(invalid);
+    if (invalid.subject || invalid.description) {
+      document.getElementById(invalid.subject ? "support-subject" : "support-details")?.focus();
+      return;
+    }
+    pending.current = true;
     setBusy(true);
-    setMessage("");
+    setOutcome(null);
+    const draft = { category, priority, subject: subject.trim(), description: description.trim() };
     try {
-      await createSupportTicket({
-        category,
-        priority,
-        subject: subject.trim(),
-        description: description.trim(),
-      });
+      await createSupportTicket(draft);
+      if (!mounted.current) return;
       setSubject("");
       setDescription("");
       setPriority("NORMAL");
-      setMessage("Support ticket created. AYIN staff can now triage it from Admin Operations.");
-      await load();
+      setOutcome("sent");
+      // The acknowledged POST and the subsequent GET have independent outcomes.
+      // A failed list refresh must not tell the creator to resubmit a sent ticket.
+      reload();
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "The support ticket could not be created.",
-      );
+      if (mounted.current) setOutcome(isUncertainSupportFailure(error) ? "uncertain" : "error");
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (mounted.current) setBusy(false);
     }
   }
 
   return (
     <>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Creator Studio</span>
-          <h1>Support</h1>
-          <p className={styles.muted}>
-            Open a traceable support ticket for account, content, monetization, technical or rights
-            issues and follow its status here.
-          </p>
-        </div>
-      </header>
-
-      {message ? <p className={styles.notice}>{message}</p> : null}
-
-      <section className={styles.card}>
-        <h2>Open a ticket</h2>
-        <div className={styles.formGrid}>
-          <label>
-            Category
-            <select
+      <PageHeader
+        title={t("feedback.support")}
+        eyebrow={t("studio.brand")}
+        description={t("feedback.supportDescription")}
+      />
+      <div className={styles.supportLayout}>
+        <form
+          className={styles.supportForm}
+          onSubmit={(event) => void submit(event)}
+          aria-label={t("feedback.newTicket")}
+        >
+          <FormSection
+            id="support-fields"
+            legend={t("feedback.newTicket")}
+            description={t("feedback.ticketInstructions")}
+            disabled={busy || needsSignIn}
+          >
+            <SelectField
+              id="support-category"
+              label={t("feedback.category")}
               value={category}
               onChange={(event) => setCategory(event.target.value as typeof category)}
             >
-              {categories.map((value) => (
-                <option key={value}>{value}</option>
+              {Object.entries(categories).map(([value, key]) => (
+                <option value={value} key={value}>
+                  {t(key)}
+                </option>
               ))}
-            </select>
-          </label>
-          <label>
-            Priority
-            <select
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as SupportTicket["priority"])}
-            >
-              {(["LOW", "NORMAL", "HIGH", "URGENT"] as const).map((value) => (
-                <option key={value}>{value}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Subject
-            <input value={subject} onChange={(event) => setSubject(event.target.value)} />
-          </label>
-          <label className={supportStyles.fullField}>
-            Details
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
+            </SelectField>
+            <TextField
+              id="support-subject"
+              label={t("feedback.subject")}
+              value={subject}
+              required
+              minLength={4}
+              maxLength={200}
+              {...(errors.subject ? { error: t("feedback.subjectError") } : {})}
+              onChange={(event) => {
+                setSubject(event.target.value);
+                setErrors((current) => ({ ...current, subject: false }));
+              }}
             />
-          </label>
-        </div>
-        <button
-          className={styles.primary}
-          disabled={busy || subject.trim().length < 4 || description.trim().length < 10}
-          type="button"
-          onClick={() => void submit()}
-        >
-          Create ticket
-        </button>
-      </section>
-
-      <section className={styles.panel}>
-        <h2>My tickets</h2>
-        <div className={supportStyles.ticketList}>
-          {tickets.map((ticket) => (
-            <article className={supportStyles.ticket} key={ticket.id}>
-              <div className={styles.cardHeader}>
-                <div>
-                  <strong>{ticket.subject}</strong>
-                  <p className={styles.muted}>
-                    {ticket.category} · {ticket.priority} · opened{" "}
-                    {new Date(ticket.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <span className={supportStyles.statusBadge}>{ticket.status}</span>
+            <TextAreaField
+              id="support-details"
+              label={t("feedback.details")}
+              value={description}
+              required
+              minLength={10}
+              maxLength={20_000}
+              rows={6}
+              {...(errors.description ? { error: t("feedback.detailsError") } : {})}
+              onChange={(event) => {
+                setDescription(event.target.value);
+                setErrors((current) => ({ ...current, description: false }));
+              }}
+            />
+            <Disclosure summary={t("feedback.advanced")}>
+              <SelectField
+                id="support-priority"
+                label={t("feedback.priority")}
+                value={priority}
+                onChange={(event) => setPriority(event.target.value as SupportTicket["priority"])}
+              >
+                {Object.entries(priorities).map(([value, key]) => (
+                  <option value={value} key={value}>
+                    {t(key)}
+                  </option>
+                ))}
+              </SelectField>
+            </Disclosure>
+          </FormSection>
+          <ActionButton type="submit" pending={busy} disabled={needsSignIn}>
+            {t(busy ? "feedback.sending" : "feedback.send")}
+          </ActionButton>
+          {outcome ? (
+            <StatusNotice
+              announce={outcome === "sent" ? "polite" : "assertive"}
+              tone={outcome === "sent" ? "success" : outcome === "uncertain" ? "warning" : "danger"}
+            >
+              {t(
+                outcome === "sent"
+                  ? "feedback.sent"
+                  : outcome === "uncertain"
+                    ? "feedback.sendUncertain"
+                    : "feedback.sendError",
+              )}
+            </StatusNotice>
+          ) : null}
+        </form>
+        <section aria-labelledby="my-support-tickets" className={styles.tickets}>
+          <div className={styles.sectionHeading}>
+            <h2 id="my-support-tickets">{t("feedback.ticketsTitle")}</h2>
+            <ActionButton
+              tone="secondary"
+              disabled={busy}
+              pending={state.status === "loading"}
+              onClick={reload}
+            >
+              {t("feedback.refresh")}
+            </ActionButton>
+          </div>
+          <p className={styles.secondary}>{t("feedback.ticketsDescription")}</p>
+          {state.status === "loading" ? (
+            <StatusNotice announce="polite">{t("feedback.ticketsLoading")}</StatusNotice>
+          ) : null}
+          {state.status === "error" ? (
+            <div className={styles.recovery}>
+              <StatusNotice announce="assertive" tone="danger">
+                {t("feedback.ticketsError")}
+              </StatusNotice>
+              <div className={styles.actions}>
+                <ActionButton tone="secondary" disabled={busy} onClick={reload}>
+                  {t("feedback.retry")}
+                </ActionButton>
+                {needsSignIn ? (
+                  <ActionLink href={href("/login")}>{t("feedback.signIn")}</ActionLink>
+                ) : null}
               </div>
-              <p>{ticket.description}</p>
-              {ticket.resolution ? (
-                <p>
-                  <strong>Resolution:</strong> {ticket.resolution}
-                </p>
-              ) : null}
-            </article>
-          ))}
-          {!tickets.length ? <p className={styles.muted}>No support tickets yet.</p> : null}
-        </div>
-      </section>
+            </div>
+          ) : null}
+          {state.status === "ready" && !state.data.items.length ? (
+            <StatusNotice tone="neutral">{t("feedback.ticketsEmpty")}</StatusNotice>
+          ) : null}
+          {state.status === "ready" && state.data.items.length ? (
+            <ul className={styles.ticketList}>
+              {state.data.items.map((ticket) => (
+                <li key={ticket.id}>
+                  <Disclosure
+                    summary={
+                      <span className={styles.ticketSummary}>
+                        <strong dir="auto">{ticket.subject}</strong>
+                        <DataBadge tone={ticket.status === "RESOLVED" ? "success" : "neutral"}>
+                          {t(statuses[ticket.status] ?? "feedback.other")}
+                        </DataBadge>
+                        <span className={styles.date}>
+                          {t("feedback.updated", { date: formatDate(ticket.updatedAt) })}
+                        </span>
+                      </span>
+                    }
+                  >
+                    <p className={styles.secondary}>
+                      {t(
+                        categories[ticket.category as keyof typeof categories] ??
+                          "feedback.categoryOther",
+                      )}{" "}
+                      · {t(priorities[ticket.priority] ?? "feedback.other")}
+                    </p>
+                    <p dir="auto">{ticket.description}</p>
+                    {ticket.resolution ? (
+                      <div className={styles.resolution}>
+                        <strong>{t("feedback.resolution")}</strong>
+                        <p dir="auto">{ticket.resolution}</p>
+                      </div>
+                    ) : null}
+                  </Disclosure>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      </div>
     </>
   );
 }

@@ -216,3 +216,65 @@ export function SelectField({
     </div>
   );
 }
+
+export function TextAreaField({
+  id,
+  label,
+  hint,
+  error,
+  className,
+  ...props
+}: ComponentPropsWithoutRef<"textarea"> & FieldCopy) {
+  return (
+    <div className={styles.field}>
+      <label htmlFor={id}>{label}</label>
+      {hint ? (
+        <span id={`${id}-hint`} className={styles.hint}>
+          {hint}
+        </span>
+      ) : null}
+      <textarea
+        {...props}
+        id={id}
+        className={classes(styles.input, className)}
+        aria-invalid={error ? true : props["aria-invalid"]}
+        aria-describedby={descriptions(id, hint, error, props["aria-describedby"])}
+      />
+      {error ? (
+        <span id={`${id}-error`} className={styles.fieldError}>
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+export function FormSection({
+  id,
+  legend,
+  description,
+  children,
+  className,
+  ...props
+}: ComponentPropsWithoutRef<"fieldset"> & { id: string; legend: string; description?: string }) {
+  return (
+    <fieldset
+      {...props}
+      id={id}
+      aria-describedby={
+        [description ? `${id}-description` : null, props["aria-describedby"]]
+          .filter(Boolean)
+          .join(" ") || undefined
+      }
+      className={classes(styles.formSection, className)}
+    >
+      <legend>{legend}</legend>
+      {description ? (
+        <p id={`${id}-description`} className={styles.description}>
+          {description}
+        </p>
+      ) : null}
+      <div className={styles.sectionFields}>{children}</div>
+    </fieldset>
+  );
+}

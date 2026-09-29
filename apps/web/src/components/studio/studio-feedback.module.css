@@ -1,0 +1,119 @@
+.filters {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-block-end: var(--space-5);
+}
+.filters > div:first-child {
+  flex: 1 1 20rem;
+}
+.filters > div {
+  flex: 0 1 12rem;
+  min-inline-size: min(100%, 12rem);
+}
+.resultCount,
+.secondary,
+.date {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-copy);
+}
+.resultCount {
+  margin-block: var(--space-4);
+}
+.date {
+  display: block;
+  font-size: var(--text-xs);
+  margin-block-start: var(--space-1);
+}
+.commentBody {
+  white-space: pre-wrap;
+}
+.activity {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+.activity > div {
+  display: flex;
+  gap: var(--space-3);
+  justify-content: space-between;
+}
+.activity dt {
+  color: var(--text-muted);
+}
+.activity dd {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+.recovery {
+  display: grid;
+  gap: var(--space-4);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.supportLayout {
+  align-items: start;
+  display: grid;
+  gap: clamp(2rem, 5vw, 4rem);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.supportForm {
+  display: grid;
+  gap: var(--space-5);
+  min-inline-size: 0;
+}
+.supportForm > button {
+  justify-self: start;
+}
+.tickets {
+  min-inline-size: 0;
+}
+.sectionHeading {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  justify-content: space-between;
+}
+.sectionHeading h2 {
+  color: var(--text-primary);
+  font-size: var(--text-heading);
+  margin: 0;
+}
+.ticketList {
+  list-style: none;
+  margin: var(--space-5) 0 0;
+  padding: 0;
+}
+.ticketSummary {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  inline-size: calc(100% - 1.5rem);
+  vertical-align: top;
+}
+.ticketSummary > strong {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.ticketSummary > .date {
+  flex-basis: 100%;
+}
+.resolution {
+  background: var(--surface-raised);
+  border-inline-start: 2px solid var(--success);
+  padding: var(--space-4);
+}
+@media (max-width: 1100px) {
+  .supportLayout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
