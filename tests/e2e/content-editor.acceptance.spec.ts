@@ -129,6 +129,8 @@ test("one focused editor preserves drafts across accessible tabs and confirms be
   expect(captionReads).toBe(0);
   await page.screenshot({ path: info.outputPath("design-content-list-1440.png"), fullPage: true });
   await openFirst(page);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Editor video 0");
   await expect(page.getByLabel("Title", { exact: true })).toHaveCount(1);
   await page.getByLabel("Title", { exact: true }).fill("Unsaved title");
   const details = page.getByRole("tab", { name: "Details", exact: true });
@@ -155,9 +157,17 @@ test("one focused editor preserves drafts across accessible tabs and confirms be
   await expect(page).toHaveURL(currentUrl);
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Unsaved title");
   await noOverflow(page);
+  const disabledRemove = page.getByRole("button", { name: "Remove video", exact: true });
+  await expect(disabledRemove).toHaveText("Remove video");
+  await disabledRemove.scrollIntoViewIfNeeded();
+  await disabledRemove.screenshot({
+    path: info.outputPath("design-content-disabled-action.png"),
+    animations: "disabled",
+  });
   await page.screenshot({
     path: info.outputPath("design-content-editor-1440.png"),
     fullPage: true,
+    animations: "disabled",
   });
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Back to videos" }).click();
@@ -174,6 +184,37 @@ test("one focused editor preserves drafts across accessible tabs and confirms be
   await page.keyboard.press("ArrowLeft");
   await expect(page.getByRole("tab", { name: "البيانات المتقدمة", exact: true })).toBeFocused();
   await expect(rtlDetails).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+  const tablist = page.getByRole("tablist", { name: "محرر الفيديو" });
+  const tabBounds = await tablist.evaluate((element) => {
+    const parent = element.getBoundingClientRect();
+    return {
+      width: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      left: parent.left,
+      right: parent.right,
+      tabs: Array.from(element.querySelectorAll('[role="tab"]')).map((tab) => {
+        const rect = tab.getBoundingClientRect();
+        return {
+          left: rect.left,
+          right: rect.right,
+          width: rect.width,
+          height: rect.height,
+          scrollWidth: tab.scrollWidth,
+          clientWidth: tab.clientWidth,
+        };
+      }),
+    };
+  });
+  expect(tabBounds.scrollWidth).toBeLessThanOrEqual(tabBounds.width + 1);
+  expect(tabBounds.tabs).toHaveLength(3);
+  for (const tab of tabBounds.tabs) {
+    expect(tab.width).toBeGreaterThanOrEqual(44);
+    expect(tab.height).toBeGreaterThanOrEqual(44);
+    expect(tab.left).toBeGreaterThanOrEqual(tabBounds.left - 1);
+    expect(tab.right).toBeLessThanOrEqual(tabBounds.right + 1);
+    expect(tab.scrollWidth).toBeLessThanOrEqual(tab.clientWidth + 1);
+  }
   await noOverflow(page);
   await page.screenshot({
     path: info.outputPath("design-content-editor-390-ar.png"),

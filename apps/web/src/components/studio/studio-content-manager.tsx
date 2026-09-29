@@ -84,15 +84,13 @@ export function StudioContentManager() {
 
   return (
     <>
-      <PageHeader
-        title={t("studio.content")}
-        description={t("content.intro")}
-        actions={
-          !selected ? (
-            <ActionLink href={href("/upload")}>{t("content.upload")}</ActionLink>
-          ) : undefined
-        }
-      />
+      {!selected ? (
+        <PageHeader
+          title={t("studio.content")}
+          description={t("content.intro")}
+          actions={<ActionLink href={href("/upload")}>{t("content.upload")}</ActionLink>}
+        />
+      ) : null}
       {selected ? (
         <StudioVideoEditor
           key={selected.id}

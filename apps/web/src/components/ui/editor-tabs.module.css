@@ -34,3 +34,15 @@
 .panel[hidden] {
   display: none;
 }
+
+@media (max-width: 640px) {
+  .tabs {
+    flex-wrap: wrap;
+  }
+  .tabs button {
+    flex: 1 1 5rem;
+    padding-inline: 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}

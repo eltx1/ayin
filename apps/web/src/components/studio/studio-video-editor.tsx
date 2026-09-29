@@ -177,7 +177,6 @@ export function StudioVideoEditor({
       <div ref={heading} tabIndex={-1} className={styles.editorHeading}>
         <PageHeader
           title={video.title}
-          level={2}
           eyebrow={t("content.editor")}
           actions={
             <ActionButton tone="secondary" disabled={busy || captionBusy} onClick={close}>
