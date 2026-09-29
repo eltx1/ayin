@@ -235,6 +235,7 @@ export function removeStudioCaption(videoId: string, trackId: string) {
     `/creator/studio/videos/${encodeURIComponent(videoId)}/captions/${encodeURIComponent(trackId)}`,
     {
       method: "DELETE",
+      body: "{}",
     },
   );
 }
@@ -242,12 +243,14 @@ export function removeStudioCaption(videoId: string, trackId: string) {
 export function unpublishStudioVideo(videoId: string) {
   return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}/unpublish`, {
     method: "POST",
+    body: "{}",
   });
 }
 
 export function removeStudioVideo(videoId: string) {
   return studioFetch(`/creator/studio/videos/${encodeURIComponent(videoId)}`, {
     method: "DELETE",
+    body: "{}",
   });
 }
 

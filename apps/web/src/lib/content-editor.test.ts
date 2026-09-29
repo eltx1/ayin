@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { contentDraft, contentPayload } from "./content-editor";
-import { getStudioContent, updateStudioVideo, type StudioVideo } from "./studio";
+import {
+  getStudioContent,
+  updateStudioVideo,
+  removeStudioVideo,
+  unpublishStudioVideo,
+  removeStudioCaption,
+  type StudioVideo,
+} from "./studio";
 import { contentEditorEn, contentEditorAr } from "./i18n/resources/content-editor";
 import { enMessages } from "./i18n/resources/en";
 import { navigationEn } from "./i18n/resources/navigation";
@@ -91,6 +98,40 @@ describe("focused content editing boundaries", () => {
       credentials: "include",
     });
   });
+  it.each([
+    [
+      "remove video",
+      "DELETE",
+      "/creator/studio/videos/owned-id",
+      () => removeStudioVideo(video.id),
+    ],
+    [
+      "unpublish",
+      "POST",
+      "/creator/studio/videos/owned-id/unpublish",
+      () => unpublishStudioVideo(video.id),
+    ],
+    [
+      "remove captions",
+      "DELETE",
+      "/creator/studio/videos/owned-id/captions/track",
+      () => removeStudioCaption(video.id, "track"),
+    ],
+  ] as const)(
+    "sends valid JSON without weakening request headers for %s",
+    async (_name, method, pathname, execute) => {
+      const fetcher = vi.fn().mockResolvedValue(new Response("{}"));
+      vi.stubGlobal("fetch", fetcher);
+      await execute();
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      const [url, init] = fetcher.mock.calls[0]!;
+      expect(new URL(url).pathname).toBe(pathname);
+      expect(init).toMatchObject({ method, body: "{}", credentials: "include", cache: "no-store" });
+      expect(new Headers(init.headers).get("content-type")).toBe("application/json");
+      expect(JSON.parse(init.body)).toEqual({});
+    },
+  );
+
   it("adds complete noncolliding EN/AR strings", () => {
     expect(Object.keys(contentEditorEn).sort()).toEqual(Object.keys(contentEditorAr).sort());
     const existing = { ...enMessages, ...navigationEn, ...playlistEn, ...studioFeedbackEn };

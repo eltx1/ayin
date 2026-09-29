@@ -22,7 +22,7 @@ test.beforeEach(() => {
   });
 });
 
-async function seed(page: Page) {
+async function seed(page: Page, publishFirst = false) {
   const registration = await page.request.post(`${API}/auth/register`, {
     headers: { origin: WEB },
     data: {
@@ -40,13 +40,54 @@ async function seed(page: Page) {
       data: {
         channelId: identity.user.channel.id,
         title: `Editor video ${i}`,
-        sizeBytes: 1024 * 1024,
+        sizeBytes: publishFirst && i === 0 ? 70 * 1024 * 1024 : 1024 * 1024,
         mimeType: "video/mp4",
         durationMs: 60_000,
       },
     });
     expect(response.ok()).toBe(true);
-    ids.push((await response.json()).video.id);
+    const draft = await response.json();
+    ids.push(draft.video.id);
+    if (publishFirst && i === 0) {
+      const headers = { origin: WEB };
+      const complete = await page.request.post(`${API}/media/uploads/sessions/complete`, {
+        headers,
+        data: {
+          sessionToken: draft.uploadSession.sessionToken,
+          parts: Array.from({ length: draft.uploadSession.partCount }, (_, index) => ({
+            partNumber: index + 1,
+            etag: `content-editor-part-${index + 1}`,
+          })),
+        },
+      });
+      expect(complete.ok()).toBe(true);
+      expect(
+        (
+          await page.request.post(`${API}/creator/videos/${draft.video.id}/upload-complete`, {
+            headers,
+            data: {},
+          })
+        ).ok(),
+      ).toBe(true);
+      // Mirror the established, separately tested worker finalization fixture.
+      execFileSync(
+        process.execPath,
+        [
+          path.resolve("tests/e2e/db-helper.mjs"),
+          "mark-media-ready",
+          JSON.stringify({ videoId: draft.video.id }),
+        ],
+        { env: process.env },
+      );
+      expect(
+        (
+          await page.request.post(`${API}/creator/videos/${draft.video.id}/publish`, {
+            headers,
+            data: { rightsConfirmed: true, title: `Editor video ${i}` },
+          })
+        ).ok(),
+      ).toBe(true);
+    }
   }
   return ids;
 }
@@ -109,8 +150,10 @@ test("one focused editor preserves drafts across accessible tabs and confirms be
   await page.getByRole("button", { name: "Back to videos" }).click();
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Unsaved title");
   page.once("dialog", (dialog) => dialog.dismiss());
+  const currentUrl = page.url();
   await page.locator("aside a[href='/upload']").click();
-  await expect(page).toHaveURL(/\/studio\/content\?lang=en$/);
+  await expect(page).toHaveURL(currentUrl);
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Unsaved title");
   await noOverflow(page);
   await page.screenshot({
     path: info.outputPath("design-content-editor-1440.png"),
@@ -277,4 +320,94 @@ test("caption activity stays scoped to one editor and removal keeps server owner
   await openFirst(page);
   await expect(page.getByText("This video is removed and cannot be edited here.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Remove video", exact: true })).toBeDisabled();
+});
+
+test("unpublish and caption removal send valid JSON while origin checks stay enforced", async ({
+  page,
+}) => {
+  const [videoId] = await seed(page, true);
+  const headers = { origin: WEB };
+  const foreignOrigin = await page.request.post(
+    `${API}/creator/studio/videos/${videoId}/unpublish`,
+    {
+      headers: { origin: "https://not-ayin.invalid" },
+      data: {},
+    },
+  );
+  expect(foreignOrigin.status()).toBe(403);
+  const original = await page.request.get(endpoint);
+  expect(
+    (await original.json()).videos.find((video: { id: string }) => video.id === videoId).status,
+  ).toBe("PUBLISHED");
+  let unpublishes = 0;
+  await page.route(`${API}/creator/studio/videos/${videoId}/unpublish`, async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    unpublishes += 1;
+    expect(route.request().headers()["content-type"]).toBe("application/json");
+    expect(route.request().postData()).toBe("{}");
+    await route.continue();
+  });
+  await page.goto("/studio/content?lang=en");
+  await openFirst(page);
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Unpublish", exact: true }).click();
+  expect(unpublishes).toBe(0);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Unpublish", exact: true }).click();
+  await expect(page.getByRole("row", { name: /Editor video 0/ })).toContainText("Draft");
+  expect(unpublishes).toBe(1);
+  const list = await page.request.get(endpoint);
+  expect(
+    (await list.json()).videos.find((video: { id: string }) => video.id === videoId),
+  ).toMatchObject({
+    status: "DRAFT",
+    publishedAt: null,
+  });
+
+  // The isolated E2E storage adapter supplies its bounded WebVTT object; this is
+  // not a claim of real R2 transport or a production-caption mutation.
+  const prepared = await page.request.post(
+    `${API}/creator/studio/videos/${videoId}/captions/uploads`,
+    {
+      headers,
+      data: {
+        fileName: "english.vtt",
+        sizeBytes: Buffer.byteLength("WEBVTT\n\n00:00.000 --> 00:01.000\nAYIN caption test\n"),
+        mimeType: "text/vtt",
+        languageCode: "en",
+        label: "English test",
+        kind: "SUBTITLES",
+        default: false,
+      },
+    },
+  );
+  expect(prepared.ok()).toBe(true);
+  const trackId = (await prepared.json()).trackId;
+  expect(
+    (
+      await page.request.post(
+        `${API}/creator/studio/videos/${videoId}/captions/${trackId}/finalize`,
+        {
+          headers,
+          data: {},
+        },
+      )
+    ).ok(),
+  ).toBe(true);
+  await openFirst(page);
+  await page.getByRole("tab", { name: "Captions & subtitles", exact: true }).click();
+  const captions = page.getByRole("tabpanel", { name: "Captions & subtitles" });
+  await captions.locator("summary").click();
+  await expect(captions.getByText("English test", { exact: true })).toBeVisible();
+  let removals = 0;
+  await page.route(`${API}/creator/studio/videos/${videoId}/captions/${trackId}`, async (route) => {
+    if (route.request().method() === "DELETE") {
+      removals += 1;
+      expect(route.request().postData()).toBe("{}");
+    }
+    await route.continue();
+  });
+  await captions.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(captions.getByText("No caption tracks yet.")).toBeVisible();
+  expect(removals).toBe(1);
 });
