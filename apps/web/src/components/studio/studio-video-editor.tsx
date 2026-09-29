@@ -1,7 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import { useContentI18n } from "@/lib/i18n/content-copy";
 import {
   ActionButton,
@@ -31,6 +33,8 @@ import type { ContentTranslationKey } from "@/lib/i18n/content-copy";
 import { StudioCaptionManager } from "./studio-caption-manager";
 import styles from "./studio-content.module.css";
 
+type ConfirmationIntent = "close" | "unpublish" | "remove" | { href: string };
+
 export function StudioVideoEditor({
   video,
   onClose,
@@ -41,6 +45,9 @@ export function StudioVideoEditor({
   onCommitted: (message: ContentTranslationKey) => void;
 }) {
   const { t, direction } = useContentI18n();
+  const router = useRouter();
+  const [confirmation, setConfirmation] = useState<ConfirmationIntent | null>(null);
+  const confirmationIntent = useRef<ConfirmationIntent | null>(null);
   const [draft, setDraft] = useState(() => contentDraft(video));
   const [baseline] = useState(() => JSON.stringify(contentDraft(video)));
   const [tab, setTab] = useState("details");
@@ -76,8 +83,8 @@ export function StudioVideoEditor({
         event.returnValue = "";
       }
     };
-    // Next links do not unload the document. Guard ordinary same-tab link navigation
-    // as well. Back/forward history is a separately documented router limitation.
+    // Guard ordinary same-tab links without replaying their click handlers or
+    // overwriting browser history. Back/forward remains a separate router boundary.
     const click = (event: MouseEvent) => {
       if (
         event.defaultPrevented ||
@@ -90,18 +97,24 @@ export function StudioVideoEditor({
       )
         return;
       const link = event.target.closest<HTMLAnchorElement>("a[href]");
-      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
-      const destination = new URL(link.href, window.location.href);
-      if (destination.pathname === location.pathname && destination.search === location.search)
+      if (!link || (link.target && link.target !== "_self") || link.hasAttribute("download"))
         return;
+      const destination = new URL(link.href, window.location.href);
+      // Cross-origin document departures retain the native beforeunload warning.
+      if (destination.origin !== location.origin) return;
       if (
-        pending.current ||
-        captionPending.current ||
-        ((dirty || captionDraft) && !window.confirm(t("content.discard")))
-      ) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
+        destination.origin === location.origin &&
+        destination.pathname === location.pathname &&
+        destination.search === location.search
+      )
+        return;
+      if (!pending.current && !captionPending.current && !dirty && !captionDraft) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (pending.current || captionPending.current || confirmationIntent.current) return;
+      const intent = { href: destination.href };
+      confirmationIntent.current = intent;
+      setConfirmation(intent);
     };
     window.addEventListener("beforeunload", unload);
     document.addEventListener("click", click, true);
@@ -111,10 +124,35 @@ export function StudioVideoEditor({
     };
   }, [dirty, captionDraft, t]);
 
+  function ask(intent: ConfirmationIntent) {
+    if (pending.current || captionPending.current || confirmationIntent.current) return;
+    confirmationIntent.current = intent;
+    setConfirmation(intent);
+  }
+
+  function cancelConfirmation() {
+    confirmationIntent.current = null;
+    setConfirmation(null);
+  }
+
+  function acceptConfirmation() {
+    const intent = confirmationIntent.current;
+    if (!intent || pending.current || captionPending.current) return;
+    confirmationIntent.current = null;
+    setConfirmation(null);
+    if (intent === "close") onClose();
+    else if (typeof intent === "object") {
+      const destination = new URL(intent.href);
+      router.push(destination.pathname + destination.search + destination.hash);
+    } else {
+      void commit(intent);
+    }
+  }
+
   function close() {
     if (pending.current || captionPending.current) return;
-    if ((dirty || captionDraft) && !window.confirm(t("content.discard"))) return;
-    onClose();
+    if (dirty || captionDraft) ask("close");
+    else onClose();
   }
 
   function change(patch: Partial<ContentDraft>) {
@@ -137,14 +175,6 @@ export function StudioVideoEditor({
       }
     } else {
       if (dirty || captionDraft) return;
-      if (
-        !window.confirm(
-          t(kind === "remove" ? "content.confirmRemove" : "content.confirmUnpublish", {
-            title: video.title,
-          }),
-        )
-      )
-        return;
     }
     pending.current = true;
     setBusy(true);
@@ -304,7 +334,7 @@ export function StudioVideoEditor({
           <ActionButton
             tone="secondary"
             disabled={disabled || dirty || captionDraft}
-            onClick={() => void commit("unpublish")}
+            onClick={() => ask("unpublish")}
           >
             {t("content.unpublish")}
           </ActionButton>
@@ -312,12 +342,42 @@ export function StudioVideoEditor({
         <ActionButton
           tone="danger"
           disabled={disabled || dirty || captionDraft}
-          onClick={() => void commit("remove")}
+          onClick={() => ask("remove")}
         >
           {t("content.remove")}
         </ActionButton>
       </div>
       {dirty ? <p className={styles.hint}>{t("content.saveFirst")}</p> : null}
+      <ConfirmationDialog
+        open={confirmation !== null}
+        direction={direction}
+        busy={busy || captionBusy}
+        title={t(
+          confirmation === "remove"
+            ? "content.remove"
+            : confirmation === "unpublish"
+              ? "content.unpublish"
+              : "content.leaveTitle",
+        )}
+        description={t(
+          confirmation === "remove"
+            ? "content.confirmRemove"
+            : confirmation === "unpublish"
+              ? "content.confirmUnpublish"
+              : "content.discard",
+          { title: video.title },
+        )}
+        confirmLabel={t(
+          confirmation === "remove"
+            ? "content.remove"
+            : confirmation === "unpublish"
+              ? "content.unpublish"
+              : "content.leaveConfirm",
+        )}
+        cancelLabel={t("content.keepEditing")}
+        onConfirm={acceptConfirmation}
+        onCancel={cancelConfirmation}
+      />
     </section>
   );
 }

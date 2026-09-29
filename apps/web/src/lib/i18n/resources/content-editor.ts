@@ -1,4 +1,7 @@
 export const contentEditorEn = {
+  "content.leaveTitle": "Discard unsaved changes?",
+  "content.leaveConfirm": "Discard changes and leave",
+  "content.keepEditing": "Cancel",
   "content.library": "Your videos",
   "content.intro": "Find a video and open it to make changes.",
   "content.search": "Search videos",
@@ -64,6 +67,9 @@ export const contentEditorEn = {
 } as const;
 
 export const contentEditorAr: Record<keyof typeof contentEditorEn, string> = {
+  "content.leaveTitle": "هل تريد التخلي عن التغييرات؟",
+  "content.leaveConfirm": "التخلي عن التغييرات والمغادرة",
+  "content.keepEditing": "إلغاء",
   "content.library": "فيديوهاتك",
   "content.intro": "ابحث عن فيديو وافتحه لتعديل تفاصيله.",
   "content.search": "البحث في الفيديوهات",
