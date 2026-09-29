@@ -28,7 +28,7 @@ test("failed artwork preserves real catalog links, dimensions and RTL across loa
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await page.route("http://media.invalid/**", async (route) => {
+    await page.route(/^https?:\/\/media\.invalid\//, async (route) => {
       await gate;
       await route.fulfill({ status: 404, body: "Unavailable fixture artwork" });
     });
@@ -39,9 +39,16 @@ test("failed artwork preserves real catalog links, dimensions and RTL across loa
     const card = page.locator("main:visible ul > li > a").first();
     await expect(card).toBeVisible();
     const artwork = card.locator("[data-artwork-fallback]").locator("..");
-    await expect(artwork.locator("img")).toBeVisible();
-    const before = await artwork.boundingBox();
-    release();
+    // Production CSP upgrades the HTTP fixture URL to HTTPS. Capture both
+    // schemes without weakening CSP, and always release the held response.
+    const before = await (async () => {
+      try {
+        await expect(artwork.locator("img")).toBeVisible();
+        return await artwork.boundingBox();
+      } finally {
+        release();
+      }
+    })();
     await expect(artwork.locator("img")).toHaveCount(0);
     await expect(artwork.locator("[data-artwork-fallback]")).toBeVisible();
     const after = await artwork.boundingBox();
@@ -63,7 +70,7 @@ test("failed artwork preserves real catalog links, dimensions and RTL across loa
     });
     await page.unrouteAll({ behavior: "wait" });
     // A reload with genuinely available content must recover; no permanent URL/global failure cache.
-    await page.route("http://media.invalid/**", (route) =>
+    await page.route(/^https?:\/\/media\.invalid\//, (route) =>
       route.fulfill({
         status: 200,
         contentType: "image/png",
@@ -126,6 +133,11 @@ test("shared creator fields and Admin counters retain actual workflows and acces
   ).toBeVisible();
   await expect(page.getByLabel("Search AYIN administration", { exact: true })).toBeVisible();
   await expect(page.locator('dl[aria-label="Platform counters"] dt').first()).toBeVisible();
+  await page.getByLabel("Search AYIN administration", { exact: true }).fill("design-foundations");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(
+    page.locator('main a[href^="/admin/users"]').filter({ hasText: "Design Foundations Creator" }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Verify session", exact: true })).toHaveCount(1);
   await page.screenshot({
     path: testInfo.outputPath("design-admin-overview-1440.png"),
