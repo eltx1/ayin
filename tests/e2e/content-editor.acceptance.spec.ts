@@ -158,7 +158,7 @@ test("saved changes are not reported as failed when refresh fails and lost write
     await route.continue();
   });
   await page.goto("/studio/content?lang=en");
-  await expect(page.getByRole("alert")).toContainText("could not be loaded");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("could not be loaded");
   await expect(page.getByText("No videos match these filters.")).toHaveCount(0);
   failGet = false;
   await page.getByRole("button", { name: "Reload videos" }).click();
@@ -188,7 +188,7 @@ test("saved changes are not reported as failed when refresh fails and lost write
   await expect(
     page.getByText("Your changes were saved. The library is being refreshed."),
   ).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("could not be loaded");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText("could not be loaded");
   expect(writes).toBe(1);
   failGet = false;
   await page.getByRole("button", { name: "Reload videos" }).click();
@@ -196,7 +196,9 @@ test("saved changes are not reported as failed when refresh fails and lost write
   loseResponse = true;
   await page.getByLabel("Title", { exact: true }).fill("Saved despite response loss");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("could not confirm the complete update");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "could not confirm the complete update",
+  );
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
     "Saved despite response loss",
   );
