@@ -3,10 +3,12 @@ import "reflect-metadata";
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test } from "@nestjs/testing";
+import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
 import { AuthTokenService } from "../src/auth/auth-token.service.js";
+import { isAllowedCookieMutationOrigin } from "../src/security/request-security.js";
 import { enrollTestMfa } from "./mfa-test-helper.js";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -40,8 +42,18 @@ databaseDescribe("Admin JSON action request regression", () => {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     tokens = module.get(AuthTokenService);
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    const fastify: FastifyInstance = app.getHttpAdapter().getInstance();
+    // AppModule fixtures do not execute main.ts. Install the same production
+    // onRequest policy here; testing only Nest guards would miss the Origin gate.
+    fastify.addHook("onRequest", async (request, reply) => {
+      if (!isAllowedCookieMutationOrigin(request, origin)) {
+        await reply.code(403).send({
+          error: { code: "CSRF_ORIGIN_REJECTED", message: "Untrusted cookie mutation origin." },
+        });
+      }
+    });
     await app.init();
-    await app.getHttpAdapter().getInstance().ready();
+    await fastify.ready();
   });
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
@@ -71,7 +83,7 @@ databaseDescribe("Admin JSON action request regression", () => {
     expect(registration.statusCode).toBe(201);
     const rawCookie = registration.headers["set-cookie"];
     const cookie = (Array.isArray(rawCookie) ? rawCookie[0]! : rawCookie!).split(";", 1)[0]!;
-    const { cookie: assuredCookie } = await enrollTestMfa(app, cookie);
+    const { cookie: assuredCookie } = await enrollTestMfa(app, cookie, "strong-pass-123", origin);
     const user = registration.json().user;
     const role = await prisma.adminRoleAssignment.create({
       data: { accountId: user.account.id, role: "ADMIN" },
@@ -182,6 +194,18 @@ databaseDescribe("Admin JSON action request regression", () => {
         payload: "{}",
       });
       expect(foreign.statusCode).toBe(403);
+      expect(foreign.json().error.code).toBe("CSRF_ORIGIN_REJECTED");
+      expect(await resource.exists()).toBe(true);
+      expect(await auditCount()).toBe(0);
+
+      const originless = await app.inject({
+        method: "DELETE",
+        url: resource.url,
+        headers: { cookie: actor.cookie, "content-type": "application/json" },
+        payload: "{}",
+      });
+      expect(originless.statusCode).toBe(403);
+      expect(originless.json().error.code).toBe("CSRF_ORIGIN_REJECTED");
       expect(await resource.exists()).toBe(true);
       expect(await auditCount()).toBe(0);
 
