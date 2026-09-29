@@ -1,0 +1,36 @@
+.root {
+  min-inline-size: 0;
+}
+.tabs {
+  display: flex;
+  gap: 8px;
+  border-block-end: 1px solid var(--border);
+  overflow-x: auto;
+  padding-block: 4px;
+}
+.tabs button {
+  flex: 0 0 auto;
+  min-block-size: 44px;
+  background: transparent;
+  color: var(--muted-strong);
+  border: 0;
+  border-block-end: 3px solid transparent;
+  padding: 10px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+.tabs button[aria-selected="true"] {
+  color: var(--foreground);
+  border-color: var(--foreground);
+}
+.tabs button:focus-visible,
+.panel:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: -2px;
+}
+.panel {
+  padding-block: 24px;
+}
+.panel[hidden] {
+  display: none;
+}

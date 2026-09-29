@@ -6,7 +6,7 @@ AYIN at `https://ayin.stream` is one canonical Web/PWA with shared APIs. This fi
 
 The full 73-domain inventory, API/controller/model references, authorization, audience, Web/PWA/mobile surfaces, gaps and test requirements is retained byte-for-byte in [the detailed baseline through #144](AYIN_FEATURE_SURFACE_BASELINE_144.md), which includes the earlier detailed baseline links. It is historical evidence, not a competing authority: the dated entries below supersede its pending statuses. No domain or safety requirement is dropped by this consolidation. `scripts/audit-product-integration.mjs --stdout` supplies exact tracked-source metadata; static filename matches are not runtime/security proof.
 
-**Current accepted main:** `5648df8800a801f716e75262dda9abfb784c3b14`, after #144. The originally parallel playlist candidate #145 must be reconciled onto it. All other audience/permission/internal-only classifications remain as detailed in the baseline. Native clients reuse these Web/PWA/API surfaces where appropriate; physical-device/store acceptance is separate.
+**Current accepted main:** `02e37ce7186eb72f62c940847c630dbc5c8ef159`, after accepted, reconciled and deployed #145. Comments/Support and playlist consumers share the same primitives and both translation/test sets. All other audience/permission/internal-only classifications remain as detailed in the baseline. Native clients reuse these Web/PWA/API surfaces where appropriate; physical-device/store acceptance is separate.
 
 ## Current adopted surface changes
 
@@ -24,17 +24,27 @@ The full 73-domain inventory, API/controller/model references, authorization, au
 
 **Remaining:** global account-switch consistency, large payload/whole-product performance, full accessibility/route/device acceptance. No new backend capability or security exemption is inferred from native form/table presentation.
 
-## Creator playlist library — reconciled #145 candidate
+## Creator playlist library — accepted reconciled #145
 
 **Domain / capability:** owned playlist collection, create and named edit/preview access. **Backend/API:** existing creator playlist controllers/service, AuthGuard/channel membership, protected Uploads rules and public playlist visibility shaping. Client create type now reflects the actual server selection rather than fabricated summary/count/capability fields. **Audience:** Creator collection management with existing public eligible previews. **Web/PWA/mobile:** `/studio/playlists` and standalone `/channel/playlists`; original item editor `/channel/playlists/[playlistId]` and public channel playlist URLs stay intact.
 
-**Candidate UX:** combines local name/description/visibility search, truthful totals and 12-row presentation pages without extra filter/page requests. Private lists never display a public Preview link. Uncertain POST results are never replayed; failed refresh after acknowledged creation is explicitly different from failed creation; drafts and synchronous pending/disabled behavior are retained. Read recovery is uncached, cancellable and must succeed before another creation.
+**Adopted UX:** combines local name/description/visibility search, truthful totals and 12-row presentation pages without extra filter/page requests. Private lists never display a public Preview link. Uncertain POST results are never replayed; failed refresh after acknowledged creation is explicitly different from failed creation; drafts and synchronous pending/disabled behavior are retained. Read recovery is uncached, cancellable and must succeed before another creation.
 
 **Shared component decision:** reuse #144's DataTable and FormSection, add optional scroll label/inline layout and PageControls, and remove the unaccepted duplicate data-workspace implementation. Both domains' consumers, tests and noncolliding EN/AR resources remain. This is one design system, not two parallel table/form APIs.
 
-**Test evidence:** original #145 head `4cacd05` passed its own quality/browser/security/inventory gates. Combined source now passes 237 local Web tests/51 files, scoped lint/type generation/TypeScript and relevant formatting. Three retained browser journeys cover actual isolated records, traversal/filtering, private previews, EN/AR, double submit, acknowledged creation with failed reload and committed lost response. Final combined CI/build/browser screenshots, review, merge and deployment remain pending. Local restored tooling is not an exact frozen production graph.
+**Acceptance:** final integrated head `a103dd84885f1abc0fe3aaef18910b8decef3f36`, merge `02e37ce7186eb72f62c940847c630dbc5c8ef159`; quality `36589152705`, browser `36589153132`, security `36589153183`, inventory `36589152929`, recorded author-side review `5354786177`. Prior local combined tests 237/51 files remain scoped evidence. Observed deployment `36591264789`/job `109484655788`, direct-origin health and verified proof `11044590357`; Cloudflare `36591496138` succeeded. Full evidence and hashes are in the checkpoint.
 
 **Limits/action:** collection API is unchanged; presentation paging is not DB pagination. Full creator editor/bulk workflows, backend query/payload measurement and global identity switching are later phases. No raw UUID copy/paste, no new permissions, no financial/provider/native behavior.
+
+## Content, Metadata, Chapters and Captions — Phase 4C candidate
+
+**Backend/API and authorization:** unchanged `/creator/studio/content` and video PATCH/unpublish/DELETE/caption contracts; AuthGuard and creator channel membership/ownership remain server-enforced. The existing collection defaults to 50 matching latest-updated records, not a global inventory. Basic and advanced metadata remain two backend stages; atomicity is not falsely claimed.
+
+**Audience/surface/mobile:** creator `/studio/content`, same responsive Web/PWA product and direct `/upload` link. The candidate replaces all-row expanded forms with one library and a focused one-video editor. Shared manual-activation tabs retain mounted Details/Advanced/Captions state, with EN/AR/RTL navigation. Advanced/caption legacy inner copy and browser Back/Forward draft retention remain documented follow-ups.
+
+**Behavior/action:** filter changes no longer recreate an open draft. Native labelled fields/pending state, synchronous mutation guards, confirmation for clean destructive actions, caption-busy coordination and warnings for explicit close/document unload/ordinary links. An acknowledged mutation followed by failed GET is not called a failed write. An unconfirmed/possibly partial mutation keeps the draft and never replays automatically; read-only reload is required before editing again. Removed records are read-only, and no public Watch URL is guessed from an internal ID.
+
+**Evidence/status:** local 244 Web tests/53 files, scoped type/lint/format and production builds passed. Three real-isolated API/browser journeys are authored; final CI, screenshots, review, merge and deployment remain pending. Route-scoped strings avoid measured global dictionary overhead. Full selected entry-asset measurements and limits are in [Phase 4C evidence](AYIN_PHASE4C_EVIDENCE.md). Not complete Phase 4, full creator redesign, native/device or security-phase acceptance.
 
 ## All unchanged capability decisions remain in scope
 

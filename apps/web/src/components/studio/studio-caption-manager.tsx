@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import styles from "@/app/studio/studio.module.css";
 import {
@@ -19,12 +19,17 @@ const MAX_BYTES = 2 * 1024 * 1024;
 export function StudioCaptionManager({
   videoId,
   disabled,
+  onBusyChange,
+  onDraftChange,
 }: {
   videoId: string;
   disabled: boolean;
+  onBusyChange?: (busy: boolean) => void;
+  onDraftChange?: (dirty: boolean) => void;
 }) {
   const [tracks, setTracks] = useState<StudioCaptionTrack[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [languageCode, setLanguageCode] = useState("en");
@@ -40,6 +45,9 @@ export function StudioCaptionManager({
   }
 
   async function run(operation: () => Promise<void>) {
+    if (pending.current || disabled) return;
+    pending.current = true;
+    onBusyChange?.(true);
     setBusy(true);
     setError(null);
     try {
@@ -48,6 +56,8 @@ export function StudioCaptionManager({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Caption operation failed.");
     } finally {
+      pending.current = false;
+      onBusyChange?.(false);
       setBusy(false);
     }
   }
@@ -74,6 +84,7 @@ export function StudioCaptionManager({
     await putCaptionFile(prepared.uploadUrl, file);
     await finalizeStudioCaptionUpload(videoId, prepared.trackId);
     setFile(null);
+    onDraftChange?.(false);
   }
 
   async function replace(track: StudioCaptionTrack, candidate: File) {
@@ -99,7 +110,11 @@ export function StudioCaptionManager({
           accept=".vtt,text/vtt"
           aria-label="WebVTT caption file"
           disabled={disabled || busy}
-          onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          onChange={(event) => {
+            const next = event.target.files?.[0] ?? null;
+            setFile(next);
+            onDraftChange?.(next !== null);
+          }}
           type="file"
         />
         <input
