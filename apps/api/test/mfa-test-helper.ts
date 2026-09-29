@@ -12,11 +12,12 @@ export async function enrollTestMfa(
   app: NestFastifyApplication,
   cookie: string,
   password = "strong-pass-123",
+  origin?: string,
 ): Promise<{ cookie: string; recoveryCodes: string[]; secret: string }> {
   const start = await app.inject({
     method: "POST",
     url: "/auth/mfa/enrollment/start-authenticated",
-    headers: { cookie },
+    headers: { cookie, ...(origin ? { origin } : {}) },
     payload: { password },
   });
   if (start.statusCode !== 201) {

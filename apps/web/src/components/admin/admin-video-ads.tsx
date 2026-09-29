@@ -462,7 +462,7 @@ function ExistingOverride({
           onClick={() => {
             if (window.confirm(`Remove override for ${label} and inherit all global settings?`)) {
               void onAct(
-                () => request(path, { method: "DELETE" }),
+                () => request(path, { method: "DELETE", body: JSON.stringify({}) }),
                 `${label} now inherits the global video ad policy.`,
               );
             }

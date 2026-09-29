@@ -218,7 +218,10 @@ export function updateAdvertiser(id: string, input: Partial<Omit<Advertiser, "id
 }
 
 export function deleteAdvertiser(id: string) {
-  return request(`/admin/advertising/advertisers/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return request(`/admin/advertising/advertisers/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({}),
+  });
 }
 
 export function getCampaigns() {
@@ -240,7 +243,10 @@ export function updateCampaign(id: string, input: Partial<Omit<CampaignInput, "a
 }
 
 export function deleteCampaign(id: string) {
-  return request(`/admin/advertising/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return request(`/admin/advertising/campaigns/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({}),
+  });
 }
 
 export function getCreatives(campaignId?: string) {
@@ -263,7 +269,10 @@ export function updateCreative(id: string, input: Partial<Omit<CreativeInput, "c
 }
 
 export function deleteCreative(id: string) {
-  return request(`/admin/advertising/creatives/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return request(`/admin/advertising/creatives/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({}),
+  });
 }
 
 export function getGamDiagnostics() {
