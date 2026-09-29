@@ -75,7 +75,7 @@ test("failed artwork preserves real catalog links, dimensions and RTL across loa
         status: 200,
         contentType: "image/png",
         body: Buffer.from(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1sAAAAASUVORK5CYII=",
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNIET0HAAIoAUh9ho5VAAAAAElFTkSuQmCC",
           "base64",
         ),
       }),
