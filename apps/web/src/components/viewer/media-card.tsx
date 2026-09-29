@@ -1,7 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
 
 import styles from "./media-card.module.css";
+import { MediaArtwork } from "./media-artwork";
 
 export type MediaCardVariant = "poster" | "landscape";
 export type MediaCardTone = 1 | 2 | 3 | 4 | 5;
@@ -45,19 +45,8 @@ export function MediaCard({
       href={href}
     >
       <div className={styles.art} data-tone={tone}>
-        {artworkUrl ? (
-          <Image
-            alt=""
-            className={styles.artwork}
-            fill
-            loading="lazy"
-            sizes={imageSizes}
-            src={artworkUrl}
-            unoptimized
-          />
-        ) : (
-          <span aria-hidden="true" className={styles.signal} />
-        )}
+        <span aria-hidden="true" className={styles.signal} data-artwork-fallback="true" />
+        {artworkUrl ? <MediaArtwork src={artworkUrl} sizes={imageSizes} /> : null}
         {badge ? (
           <span className={styles.badge} dir="auto">
             {badge}

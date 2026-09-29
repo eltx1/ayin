@@ -11,6 +11,14 @@ import {
   type PlaylistVisibility,
 } from "@/lib/playlist";
 
+import {
+  ActionButton,
+  ActionLink,
+  PageHeader,
+  SelectField,
+  TextField,
+} from "@/components/ui/design-system";
+
 import styles from "./playlist-management.module.css";
 
 export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {}) {
@@ -66,24 +74,18 @@ export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {
 
   return (
     <Surface className={styles.page}>
-      <header className={styles.heading}>
-        <div>
-          <p className={styles.eyebrow}>Creator playlists</p>
-          <h1>Keep collections simple.</h1>
-          <p>
-            Uploads stays automatic. Create extra playlists only when you want to organize published
-            videos for viewers.
-          </p>
-        </div>
-        {identity ? (
-          <Link
-            className={styles.secondaryAction}
-            href={`/c/${identity.channel.handle}?tab=playlists`}
-          >
-            View channel playlists
-          </Link>
-        ) : null}
-      </header>
+      <PageHeader
+        title="Keep collections simple."
+        eyebrow="Creator playlists"
+        description="Uploads stays automatic. Create extra playlists only when you want to organize published videos for viewers."
+        actions={
+          identity ? (
+            <ActionLink href={`/c/${identity.channel.handle}?tab=playlists`}>
+              View channel playlists
+            </ActionLink>
+          ) : null
+        }
+      />
 
       <section className={styles.createCard} aria-labelledby="new-playlist-title">
         <div>
@@ -91,33 +93,32 @@ export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {
           <p>Give it a name and choose who can discover it.</p>
         </div>
         <div className={styles.createControls}>
-          <label>
-            <span>Name</span>
-            <input
-              value={name}
-              maxLength={160}
-              placeholder="Favorites, documentaries, behind the scenes…"
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <label>
-            <span>Visibility</span>
-            <select
-              value={visibility}
-              onChange={(event) => setVisibility(event.target.value as PlaylistVisibility)}
-            >
-              <option value="PUBLIC">Public</option>
-              <option value="UNLISTED">Unlisted</option>
-              <option value="PRIVATE">Private</option>
-            </select>
-          </label>
-          <button
-            disabled={!identity || !name.trim() || busy}
+          <TextField
+            id="playlist-name"
+            label="Name"
+            value={name}
+            maxLength={160}
+            placeholder="Favorites, documentaries, behind the scenes…"
+            onChange={(event) => setName(event.target.value)}
+          />
+          <SelectField
+            id="playlist-visibility"
+            label="Visibility"
+            value={visibility}
+            onChange={(event) => setVisibility(event.target.value as PlaylistVisibility)}
+          >
+            <option value="PUBLIC">Public</option>
+            <option value="UNLISTED">Unlisted</option>
+            <option value="PRIVATE">Private</option>
+          </SelectField>
+          <ActionButton
+            pending={busy}
+            disabled={!identity || !name.trim()}
             type="button"
             onClick={createPlaylist}
           >
             Create playlist
-          </button>
+          </ActionButton>
         </div>
       </section>
 

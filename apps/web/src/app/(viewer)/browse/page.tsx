@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageHeader } from "@/components/ui/design-system";
 
 import { BrowseNavigation } from "@/components/viewer/browse-navigation";
 import styles from "@/components/viewer/browse-navigation.module.css";
@@ -17,10 +18,10 @@ export default async function BrowsePage() {
   const locale = await getRequestLocale();
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <h1>{translate(locale, "browse.title")}</h1>
-        <p>{translate(locale, "browse.description")}</p>
-      </header>
+      <PageHeader
+        title={translate(locale, "browse.title")}
+        description={translate(locale, "browse.description")}
+      />
       <BrowseNavigation />
     </main>
   );

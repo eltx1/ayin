@@ -3,22 +3,9 @@
   margin-inline: auto;
   padding: clamp(1.5rem, 4vw, 4rem) var(--shell-gutter) calc(6rem + var(--ayin-safe-bottom));
 }
-.header {
-  margin-block-end: 2rem;
-}
 .back {
   color: var(--muted);
   text-decoration: none;
-}
-.header h1 {
-  font-size: clamp(2.2rem, 5vw, 4rem);
-  line-height: 1.1;
-  margin-block: 1rem;
-}
-.header p {
-  color: var(--muted);
-  max-width: 46rem;
-  line-height: 1.6;
 }
 .categories {
   display: flex;
@@ -26,8 +13,7 @@
   gap: 0.5rem;
   margin-block-start: 1.5rem;
 }
-.categories a,
-.action {
+.categories a {
   display: inline-flex;
   align-items: center;
   justify-content: center;

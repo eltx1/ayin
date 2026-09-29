@@ -63,7 +63,11 @@ function decorateResponse(
   return response;
 }
 
-function persistLocale(response: NextResponse, locale: Locale): NextResponse {
+function persistLocale(response: NextResponse, locale: Locale, request: NextRequest): NextResponse {
+  // An old prefetched/RSC response may finish after an explicit language switch.
+  // It must never overwrite the new document navigation's persisted preference.
+  if (!isDocumentNavigation(request)) return response;
+  response.headers.set("Cache-Control", "private, no-store");
   response.cookies.set(localeCookieName, locale, {
     httpOnly: false,
     maxAge: ONE_YEAR_SECONDS,
@@ -76,10 +80,19 @@ function persistLocale(response: NextResponse, locale: Locale): NextResponse {
 
 function isDocumentNavigation(request: NextRequest): boolean {
   if (request.method !== "GET") return false;
+  const purpose = `${request.headers.get("purpose") ?? ""} ${request.headers.get("sec-purpose") ?? ""}`;
+  if (/prefetch/i.test(purpose)) return false;
   if (request.headers.get("rsc") === "1") return false;
   if (request.headers.get("next-router-prefetch") === "1") return false;
   const destination = request.headers.get("sec-fetch-dest");
-  return !destination || destination === "document" || destination === "empty";
+  // Next strips internal Flight/prefetch headers before Proxy. Fetch metadata
+  // survives normalization, so an `empty` destination is never a document.
+  // Older clients without fetch metadata must explicitly request HTML; a
+  // generic */* or absent Accept header cannot mutate a language preference.
+  if (destination) return destination === "document";
+  return (request.headers.get("accept") ?? "")
+    .split(",")
+    .some((type) => type.trim().split(";")[0]?.toLowerCase() === "text/html");
 }
 
 export function proxy(request: NextRequest) {
@@ -103,7 +116,7 @@ export function proxy(request: NextRequest) {
     target.pathname = localizePath(stripLocalePrefix(pathname), requestedLocale);
     target.searchParams.delete("lang");
     return decorateResponse(
-      persistLocale(NextResponse.redirect(target), requestedLocale),
+      persistLocale(NextResponse.redirect(target), requestedLocale, request),
       requestId,
       correlationId,
     );
@@ -118,7 +131,7 @@ export function proxy(request: NextRequest) {
     const target = request.nextUrl.clone();
     target.pathname = canonicalPath;
     // Locale preferences vary by request; do not let a CDN reuse this redirect.
-    const response = persistLocale(NextResponse.redirect(target, 308), routeLocale);
+    const response = persistLocale(NextResponse.redirect(target, 308), routeLocale, request);
     response.headers.set("Cache-Control", "private, no-store");
     return decorateResponse(response, requestId, correlationId);
   }
@@ -128,7 +141,7 @@ export function proxy(request: NextRequest) {
     const target = request.nextUrl.clone();
     target.pathname = stripLocalePrefix(pathname);
     return decorateResponse(
-      persistLocale(NextResponse.redirect(target), defaultLocale),
+      persistLocale(NextResponse.redirect(target), defaultLocale, request),
       requestId,
       correlationId,
     );
@@ -140,7 +153,7 @@ export function proxy(request: NextRequest) {
     const response = NextResponse.rewrite(rewrite, {
       request: { headers: requestHeaders(request, requestId, correlationId, pathLocale) },
     });
-    return decorateResponse(persistLocale(response, pathLocale), requestId, correlationId);
+    return decorateResponse(persistLocale(response, pathLocale, request), requestId, correlationId);
   }
 
   // Accept-Language is parsed by the i18n preference resolver, but it does not
@@ -155,7 +168,7 @@ export function proxy(request: NextRequest) {
     const target = request.nextUrl.clone();
     target.pathname = localizePath(pathname, locale);
     return decorateResponse(
-      persistLocale(NextResponse.redirect(target), locale),
+      persistLocale(NextResponse.redirect(target), locale, request),
       requestId,
       correlationId,
     );

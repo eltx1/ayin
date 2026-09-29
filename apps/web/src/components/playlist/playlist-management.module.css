@@ -122,22 +122,18 @@
   grid-template-columns: 1fr minmax(12rem, 0.35fr);
 }
 
-.createControls label,
 .formGrid label {
   display: grid;
   gap: 0.45rem;
   min-width: 0;
 }
 
-.createControls span,
 .formGrid span {
   color: var(--muted-strong);
   font-size: 0.8rem;
   font-weight: 800;
 }
 
-.createControls input,
-.createControls select,
 .formGrid input,
 .formGrid select,
 .formGrid textarea {
@@ -155,8 +151,6 @@
     box-shadow var(--duration-base) var(--ease-out);
 }
 
-.createControls input:focus,
-.createControls select:focus,
 .formGrid input:focus,
 .formGrid select:focus,
 .formGrid textarea:focus {
@@ -169,7 +163,6 @@
   resize: vertical;
 }
 
-.createControls button,
 .toolbar button,
 .itemActions button,
 .availableCard button {
@@ -187,7 +180,6 @@
   padding: 0.7rem 1rem;
 }
 
-.createControls button:disabled,
 .toolbar button:disabled,
 .itemActions button:disabled,
 .availableCard button:disabled {

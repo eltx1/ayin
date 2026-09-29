@@ -1,3 +1,4 @@
+import { ActionLink, PageHeader } from "@/components/ui/design-system";
 import Link from "next/link";
 import { mediaAssetUrl } from "@/lib/channel";
 import type { Locale } from "@/lib/i18n/config";
@@ -45,12 +46,15 @@ export async function PublicDirectory({
       : path;
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <Link href={localizePath("/", locale)} className={styles.back}>
-          {t("nav.home")}
-        </Link>
-        <h1>{t(`nav.${section}`)}</h1>
-        <p>{t(`browse.${section}Description`)}</p>
+      <PageHeader
+        title={t(`nav.${section}`)}
+        description={t(`browse.${section}Description`)}
+        eyebrow={
+          <Link href={localizePath("/", locale)} className={styles.back}>
+            {t("nav.home")}
+          </Link>
+        }
+      >
         <nav aria-label={t("browse.categories")} className={styles.categories}>
           {directorySections.map((category) => (
             <Link
@@ -63,15 +67,15 @@ export async function PublicDirectory({
           ))}
           <Link href={localizePath("/clips", locale)}>{t("nav.shorts")}</Link>
         </nav>
-      </header>
+      </PageHeader>
       {!page ? (
         <ErrorState
           title={t(invalidCursor ? "browse.invalidPage" : "browse.errorTitle")}
           description={t("browse.errorDescription")}
           action={
-            <Link className={styles.action} href={retry} prefetch={false}>
+            <ActionLink href={retry} prefetch={false}>
               {t(invalidCursor ? "browse.firstPage" : "browse.retry")}
-            </Link>
+            </ActionLink>
           }
         />
       ) : page.items.length === 0 ? (
@@ -79,9 +83,9 @@ export async function PublicDirectory({
           title={t(cursor ? "browse.endTitle" : "browse.emptyTitle")}
           description={t("browse.emptyDescription")}
           action={
-            <Link className={styles.action} href={cursor ? path : localizePath("/search", locale)}>
+            <ActionLink href={cursor ? path : localizePath("/search", locale)}>
               {t(cursor ? "browse.firstPage" : "nav.search")}
-            </Link>
+            </ActionLink>
           }
         />
       ) : (
@@ -103,19 +107,14 @@ export async function PublicDirectory({
       )}
       {page && (cursor || page.nextCursor) ? (
         <nav className={styles.pagination} aria-label={t("browse.pages")}>
-          {cursor ? (
-            <Link className={styles.action} href={path}>
-              {t("browse.firstPage")}
-            </Link>
-          ) : null}
+          {cursor ? <ActionLink href={path}>{t("browse.firstPage")}</ActionLink> : null}
           {page.nextCursor ? (
-            <Link
-              className={styles.action}
+            <ActionLink
               prefetch={false}
               href={`${path}?${new URLSearchParams({ cursor: page.nextCursor })}`}
             >
               {t("browse.more")}
-            </Link>
+            </ActionLink>
           ) : null}
         </nav>
       ) : null}

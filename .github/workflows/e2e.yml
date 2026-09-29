@@ -81,5 +81,6 @@ jobs:
           path: |
             test-results/**/directory-*.png
             test-results/**/navigation-*.png
+            test-results/**/design-*.png
           if-no-files-found: ignore
           retention-days: 7

@@ -121,3 +121,9 @@ Every group below inherits the exact controller/model/surface/test detail in its
 ## Acceptance rule
 
 Implemented or inventoried is not complete. Each user-facing capability needs a discoverable appropriate surface plus its relevant behavioral/security/visual/performance evidence; each internal capability needs an explicit reason to remain internal. Review the full detailed baseline alongside these current deltas until every master phase is accepted. Do not expose internal APIs merely to fill a matrix, delete working capabilities without UI, or treat historical remediation phase numbers as current master acceptance.
+
+## Phase 4A design foundation adoption — 2026-09-29 candidate
+
+From accepted main `96bb5e36563e80b9a13b7ffe66fc46f5b6c0fb6a`, the proposed foundation uses real shared headers/actions/fields/status/counters on Viewer Browse/directories, creator Studio/Playlists and Admin overview/search. Existing API callers, intended audiences and server permissions are unchanged. Media-card image failures reveal a stable decorative fallback while preserving the original content link. No worker, provider or financial capability is exposed by this styling work.
+
+`AYIN_DESIGN_SYSTEM.md` maps components to actual consumers and separates remaining Phase 4 interactions/tables/forms from this foundation. Local Web tests/types/lint/build have passed; final CI/browser/visual/security acceptance remains pending in the master checkpoint. This entry does not claim full route redesign, PWA lifecycle, advertising/provider or native readiness.

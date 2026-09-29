@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ActionLink, MetricList, PageHeader, StatusNotice } from "@/components/ui/design-system";
+
 import styles from "@/app/studio/studio.module.css";
 import { getStudioOverview, type StudioOverview } from "@/lib/studio";
 
@@ -25,8 +27,13 @@ export function StudioDashboard() {
     };
   }, []);
 
-  if (error) return <p className={styles.error}>{error}</p>;
-  if (!data) return <p className={styles.muted}>Loading Studio…</p>;
+  if (error)
+    return (
+      <StatusNotice tone="danger" announce="assertive">
+        {error}
+      </StatusNotice>
+    );
+  if (!data) return <StatusNotice announce="polite">Loading Studio…</StatusNotice>;
 
   const metrics = [
     ["Videos", data.counters.videos],
@@ -38,27 +45,20 @@ export function StudioDashboard() {
 
   return (
     <>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Creator Studio</span>
-          <h1>{data.channel.name}</h1>
-          <p className={styles.muted}>
-            Manage your channel without adding friction to Quick Upload.
-          </p>
-        </div>
-        <Link className={styles.primary} href="/upload">
-          Quick upload
-        </Link>
-      </header>
-
-      <section aria-label="Channel counters" className={styles.metrics}>
-        {metrics.map(([label, value]) => (
-          <article className={styles.metric} key={label}>
-            <span className={styles.muted}>{label}</span>
-            <strong>{value.toLocaleString()}</strong>
-          </article>
-        ))}
-      </section>
+      <PageHeader
+        title={data.channel.name}
+        eyebrow="Creator Studio"
+        description="Manage your channel and share your next video."
+        actions={
+          <ActionLink href="/upload" tone="primary">
+            Quick upload
+          </ActionLink>
+        }
+      />
+      <MetricList
+        label="Channel counters"
+        items={metrics.map(([label, value]) => ({ label, value: value.toLocaleString() }))}
+      />
 
       <div className={styles.grid}>
         <section className={styles.panel}>
