@@ -1,0 +1,56 @@
+.dialog {
+  background: var(--background);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+  inline-size: min(480px, calc(100vw - 32px));
+  margin: auto;
+  max-block-size: calc(100dvh - 32px - var(--ayin-safe-top) - var(--ayin-safe-bottom));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 72%);
+}
+
+.content {
+  padding: clamp(20px, 4vw, 32px);
+}
+
+.content h2 {
+  font-size: var(--font-size-xl, 1.25rem);
+  line-height: 1.4;
+  margin: 0 0 16px;
+  overflow-wrap: anywhere;
+}
+
+.content p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 0 0 28px;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.actions button {
+  flex: 1 1 auto;
+  max-inline-size: 100%;
+  min-block-size: 44px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+@media (forced-colors: active) {
+  .dialog {
+    border: 2px solid CanvasText;
+  }
+}

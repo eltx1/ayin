@@ -35,3 +35,17 @@ Recheck current official Core Web Vitals guidance during Phase 10 and collect re
 Do not add indexes, replicas, a new storage system or an architectural rewrite from these limited entry-size measurements. Test runtime/CI browser timings are not production traffic performance. Browser screenshot dimensions are not device certification. No complete performance, installed-PWA, provider, native-device or store-approval claim follows from a passing local build.
 
 The request-payload repair2677ecb was rebuilt against the same restored baseline and reproduced the earlier entry sums. The final table above was remeasured after2ebc0c1's heading/breadcrumb/mobile-label corrections; its small shared-byte changes are recorded. Exact-head CI quality/browser/security/inventory and actual visual review passed for that source. The full desktop image intentionally follows an action scroll; sticky positioning in a full-page image is not a runtime-latency or layout-shift measurement.
+
+## Phase4D candidate — native confirmation adoption
+
+Baseline accepted/deployed main `d3484c6ec4d256effb9f440b882428a42ce0aea7`, exact tree85062e80638af9b1ce779905476c5600490beb68; after is the locally reviewed confirmation candidate. Two same-environment local production Web builds passed. Method remains deduplicated Next entryJSFiles/entryCSSFiles, each gzip level9, not full transfer/dynamic imports, CWV, backend or playback/upload timing. Restored local Node22/tooling is not CI Node24/frozen proof.
+
+| Route           | Before gzip JS | After gzip JS | Before gzip CSS | After gzip CSS |
+| --------------- | -------------: | ------------: | --------------: | -------------: |
+| Studio Content  |          49968 |         50986 |           17000 |          17157 |
+| Studio overview |          40567 |         40700 |           17000 |          17157 |
+| Admin overview  |          45985 |         46120 |           11642 |          11799 |
+| Browse          |          43929 |         44064 |           21222 |          21379 |
+| Home            |          50347 |         50482 |           14351 |          14351 |
+
+Content adds1018 compressed entry bytes for real decision UI/state; common routes add133–135 bytes from shared focus behavior. Route-local labels avoid a new global vocabulary dictionary. CSS increments are explicit. No performance improvement is claimed; full Phase10 measurements remain open. Preserve old results rather than treating small environment-dependent baseline differences as regressions or speedups across unrelated measurements.

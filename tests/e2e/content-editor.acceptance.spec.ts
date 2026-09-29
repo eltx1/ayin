@@ -148,12 +148,23 @@ test("one focused editor preserves drafts across accessible tabs and confirms be
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Unsaved title");
   expect(captionReads).toBe(0);
   await expect(page.getByRole("button", { name: "Remove video", exact: true })).toBeDisabled();
-  page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Back to videos" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Unsaved title");
-  page.once("dialog", (dialog) => dialog.dismiss());
   const currentUrl = page.url();
   await page.locator("aside a[href='/upload']").click();
+  const leaveDialog = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+  await expect(leaveDialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    leaveDialog.getByRole("button", { name: "Discard changes and leave" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(leaveDialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await page.screenshot({ path: info.outputPath("design-confirm-leave-1440.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+  await expect(leaveDialog).not.toBeVisible();
+  await expect(page.locator("aside a[href='/upload']")).toBeFocused();
   await expect(page).toHaveURL(currentUrl);
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Unsaved title");
   await noOverflow(page);
@@ -169,8 +180,11 @@ test("one focused editor preserves drafts across accessible tabs and confirms be
     fullPage: true,
     animations: "disabled",
   });
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Back to videos" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Discard changes and leave", exact: true })
+    .click();
   await expect(page.getByRole("table").getByRole("row")).toHaveCount(4);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/ar/studio/content?lang=ar");
@@ -220,6 +234,64 @@ test("one focused editor preserves drafts across accessible tabs and confirms be
     path: info.outputPath("design-content-editor-390-ar.png"),
     fullPage: true,
   });
+  await page.getByLabel("العنوان", { exact: true }).fill("تعديل لم يُحفظ بعد");
+  const back = page.getByRole("button", { name: "العودة إلى الفيديوهات" });
+  await back.click();
+  const rtlDialog = page.getByRole("dialog", { name: "هل تريد التخلي عن التغييرات؟" });
+  await expect(rtlDialog).toHaveAttribute("dir", "rtl");
+  await expect(rtlDialog.getByRole("button", { name: "إلغاء", exact: true })).toBeFocused();
+  await noOverflow(page);
+  const dialogBounds = await rtlDialog.evaluate((element) => ({
+    client: element.clientWidth,
+    scroll: element.scrollWidth,
+    controls: Array.from(element.querySelectorAll("button")).map((button) => ({
+      width: button.getBoundingClientRect().width,
+      height: button.getBoundingClientRect().height,
+      client: button.clientWidth,
+      scroll: button.scrollWidth,
+    })),
+  }));
+  expect(dialogBounds.scroll).toBeLessThanOrEqual(dialogBounds.client + 1);
+  for (const button of dialogBounds.controls) {
+    expect(button.width).toBeGreaterThanOrEqual(44);
+    expect(button.height).toBeGreaterThanOrEqual(44);
+    expect(button.scroll).toBeLessThanOrEqual(button.client + 1);
+  }
+  await page.screenshot({
+    path: info.outputPath("design-confirm-leave-390-ar.png"),
+    fullPage: true,
+  });
+  const handled = await page.evaluate(() => {
+    const event = new CustomEvent("ayin:native-remote", {
+      detail: { key: "BACK" },
+      cancelable: true,
+    });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  });
+  expect(handled).toBe(true);
+  await expect(rtlDialog).not.toBeVisible();
+  await expect(page.getByLabel("العنوان", { exact: true })).toHaveValue("تعديل لم يُحفظ بعد");
+  await expect(back).toBeFocused();
+  // A confirmation above workspace navigation owns Back; the underlying dialog
+  // must stay open and the original draft must survive both cancellations.
+  await page.getByRole("button", { name: "فتح قائمة الاستوديو" }).click();
+  const navigation = page.getByRole("dialog");
+  await navigation.locator("a[href='/ar/studio']").click();
+  await expect(rtlDialog).toBeVisible();
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("ayin:native-remote", {
+        detail: { key: "BACK" },
+        cancelable: true,
+      }),
+    ),
+  );
+  await expect(rtlDialog).not.toBeVisible();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByLabel("العنوان", { exact: true })).toHaveValue("تعديل لم يُحفظ بعد");
 });
 
 test("saved changes are not reported as failed when refresh fails and lost writes are never replayed", async ({
@@ -288,8 +360,11 @@ test("saved changes are not reported as failed when refresh fails and lost write
   );
   await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
   expect(writes).toBe(2);
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Back to videos" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Discard changes and leave", exact: true })
+    .click();
   await expect(page.getByRole("row", { name: /Saved despite response loss/ })).toBeVisible();
   expect(writes).toBe(2);
 });
@@ -349,11 +424,17 @@ test("caption activity stays scoped to one editor and removal keeps server owner
     if (route.request().method() === "DELETE") deletes += 1;
     await route.continue();
   });
-  page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Remove video", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
   expect(deletes).toBe(0);
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Remove video", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Remove video", exact: true })
+    .evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
   await expect(page.getByRole("table").getByRole("row")).toHaveCount(3);
   expect(deletes).toBe(1);
   await page.getByLabel("Status", { exact: true }).selectOption("REMOVED");
@@ -390,11 +471,11 @@ test("unpublish and caption removal send valid JSON while origin checks stay enf
   });
   await page.goto("/studio/content?lang=en");
   await openFirst(page);
-  page.once("dialog", (dialog) => dialog.dismiss());
   await page.getByRole("button", { name: "Unpublish", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
   expect(unpublishes).toBe(0);
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Unpublish", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Unpublish", exact: true }).click();
   await expect(page.getByRole("row", { name: /Editor video 0/ })).toContainText("Draft");
   expect(unpublishes).toBe(1);
   const list = await page.request.get(endpoint);
@@ -451,4 +532,33 @@ test("unpublish and caption removal send valid JSON while origin checks stay enf
   await captions.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(captions.getByText("No caption tracks yet.")).toBeVisible();
   expect(removals).toBe(1);
+});
+
+test("confirmed navigation leaves once without saving or replaying link handlers", async ({
+  page,
+}) => {
+  await seed(page);
+  let writes = 0;
+  await page.route(`${API}/creator/studio/videos/*`, async (route) => {
+    if (["PATCH", "DELETE", "POST"].includes(route.request().method())) writes += 1;
+    await route.continue();
+  });
+  await page.goto("/studio/content?lang=en");
+  await openFirst(page);
+  await page.getByLabel("Title", { exact: true }).fill("Do not send this draft");
+  const before = page.url();
+  await page.locator("aside a[href='/upload']").click();
+  const confirmation = page.getByRole("dialog", { name: "Discard unsaved changes?" });
+  await expect(confirmation).toBeVisible();
+  await expect(page).toHaveURL(before);
+  expect(writes).toBe(0);
+  await confirmation
+    .getByRole("button", { name: "Discard changes and leave" })
+    .evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+  await expect(page).toHaveURL(/\/upload$/);
+  await expect(page.getByRole("heading", { name: "Bring your next video to AYIN." })).toBeVisible();
+  expect(writes).toBe(0);
 });

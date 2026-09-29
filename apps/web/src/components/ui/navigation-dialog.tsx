@@ -1,14 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+
+import { ownsDialogFocus, trapDialogTab } from "@/lib/dialog-focus";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
@@ -42,7 +37,8 @@ export function NavigationDialog({
 
   useEffect(() => {
     const onRemote = (event: CustomEvent<NativeRemoteEventDetail>) => {
-      if (!dialog.current?.open || event.detail.key !== "BACK") return;
+      if (!dialog.current?.open || !ownsDialogFocus(dialog.current) || event.detail.key !== "BACK")
+        return;
       // Close the current navigation before the TV runtime handles page back/exit.
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -54,32 +50,6 @@ export function NavigationDialog({
 
   function close() {
     dialog.current?.close();
-  }
-
-  function trapTab(event: ReactKeyboardEvent<HTMLDialogElement>) {
-    if (event.key !== "Tab") return;
-    const focusable = [
-      ...event.currentTarget.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    ].filter((element) => element.getClientRects().length > 0);
-    const first = focusable[0];
-    const last = focusable.at(-1);
-    if (!first || !last) return;
-
-    const active = document.activeElement;
-    if (!event.currentTarget.contains(active)) {
-      event.preventDefault();
-      first.focus();
-      return;
-    }
-    if (event.shiftKey && active === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
   }
 
   return (
@@ -115,7 +85,7 @@ export function NavigationDialog({
           }
         }}
         onCancel={(event) => event.stopPropagation()}
-        onKeyDown={trapTab}
+        onKeyDown={trapDialogTab}
       >
         <TvFocusScope>
           <header className={styles.header}>
