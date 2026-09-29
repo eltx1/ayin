@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { playlistAr, playlistEn } from "./i18n/resources/playlists";
 import { navigationEn } from "./i18n/resources/navigation";
+import { studioFeedbackEn } from "./i18n/resources/studio-feedback";
+import { translate } from "./i18n/translator";
 import { enMessages } from "./i18n/resources/en";
 import type { CreatorPlaylistSummary } from "./playlist";
 import { playlistLibraryPage, playlistPageSize } from "./playlist-library";
@@ -64,6 +66,9 @@ describe("owned playlist snapshot presentation", () => {
     for (const key of Object.keys(playlistEn)) {
       expect(Object.hasOwn(enMessages, key)).toBe(false);
       expect(Object.hasOwn(navigationEn, key)).toBe(false);
+      expect(Object.hasOwn(studioFeedbackEn, key)).toBe(false);
     }
+    expect(translate("ar", "feedback.support")).toBe("الدعم");
+    expect(translate("en", "playlists.library")).toBe("Your playlists");
   });
 });

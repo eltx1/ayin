@@ -18,6 +18,16 @@ describe("playlist request boundaries", () => {
       }),
     );
   });
+  it("rejects malformed lists instead of presenting them as a successful empty library", async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    for (const playlists of [null, {}, "not an array"]) {
+      fetcher.mockResolvedValueOnce(new Response(JSON.stringify({ playlists })));
+      await expect(listCreatorPlaylists("owned-channel")).rejects.toThrow(
+        "Invalid playlist response",
+      );
+    }
+  });
   it("never retries a rejected creation or invents missing capability/count fields", async () => {
     const fetcher = vi.fn().mockRejectedValue(new Error("Connection interrupted"));
     vi.stubGlobal("fetch", fetcher);

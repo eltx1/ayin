@@ -94,6 +94,7 @@ export async function listCreatorPlaylists(
     undefined,
     signal,
   );
+  if (!Array.isArray(response.playlists)) throw new Error("Invalid playlist response");
   return response.playlists;
 }
 

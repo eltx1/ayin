@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
-import { DataTable, FieldGroup, PageControls } from "@/components/ui/data-workspace";
+import { DataTable, PageControls, type TableColumn } from "@/components/ui/data-presentation";
 import {
   ActionButton,
   ActionLink,
   DataBadge,
+  FormSection,
   PageHeader,
   SelectField,
   StatusNotice,
@@ -18,6 +19,7 @@ import {
   createCreatorPlaylist,
   listCreatorPlaylists,
   type PlaylistVisibility,
+  type CreatorPlaylistSummary,
 } from "@/lib/playlist";
 import { playlistLibraryPage, type PlaylistFilter } from "@/lib/playlist-library";
 
@@ -136,6 +138,58 @@ export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {
           : "playlists.private",
     );
 
+  const columns: TableColumn<CreatorPlaylistSummary>[] = [
+    {
+      key: "playlist",
+      heading: t("playlists.playlist"),
+      rowHeader: true,
+      render: (playlist) => (
+        <div className={styles.name}>
+          <h3 dir="auto">{playlist.name}</h3>
+          <div className={styles.badges}>
+            <DataBadge>{visibilityLabel(playlist.visibility)}</DataBadge>
+            {playlist.systemKey === "UPLOADS" ? (
+              <DataBadge>{t("playlists.system")}</DataBadge>
+            ) : null}
+          </div>
+          {playlist.description ? <p dir="auto">{playlist.description}</p> : null}
+        </div>
+      ),
+    },
+    {
+      key: "videos",
+      heading: t("playlists.videos"),
+      compact: true,
+      render: (playlist) => (
+        <span className={styles.number}>{formatNumber(playlist.itemCount)}</span>
+      ),
+    },
+    {
+      key: "actions",
+      heading: t("playlists.actions"),
+      render: (playlist) => (
+        <div className={styles.actions}>
+          <ActionLink
+            tone="quiet"
+            aria-label={t("playlists.manageNamed", { name: playlist.name })}
+            href={href(`/channel/playlists/${playlist.id}`)}
+          >
+            {t("playlists.manage")}
+          </ActionLink>
+          {snapshot && playlist.visibility !== "PRIVATE" ? (
+            <ActionLink
+              tone="quiet"
+              aria-label={t("playlists.previewNamed", { name: playlist.name })}
+              href={href(`/c/${snapshot.identity.channel.handle}/playlists/${playlist.slug}`)}
+            >
+              {t("playlists.preview")}
+            </ActionLink>
+          ) : null}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <Surface className={styles.page}>
       <PageHeader
@@ -156,7 +210,9 @@ export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {
           void createPlaylist();
         }}
       >
-        <FieldGroup
+        <FormSection
+          id="playlist-create-fields"
+          layout="inline"
           legend={t("playlists.new")}
           description={t("playlists.newDescription")}
           disabled={busy || loadState !== "ready"}
@@ -189,7 +245,7 @@ export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {
           >
             {t("playlists.create")}
           </ActionButton>
-        </FieldGroup>
+        </FormSection>
       </form>
       {notice ? (
         <StatusNotice tone={notice === "created" ? "success" : "warning"} announce="polite">
@@ -212,7 +268,11 @@ export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {
           </StatusNotice>
         ) : (
           <>
-            <FieldGroup legend={t("playlists.filters")}>
+            <FormSection
+              id="playlist-filter-fields"
+              legend={t("playlists.filters")}
+              layout="inline"
+            >
               <TextField
                 id="playlist-search"
                 type="search"
@@ -245,59 +305,18 @@ export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {
                   {t("playlists.clear")}
                 </ActionButton>
               ) : null}
-            </FieldGroup>
+            </FormSection>
             <p className={styles.count} role="status">
               {t("playlists.results", { count: formatNumber(library.total) })}
             </p>
             {library.total > 0 ? (
-              <DataTable caption={t("playlists.library")} scrollLabel={t("playlists.scroll")}>
-                <thead>
-                  <tr>
-                    <th scope="col">{t("playlists.playlist")}</th>
-                    <th scope="col">{t("playlists.videos")}</th>
-                    <th scope="col">{t("playlists.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {library.items.map((playlist) => (
-                    <tr key={playlist.id}>
-                      <th scope="row" className={styles.name}>
-                        <h3 dir="auto">{playlist.name}</h3>
-                        <div className={styles.badges}>
-                          <DataBadge>{visibilityLabel(playlist.visibility)}</DataBadge>
-                          {playlist.systemKey === "UPLOADS" ? (
-                            <DataBadge>{t("playlists.system")}</DataBadge>
-                          ) : null}
-                        </div>
-                        {playlist.description ? <p dir="auto">{playlist.description}</p> : null}
-                      </th>
-                      <td className={styles.number}>{formatNumber(playlist.itemCount)}</td>
-                      <td>
-                        <div className={styles.actions}>
-                          <ActionLink
-                            tone="quiet"
-                            aria-label={t("playlists.manageNamed", { name: playlist.name })}
-                            href={href(`/channel/playlists/${playlist.id}`)}
-                          >
-                            {t("playlists.manage")}
-                          </ActionLink>
-                          {snapshot && playlist.visibility !== "PRIVATE" ? (
-                            <ActionLink
-                              tone="quiet"
-                              aria-label={t("playlists.previewNamed", { name: playlist.name })}
-                              href={href(
-                                `/c/${snapshot.identity.channel.handle}/playlists/${playlist.slug}`,
-                              )}
-                            >
-                              {t("playlists.preview")}
-                            </ActionLink>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </DataTable>
+              <DataTable
+                caption={t("playlists.library")}
+                scrollLabel={t("playlists.scroll")}
+                rows={library.items}
+                columns={columns}
+                rowKey={(playlist) => playlist.id}
+              />
             ) : (
               <StatusNotice>
                 {t(snapshot?.playlists.length ? "playlists.noMatches" : "playlists.empty")}

@@ -243,9 +243,11 @@ export function removeStudioVideo(videoId: string) {
   });
 }
 
-export function getStudioComments(): Promise<{
-  channel: StudioOverview["channel"];
-  comments: StudioComment[];
-}> {
-  return studioFetch("/creator/studio/comments");
+export async function getStudioComments(signal?: AbortSignal) {
+  const response = await studioFetch<{
+    channel: StudioOverview["channel"];
+    comments: StudioComment[];
+  }>("/creator/studio/comments", signal ? { signal } : undefined);
+  if (!Array.isArray(response.comments)) throw new Error("Invalid comments response");
+  return response;
 }

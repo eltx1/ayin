@@ -4,15 +4,22 @@ import { describe, expect, it } from "vitest";
 
 import { I18nProvider } from "@/components/i18n/i18n-provider";
 import { PlaylistManager } from "@/components/playlist/playlist-manager";
-import { DataTable, FieldGroup, PageControls } from "./data-workspace";
+import { DataTable, PageControls } from "./data-presentation";
+import { FormSection } from "./design-system";
 
-describe("shared data workspace semantics", () => {
+describe("playlist library shared presentation semantics", () => {
   it("groups native controls with a legend and retains disabled propagation", () => {
     const html = renderToStaticMarkup(
-      <FieldGroup legend="New playlist" description="A name and visibility" disabled>
+      <FormSection
+        id="playlist-fields-test"
+        layout="inline"
+        legend="New playlist"
+        description="A name and visibility"
+        disabled
+      >
         <input aria-label="Name" required />
         <button type="submit">Create</button>
-      </FieldGroup>,
+      </FormSection>,
     );
     expect(html).toContain("<fieldset");
     expect(html).toContain('disabled=""');
@@ -20,23 +27,21 @@ describe("shared data workspace semantics", () => {
     expect(html).toContain('required=""');
     expect(html).toContain('type="submit"');
     expect(html).not.toContain('role="group"');
+    expect(html).toContain('data-layout="inline"');
+    expect(html).toContain('aria-describedby="playlist-fields-test-description"');
   });
   it("retains a native caption and headers rather than a fake interactive grid", () => {
     const html = renderToStaticMarkup(
-      <DataTable caption="Your playlists" scrollLabel="Scroll playlists">
-        <thead>
-          <tr>
-            <th scope="col">Playlist</th>
-            <th scope="col">Videos</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row">Actual title</th>
-            <td>0</td>
-          </tr>
-        </tbody>
-      </DataTable>,
+      <DataTable
+        caption="Your playlists"
+        scrollLabel="Scroll playlists"
+        rows={[{ id: "one", name: "Actual title", count: 0 }]}
+        rowKey={(row) => row.id}
+        columns={[
+          { key: "name", heading: "Playlist", rowHeader: true, render: (row) => row.name },
+          { key: "count", heading: "Videos", render: (row) => row.count },
+        ]}
+      />,
     );
     expect(html).toContain("<table");
     expect(html).toContain("<caption>Your playlists</caption>");
@@ -85,7 +90,10 @@ describe("shared data workspace semantics", () => {
   it("references existing semantic tokens without an untested second palette", () => {
     const tokens = readFileSync(new URL("../../styles/design-tokens.css", import.meta.url), "utf8");
     const declarations = new Set([...tokens.matchAll(/(--[a-z0-9-]+):/g)].map((match) => match[1]));
-    for (const file of ["./data-workspace.module.css", "../playlist/playlist-library.module.css"]) {
+    for (const file of [
+      "./data-presentation.module.css",
+      "../playlist/playlist-library.module.css",
+    ]) {
       const css = readFileSync(new URL(file, import.meta.url), "utf8");
       for (const match of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
         expect(declarations.has(match[1]), match[1]).toBe(true);
