@@ -3,14 +3,18 @@ import { arMessages } from "./resources/ar";
 import { enMessages, type TranslationKey as CoreTranslationKey } from "./resources/en";
 import { navigationAr, navigationEn } from "./resources/navigation";
 import { studioFeedbackAr, studioFeedbackEn } from "./resources/studio-feedback";
+import { playlistAr, playlistEn } from "./resources/playlists";
 
 export type TranslationKey =
-  CoreTranslationKey | keyof typeof navigationEn | keyof typeof studioFeedbackEn;
+  | CoreTranslationKey
+  | keyof typeof navigationEn
+  | keyof typeof studioFeedbackEn
+  | keyof typeof playlistEn;
 
-const english = { ...enMessages, ...navigationEn, ...studioFeedbackEn };
+const english = { ...enMessages, ...navigationEn, ...studioFeedbackEn, ...playlistEn };
 const resources: Record<Locale, Partial<Record<TranslationKey, string>>> = {
   en: english,
-  ar: { ...arMessages, ...navigationAr, ...studioFeedbackAr },
+  ar: { ...arMessages, ...navigationAr, ...studioFeedbackAr, ...playlistAr },
 };
 
 export type TranslationValues = Record<string, string | number>;

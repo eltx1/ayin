@@ -84,18 +84,29 @@ export interface PublicPlaylistResponse {
   }>;
 }
 
-export async function listCreatorPlaylists(channelId: string): Promise<CreatorPlaylistSummary[]> {
+export async function listCreatorPlaylists(
+  channelId: string,
+  signal?: AbortSignal,
+): Promise<CreatorPlaylistSummary[]> {
   const response = await apiRequest<{ playlists: CreatorPlaylistSummary[] }>(
     `/creator/channels/${channelId}/playlists`,
     "GET",
+    undefined,
+    signal,
   );
+  if (!Array.isArray(response.playlists)) throw new Error("Invalid playlist response");
   return response.playlists;
 }
 
 export async function createCreatorPlaylist(
   channelId: string,
   input: { name: string; description?: string | null; visibility: PlaylistVisibility },
-): Promise<{ playlist: CreatorPlaylistSummary }> {
+): Promise<{
+  playlist: Pick<
+    CreatorPlaylistSummary,
+    "id" | "channelId" | "slug" | "name" | "description" | "systemKey" | "visibility"
+  > & { isProtected: boolean };
+}> {
   return apiRequest(`/creator/channels/${channelId}/playlists`, "POST", input);
 }
 
@@ -133,11 +144,13 @@ async function apiRequest<T = unknown>(
   path: string,
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   payload?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method,
     credentials: "include",
     cache: "no-store",
+    ...(signal ? { signal } : {}),
     ...(payload === undefined
       ? {}
       : {

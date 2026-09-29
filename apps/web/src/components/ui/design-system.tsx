@@ -253,10 +253,16 @@ export function FormSection({
   id,
   legend,
   description,
+  layout = "stack",
   children,
   className,
   ...props
-}: ComponentPropsWithoutRef<"fieldset"> & { id: string; legend: string; description?: string }) {
+}: ComponentPropsWithoutRef<"fieldset"> & {
+  id: string;
+  legend: string;
+  description?: string;
+  layout?: "stack" | "inline";
+}) {
   return (
     <fieldset
       {...props}
@@ -274,7 +280,9 @@ export function FormSection({
           {description}
         </p>
       ) : null}
-      <div className={styles.sectionFields}>{children}</div>
+      <div className={styles.sectionFields} data-layout={layout}>
+        {children}
+      </div>
     </fieldset>
   );
 }

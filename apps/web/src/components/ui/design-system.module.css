@@ -283,3 +283,22 @@
   min-block-size: 9rem;
   resize: vertical;
 }
+
+.sectionFields[data-layout="inline"] {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.sectionFields[data-layout="inline"] > * {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+.sectionFields[data-layout="inline"] > button {
+  flex: 0 1 auto;
+}
+@media (max-width: 480px) {
+  .sectionFields[data-layout="inline"] > button {
+    flex-basis: 100%;
+  }
+}

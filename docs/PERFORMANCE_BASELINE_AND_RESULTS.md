@@ -63,3 +63,33 @@ Both local production Web builds passed with identical in-root restored Web depe
 New feedback translations in the shared typed resources contribute to common-entry cost; native form/table/disclosure, bounded filtering and independent request states contribute to the changed Studio entries. These additions are explicitly reported, not a speedup claim. Filtering operates on the already-loaded latest-100 snapshot, adds no requests or backend queries, and never pretends to search all comments. The full performance phase must measure actual transfer/hydration/latency and assess route-local translation splitting. No new dependency, video/player runtime, database index or caching scheme is introduced.
 
 An initial local baseline build failed because the restored cache used node_modules symlinks outside Turbopack's root. Materializing those cached directories inside the isolated local build root resolved the tooling layout; no network/browser policy or application constraint was bypassed. Both successful builds use the same corrected in-root layout. Local builds do not replace the final pinned CI, browser/visual, API/security or deployed-SHA gates.
+
+## Playlist consolidation onto accepted #144 — measurement boundary
+
+Original parallel playlist candidate `4cacd05e20290eae062fd97315b32b93e5e53782` recorded selected route-entry gzip JS: playlist 37435→39312 bytes, Studio 37383→38399, Admin 42872→43888, Browse 40976→41992; selected CSS unions each decreased 593 bytes. These are preserved historical observations from its separate same-environment build, not measurements of the reconciled source. The already recorded Comments/Support values above are likewise not additive estimates of combined bundle size.
+
+The integrated candidate removes the duplicate table/form implementation and reuses accepted shared primitives. It retains local filtering/paging without another API request per keystroke/page, with exact browser request-count assertions. The collection API/query is unchanged; no DB pagination or query-count improvement claim.
+
+Reconciled local type generation/TypeScript and 237 Web tests pass. The initial local production build exceeded its command timebox during TypeScript. The same-source completion run then exited 0, including TypeScript and static route generation; this is a scoped local Web result, not complete API/security acceptance. Exact combined production build and browser behavior must be observed in CI. Full route-transfer/CWV/API/DB/player/upload performance remains the dedicated Phase 10 program; no speedup is claimed from source consolidation alone.
+
+## Reconciled playlist versus accepted #144 — 2026-09-29
+
+Both same-environment local production Web builds completed successfully. Before is the exact accepted #144 tree `ac17d5bd191ab57ba6a82fbf8fd97bfae5c0cdce`; after is the integrated #145 candidate. Cached Web dependencies are byte-identical, in-root copies and Node 22.16.0 are shared. The initial baseline attempt lacked the API package's cached zod link used by existing Web type tests; restoring the same local dependency layout fixed that tooling-only failure without changing source or skipping type checking. This is not an exact frozen backend/security installation.
+
+Method: parse each route's generated `page_client-reference-manifest.js`, collect the unique paths across its `entryJSFiles` and `entryCSSFiles`, and sum individual-file gzip level 9 bytes. Counts remain five selected JS files for each Studio/Admin entry and seven for Browse/Home; CSS has four selected files for Studio/Browse and three for Admin/Home. This is entry-asset aggregation, not complete client modules, actual network transfer, hydration or field CWV. Do not compare raw values against a different earlier build environment or the Phase 2 HTML method.
+
+**Playlist library:** selected gzip JS 39,168 → 41,392 bytes (+2,224); CSS 17,576 → 16,669 bytes (-907).
+
+**Studio Comments:** selected gzip JS 39,851 → 41,184 bytes (+1,333); CSS 17,576 → 16,669 bytes (-907).
+
+**Studio Support:** selected gzip JS 40,003 → 41,335 bytes (+1,332); CSS 17,576 → 16,669 bytes (-907).
+
+**Studio overview:** selected gzip JS 39,168 → 40,381 bytes (+1,213); CSS 17,576 → 16,669 bytes (-907).
+
+**Admin overview:** selected gzip JS 44,591 → 45,803 bytes (+1,212); CSS 12,401 → 11,494 bytes (-907).
+
+**Browse:** selected gzip JS 42,562 → 43,763 bytes (+1,201); CSS 21,982 → 21,075 bytes (-907).
+
+**Home:** selected gzip JS 48,993 → 50,194 bytes (+1,201); CSS unchanged at 14,361 bytes.
+
+The new typed shared translations account for common client-entry growth, while consolidated stylesheet chunking reduces the selected CSS in several routes. Playlist filtering/paging operates on the existing collection without new read requests; the API, queries and player/upload paths remain unchanged. These are measured limited costs, not a speedup. Route-local translation loading and actual transfer/hydration remain Phase 10 work. Final integrated CI/browser/source and visual acceptance is still required independently of these local build results.

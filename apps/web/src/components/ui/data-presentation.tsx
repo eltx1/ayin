@@ -1,5 +1,6 @@
 import type { ComponentPropsWithoutRef, Key, ReactNode } from "react";
 
+import { ActionButton } from "./design-system";
 import styles from "./data-presentation.module.css";
 
 export type TableColumn<Row> = {
@@ -14,17 +15,19 @@ export type TableColumn<Row> = {
 // overflow stays inside a labelled keyboard-scrollable region, never the page.
 export function DataTable<Row>({
   caption,
+  scrollLabel = caption,
   rows,
   columns,
   rowKey,
 }: {
   caption: string;
+  scrollLabel?: string;
   rows: readonly Row[];
   columns: readonly TableColumn<Row>[];
   rowKey: (row: Row) => Key;
 }) {
   return (
-    <div className={styles.tableRegion} role="region" aria-label={caption} tabIndex={0}>
+    <div className={styles.tableRegion} role="region" aria-label={scrollLabel} tabIndex={0}>
       <table className={styles.table}>
         <caption>{caption}</caption>
         <thead>
@@ -72,5 +75,39 @@ export function Disclosure({
       <summary>{summary}</summary>
       <div className={styles.disclosureBody}>{children}</div>
     </details>
+  );
+}
+
+export function PageControls({
+  label,
+  summary,
+  previousLabel,
+  nextLabel,
+  hasPrevious,
+  hasNext,
+  onPrevious,
+  onNext,
+}: {
+  label: string;
+  summary: string;
+  previousLabel: string;
+  nextLabel: string;
+  hasPrevious: boolean;
+  hasNext: boolean;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <nav className={styles.pager} aria-label={label}>
+      <span role="status">{summary}</span>
+      <div>
+        <ActionButton tone="secondary" disabled={!hasPrevious} onClick={onPrevious}>
+          {previousLabel}
+        </ActionButton>
+        <ActionButton tone="secondary" disabled={!hasNext} onClick={onNext}>
+          {nextLabel}
+        </ActionButton>
+      </div>
+    </nav>
   );
 }

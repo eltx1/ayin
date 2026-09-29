@@ -1,73 +1,61 @@
 # AYIN design system
 
-## Scope and authority
+## Authority and foundations
 
-AYIN retains its existing dark/violet entertainment identity and canonical Web/PWA product. This document describes the **accepted Phase 4A foundation and the Phase 4B candidate**, not completion of every page redesign or the whole master goal. Read `AYIN_WEB_PWA_MASTER_CHECKPOINT.md` for exact phase, validation and deployment status. Existing Viewer, creator and Admin server permissions are unchanged.
+AYIN retains its dark/violet entertainment identity and canonical Web/PWA. Accepted foundations #143 and native data/form consumers #144 are the basis; reconciled playlist #145 remains a candidate until its final gates. Exact evidence is in [the checkpoint](AYIN_WEB_PWA_MASTER_CHECKPOINT.md); detailed earlier design decisions remain in Git history and the linked implementation histories. Full Phase 4 and whole-product redesign are not complete.
 
-## Audited foundations and decisions
+`apps/web/src/styles/design-tokens.css` is imported once by globals and preserves the original palette, spacing, radii, surfaces, elevation, motion and safe areas. Migrated components use semantic text/action/control/status/type roles, logical CSS and natural wrapping. Use `--text-primary`, `--text-secondary`, `--text-muted`, opaque `--action-fill`/`--action-hover` and clear native focus. Brand gradients are decorative, not a substitute for text contrast. No new fonts, icon framework, animation package or UI dependency.
 
-The accepted palette, spacing, radii, surfaces, elevation, motion and safe areas lived in `apps/web/src/app/globals.css`. They are now in `apps/web/src/styles/design-tokens.css`, imported once by the global stylesheet. Every original base declaration is retained. New semantic roles give migrated components explicit text, action, control-boundary, status, typography and target-size choices without unexpectedly recoloring legacy pages.
+## One shared native component API
 
-Use `--text-primary`, `--text-secondary` and `--text-muted` for information, `--action-fill`/`--action-hover` for primary controls and the existing brand gradients for nonessential identity/decorative treatments. Small informative text must not depend on a multicolor background-clipped gradient. New action text uses an opaque contrast-tested pair; the legacy palette is not a license to put white text over every bright gradient stop.
+`components/ui/design-system.tsx` remains server-renderable and is imported within an existing client boundary only when its consumer needs events. It reuses the original `@ayin/ui` Button. `components/ui/data-presentation.tsx` owns tabular presentation and native disclosure/paging. Do not retain a parallel data-workspace FieldGroup/DataTable implementation.
 
-The existing spacing scale remains authoritative; controls use `--radius-control`, sections `--radius-panel`, compact statuses `--radius-pill`. New typography roles distinguish page title, section title, body, secondary copy and labels. Components use logical layout properties, natural wrapping and `dir="auto"` for content where appropriate. There is no new font, icon framework, animation package or UI dependency.
+**PageHeader:** explicit heading level, eyebrow/description/context/actions; no main landmark. Browse, directories, Studio and Admin retain actual route headings, shell ownership and locale links.
 
-## Reusable components and actual adoption
+**ActionButton / ActionLink:** shared primary/secondary/quiet/danger styling. Native buttons default to non-submitting type, preserve caller attributes and genuinely disable while pending. Links remain real links; do not imitate disabled controls with active destinations. Consumers retain their protected mutation/confirmation logic.
 
-`components/ui/design-system.tsx` is compatible with server rendering; consumers that already need events import it from their existing client boundary. It reuses the existing `@ayin/ui` native Button instead of introducing another primitive foundation.
+**TextField / SelectField / TextAreaField:** explicit IDs and visible labels, joined helper/error descriptions and native required/min/max/disabled semantics. Validation is supplied by real server bounds, not invented by the primitive. Multiline fields retain native resizing. Errors do not automatically create repeated assertive live regions.
 
-**PageHeader:** supports an explicit heading level, optional eyebrow/description/context and actions. It never creates a main landmark. Adopted on Browse, all four public directory families, Studio overview/playlists and Admin overview. Existing public route names, headings where asserted, locale paths and shell ownership are retained.
+**FormSection:** native fieldset/legend with associated optional description and normal disabled propagation. Default stacked layout used by Support is unchanged. The playlist candidate adds `layout="inline"` for responsive wrapped fields/actions, collapsing on narrow screens. This is an optional presentation mode on the same native contract, not another form state system.
 
-**ActionButton / ActionLink:** one control presentation with primary, secondary, quiet and dangerous button variants. Buttons default to non-submitting native `type="button"`, preserve caller attributes and become genuinely disabled/busy while pending. Links remain links rather than disabled-looking live controls. Adopted in directory recovery/continuation, Studio Quick Upload, creator playlist creation and Admin search. Consumers keep their existing authorization, confirmation and server mutation functions.
+**StatusNotice / DataBadge:** truthful textual status plus tone. Only explicitly requested notices announce; ordinary badges are not live regions. Distinguish missing/failed/unavailable from real zero/empty. Never label configuration as observed provider availability.
 
-**TextField / SelectField:** explicit caller-provided IDs, associated visible labels, native required/length/select/disabled semantics, joined helper/error descriptions and explicit invalid state. They do not invent validation or submit mutations. Adopted in playlist Name/Visibility and Admin global search. Field errors do not automatically produce repeated assertive announcements; callers choose when a status needs announcing.
+**MetricList:** native definition list of real caller values. Zero, unavailable and optional provenance are distinct; no fabricated `0.00`. Existing Studio/Admin response meanings are preserved.
 
-**StatusNotice / DataBadge:** visible status text accompanies tone; messages announce only when the caller requests polite/assertive behavior. Ordinary badges never become noisy live regions. Studio loading/failure and the Admin rollup label use them. They display observed/caller-supplied state and do not fabricate provider readiness.
+**DataTable:** generic rows/columns/stable rowKey; native caption, explicit column/row header scopes and local keyboard-scrollable region. Long values wrap without changing table roles. Comments uses its existing latest-100 snapshot; Playlists uses the owned collection. Candidate `scrollLabel` optionally differentiates the region's action label from its caption; defaults preserve Comments. Mobile overflow stays inside the table, not the document. Do not call local filtering global search or local paging backend pagination.
 
-**MetricList:** native definition list with real labels/values, tabular numbers and optional source detail. Zero and unavailable remain distinct; there is no automatic fake `0.00` fallback. Studio and Admin counters reuse their unchanged API values while removing their row of decorative statistic cards.
+**Disclosure:** native details/summary with optional content; no mirrored aria-expanded state or external library. Adopted for optional ticket priority/history and long comments. Data already in a bounded response is not claimed as lazy API loading.
 
-**MediaCard / MediaArtwork:** preserve existing card URLs, focus IDs, server-rendered titles, poster/landscape aspect ratios and lazy loading. A tiny client-only image leaf removes a failed image and reveals the existing decorative fallback without fetching a replacement asset, changing card dimensions or blocking its link. State is keyed by the actual source, not a permanent cross-card failure cache. Card metadata/badges gain readable type sizes; badge placement follows RTL logical insets.
+**PageControls:** named native Previous/Next actions, real disabled edges and polite page summary. Caller owns page state; controls neither fetch nor fabricate rows. Playlist filtering resets/clamps page state and reaches all returned records.
 
-**Existing View states and skeletons:** retain their public API and actual caller-provided title/copy/actions, normalize heading/control roles and preserve reduced-motion behavior. Decorative skeletons remain outside the accessibility tree. Existing modal/remote navigation, breadcrumbs, Hero, content rails and logical ad-slot runtimes are reused rather than replaced by untested parallel components.
+**MediaCard / MediaArtwork:** server-rendered title/link/focus/aspect ratio and lazy image leaf. Source-keyed failure reveals a stable decorative fallback without another request, fake artwork or blocked link. Preserve poster/landscape layout and RTL insets.
 
-## Accessibility and contrast acceptance
+**Existing shared systems:** keep Viewer states/skeletons, native modal/remote focus, breadcrumbs, Hero/rails and logical ad slots. Decorative loading is not accessible fake content. This phase does not replace real provider/player/upload behavior.
 
-W3C WCAG 2.2 Understanding SC 1.4.3 requires at least 4.5:1 for ordinary text, with defined large-text exceptions. This foundation tests opaque migrated text/action/status pairs without rounding a failing value upward. Control boundary/focus tests use at least 3:1. These token tests do **not** certify arbitrary photograph overlays, legacy gradients or the entire product.
+## Real consumer adoption and recovery
 
-WCAG 2.2 SC 2.5.8 has a 24 CSS-pixel minimum with exceptions. AYIN deliberately uses a larger 44px minimum for these controls as a product choice; it is not a misstatement of the AA rule. The browser test measures an adopted creation control. Reduced-motion rules disable new busy motion; forced-color treatment preserves a visible outline/border. Native semantics, headings, labels, one-main ownership and focus remain testable rather than being replaced with div-based imitation controls.
+Comments and Support (#144) actually use these primitives. Comments retains full available text and recent-snapshot filters. Support keeps its ordinary short form, optional priority, protected ownership and input bounds. Acknowledged POST remains success even if follow-up GET fails. Failed/uncertain writes retain drafts and are not automatically replayed. The uncached read helper cancels stale/unmounted requests and distinguishes loading/ready/error.
 
-Official sources checked on **2026-09-29**:
+Reconciled playlist #145 adopts the same FormSection/DataTable plus PageControls in both Studio and standalone entrypoints. Synchronous duplicate guards, disabled pending fields, optional abortable reads, truthful collection counts, private-preview exclusion and protected Uploads behavior survive migration. Invalid response arrays are errors, not a successful empty collection. Both feedback and playlist translations/tests remain; typed collision tests prevent one from silently overwriting the other.
 
-- W3C contrast: https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
-- W3C target size: https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum
-- W3C alert pattern: https://www.w3.org/WAI/ARIA/apg/patterns/alert/
-- React image events/loading: https://react.dev/reference/react-dom/components/img
+## Accessibility and measured boundaries
 
-## Testing, performance and remaining work
+Opaque migrated text/action/status pairs are contrast-tested at 4.5:1 for ordinary text; controls/focus at 3:1. Tests do not round a failure upward or certify text on photographs/legacy gradients. AYIN chooses 44px controls; the WCAG 2.2 AA target-size minimum is 24px with defined exceptions, not 44px. Reduced-motion rules disable new busy animation; forced colors preserve outlines/borders. Native headings, labels, main ownership, keyboard and local scrolling are tested rather than replaced by div-based simulations.
 
-Unit tests render real primitives and cards, check labels/native constraints/zero metrics/message semantics, calculate token contrast, retain safe-area/palette compatibility and verify lazy decorative image markup. Browser scenarios use seeded real catalogs and authenticated creator/Admin workflows, intentionally fail an image then serve valid image bytes, compare artwork dimensions, check RTL/overflow/landmarks and preserve screenshots. Test fixtures never enable production flags or invent production content.
+Previously checked official sources (2026-09-29):
 
-Historical local baseline Web suite: 190 tests; initial foundation suite: 201 tests. Accepted Phase 4A with locale regressions passed 216 local Web tests, and its final exact-head quality/security/browser/inventory gates passed as recorded in the checkpoint. The Phase 4B candidate currently passes 225 local Web tests; its full CI/browser acceptance is separate. Local Web type generation/typecheck, Web lint and production build have passed; exact frozen dependency, API/integration, security and real-browser acceptance belongs to final-head CI. Local Node is 22.16.0; CI is pinned to 24.19.0. The restored local tooling snapshot is not claimed as the accepted transitive production dependency graph.
-
-Phase 4A intentionally does not create a public developer showcase route. All new primitives have a real product consumer. Full tables/filters/pagination grouping, tabs/segmented controls, contextual editor panels, form groups, modal/drawer/confirmation generalization, toast lifecycle and domain card variants remain subsequent Phase 4 work, with actual consumer journeys and focused PRs. No unimplemented item is considered complete. Phase 5–7 route-by-route design, finance form density and localization remain separate. Do not remove working backend capabilities for lacking new styling.
-
-No new query, upload, ad/provider, native permission or security-policy behavior is introduced. Keep the adopted fast-uri patch on rollback; revert only presentation changes. Measure complete performance separately from limited build evidence and never equate a screenshot or token test with physical-device/store certification.
-
-## Phase 4B candidate — native data and form consumers
-
-**FormSection and TextAreaField:** extend the existing primitives without a new client foundation. Native fieldset/legend preserve grouping and disabled semantics; visible instructions are associated by ID, and multiline fields retain required/minimum/maximum length, native resizing, helper/error descriptions and caller accessibility attributes. Support uses these for the real ticket form; the optional priority is in a native disclosure rather than another mandatory step.
-
-**Disclosure:** native details/summary preserve keyboard state without manually mirrored aria-expanded. Support uses it for additional options and ticket details; Comments uses it only for long text. It has no external library or unnecessary motion. Rendered hidden content remains part of the existing bounded response, not a claim of lazy API loading.
-
-**DataTable:** real table/caption with explicit column and row header scopes, stable internal row keys, logical alignment and a named focusable local scroll region. Comments is the actual first consumer, not a demo route. Data is the existing private latest-100 snapshot; filters never masquerade as global server search. Mobile horizontal scrolling remains local to the table while the document fits its viewport. Column layouts preserve native table semantics rather than breaking them with grid roles or display tricks.
-
-**Read and write states:** the uncached read helper distinguishes loading, successful empty, populated and failed responses and suppresses superseded results. It is not an identity manager or an automatic mutation retry system. Support shows an acknowledged send separately from a failed list refresh, disables pending fields, preserves drafts on failures and warns when the write outcome is uncertain. No server policy is relaxed and no consumer-facing Admin diagnostic copy is introduced.
-
-Current official sources for this subphase, checked 2026-09-29:
-
+- https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+- https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum
 - https://www.w3.org/WAI/tutorials/forms/grouping/
-- https://www.w3.org/WAI/tutorials/tables/two-headers/
+- https://www.w3.org/WAI/tutorials/tables/one-header/
 - https://www.w3.org/WAI/tutorials/tables/caption-summary/
-- https://playwright.dev/docs/network#missing-network-events-and-service-workers
+- https://www.w3.org/WAI/ARIA/apg/patterns/alert/
+- https://react.dev/reference/react-dom/components/img
 
-The native component/unit checks are not complete browser or physical-device certification. Actual generated screenshots, role/ownership and error/write journeys must pass before subphase acceptance. Shared tabs/segmented controls, full pagination and filtered server query workflows, modal/confirmation/editor generalization, toast lifecycle and complete domain-card adoption remain subsequent work; no unused fake showcase is added to claim coverage.
+## Tests, performance and remaining work
+
+#144 passed exact-head full quality/security/browser/inventory and source/visual review. #145's original separate graph passed its own CI, not the new combined graph. Reconciled local Web tests pass 237/51 files with scoped lint/TypeScript/formatting. Browser journeys retain native semantics, real owned creation and isolation, uncertainty/duplicate guards, filtering/full traversal, EN/AR and screenshots. Local Node22/restored tooling does not replace CI Node24's frozen graph. Service-worker blocking is scoped only to intentional network-mocking tests; production/PWA is unchanged.
+
+Selected historical build-asset measurements and their increases remain in `PERFORMANCE_BASELINE_AND_RESULTS.md`; no CWV/latency/player/upload/full-transfer improvement is claimed. Combined CSS/browser behavior must be tested after consolidation, not inferred from the two separate green candidates.
+
+Remaining Phase 4: accessible tabs/segmented controls with genuine consumers, contextual content editors, confirmation/dialog/drawer generalization, lifecycle-safe notifications and missing domain-card variants. Whole Viewer/Creator/Admin redesign, dense finance forms, full localization/large-data visual acceptance, installed PWA and native/store readiness remain later master phases. New primitives require real consumers, not a public developer showcase. Keep server safeguards and adopted fast-uri fixes on presentation rollback.

@@ -92,3 +92,17 @@
     border-color: CanvasText;
   }
 }
+
+.pager,
+.pager > div {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.pager {
+  color: var(--text-secondary);
+  justify-content: space-between;
+  margin-block-start: var(--space-5);
+}
