@@ -1,0 +1,81 @@
+name: Publish reviewed dependency blobs
+
+on:
+  push:
+    branches: [web-pwa-phase-3-information-architecture]
+    paths: [.github/workflows/reviewed-fast-uri-blobs.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  publish-blobs:
+    if: github.repository == 'eltx1/ayin' && github.ref == 'refs/heads/web-pwa-phase-3-information-architecture'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the reviewed branch without retained credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up the repository-pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Apply only the digest-verified dependency patch in the job workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object pnpm-lock.yaml)" = a5b4587c0ba3e10469413c499560adbfde1e1cb8
+          test "$(git hash-object pnpm-workspace.yaml)" = 060a97e7e991f0584eca766bae88b260b3abef3a
+          printf '%s  %s\n' d5366013554ea81e1c43d058e444dc308aa022b6e8f6fe6c19d96806b2e38e9f docs/security/fast-uri-remediation.patch | sha256sum --check
+          git apply --check docs/security/fast-uri-remediation.patch
+          git apply docs/security/fast-uri-remediation.patch
+          test "$(git diff --name-only)" = "$(printf 'pnpm-lock.yaml\npnpm-workspace.yaml')"
+          git diff --check
+          test "$(git hash-object pnpm-lock.yaml)" = c612a9d083eda41c1a2091d2eb4ebeaef19310fc
+          test "$(git hash-object pnpm-workspace.yaml)" = 824edc74b90bde62490e56c29ccf97d1e83cafed
+
+      - name: Store the two verified Git blobs without changing any branch or deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { readFileSync } from 'node:fs';
+          const expected = [
+            ['pnpm-lock.yaml', 'c612a9d083eda41c1a2091d2eb4ebeaef19310fc'],
+            ['pnpm-workspace.yaml', '824edc74b90bde62490e56c29ccf97d1e83cafed'],
+          ];
+          assert.equal(process.env.GITHUB_REPOSITORY, 'eltx1/ayin');
+          assert.equal(process.env.GITHUB_REF, 'refs/heads/web-pwa-phase-3-information-architecture');
+          for (const [file, sha] of expected) {
+            const bytes = readFileSync(file);
+            const actual = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+            assert.equal(actual, sha);
+            const response = await fetch('https://api.github.com/repos/eltx1/ayin/git/blobs', {
+              method: 'POST',
+              redirect: 'error',
+              signal: AbortSignal.timeout(30000),
+              headers: {
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                Accept: 'application/vnd.github+json',
+                'Content-Type': 'application/json',
+                'X-GitHub-Api-Version': '2022-11-28',
+              },
+              body: JSON.stringify({ content: bytes.toString('base64'), encoding: 'base64' }),
+            });
+            if (!response.ok) throw new Error(`Blob publication failed: HTTP ${response.status}`);
+            const result = await response.json();
+            assert.equal(result.sha, sha);
+            console.log(JSON.stringify({ file, sha, sourceSha: process.env.GITHUB_SHA }));
+          }
+          NODE
