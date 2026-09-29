@@ -51,7 +51,13 @@ test("Arabic watch page preserves mixed-content direction and LTR media semantic
   await expect(title).toBeVisible();
   await expect(title).toHaveAttribute("dir", "auto");
 
-  const controls = page.locator('[aria-label="Playback controls"]');
+  // The trace contains a transient hidden streamed copy; inspect the accessible player.
+  const main = page.getByRole("main");
+  await expect(main).toHaveCount(1);
+  const player = main.getByRole("region", { name: "Catalog E2E Feature player", exact: true });
+  await expect(player).toHaveCount(1);
+  const controls = player.getByLabel("Playback controls", { exact: true });
+  await expect(controls).toHaveCount(1);
   await expect(controls).toBeVisible();
   await expect(controls).toHaveCSS("direction", "ltr");
 

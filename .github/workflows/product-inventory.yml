@@ -27,19 +27,23 @@ jobs:
       - name: Verify deterministic read-only inventory
         run: node --test scripts/test-product-inventory.mjs
 
-      - name: Capture exact source inventory
+      - name: Capture exact source inventory and reproducible review snapshot
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/ayin-product-inventory"
-          node scripts/audit-product-integration.mjs --stdout > "$RUNNER_TEMP/ayin-product-inventory/inventory.json"
+          evidence="$RUNNER_TEMP/ayin-product-inventory"
+          mkdir -p "$evidence"
+          node scripts/audit-product-integration.mjs --stdout > "$evidence/inventory.json"
           git diff --exit-code
+          git rev-parse HEAD > "$evidence/SOURCE_SHA.txt"
+          git archive --format=tar.gz HEAD > "$evidence/source.tar.gz"
+          (cd "$evidence" && sha256sum inventory.json source.tar.gz SOURCE_SHA.txt > SHA256SUMS)
           node -e 'const fs = require("node:fs"); const p = process.env.RUNNER_TEMP + "/ayin-product-inventory/inventory.json"; const r = JSON.parse(fs.readFileSync(p, "utf8")); console.log(JSON.stringify({ sourceSha: r.sourceSha, counts: r.counts, models: r.models.length, migrations: r.migrations.length }));'
 
-      - name: Preserve source evidence only
+      - name: Preserve exact source review evidence
         uses: actions/upload-artifact@v7
         with:
           name: ayin-product-inventory-${{ github.sha }}
-          path: ${{ runner.temp }}/ayin-product-inventory/inventory.json
+          path: ${{ runner.temp }}/ayin-product-inventory/
           retention-days: 90
           if-no-files-found: error

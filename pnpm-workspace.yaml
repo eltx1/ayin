@@ -13,6 +13,8 @@ allowBuilds:
 overrides:
   deepmerge-ts: 8.0.0
   mysql2: 3.22.0
+  "fast-uri@>=3.0.0 <3.1.8": 3.1.8
+  "fast-uri@>=4.0.0 <4.1.5": 4.1.5
 
 minimumReleaseAgeExclude:
   - "@nestjs/common@12.0.1"

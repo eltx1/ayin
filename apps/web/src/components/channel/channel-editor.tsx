@@ -15,7 +15,9 @@ import {
 
 import styles from "./channel-editor.module.css";
 
-export function ChannelEditor() {
+export function ChannelEditor({ embedded = false }: { embedded?: boolean } = {}) {
+  // The Studio layout owns its main landmark; standalone creator routes retain theirs.
+  const Surface = embedded ? "div" : "main";
   const [identity, setIdentity] = useState<AyinIdentity | null>(null);
   const [channel, setChannel] = useState<EditableChannelResponse | null>(null);
   const [name, setName] = useState("");
@@ -111,28 +113,28 @@ export function ChannelEditor() {
 
   if (signedOut) {
     return (
-      <main className={styles.page}>
+      <Surface className={styles.page}>
         <section className={styles.notice}>
           <h1>Sign in to edit your channel</h1>
           <p>Your channel settings are available to the signed-in channel owner.</p>
           <Link href="/login">Sign in</Link>
         </section>
-      </main>
+      </Surface>
     );
   }
 
   if (!identity || !channel) {
     return (
-      <main className={styles.page}>
+      <Surface className={styles.page}>
         <section className={styles.notice}>
           <p>{message ?? "Loading your channel…"}</p>
         </section>
-      </main>
+      </Surface>
     );
   }
 
   return (
-    <main className={styles.page}>
+    <Surface className={styles.page}>
       <header className={styles.heading}>
         <div>
           <p className={styles.eyebrow}>Your channel</p>
@@ -266,7 +268,7 @@ export function ChannelEditor() {
           {busy ? "Saving…" : "Save channel"}
         </button>
       </footer>
-    </main>
+    </Surface>
   );
 }
 

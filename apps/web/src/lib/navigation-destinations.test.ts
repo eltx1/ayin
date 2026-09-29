@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { directorySections } from "./public-directory";
 import { canonicalPublicPath } from "./public-route-aliases";
+import { adminNavigation, studioNavigation } from "./workspace-navigation";
 
 const appRoot = new URL("../app/", import.meta.url);
 const pagePatterns = readdirSync(appRoot, { recursive: true, encoding: "utf8" })
@@ -13,8 +14,7 @@ const pagePatterns = readdirSync(appRoot, { recursive: true, encoding: "utf8" })
       .slice(0, -1)
       .filter((segment) => !segment.startsWith("(")),
   )
-  // The generic section page is deliberately a closed four-section directory,
-  // not proof that every arbitrary top-level navigation link is implemented.
+  // The generic section page is a closed directory, not a wildcard destination.
   .filter((parts) => !(parts.length === 1 && parts[0] === "[section]"));
 
 function hasProductDestination(path: string) {
@@ -28,24 +28,50 @@ function hasProductDestination(path: string) {
   );
 }
 
-// Check declared navigation in its source of truth, rather than repeating a
-// hard-coded list that silently stays green after a link changes. Dynamic entity
-// links and role visibility still need their existing API/browser acceptance.
+const workspaceCases = [
+  {
+    name: "Admin",
+    sourcePath: "../components/admin/admin-sidebar.tsx",
+    sourceSymbol: "visibleAdminNavigation",
+    groups: adminNavigation,
+    count: 19,
+  },
+  {
+    name: "Studio",
+    sourcePath: "../app/studio/layout.tsx",
+    sourceSymbol: "studioNavigation",
+    groups: studioNavigation,
+    count: 12,
+  },
+];
+
 describe("declared Viewer, Studio and Admin destinations", () => {
-  it.each([
-    ["../components/admin/admin-sidebar.tsx", 19],
-    ["../app/studio/layout.tsx", 12],
-    ["../components/viewer/viewer-shell.tsx", 6],
-  ] as const)("%s points at implemented pages", (sourcePath, minimumTargets) => {
+  it.each(workspaceCases)("$name uses implemented grouped destinations", (workspace) => {
+    const source = readFileSync(new URL(workspace.sourcePath, import.meta.url), "utf8");
+    // The declarations moved, so test the actual model and its mounted consumer.
+    // Keep every old destination checked rather than lowering the old totals.
+    expect(source).toContain('from "@/lib/workspace-navigation"');
+    expect(source).toContain(workspace.sourceSymbol);
+    expect(source).toContain("<WorkspaceSidebar");
+    const targets = workspace.groups.flatMap((group) => group.items.map((item) => item.href));
+    expect(targets).toHaveLength(workspace.count);
+    expect(new Set(targets).size).toBe(workspace.count);
+    expect(pagePatterns.length).toBeGreaterThan(40);
+    for (const target of targets) expect(hasProductDestination(target), target).toBe(true);
+    expect(hasProductDestination("/not-an-implemented-section")).toBe(false);
+  });
+
+  it("Viewer links still point to implemented pages, including the new Browse hub", () => {
+    const sourcePath = "../components/viewer/viewer-shell.tsx";
     const source = readFileSync(new URL(sourcePath, import.meta.url), "utf8");
     const targets = [
       ...source.matchAll(/\bhref\s*[:=]\s*["'](\/[^"']*)["']/g),
       ...source.matchAll(/\bhref\(\s*["'](\/[^"']*)["']/g),
-      ...source.matchAll(/\[\s*"studio\.[^"]+",\s*"(\/[^"']*)"/g),
     ].map((match) => match[1]!);
-    expect(targets.length).toBeGreaterThanOrEqual(minimumTargets);
+    expect(targets.length).toBeGreaterThanOrEqual(6);
     expect(pagePatterns.length).toBeGreaterThan(40);
     for (const target of targets) expect(hasProductDestination(target), target).toBe(true);
+    expect(hasProductDestination("/browse")).toBe(true);
     expect(hasProductDestination("/not-an-implemented-section")).toBe(false);
   });
 });

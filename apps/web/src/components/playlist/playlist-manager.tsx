@@ -13,7 +13,9 @@ import {
 
 import styles from "./playlist-management.module.css";
 
-export function PlaylistManager() {
+export function PlaylistManager({ embedded = false }: { embedded?: boolean } = {}) {
+  // The Studio layout owns its main landmark; standalone creator routes retain theirs.
+  const Surface = embedded ? "div" : "main";
   const [identity, setIdentity] = useState<AyinIdentity | null>(null);
   const [playlists, setPlaylists] = useState<CreatorPlaylistSummary[]>([]);
   const [name, setName] = useState("");
@@ -63,7 +65,7 @@ export function PlaylistManager() {
   }
 
   return (
-    <main className={styles.page}>
+    <Surface className={styles.page}>
       <header className={styles.heading}>
         <div>
           <p className={styles.eyebrow}>Creator playlists</p>
@@ -154,7 +156,7 @@ export function PlaylistManager() {
           <p className={styles.empty}>Your automatic Uploads playlist will appear here.</p>
         )}
       </section>
-    </main>
+    </Surface>
   );
 }
 

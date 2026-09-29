@@ -1,547 +1,351 @@
 .shell {
   --shell-gutter: var(--page-gutter);
-  background:
-    radial-gradient(circle at 84% 2%, rgb(139 24 248 / 18%), transparent 30rem),
-    radial-gradient(circle at 8% 30%, rgb(220 25 232 / 8%), transparent 28rem), var(--background);
-  min-height: 100dvh;
+  background: var(--background);
+  min-block-size: 100dvh;
+}
+
+.skipLink {
+  background: var(--foreground);
+  border-radius: 8px;
+  color: var(--background);
+  inset-block-start: -100px;
+  inset-inline-start: 16px;
+  padding: 12px 16px;
+  position: fixed;
+  z-index: 100;
+}
+
+.skipLink:focus {
+  inset-block-start: max(12px, var(--ayin-safe-top));
 }
 
 .topbar {
   align-items: center;
-  backdrop-filter: blur(26px) saturate(145%);
-  background: linear-gradient(180deg, rgb(3 2 10 / 94%), rgb(5 3 13 / 76%));
-  border-bottom: 1px solid var(--border);
+  background: rgb(5 3 13 / 96%);
+  border-block-end: 1px solid var(--border);
   display: grid;
-  gap: clamp(0.9rem, 2vw, 1.6rem);
+  gap: 24px;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 5rem;
-  padding: var(--ayin-safe-top) max(var(--shell-gutter), var(--ayin-safe-right)) 0
-    max(var(--shell-gutter), var(--ayin-safe-left));
+  inset-block-start: 0;
+  min-block-size: 80px;
+  padding: var(--ayin-safe-top) max(var(--page-gutter), var(--ayin-safe-right)) 0
+    max(var(--page-gutter), var(--ayin-safe-left));
   position: sticky;
-  top: 0;
   z-index: 50;
-}
-
-.topbar::after {
-  background: var(--brand-gradient-hairline);
-  bottom: -1px;
-  content: "";
-  height: 1px;
-  left: 12%;
-  opacity: 0.45;
-  pointer-events: none;
-  position: absolute;
-  right: 12%;
 }
 
 .brand {
   align-items: center;
   color: var(--foreground);
   display: inline-flex;
-  gap: 0.72rem;
-  min-height: 44px;
+  gap: 12px;
+  min-block-size: 44px;
   text-decoration: none;
 }
 
 .brandMark {
   align-items: flex-start;
-  background: linear-gradient(145deg, #05030c, #000);
+  background: #05030c;
   border: 1px solid var(--border-strong);
-  border-radius: 13px;
-  box-shadow:
-    0 8px 22px rgb(0 0 0 / 30%),
-    0 0 1.6rem rgb(139 24 248 / 22%);
+  border-radius: 12px;
   display: inline-flex;
-  height: 2.5rem;
+  block-size: 40px;
+  inline-size: 40px;
   justify-content: center;
   overflow: hidden;
-  position: relative;
-  width: 2.5rem;
-}
-
-.brandMark::after {
-  background: linear-gradient(135deg, rgb(255 255 255 / 12%), transparent 38%);
-  content: "";
-  inset: 0;
-  pointer-events: none;
-  position: absolute;
 }
 
 .brandMark img {
-  height: 3.2rem;
-  max-width: none;
+  block-size: 52px;
+  inline-size: 52px;
+  max-inline-size: none;
   object-fit: cover;
   object-position: 50% 5%;
-  transform: translateY(-0.08rem);
-  width: 3.2rem;
+  transform: translateY(-1px);
 }
 
 .brandWord {
-  background: var(--brand-gradient);
-  background-clip: text;
-  color: transparent;
-  font-size: 1.02rem;
-  font-weight: 950;
-  letter-spacing: 0.24em;
+  font-size: 1.05rem;
+  font-weight: 850;
+  letter-spacing: 0.2em;
 }
 
 .desktopNavigation {
   align-items: center;
   display: flex;
-  gap: 0.22rem;
+  gap: 4px;
   justify-content: center;
-  min-width: 0;
+  min-inline-size: 0;
   overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.desktopNavigation::-webkit-scrollbar {
-  display: none;
+  scrollbar-width: thin;
 }
 
 .navLink {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: 999px;
-  color: var(--muted);
+  border-radius: 9px;
+  color: var(--muted-strong);
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 0.88rem;
-  font-weight: 720;
+  font-weight: 650;
   justify-content: center;
-  min-height: 42px;
-  padding: 0.58rem 0.82rem;
-  position: relative;
+  min-block-size: 44px;
+  padding: 10px 13px;
   text-decoration: none;
   white-space: nowrap;
 }
 
-.navLink:hover {
+.navLink:hover,
+.navLink[aria-current="page"] {
   background: var(--surface-hover);
-  border-color: var(--border);
   color: var(--foreground);
 }
 
-.navLinkActive {
-  background:
-    linear-gradient(rgb(10 7 20 / 88%), rgb(10 7 20 / 88%)) padding-box,
-    linear-gradient(125deg, rgb(139 24 248 / 65%), rgb(220 25 232 / 52%)) border-box;
-  border-color: transparent;
-  box-shadow: 0 8px 24px rgb(88 8 248 / 12%);
-  color: white;
-}
-
-.navLinkActive::after {
-  background: var(--brand-gradient);
-  border-radius: 999px;
-  bottom: 4px;
-  content: "";
-  height: 2px;
-  left: 30%;
-  opacity: 0.92;
-  position: absolute;
-  right: 30%;
+.navLink[aria-current="page"] {
+  border-color: var(--border-brand);
 }
 
 .accountActions {
   align-items: center;
   display: flex;
-  gap: 0.5rem;
+  gap: 10px;
 }
 
-.channelAction,
 .joinAction {
   align-items: center;
-  border-radius: 999px;
+  background: var(--brand-gradient);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: white;
   display: inline-flex;
-  font-size: 0.86rem;
-  font-weight: 820;
+  font-size: 0.88rem;
+  font-weight: 750;
   justify-content: center;
-  min-height: 44px;
-  padding: 0.66rem 1rem;
+  min-block-size: 44px;
+  padding: 10px 16px;
   text-decoration: none;
   white-space: nowrap;
 }
 
-.channelAction {
-  background: var(--surface-subtle);
-  border: 1px solid var(--border);
-  color: var(--muted-strong);
-}
-
-.channelAction:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
-  color: white;
-}
-
-.joinAction {
-  background: var(--brand-gradient);
-  border: 1px solid rgb(255 255 255 / 18%);
-  box-shadow:
-    0 12px 30px rgb(88 8 248 / 24%),
-    inset 0 1px rgb(255 255 255 / 18%);
-  color: white;
-}
-
-.joinAction:hover {
-  box-shadow:
-    0 16px 42px rgb(139 24 248 / 30%),
-    inset 0 1px rgb(255 255 255 / 22%);
-  transform: translateY(-1px);
-}
-
-.mobileHeaderActions,
-.mobileNavigation,
-.mobileMenuPanel {
-  display: none;
-}
-
-.mobileIconButton {
+.menuButton {
   align-items: center;
-  background: rgb(255 255 255 / 4.5%);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted-strong);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--foreground);
+  cursor: pointer;
   display: inline-flex;
-  height: 44px;
+  block-size: 44px;
+  inline-size: 44px;
   justify-content: center;
-  padding: 0;
-  width: 44px;
+  padding: 10px;
 }
 
-.mobileIconButton svg,
-.mobileTabIcon svg {
-  fill: none;
-  height: 1.35rem;
-  stroke: currentColor;
+.menuButton svg,
+.mobileTab svg {
+  block-size: 22px;
+  inline-size: 22px;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 1.8;
-  width: 1.35rem;
+}
+
+.menuHeading {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  margin: 20px 0 8px;
+}
+
+.menuHeading:first-child {
+  margin-block-start: 0;
+}
+
+.accountMenu,
+.drawerProductNavigation {
+  display: grid;
+  gap: 4px;
+}
+
+.accountMenu a {
+  align-items: center;
+  border-radius: 8px;
+  color: var(--foreground);
+  display: flex;
+  font-size: 0.95rem;
+  min-block-size: 44px;
+  padding: 10px 12px;
+  text-decoration: none;
+}
+
+.accountMenu a:hover {
+  background: var(--surface-hover);
+}
+
+.drawerProductNavigation {
+  border-block-start: 1px solid var(--border);
+  margin-block-start: 20px;
+  padding-block-start: 12px;
+}
+
+.drawerProductNavigation .navLink {
+  justify-content: start;
 }
 
 .announcement {
-  background: linear-gradient(
-    90deg,
-    rgb(88 8 248 / 12%),
-    rgb(220 25 232 / 12%),
-    rgb(255 122 50 / 8%)
-  );
-  border-bottom: 1px solid rgb(220 25 232 / 18%);
-  color: #f2e4ff;
-  font-size: 0.88rem;
-  font-weight: 720;
-  padding: 0.72rem var(--shell-gutter);
+  background: var(--surface-subtle);
+  border-block-end: 1px solid var(--border);
+  color: var(--foreground);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  padding: 12px var(--page-gutter);
   text-align: center;
 }
 
 .announcement a {
   color: inherit;
-  text-decoration-color: rgb(230 124 255 / 70%);
-  text-underline-offset: 0.2rem;
+  text-underline-offset: 3px;
 }
 
 .content {
-  min-height: calc(100dvh - 5rem);
+  min-block-size: calc(100dvh - 80px);
+  outline: none;
 }
 
-@media (max-width: 1120px) {
-  .topbar {
-    gap: 0.7rem;
-  }
-
-  .navLink {
-    font-size: 0.82rem;
-    padding-inline: 0.68rem;
-  }
-
-  .channelAction:first-child {
-    display: none;
-  }
+.mobileNavigation {
+  display: none;
 }
 
-@media (max-width: 900px) {
+.desktopNavigation[data-web-visible="false"],
+.drawerProductNavigation[data-web-visible="false"] {
+  display: none;
+}
+
+.shell a:focus-visible,
+.shell button:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 3px;
+}
+
+@media (max-width: 1100px) {
   .topbar {
-    gap: 0.6rem;
+    gap: 12px;
     grid-template-columns: minmax(0, 1fr) auto;
-    min-height: 4.5rem;
+    min-block-size: 72px;
+    padding-inline: max(16px, var(--ayin-safe-left)) max(16px, var(--ayin-safe-right));
   }
 
-  .desktopNavigation,
-  .accountActions {
+  .desktopNavigation {
     display: none;
   }
 
   .brandWord {
-    font-size: 0.94rem;
+    font-size: 0.95rem;
   }
 
-  .mobileHeaderActions {
-    align-items: center;
-    display: flex;
-    gap: 0.45rem;
-  }
-
-  .content {
-    min-height: calc(100dvh - 9rem);
-    padding-bottom: calc(6.3rem + var(--ayin-safe-bottom));
-  }
-
-  .mobileMenuPanel {
-    backdrop-filter: blur(30px) saturate(150%);
-    background:
-      linear-gradient(160deg, rgb(18 11 38 / 97%), rgb(5 3 13 / 98%)) padding-box,
-      linear-gradient(140deg, rgb(139 24 248 / 50%), rgb(220 25 232 / 28%), rgb(255 122 50 / 18%))
-        border-box;
-    border: 1px solid transparent;
-    border-radius: 24px;
-    bottom: calc(5.9rem + var(--ayin-safe-bottom));
-    box-shadow: var(--shadow-floating);
-    display: block;
-    left: max(0.7rem, var(--ayin-safe-left));
-    overflow-y: auto;
-    padding: 1rem;
-    position: fixed;
-    right: max(0.7rem, var(--ayin-safe-right));
-    top: calc(4.9rem + var(--ayin-safe-top));
-    z-index: 59;
-  }
-
-  .mobileMenuHeader {
-    align-items: center;
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-    margin-bottom: 0.9rem;
-  }
-
-  .mobileMenuHeader > div {
+  .drawerProductNavigation[data-mobile-visible="true"] {
     display: grid;
-    gap: 0.15rem;
-    min-width: 0;
   }
 
-  .mobileMenuHeader strong {
-    font-size: 1.05rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .mobileMenuHeader span {
-    color: var(--muted);
-    font-size: 0.78rem;
-  }
-
-  .mobileMenuHeader button {
-    background: rgb(255 255 255 / 5%);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    color: var(--muted-strong);
-    min-height: 42px;
-    padding: 0.55rem 0.85rem;
-  }
-
-  .mobileAccountGrid {
-    display: grid;
-    gap: 0.55rem;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .mobileAccountGrid a {
-    align-items: center;
-    background: rgb(255 255 255 / 4%);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    color: var(--muted-strong);
-    display: flex;
-    font-size: 0.84rem;
-    font-weight: 760;
-    min-height: 48px;
-    min-width: 0;
-    padding: 0.7rem 0.8rem;
-    text-decoration: none;
-  }
-
-  .mobileAccountGrid a:hover,
-  .mobileAccountGrid a:focus-visible {
-    background: var(--brand-gradient-soft);
-    border-color: var(--border-brand);
-    color: white;
-  }
-
-  .mobileMenuDivider {
-    background: var(--brand-gradient-hairline);
-    height: 1px;
-    margin: 1rem 0;
-    opacity: 0.55;
-  }
-
-  .mobileProductNavigation {
-    display: grid;
-    gap: 0.35rem;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .mobileProductNavigation .navLink {
-    background: rgb(255 255 255 / 2.8%);
-    border-color: rgb(255 255 255 / 5%);
-    justify-content: flex-start;
-    min-width: 0;
-    padding-inline: 0.8rem;
+  .drawerProductNavigation[data-mobile-visible="false"] {
+    display: none;
   }
 
   .mobileNavigation {
-    align-items: end;
-    backdrop-filter: blur(28px) saturate(150%);
-    background: linear-gradient(180deg, rgb(8 5 17 / 91%), rgb(4 3 10 / 98%));
-    border: 1px solid var(--border);
-    border-bottom: 0;
-    border-radius: 22px 22px 0 0;
-    bottom: 0;
-    box-shadow: 0 -16px 50px rgb(0 0 0 / 34%);
-    display: grid;
-    gap: 0.2rem;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    left: max(0.35rem, var(--ayin-safe-left));
-    padding: 0.48rem 0.45rem calc(0.5rem + var(--ayin-safe-bottom));
+    align-items: stretch;
+    background: rgb(5 3 13 / 98%);
+    border-block-start: 1px solid var(--border-strong);
+    display: flex;
+    gap: 2px;
+    inset-block-end: 0;
+    inset-inline: 0;
+    padding: 6px max(8px, var(--ayin-safe-right)) calc(6px + var(--ayin-safe-bottom))
+      max(8px, var(--ayin-safe-left));
     position: fixed;
-    right: max(0.35rem, var(--ayin-safe-right));
-    z-index: 60;
+    z-index: 50;
+  }
+
+  .mobileNavigation[data-mobile-visible="false"] {
+    display: none;
   }
 
   .mobileTab {
     align-items: center;
-    border: 1px solid transparent;
-    border-radius: 14px;
-    color: var(--muted);
+    border-radius: 8px;
+    color: var(--muted-strong);
     display: flex;
+    flex: 1 1 0;
     flex-direction: column;
-    font-size: 0.65rem;
-    font-weight: 740;
-    gap: 0.18rem;
+    font-size: 0.68rem;
+    font-weight: 650;
+    gap: 4px;
     justify-content: center;
-    min-height: 52px;
-    min-width: 0;
-    padding: 0.28rem 0.18rem;
+    min-block-size: 52px;
+    min-inline-size: 0;
+    padding: 5px 2px;
+    text-align: center;
     text-decoration: none;
   }
 
-  .mobileTabIcon {
-    align-items: center;
-    display: inline-flex;
-    height: 1.65rem;
-    justify-content: center;
-    width: 1.65rem;
+  .mobileTab[aria-current="page"] {
+    background: var(--brand-gradient-soft);
+    color: var(--foreground);
   }
 
-  .mobileTabActive {
-    background: rgb(139 24 248 / 9%);
-    border-color: rgb(220 25 232 / 16%);
-    color: white;
-  }
-
-  .mobileTabPrimary {
-    color: white;
-    transform: translateY(-0.18rem);
-  }
-
-  .mobileTabPrimary .mobileTabIcon {
-    background: var(--brand-gradient);
-    border: 1px solid rgb(255 255 255 / 20%);
-    border-radius: 999px;
-    box-shadow: 0 8px 26px rgb(139 24 248 / 30%);
-    height: 2.35rem;
-    width: 2.35rem;
+  .shell .footer {
+    padding-block-end: calc(100px + var(--ayin-safe-bottom));
   }
 }
 
-@media (max-width: 480px) {
-  .topbar {
-    padding-inline: max(0.85rem, var(--ayin-safe-left));
-  }
-
-  .brandMark {
-    height: 2.25rem;
-    width: 2.25rem;
-  }
-
-  .brandMark img {
-    height: 2.9rem;
-    width: 2.9rem;
-  }
-
-  .brandWord {
-    letter-spacing: 0.18em;
-  }
-
-  .mobileIconButton {
-    height: 42px;
-    width: 42px;
-  }
-
-  .mobileMenuPanel {
-    left: max(0.5rem, var(--ayin-safe-left));
-    right: max(0.5rem, var(--ayin-safe-right));
-  }
-
-  .mobileAccountGrid,
-  .mobileProductNavigation {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .announcement {
-    font-size: 0.8rem;
-    padding-inline: 0.9rem;
-  }
-}
-
-@media (max-width: 360px) {
+@media (max-width: 380px) {
   .brandWord {
     display: none;
   }
 
-  .mobileNavigation {
-    left: 0;
-    right: 0;
-  }
-
-  .mobileTab {
-    font-size: 0.6rem;
+  .joinAction {
+    font-size: 0.82rem;
+    padding-inline: 12px;
   }
 }
 
-@media (min-width: 1500px) and (min-height: 800px) {
-  .shell {
-    --shell-gutter: clamp(3rem, 4.2vw, 5.5rem);
-  }
+:global(html[data-tv-platform="tizen"]) .desktopNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="webos"]) .desktopNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="android-tv"]) .desktopNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="fire-tv"]) .desktopNavigation[data-tv-visible="true"] {
+  display: flex;
+}
 
+:global(html[data-tv-platform="tizen"]) .drawerProductNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="webos"]) .drawerProductNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="android-tv"]) .drawerProductNavigation[data-tv-visible="true"],
+:global(html[data-tv-platform="fire-tv"]) .drawerProductNavigation[data-tv-visible="true"] {
+  display: grid;
+}
+
+:global(html[data-tv-platform="tizen"]) .desktopNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="webos"]) .desktopNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="android-tv"]) .desktopNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="fire-tv"]) .desktopNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="tizen"]) .drawerProductNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="webos"]) .drawerProductNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="android-tv"]) .drawerProductNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="fire-tv"]) .drawerProductNavigation[data-tv-visible="false"],
+:global(html[data-tv-platform="tizen"]) .mobileNavigation,
+:global(html[data-tv-platform="webos"]) .mobileNavigation,
+:global(html[data-tv-platform="android-tv"]) .mobileNavigation,
+:global(html[data-tv-platform="fire-tv"]) .mobileNavigation {
+  display: none;
+}
+
+@media (min-width: 1600px) {
   .topbar {
-    min-height: 5.8rem;
-  }
-
-  .brandMark {
-    height: 3rem;
-    width: 3rem;
-  }
-
-  .brandMark img {
-    height: 3.8rem;
-    width: 3.8rem;
-  }
-
-  .brandWord {
-    font-size: 1.2rem;
+    min-block-size: 92px;
   }
 
   .navLink,
-  .channelAction,
   .joinAction {
     font-size: 1rem;
-  }
-
-  .content {
-    min-height: calc(100dvh - 5.8rem);
+    min-block-size: 48px;
   }
 }

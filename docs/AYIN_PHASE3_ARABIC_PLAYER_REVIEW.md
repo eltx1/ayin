@@ -1,0 +1,9 @@
+# Phase 3 Arabic player test reconciliation
+
+The gutter-repaired head `abc265830abe2fab00a047a464d790534819f040` passed quality `36503186475`, security `36503186608` and inventory `36503186590`. Browser `36503186532`, job `109198556678`, passed 58/59 tests, including all computed-gutter scenarios, but the existing Arabic Watch test failed its global CSS selector for Playback controls. No retry of the unchanged failed head was used as acceptance.
+
+Downloaded trace artifact `11006211487`; verified ZIP SHA-256 `ba2ff603b506b70039ecf584f8ac875050538258094d282c7ef8ec78cd306189`. Actual frame snapshots show a player inside `BODY > DIV[hidden][id="S:1"]` during streaming and the accessible player under the Viewer content/main. The accessible page snapshot contains one main and one named `Catalog E2E Feature player` region. The old document-wide CSS selector also matched the hidden streamed copy; it did not represent two simultaneously accessible players.
+
+The test now scopes controls through the unique accessible main and exact named player region, asserting one main, one player and one controls match. It retains visibility, Arabic document language/direction, mixed-title `dir=auto`, LTR media controls and all three Arabic social-action assertions. No `.first()`, suppression, skipped test, arbitrary sleep, runtime/player change or weaker duplicate-player acceptance is introduced. Targeted formatting and lint pass locally; final exact-head browser/quality/security/inventory acceptance remains required.
+
+Other log findings remain separate rather than falsely fixed by a selector change: concurrent default AdPlacement initialization produced a unique-key error in the IMA fixture; inspect and test its initialization semantics in the advertising phase. Deliberately unavailable fixture artwork and aborted prefetch streams are not evidence of production provider failure. The adopted dependency remediation and shared gutter correction remain intact.

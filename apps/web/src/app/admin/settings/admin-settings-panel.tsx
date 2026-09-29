@@ -162,12 +162,12 @@ export function AdminSettingsPanel() {
   }
 
   if (loading) {
-    return <main className={styles.shell}>Loading AYIN Admin settings…</main>;
+    return <div className={styles.shell}>Loading AYIN Admin settings…</div>;
   }
 
   if (denied) {
     return (
-      <main className={styles.shell}>
+      <div className={styles.shell}>
         <section className={styles.denied}>
           <p className={styles.eyebrow}>AYIN Admin</p>
           <h1>Administrator access required</h1>
@@ -176,12 +176,12 @@ export function AdminSettingsPanel() {
           </p>
           <Link href="/">Return to AYIN</Link>
         </section>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className={styles.shell}>
+    <div className={styles.shell}>
       <header className={styles.header}>
         <div>
           <p className={styles.eyebrow}>AYIN Admin</p>
@@ -303,6 +303,6 @@ export function AdminSettingsPanel() {
           </section>
         ))}
       </div>
-    </main>
+    </div>
   );
 }
