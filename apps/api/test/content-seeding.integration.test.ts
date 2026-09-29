@@ -124,7 +124,12 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     const waiting = await app.inject({
       method: "POST",
       url: `/admin/content-seeding/items/${item.id}/confirm-upload`,
-      headers: { cookie: admin.cookie },
+      headers: {
+        cookie: admin.cookie,
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      payload: "{}",
     });
     expect(waiting.statusCode).toBe(400);
     expect(waiting.json().error.code).toBe("SEED_VIDEO_PROCESSING");
@@ -172,7 +177,12 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     const confirm = await app.inject({
       method: "POST",
       url: `/admin/content-seeding/items/${item.id}/confirm-upload`,
-      headers: { cookie: admin.cookie },
+      headers: {
+        cookie: admin.cookie,
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      payload: "{}",
     });
     expect(confirm.statusCode).toBe(201);
     expect(confirm.json().status).toBe("READY");
@@ -180,10 +190,24 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     const publish = await app.inject({
       method: "POST",
       url: `/admin/content-seeding/items/${item.id}/publish`,
-      headers: { cookie: admin.cookie },
+      headers: {
+        cookie: admin.cookie,
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      payload: "{}",
     });
     expect(publish.statusCode).toBe(201);
     expect(publish.json().status).toBe("PUBLISHED");
+    expect(
+      await prisma.adminAuditLog.count({
+        where: {
+          actorAccountId: admin.user.account.id,
+          action: "CONTENT_SEED_ITEM_PUBLISHED",
+          entityId: item.video.id,
+        },
+      }),
+    ).toBe(1);
     expect(await prisma.playlistItem.count({ where: { videoId: item.video.id } })).toBe(1);
   });
 
@@ -239,10 +263,24 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     const rolledBack = await app.inject({
       method: "POST",
       url: `/admin/content-seeding/batches/${batch.id}/rollback`,
-      headers: { cookie: admin.cookie },
+      headers: {
+        cookie: admin.cookie,
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      payload: "{}",
     });
     expect(rolledBack.statusCode).toBe(201);
     expect(rolledBack.json().status).toBe("ROLLED_BACK");
+    expect(
+      await prisma.adminAuditLog.count({
+        where: {
+          actorAccountId: admin.user.account.id,
+          action: "CONTENT_SEED_BATCH_ROLLED_BACK",
+          entityId: batch.id,
+        },
+      }),
+    ).toBe(1);
     expect((await prisma.video.findUniqueOrThrow({ where: { id: item.video.id } })).status).toBe(
       "REMOVED",
     );

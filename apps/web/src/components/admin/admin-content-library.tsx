@@ -146,10 +146,12 @@ export function AdminContentLibrary({ requestedChannelId = "" }: { requestedChan
       await uploadPreparedVideoDirectly({ session, file, onProgress: setProgress });
       await adminApi(`/admin/content-seeding/items/${encodeURIComponent(item.id)}/confirm-upload`, {
         method: "POST",
+        body: JSON.stringify({}),
       });
       if (publishImmediately) {
         await adminApi(`/admin/content-seeding/items/${encodeURIComponent(item.id)}/publish`, {
           method: "POST",
+          body: JSON.stringify({}),
         });
       }
 
@@ -178,6 +180,7 @@ export function AdminContentLibrary({ requestedChannelId = "" }: { requestedChan
     try {
       await adminApi(`/admin/content-seeding/items/${encodeURIComponent(item.id)}/publish`, {
         method: "POST",
+        body: JSON.stringify({}),
       });
       setMessage(`Published “${item.video.title}”.`);
       await load();
@@ -200,6 +203,7 @@ export function AdminContentLibrary({ requestedChannelId = "" }: { requestedChan
     try {
       await adminApi(`/admin/content-seeding/batches/${encodeURIComponent(batch.id)}/rollback`, {
         method: "POST",
+        body: JSON.stringify({}),
       });
       setMessage(`Rolled back batch “${batch.sourceLabel}”.`);
       await load();
