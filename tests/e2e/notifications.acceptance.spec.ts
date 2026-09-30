@@ -80,7 +80,9 @@ test("notifications keep account ownership and uncertain mark-read writes recove
       await route.abort("failed");
     });
     await markRead.click();
-    await expect(main.getByText(/could not confirm whether this notification was marked read/i)).toBeVisible();
+    await expect(
+      main.getByText(/could not confirm whether this notification was marked read/i),
+    ).toBeVisible();
     await expect(markRead).toBeDisabled();
     expect(interceptedWrites).toBe(1);
 
