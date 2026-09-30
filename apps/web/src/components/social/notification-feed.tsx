@@ -129,11 +129,7 @@ export function NotificationFeed() {
   }
 
   if (loadState === "loading") {
-    return (
-      <StatusNotice announce="polite">
-        {t("notifications.loading")}
-      </StatusNotice>
-    );
+    return <StatusNotice announce="polite">{t("notifications.loading")}</StatusNotice>;
   }
 
   if (loadState === "error") {
