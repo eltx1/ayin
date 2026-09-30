@@ -142,7 +142,13 @@ export function NotificationFeed() {
         title={t("notifications.loadError")}
         description={t("notifications.description")}
         action={
-          <ActionButton type="button" tone="secondary" onClick={retry}>
+          <ActionButton
+            type="button"
+            tone="secondary"
+            data-tv-focusable="true"
+            data-tv-focus-id="notifications-retry"
+            onClick={retry}
+          >
             {t("notifications.retry")}
           </ActionButton>
         }
@@ -186,6 +192,8 @@ export function NotificationFeed() {
                 <ActionButton
                   type="button"
                   tone="secondary"
+                  data-tv-focusable="true"
+                  data-tv-focus-id={`notification-${item.id}-mark-read`}
                   pending={marking}
                   disabled={Boolean(markingId) || uncertain}
                   onClick={() => void markRead(item.id)}
@@ -200,7 +208,13 @@ export function NotificationFeed() {
 
       <div className={styles.footer}>
         {uncertainId ? (
-          <ActionButton type="button" tone="secondary" onClick={retry}>
+          <ActionButton
+            type="button"
+            tone="secondary"
+            data-tv-focusable="true"
+            data-tv-focus-id="notifications-refresh"
+            onClick={retry}
+          >
             {t("notifications.refresh")}
           </ActionButton>
         ) : null}
@@ -208,6 +222,8 @@ export function NotificationFeed() {
           <ActionButton
             type="button"
             tone="secondary"
+            data-tv-focusable="true"
+            data-tv-focus-id="notifications-load-more"
             pending={loadMorePending}
             disabled={loadMorePending}
             onClick={() => void loadMore()}
