@@ -32,7 +32,7 @@ Task 86 adds:
 - partial `video_public_feed_idx(publishedAt DESC, id DESC)` covering only PUBLISHED/PUBLIC/non-removed rows;
 - partial `media_asset_playable_video_idx(videoId)` covering only validated, non-removed MP4 source assets.
 
-These are deliberately partial rather than broad composite indexes: the first EXPLAIN run showed PostgreSQL preferred the existing broader indexes. The partial forms are smaller and match the actual hot-path predicates, and the regression test requires PostgreSQL to select them.
+These are deliberately partial rather than broad composite indexes: the first EXPLAIN run showed PostgreSQL preferred the existing broader indexes. The partial forms are smaller and match the actual hot-path predicates. CI proves the partial Video feed index is independently selectable and the complete discovery path remains index-backed. The complete semi-join is not required to start from one named Video index because PostgreSQL may validly begin with playable MediaAsset rows and use Video's primary key on small disposable fixtures.
 
 Home and My AYIN previously ran video-policy lookups once per discovery section. Task 86 batches all page video IDs and performs one policy/override batch for the whole response, removing that request-level N+1 pattern.
 
@@ -200,7 +200,8 @@ If `pg_stat_statements` is not installed/preloaded, AYIN remains fully functiona
 
 It verifies that:
 
-- public discovery can use the new Video and playable-media indexes;
+- the public Video feed query can use the new partial feed index;
+- the complete public discovery query remains index-backed and can use the playable-media index without prescribing a join order;
 - trending can use the recent-watch index;
 - revenue aggregation can use the channel/currency/time index;
 - existing search, analytics, media queue and moderation indexes remain present.
