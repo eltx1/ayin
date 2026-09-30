@@ -129,6 +129,8 @@ export const enMessages = {
   "common.current": "Current",
   "common.unavailable": "Unavailable",
   "common.noResults": "No results",
+  "network.offline": "You are offline. AYIN will reconnect when your network returns.",
+  "network.reconnected": "Back online.",
   "home.loadingAria": "Loading AYIN discovery",
   "home.loadError": "Could not load AYIN discovery.",
   "home.loadMoreError": "Could not load more right now.",

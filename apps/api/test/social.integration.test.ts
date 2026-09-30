@@ -132,6 +132,71 @@ databaseDescribe("Task 14 social graph", () => {
     ).toBe(409);
   });
 
+  it("paginates account notifications and scopes mark-read to their owner", async () => {
+    const owner = await register("Notification Owner", "task14-notifications@example.com");
+    const other = await register("Notification Other", "task14-notifications-other@example.com");
+    const createdAt = new Date("2026-09-30T12:00:00.000Z");
+    await prisma.notification.createMany({
+      data: Array.from({ length: 23 }, (_, index) => ({
+        accountId: owner.user.account.id,
+        type: "SYSTEM" as const,
+        title: `Notification ${String(index + 1).padStart(2, "0")}`,
+        body: index % 2 === 0 ? "A bounded notification fixture." : null,
+        createdAt: new Date(createdAt.getTime() + index * 1_000),
+      })),
+    });
+
+    const first = await app.inject({
+      method: "GET",
+      url: "/social/notifications?limit=20",
+      headers: { cookie: owner.cookie },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().items).toHaveLength(20);
+    expect(first.json().nextCursor).toBe(20);
+
+    const second = await app.inject({
+      method: "GET",
+      url: "/social/notifications?limit=20&cursor=20",
+      headers: { cookie: owner.cookie },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().items).toHaveLength(3);
+    expect(second.json().nextCursor).toBeNull();
+
+    const otherList = await app.inject({
+      method: "GET",
+      url: "/social/notifications",
+      headers: { cookie: other.cookie },
+    });
+    expect(otherList.statusCode).toBe(200);
+    expect(otherList.json().items).toEqual([]);
+
+    const notificationId = first.json().items[0].id as string;
+    const forbidden = await app.inject({
+      method: "PATCH",
+      url: `/social/notifications/${notificationId}/read`,
+      headers: { cookie: other.cookie },
+    });
+    expect(forbidden.statusCode).toBe(404);
+
+    const marked = await app.inject({
+      method: "PATCH",
+      url: `/social/notifications/${notificationId}/read`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(marked.statusCode).toBe(200);
+    expect(marked.json()).toEqual({ id: notificationId, read: true });
+    expect(
+      (
+        await prisma.notification.findUniqueOrThrow({
+          where: { id: notificationId },
+          select: { readAt: true },
+        })
+      ).readAt,
+    ).not.toBeNull();
+  });
+
   it("makes reactions and both saved lists idempotent and profile isolated", async () => {
     const owner = await register("Video Owner", "task14-video@example.com");
     const viewer = await register("Social Viewer", "task14-social@example.com");

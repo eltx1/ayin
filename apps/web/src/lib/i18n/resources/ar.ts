@@ -129,6 +129,8 @@ export const arMessages = {
   "common.current": "الحالية",
   "common.unavailable": "غير متاح",
   "common.noResults": "لا توجد نتائج",
+  "network.offline": "أنت غير متصل بالإنترنت. سيعاود AYIN الاتصال عند عودة الشبكة.",
+  "network.reconnected": "عاد الاتصال بالإنترنت.",
   "home.loadingAria": "جارٍ تحميل محتوى AYIN",
   "home.loadError": "تعذّر تحميل محتوى AYIN.",
   "home.loadMoreError": "تعذّر تحميل المزيد الآن.",
