@@ -75,6 +75,7 @@ test("notifications keep account ownership and uncertain mark-read writes recove
 
     let interceptedWrites = 0;
     await page.route(`${API}/social/notifications/${notificationId}/read`, async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
       interceptedWrites += 1;
       await route.abort("failed");
     });
@@ -104,6 +105,7 @@ test("notifications keep account ownership and uncertain mark-read writes recove
     await page.goto("/ar/notifications?lang=ar");
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     await expect(main.getByRole("heading", { level: 1, name: "الإشعارات" })).toBeVisible();
+    await expect(main.getByText("New subscriber", { exact: true })).toBeVisible();
 
     await page.evaluate(() => window.dispatchEvent(new Event("offline")));
     await expect(page.getByRole("status")).toContainText("أنت غير متصل بالإنترنت");

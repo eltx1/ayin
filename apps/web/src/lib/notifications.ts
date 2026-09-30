@@ -40,7 +40,7 @@ export function parseNotificationPage(value: unknown): NotificationPage {
   const nextCursor = page.nextCursor;
   if (
     nextCursor !== null &&
-    (!Number.isInteger(nextCursor) || typeof nextCursor !== "number" || nextCursor < 0)
+    (typeof nextCursor !== "number" || !Number.isInteger(nextCursor) || nextCursor < 0)
   ) {
     throw new Error("INVALID_NOTIFICATIONS");
   }
