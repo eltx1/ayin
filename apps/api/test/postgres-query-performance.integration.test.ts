@@ -40,6 +40,22 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
     await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe("SET LOCAL enable_seqscan = off");
 
+      // Prove the partial feed index is usable independently of PostgreSQL's valid
+      // semi-join reordering for the complete discovery query on small CI fixtures.
+      const videoFeed = await tx.$queryRawUnsafe<ExplainRow[]>(`
+        EXPLAIN (FORMAT JSON)
+        SELECT v."id"
+        FROM "Video" v
+        WHERE v."status" = 'PUBLISHED'
+          AND v."visibility" = 'PUBLIC'
+          AND v."removedAt" IS NULL
+        ORDER BY v."publishedAt" DESC, v."id" DESC
+        LIMIT 25
+      `);
+      const videoFeedPlan = planText(videoFeed);
+      expect(videoFeedPlan).not.toContain('"Node Type":"Seq Scan"');
+      expect(videoFeedPlan).toContain("video_public_feed_idx");
+
       const discovery = await tx.$queryRawUnsafe<ExplainRow[]>(`
         EXPLAIN (FORMAT JSON)
         SELECT v."id"
@@ -61,7 +77,6 @@ databaseDescribe("Task 86 PostgreSQL query-plan regressions", () => {
       `);
       const discoveryPlan = planText(discovery);
       expect(discoveryPlan).not.toContain('"Node Type":"Seq Scan"');
-      expect(discoveryPlan).toContain("video_public_feed_idx");
       expect(discoveryPlan).toContain("media_asset_playable_video_idx");
 
       const trending = await tx.$queryRawUnsafe<ExplainRow[]>(`
