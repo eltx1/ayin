@@ -52,7 +52,7 @@ export function resolvePersistedTvFocusIndex(
   if (legacy >= 0) return legacy;
 
   if (!saved.startsWith("named:")) return -1;
-  const encoded = saved.slice("named:".length).split(":occurrence:", 1)[0];
+  const encoded = saved.slice("named:".length).split(":occurrence:", 1)[0] ?? "";
   try {
     const rawId = decodeURIComponent(encoded);
     // If a previously duplicated target becomes unique, keep the same semantic target.
