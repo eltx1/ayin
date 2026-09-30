@@ -8,9 +8,7 @@ function namedKey(rawId: string, occurrence: number) {
   return `named:${encodeURIComponent(rawId)}:occurrence:${occurrence}`;
 }
 
-export function buildTvFocusIdentities(
-  rawIds: readonly (string | undefined)[],
-): TvFocusIdentity[] {
+export function buildTvFocusIdentities(rawIds: readonly (string | undefined)[]): TvFocusIdentity[] {
   const totals = new Map<string, number>();
   for (const rawId of rawIds) {
     if (!rawId) continue;
