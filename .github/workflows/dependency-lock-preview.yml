@@ -1,0 +1,41 @@
+name: Dependency lock preview
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/package.json"
+      - "apps/api/package.json"
+      - ".github/workflows/dependency-lock-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Generate compatible lockfile
+        run: pnpm install --lockfile-only --no-frozen-lockfile
+      - name: Verify patched production graph
+        run: pnpm audit --prod --audit-level high
+      - name: Verify generated lockfile installs
+        run: pnpm install --frozen-lockfile
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: ayin-patched-lockfile
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 1
