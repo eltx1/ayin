@@ -3,6 +3,8 @@
 import { directionFromKey, findNextFocusTarget, type FocusTarget } from "@ayin/ui";
 import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useRef } from "react";
 
+import { buildTvFocusIdentities, resolvePersistedTvFocusIndex } from "@/lib/tv-focus-identity";
+
 interface TvFocusScopeProperties {
   children: ReactNode;
   className?: string | undefined;
@@ -30,8 +32,17 @@ function visibleFocusableElements(root: HTMLElement): HTMLElement[] {
   });
 }
 
-function focusId(element: HTMLElement, index: number): string {
-  return element.dataset.tvFocusId ?? `auto-${index}`;
+function focusEntries(root: HTMLElement) {
+  const elements = visibleFocusableElements(root);
+  return {
+    elements,
+    identities: buildTvFocusIdentities(elements.map((element) => element.dataset.tvFocusId)),
+  };
+}
+
+function focusScope(root: HTMLElement, target: Element | null): HTMLElement {
+  const modal = target?.closest<HTMLDialogElement>("dialog[open]");
+  return modal && root.contains(modal) ? modal : root;
 }
 
 export function TvFocusScope({ children, className }: TvFocusScopeProperties) {
@@ -48,8 +59,13 @@ export function TvFocusScope({ children, className }: TvFocusScopeProperties) {
       if (!(target instanceof HTMLElement) || !target.dataset.tvFocusId) {
         return;
       }
+      const scope = focusScope(root, target);
+      const { elements, identities } = focusEntries(scope);
+      const targetIndex = elements.indexOf(target);
+      const persistenceId = targetIndex >= 0 ? identities[targetIndex]?.persistenceId : null;
+      if (!persistenceId) return;
       try {
-        window.sessionStorage.setItem("ayin:last-tv-focus", target.dataset.tvFocusId);
+        window.sessionStorage.setItem("ayin:last-tv-focus", persistenceId);
       } catch {
         // Focus persistence is a convenience only; navigation must work without storage access.
       }
@@ -70,10 +86,9 @@ export function TvFocusScope({ children, className }: TvFocusScopeProperties) {
       if (!saved) {
         return;
       }
-      const match = visibleFocusableElements(root).find(
-        (element) => element.dataset.tvFocusId === saved,
-      );
-      match?.focus({ preventScroll: true });
+      const { elements, identities } = focusEntries(root);
+      const savedIndex = resolvePersistedTvFocusIndex(identities, saved);
+      elements[savedIndex]?.focus({ preventScroll: true });
     });
 
     return () => {
@@ -99,13 +114,9 @@ export function TvFocusScope({ children, className }: TvFocusScopeProperties) {
     if (!root) {
       return;
     }
-    const modal =
-      event.target instanceof Element
-        ? event.target.closest<HTMLDialogElement>("dialog[open]")
-        : null;
     // A geometric target behind a modal remains visible but must never receive focus.
-    const scope = modal && root.contains(modal) ? modal : root;
-    const elements = visibleFocusableElements(scope);
+    const scope = focusScope(root, event.target instanceof Element ? event.target : null);
+    const { elements, identities } = focusEntries(scope);
     if (elements.length === 0) {
       return;
     }
@@ -121,7 +132,7 @@ export function TvFocusScope({ children, className }: TvFocusScopeProperties) {
     const targets: FocusTarget[] = elements.map((element, index) => {
       const rect = element.getBoundingClientRect();
       return {
-        id: focusId(element, index),
+        id: identities[index]!.navigationId,
         rect: {
           left: rect.left,
           right: rect.right,
@@ -130,7 +141,7 @@ export function TvFocusScope({ children, className }: TvFocusScopeProperties) {
         },
       };
     });
-    const currentId = focusId(elements[currentIndex]!, currentIndex);
+    const currentId = identities[currentIndex]!.navigationId;
     const next = findNextFocusTarget(targets, currentId, direction);
     if (!next) {
       return;

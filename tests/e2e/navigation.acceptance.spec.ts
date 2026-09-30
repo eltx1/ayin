@@ -209,6 +209,46 @@ test("navigation dialog contains keyboard/remote focus and restores its trigger"
   expect(page.url()).toBe(before);
 });
 
+test("TV geometry keeps repeated semantic focus IDs distinct", async ({ page }) => {
+  await navigationFixture(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/browse?lang=en");
+
+  const links = page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link");
+  await expect(links).toHaveCount(5);
+  await links.nth(0).evaluate((element) => {
+    element.dataset.tvFocusId = "duplicate-media";
+    element.style.position = "fixed";
+    element.style.left = "40px";
+    element.style.top = "220px";
+  });
+  await links.nth(1).evaluate((element) => {
+    element.dataset.tvFocusId = "duplicate-media";
+    element.style.position = "fixed";
+    element.style.left = "40px";
+    element.style.top = "520px";
+  });
+  await links.nth(2).evaluate((element) => {
+    element.dataset.tvFocusId = "target-top";
+    element.style.position = "fixed";
+    element.style.left = "320px";
+    element.style.top = "220px";
+  });
+  await links.nth(3).evaluate((element) => {
+    element.dataset.tvFocusId = "target-bottom";
+    element.style.position = "fixed";
+    element.style.left = "320px";
+    element.style.top = "520px";
+  });
+
+  await links.nth(1).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(links.nth(3)).toBeFocused();
+
+  const stored = await page.evaluate(() => window.sessionStorage.getItem("ayin:last-tv-focus"));
+  expect(stored).not.toBe("duplicate-media");
+});
+
 test("Studio keeps direct upload and grouped paths while finance Admin stays server restricted", async ({
   page,
 }, testInfo) => {
