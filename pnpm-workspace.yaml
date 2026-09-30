@@ -11,6 +11,7 @@ allowBuilds:
   unrs-resolver: true
 
 overrides:
+  fastify: 5.12.5
   deepmerge-ts: 8.0.0
   mysql2: 3.22.0
   "fast-uri@>=3.0.0 <3.1.8": 3.1.8

@@ -30,7 +30,8 @@ jobs:
           pnpm install --lockfile-only --no-frozen-lockfile
           pnpm audit --prod --audit-level high
           pnpm install --frozen-lockfile
-          test "$(pnpm list -r fastify --depth -1 --json | grep -c '5.12.5')" -ge 1
+          grep -q '^  fastify@5.12.5:' pnpm-lock.yaml
+          ! grep -q '^  fastify@5.12.4:' pnpm-lock.yaml
       - name: Commit lockfile only
         shell: bash
         run: |
