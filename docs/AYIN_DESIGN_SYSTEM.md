@@ -70,10 +70,19 @@ The editor dictionary uses existing locale/context/interpolation through a route
 
 Final reviewed source2ebc0c1 passed all exact-head quality/security/browser/inventory gates and author-side review5356461735. Actual image review found a mobile Arabic tab clipped despite no document overflow. Mobile tabs now wrap labels without changing manual activation; tests assert the tablist and each button/text bounds plus44px minimum targets. A selected video owns one h1, and breadcrumbs omit identical translated group/page labels while preserving distinct groups and actual localized links. Final four new images were inspected from verified artifact11052800099. A settled, viewport-contained disabled-action capture confirms readable text; no speculative opacity/style workaround was introduced. Local250 tests/54files and build passed. Final docs/merge/deployment remain explicitly separate in the checkpoint.
 
-## Phase4D candidate — native decision dialogs
+## Accepted Phase4D — native decision dialogs
 
 `ConfirmationDialog` is a client decision-only leaf using native dialog, existing ActionButton and AYIN tokens. Closed instances render nothing. Open instances label their title/description, initially focus Cancel, wrap Tab at boundaries, cancel on Escape/focused-modal remote Back and settle once. The consumer must close the dialog and owns any mutation; the component never retries or changes permissions. Busy native actions cannot submit. Cancellation restores a visible connected origin; accepted actions hand focus/navigation to the consumer.
 
 `dialog-focus.ts` is shared with NavigationDialog and excludes disabled/hidden/inert/negative-tabindex controls. A focused confirmation above navigation consumes remote Back first. Actual adoption is Studio content discard, same-tab link departure, remove and unpublish. Existing pending/caption/uncertain-state/server guards remain. Route-local EN/AR labels avoid global dictionary inflation. Native beforeunload is retained, but same-document history and mobile delivery limitations are not falsely certified.
 
-Local264 Web tests and production/type/lint/format checks pass; new browser/visual/CI acceptance is pending. See [Phase4D evidence](AYIN_PHASE4D_EVIDENCE.md). This is not complete Phase4 or global Admin/PWA/device acceptance.
+Local264 Web tests and production/type/lint/format checks passed. Final quality36646275205, security36646275139, browser36646275094 and inventory36646275114 passed; reviewed visuals and production deployment are recorded in the master checkpoint and #148 release record. See [Phase4D evidence](AYIN_PHASE4D_EVIDENCE.md). This is not complete Phase4 or global Admin/PWA/device acceptance.
+
+
+## Phase4E candidate — duplicate-safe TV focus identities
+
+TV focus attributes remain semantic hints and are no longer assumed globally unique. `TvFocusScope` derives occurrence-aware navigation IDs before geometric ranking, preventing a repeated media/card identity from causing the first DOM occurrence to masquerade as the current target. Persistence uses the same occurrence-aware identity only when necessary; legacy raw values still resolve, and a saved duplicate occurrence can fall back to its semantic target if later data renders one copy.
+
+The fix is systemic rather than page-specific: cards, navigation, dialogs and future focusable surfaces do not need synthetic per-page IDs merely to satisfy the geometry algorithm. Unnamed elements remain local automatic targets and are not persisted. Modal scope containment from Phase4D remains unchanged.
+
+Pure tests and a real browser geometry regression cover the failure. The implementation also surfaced and corrected a separate Task86 EXPLAIN test assumption without changing PostgreSQL production queries or indexes. Final merge/deployment evidence belongs in the master checkpoint after the closing documentation head passes its applicable gates.
