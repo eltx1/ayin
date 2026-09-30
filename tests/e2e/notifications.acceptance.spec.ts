@@ -112,7 +112,14 @@ test("notifications keep account ownership and uncertain mark-read writes recove
     await page.evaluate(() => window.dispatchEvent(new Event("offline")));
     await expect(page.getByRole("status")).toContainText("أنت غير متصل بالإنترنت");
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
-    await expect(page.getByRole("status")).toContainText("عاد الاتصال بالإنترنت");
+    const networkStatus = page.getByRole("status");
+    await expect(networkStatus).toContainText("عاد الاتصال بالإنترنت");
+    const bannerBox = await networkStatus.boundingBox();
+    expect(bannerBox).not.toBeNull();
+    expect(bannerBox!.x).toBeGreaterThanOrEqual(0);
+    expect(bannerBox!.x + bannerBox!.width).toBeLessThanOrEqual(390);
+    expect(bannerBox!.y).toBeGreaterThanOrEqual(0);
+    expect(bannerBox!.y + bannerBox!.height).toBeLessThanOrEqual(844);
 
     await expect
       .poll(() =>
