@@ -34,7 +34,11 @@ function isNotificationItem(value: unknown): value is NotificationItem {
 export function parseNotificationPage(value: unknown): NotificationPage {
   if (!value || typeof value !== "object") throw new Error("INVALID_NOTIFICATIONS");
   const page = value as Record<string, unknown>;
-  if (!Array.isArray(page.items) || page.items.length > 50 || !page.items.every(isNotificationItem)) {
+  if (
+    !Array.isArray(page.items) ||
+    page.items.length > 50 ||
+    !page.items.every(isNotificationItem)
+  ) {
     throw new Error("INVALID_NOTIFICATIONS");
   }
   const nextCursor = page.nextCursor;
