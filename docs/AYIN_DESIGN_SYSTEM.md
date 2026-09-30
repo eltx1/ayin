@@ -78,7 +78,6 @@ Final reviewed source2ebc0c1 passed all exact-head quality/security/browser/inve
 
 Local264 Web tests and production/type/lint/format checks passed. Final quality36646275205, security36646275139, browser36646275094 and inventory36646275114 passed; reviewed visuals and production deployment are recorded in the master checkpoint and #148 release record. See [Phase4D evidence](AYIN_PHASE4D_EVIDENCE.md). This is not complete Phase4 or global Admin/PWA/device acceptance.
 
-
 ## Phase4E candidate — duplicate-safe TV focus identities
 
 TV focus attributes remain semantic hints and are no longer assumed globally unique. `TvFocusScope` derives occurrence-aware navigation IDs before geometric ranking, preventing a repeated media/card identity from causing the first DOM occurrence to masquerade as the current target. Persistence uses the same occurrence-aware identity only when necessary; legacy raw values still resolve, and a saved duplicate occurrence can fall back to its semantic target if later data renders one copy.
