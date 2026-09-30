@@ -14,6 +14,9 @@ describe("TV focus identities", () => {
     expect(identities[0]?.persistenceId).not.toBe(identities[1]?.persistenceId);
     expect(new Set(identities.map((identity) => identity.navigationId)).size).toBe(3);
     expect(resolvePersistedTvFocusIndex(identities, identities[1]!.persistenceId!)).toBe(1);
+
+    const laterUnique = buildTvFocusIdentities(["media-poster-same-title", "next-card"]);
+    expect(resolvePersistedTvFocusIndex(laterUnique, identities[1]!.persistenceId!)).toBe(0);
   });
 
   it("keeps unique named persistence stable and supports legacy stored values", () => {

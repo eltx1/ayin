@@ -48,5 +48,16 @@ export function resolvePersistedTvFocusIndex(
   if (exact >= 0) return exact;
 
   // Compatibility with focus values written before duplicate identities were namespaced.
-  return identities.findIndex((identity) => identity.legacyId === saved);
+  const legacy = identities.findIndex((identity) => identity.legacyId === saved);
+  if (legacy >= 0) return legacy;
+
+  if (!saved.startsWith("named:")) return -1;
+  const encoded = saved.slice("named:".length).split(":occurrence:", 1)[0];
+  try {
+    const rawId = decodeURIComponent(encoded);
+    // If a previously duplicated target becomes unique, keep the same semantic target.
+    return identities.findIndex((identity) => identity.legacyId === rawId);
+  } catch {
+    return -1;
+  }
 }
