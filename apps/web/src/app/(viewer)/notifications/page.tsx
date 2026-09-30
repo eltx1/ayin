@@ -1,17 +1,30 @@
 import type { Metadata } from "next";
 
 import { NotificationFeed } from "@/components/social/notification-feed";
+import { PageHeader } from "@/components/ui/design-system";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translateNotification } from "@/lib/i18n/notifications";
 import { metadataRobots } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Notifications",
-  robots: metadataRobots(false),
-};
+import styles from "./notifications.module.css";
 
-export default function NotificationsPage() {
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getRequestLocale();
+  return {
+    title: translateNotification(locale, "notifications.title"),
+    robots: metadataRobots(false),
+  };
+}
+
+export default async function NotificationsPage() {
+  const locale = await getRequestLocale();
   return (
-    <main style={{ maxWidth: "900px", margin: "0 auto", padding: "clamp(1rem, 4vw, 3rem)" }}>
-      <h1>Notifications</h1>
+    <main className={styles.page}>
+      <PageHeader
+        eyebrow={translateNotification(locale, "notifications.eyebrow")}
+        title={translateNotification(locale, "notifications.title")}
+        description={translateNotification(locale, "notifications.description")}
+      />
       <NotificationFeed />
     </main>
   );
