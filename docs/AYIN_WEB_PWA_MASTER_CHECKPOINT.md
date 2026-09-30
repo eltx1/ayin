@@ -42,7 +42,6 @@ Restored artifact11066390162, ZIP SHA256 `0b9796dcbebe5aea117db81c4bd31095e33a85
 
 **Rollback:** revert only this presentation/decision change through validated deployment; retain previous security/locale/JSON fixes and server records. No DB rollback or automatic mutation replay.
 
-
 ## Current Phase4E — TV focus identity hardening
 
 **Start:** accepted/deployed main `1b864a3949fe10fa99aa58b80e130db26bd35e5b`. **Branch/PR:** `web-pwa-phase-4e-tv-focus-identity`, #149. **Reviewed implementation head:** `14ba142e7449b18594b5ac7355600ed5b4d305eb`. Ending merge/deployment is pending final documentation-head checks.
