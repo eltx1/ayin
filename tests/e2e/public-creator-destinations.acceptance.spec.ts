@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const API = "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
@@ -17,11 +17,7 @@ function db<T>(command: string, payload: Record<string, unknown> = {}): T {
   ) as T;
 }
 
-async function register(
-  page: Parameters<typeof test>[0] extends never ? never : any,
-  label: string,
-  email: string,
-) {
+async function register(page: Page, label: string, email: string) {
   const response = await page.request.post(`${API}/auth/register`, {
     data: { name: label, email, password: "strong-pass-123" },
     headers: { origin: WEB },
@@ -36,7 +32,7 @@ async function register(
   };
 }
 
-async function publishVideo(page: any, channelId: string, title: string) {
+async function publishVideo(page: Page, channelId: string, title: string) {
   const draftResponse = await page.request.post(`${API}/creator/videos/drafts`, {
     data: {
       channelId,
@@ -119,7 +115,7 @@ test("public channel and playlist use real localized destinations and durable ha
   await page.goto(
     `/c/${registration.user.channel.handle}/playlists/${playlist.slug}?lang=en`,
   );
-  const main = page.getByRole("main");
+  const main = page.locator("main:visible");
   await expect(main.getByRole("heading", { level: 1, name: "Phase5D Picks" })).toBeVisible();
   await expect(main.getByText("1 video", { exact: true })).toBeVisible();
   await expect(main.getByRole("link", { name: /Phase5D Public Film/ })).toHaveAttribute(
@@ -162,7 +158,7 @@ test("public channel and playlist use real localized destinations and durable ha
   );
   expect(updated.ok()).toBe(true);
   const redirect = await page.request.get(
-    `/ar/c/${oldHandle}/playlists/${playlist.slug}?lang=ar`,
+    `${WEB}/ar/c/${oldHandle}/playlists/${playlist.slug}?lang=ar`,
     { maxRedirects: 0 },
   );
   expect(redirect.status()).toBe(308);
@@ -180,7 +176,7 @@ test("Creator TV localizes off-air recovery without changing playback state", as
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/ar/c/${handle}/tv?lang=ar`);
-  const main = page.getByRole("main");
+  const main = page.locator("main:visible");
   await expect(main.getByRole("heading", { level: 1, name: registration.user.creatorTv.name })).toBeVisible();
   await expect(
     main.getByRole("heading", { level: 2, name: "تبدأ البرمجة مع أول فيديو مؤهل" }),
