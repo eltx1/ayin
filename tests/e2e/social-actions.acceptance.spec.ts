@@ -65,7 +65,9 @@ test("subscription and video actions reconcile uncertain writes without blind re
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/c/${handle}?lang=en`);
   const main = page.getByRole("main");
-  await expect(main.getByText("Subscription status could not be loaded.", { exact: true })).toBeVisible();
+  await expect(
+    main.getByText("Subscription status could not be loaded.", { exact: true }),
+  ).toBeVisible();
   const subscriptionButton = main.getByRole("button", { name: /Retry subscription/ });
   await expect(subscriptionButton).toBeVisible();
 
@@ -83,9 +85,7 @@ test("subscription and video actions reconcile uncertain writes without blind re
   });
 
   await main.getByRole("button", { name: /Subscribe · 0/ }).click();
-  await expect(
-    main.getByText(/could not confirm that subscription change/i),
-  ).toBeVisible();
+  await expect(main.getByText(/could not confirm that subscription change/i)).toBeVisible();
   expect(subscriptionWrites).toBe(1);
 
   await page.unroute(subscriptionUrl);
@@ -106,8 +106,12 @@ test("subscription and video actions reconcile uncertain writes without blind re
   });
 
   await page.goto(`/watch/${video.slug}?lang=en`);
-  await expect(main.getByText("Your video actions could not be loaded.", { exact: true })).toBeVisible();
-  await expect(main.getByRole("button", { name: "Retry video actions", exact: true })).toBeVisible();
+  await expect(
+    main.getByText("Your video actions could not be loaded.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    main.getByRole("button", { name: "Retry video actions", exact: true }),
+  ).toBeVisible();
 
   videoReadFails = false;
   await main.getByRole("button", { name: "Retry video actions", exact: true }).click();
@@ -141,16 +145,20 @@ test("subscription and video actions reconcile uncertain writes without blind re
   await expect(main.getByRole("button", { name: "In My List", exact: true })).toBeVisible();
   expect(reactionWrites).toBe(1);
 
-  expect(db<{ reactions: number; subscriptions: number }>("social-counts", {
-    channelId: video.channelId,
-    videoId: video.id,
-  })).toMatchObject({ reactions: 1, subscriptions: 1 });
+  expect(
+    db<{ reactions: number; subscriptions: number }>("social-counts", {
+      channelId: video.channelId,
+      videoId: video.id,
+    }),
+  ).toMatchObject({ reactions: 1, subscriptions: 1 });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/ar/watch/${video.slug}?lang=ar`);
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(main.getByRole("button", { pressed: true, name: /إعجاب/ })).toBeVisible();
-  await expect(main.getByRole("button", { name: "مضاف للمشاهدة لاحقًا", exact: true })).toBeVisible();
+  await expect(
+    main.getByRole("button", { name: "مضاف للمشاهدة لاحقًا", exact: true }),
+  ).toBeVisible();
   await expect(main.getByRole("button", { name: "مضاف إلى قائمتي", exact: true })).toBeVisible();
   await noOverflow(page);
   await page.screenshot({

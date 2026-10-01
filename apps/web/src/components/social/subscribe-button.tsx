@@ -8,10 +8,7 @@ import { StatusNotice } from "@/components/ui/design-system";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 import { translateSocialAction } from "@/lib/i18n/social-actions";
-import {
-  parseChannelSocialState,
-  type ChannelSocialState,
-} from "@/lib/social-action-contracts";
+import { parseChannelSocialState, type ChannelSocialState } from "@/lib/social-action-contracts";
 
 import feedbackStyles from "./social-action-feedback.module.css";
 
@@ -80,7 +77,11 @@ export function SubscribeButton({
         };
       })
       .then((result) => {
-        if (!result || controller.signal.aborted || currentChannelId.current !== requestedChannelId) {
+        if (
+          !result ||
+          controller.signal.aborted ||
+          currentChannelId.current !== requestedChannelId
+        ) {
           return;
         }
         setSnapshot({ channelId: requestedChannelId, ...result });

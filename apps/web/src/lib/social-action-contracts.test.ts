@@ -46,9 +46,9 @@ describe("social action response contracts", () => {
     expect(parseSavedMutation({ list: "watch-later", saved: true }, "watch-later", true)).toEqual({
       saved: true,
     });
-    expect(() =>
-      parseSavedMutation({ list: "my-list", saved: true }, "watch-later", true),
-    ).toThrow("INVALID_SOCIAL_RESPONSE");
+    expect(() => parseSavedMutation({ list: "my-list", saved: true }, "watch-later", true)).toThrow(
+      "INVALID_SOCIAL_RESPONSE",
+    );
     expect(() =>
       parseSavedMutation({ list: "watch-later", saved: false }, "watch-later", true),
     ).toThrow("INVALID_SOCIAL_RESPONSE");

@@ -115,12 +115,7 @@ export function VideoSocialActions({
     );
   }
 
-  async function request(
-    action: string,
-    path: string,
-    method: "PUT" | "DELETE",
-    body?: object,
-  ) {
+  async function request(action: string, path: string, method: "PUT" | "DELETE", body?: object) {
     if (!requireReady()) return null;
     const requestedVideoId = videoId;
     let handedToCaller = false;
