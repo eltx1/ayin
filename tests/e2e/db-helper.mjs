@@ -173,6 +173,132 @@ try {
       result = { eligibleIds: eligible.map((video) => video.id), ordinaryId: ordinary.id };
       break;
     }
+    case "seed-my-ayin-lens": {
+      const account = await prisma.account.findUniqueOrThrow({
+        where: { email: payload.email },
+        include: { viewerProfiles: true },
+      });
+      const profile =
+        account.viewerProfiles.find((candidate) => candidate.isDefault) ?? account.viewerProfiles[0];
+      if (!profile) throw new Error("Expected a viewer profile.");
+
+      const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const activityChannel = await prisma.channel.create({
+        data: {
+          handle: `my-ayin-activity-${suffix}`,
+          name: "Library Fixture Creator",
+          status: "ACTIVE",
+        },
+      });
+      const lensChannel = await prisma.channel.create({
+        data: {
+          handle: `lens-recommendation-${suffix}`,
+          name: "Lens Fixture Creator",
+          status: "ACTIVE",
+        },
+      });
+
+      async function playable(channelId, slug, title, publishedAt) {
+        const video = await prisma.video.create({
+          data: {
+            channelId,
+            slug,
+            title,
+            status: "PUBLISHED",
+            visibility: "PUBLIC",
+            durationMs: 180_000,
+            publishedAt,
+          },
+        });
+        await prisma.mediaAsset.create({
+          data: {
+            videoId: video.id,
+            channelId,
+            kind: "SOURCE_VIDEO",
+            status: "VALIDATED",
+            r2ObjectKey: `e2e/my-ayin-lens/${video.id}/canonical.mp4`,
+            mimeType: "video/mp4",
+            sizeBytes: 2048n,
+            durationMs: 180_000,
+            width: 1280,
+            height: 720,
+          },
+        });
+        return video;
+      }
+
+      const now = Date.now();
+      const activity = await playable(
+        activityChannel.id,
+        `my-ayin-activity-${suffix}`,
+        "My AYIN Activity Fixture",
+        new Date(now - 60_000),
+      );
+      const recommendation = await playable(
+        lensChannel.id,
+        `lens-recommendation-${suffix}`,
+        "Lens Recommendation Fixture",
+        new Date(now),
+      );
+
+      await prisma.$transaction([
+        prisma.watchProgress.create({
+          data: {
+            profileId: profile.id,
+            videoId: activity.id,
+            positionMs: 61_000,
+            lastWatchedAt: new Date(now),
+          },
+        }),
+        prisma.watchHistory.create({
+          data: {
+            profileId: profile.id,
+            videoId: activity.id,
+            firstWatchedAt: new Date(now - 120_000),
+            lastWatchedAt: new Date(now),
+            viewCount: 2,
+          },
+        }),
+        prisma.reaction.create({
+          data: { profileId: profile.id, videoId: activity.id, type: "LIKE" },
+        }),
+        prisma.subscription.create({
+          data: { profileId: profile.id, channelId: lensChannel.id },
+        }),
+      ]);
+
+      result = {
+        profileId: profile.id,
+        activityVideoId: activity.id,
+        activitySlug: activity.slug,
+        recommendationVideoId: recommendation.id,
+        recommendationSlug: recommendation.slug,
+        recommendationChannelId: lensChannel.id,
+        recommendationHandle: lensChannel.handle,
+      };
+      break;
+    }
+    case "my-ayin-lens-evidence": {
+      const account = await prisma.account.findUniqueOrThrow({
+        where: { email: payload.email },
+        include: { viewerProfiles: true },
+      });
+      const profile =
+        account.viewerProfiles.find((candidate) => candidate.isDefault) ?? account.viewerProfiles[0];
+      if (!profile) throw new Error("Expected a viewer profile.");
+      result = {
+        feedback: await prisma.recommendationFeedback.findMany({
+          where: { profileId: profile.id },
+          orderBy: { createdAt: "asc" },
+          select: { videoId: true, type: true },
+        }),
+        state: await prisma.recommendationProfileState.findUnique({
+          where: { profileId: profile.id },
+          select: { resetAt: true },
+        }),
+      };
+      break;
+    }
     case "configure-hls-playback": {
       const enabled = payload.enabled !== false;
       await prisma.featureFlag.upsert({
