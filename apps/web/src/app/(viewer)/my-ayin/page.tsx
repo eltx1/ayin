@@ -23,19 +23,20 @@ export default async function MyAyinPage() {
 
   return (
     <main className={styles.page}>
-      <PageHeader
-        className={styles.hero}
-        eyebrow={t("myAyin.eyebrow")}
-        title={t("myAyin.title")}
-        description={t("myAyin.description")}
-        actions={
-          <ActionLink tone="secondary" href={localizeInternalHref("/my-ayin/lens", locale)}>
-            {t("myAyin.lens")}
-          </ActionLink>
-        }
-      >
-        <p className={styles.lensHint}>{t("myAyin.lensDescription")}</p>
-      </PageHeader>
+      <div className={styles.hero}>
+        <PageHeader
+          eyebrow={t("myAyin.eyebrow")}
+          title={t("myAyin.title")}
+          description={t("myAyin.description")}
+          actions={
+            <ActionLink tone="secondary" href={localizeInternalHref("/my-ayin/lens", locale)}>
+              {t("myAyin.lens")}
+            </ActionLink>
+          }
+        >
+          <p className={styles.lensHint}>{t("myAyin.lensDescription")}</p>
+        </PageHeader>
+      </div>
       <MyAyinLibrary />
     </main>
   );
