@@ -1,0 +1,13 @@
+.page {
+  margin-inline: auto;
+  max-inline-size: 1120px;
+  padding: clamp(2.5rem, 5vw, 5rem) var(--page-gutter) clamp(6rem, 9vw, 9rem);
+}
+
+.hero {
+  margin-block-end: var(--space-7);
+}
+
+.feed {
+  min-inline-size: 0;
+}
