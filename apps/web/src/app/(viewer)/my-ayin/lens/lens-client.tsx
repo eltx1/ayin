@@ -72,10 +72,6 @@ export function AyinLensClient() {
         setData(next);
         setState("ready");
         setUncertain(null);
-        if (focusAfterLoad.current) {
-          focusAfterLoad.current = false;
-          focusLensControl("lens-reset");
-        }
         trackAnalyticsEvent("LENS_OPEN", { profileId: next.profileId });
         for (const item of next.items) {
           trackAnalyticsEvent("RECOMMENDATION_IMPRESSION", {
@@ -166,6 +162,12 @@ export function AyinLensClient() {
       setPending(null);
     }
   }
+
+  useEffect(() => {
+    if (state !== "ready" || !data || !focusAfterLoad.current) return;
+    focusAfterLoad.current = false;
+    focusLensControl("lens-reset");
+  }, [data, state]);
 
   useEffect(() => {
     if (uncertain) focusLensControl("lens-refresh");
