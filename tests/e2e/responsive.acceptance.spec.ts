@@ -26,7 +26,9 @@ async function expectNoDocumentOverflow(page: Page, route: string): Promise<void
   await page.evaluate(async () => {
     if ("fonts" in document) await document.fonts.ready;
   });
-  await page.waitForLoadState("networkidle");
+  // Background media/API requests may legitimately outlive first paint; overflow acceptance
+  // depends on visible layout settling, not a global network-idle condition.
+  await page.waitForTimeout(250);
   // Sample settled dynamic content, not only the empty loading shell.
   for (let sample = 0; sample < 5; sample += 1) {
     const dimensions = await page.evaluate(() => ({

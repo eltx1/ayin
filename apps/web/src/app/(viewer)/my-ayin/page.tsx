@@ -1,18 +1,42 @@
+import type { Metadata } from "next";
+
 import { MyAyinLibrary } from "@/components/discovery/my-ayin-library";
+import { ActionLink, PageHeader } from "@/components/ui/design-system";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { localizeInternalHref } from "@/lib/i18n/routing";
+import { translateMyAyin } from "@/lib/i18n/my-ayin-copy";
+import { metadataRobots } from "@/lib/seo";
 
-import styles from "@/components/discovery/discovery.module.css";
+import styles from "./my-ayin.module.css";
 
-export default function MyAyinPage() {
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getRequestLocale();
+  return {
+    title: translateMyAyin(locale, "myAyin.metaTitle"),
+    robots: metadataRobots(false),
+  };
+}
+
+export default async function MyAyinPage() {
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translateMyAyin>[1]) => translateMyAyin(locale, key);
+
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <p>YOUR LIBRARY</p>
-        <h1>My AYIN</h1>
-        <p>
-          Pick up where you left off, revisit your history, and keep your real saved AYIN activity
-          in one place.
-        </p>
-      </header>
+      <div className={styles.hero}>
+        <PageHeader
+          eyebrow={t("myAyin.eyebrow")}
+          title={t("myAyin.title")}
+          description={t("myAyin.description")}
+          actions={
+            <ActionLink tone="secondary" href={localizeInternalHref("/my-ayin/lens", locale)}>
+              {t("myAyin.lens")}
+            </ActionLink>
+          }
+        >
+          <p className={styles.lensHint}>{t("myAyin.lensDescription")}</p>
+        </PageHeader>
+      </div>
       <MyAyinLibrary />
     </main>
   );

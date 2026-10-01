@@ -170,3 +170,9 @@
     width: 100%;
   }
 }
+
+.libraryState {
+  margin-inline: auto;
+  max-inline-size: var(--content-max);
+  padding-inline: var(--page-gutter);
+}

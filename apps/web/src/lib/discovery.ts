@@ -1,4 +1,5 @@
 import { apiBaseUrl, type AyinIdentity, readApiError } from "./api";
+import { parseDiscoveryRow, parseMyAyinResponse } from "./my-ayin-contracts";
 
 export type DiscoveryItemType = "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST" | "SERIES";
 export type DiscoveryAvailability = "AVAILABLE" | "EMPTY" | "UNAVAILABLE";
@@ -107,7 +108,7 @@ export async function fetchMyAyin(signal?: AbortSignal): Promise<MyAyinResponse>
     signal: signal ?? null,
   });
   if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as MyAyinResponse;
+  return parseMyAyinResponse(await response.json());
 }
 
 export async function fetchMyAyinSection(
@@ -121,5 +122,5 @@ export async function fetchMyAyinSection(
   );
   if (!response.ok) throw new Error(await readApiError(response));
   const page = (await response.json()) as Omit<DiscoveryRowData, "key" | "title">;
-  return { key: section, title: section, ...page };
+  return parseDiscoveryRow({ key: section, title: section, ...page });
 }

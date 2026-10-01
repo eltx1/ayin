@@ -1,0 +1,18 @@
+.page {
+  min-block-size: 100dvh;
+  padding-block-end: calc(5rem + var(--ayin-safe-bottom));
+}
+
+.hero {
+  margin-inline: auto;
+  max-inline-size: var(--content-max);
+  padding: clamp(2.2rem, 6vw, 5.8rem) var(--page-gutter) var(--space-5);
+}
+
+.lensHint {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-copy);
+  margin: 0;
+  max-inline-size: 64ch;
+}
