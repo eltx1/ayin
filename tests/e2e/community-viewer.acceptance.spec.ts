@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const API = "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
@@ -16,11 +16,7 @@ test.beforeEach(() => {
   });
 });
 
-async function register(
-  request: Parameters<typeof test>[0] extends never ? never : any,
-  name: string,
-  email: string,
-) {
+async function register(request: APIRequestContext, name: string, email: string) {
   const response = await request.post(`${API}/auth/register`, {
     data: { name, email, password: "strong-pass-123" },
     headers: { origin: WEB },
@@ -32,7 +28,7 @@ async function register(
 }
 
 async function createAndPublish(
-  request: any,
+  request: APIRequestContext,
   payload: {
     type: "TEXT" | "POLL";
     body: string;
@@ -53,7 +49,7 @@ async function createAndPublish(
   return post.id;
 }
 
-async function noOverflow(page: import("@playwright/test").Page) {
+async function noOverflow(page: Page) {
   await expect
     .poll(() =>
       page.evaluate(
