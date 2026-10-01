@@ -52,15 +52,27 @@ The baseline's detailed entries still govern Authentication/Sessions/Accounts/MF
 
 Internal storage/transcoder/queue/warehouse/backup/synthetic execution stays internal; only sanitized role-appropriate summaries are surfaced. Detailed database/observability keeps its existing privileged boundary. Finance, moderation, support and provider writes retain server ownership/roles/current MFA/audit. No ad/provider/backup/store readiness is fabricated. Kids monetization and native advertising require later explicit current-policy acceptance, not extrapolation from a shared Web screen.
 
-## Social actions — Phase 4G candidate delta
+## Social actions — accepted Phase 4G delta
 
 **Backend/API and authorization:** unchanged social subscription/reaction/saved-list endpoints and existing AuthGuard/profile isolation remain authoritative. #151 changes client response validation/recovery only; no schema or permission change.
 
 **Viewer surfaces:** channel Subscribe plus Watch Like/Not-for-me/Watch Later/My List now expose failed-read and uncertain-write recovery instead of silent ambiguity. Lost responses are never replayed automatically; Refresh re-reads server truth first. Share cancellation remains local and independent. Controls retain TV focus and EN/AR presentation.
 
-**Evidence/status:** implementation head `1790f66f37e04b35b04a8ff8c6f8d99c1a2245e6` passed quality `36805125530`, browser `36805125622`, security `36805125594` and inventory `36805125517`. Real browser/DB coverage proves one subscription and one reaction after response-loss reconciliation plus saved-list state, Arabic mobile and no overflow. Visual artifact `11137431965` was inspected. Final documentation-head checks/merge/deployment remain pending.
+**Evidence/status:** final #151 implementation was accepted and is deployed through the #152 release closure recorded in the checkpoint. Its browser/DB coverage proves one subscription and one reaction after response-loss reconciliation plus saved-list state, Arabic mobile and no overflow. Visual artifact `11137431965` was inspected.
 
-**Remaining:** Community post reactions/polls/reports still use their older raw interaction layer and are intentionally not declared complete here. Whole Viewer redesign, installed PWA, current-policy advertising and native/device acceptance remain later phases.
+**Remaining:** whole Viewer redesign, installed PWA, current-policy advertising and native/device acceptance remain later phases. Community Viewer recovery is tracked separately below.
+
+## Community Viewer — Phase5B reviewed candidate
+
+**Backend/API and authorization:** unchanged Community AuthGuard, default-profile isolation, public-channel read, feature flag and moderation boundaries remain authoritative. Subscriber feed defaults to 50 items, public channel feed to 30 and the existing service clamps Viewer reads to 100. No schema or production API change.
+
+**Viewer/Web/PWA:** `/community` now reads the authenticated following feed in the browser session instead of relying on a Server Component request that cannot forward the viewer cookie. Public `/c/[handle]/community` stays server-rendered. Both surfaces use shared AYIN primitives, route-scoped EN/AR, RTL-safe layout, TV-focusable actions and truthful loading/error/empty states.
+
+**Mutation recovery:** Like/Poll/Report failures are visible. Lost responses do not trigger automatic replay. Like/Vote can reconcile through an explicit feed refresh; Report requires confirmation and remains disabled after an uncertain write because no viewer report-state read exists. Comment count is metadata only until a bounded public comment-list API exists; no dead or fake comments destination remains.
+
+**Evidence/status:** implementation head `3d4e7999570ed0f25cf04a00832779ed4ba84b05` passed quality `36894020342`, browser `36894020379`, security `36894020643` and inventory `36894020294`. Browser acceptance uses real posts/subscription and committed lost-response mutations, anonymous login gating, public channel rendering and Arabic mobile no-overflow. Final visual artifact `11179062350` was inspected in EN desktop and AR mobile. Merge/deployment are pending final documentation-head checks.
+
+**Remaining:** bounded Viewer comment reading is not fabricated; Studio Community remains Phase6. My AYIN/Lens and other Viewer slices remain Phase5 work; installed PWA/current-policy ads/native/device acceptance remain later phases.
 
 ## Acceptance rule
 
