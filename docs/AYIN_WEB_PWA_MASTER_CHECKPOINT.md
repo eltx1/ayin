@@ -78,7 +78,6 @@ Restored artifact11066390162, ZIP SHA256 `0b9796dcbebe5aea117db81c4bd31095e33a85
 
 **Rollback:** revert the focused Notifications/network presentation plus compatible dependency patch through validated deployment. Do not roll back server records or weaken the patched dependency graph merely to reverse UI behavior.
 
-
 ## Current Phase4G — recoverable social actions
 
 **Start:** accepted/deployed main `280526c6c7041f7f8dde4fb12d9266edbea08a1d`. **Branch/PR:** `web-pwa-phase-4g-social-action-feedback`, #151. **Reviewed implementation head:** `1790f66f37e04b35b04a8ff8c6f8d99c1a2245e6`. Merge/deployment pending final documentation-head checks.

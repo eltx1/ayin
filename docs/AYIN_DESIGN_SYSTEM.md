@@ -94,7 +94,6 @@ The global NetworkStatusBanner now distinguishes offline from reconnected. Offli
 
 The phase also updates newly vulnerable framework dependencies without lowering audit policy: Next 16.3.6, Nest 12.0.3 and a single pnpm-workspace-pinned Fastify 5.12.5 graph. Exact source/security/browser/visual and deployment evidence belongs in the checkpoint. Social Like/Subscribe failure handling remains a separate focused follow-up rather than being hidden inside this Notifications change.
 
-
 ## Phase4G candidate — recoverable social actions
 
 Viewer social controls now follow the same uncertainty rule as Notifications and creator writes. Subscribe, Like, Not-for-me, Watch Later and My List do not optimistically invent committed server state after a failed/lost response. Initial state reads validate complete response contracts. Unconfirmed writes retain the last confirmed view, expose a warning and require an explicit read refresh before another mutation. Share cancellation is excluded because it is not a server write.
