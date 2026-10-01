@@ -352,7 +352,7 @@ export function CommunityFeed({
                       type="button"
                       aria-pressed={liked}
                       pending={pending === `like:${post.id}`}
-                      disabled={mutationBlocked(post.id)}
+                      disabled={liked || mutationBlocked(post.id)}
                       data-tv-focusable="true"
                       data-tv-focus-id={`community-like-${post.id}`}
                       onClick={() => void like(post)}
