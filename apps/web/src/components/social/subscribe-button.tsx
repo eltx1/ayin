@@ -182,7 +182,7 @@ export function SubscribeButton({
       {feedback ? (
         <StatusNotice
           announce="polite"
-          className={feedbackStyles.subscribeFeedback}
+          className={feedbackStyles.subscribeFeedback ?? ""}
           tone={active.mode === "uncertain" ? "warning" : "danger"}
         >
           {feedback}

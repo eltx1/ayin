@@ -275,7 +275,7 @@ export function VideoSocialActions({
       {feedback ? (
         <StatusNotice
           announce={active.mode === "loading" ? "polite" : "assertive"}
-          className={feedbackStyles.feedback}
+          className={feedbackStyles.feedback ?? ""}
           tone={
             active.mode === "uncertain" ? "warning" : active.mode === "error" ? "danger" : "info"
           }
