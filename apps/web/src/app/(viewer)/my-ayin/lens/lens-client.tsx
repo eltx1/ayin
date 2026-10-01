@@ -16,12 +16,7 @@ import { mediaAssetUrl } from "@/lib/channel";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { MediaArtwork } from "@/components/viewer/media-artwork";
 import { EmptyState, ErrorState } from "@/components/viewer/view-states";
-import {
-  ActionButton,
-  ActionLink,
-  DataBadge,
-  StatusNotice,
-} from "@/components/ui/design-system";
+import { ActionButton, ActionLink, DataBadge, StatusNotice } from "@/components/ui/design-system";
 import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 
 import styles from "./lens.module.css";
@@ -102,10 +97,7 @@ export function AyinLensClient() {
         signIn();
         return;
       }
-      if (
-        !response.ok ||
-        !confirmNotInterested(await response.json(), data.profileId, item.id)
-      ) {
+      if (!response.ok || !confirmNotInterested(await response.json(), data.profileId, item.id)) {
         throw new Error("NOT_INTERESTED_UNCONFIRMED");
       }
       trackAnalyticsEvent("LENS_NOT_INTERESTED", {
@@ -219,11 +211,7 @@ export function AyinLensClient() {
       {uncertain ? (
         <div className={styles.recovery}>
           <StatusNotice tone="warning" announce="polite">
-            {t(
-              uncertain.kind === "reset"
-                ? "lens.resetUncertain"
-                : "lens.notInterestedUncertain",
-            )}
+            {t(uncertain.kind === "reset" ? "lens.resetUncertain" : "lens.notInterestedUncertain")}
           </StatusNotice>
           <ActionButton
             type="button"
@@ -242,14 +230,15 @@ export function AyinLensClient() {
       ) : (
         <div className={styles.grid}>
           {data.items.map((item) => {
-            const itemPending =
-              pending?.kind === "not-interested" && pending.videoId === item.id;
+            const itemPending = pending?.kind === "not-interested" && pending.videoId === item.id;
             const artwork = item.artworkObjectKey ? mediaAssetUrl(item.artworkObjectKey) : null;
             return (
               <article className={styles.card} key={item.id}>
                 <div className={styles.artwork}>
                   <span aria-hidden="true" className={styles.artworkFallback} />
-                  {artwork ? <MediaArtwork src={artwork} sizes="(max-width: 640px) 100vw, 22rem" /> : null}
+                  {artwork ? (
+                    <MediaArtwork src={artwork} sizes="(max-width: 640px) 100vw, 22rem" />
+                  ) : null}
                 </div>
                 <div className={styles.cardBody}>
                   <DataBadge>{t(lensReasonKey(item.reason.code))}</DataBadge>

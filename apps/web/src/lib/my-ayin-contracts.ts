@@ -96,7 +96,11 @@ export function parseDiscoveryRow(value: unknown): DiscoveryRowData {
 export function parseMyAyinResponse(value: unknown): MyAyinResponse {
   if (!value || typeof value !== "object") throw new Error("INVALID_MY_AYIN");
   const response = value as Record<string, unknown>;
-  if (!text(response.profileId) || !Array.isArray(response.sections) || response.sections.length > 12) {
+  if (
+    !text(response.profileId) ||
+    !Array.isArray(response.sections) ||
+    response.sections.length > 12
+  ) {
     throw new Error("INVALID_MY_AYIN");
   }
   const sections = response.sections.map(parseDiscoveryRow);

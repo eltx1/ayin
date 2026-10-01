@@ -22,7 +22,8 @@ databaseDescribe("Viewer recommendation controls", () => {
   beforeAll(async () => {
     process.env.APP_ENV = "test";
     process.env.DATABASE_URL = databaseUrl;
-    process.env.AUTH_TOKEN_SECRET = "recommendation-viewer-auth-secret-with-more-than-32-characters";
+    process.env.AUTH_TOKEN_SECRET =
+      "recommendation-viewer-auth-secret-with-more-than-32-characters";
     process.env.UPLOAD_SESSION_SECRET =
       "recommendation-viewer-upload-secret-with-more-than-32-characters";
 

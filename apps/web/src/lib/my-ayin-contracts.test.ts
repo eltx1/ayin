@@ -47,9 +47,9 @@ const lens = {
 
 describe("My AYIN and Lens client contracts", () => {
   it("rejects malformed My AYIN responses instead of producing a false empty library", () => {
-    expect(parseMyAyinResponse({ profileId: "profile-one", sections: [row] }).sections).toHaveLength(
-      1,
-    );
+    expect(
+      parseMyAyinResponse({ profileId: "profile-one", sections: [row] }).sections,
+    ).toHaveLength(1);
     for (const invalid of [
       null,
       {},
@@ -64,8 +64,9 @@ describe("My AYIN and Lens client contracts", () => {
   it("validates Lens reads and mutation acknowledgements", () => {
     expect(parseLensResponse(lens).items[0]?.reason.code).toBe("FOLLOWED_CHANNEL");
     expect(() => parseLensResponse({ ...lens, mode: "UNKNOWN" })).toThrow("INVALID_LENS");
-    expect(() => parseLensResponse({ ...lens, items: [{ ...lens.items[0], score: Number.NaN }] }))
-      .toThrow("INVALID_LENS");
+    expect(() =>
+      parseLensResponse({ ...lens, items: [{ ...lens.items[0], score: Number.NaN }] }),
+    ).toThrow("INVALID_LENS");
 
     expect(
       confirmNotInterested(

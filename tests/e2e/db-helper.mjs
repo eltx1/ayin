@@ -179,7 +179,8 @@ try {
         include: { viewerProfiles: true },
       });
       const profile =
-        account.viewerProfiles.find((candidate) => candidate.isDefault) ?? account.viewerProfiles[0];
+        account.viewerProfiles.find((candidate) => candidate.isDefault) ??
+        account.viewerProfiles[0];
       if (!profile) throw new Error("Expected a viewer profile.");
 
       const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -284,7 +285,8 @@ try {
         include: { viewerProfiles: true },
       });
       const profile =
-        account.viewerProfiles.find((candidate) => candidate.isDefault) ?? account.viewerProfiles[0];
+        account.viewerProfiles.find((candidate) => candidate.isDefault) ??
+        account.viewerProfiles[0];
       if (!profile) throw new Error("Expected a viewer profile.");
       result = {
         feedback: await prisma.recommendationFeedback.findMany({

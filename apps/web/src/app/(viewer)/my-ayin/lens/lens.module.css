@@ -2,8 +2,7 @@
   margin-inline: auto;
   max-inline-size: 1180px;
   min-block-size: 100dvh;
-  padding: clamp(2.5rem, 5vw, 5rem) var(--page-gutter)
-    calc(6rem + var(--ayin-safe-bottom));
+  padding: clamp(2.5rem, 5vw, 5rem) var(--page-gutter) calc(6rem + var(--ayin-safe-bottom));
 }
 
 .panel {

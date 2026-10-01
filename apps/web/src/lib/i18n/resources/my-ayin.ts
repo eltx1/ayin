@@ -43,7 +43,8 @@ export const myAyinEn = {
   "lens.retry": "Reload recommendations",
   "lens.refresh": "Refresh recommendations",
   "lens.emptyTitle": "No eligible recommendations yet",
-  "lens.emptyDescription": "As you watch and follow creators, AYIN can show more relevant suggestions.",
+  "lens.emptyDescription":
+    "As you watch and follow creators, AYIN can show more relevant suggestions.",
   "lens.personalized": "Personalized for you",
   "lens.general": "General recommendations",
   "lens.explanation":
@@ -109,8 +110,7 @@ export const myAyinAr: Record<keyof typeof myAyinEn, string> = {
   "lens.back": "العودة إلى مكتبتي",
   "lens.loading": "جارٍ تحميل توصياتك…",
   "lens.signInTitle": "سجّل الدخول لاستخدام AYIN Lens",
-  "lens.signInDescription":
-    "يشرح AYIN Lens توصيات ملف المشاهد النشط ويتيح لك تعديلها.",
+  "lens.signInDescription": "يشرح AYIN Lens توصيات ملف المشاهد النشط ويتيح لك تعديلها.",
   "lens.signIn": "تسجيل الدخول",
   "lens.loadErrorTitle": "تعذر تحميل التوصيات",
   "lens.loadErrorDescription": "أعد المحاولة لقراءة أحدث حالة للتوصيات في ملفك.",
@@ -133,8 +133,7 @@ export const myAyinAr: Record<keyof typeof myAyinEn, string> = {
   "lens.resetConfirm": "إعادة ضبط التخصيص",
   "lens.cancel": "إلغاء",
   "lens.resetting": "جارٍ إعادة الضبط…",
-  "lens.resetUncertain":
-    "تعذر التأكد من إعادة ضبط التخصيص. حدّث التوصيات قبل تنفيذ إجراء آخر.",
+  "lens.resetUncertain": "تعذر التأكد من إعادة ضبط التخصيص. حدّث التوصيات قبل تنفيذ إجراء آخر.",
   "lens.reasonFollowed": "من قناة تتابعها",
   "lens.reasonLiked": "لأنك أعجبت بمحتوى هذا المنشئ",
   "lens.reasonCompleted": "لأنك تكمل فيديوهات هذا المنشئ",

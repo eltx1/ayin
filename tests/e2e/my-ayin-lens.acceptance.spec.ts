@@ -75,7 +75,9 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
   await page.goto("/my-ayin?lang=en");
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { level: 1, name: "My AYIN" })).toBeVisible();
-  await expect(main.getByRole("heading", { name: "Your library could not be loaded" })).toBeVisible();
+  await expect(
+    main.getByRole("heading", { name: "Your library could not be loaded" }),
+  ).toBeVisible();
   await expect(main.getByRole("heading", { name: "Sign in to open My AYIN" })).toHaveCount(0);
 
   failLibrary = false;
@@ -126,7 +128,9 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/my-ayin/lens?lang=en");
   await expect(main.getByRole("heading", { level: 1, name: "AYIN Lens" })).toBeVisible();
-  await expect(main.getByRole("heading", { name: "Recommendations could not be loaded" })).toBeVisible();
+  await expect(
+    main.getByRole("heading", { name: "Recommendations could not be loaded" }),
+  ).toBeVisible();
 
   failLens = false;
   await main.getByRole("button", { name: "Reload recommendations", exact: true }).click();
@@ -153,7 +157,9 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
   });
 
   await notInterested.click();
-  await expect(main.getByText(/could not confirm whether this suggestion was hidden/i)).toBeVisible();
+  await expect(
+    main.getByText(/could not confirm whether this suggestion was hidden/i),
+  ).toBeVisible();
   await expect(notInterested).toBeDisabled();
   expect(notInterestedWrites).toBe(1);
   expect(
@@ -168,7 +174,9 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
 
   await main.getByRole("button", { name: "Reset personalization", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog.getByRole("heading", { name: "Reset recommendation signals?" })).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Reset recommendation signals?" }),
+  ).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
 
   let resetWrites = 0;
@@ -183,7 +191,9 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
     await route.abort("failed");
   });
   await dialog.getByRole("button", { name: "Reset personalization", exact: true }).click();
-  await expect(main.getByText(/could not confirm whether personalization was reset/i)).toBeVisible();
+  await expect(
+    main.getByText(/could not confirm whether personalization was reset/i),
+  ).toBeVisible();
   expect(resetWrites).toBe(1);
 
   const evidence = db<{

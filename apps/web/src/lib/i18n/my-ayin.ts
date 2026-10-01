@@ -33,10 +33,7 @@ export function useMyAyinI18n() {
   return { ...context, t };
 }
 
-const sectionCopy: Record<
-  string,
-  { title: MyAyinTranslationKey; empty: MyAyinTranslationKey }
-> = {
+const sectionCopy: Record<string, { title: MyAyinTranslationKey; empty: MyAyinTranslationKey }> = {
   "continue-watching": {
     title: "myAyin.continueWatching",
     empty: "myAyin.continueWatchingEmpty",
