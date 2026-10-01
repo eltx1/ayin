@@ -191,17 +191,21 @@ test("Community Viewer is localized, authenticated, public-channel safe and muta
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/ar/c/${owner.user.channel.handle}/community?lang=ar`);
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+    // Next.js may keep the departing tree hidden during a client transition.
+    // Scope content assertions to the single visible route landmark.
+    const arabicMain = page.locator("main:visible");
+    await expect(arabicMain).toHaveCount(1);
     await expect(
-      page.getByRole("heading", {
+      arabicMain.getByRole("heading", {
         level: 1,
         name: `مجتمع ${owner.user.channel.name}`,
         exact: true,
       }),
     ).toBeVisible();
     await expect(
-      page.getByText("Behind the scenes from the harbor.", { exact: true }),
+      arabicMain.getByText("Behind the scenes from the harbor.", { exact: true }),
     ).toBeVisible();
-    await expect(page.getByText("استطلاع", { exact: true })).toBeVisible();
+    await expect(arabicMain.getByText("استطلاع", { exact: true })).toBeVisible();
     await noOverflow(page);
     await page.screenshot({
       path: testInfo.outputPath("design-community-channel-390-ar.png"),
