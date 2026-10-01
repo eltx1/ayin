@@ -7,8 +7,7 @@
 
 .hero {
   background:
-    radial-gradient(circle at 12% 12%, rgb(139 24 248 / 16%), transparent 28rem),
-    var(--surface);
+    radial-gradient(circle at 12% 12%, rgb(139 24 248 / 16%), transparent 28rem), var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
