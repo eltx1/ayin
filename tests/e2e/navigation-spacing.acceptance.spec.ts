@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 const API = "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
@@ -7,7 +7,7 @@ async function expectViewerSpacing(
   page: Page,
   route: string,
   layout: { width: number; height: number; locale: string },
-  testInfo: Parameters<Parameters<typeof test>[1]>[1],
+  testInfo: TestInfo,
 ) {
   await page.setViewportSize({ width: layout.width, height: layout.height });
   const prefix = layout.locale === "ar" ? "/ar" : "";
