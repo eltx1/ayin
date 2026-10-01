@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { ActionLink, PageHeader } from "@/components/ui/design-system";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { localizeInternalHref } from "@/lib/i18n/routing";
-import { translateMyAyin } from "@/lib/i18n/my-ayin";
+import { translateMyAyin } from "@/lib/i18n/my-ayin-copy";
 import { metadataRobots } from "@/lib/seo";
 
 import { AyinLensClient } from "./lens-client";
