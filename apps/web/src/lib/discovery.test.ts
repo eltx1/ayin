@@ -27,8 +27,8 @@ describe("Task 12 consumer discovery surfaces", () => {
   });
 
   it("builds My AYIN from authenticated API data rather than fake entries", () => {
-    expect(myAyin).toContain(`${apiBaseUrl}/auth/me`);
-    expect(myAyin).toContain(`${apiBaseUrl}/discovery/my-ayin`);
+    expect(myAyin).toContain("${apiBaseUrl}/auth/me");
+    expect(myAyin).toContain("${apiBaseUrl}/discovery/my-ayin");
     expect(myAyin).toContain('credentials: "include"');
     expect(myAyin).toContain("parseMyAyinResponse");
     expect(myAyin).toContain('scope="my-ayin"');
