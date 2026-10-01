@@ -10,9 +10,7 @@ describe("public creator Viewer copy", () => {
   });
 
   it("interpolates consumer-facing playlist and TV copy", () => {
-    expect(
-      translatePublicCreator("en", "playlist.videoCount", { count: "12" }),
-    ).toBe("12 videos");
+    expect(translatePublicCreator("en", "playlist.videoCount", { count: "12" })).toBe("12 videos");
     expect(
       translatePublicCreator("ar", "tv.offAirNoEligibleDescription", { channel: "Studio" }),
     ).toContain("Studio");

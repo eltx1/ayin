@@ -82,11 +82,7 @@ test("public channel and playlist use real localized destinations and durable ha
   page,
 }, testInfo) => {
   test.setTimeout(150_000);
-  const registration = await register(
-    page,
-    "Phase5D Creator",
-    "phase5d-playlist@e2e.ayin.test",
-  );
+  const registration = await register(page, "Phase5D Creator", "phase5d-playlist@e2e.ayin.test");
   const video = await publishVideo(page, registration.user.channel.id, "Phase5D Public Film");
 
   const created = await page.request.post(
@@ -112,9 +108,7 @@ test("public channel and playlist use real localized destinations and durable ha
   ).toBe(true);
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(
-    `/c/${registration.user.channel.handle}/playlists/${playlist.slug}?lang=en`,
-  );
+  await page.goto(`/c/${registration.user.channel.handle}/playlists/${playlist.slug}?lang=en`);
   const main = page.locator("main:visible");
   await expect(main.getByRole("heading", { level: 1, name: "Phase5D Picks" })).toBeVisible();
   await expect(main.getByText("1 video", { exact: true })).toBeVisible();
@@ -129,9 +123,7 @@ test("public channel and playlist use real localized destinations and durable ha
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(
-    `/ar/c/${registration.user.channel.handle}/playlists/${playlist.slug}?lang=ar`,
-  );
+  await page.goto(`/ar/c/${registration.user.channel.handle}/playlists/${playlist.slug}?lang=ar`);
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(main.getByRole("heading", { level: 2, name: "الفيديوهات" })).toBeVisible();
   await expect(main.getByRole("link", { name: /Phase5D Public Film/ })).toHaveAttribute(
@@ -177,11 +169,15 @@ test("Creator TV localizes off-air recovery without changing playback state", as
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/ar/c/${handle}/tv?lang=ar`);
   const main = page.locator("main:visible");
-  await expect(main.getByRole("heading", { level: 1, name: registration.user.creatorTv.name })).toBeVisible();
+  await expect(
+    main.getByRole("heading", { level: 1, name: registration.user.creatorTv.name }),
+  ).toBeVisible();
   await expect(
     main.getByRole("heading", { level: 2, name: "تبدأ البرمجة مع أول فيديو مؤهل" }),
   ).toBeVisible();
-  await expect(page.getByText(/server-side ad insertion|Media configuration needed|MP4/i)).toHaveCount(0);
+  await expect(
+    page.getByText(/server-side ad insertion|Media configuration needed|MP4/i),
+  ).toHaveCount(0);
 
   const tvUrl = `${API}/public/channels/${handle}/tv`;
   let refreshReads = 0;

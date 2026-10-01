@@ -79,7 +79,8 @@ export const publicCreatorAr: Record<keyof typeof publicCreatorEn, string> = {
   "tv.checking": "جارٍ التحقق…",
   "tv.refreshError": "تعذر تحديث دليل تلفزيون صانع المحتوى.",
   "tv.mediaNeeded": "مصدر تشغيل الفيديو غير متاح",
-  "tv.mediaNeededDescription": "يعرف AYIN ما يُعرض الآن، لكن هذا الجهاز لا يستطيع تحميل مصدر الفيديو الحالي.",
+  "tv.mediaNeededDescription":
+    "يعرف AYIN ما يُعرض الآن، لكن هذا الجهاز لا يستطيع تحميل مصدر الفيديو الحالي.",
   "tv.nowPlaying": "يُعرض الآن",
   "tv.upNext": "التالي",
   "tv.comingUp": "قريبًا",
@@ -98,8 +99,7 @@ export const publicCreatorAr: Record<keyof typeof publicCreatorEn, string> = {
   "tv.offAirDefaultTitle": "البث متوقف حاليًا",
   "tv.offAirNoEligibleDescription":
     "تلفزيون {channel} جاهز. ستدخل الفيديوهات المنشورة والمؤهلة في الدورة تلقائيًا.",
-  "tv.offAirAutomaticPausedDescription":
-    "تظل القناة جاهزة بينما البرمجة التلقائية متوقفة مؤقتًا.",
+  "tv.offAirAutomaticPausedDescription": "تظل القناة جاهزة بينما البرمجة التلقائية متوقفة مؤقتًا.",
   "tv.offAirDefaultDescription": "يحتفظ تلفزيون صانع المحتوى بهوية القناة أثناء توقف البرمجة.",
   "tv.playbackContinuous": "أنت تشاهد البث المستمر للقناة.",
   "tv.playbackProgram": "أنت تشاهد البرنامج الحالي من فيديوهات صانع المحتوى المتاحة.",

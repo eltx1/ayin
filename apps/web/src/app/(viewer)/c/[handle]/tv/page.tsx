@@ -51,9 +51,7 @@ export default async function CreatorTvPage({ params }: { params: Promise<{ hand
 
   const data = (await response.json()) as PublicCreatorTvResponse;
   if (data.redirectedFrom && data.canonicalHandle !== handle) {
-    permanentRedirect(
-      localizePath(`/c/${encodeURIComponent(data.canonicalHandle)}/tv`, locale),
-    );
+    permanentRedirect(localizePath(`/c/${encodeURIComponent(data.canonicalHandle)}/tv`, locale));
   }
 
   return <CreatorTvPlayer initialData={data} initialLinear={initialLinear} />;

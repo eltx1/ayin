@@ -189,10 +189,7 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
                   {...(item.video.durationMs
                     ? { badge: formatDuration(item.video.durationMs) }
                     : {})}
-                  href={localizePath(
-                    `/watch/${encodeURIComponent(item.video.slug)}`,
-                    locale,
-                  )}
+                  href={localizePath(`/watch/${encodeURIComponent(item.video.slug)}`, locale)}
                   key={item.id}
                   meta={
                     item.video.publishedAt

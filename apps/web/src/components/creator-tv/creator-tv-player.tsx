@@ -390,7 +390,11 @@ export function CreatorTvPlayer({
             )}
           </section>
 
-          <Guide programs={data.schedule.guide} currentKey={current.occurrenceKey} locale={locale} />
+          <Guide
+            programs={data.schedule.guide}
+            currentKey={current.occurrenceKey}
+            locale={locale}
+          />
         </aside>
       </div>
     </main>
@@ -494,8 +498,7 @@ function offAirTitle(
 ): string {
   if (reason === "NO_ELIGIBLE_VIDEOS")
     return translatePublicCreator(locale, "tv.offAirNoEligibleTitle");
-  if (reason === "TV_DISABLED")
-    return translatePublicCreator(locale, "tv.offAirDisabledTitle");
+  if (reason === "TV_DISABLED") return translatePublicCreator(locale, "tv.offAirDisabledTitle");
   if (reason === "AUTOMATIC_SCHEDULING_DISABLED")
     return translatePublicCreator(locale, "tv.offAirAutomaticPausedTitle");
   return translatePublicCreator(locale, "tv.offAirDefaultTitle");
