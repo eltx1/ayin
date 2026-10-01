@@ -1,4 +1,4 @@
-name: Phase5B checkpoint format preview
+name: Phase5B checkpoint format apply
 
 on:
   pull_request:
@@ -6,16 +6,18 @@ on:
       - ".github/workflows/phase5b-format-preview.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  format-preview:
+  format-apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'web-pwa-phase-5b-community-viewer'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -25,11 +27,19 @@ jobs:
           corepack prepare pnpm@11.24.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Format checkpoint
+      - name: Format checkpoint only
         run: pnpm exec prettier --write docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
-      - name: Upload formatted checkpoint
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase5b-formatted-checkpoint
-          path: docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
-          retention-days: 1
+      - name: Commit checkpoint only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md; then
+            echo "Checkpoint already formatted."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
+          test "$(git diff --cached --name-only)" = "docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md"
+          git commit -m "docs(master): format Phase5B checkpoint"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
