@@ -118,6 +118,61 @@ try {
       result = { id: video.id, slug: video.slug, channelId: channel.id, sourceKey };
       break;
     }
+    case "seed-kids-surface": {
+      const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const now = Date.now();
+      const channel = await prisma.channel.create({
+        data: { handle: `kids-${suffix}`, name: "Kids E2E Channel", status: "ACTIVE" },
+      });
+      async function createVideo(title, kidsEligible, sequence) {
+        const video = await prisma.video.create({
+          data: {
+            channelId: channel.id,
+            slug: `kids-${kidsEligible ? "eligible" : "ordinary"}-${sequence}-${suffix}`,
+            title,
+            status: "PUBLISHED",
+            visibility: "PUBLIC",
+            durationMs: 90_000,
+            publishedAt: new Date(now - sequence * 1_000),
+          },
+        });
+        await prisma.mediaAsset.create({
+          data: {
+            videoId: video.id,
+            channelId: channel.id,
+            kind: "SOURCE_VIDEO",
+            status: "VALIDATED",
+            r2ObjectKey: `e2e/kids/${video.id}/canonical.mp4`,
+            mimeType: "video/mp4",
+            sizeBytes: 2048n,
+          },
+        });
+        if (kidsEligible) {
+          await prisma.videoPolicy.create({
+            data: {
+              videoId: video.id,
+              maturityLevel: "GENERAL",
+              kidsEligible: true,
+              ageRestriction: "NONE",
+            },
+          });
+        }
+        return video;
+      }
+      const ordinary = await createVideo("Ordinary Discovery Fixture", false, 0);
+      const eligible = [];
+      for (let index = 1; index <= 10; index += 1) {
+        eligible.push(
+          await createVideo(
+            `Kids Discovery Fixture ${String(index).padStart(2, "0")}`,
+            true,
+            index,
+          ),
+        );
+      }
+      result = { eligibleIds: eligible.map((video) => video.id), ordinaryId: ordinary.id };
+      break;
+    }
     case "configure-hls-playback": {
       const enabled = payload.enabled !== false;
       await prisma.featureFlag.upsert({

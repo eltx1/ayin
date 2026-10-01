@@ -175,7 +175,7 @@ export class DiscoveryService {
     const home = await this.getHome({ ...context, isKidsProfile: true });
     return {
       policy: KIDS_SURFACE_POLICY,
-      rows: home.rows.map((row) => ({ ...row, nextCursor: null })),
+      rows: home.rows,
     };
   }
 

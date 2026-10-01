@@ -101,3 +101,11 @@ Viewer social controls now follow the same uncertainty rule as Notifications and
 The implementation keeps existing login gates, profile isolation, analytics event boundaries and social API routes. Response parsers accept only non-negative integer counts, known reaction values, boolean saved flags and matching saved-list acknowledgements. Route-scoped EN/AR copy avoids growing unrelated bundles. Retry/refresh actions and social controls remain in the shared TV focus model.
 
 Exact source/security/browser evidence is recorded in the checkpoint. Reviewed visuals show clear desktop subscription state and contained Arabic mobile action labels. This is not the whole Viewer redesign, a claim of social-provider delivery, or a performance improvement. Phase5 still needs the raw Community surface, consumer-friendly Kids copy and the remaining Viewer route families.
+
+## Phase5A Viewer adoption — AYIN Kids
+
+The Kids route is an accepted consumer of PageHeader and StatusNotice rather than a one-off compliance panel. The hero uses the same spacing, typography, responsive shell and logical RTL behavior as other Viewer surfaces. Legal/engineering implementation language is not a visual component and stays outside the consumer page.
+
+Discovery rows remain the shared ContentRow/MediaCard system. Kids mode changes only presentation labels for the three policy-allowed sources and selects the existing Kids-safe continuation endpoint. It does not fork card, carousel or navigation components. The initial visual review caught English row/kicker labels in Arabic and a hidden continuation path; both were corrected before final acceptance. Full evidence and release state are in the master checkpoint.
+
+This is Phase5A route adoption, not completion of all Viewer pages, Kids legal/advertising approval or physical-device certification. Community remains the next confirmed Viewer outlier.

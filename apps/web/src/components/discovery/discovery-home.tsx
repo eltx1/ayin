@@ -53,7 +53,7 @@ export function DiscoveryHome({ kidsMode = false }: { kidsMode?: boolean }) {
   return (
     <div className={styles.rows}>
       {home.rows.map((row) => (
-        <DiscoveryRow authenticated={authenticated} key={row.key} row={row} />
+        <DiscoveryRow authenticated={authenticated} kidsMode={kidsMode} key={row.key} row={row} />
       ))}
     </div>
   );

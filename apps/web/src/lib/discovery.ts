@@ -73,6 +73,19 @@ export async function fetchKidsDiscoveryHome(signal?: AbortSignal): Promise<Disc
   return (await response.json()) as DiscoveryHomeResponse;
 }
 
+export async function fetchKidsDiscoveryRow(
+  key: string,
+  cursor: string,
+): Promise<DiscoveryRowData> {
+  const parameters = new URLSearchParams({ cursor, limit: "8" });
+  const response = await fetch(
+    `${apiBaseUrl}/public/discovery/kids/rows/${encodeURIComponent(key)}?${parameters}`,
+    { cache: "no-store", credentials: "include" },
+  );
+  if (!response.ok) throw new Error(await readApiError(response));
+  return (await response.json()) as DiscoveryRowData;
+}
+
 export async function fetchDiscoveryRow(
   key: string,
   cursor: string,

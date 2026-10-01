@@ -1,37 +1,41 @@
 import type { Metadata } from "next";
 
 import { DiscoveryHome } from "@/components/discovery/discovery-home";
+import { PageHeader, StatusNotice } from "@/components/ui/design-system";
+import { getRequestLocale } from "@/lib/i18n/server";
+import { translateKids } from "@/lib/i18n/kids";
 import { absoluteUrl, metadataRobots } from "@/lib/seo";
 
 import styles from "./kids.module.css";
 
-export const metadata: Metadata = {
-  title: "AYIN Kids",
-  description: "A restricted AYIN catalog surface for explicitly classified Kids-eligible content.",
-  alternates: { canonical: absoluteUrl("/kids") },
-  robots: metadataRobots(true),
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getRequestLocale();
+  return {
+    title: translateKids(locale, "kids.metaTitle"),
+    description: translateKids(locale, "kids.metaDescription"),
+    alternates: { canonical: absoluteUrl("/kids") },
+    robots: metadataRobots(true),
+  };
+}
 
-export default function KidsPage() {
+export default async function KidsPage() {
+  const locale = await getRequestLocale();
+  const t = (key: Parameters<typeof translateKids>[1]) => translateKids(locale, key);
+
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <span className={styles.eyebrow}>AYIN Kids</span>
-        <h1>Kids-safe catalog</h1>
-        <p>
-          This surface only shows videos explicitly classified as Kids-eligible. Unclassified, teen,
-          mature, and age-restricted content is excluded by backend policy.
-        </p>
-        <div className={styles.policy}>
-          <span>Personalized ad targeting: disabled</span>
-          <span>Community interactions: disabled on this surface</span>
-          <span>
-            Children&apos;s privacy compliance is not claimed without dedicated legal review
-          </span>
-        </div>
+        <PageHeader
+          eyebrow={t("kids.eyebrow")}
+          title={t("kids.title")}
+          description={t("kids.description")}
+        />
+        <StatusNotice tone="info" title={t("kids.noteTitle")}>
+          {t("kids.noteDescription")}
+        </StatusNotice>
       </section>
 
-      <section aria-label="AYIN Kids catalog" className={styles.catalog}>
+      <section aria-label={t("kids.catalog")} className={styles.catalog}>
         <DiscoveryHome kidsMode />
       </section>
     </main>
