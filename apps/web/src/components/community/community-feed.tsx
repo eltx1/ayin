@@ -93,13 +93,20 @@ export function CommunityFeed({
         setItems(next);
         setLoadState("ready");
         setFeedback(null);
-        if (uncertain?.kind !== "report") setUncertain(null);
+        setUncertain((current) => (current?.kind === "report" ? current : null));
       })
       .catch(() => {
         if (!controller.signal.aborted) setLoadState("error");
       });
     return () => controller.abort();
-  }, [attempt, initialItems, read, uncertain?.kind]);
+  }, [attempt, initialItems, read]);
+
+  useEffect(
+    () => () => {
+      activeRead.current?.abort();
+    },
+    [],
+  );
 
   async function refreshAfterConfirmed(postId: string) {
     const controller = new AbortController();
