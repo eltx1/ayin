@@ -50,7 +50,7 @@ test("Kids viewer is friendly, localized and preserves fail-closed catalog filte
   await expect(
     main.getByRole("heading", { level: 1, name: "A simpler place for younger viewers" }),
   ).toBeVisible();
-  await expect(main.getByText("Kids Discovery Fixture", { exact: true })).toBeVisible();
+  await expect(main.getByText("Kids Discovery Fixture", { exact: true }).first()).toBeVisible();
   await expect(main.getByText("Ordinary Discovery Fixture", { exact: true })).toHaveCount(0);
   for (const developerCopy of [
     "Children's privacy compliance",
@@ -71,7 +71,7 @@ test("Kids viewer is friendly, localized and preserves fail-closed catalog filte
   await expect(
     main.getByRole("heading", { level: 1, name: "مساحة أبسط للمشاهدين الأصغر سنًا" }),
   ).toBeVisible();
-  await expect(main.getByText("Kids Discovery Fixture", { exact: true })).toBeVisible();
+  await expect(main.getByText("Kids Discovery Fixture", { exact: true }).first()).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
