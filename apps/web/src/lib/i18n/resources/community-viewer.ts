@@ -48,7 +48,8 @@ export const communityViewerAr: Record<keyof typeof communityViewerEn, string> =
   "community.metaDescription": "تحديثات من صنّاع المحتوى والقنوات التي تتابعها على AYIN.",
   "community.eyebrow": "مجتمع AYIN",
   "community.title": "تحديثات من صنّاع المحتوى الذين تتابعهم",
-  "community.description": "تابع تحديثات القنوات والاستطلاعات والصور والفيديوهات المشتركة في مكان واحد.",
+  "community.description":
+    "تابع تحديثات القنوات والاستطلاعات والصور والفيديوهات المشتركة في مكان واحد.",
   "community.channelTitle": "مجتمع {name}",
   "community.channelDescription": "تحديثات ينشرها {name}.",
   "community.feedAria": "منشورات المجتمع",
@@ -80,10 +81,8 @@ export const communityViewerAr: Record<keyof typeof communityViewerEn, string> =
   "community.cancel": "إلغاء",
   "community.actionUncertain":
     "تعذر التأكد من نتيجة هذا الإجراء. حدّث المنشورات قبل تنفيذ إجراء آخر على هذا المنشور.",
-  "community.reportUncertain":
-    "تعذر التأكد من إرسال البلاغ. لا ترسله مرة أخرى من هذه الصفحة.",
-  "community.savedRefreshError":
-    "تم تأكيد الإجراء، لكن تعذر تحديث أحدث أرقام المنشور.",
+  "community.reportUncertain": "تعذر التأكد من إرسال البلاغ. لا ترسله مرة أخرى من هذه الصفحة.",
+  "community.savedRefreshError": "تم تأكيد الإجراء، لكن تعذر تحديث أحدث أرقام المنشور.",
   "community.watchVideo": "مشاهدة {title}",
   "community.photoAlt": "صورة مجتمع من {name}",
 };
