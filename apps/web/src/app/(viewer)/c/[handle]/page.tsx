@@ -91,6 +91,11 @@ export default async function PublicChannelPage({
     permanentRedirect(localizePath(`/c/${encodeURIComponent(data.canonicalHandle)}`, locale));
   }
 
+  const requestedTab = Array.isArray(query.tab) ? query.tab[0] : query.tab;
+  if (requestedTab === "posts" && data.features.posts) {
+    permanentRedirect(localizePath(`/c/${data.channel.handle}/community`, locale));
+  }
+
   const activeTab = resolveChannelTab(query.tab, data.features);
   const tabs = channelTabs(data.features);
   const avatarUrl = mediaAssetUrl(data.appearance.avatar?.objectKey);
@@ -150,6 +155,8 @@ export default async function PublicChannelPage({
         {tabs.map((tab) => (
           <Link
             className={`${styles.tab} ${activeTab === tab.id ? styles.activeTab : ""}`}
+            data-tv-focusable="true"
+            data-tv-focus-id={`channel-tab-${tab.id}`}
             href={localizePath(
               tab.id === "home"
                 ? `/c/${data.channel.handle}`
@@ -161,6 +168,16 @@ export default async function PublicChannelPage({
             {channelTabLabel(tab.id, tab.label, locale)}
           </Link>
         ))}
+        {data.features.posts ? (
+          <Link
+            className={styles.tab}
+            data-tv-focusable="true"
+            data-tv-focus-id="channel-community"
+            href={localizePath(`/c/${data.channel.handle}/community`, locale)}
+          >
+            {t("channel.tab.posts")}
+          </Link>
+        ) : null}
       </nav>
 
       <div className={styles.content}>
@@ -175,14 +192,6 @@ export default async function PublicChannelPage({
         {activeTab === "tv" ? <CreatorTvSection data={data} locale={locale} /> : null}
         {activeTab === "playlists" ? <PlaylistSection data={data} locale={locale} /> : null}
         {activeTab === "about" ? <AboutSection data={data} locale={locale} /> : null}
-        {activeTab === "shorts" || activeTab === "posts" ? (
-          <section className={styles.section}>
-            <div className={styles.sectionHeading}>
-              <h2>{activeTab === "shorts" ? t("channel.tab.shorts") : t("channel.tab.posts")}</h2>
-            </div>
-            <p className={styles.empty}>{t("channel.emptySection")}</p>
-          </section>
-        ) : null}
       </div>
     </main>
   );

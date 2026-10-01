@@ -1,6 +1,6 @@
 import { apiBaseUrl, readApiError } from "@/lib/api";
 
-export type ChannelTabId = "home" | "videos" | "tv" | "playlists" | "shorts" | "posts" | "about";
+export type ChannelTabId = "home" | "videos" | "tv" | "playlists" | "about";
 
 export interface ChannelAsset {
   assetId: string;
@@ -71,14 +71,14 @@ export interface EditableChannelResponse {
 
 const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL?.replace(/\/$/, "") ?? null;
 
-export function channelTabs(features: { shorts: boolean; posts: boolean }) {
+export function channelTabs(_features: { shorts: boolean; posts: boolean }) {
+  // Posts use the real public Community route. Shorts remain hidden until a
+  // channel-specific Viewer surface exists; never expose placeholder tabs.
   return [
     { id: "home" as const, label: "Home" },
     { id: "videos" as const, label: "Videos" },
     { id: "tv" as const, label: "TV" },
     { id: "playlists" as const, label: "Playlists" },
-    ...(features.shorts ? [{ id: "shorts" as const, label: "Shorts" }] : []),
-    ...(features.posts ? [{ id: "posts" as const, label: "Posts" }] : []),
     { id: "about" as const, label: "About" },
   ];
 }
