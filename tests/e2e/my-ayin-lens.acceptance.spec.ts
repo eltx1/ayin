@@ -224,7 +224,10 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
   await expect(
     main.getByRole("button", { name: "Reset personalization", exact: true }),
   ).toBeFocused();
-  await expect(page.getByRole("link", { name: "Skip to content", exact: true })).toBeHidden();
+  const skipLink = page.getByRole("link", { name: "Skip to content", exact: true });
+  await expect
+    .poll(() => skipLink.evaluate((element) => element.getBoundingClientRect().bottom <= 0))
+    .toBe(true);
   expect(resetWrites).toBe(1);
 
   await page.screenshot({
