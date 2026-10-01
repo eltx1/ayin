@@ -61,6 +61,14 @@ describe("My AYIN and Lens client contracts", () => {
     }
   });
 
+  it("rejects unsafe item destinations instead of emitting external-looking links", () => {
+    for (const href of ["//elsewhere.test/path", "/\\elsewhere.test/path", "/bad\npath"]) {
+      const invalid = structuredClone({ profileId: "profile-one", sections: [row] });
+      invalid.sections[0]!.items[0]!.href = href;
+      expect(() => parseMyAyinResponse(invalid)).toThrow("INVALID_MY_AYIN");
+    }
+  });
+
   it("validates Lens reads and mutation acknowledgements", () => {
     expect(parseLensResponse(lens).items[0]?.reason.code).toBe("FOLLOWED_CHANNEL");
     expect(() => parseLensResponse({ ...lens, mode: "UNKNOWN" })).toThrow("INVALID_LENS");

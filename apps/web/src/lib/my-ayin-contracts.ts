@@ -23,6 +23,15 @@ function nullableText(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
+function internalHref(value: unknown): value is string {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return false;
+  if (value.includes("\\")) return false;
+  return !Array.from(value).some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+}
+
 function parseDiscoveryItem(value: unknown): DiscoveryItem {
   if (!value || typeof value !== "object") throw new Error("INVALID_MY_AYIN");
   const item = value as Record<string, unknown>;
@@ -30,8 +39,7 @@ function parseDiscoveryItem(value: unknown): DiscoveryItem {
     !text(item.id) ||
     !itemTypes.has(item.type as DiscoveryItemType) ||
     !text(item.title) ||
-    !text(item.href) ||
-    !item.href.startsWith("/") ||
+    !internalHref(item.href) ||
     !text(item.kicker) ||
     !nullableText(item.meta) ||
     !nullableText(item.artworkObjectKey)
