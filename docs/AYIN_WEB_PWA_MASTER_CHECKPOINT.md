@@ -56,7 +56,7 @@ Restored artifact11066390162, ZIP SHA256 `0b9796dcbebe5aea117db81c4bd31095e33a85
 
 **Visual/performance/rollback:** no presentation asset changed in 4E, so #148 remained the relevant visual baseline. No speedup was claimed. Rollback is a focused application/test revert through validated deployment; no database rollback or data reversal.
 
-## Current Phase4F — Notifications and network lifecycle feedback
+## Accepted Phase4F — Notifications and network lifecycle feedback
 
 **Start:** accepted/deployed main `4da970c5fa1f2abbd53f100f69c49832f0fb3016`. **Branch/PR:** `web-pwa-phase-4f-notifications-feedback`, #150. **Reviewed implementation head before documentation:** `54bd149267a6bd809acbde1148cc3eb30b4eb6d6`. Merge/deployment remain pending final documentation-head checks.
 
@@ -74,6 +74,29 @@ Restored artifact11066390162, ZIP SHA256 `0b9796dcbebe5aea117db81c4bd31095e33a85
 
 **Performance and remaining boundary:** no CWV/API/player/upload speedup is claimed. The change adds a route-local Notifications vocabulary and small client validation/state code; subsequent Phase10 measurement remains required. Social Like/Subscribe actions still have their own silent-failure UX and are deliberately outside this focused PR. Installed-PWA offline behavior, service-worker update semantics and native notification/push boundaries remain Phase9/15 work.
 
-**Next:** pass all applicable gates on the final documentation head, perform source review, merge with expected-head protection, verify main/deployment proof and Cloudflare sync, then continue Phase4 shared adoption without expanding this PR.
+**Release closure:** final PR head `61712d1c5273b2fb1adc611b81d6da7881d23786` passed quality `36800157967`, browser `36800158055`, security `36800157947` and inventory `36800158013`; author-side review `5373856289`, no unresolved threads. Expected-head squash merge produced `280526c6c7041f7f8dde4fb12d9266edbea08a1d`. Post-merge quality `36800835114`, security `36800835170` and inventory `36800835110` succeeded. Production deploy `36801324505`, job `110176085592`, completed exact-release guards and direct-origin health; proof artifact `11135441852` has GitHub digest `sha256:cb0ee2f3acb7e35e8b55d785a51c9d634bbc72fe5ef3d5d1b88b7af4e5593b6a`. Cloudflare sync `36801500009` succeeded including public endpoint verification. This proves that release at deployment time, not installed-PWA/native notification certification.
 
 **Rollback:** revert the focused Notifications/network presentation plus compatible dependency patch through validated deployment. Do not roll back server records or weaken the patched dependency graph merely to reverse UI behavior.
+
+
+## Current Phase4G — recoverable social actions
+
+**Start:** accepted/deployed main `280526c6c7041f7f8dde4fb12d9266edbea08a1d`. **Branch/PR:** `web-pwa-phase-4g-social-action-feedback`, #151. **Reviewed implementation head:** `1790f66f37e04b35b04a8ff8c6f8d99c1a2245e6`. Merge/deployment pending final documentation-head checks.
+
+**Finding:** Subscribe and Watch social actions previously had silent or ambiguous read/mutation failures. A lost response could leave the client unable to distinguish committed server state from a failed mutation. The backend/profile-isolation contracts already existed; this was a Viewer recovery/feedback gap.
+
+**Change:** Subscribe now distinguishes loading, signed-out, failed-read, ready and uncertain-write states. Video Like/Not-for-me/Watch Later/My List parse complete server responses before replacing visible state. Failed or malformed initial reads surface Retry. An unconfirmed mutation switches the relevant control set to an uncertain state; no write is replayed automatically. Refresh performs a read first and only then allows a new mutation. Share-sheet cancellation remains a normal local outcome and does not alter server state. All controls participate in the shared TV focus model. EN/AR social-action vocabulary is route-scoped. No production API/schema/ownership/profile-isolation/analytics contract changed.
+
+**Validation:** pure response-contract tests reject malformed subscriber counts, reactions and saved-list acknowledgements. Browser acceptance uses real authentication and a real playable video; it verifies initial read failure/retry, committed subscription with lost response then read reconciliation/no second write, Watch Later/My List persistence, committed Like with lost response then reconciliation/no replay, real DB counts, Arabic mobile states and no document overflow.
+
+**Browser failure investigation:** the first two implementation runs failed one Watch assertion. Playwright traces showed the error alert already rendered. The first correction waited for the failed social GET; the remaining failure proved the exact-text locator targeted a StatusNotice container that also owned the nested Retry button, so exact text could never match the full element text. The final test uses the semantic alert role plus contained Retry action. No product code was changed to satisfy this test, and no timeout/retry-until-green workaround was used.
+
+**Exact implementation-head gates:** quality `36805125530`, browser `36805125622` (75/75), security `36805125594` and inventory `36805125517` all passed on `1790f66f...`. Quality includes frozen install, production audit, formatting, deployment tooling, lint, types/Prisma, unit/schema, clean migrations/integration and production build.
+
+**Visual evidence:** downloaded artifact `11137431965`, GitHub digest `sha256:e34574c920928496197fd83bbffca67ce1a3abbf9a8b954da69e6c04555d60dc`. Inspected `design-social-subscription-1440-en.png` and `design-social-actions-390-ar.png`. Desktop subscription state is clear and bounded. Arabic social-action labels wrap within controls and the browser test confirms no document overflow. Fixture player-delivery copy and fixed-navigation positioning in full-page capture are existing fixture/capture context, not new social UI claims.
+
+**Performance/security boundary:** no speedup is claimed. The current production dependency graph remains the patched #150 graph; #151 changes no dependencies, server permissions, ownership, moderation, financial logic, provider integration or native shell. The production audit still reports one moderate advisory; no high/critical issue is accepted.
+
+**Next:** pass applicable checks on this documentation head, perform final source review, merge with expected-head protection, verify main/deployment proof and Cloudflare sync. Then begin Phase5 Viewer redesign with Community and Kids as confirmed high-value outliers; do not mix that redesign into #151.
+
+**Rollback:** revert only this social client-state/presentation layer through validated deployment. Do not roll back real subscription/reaction/saved-list records or the patched framework graph.
