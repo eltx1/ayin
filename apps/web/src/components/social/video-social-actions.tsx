@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
@@ -44,8 +44,6 @@ export function VideoSocialActions({
     [locale],
   );
   const router = useRouter();
-  const currentVideoId = useRef(videoId);
-  currentVideoId.current = videoId;
   const [snapshot, setSnapshot] = useState<Snapshot>({
     videoId,
     mode: "loading",
@@ -76,14 +74,20 @@ export function VideoSocialActions({
         return { mode: "ready" as const, value: parseVideoSocialState(await response.json()) };
       })
       .then((result) => {
-        if (!result || controller.signal.aborted || currentVideoId.current !== requestedVideoId) {
-          return;
-        }
-        setSnapshot({ videoId: requestedVideoId, ...result });
+        if (!result || controller.signal.aborted) return;
+        setSnapshot((current) =>
+          current.videoId === requestedVideoId || current.videoId !== videoId
+            ? { videoId: requestedVideoId, ...result }
+            : current,
+        );
       })
       .catch(() => {
-        if (!controller.signal.aborted && currentVideoId.current === requestedVideoId) {
-          setSnapshot({ videoId: requestedVideoId, mode: "error", value: emptyState });
+        if (!controller.signal.aborted) {
+          setSnapshot((current) =>
+            current.videoId === requestedVideoId || current.videoId !== videoId
+              ? { videoId: requestedVideoId, mode: "error", value: emptyState }
+              : current,
+          );
         }
       });
     return () => controller.abort();
@@ -128,21 +132,19 @@ export function VideoSocialActions({
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
       if (response.status === 401) {
-        if (currentVideoId.current === requestedVideoId) {
-          setSnapshot((current) => ({ ...current, mode: "signedOut" }));
-          router.push(href("/login"));
-        }
+        setSnapshot((current) =>
+          current.videoId === requestedVideoId ? { ...current, mode: "signedOut" } : current,
+        );
+        router.push(href("/login"));
         return null;
       }
       if (!response.ok) throw new Error("SOCIAL_MUTATION_UNCONFIRMED");
       handedToCaller = true;
       return { response, requestedVideoId, action };
     } catch {
-      if (currentVideoId.current === requestedVideoId) {
-        setSnapshot((current) =>
-          current.videoId === requestedVideoId ? { ...current, mode: "uncertain" } : current,
-        );
-      }
+      setSnapshot((current) =>
+        current.videoId === requestedVideoId ? { ...current, mode: "uncertain" } : current,
+      );
       return null;
     } finally {
       if (!handedToCaller) clearPending(requestedVideoId, action);
@@ -160,13 +162,16 @@ export function VideoSocialActions({
     if (!result) return;
     try {
       const value = parseVideoSocialState(await result.response.json());
-      if (currentVideoId.current !== result.requestedVideoId) return;
-      setSnapshot({ videoId: result.requestedVideoId, mode: "ready", value });
+      setSnapshot((current) =>
+        current.videoId === result.requestedVideoId
+          ? { videoId: result.requestedVideoId, mode: "ready", value }
+          : current,
+      );
       if (type === "LIKE" && !removing) trackAnalyticsEvent("LIKE", { videoId });
     } catch {
-      if (currentVideoId.current === result.requestedVideoId) {
-        setSnapshot((current) => ({ ...current, mode: "uncertain" }));
-      }
+      setSnapshot((current) =>
+        current.videoId === result.requestedVideoId ? { ...current, mode: "uncertain" } : current,
+      );
     } finally {
       clearPending(result.requestedVideoId, result.action);
     }
@@ -177,15 +182,18 @@ export function VideoSocialActions({
     if (!result) return;
     try {
       parseSavedMutation(await result.response.json(), list, !current);
-      if (currentVideoId.current !== result.requestedVideoId) return;
-      setSnapshot({
-        videoId: result.requestedVideoId,
-        mode: "ready",
-        value: {
-          ...active.value,
-          [list === "watch-later" ? "watchLater" : "myList"]: !current,
-        },
-      });
+      setSnapshot((currentState) =>
+        currentState.videoId === result.requestedVideoId
+          ? {
+              videoId: result.requestedVideoId,
+              mode: "ready",
+              value: {
+                ...currentState.value,
+                [list === "watch-later" ? "watchLater" : "myList"]: !current,
+              },
+            }
+          : currentState,
+      );
     } catch {
       if (currentVideoId.current === result.requestedVideoId) {
         setSnapshot((currentState) => ({ ...currentState, mode: "uncertain" }));

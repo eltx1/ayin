@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
@@ -35,8 +35,6 @@ export function SubscribeButton({
     (key: Parameters<typeof translateSocialAction>[1]) => translateSocialAction(locale, key),
     [locale],
   );
-  const currentChannelId = useRef(channelId);
-  currentChannelId.current = channelId;
   const [snapshot, setSnapshot] = useState<Snapshot>({
     channelId,
     mode: "loading",
@@ -77,25 +75,27 @@ export function SubscribeButton({
         };
       })
       .then((result) => {
-        if (
-          !result ||
-          controller.signal.aborted ||
-          currentChannelId.current !== requestedChannelId
-        ) {
-          return;
-        }
-        setSnapshot({ channelId: requestedChannelId, ...result });
+        if (!result || controller.signal.aborted) return;
+        setSnapshot((current) =>
+          current.channelId === requestedChannelId || current.channelId !== channelId
+            ? { channelId: requestedChannelId, ...result }
+            : current,
+        );
       })
       .catch(() => {
-        if (!controller.signal.aborted && currentChannelId.current === requestedChannelId) {
-          setSnapshot((current) => ({
-            channelId: requestedChannelId,
-            mode: "error",
-            value:
-              current.channelId === requestedChannelId
-                ? current.value
-                : { subscribed: false, subscriberCount: initialCount },
-          }));
+        if (!controller.signal.aborted) {
+          setSnapshot((current) =>
+            current.channelId === requestedChannelId || current.channelId !== channelId
+              ? {
+                  channelId: requestedChannelId,
+                  mode: "error",
+                  value:
+                    current.channelId === requestedChannelId
+                      ? current.value
+                      : { subscribed: false, subscriberCount: initialCount },
+                }
+              : current,
+          );
         }
       });
     return () => controller.abort();
@@ -134,23 +134,24 @@ export function SubscribeButton({
         },
       );
       if (response.status === 401) {
-        if (currentChannelId.current === requestedChannelId) {
-          setSnapshot((current) => ({ ...current, mode: "signedOut" }));
-          router.push(href("/login"));
-        }
+        setSnapshot((current) =>
+          current.channelId === requestedChannelId ? { ...current, mode: "signedOut" } : current,
+        );
+        router.push(href("/login"));
         return;
       }
       if (!response.ok) throw new Error("SOCIAL_MUTATION_UNCONFIRMED");
       const value = parseChannelSocialState(await response.json());
-      if (currentChannelId.current !== requestedChannelId) return;
-      setSnapshot({ channelId: requestedChannelId, mode: "ready", value });
+      setSnapshot((current) =>
+        current.channelId === requestedChannelId
+          ? { channelId: requestedChannelId, mode: "ready", value }
+          : current,
+      );
       if (!wasSubscribed) trackAnalyticsEvent("SUBSCRIBE", { channelId: requestedChannelId });
     } catch {
-      if (currentChannelId.current === requestedChannelId) {
-        setSnapshot((current) =>
-          current.channelId === requestedChannelId ? { ...current, mode: "uncertain" } : current,
-        );
-      }
+      setSnapshot((current) =>
+        current.channelId === requestedChannelId ? { ...current, mode: "uncertain" } : current,
+      );
     } finally {
       setPendingChannelId((current) => (current === requestedChannelId ? null : current));
     }
