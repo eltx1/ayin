@@ -1,0 +1,56 @@
+name: Phase5C formatting preview
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/phase5c-format-preview.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  format-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format Phase5C files
+        run: |
+          pnpm exec prettier --write \
+            apps/api/test/recommendation-viewer.integration.test.ts \
+            apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx \
+            apps/web/src/app/(viewer)/my-ayin/lens/lens.module.css \
+            apps/web/src/components/discovery/discovery.module.css \
+            apps/web/src/lib/i18n/my-ayin.ts \
+            apps/web/src/lib/i18n/resources/my-ayin.ts \
+            apps/web/src/lib/my-ayin-contracts.test.ts \
+            apps/web/src/lib/my-ayin-contracts.ts \
+            tests/e2e/db-helper.mjs \
+            tests/e2e/my-ayin-lens.acceptance.spec.ts
+      - name: Upload formatted files
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase5c-formatted-files
+          path: |
+            apps/api/test/recommendation-viewer.integration.test.ts
+            apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx
+            apps/web/src/app/(viewer)/my-ayin/lens/lens.module.css
+            apps/web/src/components/discovery/discovery.module.css
+            apps/web/src/lib/i18n/my-ayin.ts
+            apps/web/src/lib/i18n/resources/my-ayin.ts
+            apps/web/src/lib/my-ayin-contracts.test.ts
+            apps/web/src/lib/my-ayin-contracts.ts
+            tests/e2e/db-helper.mjs
+            tests/e2e/my-ayin-lens.acceptance.spec.ts
+          retention-days: 1
