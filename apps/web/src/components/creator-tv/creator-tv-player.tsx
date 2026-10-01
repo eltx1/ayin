@@ -223,7 +223,7 @@ export function CreatorTvPlayer({
       }
       setData(nextData);
       if (nextLinear) setLinear(nextLinear);
-    } catch (error) {
+    } catch {
       setRefreshError(t("tv.refreshError"));
     } finally {
       setRefreshing(false);
