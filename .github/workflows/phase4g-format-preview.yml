@@ -1,4 +1,4 @@
-name: Phase4G formatting preview
+name: Phase4G formatting apply
 
 on:
   pull_request:
@@ -6,16 +6,18 @@ on:
       - ".github/workflows/phase4g-format-preview.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  format-preview:
+  format:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'web-pwa-phase-4g-social-action-feedback'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -25,20 +27,30 @@ jobs:
           corepack prepare pnpm@11.24.0 --activate
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Format Phase4G files
+      - name: Format exact Phase4G files
         run: |
           pnpm exec prettier --write \
             apps/web/src/components/social/subscribe-button.tsx \
             apps/web/src/components/social/video-social-actions.tsx \
             apps/web/src/lib/social-action-contracts.test.ts \
             tests/e2e/social-actions.acceptance.spec.ts
-      - name: Upload formatted files
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase4g-formatted-files
-          path: |
-            apps/web/src/components/social/subscribe-button.tsx
-            apps/web/src/components/social/video-social-actions.tsx
-            apps/web/src/lib/social-action-contracts.test.ts
+      - name: Commit formatting only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add \
+            apps/web/src/components/social/subscribe-button.tsx \
+            apps/web/src/components/social/video-social-actions.tsx \
+            apps/web/src/lib/social-action-contracts.test.ts \
             tests/e2e/social-actions.acceptance.spec.ts
-          retention-days: 1
+          actual="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n' \
+            apps/web/src/components/social/subscribe-button.tsx \
+            apps/web/src/components/social/video-social-actions.tsx \
+            apps/web/src/lib/social-action-contracts.test.ts \
+            tests/e2e/social-actions.acceptance.spec.ts | sort)"
+          test "$actual" = "$expected"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style(social): apply repository formatting"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
