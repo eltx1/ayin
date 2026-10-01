@@ -71,7 +71,10 @@ export interface EditableChannelResponse {
 
 const mediaBaseUrl = process.env.NEXT_PUBLIC_MEDIA_BASE_URL?.replace(/\/$/, "") ?? null;
 
-export function channelTabs(_features: { shorts: boolean; posts: boolean }) {
+export function channelTabs(features: { shorts: boolean; posts: boolean }) {
+  // Keep the feature-shaped contract for callers while the current in-page
+  // tab set intentionally excludes placeholder-only destinations.
+  void features;
   // Posts use the real public Community route. Shorts remain hidden until a
   // channel-specific Viewer surface exists; never expose placeholder tabs.
   return [
