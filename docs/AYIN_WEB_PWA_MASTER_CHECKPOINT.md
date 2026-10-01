@@ -130,7 +130,6 @@ Main quality `36810843238`, security `36810843277` and inventory `36810843202` t
 
 **Rollback:** revert the Kids presentation/client-pagination change through validated deployment. Do not weaken or revert the existing Kids server classification policy.
 
-
 ## Accepted Task86 main-quality recovery — #152
 
 **Start/merge:** main `7e29bfb96d283ca1ec6414ee7b03c98ad6d8e339` after #151 failed the Task86 PostgreSQL plan-name assertion while remaining index-backed. PR #152 final head `55ae8a166b268302b81474ec3dcf714e3dc4090d` passed quality `36810232760`, browser `36810232622`, security `36810232576` and inventory `36810232590`; expected-head squash merge produced `85b411d0c8eb692163fdaf687aafb58aa13c0478`.
