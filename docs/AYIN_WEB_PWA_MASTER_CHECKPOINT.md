@@ -156,7 +156,6 @@ Main quality `36810843238`, security `36810843277` and inventory `36810843202` t
 
 Start from accepted/deployed main `9c5a770f0f475cd76f12ca4cda2cce79fa0fd2f6`. Audit confirmed the current global Community page is an authenticated feed fetched from a Server Component with `credentials: include` but without request-cookie forwarding, while the public channel feed remains server-renderable. The shared Viewer feed also uses raw inline presentation and fire-and-forget reactions/polls/reports, and its Comments link is only a fragment despite no Viewer comment-reading surface. Phase5B should first repair auth-correct feed loading, professional EN/AR presentation, truthful empty/error/disabled states and recoverable social mutations without blind replay. Keep Studio Community creator workflows for Phase6. Add bounded Viewer comments as a separately reviewable Phase5B continuation if required; do not create an unbounded/N+1 feed.
 
-
 ## Current Phase5B — Community Viewer redesign
 
 **Start/source:** source main `ef399927ea89ac312c920253824ac1ef84491878` after checkpoint-only #154; accepted deployed product baseline remains `9c5a770f0f475cd76f12ca4cda2cce79fa0fd2f6` after #153. **Branch/PR:** `web-pwa-phase-5b-community-viewer`, #155. **Reviewed implementation head before documentation:** `3d4e7999570ed0f25cf04a00832779ed4ba84b05`. Merge/deployment remain pending documentation-head checks.
