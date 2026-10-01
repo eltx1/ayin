@@ -172,10 +172,10 @@ export function CommunityFeed({
     setPending(key);
     setFeedback(null);
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/community/posts/${post.id}/poll/${optionId}`,
-        { method: "PUT", credentials: "include" },
-      );
+      const response = await fetch(`${apiBaseUrl}/community/posts/${post.id}/poll/${optionId}`, {
+        method: "PUT",
+        credentials: "include",
+      });
       if (response.status === 401) {
         signIn();
         return;
@@ -284,7 +284,11 @@ export function CommunityFeed({
                     </div>
                   </header>
 
-                  {post.body ? <p className={styles.body} dir="auto">{post.body}</p> : null}
+                  {post.body ? (
+                    <p className={styles.body} dir="auto">
+                      {post.body}
+                    </p>
+                  ) : null}
 
                   {post.imageAsset ? (
                     <div className={styles.imageWrap}>
@@ -294,7 +298,10 @@ export function CommunityFeed({
                         </div>
                       ) : (
                         <Image
-                          alt={post.body?.slice(0, 160) || t("community.photoAlt", { name: post.channel.name })}
+                          alt={
+                            post.body?.slice(0, 160) ||
+                            t("community.photoAlt", { name: post.channel.name })
+                          }
                           fill
                           sizes="(max-width: 780px) 100vw, 780px"
                           src={communityMediaUrl(post.imageAsset.r2ObjectKey)}
