@@ -6,7 +6,7 @@ The user's master phases0–16 remain authoritative. `https://ayin.stream` is on
 
 The complete preceding ledger is preserved byte-for-byte in [Admin action release history](AYIN_ADMIN_ACTION_RELEASE_HISTORY.md), including all earlier tests/source/visual/performance/rollback links. Its pending statuses are historical. Current authorities: [feature matrix](AYIN_FEATURE_SURFACE_MATRIX.md), [design system](AYIN_DESIGN_SYSTEM.md), [performance evidence](PERFORMANCE_BASELINE_AND_RESULTS.md). Implementation acceptance below supersedes earlier candidate-pending statements in the linked Phase4D evidence, without implying an unobserved merge or deployment.
 
-**Accepted main and observed deployment:** `4da970c5fa1f2abbd53f100f69c49832f0fb3016`, after #149. Baseline recovery, focused inventory/routes/navigation and design4A–4E are accepted with their historical limits. Phase4F Notifications/network-lifecycle hardening is the current candidate. Whole-role redesign/integration5–8, PWA/performance/current-policy ads/visual/E2E/security9–14, native preparation15 and final documentation16 remain open. No whole-master/provider/store/device certification claim. Former fast-uri publication and overlapping #144/#145 issues remain resolved; no additional connector is required.
+**Accepted main and observed deployment:** `9c5a770f0f475cd76f12ca4cda2cce79fa0fd2f6`, after #153. Baseline recovery, focused inventory/routes/navigation, design4A–4G and Viewer Phase5A Kids are accepted with their historical limits. Phase5B Community Viewer is next. Creator/Admin transformation6–8, PWA/performance/current-policy ads/visual/E2E/security9–14, native preparation15 and final documentation16 remain open. No whole-master/provider/store/device/legal-certification claim. Adopted dependency security fixes remain part of the current baseline.
 
 ## Accepted Admin request repair — #147
 
@@ -78,7 +78,7 @@ Restored artifact11066390162, ZIP SHA256 `0b9796dcbebe5aea117db81c4bd31095e33a85
 
 **Rollback:** revert the focused Notifications/network presentation plus compatible dependency patch through validated deployment. Do not roll back server records or weaken the patched dependency graph merely to reverse UI behavior.
 
-## Current Phase4G — recoverable social actions
+## Accepted Phase4G — recoverable social actions
 
 **Start:** accepted/deployed main `280526c6c7041f7f8dde4fb12d9266edbea08a1d`. **Branch/PR:** `web-pwa-phase-4g-social-action-feedback`, #151. **Reviewed implementation head:** `1790f66f37e04b35b04a8ff8c6f8d99c1a2245e6`. Merge/deployment pending final documentation-head checks.
 
@@ -96,7 +96,7 @@ Restored artifact11066390162, ZIP SHA256 `0b9796dcbebe5aea117db81c4bd31095e33a85
 
 **Performance/security boundary:** no speedup is claimed. The current production dependency graph remains the patched #150 graph; #151 changes no dependencies, server permissions, ownership, moderation, financial logic, provider integration or native shell. The production audit still reports one moderate advisory; no high/critical issue is accepted.
 
-**Next:** pass applicable checks on this documentation head, perform final source review, merge with expected-head protection, verify main/deployment proof and Cloudflare sync. Then begin Phase5 Viewer redesign with Community and Kids as confirmed high-value outliers; do not mix that redesign into #151.
+**Release closure:** final PR head `364673509956dfe93f7a09166cdd66778c59daa9` passed quality `36806431405`, browser `36806431543`, security `36806431442` and inventory `36806431417`; no unresolved review threads. Expected-head squash merge produced `7e29bfb96d283ca1ec6414ee7b03c98ad6d8e339`. Main quality then exposed the pre-existing Task86 planner-assumption flake, so deployment was correctly blocked until #152 repaired the deterministic regression. #152 deployment evidence below is therefore also the actual production delivery proof for #151.
 
 **Rollback:** revert only this social client-state/presentation layer through validated deployment. Do not roll back real subscription/reaction/saved-list records or the patched framework graph.
 
@@ -129,3 +129,29 @@ Main quality `36810843238`, security `36810843277` and inventory `36810843202` t
 **Next:** pass applicable checks on the documentation head, record final source/visual review, merge with expected-head protection, verify main/deployment proof and Cloudflare sync. Then start Phase5B Community Viewer redesign from the deployed main. The Community audit already identified raw inline presentation, silent auth/load failure and mutation-recovery gaps; do not mix that implementation into #153.
 
 **Rollback:** revert the Kids presentation/client-pagination change through validated deployment. Do not weaken or revert the existing Kids server classification policy.
+
+## Accepted Task86 main-quality recovery — #152
+
+**Start/merge:** main `7e29bfb96d283ca1ec6414ee7b03c98ad6d8e339` after #151 failed the Task86 PostgreSQL plan-name assertion while remaining index-backed. PR #152 final head `55ae8a166b268302b81474ec3dcf714e3dc4090d` passed quality `36810232760`, browser `36810232622`, security `36810232576` and inventory `36810232590`; expected-head squash merge produced `85b411d0c8eb692163fdaf687aafb58aa13c0478`.
+
+**Decision:** test schema/index properties deterministically through `pg_indexes` and keep representative EXPLAIN assertions for no Seq Scan / playable-media index use rather than requiring PostgreSQL to choose one named Video index on tiny CI fixtures. Production SQL/index definitions, product behavior and data were unchanged.
+
+**Release observed:** post-merge quality `36810843238`, security `36810843277` and inventory `36810843202` succeeded. Production deployment `36811313718`, job `110206758245`, completed exact/superseded release guards, direct-origin health, historical media recovery and immutable proof. Artifact `11138784371` has GitHub digest `sha256:c0fb95aa403d772718cccdfcb9f127fd8619e607cba25d136c7e514003d98616`. Cloudflare sync `36811458143` succeeded. This delivered both #151 social recovery and the test-only #152 planner-contract correction.
+
+## Accepted Phase5A — Kids Viewer redesign
+
+**Start/PR:** accepted/deployed main `85b411d0c8eb692163fdaf687aafb58aa13c0478`; branch/PR `web-pwa-phase-5a-kids-viewer`, #153. Final reviewed head `3a700ad8ec674da464fe39dda0132e3bf738b559`; expected-head squash merge produced `9c5a770f0f475cd76f12ca4cda2cce79fa0fd2f6`.
+
+**Viewer change:** replace consumer-facing developer/legal copy with friendly route-scoped EN/AR Kids presentation using shared PageHeader/StatusNotice. Preserve `DiscoveryHome kidsMode` and server Kids eligibility/maturity/community policy. Final source review fixed two real product gaps: Kids continuation now retains the already-filtered cursor and uses the policy-closed Kids endpoint, and the three approved discovery source labels are localized on Kids without changing normal Home/API titles.
+
+**Safety/behavior evidence:** browser/API fixture contains ten explicit Kids-eligible playable videos plus a newer ordinary public video. Acceptance requires the ordinary video to remain absent across continuation, every Kids playback href to retain `kids=1`, UI Load more to hit the Kids endpoint, Community to remain disabled by existing policy, and Arabic discovery labels to contain no English source copy. No Kids ad activation, personalized targeting, auth relaxation, schema/provider/native change or legal certification.
+
+**Exact-head acceptance:** final documentation head passed quality `36877137932`, browser `36877138002`, security `36877138058` and inventory `36877137955`; author-side final review `5380924718`, no unresolved threads. Browser artifact `11168594768` has GitHub digest `sha256:eea4f23e4e74987808de7eb21178a765b455ffcf3cbbbed19cffde3ba4aad09f`; EN desktop and AR mobile images were inspected.
+
+**Release observed:** post-merge quality `36878695051`, security `36878695059` and inventory `36878695101` succeeded. Production deployment `36879504657`, job `110427359374`, completed exact validated deploy, direct-origin health, historical media recovery and immutable proof. Proof artifact `11170711363` has GitHub digest `sha256:7a120b9470bb5ed8eacc1407ee9d56804ae29f04725fdb2cdac2380d0b828f20`. Cloudflare production sync `36879756457` succeeded including application edge, R2 layer and public production endpoint verification.
+
+**Rollback:** revert the focused Kids presentation/i18n/continuation change through validated deployment; preserve server policy and do not roll back unrelated data.
+
+## Next — Phase5B Community Viewer
+
+Start from accepted/deployed main `9c5a770f0f475cd76f12ca4cda2cce79fa0fd2f6`. Audit confirmed the current global Community page is an authenticated feed fetched from a Server Component with `credentials: include` but without request-cookie forwarding, while the public channel feed remains server-renderable. The shared Viewer feed also uses raw inline presentation and fire-and-forget reactions/polls/reports, and its Comments link is only a fragment despite no Viewer comment-reading surface. Phase5B should first repair auth-correct feed loading, professional EN/AR presentation, truthful empty/error/disabled states and recoverable social mutations without blind replay. Keep Studio Community creator workflows for Phase6. Add bounded Viewer comments as a separately reviewable Phase5B continuation if required; do not create an unbounded/N+1 feed.
