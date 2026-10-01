@@ -1,4 +1,4 @@
-name: Phase5D formatting preview
+name: Phase5D formatting apply
 
 on:
   pull_request:
@@ -6,16 +6,18 @@ on:
       - ".github/workflows/phase5d-format-preview.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  format-preview:
+  format-apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'web-pwa-phase-5d-public-creator-destinations'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -35,16 +37,27 @@ jobs:
             apps/web/src/lib/i18n/public-creator.test.ts \
             apps/web/src/lib/i18n/resources/public-creator.ts \
             tests/e2e/public-creator-destinations.acceptance.spec.ts
-      - name: Upload formatted files
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase5d-formatted-files
-          path: |
-            apps/web/src/app/(viewer)/c/[handle]/playlists/[slug]/page.tsx
-            apps/web/src/app/(viewer)/c/[handle]/tv/page.tsx
-            apps/web/src/components/creator-tv/creator-tv-player.tsx
-            apps/web/src/components/creator-tv/creator-tv.module.css
-            apps/web/src/lib/i18n/public-creator.test.ts
-            apps/web/src/lib/i18n/resources/public-creator.ts
-            tests/e2e/public-creator-destinations.acceptance.spec.ts
-          retention-days: 1
+      - name: Commit formatting only
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed=(
+            "apps/web/src/app/(viewer)/c/[handle]/playlists/[slug]/page.tsx"
+            "apps/web/src/app/(viewer)/c/[handle]/tv/page.tsx"
+            "apps/web/src/components/creator-tv/creator-tv-player.tsx"
+            "apps/web/src/components/creator-tv/creator-tv.module.css"
+            "apps/web/src/lib/i18n/public-creator.test.ts"
+            "apps/web/src/lib/i18n/resources/public-creator.ts"
+            "tests/e2e/public-creator-destinations.acceptance.spec.ts"
+          )
+          if git diff --quiet -- "${allowed[@]}"; then
+            echo "Formatting already current."
+            exit 0
+          fi
+          git add -- "${allowed[@]}"
+          unexpected="$(git diff --cached --name-only | grep -v -F -f <(printf '%s\n' "${allowed[@]}") || true)"
+          test -z "$unexpected"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "style(viewer): format public creator destinations"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
