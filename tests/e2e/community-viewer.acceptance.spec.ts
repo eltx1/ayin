@@ -105,14 +105,19 @@ test("Community Viewer is localized, authenticated, public-channel safe and muta
     await page.setViewportSize({ width: 1440, height: 960 });
     await page.goto("/community?lang=en");
     const main = page.getByRole("main");
-    await expect(main.getByRole("heading", { level: 1, name: "Updates from creators you follow" }))
-      .toBeVisible();
-    await expect(main.getByRole("heading", { name: "Community could not be loaded" })).toBeVisible();
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Updates from creators you follow" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("heading", { name: "Community could not be loaded" }),
+    ).toBeVisible();
     await expect(main.getByText("No community updates yet", { exact: true })).toHaveCount(0);
 
     failFeed = false;
     await main.getByRole("button", { name: "Reload Community", exact: true }).click();
-    await expect(main.getByText("Behind the scenes from the harbor.", { exact: true })).toBeVisible();
+    await expect(
+      main.getByText("Behind the scenes from the harbor.", { exact: true }),
+    ).toBeVisible();
     await expect(main.getByText("Choose the next stream.", { exact: true })).toBeVisible();
 
     const textArticle = main
@@ -171,10 +176,14 @@ test("Community Viewer is localized, authenticated, public-channel safe and muta
 
     await textArticle.getByRole("button", { name: "Report", exact: true }).click();
     const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("heading", { name: "Report this community post?" })).toBeVisible();
+    await expect(
+      dialog.getByRole("heading", { name: "Report this community post?" }),
+    ).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
     await dialog.getByRole("button", { name: "Send report", exact: true }).click();
-    await expect(textArticle.getByText(/could not confirm whether the report was sent/i)).toBeVisible();
+    await expect(
+      textArticle.getByText(/could not confirm whether the report was sent/i),
+    ).toBeVisible();
     await expect(textArticle.getByRole("button", { name: "Report", exact: true })).toBeDisabled();
     expect(reportWrites).toBe(1);
     expect(reportCommitted).toBe(true);
@@ -189,7 +198,9 @@ test("Community Viewer is localized, authenticated, public-channel safe and muta
         exact: true,
       }),
     ).toBeVisible();
-    await expect(page.getByText("Behind the scenes from the harbor.", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Behind the scenes from the harbor.", { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText("استطلاع", { exact: true })).toBeVisible();
     await noOverflow(page);
     await page.screenshot({
