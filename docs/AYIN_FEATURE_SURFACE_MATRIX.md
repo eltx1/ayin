@@ -69,3 +69,13 @@ Implemented is not globally accepted. Each intended Viewer/Creator/Admin capabil
 ## Phase4D current candidate delta
 
 Shared confirmation adoption in Studio Content adds explicit named decisions for discard/close, same-tab departure, removal and unpublish; native navigation dialogs share focus-boundary behavior. Audience remains the owning creator, with existing server ownership/Origin and all request guards unchanged. A modal does not grant an API permission or make two-stage metadata writes atomic. The accepted PR147 JSON transport fix is merged/deployed atd3484c6; current confirmation branch is not yet accepted. Existing content browser/API journeys are retained and extended; source/unit/bundle evidence is not actual device or full visual acceptance. History Back/Forward draft recovery, deeper caption uncertainty and broad Admin action adoption remain open. See current checkpoint and Phase4D evidence for exact scope.
+
+## Kids Viewer — Phase5A reviewed candidate
+
+**Backend/API and policy:** existing Kids policy remains authoritative: explicit Kids classification is required, Community stays disabled, and Kids links carry `kids=1`. Existing `/public/discovery/kids` and `/public/discovery/kids/rows/:key` endpoints are reused; no new permission or policy endpoint is added. Kids home now preserves its safe continuation cursor instead of discarding it, and the client uses only the Kids-specific row endpoint for continuation.
+
+**Viewer/Web/PWA:** `/kids` now uses shared PageHeader/StatusNotice and AYIN design tokens with route-scoped EN/AR consumer copy. Internal legal/compliance implementation statements are not shown to viewers. The three policy-allowed discovery sources receive localized row/kicker labels in Kids mode; normal Home/API source titles remain unchanged.
+
+**Evidence/status:** implementation head `3accee5de15a6c34d8f91fc73376425961df0c14` passed quality `36875582398`, browser `36875582595`, security `36875582558` and inventory `36875582373`. Browser/API regression uses ten Kids-classified videos plus a newer ordinary video, exercises first and second pages, requires `kids=1`, confirms the continuation request uses the Kids endpoint and preserves Community-disabled policy. Visual artifact `11168594768` was inspected in EN desktop and AR mobile.
+
+**Remaining:** no Kids ad/legal certification is inferred. Current-policy Kids advertising, profile-transition UX, installed PWA/device validation and whole Viewer redesign remain later master work.

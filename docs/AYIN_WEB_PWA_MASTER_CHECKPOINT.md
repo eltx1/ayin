@@ -99,3 +99,33 @@ Restored artifact11066390162, ZIP SHA256 `0b9796dcbebe5aea117db81c4bd31095e33a85
 **Next:** pass applicable checks on this documentation head, perform final source review, merge with expected-head protection, verify main/deployment proof and Cloudflare sync. Then begin Phase5 Viewer redesign with Community and Kids as confirmed high-value outliers; do not mix that redesign into #151.
 
 **Rollback:** revert only this social client-state/presentation layer through validated deployment. Do not roll back real subscription/reaction/saved-list records or the patched framework graph.
+
+## Accepted Phase4G closure and main-quality recovery — PRs #151/#152
+
+The earlier Phase4G entry above described an implementation candidate. It is superseded by this release record. PR #151 final head `364673509956dfe93f7a09166cdd66778c59daa9` passed quality `36806431405`, browser `36806431543`, security `36806431442` and inventory `36806431417`; author-side review `5374332087`, no unresolved threads. Expected-head squash merge produced `7e29bfb96d283ca1ec6414ee7b03c98ad6d8e339`.
+
+Post-merge quality correctly failed before deployment at the Task86 PostgreSQL EXPLAIN regression: the test still prescribed a cost-based planner choice instead of verifying the index definition plus index-backed behavior. No product release was claimed from that failed main. PR #152 head `55ae8a166b268302b81474ec3dcf714e3dc4090d` made the regression deterministic without changing production SQL/indexes and passed quality `36810232760`, browser `36810232622`, security `36810232576` and inventory `36810232590`; author-side review `5374635240`. Merge produced `85b411d0c8eb692163fdaf687aafb58aa13c0478`.
+
+Main quality `36810843238`, security `36810843277` and inventory `36810843202` then passed. Production deployment `36811313718`, job `110206758245`, completed exact/superseded release guards, direct-origin health, historical media recovery and immutable proof. Artifact `11138784371` has GitHub digest `sha256:c0fb95aa403d772718cccdfcb9f127fd8619e607cba25d136c7e514003d98616`. Cloudflare production sync `36811458143` succeeded including public endpoint verification. This is the deployed Phase4G product state plus the test-only #152 planner-contract repair; no production query/index or product-data mutation came from #152.
+
+## Current Phase5A — Kids Viewer redesign
+
+**Start:** accepted/deployed main `85b411d0c8eb692163fdaf687aafb58aa13c0478`. **Branch/PR:** `web-pwa-phase-5a-kids-viewer`, #153. **Reviewed implementation head before documentation:** `3accee5de15a6c34d8f91fc73376425961df0c14`. Merge/deployment remain pending final documentation-head checks.
+
+**Viewer finding and redesign:** the previous Kids hero exposed consumer-facing legal/developer caveats and did not match the shared Viewer hierarchy. The new surface uses AYIN PageHeader/StatusNotice/tokens with route-scoped EN/AR metadata, friendly title/description and an explicit plain-language explanation that only Kids-classified videos appear. Developer/compliance diagnostics remain internal; no legal certification is claimed.
+
+**Pagination/safety finding fixed during visual review:** the first Kids page used the fail-closed `/public/discovery/kids` endpoint, but `getKidsHome()` forcibly cleared every `nextCursor`, while the existing safe `/public/discovery/kids/rows/:key` endpoint was unreachable from the UI. This limited each Kids row to its first eight eligible cards. Kids home now preserves its already policy-filtered cursor and `DiscoveryRow` uses the Kids-specific continuation endpoint whenever `kidsMode` is active. The general discovery endpoint is not used for Kids continuation. No new backend permission or policy path was introduced.
+
+**Localization finding fixed:** visual review of the initial Arabic screenshot showed English discovery row headings/kickers. The three server-approved Kids sources (`NEW_ON_AYIN`, `MOVIES`, `RECENTLY_ADDED`) now receive route-scoped EN/AR presentation labels in Kids mode only. API/source names and the normal Home surface are unchanged; creator/video titles remain user/catalog data and are not rewritten.
+
+**Safety regression:** the E2E fixture now creates ten explicitly Kids-eligible playable videos plus a newer ordinary public video. API acceptance verifies the ordinary video never appears, first-page Kids links retain `kids=1`, the safe row cursor is present, and the second Kids endpoint page remains classification-filtered with `kids=1`. Browser acceptance activates Load more and requires that request to use `/public/discovery/kids/rows/`, then finds the tenth eligible card and still rejects the ordinary fixture. Existing Community-disabled Kids policy remains asserted.
+
+**Exact implementation-head gates:** quality `36875582398`, browser `36875582595`, security `36875582558` and inventory `36875582373` all succeeded on `3accee5d...`. Quality includes production audit, formatting, deployment tooling, lint, types/Prisma, unit/schema, clean migrations/integration and production build. Security lockfile/audit, secret scanning, dependency review and CodeQL passed.
+
+**Actual visual evidence:** downloaded browser artifact `11168594768`, GitHub digest `sha256:eea4f23e4e74987808de7eb21178a765b455ffcf3cbbbed19cffde3ba4aad09f`. Inspected `design-kids-1440-en.png` and `design-kids-390-ar.png`. The Arabic hero and discovery headings/kickers are localized, Load more is visible and bounded, cards stay inside the horizontal discovery rail and the browser assertion reports no document overflow. Sticky/fixed navigation placement in full-page capture is capture context, not a CLS or physical-device certification.
+
+**Boundary:** no Kids advertising activation, personalized targeting, legal approval, auth model, community policy, schema migration, provider or native change is made here. Kids monetization remains disabled/gated unless separately accepted under current policy. Performance/CWV and physical-device validation remain later phases.
+
+**Next:** pass applicable checks on the documentation head, record final source/visual review, merge with expected-head protection, verify main/deployment proof and Cloudflare sync. Then start Phase5B Community Viewer redesign from the deployed main. The Community audit already identified raw inline presentation, silent auth/load failure and mutation-recovery gaps; do not mix that implementation into #153.
+
+**Rollback:** revert the Kids presentation/client-pagination change through validated deployment. Do not weaken or revert the existing Kids server classification policy.
