@@ -99,13 +99,16 @@ test("subscription and video actions reconcile uncertain writes without blind re
   });
 
   let videoReadFails = true;
+  let videoReads = 0;
   await page.route(`${API}/social/videos/${video.id}`, async (route) => {
     if (route.request().method() !== "GET") return route.continue();
+    videoReads += 1;
     if (videoReadFails) return route.abort("failed");
     return route.continue();
   });
 
   await page.goto(`/watch/${video.slug}?lang=en`);
+  await expect.poll(() => videoReads).toBeGreaterThan(0);
   await expect(
     main.getByText("Your video actions could not be loaded.", { exact: true }),
   ).toBeVisible();
