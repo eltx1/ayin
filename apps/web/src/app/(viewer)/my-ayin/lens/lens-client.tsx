@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useMyAyinI18n, lensReasonKey } from "@/lib/i18n/my-ayin";
@@ -25,6 +25,19 @@ type LensState = "loading" | "ready" | "signed-out" | "error";
 type PendingAction = { kind: "not-interested"; videoId: string } | { kind: "reset" };
 type UncertainAction = PendingAction;
 
+function focusLensControl(id: string) {
+  window.requestAnimationFrame(() => {
+    const element = document.querySelector<HTMLElement>(`[data-tv-focus-id="${id}"]`);
+    if (
+      element?.isConnected &&
+      !element.matches(":disabled") &&
+      element.getClientRects().length > 0
+    ) {
+      element.focus({ preventScroll: true });
+    }
+  });
+}
+
 export function AyinLensClient() {
   const router = useRouter();
   const { t, href, direction } = useMyAyinI18n();
@@ -34,6 +47,7 @@ export function AyinLensClient() {
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [uncertain, setUncertain] = useState<UncertainAction | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const focusAfterLoad = useRef(false);
 
   const signIn = useCallback(() => router.push(href("/login")), [href, router]);
 
@@ -58,6 +72,10 @@ export function AyinLensClient() {
         setData(next);
         setState("ready");
         setUncertain(null);
+        if (focusAfterLoad.current) {
+          focusAfterLoad.current = false;
+          focusLensControl("lens-reset");
+        }
         trackAnalyticsEvent("LENS_OPEN", { profileId: next.profileId });
         for (const item of next.items) {
           trackAnalyticsEvent("RECOMMENDATION_IMPRESSION", {
@@ -79,6 +97,7 @@ export function AyinLensClient() {
 
   function refresh() {
     if (pending) return;
+    focusAfterLoad.current = true;
     setState("loading");
     setAttempt((value) => value + 1);
   }
@@ -106,6 +125,7 @@ export function AyinLensClient() {
         channelId: item.channelId,
       });
       setData({ ...data, items: data.items.filter((candidate) => candidate.id !== item.id) });
+      focusLensControl("lens-reset");
     } catch {
       setUncertain({ kind: "not-interested", videoId: item.id });
     } finally {
@@ -136,6 +156,7 @@ export function AyinLensClient() {
         metadata: { action: "reset_personalization" },
       });
       setResetOpen(false);
+      focusAfterLoad.current = true;
       setState("loading");
       setAttempt((value) => value + 1);
     } catch {
@@ -145,6 +166,10 @@ export function AyinLensClient() {
       setPending(null);
     }
   }
+
+  useEffect(() => {
+    if (uncertain) focusLensControl("lens-refresh");
+  }, [uncertain]);
 
   if (state === "loading") {
     return <StatusNotice announce="polite">{t("lens.loading")}</StatusNotice>;

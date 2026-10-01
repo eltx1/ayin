@@ -161,6 +161,8 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
     main.getByText(/could not confirm whether this suggestion was hidden/i),
   ).toBeVisible();
   await expect(notInterested).toBeDisabled();
+  const recoveryRefresh = main.getByRole("button", { name: "Refresh recommendations", exact: true });
+  await expect(recoveryRefresh).toBeFocused();
   expect(notInterestedWrites).toBe(1);
   expect(
     db<{ feedback: Array<{ videoId: string; type: string }> }>("my-ayin-lens-evidence", { email })
@@ -168,11 +170,16 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
   ).toEqual([{ videoId: fixture.recommendationVideoId, type: "NOT_INTERESTED" }]);
 
   await page.unroute(`${API}/recommendations/not-interested`);
-  await main.getByRole("button", { name: "Refresh recommendations", exact: true }).click();
+  await recoveryRefresh.click();
   await expect(main.getByText("Lens Recommendation Fixture", { exact: true })).toHaveCount(0);
+  const resetPersonalization = main.getByRole("button", {
+    name: "Reset personalization",
+    exact: true,
+  });
+  await expect(resetPersonalization).toBeFocused();
   expect(notInterestedWrites).toBe(1);
 
-  await main.getByRole("button", { name: "Reset personalization", exact: true }).click();
+  await resetPersonalization.click();
   const dialog = page.getByRole("dialog");
   await expect(
     dialog.getByRole("heading", { name: "Reset recommendation signals?" }),
@@ -194,6 +201,11 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
   await expect(
     main.getByText(/could not confirm whether personalization was reset/i),
   ).toBeVisible();
+  const resetRecovery = main.getByRole("button", {
+    name: "Refresh recommendations",
+    exact: true,
+  });
+  await expect(resetRecovery).toBeFocused();
   expect(resetWrites).toBe(1);
 
   const evidence = db<{
@@ -204,8 +216,12 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
   expect(evidence.state?.resetAt).not.toBeNull();
 
   await page.unroute(`${API}/recommendations/reset`);
-  await main.getByRole("button", { name: "Refresh recommendations", exact: true }).click();
+  await resetRecovery.click();
   await expect(main.getByText("General recommendations", { exact: true })).toBeVisible();
+  await expect(
+    main.getByRole("button", { name: "Reset personalization", exact: true }),
+  ).toBeFocused();
+  await expect(page.getByRole("link", { name: "Skip to content", exact: true })).toBeHidden();
   expect(resetWrites).toBe(1);
 
   await page.screenshot({
