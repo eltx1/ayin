@@ -84,7 +84,7 @@ TV focus attributes remain semantic hints and are no longer assumed globally uni
 
 The fix is systemic rather than page-specific. Cards, navigation, dialogs and future focusable surfaces do not need synthetic per-page IDs merely to satisfy geometry. Unnamed elements remain local automatic targets and are not persisted. Modal scope containment from Phase4D is unchanged. Pure tests and real browser geometry regression passed; merge/deployment evidence is in the master checkpoint.
 
-## Phase4F candidate — lifecycle-safe Notifications and network feedback
+## Accepted Phase4F — lifecycle-safe Notifications and network feedback
 
 The real Viewer Notifications route now adopts PageHeader, ActionButton, StatusNotice and Viewer empty/error states instead of inline/raw presentation. Notification API payloads are parsed as bounded client contracts; malformed data is an error, not a successful empty inbox. Existing server cursor pagination is exposed with deduplicated continuation.
 
@@ -93,3 +93,11 @@ Mark-read follows the same uncertainty principle used in creator writes: an unco
 The global NetworkStatusBanner now distinguishes offline from reconnected. Offline is assertive, recovery is polite and temporary, and mobile placement remains above the fixed bottom navigation. Both states are localized EN/AR. This improves lifecycle feedback but does not claim installed-PWA/offline-content completeness.
 
 The phase also updates newly vulnerable framework dependencies without lowering audit policy: Next 16.3.6, Nest 12.0.3 and a single pnpm-workspace-pinned Fastify 5.12.5 graph. Exact source/security/browser/visual and deployment evidence belongs in the checkpoint. Social Like/Subscribe failure handling remains a separate focused follow-up rather than being hidden inside this Notifications change.
+
+## Phase4G candidate — recoverable social actions
+
+Viewer social controls now follow the same uncertainty rule as Notifications and creator writes. Subscribe, Like, Not-for-me, Watch Later and My List do not optimistically invent committed server state after a failed/lost response. Initial state reads validate complete response contracts. Unconfirmed writes retain the last confirmed view, expose a warning and require an explicit read refresh before another mutation. Share cancellation is excluded because it is not a server write.
+
+The implementation keeps existing login gates, profile isolation, analytics event boundaries and social API routes. Response parsers accept only non-negative integer counts, known reaction values, boolean saved flags and matching saved-list acknowledgements. Route-scoped EN/AR copy avoids growing unrelated bundles. Retry/refresh actions and social controls remain in the shared TV focus model.
+
+Exact source/security/browser evidence is recorded in the checkpoint. Reviewed visuals show clear desktop subscription state and contained Arabic mobile action labels. This is not the whole Viewer redesign, a claim of social-provider delivery, or a performance improvement. Phase5 still needs the raw Community surface, consumer-friendly Kids copy and the remaining Viewer route families.

@@ -52,6 +52,16 @@ The baseline's detailed entries still govern Authentication/Sessions/Accounts/MF
 
 Internal storage/transcoder/queue/warehouse/backup/synthetic execution stays internal; only sanitized role-appropriate summaries are surfaced. Detailed database/observability keeps its existing privileged boundary. Finance, moderation, support and provider writes retain server ownership/roles/current MFA/audit. No ad/provider/backup/store readiness is fabricated. Kids monetization and native advertising require later explicit current-policy acceptance, not extrapolation from a shared Web screen.
 
+## Social actions — Phase 4G candidate delta
+
+**Backend/API and authorization:** unchanged social subscription/reaction/saved-list endpoints and existing AuthGuard/profile isolation remain authoritative. #151 changes client response validation/recovery only; no schema or permission change.
+
+**Viewer surfaces:** channel Subscribe plus Watch Like/Not-for-me/Watch Later/My List now expose failed-read and uncertain-write recovery instead of silent ambiguity. Lost responses are never replayed automatically; Refresh re-reads server truth first. Share cancellation remains local and independent. Controls retain TV focus and EN/AR presentation.
+
+**Evidence/status:** implementation head `1790f66f37e04b35b04a8ff8c6f8d99c1a2245e6` passed quality `36805125530`, browser `36805125622`, security `36805125594` and inventory `36805125517`. Real browser/DB coverage proves one subscription and one reaction after response-loss reconciliation plus saved-list state, Arabic mobile and no overflow. Visual artifact `11137431965` was inspected. Final documentation-head checks/merge/deployment remain pending.
+
+**Remaining:** Community post reactions/polls/reports still use their older raw interaction layer and are intentionally not declared complete here. Whole Viewer redesign, installed PWA, current-policy advertising and native/device acceptance remain later phases.
+
 ## Acceptance rule
 
 Implemented is not globally accepted. Each intended Viewer/Creator/Admin capability needs a discoverable appropriate surface and its relevant behavioral/security/visual/performance evidence, or an explicit internal-only reason. The current source counts and historical completed tasks do not imply all master phases are complete. Reconcile real code, preserve working backends and URLs, and update this index after each accepted phase.
