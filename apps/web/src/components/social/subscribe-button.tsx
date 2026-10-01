@@ -68,7 +68,10 @@ export function SubscribeButton({
     })
       .then(async (response) => {
         if (response.status === 401) {
-          return { mode: "signedOut" as const, value: active.value };
+          return {
+            mode: "signedOut" as const,
+            value: { subscribed: false, subscriberCount: initialCount },
+          };
         }
         if (!response.ok) throw new Error("SOCIAL_STATE_UNAVAILABLE");
         return {
@@ -84,11 +87,18 @@ export function SubscribeButton({
       })
       .catch(() => {
         if (!controller.signal.aborted && currentChannelId.current === requestedChannelId) {
-          setSnapshot({ channelId: requestedChannelId, mode: "error", value: active.value });
+          setSnapshot((current) => ({
+            channelId: requestedChannelId,
+            mode: "error",
+            value:
+              current.channelId === requestedChannelId
+                ? current.value
+                : { subscribed: false, subscriberCount: initialCount },
+          }));
         }
       });
     return () => controller.abort();
-  }, [attempt, channelId]);
+  }, [attempt, channelId, initialCount]);
 
   function refresh() {
     if (busy) return;

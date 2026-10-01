@@ -109,6 +109,12 @@ export function VideoSocialActions({
     return active.mode === "ready" && !busy;
   }
 
+  function clearPending(requestedVideoId: string, action: string) {
+    setPending((current) =>
+      current?.videoId === requestedVideoId && current.action === action ? null : current,
+    );
+  }
+
   async function request(
     action: string,
     path: string,
@@ -117,6 +123,7 @@ export function VideoSocialActions({
   ) {
     if (!requireReady()) return null;
     const requestedVideoId = videoId;
+    let handedToCaller = false;
     setPending({ videoId: requestedVideoId, action });
     try {
       const response = await fetch(`${apiBaseUrl}/social/videos/${requestedVideoId}/${path}`, {
@@ -133,7 +140,8 @@ export function VideoSocialActions({
         return null;
       }
       if (!response.ok) throw new Error("SOCIAL_MUTATION_UNCONFIRMED");
-      return { response, requestedVideoId };
+      handedToCaller = true;
+      return { response, requestedVideoId, action };
     } catch {
       if (currentVideoId.current === requestedVideoId) {
         setSnapshot((current) =>
@@ -142,9 +150,7 @@ export function VideoSocialActions({
       }
       return null;
     } finally {
-      setPending((current) =>
-        current?.videoId === requestedVideoId && current.action === action ? null : current,
-      );
+      if (!handedToCaller) clearPending(requestedVideoId, action);
     }
   }
 
@@ -166,6 +172,8 @@ export function VideoSocialActions({
       if (currentVideoId.current === result.requestedVideoId) {
         setSnapshot((current) => ({ ...current, mode: "uncertain" }));
       }
+    } finally {
+      clearPending(result.requestedVideoId, result.action);
     }
   }
 
@@ -175,18 +183,20 @@ export function VideoSocialActions({
     try {
       parseSavedMutation(await result.response.json(), list, !current);
       if (currentVideoId.current !== result.requestedVideoId) return;
-      setSnapshot((currentState) => ({
+      setSnapshot({
         videoId: result.requestedVideoId,
         mode: "ready",
         value: {
-          ...currentState.value,
+          ...active.value,
           [list === "watch-later" ? "watchLater" : "myList"]: !current,
         },
-      }));
+      });
     } catch {
       if (currentVideoId.current === result.requestedVideoId) {
         setSnapshot((currentState) => ({ ...currentState, mode: "uncertain" }));
       }
+    } finally {
+      clearPending(result.requestedVideoId, result.action);
     }
   }
 
