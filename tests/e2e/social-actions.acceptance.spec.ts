@@ -109,15 +109,18 @@ test("subscription and video actions reconcile uncertain writes without blind re
 
   await page.goto(`/watch/${video.slug}?lang=en`);
   await expect.poll(() => videoReads).toBeGreaterThan(0);
-  await expect(
-    main.getByText("Your video actions could not be loaded.", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    main.getByRole("button", { name: "Retry video actions", exact: true }),
-  ).toBeVisible();
+  const videoFeedback = page.getByRole("alert").filter({
+    hasText: "Your video actions could not be loaded.",
+  });
+  await expect(videoFeedback).toContainText("Your video actions could not be loaded.");
+  const retryVideoActions = videoFeedback.getByRole("button", {
+    name: "Retry video actions",
+    exact: true,
+  });
+  await expect(retryVideoActions).toBeVisible();
 
   videoReadFails = false;
-  await main.getByRole("button", { name: "Retry video actions", exact: true }).click();
+  await retryVideoActions.click();
   const like = main.getByRole("button", { name: /Like · 0/ });
   await expect(like).toBeEnabled();
 
