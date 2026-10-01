@@ -1,0 +1,44 @@
+name: Phase4G formatting preview
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/phase4g-format-preview.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  format-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format Phase4G files
+        run: |
+          pnpm exec prettier --write \
+            apps/web/src/components/social/subscribe-button.tsx \
+            apps/web/src/components/social/video-social-actions.tsx \
+            apps/web/src/lib/social-action-contracts.test.ts \
+            tests/e2e/social-actions.acceptance.spec.ts
+      - name: Upload formatted files
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4g-formatted-files
+          path: |
+            apps/web/src/components/social/subscribe-button.tsx
+            apps/web/src/components/social/video-social-actions.tsx
+            apps/web/src/lib/social-action-contracts.test.ts
+            tests/e2e/social-actions.acceptance.spec.ts
+          retention-days: 1
