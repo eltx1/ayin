@@ -1,0 +1,50 @@
+name: Phase5C checkpoint restore
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/phase5c-checkpoint-restore.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'web-pwa-phase-5c-my-ayin-lens'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Enable pinned pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Restore full checkpoint and format
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show b9cf2db65376f27675161c4f662bdaabe1576258:docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md > docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
+          pnpm exec prettier --write docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
+          grep -q '^## Accepted Phase5B release closure — PR #155$' docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
+          grep -q '^## Current Phase5C — My AYIN + AYIN Lens Viewer redesign$' docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
+          test "$(wc -c < docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md)" -gt 10000
+          git diff --exit-code -- . ':!docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md'
+      - name: Commit checkpoint only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
+          test "$(git diff --cached --name-only)" = "docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md"
+          git commit -m "docs(master): restore formatted Phase5C checkpoint"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
