@@ -1,0 +1,5 @@
+.page {
+  margin-inline: auto;
+  max-inline-size: 1100px;
+  padding: clamp(2rem, 5vw, 4.5rem) var(--page-gutter) clamp(5rem, 8vw, 8rem);
+}
