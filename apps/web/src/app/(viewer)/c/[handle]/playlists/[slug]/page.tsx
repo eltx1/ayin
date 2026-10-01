@@ -147,7 +147,7 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
       ) : null}
 
       <PageHeader
-        className={styles.hero}
+        {...(styles.hero ? { className: styles.hero } : {})}
         eyebrow={
           data.playlist.systemKey === "UPLOADS"
             ? t("playlist.channelUploads")
@@ -185,8 +185,10 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
               const thumbnail = mediaAssetUrl(item.video.thumbnail?.objectKey);
               return (
                 <MediaCard
-                  artworkUrl={thumbnail ?? undefined}
-                  badge={item.video.durationMs ? formatDuration(item.video.durationMs) : undefined}
+                  {...(thumbnail ? { artworkUrl: thumbnail } : {})}
+                  {...(item.video.durationMs
+                    ? { badge: formatDuration(item.video.durationMs) }
+                    : {})}
                   href={localizePath(
                     `/watch/${encodeURIComponent(item.video.slug)}`,
                     locale,

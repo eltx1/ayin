@@ -339,7 +339,7 @@ export function CreatorTvPlayer({
                 data.schedule.upNext
                   ? {
                       title: data.schedule.upNext.video.title,
-                      detail: formatTime(data.schedule.upNext.startsAt),
+                      detail: formatTime(data.schedule.upNext.startsAt, locale),
                     }
                   : null
               }
