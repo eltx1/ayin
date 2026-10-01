@@ -150,8 +150,8 @@ test("subscription and video actions reconcile uncertain writes without blind re
   await page.goto(`/ar/watch/${video.slug}?lang=ar`);
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(main.getByRole("button", { pressed: true, name: /إعجاب/ })).toBeVisible();
-  await expect(main.getByRole("button", { name: "في المشاهدة لاحقًا", exact: true })).toBeVisible();
-  await expect(main.getByRole("button", { name: "في قائمتي", exact: true })).toBeVisible();
+  await expect(main.getByRole("button", { name: "مضاف للمشاهدة لاحقًا", exact: true })).toBeVisible();
+  await expect(main.getByRole("button", { name: "مضاف إلى قائمتي", exact: true })).toBeVisible();
   await noOverflow(page);
   await page.screenshot({
     path: testInfo.outputPath("design-social-actions-390-ar.png"),
