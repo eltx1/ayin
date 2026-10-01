@@ -48,7 +48,8 @@ export const publicCreatorEn = {
     "The channel remains ready while automatic programming is paused.",
   "tv.offAirDefaultDescription":
     "This Creator TV keeps its channel identity while programming is unavailable.",
-  "tv.serverSideAds": "Playing the continuous linear stream with server-side ad insertion.",
+  "tv.playbackContinuous": "You're watching the channel's continuous stream.",
+  "tv.playbackProgram": "You're watching the current program from the creator's available video.",
   "tv.backToChannel": "Back to channel",
 } as const;
 
@@ -100,6 +101,7 @@ export const publicCreatorAr: Record<keyof typeof publicCreatorEn, string> = {
   "tv.offAirAutomaticPausedDescription":
     "تظل القناة جاهزة بينما البرمجة التلقائية متوقفة مؤقتًا.",
   "tv.offAirDefaultDescription": "يحتفظ تلفزيون صانع المحتوى بهوية القناة أثناء توقف البرمجة.",
-  "tv.serverSideAds": "يتم تشغيل البث الخطي المستمر مع إدراج الإعلانات من الخادم.",
+  "tv.playbackContinuous": "أنت تشاهد البث المستمر للقناة.",
+  "tv.playbackProgram": "أنت تشاهد البرنامج الحالي من فيديوهات صانع المحتوى المتاحة.",
   "tv.backToChannel": "العودة إلى القناة",
 };
