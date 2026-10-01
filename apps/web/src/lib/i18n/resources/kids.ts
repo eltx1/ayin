@@ -9,6 +9,9 @@ export const kidsEn = {
   "kids.noteDescription":
     "Other AYIN videos, creator community posts and unrestricted discovery stay outside this space.",
   "kids.catalog": "Explore AYIN Kids",
+  "kids.rowNewOnAyin": "New on AYIN",
+  "kids.rowMovies": "Movies",
+  "kids.rowRecentlyAdded": "Recently Added",
 } as const;
 
 export const kidsAr: Record<keyof typeof kidsEn, string> = {
@@ -21,4 +24,7 @@ export const kidsAr: Record<keyof typeof kidsEn, string> = {
   "kids.noteDescription":
     "تبقى بقية فيديوهات AYIN ومنشورات مجتمع صنّاع المحتوى والاكتشاف العام خارج هذه المساحة.",
   "kids.catalog": "استكشف AYIN Kids",
+  "kids.rowNewOnAyin": "جديد على AYIN",
+  "kids.rowMovies": "الأفلام",
+  "kids.rowRecentlyAdded": "أضيف حديثًا",
 };

@@ -20,7 +20,7 @@ test.beforeEach(() => {
   db("reset");
 });
 
-test("Kids viewer is friendly, localized and preserves fail-closed catalog filtering", async ({
+test("Kids viewer is localized and keeps every discovery page fail-closed", async ({
   page,
 }, testInfo) => {
   db("seed-kids-surface");
@@ -29,28 +29,52 @@ test("Kids viewer is friendly, localized and preserves fail-closed catalog filte
   expect(response.ok()).toBe(true);
   const home = (await response.json()) as {
     policy: { mode: string; socialCommunity: { enabled: boolean } };
-    rows: Array<{ items: Array<{ title: string; href: string }> }>;
+    rows: Array<{
+      key: string;
+      source: string;
+      nextCursor: string | null;
+      items: Array<{ title: string; href: string }>;
+    }>;
   };
   const titles = home.rows.flatMap((row) => row.items.map((item) => item.title));
-  expect(titles).toContain("Kids Discovery Fixture");
+  expect(titles).toContain("Kids Discovery Fixture 01");
   expect(titles).not.toContain("Ordinary Discovery Fixture");
   expect(home.policy).toMatchObject({
     mode: "KIDS",
     socialCommunity: { enabled: false },
   });
   for (const row of home.rows) {
-    for (const item of row.items) {
-      expect(item.href).toContain("kids=1");
-    }
+    for (const item of row.items) expect(item.href).toContain("kids=1");
   }
 
+  const newRow = home.rows.find((row) => row.source === "NEW_ON_AYIN");
+  expect(newRow?.nextCursor).toBeTruthy();
+  const secondPage = await page.request.get(
+    `${API}/public/discovery/kids/rows/${newRow!.key}?cursor=${newRow!.nextCursor}&limit=8`,
+  );
+  expect(secondPage.ok()).toBe(true);
+  const secondPayload = (await secondPage.json()) as {
+    items: Array<{ title: string; href: string }>;
+  };
+  expect(secondPayload.items.map((item) => item.title)).toContain("Kids Discovery Fixture 10");
+  expect(secondPayload.items.map((item) => item.title)).not.toContain("Ordinary Discovery Fixture");
+  expect(secondPayload.items.every((item) => item.href.includes("kids=1"))).toBe(true);
+
   await page.setViewportSize({ width: 1440, height: 1000 });
+  let kidsRowReads = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/public/discovery/kids/rows/")) kidsRowReads += 1;
+  });
   await page.goto("/kids?lang=en");
   const main = page.getByRole("main");
   await expect(
     main.getByRole("heading", { level: 1, name: "A simpler place for younger viewers" }),
   ).toBeVisible();
-  await expect(main.getByText("Kids Discovery Fixture", { exact: true }).first()).toBeVisible();
+  await expect(main.getByText("Kids Discovery Fixture 01", { exact: true }).first()).toBeVisible();
+  await expect(main.getByText("Ordinary Discovery Fixture", { exact: true })).toHaveCount(0);
+  await main.getByRole("button", { name: "Load more", exact: true }).first().click();
+  await expect.poll(() => kidsRowReads).toBe(1);
+  await expect(main.getByText("Kids Discovery Fixture 10", { exact: true }).first()).toBeVisible();
   await expect(main.getByText("Ordinary Discovery Fixture", { exact: true })).toHaveCount(0);
   for (const developerCopy of [
     "Children's privacy compliance",
@@ -71,7 +95,11 @@ test("Kids viewer is friendly, localized and preserves fail-closed catalog filte
   await expect(
     main.getByRole("heading", { level: 1, name: "مساحة أبسط للمشاهدين الأصغر سنًا" }),
   ).toBeVisible();
-  await expect(main.getByText("Kids Discovery Fixture", { exact: true }).first()).toBeVisible();
+  await expect(main.getByRole("heading", { level: 2, name: "جديد على AYIN" })).toBeVisible();
+  await expect(main.getByRole("heading", { level: 2, name: "أضيف حديثًا" })).toBeVisible();
+  await expect(main.getByText("New on AYIN", { exact: true })).toHaveCount(0);
+  await expect(main.getByText("Recently Added", { exact: true })).toHaveCount(0);
+  await expect(main.getByText("Ordinary Discovery Fixture", { exact: true })).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(

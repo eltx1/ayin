@@ -11,8 +11,10 @@ import {
   type MediaCardVariant,
 } from "@/components/viewer/media-card";
 import { mediaAssetUrl } from "@/lib/channel";
+import { translateKidsDiscoverySource } from "@/lib/i18n/kids";
 import {
   fetchDiscoveryRow,
+  fetchKidsDiscoveryRow,
   fetchMyAyinSection,
   type DiscoveryItem,
   type DiscoveryRowData,
@@ -24,10 +26,16 @@ interface DiscoveryRowProperties {
   authenticated: boolean;
   row: DiscoveryRowData;
   scope?: "home" | "my-ayin";
+  kidsMode?: boolean;
 }
 
-export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRowProperties) {
-  const { t } = useI18n();
+export function DiscoveryRow({
+  authenticated,
+  row,
+  scope = "home",
+  kidsMode = false,
+}: DiscoveryRowProperties) {
+  const { locale, t } = useI18n();
   const [items, setItems] = useState(row.items);
   const [cursor, setCursor] = useState(row.nextCursor);
   const [loading, setLoading] = useState(false);
@@ -41,7 +49,9 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
       const page =
         scope === "my-ayin"
           ? await fetchMyAyinSection(row.key, cursor)
-          : await fetchDiscoveryRow(row.key, cursor, authenticated);
+          : kidsMode
+            ? await fetchKidsDiscoveryRow(row.key, cursor)
+            : await fetchDiscoveryRow(row.key, cursor, authenticated);
       setItems((current) => mergeItems(current, page.items));
       setCursor(page.nextCursor);
     } catch (loadError) {
@@ -52,13 +62,25 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
   }
 
   const variant = row.source === "CREATOR_TV" ? "landscape" : "poster";
+  const rowTitle = kidsMode
+    ? translateKidsDiscoverySource(locale, row.source, row.title)
+    : row.title;
 
   return (
     <div aria-busy={loading} className={styles.rowBlock}>
-      <ContentRow rowId={`${scope}-${row.key}`} title={row.title}>
+      <ContentRow rowId={`${scope}-${row.key}`} title={rowTitle}>
         {items.length > 0 ? (
           items.map((item) => (
-            <DiscoveryCard item={item} key={`${item.type}:${item.id}`} variant={variant} />
+            <DiscoveryCard
+              item={item}
+              key={`${item.type}:${item.id}`}
+              kicker={
+                kidsMode
+                  ? translateKidsDiscoverySource(locale, row.source, item.kicker)
+                  : item.kicker
+              }
+              variant={variant}
+            />
           ))
         ) : (
           <div className={styles.emptyCard} role="status">
@@ -103,7 +125,15 @@ export function DiscoveryRow({ authenticated, row, scope = "home" }: DiscoveryRo
   );
 }
 
-function DiscoveryCard({ item, variant }: { item: DiscoveryItem; variant: MediaCardVariant }) {
+function DiscoveryCard({
+  item,
+  kicker,
+  variant,
+}: {
+  item: DiscoveryItem;
+  kicker: string;
+  variant: MediaCardVariant;
+}) {
   const { href, t } = useI18n();
   const progress = item.progress?.positionMs
     ? t("home.resumeAt", { position: formatPosition(item.progress.positionMs) })
@@ -114,7 +144,7 @@ function DiscoveryCard({ item, variant }: { item: DiscoveryItem; variant: MediaC
     <MediaCard
       {...(artworkUrl ? { artworkUrl } : {})}
       href={href(item.href)}
-      kicker={item.kicker}
+      kicker={kicker}
       {...(meta ? { meta } : {})}
       title={item.title}
       tone={toneFor(item.id)}

@@ -120,19 +120,20 @@ try {
     }
     case "seed-kids-surface": {
       const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const now = Date.now();
       const channel = await prisma.channel.create({
         data: { handle: `kids-${suffix}`, name: "Kids E2E Channel", status: "ACTIVE" },
       });
-      async function createVideo(title, kidsEligible) {
+      async function createVideo(title, kidsEligible, sequence) {
         const video = await prisma.video.create({
           data: {
             channelId: channel.id,
-            slug: `kids-${kidsEligible ? "eligible" : "ordinary"}-${suffix}`,
+            slug: `kids-${kidsEligible ? "eligible" : "ordinary"}-${sequence}-${suffix}`,
             title,
             status: "PUBLISHED",
             visibility: "PUBLIC",
             durationMs: 90_000,
-            publishedAt: new Date(),
+            publishedAt: new Date(now - sequence * 1_000),
           },
         });
         await prisma.mediaAsset.create({
@@ -158,9 +159,18 @@ try {
         }
         return video;
       }
-      const eligible = await createVideo("Kids Discovery Fixture", true);
-      const ordinary = await createVideo("Ordinary Discovery Fixture", false);
-      result = { eligibleId: eligible.id, ordinaryId: ordinary.id };
+      const ordinary = await createVideo("Ordinary Discovery Fixture", false, 0);
+      const eligible = [];
+      for (let index = 1; index <= 10; index += 1) {
+        eligible.push(
+          await createVideo(
+            `Kids Discovery Fixture ${String(index).padStart(2, "0")}`,
+            true,
+            index,
+          ),
+        );
+      }
+      result = { eligibleIds: eligible.map((video) => video.id), ordinaryId: ordinary.id };
       break;
     }
     case "configure-hls-playback": {
