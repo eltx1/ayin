@@ -29,8 +29,8 @@ jobs:
         run: |
           pnpm exec prettier --write \
             apps/api/test/recommendation-viewer.integration.test.ts \
-            apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx \
-            apps/web/src/app/(viewer)/my-ayin/lens/lens.module.css \
+            "apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx" \
+            "apps/web/src/app/(viewer)/my-ayin/lens/lens.module.css" \
             apps/web/src/components/discovery/discovery.module.css \
             apps/web/src/lib/i18n/my-ayin.ts \
             apps/web/src/lib/i18n/resources/my-ayin.ts \
@@ -44,8 +44,8 @@ jobs:
           name: phase5c-formatted-files
           path: |
             apps/api/test/recommendation-viewer.integration.test.ts
-            apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx
-            apps/web/src/app/(viewer)/my-ayin/lens/lens.module.css
+            "apps/web/src/app/(viewer)/my-ayin/lens/lens-client.tsx"
+            "apps/web/src/app/(viewer)/my-ayin/lens/lens.module.css"
             apps/web/src/components/discovery/discovery.module.css
             apps/web/src/lib/i18n/my-ayin.ts
             apps/web/src/lib/i18n/resources/my-ayin.ts
