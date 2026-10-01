@@ -57,9 +57,9 @@ function imageAsset(value: unknown): value is CommunityPost["imageAsset"] {
   const record = object(value);
   return Boolean(
     record &&
-      text(record.r2ObjectKey) &&
-      (record.width === null || count(record.width)) &&
-      (record.height === null || count(record.height)),
+    text(record.r2ObjectKey) &&
+    (record.width === null || count(record.width)) &&
+    (record.height === null || count(record.height)),
   );
 }
 
@@ -74,7 +74,9 @@ function pollOptions(value: unknown): value is CommunityPost["pollOptions"] {
   return value.every((entry) => {
     const record = object(entry);
     const aggregate = object(record?._count);
-    return Boolean(record && text(record.id) && text(record.label) && aggregate && count(aggregate.votes));
+    return Boolean(
+      record && text(record.id) && text(record.label) && aggregate && count(aggregate.votes),
+    );
   });
 }
 
@@ -120,9 +122,11 @@ export function parseCommunityChannel(value: unknown): CommunityChannelResponse 
   return { channel: record.channel, items: items(record.items) };
 }
 
-export function parseCommunityReaction(
-  value: unknown,
-): { postId: string; liked: boolean; likeCount: number } {
+export function parseCommunityReaction(value: unknown): {
+  postId: string;
+  liked: boolean;
+  likeCount: number;
+} {
   const record = object(value);
   if (
     !record ||
