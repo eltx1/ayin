@@ -76,26 +76,18 @@ export function SubscribeButton({
       })
       .then((result) => {
         if (!result || controller.signal.aborted) return;
-        setSnapshot((current) =>
-          current.channelId === requestedChannelId || current.channelId !== channelId
-            ? { channelId: requestedChannelId, ...result }
-            : current,
-        );
+        setSnapshot({ channelId: requestedChannelId, ...result });
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setSnapshot((current) =>
-            current.channelId === requestedChannelId || current.channelId !== channelId
-              ? {
-                  channelId: requestedChannelId,
-                  mode: "error",
-                  value:
-                    current.channelId === requestedChannelId
-                      ? current.value
-                      : { subscribed: false, subscriberCount: initialCount },
-                }
-              : current,
-          );
+          setSnapshot((current) => ({
+            channelId: requestedChannelId,
+            mode: "error",
+            value:
+              current.channelId === requestedChannelId
+                ? current.value
+                : { subscribed: false, subscriberCount: initialCount },
+          }));
         }
       });
     return () => controller.abort();

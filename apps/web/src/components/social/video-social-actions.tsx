@@ -75,19 +75,11 @@ export function VideoSocialActions({
       })
       .then((result) => {
         if (!result || controller.signal.aborted) return;
-        setSnapshot((current) =>
-          current.videoId === requestedVideoId || current.videoId !== videoId
-            ? { videoId: requestedVideoId, ...result }
-            : current,
-        );
+        setSnapshot({ videoId: requestedVideoId, ...result });
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setSnapshot((current) =>
-            current.videoId === requestedVideoId || current.videoId !== videoId
-              ? { videoId: requestedVideoId, mode: "error", value: emptyState }
-              : current,
-          );
+          setSnapshot({ videoId: requestedVideoId, mode: "error", value: emptyState });
         }
       });
     return () => controller.abort();
@@ -195,9 +187,11 @@ export function VideoSocialActions({
           : currentState,
       );
     } catch {
-      if (currentVideoId.current === result.requestedVideoId) {
-        setSnapshot((currentState) => ({ ...currentState, mode: "uncertain" }));
-      }
+      setSnapshot((currentState) =>
+        currentState.videoId === result.requestedVideoId
+          ? { ...currentState, mode: "uncertain" }
+          : currentState,
+      );
     } finally {
       clearPending(result.requestedVideoId, result.action);
     }
