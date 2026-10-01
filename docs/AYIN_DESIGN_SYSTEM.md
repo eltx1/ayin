@@ -58,7 +58,7 @@ Previously checked official sources (2026-09-29):
 
 Selected historical build-asset measurements and their increases remain in `PERFORMANCE_BASELINE_AND_RESULTS.md`; no CWV/latency/player/upload/full-transfer improvement is claimed. Combined #145 CSS/browser evidence is accepted; subsequent component changes need their own exact-head gates.
 
-Remaining Phase 4: additional segmented controls where justified, confirmation/dialog/drawer generalization, lifecycle-safe notifications and missing domain-card variants. The real focused content editor and manual-activation tabs are reviewed below. Whole Viewer/Creator/Admin redesign, dense finance forms, full localization/large-data visual acceptance, installed PWA and native/store readiness remain later master phases. New primitives require real consumers, not a public developer showcase. Keep server safeguards and adopted fast-uri fixes on presentation rollback.
+Remaining Phase 4: additional segmented controls where justified, confirmation/dialog/drawer generalization, social-action failure feedback and missing domain-card variants. The real focused content editor and manual-activation tabs are reviewed below. Whole Viewer/Creator/Admin redesign, dense finance forms, full localization/large-data visual acceptance, installed PWA and native/store readiness remain later master phases. New primitives require real consumers, not a public developer showcase. Keep server safeguards and adopted fast-uri fixes on presentation rollback.
 
 ## Phase 4C reviewed implementation — focused content editing
 
@@ -78,10 +78,18 @@ Final reviewed source2ebc0c1 passed all exact-head quality/security/browser/inve
 
 Local264 Web tests and production/type/lint/format checks passed. Final quality36646275205, security36646275139, browser36646275094 and inventory36646275114 passed; reviewed visuals and production deployment are recorded in the master checkpoint and #148 release record. See [Phase4D evidence](AYIN_PHASE4D_EVIDENCE.md). This is not complete Phase4 or global Admin/PWA/device acceptance.
 
-## Phase4E candidate — duplicate-safe TV focus identities
+## Accepted Phase4E — duplicate-safe TV focus identities
 
 TV focus attributes remain semantic hints and are no longer assumed globally unique. `TvFocusScope` derives occurrence-aware navigation IDs before geometric ranking, preventing a repeated media/card identity from causing the first DOM occurrence to masquerade as the current target. Persistence uses the same occurrence-aware identity only when necessary; legacy raw values still resolve, and a saved duplicate occurrence can fall back to its semantic target if later data renders one copy.
 
-The fix is systemic rather than page-specific: cards, navigation, dialogs and future focusable surfaces do not need synthetic per-page IDs merely to satisfy the geometry algorithm. Unnamed elements remain local automatic targets and are not persisted. Modal scope containment from Phase4D remains unchanged.
+The fix is systemic rather than page-specific. Cards, navigation, dialogs and future focusable surfaces do not need synthetic per-page IDs merely to satisfy geometry. Unnamed elements remain local automatic targets and are not persisted. Modal scope containment from Phase4D is unchanged. Pure tests and real browser geometry regression passed; merge/deployment evidence is in the master checkpoint.
 
-Pure tests and a real browser geometry regression cover the failure. The implementation also surfaced and corrected a separate Task86 EXPLAIN test assumption without changing PostgreSQL production queries or indexes. Final merge/deployment evidence belongs in the master checkpoint after the closing documentation head passes its applicable gates.
+## Phase4F candidate — lifecycle-safe Notifications and network feedback
+
+The real Viewer Notifications route now adopts PageHeader, ActionButton, StatusNotice and Viewer empty/error states instead of inline/raw presentation. Notification API payloads are parsed as bounded client contracts; malformed data is an error, not a successful empty inbox. Existing server cursor pagination is exposed with deduplicated continuation.
+
+Mark-read follows the same uncertainty principle used in creator writes: an unconfirmed PATCH is never blindly replayed. The affected row becomes uncertain and disabled until an explicit refresh reconciles server truth. Existing account ownership and 401 routing stay server-authoritative. Notification action buttons participate in the shared TV focus model.
+
+The global NetworkStatusBanner now distinguishes offline from reconnected. Offline is assertive, recovery is polite and temporary, and mobile placement remains above the fixed bottom navigation. Both states are localized EN/AR. This improves lifecycle feedback but does not claim installed-PWA/offline-content completeness.
+
+The phase also updates newly vulnerable framework dependencies without lowering audit policy: Next 16.3.6, Nest 12.0.3 and a single pnpm-workspace-pinned Fastify 5.12.5 graph. Exact source/security/browser/visual and deployment evidence belongs in the checkpoint. Social Like/Subscribe failure handling remains a separate focused follow-up rather than being hidden inside this Notifications change.

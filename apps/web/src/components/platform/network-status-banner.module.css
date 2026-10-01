@@ -1,17 +1,40 @@
 .banner {
-  position: fixed;
-  top: 1.25rem;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  inset-block-start: max(1rem, var(--ayin-safe-top));
   left: 50%;
-  z-index: 2147483000;
-  max-width: min(90vw, 48rem);
-  transform: translateX(-50%);
-  padding: 0.9rem 1.25rem;
-  border: 1px solid currentColor;
-  border-radius: 0.75rem;
-  background: rgba(8, 9, 13, 0.96);
-  color: white;
-  font-size: 1rem;
-  line-height: 1.35;
-  text-align: center;
+  line-height: var(--leading-copy);
+  max-inline-size: min(90vw, 48rem);
+  padding: 0.8rem 1rem;
   pointer-events: none;
+  position: fixed;
+  text-align: center;
+  transform: translateX(-50%);
+  z-index: 2147483000;
+}
+
+.banner[data-state="offline"] {
+  border-color: var(--warning);
+}
+
+.banner[data-state="reconnected"] {
+  border-color: var(--success);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner {
+    transition: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .banner {
+    inset-block-end: calc(72px + var(--ayin-safe-bottom) + 1rem);
+    inset-block-start: auto;
+    max-inline-size: calc(100vw - 2rem);
+  }
 }
