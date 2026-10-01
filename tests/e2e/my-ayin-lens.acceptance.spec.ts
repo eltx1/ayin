@@ -161,7 +161,10 @@ test("My AYIN and Lens are localized, truthful and recover uncertain recommendat
     main.getByText(/could not confirm whether this suggestion was hidden/i),
   ).toBeVisible();
   await expect(notInterested).toBeDisabled();
-  const recoveryRefresh = main.getByRole("button", { name: "Refresh recommendations", exact: true });
+  const recoveryRefresh = main.getByRole("button", {
+    name: "Refresh recommendations",
+    exact: true,
+  });
   await expect(recoveryRefresh).toBeFocused();
   expect(notInterestedWrites).toBe(1);
   expect(
