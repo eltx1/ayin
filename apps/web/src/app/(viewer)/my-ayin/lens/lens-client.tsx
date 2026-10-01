@@ -32,7 +32,7 @@ type UncertainAction = PendingAction;
 
 export function AyinLensClient() {
   const router = useRouter();
-  const { t, href, locale, direction } = useMyAyinI18n();
+  const { t, href, direction } = useMyAyinI18n();
   const [data, setData] = useState<LensResponse | null>(null);
   const [state, setState] = useState<LensState>("loading");
   const [attempt, setAttempt] = useState(0);
@@ -50,7 +50,7 @@ export function AyinLensClient() {
       signal: controller.signal,
     })
       .then(async (response) => {
-        if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) {
           setData(null);
           setState("signed-out");
           return null;
@@ -80,7 +80,7 @@ export function AyinLensClient() {
         }
       });
     return () => controller.abort();
-  }, [attempt]);
+  }, [attempt, signIn]);
 
   function refresh() {
     if (pending) return;
@@ -98,7 +98,7 @@ export function AyinLensClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ profileId: data.profileId, videoId: item.id }),
       });
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         signIn();
         return;
       }
@@ -131,7 +131,7 @@ export function AyinLensClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ profileId: data.profileId }),
       });
-      if (response.status === 401 || response.status === 403) {
+      if (response.status === 401) {
         setResetOpen(false);
         signIn();
         return;
