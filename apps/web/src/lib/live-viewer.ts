@@ -17,7 +17,6 @@ export interface LiveViewerStream {
   playbackUrl: string | null;
   scheduledStartAt: string | null;
   chatEnabled: boolean;
-  adBreakHook: "IMA_CLIENT_BREAK" | null;
   captions: AyinCaptionTrack[];
   dvrWindowSeconds: number | null;
   channel: { id: string; handle: string; name: string };
@@ -45,9 +44,12 @@ const statuses = new Set<LiveViewerStatus>([
   "FAILED",
 ]);
 
-function record(value: unknown): Record<string, unknown> {
+function record(
+  value: unknown,
+  code: "INVALID_LIVE_RESPONSE" | "INVALID_LIVE_CHAT_RESPONSE" = "INVALID_LIVE_RESPONSE",
+): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("INVALID_LIVE_RESPONSE");
+    throw new Error(code);
   }
   return value as Record<string, unknown>;
 }
@@ -83,7 +85,7 @@ function nullableHttpsUrl(value: unknown): string | null {
 }
 
 function parseCaption(value: unknown): AyinCaptionTrack {
-  const track = record(value);
+  const track = record(value, "INVALID_LIVE_RESPONSE");
   if (
     typeof track.id !== "string" ||
     track.id.length === 0 ||
@@ -121,13 +123,13 @@ export function parseLiveViewerStream(value: unknown): LiveViewerStream {
     typeof stream.chatEnabled !== "boolean" ||
     (stream.description !== null && typeof stream.description !== "string") ||
     (stream.description !== null && stream.description.length > 5_000) ||
-    (stream.adBreakHook !== null && stream.adBreakHook !== "IMA_CLIENT_BREAK") ||
-    !Array.isArray(stream.captions) ||
-    stream.captions.length > 32
+    (stream.captions !== undefined &&
+      (!Array.isArray(stream.captions) || stream.captions.length > 32))
   ) {
     throw new Error("INVALID_LIVE_RESPONSE");
   }
   if (
+    stream.dvrWindowSeconds !== undefined &&
     stream.dvrWindowSeconds !== null &&
     (typeof stream.dvrWindowSeconds !== "number" ||
       !Number.isFinite(stream.dvrWindowSeconds) ||
@@ -144,9 +146,9 @@ export function parseLiveViewerStream(value: unknown): LiveViewerStream {
     playbackUrl: nullableHttpsUrl(stream.playbackUrl),
     scheduledStartAt: nullableDate(stream.scheduledStartAt),
     chatEnabled: stream.chatEnabled,
-    adBreakHook: stream.adBreakHook as "IMA_CLIENT_BREAK" | null,
-    captions: stream.captions.map(parseCaption),
-    dvrWindowSeconds: stream.dvrWindowSeconds as number | null,
+    captions: Array.isArray(stream.captions) ? stream.captions.map(parseCaption) : [],
+    dvrWindowSeconds:
+      typeof stream.dvrWindowSeconds === "number" ? stream.dvrWindowSeconds : null,
     channel: {
       id: channel.id,
       handle: boundedString(channel.handle, 1, 80),
@@ -156,7 +158,7 @@ export function parseLiveViewerStream(value: unknown): LiveViewerStream {
 }
 
 export function parseLiveChatMessage(value: unknown): LiveChatMessage {
-  const message = record(value);
+  const message = record(value, "INVALID_LIVE_CHAT_RESPONSE");
   if (
     typeof message.id !== "string" ||
     !uuidPattern.test(message.id) ||
@@ -172,7 +174,7 @@ export function parseLiveChatMessage(value: unknown): LiveChatMessage {
 }
 
 export function parseLiveChatPage(value: unknown): LiveChatPage {
-  const page = record(value);
+  const page = record(value, "INVALID_LIVE_CHAT_RESPONSE");
   if (
     typeof page.chatEnabled !== "boolean" ||
     !Array.isArray(page.messages) ||

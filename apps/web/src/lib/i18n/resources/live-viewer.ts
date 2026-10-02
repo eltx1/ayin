@@ -1,9 +1,11 @@
 export const liveViewerEn = {
   "live.metaTitle": "Live",
+  "live.metaDescription": "Watch live creator broadcasts and join the conversation on AYIN.",
   "live.eyebrow": "Live on AYIN",
+  "live.viewChannel": "View channel",
   "live.loading": "Loading live session…",
   "live.unavailableTitle": "Live session unavailable",
-  "live.unavailableDescription": "This live session is not available right now.",
+  "live.unavailableDescription": "This live session is unavailable.",
   "live.refreshing": "Refreshing live status…",
   "live.refreshError": "Live status could not be refreshed. Check your connection and try again.",
   "live.retry": "Try again",
@@ -45,10 +47,12 @@ export const liveViewerEn = {
 
 export const liveViewerAr: Record<keyof typeof liveViewerEn, string> = {
   "live.metaTitle": "البث المباشر",
+  "live.metaDescription": "شاهد بثوث صناع المحتوى المباشرة وشارك في الدردشة على AYIN.",
   "live.eyebrow": "مباشر على AYIN",
+  "live.viewChannel": "عرض القناة",
   "live.loading": "جارٍ تحميل جلسة البث…",
   "live.unavailableTitle": "جلسة البث غير متاحة",
-  "live.unavailableDescription": "جلسة البث هذه غير متاحة حاليًا.",
+  "live.unavailableDescription": "جلسة البث هذه غير متاحة.",
   "live.refreshing": "جارٍ تحديث حالة البث…",
   "live.refreshError": "تعذر تحديث حالة البث. تحقق من الاتصال وحاول مرة أخرى.",
   "live.retry": "إعادة المحاولة",

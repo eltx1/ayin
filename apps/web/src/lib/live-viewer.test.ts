@@ -16,7 +16,6 @@ const stream = {
   playbackUrl: "https://stream.example.test/live.m3u8",
   scheduledStartAt: null,
   chatEnabled: true,
-  adBreakHook: "IMA_CLIENT_BREAK",
   captions: [],
   dvrWindowSeconds: null,
   channel: {
@@ -34,6 +33,7 @@ describe("Live Viewer contracts", () => {
         providerStreamId: "must-be-ignored",
         ingestEndpoint: "rtmps://must-not-leak",
         createdByAccountId: "must-not-leak",
+        adBreakHook: "must-not-leak",
       }),
     ).toEqual(stream);
     for (const invalid of [
@@ -62,6 +62,7 @@ describe("Live Viewer contracts", () => {
     expect(() =>
       parseLiveChatPage({ chatEnabled: true, messages: [{ ...message, createdAt: "bad" }] }),
     ).toThrow("INVALID_LIVE_CHAT_RESPONSE");
+    expect(() => parseLiveChatPage(null)).toThrow("INVALID_LIVE_CHAT_RESPONSE");
   });
 
   it("maps all viewer statuses without provider vocabulary", () => {
