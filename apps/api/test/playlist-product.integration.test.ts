@@ -279,6 +279,49 @@ databaseDescribe("Task 09 playlist product", () => {
     expect(createOnOtherChannel.statusCode).toBe(403);
   });
 
+  it("keeps public playlist links durable after a channel handle change", async () => {
+    const owner = await register("Playlist Redirect Owner", "playlist-redirect@example.com");
+    const oldHandle = owner.user.channel.handle;
+    const playlist = await createPlaylist(
+      owner.cookie,
+      owner.user.channel.id,
+      "Durable Public Picks",
+      "PUBLIC",
+    );
+
+    const update = await app.inject({
+      method: "PATCH",
+      url: `/creator/channels/${owner.user.channel.id}`,
+      headers: { cookie: owner.cookie },
+      payload: { handle: "playlist.redirected" },
+    });
+    expect(update.statusCode).toBe(200);
+    expect(update.json().previousHandle).toBe(oldHandle);
+    expect(update.json().channel.handle).toBe("playlist.redirected");
+
+    const oldPlaylist = await app.inject({
+      method: "GET",
+      url: `/public/channels/${oldHandle}/playlists/${playlist.slug}`,
+    });
+    expect(oldPlaylist.statusCode).toBe(200);
+    expect(oldPlaylist.json()).toMatchObject({
+      canonicalHandle: "playlist.redirected",
+      redirectedFrom: oldHandle,
+      playlist: { slug: playlist.slug, name: "Durable Public Picks" },
+    });
+
+    const canonicalPlaylist = await app.inject({
+      method: "GET",
+      url: `/public/channels/playlist.redirected/playlists/${playlist.slug}`,
+    });
+    expect(canonicalPlaylist.statusCode).toBe(200);
+    expect(canonicalPlaylist.json()).toMatchObject({
+      canonicalHandle: "playlist.redirected",
+      redirectedFrom: null,
+      playlist: { slug: playlist.slug },
+    });
+  });
+
   it("supports public and unlisted links without exposing private playlists or private videos", async () => {
     const owner = await register("Visibility Owner", "visibility-owner@example.com");
     const publicPlaylist = await createPlaylist(

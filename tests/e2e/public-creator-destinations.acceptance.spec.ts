@@ -149,14 +149,21 @@ test("public channel and playlist use real localized destinations and durable ha
     },
   );
   expect(updated.ok()).toBe(true);
-  const redirect = await page.request.get(
-    `${WEB}/ar/c/${oldHandle}/playlists/${playlist.slug}?lang=ar`,
-    { maxRedirects: 0 },
+  const oldApi = await page.request.get(
+    `${API}/public/channels/${oldHandle}/playlists/${playlist.slug}`,
   );
-  expect(redirect.status()).toBe(308);
-  expect(new URL(redirect.headers().location!, WEB).pathname).toBe(
-    `/ar/c/phase5d.creator/playlists/${playlist.slug}`,
+  expect(oldApi.ok()).toBe(true);
+  expect(await oldApi.json()).toMatchObject({
+    redirectedFrom: oldHandle,
+    canonicalHandle: "phase5d.creator",
+    playlist: { slug: playlist.slug },
+  });
+
+  await page.goto(`/ar/c/${oldHandle}/playlists/${playlist.slug}?lang=ar`);
+  await expect(page).toHaveURL(
+    new RegExp(`/ar/c/phase5d\\.creator/playlists/${playlist.slug}(?:\\?|$)`),
   );
+  await expect(main.getByRole("heading", { level: 1, name: "Phase5D Picks" })).toBeVisible();
 });
 
 test("Creator TV localizes off-air recovery without changing playback state", async ({
