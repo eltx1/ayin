@@ -146,4 +146,41 @@ databaseDescribe("Live Viewer public boundary", () => {
     expect(Object.keys(chat.json().messages[0]).sort()).toEqual(["body", "createdAt", "id"].sort());
     expect(JSON.stringify(chat.json())).not.toContain(viewer.user.profile.id);
   });
+  it("returns the latest bounded published chat window in deterministic chronological order", async () => {
+    const owner = await register("Window owner", "live-window-owner@example.com");
+    const stream = await prisma.liveStream.create({
+      data: {
+        channelId: owner.user.channel.id,
+        createdByAccountId: owner.user.account.id,
+        slug: "live-chat-window",
+        title: "Chat window",
+        status: "LIVE",
+        chatEnabled: true,
+      },
+    });
+    const start = Date.parse("2026-10-03T00:00:00.000Z");
+    await prisma.liveChatMessage.createMany({
+      data: Array.from({ length: 205 }, (_, i) => ({
+        liveStreamId: stream.id,
+        authorProfileId: owner.user.profile.id,
+        body: `Message ${i}`,
+        createdAt: new Date(start + i * 1000),
+        status: i === 204 ? ("HIDDEN" as const) : ("PUBLISHED" as const),
+      })),
+    });
+    const response = await app.inject({ method: "GET", url: `/live/${stream.slug}/chat` });
+    expect(response.statusCode).toBe(200);
+    const messages = response.json().messages as Array<{ body: string; createdAt: string }>;
+    expect(messages).toHaveLength(200);
+    expect(messages[0]?.body).toBe("Message 4");
+    expect(messages.at(-1)?.body).toBe("Message 203");
+    expect(messages.some((message) => message.body === "Message 204")).toBe(false);
+    expect(
+      messages.every(
+        (message, index) =>
+          index === 0 ||
+          Date.parse(message.createdAt) >= Date.parse(messages[index - 1]!.createdAt),
+      ),
+    ).toBe(true);
+  });
 });

@@ -241,6 +241,21 @@ export function LiveWatchClient({ slug }: { slug: string }) {
     };
   }, [loadChat, slug, streamRefreshGeneration]);
 
+  // Keep idle live chat current without reconciling an uncertain write implicitly.
+  // A draft pauses polling so incoming reads cannot interrupt the user's composition.
+  useEffect(() => {
+    if (
+      !stream?.chatEnabled ||
+      stream.status !== "LIVE" ||
+      chatState !== "ready" ||
+      chatWriteState !== "idle" ||
+      body.trim()
+    )
+      return;
+    const timer = window.setTimeout(() => void loadChat(stream.id, true), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [stream?.id, stream?.status, stream?.chatEnabled, chatState, chatWriteState, body, loadChat]);
+
   function refreshStream() {
     setStreamState(stream ? "refreshing" : "loading");
     setStreamRefreshGeneration((value) => value + 1);
@@ -452,7 +467,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
                 <h2 id="live-chat-title">{t("live.chatTitle")}</h2>
                 <p>{t("live.chatDescription")}</p>
               </div>
-              {(chatState === "error" || chatWriteState === "uncertain") && (
+              {chatState !== "idle" && (
                 <ActionButton
                   type="button"
                   tone="secondary"

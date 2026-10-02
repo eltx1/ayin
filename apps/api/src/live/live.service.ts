@@ -378,11 +378,11 @@ export class LiveService {
     const stream = await this.publicStream(slug);
     const messages = await this.database.client.liveChatMessage.findMany({
       where: { liveStreamId: stream.id, status: "PUBLISHED" },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 200,
       select: { id: true, body: true, createdAt: true },
     });
-    return { chatEnabled: stream.chatEnabled, messages };
+    return { chatEnabled: stream.chatEnabled, messages: messages.reverse() };
   }
 
   async postChat(accountId: string, slug: string, body: string) {

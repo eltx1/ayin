@@ -30,6 +30,8 @@ test("Live Viewer is localized and reconciles an uncertain chat write without re
   test.setTimeout(90_000);
   let messages: Array<{ id: string; body: string; createdAt: string }> = [];
   let writes = 0;
+  let chatReads = 0;
+  await page.clock.install();
 
   await page.route(`${API}/live/live-design`, async (route) => {
     await route.fulfill({
@@ -40,6 +42,7 @@ test("Live Viewer is localized and reconciles an uncertain chat write without re
   });
   await page.route(`${API}/live/live-design/chat`, async (route) => {
     if (route.request().method() === "GET") {
+      chatReads += 1;
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -89,6 +92,10 @@ test("Live Viewer is localized and reconciles an uncertain chat write without re
   await expect(message).toHaveValue("A message that may already be sent");
   await expect(main.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
   expect(writes).toBe(1);
+  const readsBeforeRecovery = chatReads;
+  await page.clock.fastForward(5_100);
+  expect(chatReads).toBe(readsBeforeRecovery);
+  await expect(main.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
 
   await main.getByRole("button", { name: "Refresh chat", exact: true }).click();
   await expect(main.getByText("A message that may already be sent", { exact: true })).toBeVisible();
@@ -152,7 +159,19 @@ test("Live chat serializes read recovery and duplicate submit events", async ({ 
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+        body: JSON.stringify({
+          chatEnabled: true,
+          messages:
+            reads >= 3
+              ? [
+                  {
+                    id: "00000000-0000-4000-8000-000000000192",
+                    body: "Another viewer joined",
+                    createdAt: "2026-10-03T00:11:00.000Z",
+                  },
+                ]
+              : [],
+        }),
       });
       return;
     }
@@ -189,5 +208,8 @@ test("Live chat serializes read recovery and duplicate submit events", async ({ 
   releaseWrite();
   await expect(input).toHaveValue("");
   await expect(main.getByText("One confirmed message", { exact: true })).toHaveCount(1);
+  expect(writes).toBe(1);
+  await expect.poll(() => reads, { timeout: 10_000 }).toBeGreaterThanOrEqual(3);
+  await expect(main.getByText("Another viewer joined", { exact: true })).toBeVisible();
   expect(writes).toBe(1);
 });
