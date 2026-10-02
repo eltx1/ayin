@@ -2,45 +2,43 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 
-import { trackAnalyticsEvent } from "../../../lib/analytics";
-import { apiBaseUrl } from "../../../lib/api";
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { ActionButton, StatusNotice } from "@/components/ui/design-system";
+import { trackAnalyticsEvent } from "@/lib/analytics";
+import { apiBaseUrl } from "@/lib/api";
+import { mediaAssetUrl } from "@/lib/channel";
+import { mergeClipItems, parseClipsPage, type ClipItem, type ClipsPage } from "@/lib/clips";
+import { translateClips } from "@/lib/i18n/clips";
+import {
+  parseChannelSocialState,
+  parseVideoSocialState,
+  type ChannelSocialState,
+  type VideoSocialState,
+} from "@/lib/social-action-contracts";
+
 import styles from "./clips.module.css";
 
-export interface ClipItem {
-  id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  durationMs: number | null;
-  channel: { id: string; handle: string; name: string };
-  mediaAssets: Array<{ kind: "SOURCE_VIDEO" | "THUMBNAIL"; r2ObjectKey: string }>;
-  _count: { reactions: number; comments: number };
+type ActionMode = "loading" | "ready" | "signedOut" | "error" | "uncertain";
+
+interface ActionSnapshot {
+  mode: ActionMode;
+  video: VideoSocialState;
+  channel: ChannelSocialState;
 }
 
-function mediaUrl(key: string) {
-  const base = process.env.NEXT_PUBLIC_MEDIA_BASE_URL?.replace(/\/$/, "") ?? "";
-  return base ? `${base}/${key}` : key;
-}
-
-async function socialMutation(
-  path: string,
-  method: "PUT" | "DELETE",
-  onUnauthorized: () => void,
-  body?: unknown,
-) {
-  const options: RequestInit = { method, credentials: "include" };
-  if (body !== undefined) {
-    options.headers = { "content-type": "application/json" };
-    options.body = JSON.stringify(body);
-  }
-  const response = await fetch(`${apiBaseUrl}${path}`, options);
-  if (response.status === 401 || response.status === 403) {
-    onUnauthorized();
-    return null;
-  }
-  return response.ok ? response.json() : null;
+function initialActions(clip: ClipItem): ActionSnapshot {
+  return {
+    mode: "loading",
+    video: {
+      reaction: null,
+      likeCount: clip._count.reactions,
+      watchLater: false,
+      myList: false,
+    },
+    channel: { subscribed: false, subscriberCount: 0 },
+  };
 }
 
 function persistWatchProgress(clip: ClipItem, video: HTMLVideoElement) {
@@ -58,23 +56,250 @@ function persistWatchProgress(clip: ClipItem, video: HTMLVideoElement) {
   }).catch(() => undefined);
 }
 
-export function ClipsFeed({
-  items,
-  autoplayEnabled,
-  adPolicy,
-}: {
-  items: ClipItem[];
-  autoplayEnabled: boolean;
-  adPolicy: { enabled: boolean; minimumOrganicClips: number };
-}) {
+function ClipActions({ clip }: { clip: ClipItem }) {
   const router = useRouter();
-  const root = useRef<HTMLDivElement>(null);
-  const activeId = useRef<string | null>(null);
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
-  const [subscribed, setSubscribed] = useState<Record<string, boolean>>({});
-  const [likeCounts, setLikeCounts] = useState<Record<string, number>>(() =>
-    Object.fromEntries(items.map((item) => [item.id, item._count.reactions])),
+  const { locale, href, formatNumber } = useI18n();
+  const t = useCallback(
+    (key: Parameters<typeof translateClips>[1], values = {}) => translateClips(locale, key, values),
+    [locale],
   );
+  const [snapshot, setSnapshot] = useState<ActionSnapshot>(() => initialActions(clip));
+  const [attempt, setAttempt] = useState(0);
+  const [pending, setPending] = useState<"like" | "subscribe" | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const requestedVideoId = clip.id;
+    const requestedChannelId = clip.channel.id;
+
+    void Promise.all([
+      fetch(`${apiBaseUrl}/social/videos/${requestedVideoId}`, {
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+      }),
+      fetch(`${apiBaseUrl}/social/channels/${requestedChannelId}`, {
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+      }),
+    ])
+      .then(async ([videoResponse, channelResponse]) => {
+        if (videoResponse.status === 401 || channelResponse.status === 401) {
+          return { ...initialActions(clip), mode: "signedOut" as const };
+        }
+        if (!videoResponse.ok || !channelResponse.ok) throw new Error("CLIP_ACTIONS_UNAVAILABLE");
+        return {
+          mode: "ready" as const,
+          video: parseVideoSocialState(await videoResponse.json()),
+          channel: parseChannelSocialState(await channelResponse.json()),
+        };
+      })
+      .then((value) => {
+        if (!controller.signal.aborted) setSnapshot(value);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setSnapshot((current) => ({ ...current, mode: "error" }));
+        }
+      });
+
+    return () => controller.abort();
+  }, [attempt, clip]);
+
+  function signIn() {
+    router.push(href("/login"));
+  }
+
+  function refresh() {
+    if (pending) return;
+    setSnapshot((current) => ({ ...current, mode: "loading" }));
+    setAttempt((value) => value + 1);
+  }
+
+  async function toggleLike() {
+    if (snapshot.mode === "signedOut") {
+      signIn();
+      return;
+    }
+    if (snapshot.mode !== "ready" || pending) return;
+
+    const removing = snapshot.video.reaction === "LIKE";
+    setPending("like");
+    try {
+      const response = await fetch(`${apiBaseUrl}/social/videos/${clip.id}/reaction`, {
+        method: removing ? "DELETE" : "PUT",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        ...(removing ? {} : { body: JSON.stringify({ type: "LIKE" }) }),
+      });
+      if (response.status === 401) {
+        setSnapshot((current) => ({ ...current, mode: "signedOut" }));
+        signIn();
+        return;
+      }
+      if (!response.ok) throw new Error("CLIP_LIKE_UNCONFIRMED");
+      const video = parseVideoSocialState(await response.json());
+      setSnapshot((current) => ({ ...current, mode: "ready", video }));
+      if (!removing) {
+        trackAnalyticsEvent("LIKE", { videoId: clip.id, channelId: clip.channel.id });
+      }
+    } catch {
+      setSnapshot((current) => ({ ...current, mode: "uncertain" }));
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function toggleSubscription() {
+    if (snapshot.mode === "signedOut") {
+      signIn();
+      return;
+    }
+    if (snapshot.mode !== "ready" || pending) return;
+
+    const removing = snapshot.channel.subscribed;
+    setPending("subscribe");
+    try {
+      const response = await fetch(
+        `${apiBaseUrl}/social/channels/${clip.channel.id}/subscription`,
+        {
+          method: removing ? "DELETE" : "PUT",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          ...(removing ? {} : { body: "{}" }),
+        },
+      );
+      if (response.status === 401) {
+        setSnapshot((current) => ({ ...current, mode: "signedOut" }));
+        signIn();
+        return;
+      }
+      if (!response.ok) throw new Error("CLIP_SUBSCRIPTION_UNCONFIRMED");
+      const channel = parseChannelSocialState(await response.json());
+      setSnapshot((current) => ({ ...current, mode: "ready", channel }));
+      if (!removing) {
+        trackAnalyticsEvent("SUBSCRIBE", { videoId: clip.id, channelId: clip.channel.id });
+      }
+    } catch {
+      setSnapshot((current) => ({ ...current, mode: "uncertain" }));
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function share() {
+    const url = `${window.location.origin}${href(`/watch/${clip.slug}`)}`;
+    try {
+      if (navigator.share) await navigator.share({ title: clip.title, url });
+      else await navigator.clipboard.writeText(url);
+      trackAnalyticsEvent("CLIP_SHARE", { videoId: clip.id, channelId: clip.channel.id });
+      trackAnalyticsEvent("SHARE", { videoId: clip.id, channelId: clip.channel.id });
+    } catch {
+      // Closing a share sheet or unavailable clipboard is a normal non-mutation outcome.
+    }
+  }
+
+  const mutationDisabled =
+    snapshot.mode === "loading" || snapshot.mode === "error" || snapshot.mode === "uncertain";
+  const feedback =
+    snapshot.mode === "loading"
+      ? t("clips.actionsLoading")
+      : snapshot.mode === "error"
+        ? t("clips.actionsUnavailable")
+        : snapshot.mode === "uncertain"
+          ? t("clips.actionsUncertain")
+          : null;
+
+  return (
+    <div className={styles.actionWorkspace}>
+      <nav className={styles.actions} aria-label={t("clips.actions", { title: clip.title })}>
+        <ActionButton
+          className={styles.clipAction}
+          tone="quiet"
+          type="button"
+          aria-pressed={snapshot.video.reaction === "LIKE"}
+          data-tv-focusable="true"
+          data-tv-focus-id={`clip-${clip.id}-like`}
+          disabled={mutationDisabled || Boolean(pending)}
+          pending={pending === "like"}
+          onClick={() => void toggleLike()}
+        >
+          {snapshot.video.reaction === "LIKE" ? t("clips.liked") : t("clips.like")} ·{" "}
+          {formatNumber(snapshot.video.likeCount)}
+        </ActionButton>
+        <ActionButton
+          className={styles.clipAction}
+          tone="quiet"
+          type="button"
+          aria-pressed={snapshot.channel.subscribed}
+          data-tv-focusable="true"
+          data-tv-focus-id={`clip-${clip.id}-subscribe`}
+          disabled={mutationDisabled || Boolean(pending)}
+          pending={pending === "subscribe"}
+          onClick={() => void toggleSubscription()}
+        >
+          {snapshot.channel.subscribed ? t("clips.subscribed") : t("clips.subscribe")}
+        </ActionButton>
+        <ActionButton
+          className={styles.clipAction}
+          tone="quiet"
+          type="button"
+          data-tv-focusable="true"
+          data-tv-focus-id={`clip-${clip.id}-share`}
+          onClick={() => void share()}
+        >
+          {t("clips.share")}
+        </ActionButton>
+      </nav>
+      {feedback ? (
+        <StatusNotice
+          className={styles.actionFeedback ?? ""}
+          tone={
+            snapshot.mode === "uncertain"
+              ? "warning"
+              : snapshot.mode === "error"
+                ? "danger"
+                : "info"
+          }
+          announce={snapshot.mode === "loading" ? "polite" : "assertive"}
+        >
+          {feedback}
+          {snapshot.mode === "error" || snapshot.mode === "uncertain" ? (
+            <div className={styles.feedbackActions}>
+              <ActionButton
+                type="button"
+                tone="secondary"
+                data-tv-focusable="true"
+                data-tv-focus-id={`clip-${clip.id}-actions-refresh`}
+                onClick={refresh}
+              >
+                {t("clips.refreshActions")}
+              </ActionButton>
+            </div>
+          ) : null}
+        </StatusNotice>
+      ) : null}
+    </div>
+  );
+}
+
+export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
+  const { locale, href } = useI18n();
+  const t = useCallback(
+    (key: Parameters<typeof translateClips>[1]) => translateClips(locale, key),
+    [locale],
+  );
+  const root = useRef<HTMLDivElement>(null);
+  const activeIdRef = useRef<string | null>(initialPage.items[0]?.id ?? null);
+  const impressed = useRef(new Set<string>());
+  const [activeId, setActiveId] = useState<string | null>(initialPage.items[0]?.id ?? null);
+  const [items, setItems] = useState<ClipItem[]>(initialPage.items);
+  const [nextCursor, setNextCursor] = useState(initialPage.nextCursor);
+  const [autoplayEnabled, setAutoplayEnabled] = useState(initialPage.autoplayEnabled);
+  const [adPolicy, setAdPolicy] = useState(initialPage.adPolicy);
+  const [loadMorePending, setLoadMorePending] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
 
   useEffect(() => {
     const container = root.current;
@@ -87,19 +312,24 @@ export function ClipsFeed({
           const videoId = article.dataset.videoId;
           const channelId = article.dataset.channelId;
           if (!video || !videoId) continue;
+
           if (entry.isIntersecting && entry.intersectionRatio >= 0.7) {
-            if (activeId.current && activeId.current !== videoId) {
+            if (activeIdRef.current && activeIdRef.current !== videoId) {
               trackAnalyticsEvent("CLIP_SWIPE", {
                 videoId,
                 ...(channelId ? { channelId } : {}),
-                metadata: { fromVideoId: activeId.current },
+                metadata: { fromVideoId: activeIdRef.current },
               });
             }
-            activeId.current = videoId;
-            trackAnalyticsEvent("CLIP_IMPRESSION", {
-              videoId,
-              ...(channelId ? { channelId } : {}),
-            });
+            activeIdRef.current = videoId;
+            setActiveId(videoId);
+            if (!impressed.current.has(videoId)) {
+              impressed.current.add(videoId);
+              trackAnalyticsEvent("CLIP_IMPRESSION", {
+                videoId,
+                ...(channelId ? { channelId } : {}),
+              });
+            }
             if (autoplayEnabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
               void video
                 .play()
@@ -118,114 +348,137 @@ export function ClipsFeed({
       },
       { root: container, threshold: [0.7] },
     );
-    container.querySelectorAll("article").forEach((element) => observer.observe(element));
+    container
+      .querySelectorAll<HTMLElement>("[data-clip-item='true']")
+      .forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [autoplayEnabled]);
+  }, [autoplayEnabled, items.length]);
 
-  async function toggleLike(clip: ClipItem) {
-    const next = !liked[clip.id];
-    const result = await socialMutation(
-      `/social/videos/${clip.id}/reaction`,
-      next ? "PUT" : "DELETE",
-      () => router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`),
-      next ? { type: "LIKE" } : undefined,
-    );
-    if (!result) return;
-    setLiked((current) => ({ ...current, [clip.id]: next }));
-    setLikeCounts((current) => ({
-      ...current,
-      [clip.id]: result.likeCount ?? current[clip.id] ?? 0,
-    }));
-    if (next) trackAnalyticsEvent("LIKE", { videoId: clip.id, channelId: clip.channel.id });
-  }
-
-  async function toggleSubscription(clip: ClipItem) {
-    const next = !subscribed[clip.channel.id];
-    const result = await socialMutation(
-      `/social/channels/${clip.channel.id}/subscription`,
-      next ? "PUT" : "DELETE",
-      () => router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`),
-      next ? {} : undefined,
-    );
-    if (!result) return;
-    setSubscribed((current) => ({ ...current, [clip.channel.id]: next }));
-    if (next) {
-      trackAnalyticsEvent("SUBSCRIBE", { videoId: clip.id, channelId: clip.channel.id });
+  async function loadMore() {
+    if (!nextCursor || loadMorePending) return;
+    setLoadMorePending(true);
+    setLoadMoreError(false);
+    try {
+      const response = await fetch(
+        `/api/clips?${new URLSearchParams({ cursor: nextCursor }).toString()}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw new Error("CLIPS_CONTINUATION_UNAVAILABLE");
+      const page = parseClipsPage(await response.json());
+      if (!page.enabled) throw new Error("CLIPS_DISABLED");
+      setItems((current) => mergeClipItems(current, page.items));
+      setNextCursor(page.nextCursor);
+      setAutoplayEnabled(page.autoplayEnabled);
+      setAdPolicy(page.adPolicy);
+    } catch {
+      setLoadMoreError(true);
+    } finally {
+      setLoadMorePending(false);
     }
   }
 
+  function moveByKeyboard(event: KeyboardEvent<HTMLElement>, index: number) {
+    if (event.target !== event.currentTarget) return;
+    const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+    if (!delta) return;
+    const target = root.current?.querySelector<HTMLElement>(`[data-clip-index='${index + delta}']`);
+    if (!target) return;
+    event.preventDefault();
+    event.stopPropagation();
+    target.scrollIntoView({
+      block: "start",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+    target.focus({ preventScroll: true });
+  }
+
   return (
-    <div ref={root} className={styles.feed} aria-label="AYIN Clips feed">
-      {items.map((clip, index) => {
-        const source = clip.mediaAssets.find((asset) => asset.kind === "SOURCE_VIDEO");
-        if (!source) return null;
-        return (
-          <article
-            className={styles.clip}
-            key={clip.id}
-            data-video-id={clip.id}
-            data-channel-id={clip.channel.id}
-            tabIndex={0}
-          >
-            <video
-              className={styles.video}
-              src={mediaUrl(source.r2ObjectKey)}
-              playsInline
-              muted
-              controls
-              preload="metadata"
-              onPause={(event) => persistWatchProgress(clip, event.currentTarget)}
-              onEnded={(event) => {
-                persistWatchProgress(clip, event.currentTarget);
-                trackAnalyticsEvent("CLIP_COMPLETE", {
-                  videoId: clip.id,
-                  channelId: clip.channel.id,
-                });
-              }}
-            />
-            <div className={styles.overlay}>
-              <div>
-                <Link href={`/c/${clip.channel.handle}`}>@{clip.channel.handle}</Link>
-                <h2>{clip.title}</h2>
-                {clip.description ? <p>{clip.description}</p> : null}
-              </div>
-              <nav className={styles.actions} aria-label={`Actions for ${clip.title}`}>
-                <button type="button" onClick={() => void toggleLike(clip)}>
-                  {liked[clip.id] ? "♥" : "♡"} {likeCounts[clip.id] ?? clip._count.reactions}
-                </button>
-                <Link href={`/watch/${clip.slug}#comments`}>💬 {clip._count.comments}</Link>
-                <button type="button" onClick={() => void toggleSubscription(clip)}>
-                  {subscribed[clip.channel.id] ? "Subscribed" : "Subscribe"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = `${window.location.origin}/watch/${clip.slug}`;
-                    trackAnalyticsEvent("CLIP_SHARE", {
+    <section className={styles.workspace}>
+      <div ref={root} className={styles.feed} aria-label={t("clips.feed")}>
+        {items.map((clip, index) => {
+          const source = clip.mediaAssets.find((asset) => asset.kind === "SOURCE_VIDEO");
+          const sourceUrl = mediaAssetUrl(source?.r2ObjectKey);
+          return (
+            <article
+              className={styles.clip}
+              key={clip.id}
+              data-clip-item="true"
+              data-clip-index={index}
+              data-video-id={clip.id}
+              data-channel-id={clip.channel.id}
+              data-tv-focusable="true"
+              data-tv-focus-id={`clip-${clip.id}-surface`}
+              tabIndex={0}
+              onKeyDown={(event) => moveByKeyboard(event, index)}
+            >
+              {sourceUrl ? (
+                <video
+                  className={styles.video}
+                  src={sourceUrl}
+                  playsInline
+                  muted
+                  controls
+                  preload="metadata"
+                  data-tv-focusable="true"
+                  data-tv-focus-id={`clip-${clip.id}-player`}
+                  onPause={(event) => persistWatchProgress(clip, event.currentTarget)}
+                  onEnded={(event) => {
+                    persistWatchProgress(clip, event.currentTarget);
+                    trackAnalyticsEvent("CLIP_COMPLETE", {
                       videoId: clip.id,
                       channelId: clip.channel.id,
                     });
-                    trackAnalyticsEvent("SHARE", {
-                      videoId: clip.id,
-                      channelId: clip.channel.id,
-                    });
-                    void (navigator.share
-                      ? navigator.share({ title: clip.title, url })
-                      : navigator.clipboard.writeText(url));
                   }}
-                >
-                  Share
-                </button>
-              </nav>
-            </div>
-            {adPolicy.enabled && (index + 1) % adPolicy.minimumOrganicClips === 0 ? (
-              <span className={styles.adBoundary} aria-label="Clip ad opportunity boundary">
-                Ad opportunity
-              </span>
-            ) : null}
-          </article>
-        );
-      })}
-    </div>
+                />
+              ) : (
+                <div className={styles.mediaFallback}>
+                  <StatusNotice tone="danger">{t("clips.mediaUnavailable")}</StatusNotice>
+                </div>
+              )}
+              <div className={styles.overlay}>
+                <div className={styles.copy}>
+                  <Link className={styles.channelLink} href={href(`/c/${clip.channel.handle}`)}>
+                    @{clip.channel.handle}
+                  </Link>
+                  <h2 dir="auto">{clip.title}</h2>
+                  {clip.description ? <p dir="auto">{clip.description}</p> : null}
+                </div>
+                {activeId === clip.id ? <ClipActions key={clip.id} clip={clip} /> : null}
+              </div>
+              {adPolicy.enabled &&
+              adPolicy.minimumOrganicClips > 0 &&
+              (index + 1) % adPolicy.minimumOrganicClips === 0 ? (
+                <span
+                  aria-hidden="true"
+                  className={styles.adBoundary}
+                  data-clip-ad-boundary="true"
+                />
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+
+      <div className={styles.more}>
+        {nextCursor ? (
+          <ActionButton
+            type="button"
+            tone="secondary"
+            pending={loadMorePending}
+            disabled={loadMorePending}
+            data-tv-focusable="true"
+            data-tv-focus-id="clips-load-more"
+            onClick={() => void loadMore()}
+          >
+            {loadMorePending ? t("clips.loadingMore") : t("clips.loadMore")}
+          </ActionButton>
+        ) : null}
+        {loadMoreError ? (
+          <StatusNotice tone="warning" announce="polite">
+            {t("clips.moreError")}
+          </StatusNotice>
+        ) : null}
+      </div>
+    </section>
   );
 }

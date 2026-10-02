@@ -1,29 +1,30 @@
 .page {
-  min-height: 100dvh;
-  padding: 1rem var(--page-gutter) calc(1rem + var(--ayin-safe-bottom));
+  margin-inline: auto;
+  max-inline-size: 1120px;
+  min-block-size: 100dvh;
+  padding: clamp(1.5rem, 4vw, 3.5rem) var(--page-gutter)
+    calc(clamp(4rem, 7vw, 7rem) + var(--ayin-safe-bottom));
 }
 
 .header {
-  margin: 0 auto 1rem;
-  max-width: 42rem;
+  margin-inline: auto;
+  max-inline-size: 760px;
 }
 
-.header h1 {
-  font-size: clamp(2rem, 5vw, 3.2rem);
-  letter-spacing: -0.045em;
-  margin: 0;
+.workspace {
+  display: grid;
+  gap: var(--space-5);
+  margin-block-start: var(--space-6);
 }
 
 .feed {
   background: #000;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  box-shadow:
-    var(--shadow-elevated),
-    0 0 3rem rgb(88 8 248 / 8%);
-  height: min(calc(100dvh - 9rem - var(--ayin-safe-bottom)), 880px);
-  margin: 0 auto;
-  max-width: 34rem;
+  box-shadow: var(--shadow-elevated);
+  block-size: min(calc(100dvh - 13rem - var(--ayin-safe-bottom)), 880px);
+  inline-size: min(100%, 34rem);
+  margin-inline: auto;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   scroll-snap-type: y mandatory;
@@ -36,8 +37,8 @@
 
 .clip {
   background: #000;
-  height: 100%;
-  min-height: 100%;
+  block-size: 100%;
+  min-block-size: 100%;
   outline-offset: -3px;
   overflow: hidden;
   position: relative;
@@ -46,104 +47,158 @@
 }
 
 .clip:focus-visible {
-  outline: 3px solid var(--focus-ring);
+  outline: var(--focus-width) solid var(--focus-ring);
 }
 
 .video {
   background: #000;
-  height: 100%;
-  min-height: 100%;
+  block-size: 100%;
+  inline-size: 100%;
+  min-block-size: 100%;
   object-fit: contain;
-  width: 100%;
+}
+
+.mediaFallback {
+  align-items: center;
+  block-size: 100%;
+  display: flex;
+  inline-size: 100%;
+  justify-content: center;
+  padding: var(--space-5);
 }
 
 .overlay {
   align-items: end;
-  background: linear-gradient(transparent 0%, rgb(0 0 0 / 20%) 30%, rgb(0 0 0 / 88%) 100%);
+  background: linear-gradient(transparent 0%, rgb(0 0 0 / 18%) 28%, rgb(0 0 0 / 90%) 100%);
   color: white;
   display: flex;
-  gap: 1rem;
-  inset: auto 0 0;
+  gap: var(--space-4);
+  inset-block-end: 0;
+  inset-inline: 0;
   justify-content: space-between;
-  padding: 5rem 1.1rem max(1.1rem, var(--ayin-safe-bottom));
+  padding: 5rem var(--space-4) max(var(--space-4), var(--ayin-safe-bottom));
   pointer-events: none;
   position: absolute;
 }
 
-.overlay a,
-.overlay button {
-  color: inherit;
+.copy {
+  min-inline-size: 0;
+}
+
+.channelLink,
+.clipAction,
+.actionFeedback,
+.feedbackActions button {
   pointer-events: auto;
 }
 
-.overlay h2 {
-  font-size: 1.12rem;
-  letter-spacing: -0.02em;
-  margin: 0.35rem 0;
+.channelLink {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
-.overlay p {
-  color: rgb(255 255 255 / 78%);
+.copy h2 {
+  color: white;
+  font-size: var(--text-lg);
+  letter-spacing: -0.02em;
+  margin: var(--space-1) 0;
+  overflow-wrap: anywhere;
+}
+
+.copy p {
+  color: rgb(255 255 255 / 82%);
+  line-height: 1.5;
   margin: 0;
-  max-width: 24rem;
+  max-inline-size: 24rem;
+  overflow-wrap: anywhere;
+}
+
+.actionWorkspace {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+  max-inline-size: min(19rem, 55%);
+  pointer-events: auto;
 }
 
 .actions {
   display: grid;
-  gap: 0.65rem;
+  gap: var(--space-2);
   justify-items: end;
 }
 
-.actions button {
+.clipAction {
   backdrop-filter: blur(14px);
-  background: rgb(5 3 12 / 54%);
-  border: 1px solid rgb(255 255 255 / 24%);
-  border-radius: 999px;
+  background: rgb(5 3 12 / 72%);
+  border-color: rgb(255 255 255 / 24%);
+  border-radius: var(--radius-pill);
   color: white;
-  cursor: pointer;
-  min-height: 42px;
-  min-width: 42px;
-  padding: 0.48rem 0.72rem;
+  min-block-size: var(--control-target);
+  min-inline-size: var(--control-target);
+  white-space: nowrap;
 }
 
-.actions button:hover {
-  background: rgb(139 24 248 / 22%);
-  border-color: rgb(230 124 255 / 48%);
+.actionFeedback {
+  max-inline-size: 19rem;
+}
+
+.feedbackActions {
+  margin-block-start: var(--space-2);
+}
+
+.more {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-inline: auto;
+  max-inline-size: 34rem;
 }
 
 .adBoundary {
-  backdrop-filter: blur(10px);
-  background: rgb(3 2 8 / 68%);
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 999px;
-  color: white;
-  font-size: 0.68rem;
-  padding: 0.28rem 0.55rem;
-  position: absolute;
-  right: 0.75rem;
-  top: 0.75rem;
+  display: none;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 640px) {
   .page {
+    padding-block-start: var(--space-3);
     padding-inline: 0;
-    padding-top: 0.5rem;
   }
 
   .header {
-    padding-inline: 1rem;
+    padding-inline: var(--page-gutter);
+  }
+
+  .workspace {
+    margin-block-start: var(--space-4);
   }
 
   .feed {
-    border-left: 0;
+    border-inline: 0;
     border-radius: 0;
-    border-right: 0;
-    height: calc(100dvh - 10rem - var(--ayin-safe-bottom));
-    max-width: none;
+    block-size: calc(100dvh - 12.5rem - var(--ayin-safe-bottom));
+    inline-size: 100%;
   }
 
   .overlay {
-    padding-inline: 0.9rem;
+    gap: var(--space-3);
+    padding-inline: var(--space-3);
+  }
+
+  .actionWorkspace {
+    max-inline-size: 48%;
+  }
+
+  .clipAction {
+    font-size: 0.8rem;
+    padding-inline: 0.65rem;
+  }
+
+  .more {
+    padding-inline: var(--page-gutter);
   }
 }
 
@@ -155,6 +210,6 @@
 
 @media (min-width: 1000px) {
   .feed {
-    height: min(78vh, 880px);
+    block-size: min(78vh, 880px);
   }
 }

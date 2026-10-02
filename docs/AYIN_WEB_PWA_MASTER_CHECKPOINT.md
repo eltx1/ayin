@@ -6,7 +6,7 @@ The user's master phases0–16 remain authoritative. `https://ayin.stream` is on
 
 The complete preceding ledger is preserved byte-for-byte in [Admin action release history](AYIN_ADMIN_ACTION_RELEASE_HISTORY.md), including all earlier tests/source/visual/performance/rollback links. Its pending statuses are historical. Current authorities: [feature matrix](AYIN_FEATURE_SURFACE_MATRIX.md), [design system](AYIN_DESIGN_SYSTEM.md), [performance evidence](PERFORMANCE_BASELINE_AND_RESULTS.md). Implementation acceptance below supersedes earlier candidate-pending statements in the linked Phase4D evidence, without implying an unobserved merge or deployment.
 
-**Accepted main and observed deployment:** `9c5a770f0f475cd76f12ca4cda2cce79fa0fd2f6`, after #153. Baseline recovery, focused inventory/routes/navigation, design4A–4G and Viewer Phase5A Kids are accepted with their historical limits. Phase5B Community Viewer is next. Creator/Admin transformation6–8, PWA/performance/current-policy ads/visual/E2E/security9–14, native preparation15 and final documentation16 remain open. No whole-master/provider/store/device/legal-certification claim. Adopted dependency security fixes remain part of the current baseline.
+**Accepted main and observed deployment:** `41121d4e1d00ee5fc0cbb8f2f8948f3db1b9104a`, after #159. Baseline recovery, focused inventory/routes/navigation, design4A–4G and Viewer Phase5A–5D are accepted with their historical limits. Phase5E Clips policy/viewer hardening is current. Creator/Admin transformation6–8, PWA/performance/current-policy ads/visual/E2E/security9–14, native preparation15 and final documentation16 remain open. No whole-master/provider/store/device/legal-certification claim. Adopted dependency security fixes remain part of the current baseline.
 
 ## Accepted Admin request repair — #147
 
@@ -206,9 +206,9 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 
 **Rollback:** revert this Viewer presentation/client-state/test-fixture layer through validated deployment. Do not roll back viewer activity, recommendation feedback/reset records, Community records or the patched dependency graph.
 
-## Current Phase5D — public creator destinations
+## Accepted Phase5D — public creator destinations
 
-**Start:** accepted Phase5C main `5d9b30af36872ac9f322315375d9bd6f937f0e35`. **Branch/PR:** `web-pwa-phase-5d-public-creator-destinations`, #159. **Reviewed implementation head:** `ec46a7c9a81b690e1c4fb2fc5a55531a6448d79c`. Merge/deployment remain pending closing documentation-head checks.
+**Start:** accepted Phase5C main `5d9b30af36872ac9f322315375d9bd6f937f0e35`. **Branch/PR:** `web-pwa-phase-5d-public-creator-destinations`, #159. **Reviewed implementation head:** `ec46a7c9a81b690e1c4fb2fc5a55531a6448d79c`; final documentation head `556a32cca78e77c4d816504a753697723ce83f95`; expected-head squash merge produced `41121d4e1d00ee5fc0cbb8f2f8948f3db1b9104a`.
 
 **Viewer consolidation:** public Channel, public Playlist and Creator TV now share the accepted Viewer design language and route-scoped EN/AR copy. Channel tabs no longer expose placeholder-only Shorts; Posts routes to the real public Community destination when enabled. Existing Home/Videos/TV/Playlists/About destinations and public URLs remain. Public Playlist uses shared PageHeader, ActionLink, DataBadge, MediaCard and Viewer empty/error states, keeps ordered creator content, localized dates/counts/canonical links and real media fallback. Creator TV removes internal/provider-facing copy from Viewer states, localizes off-air/retry/schedule copy and preserves the existing playback/provider state machine.
 
@@ -224,6 +224,30 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 
 **Performance boundary:** no CWV/API/player speedup is claimed. This slice primarily changes Viewer presentation, localized copy and route behavior tests. Full Phase10 measurement remains required.
 
-**Next:** pass applicable checks on the closing documentation head, record final author-side review, merge with expected-head protection, then verify main quality/security/inventory, production deploy proof and Cloudflare sync. After release, Phase5E should begin with the audited Clips server-policy gap: Clips currently enforces public/published/playable rows but does not apply the same trusted-region VideoPolicy used by Watch/Discovery. Fix policy filtering before pagination first, then redesign/localize the Clips Viewer surface and recoverable social actions.
+**Final acceptance/release:** final head `556a32cca78e77c4d816504a753697723ce83f95` passed quality `36945415386`, browser `36945415473`, security `36945415523` and inventory `36945415533`; author-side final review `5387096729`, no unresolved threads. Post-merge main quality `36946098788`, security `36946098837` and inventory `36946098827` succeeded. Production deploy `36946624654`, job `110650117755`, completed exact validated commit deployment, direct-origin health, historical media recovery and immutable proof. Artifact `11201884157` has GitHub digest `sha256:8267fea78221723701465c13dd7c7ae551a9f33fd518ec44785a4bcce921a74c`; proof records release `41121d4e1d00ee5fc0cbb8f2f8948f3db1b9104a`, validation `36946098788`, deploy `36946624654`, attempt 1, deployed_as `ayin`. Cloudflare sync `36946792012` succeeded for application edge, R2 and public production endpoint verification.
 
 **Rollback:** revert only this public creator presentation/routing/test layer through validated deployment. Preserve durable handle records, playlist/channel data, Community records, Creator TV provider state and prior dependency/security fixes.
+
+## Current Phase5E — Clips policy and Viewer hardening
+
+**Start:** accepted/deployed main `41121d4e1d00ee5fc0cbb8f2f8948f3db1b9104a` after #159. **Branch/PR:** `web-pwa-phase-5e-clips-policy-viewer`, #160. **Reviewed implementation head:** `d4e5a3d2f0d0aa4d6f28373e454c88399fd4d99c`. Merge/deployment remain pending closing documentation-head checks.
+
+**Policy/security:** public Clips now uses only trusted region context and returns `Cache-Control: private, no-store`. The SQL candidate selection applies CLIP/public/published/playable boundaries plus `availableVideoPolicySql` before LIMIT/cursor so blocked rows cannot consume slots or distort continuation. Hydration rechecks hard publication/playability and VideoPolicy for concurrent changes. FORCE_ALLOW still cannot expose private/removed/unplayable Clips. LIKE counts now count LIKE reactions only.
+
+**Trusted-region regression:** PostgreSQL/API integration uses an internal JP edge signal to prove a newest JP-blocked Clip does not shorten page 1, a JP-only Clip appears only with trusted JP context, spoofed untrusted `cf-ipcountry` or raw edge-country headers are ignored/fail-closed for territorial policy, and FORCE_ALLOW cannot bypass a private Clip. No schema migration or permission relaxation.
+
+**Viewer redesign:** `/clips` now uses route-scoped EN/AR copy, shared AYIN actions/notices/Viewer states, bounded fail-closed response parsing, cursor continuation UI, logical RTL/mobile layout and shared TV focus. The old dead comments fragment is removed because no public Viewer comment-list read surface exists. Existing autoplay, reduced-motion behavior, watch-progress checkpoints, analytics event names and ad-opportunity boundaries remain.
+
+**Social recovery:** Clip Like and Subscribe initialize from the real social read APIs. Non-auth read failure is visible and refreshable; 401 retains the sign-in gate. Lost/unconfirmed Like or Subscribe writes never replay automatically: actions enter an uncertain state and require an explicit read refresh before another mutation. Confirmed writes parse server acknowledgements before updating the UI. Share cancellation remains a normal non-mutation outcome.
+
+**Exact implementation-head gates:** quality `36949792999`, browser `36949793053`, security `36949793044` and inventory `36949792995` all passed on `d4e5a3d2f0d0aa4d6f28373e454c88399fd4d99c`. Quality includes frozen dependency audit, formatting, deployment-tool validation, lint, TypeScript/Prisma, unit/schema, clean migrations/integration and production build. No failed check is ignored.
+
+**Actual visual evidence:** browser artifact `11203343915`, GitHub digest `sha256:e4b6d615f50eb31349ad312bf3a27a2343cc6b29115205b05df035c9d74d19bb`. Inspected `design-clips-1440-en.png` and `design-clips-390-ar.png`. Desktop hierarchy, vertical Clip frame/actions, Arabic RTL headings/copy and mobile load-more remain contained/readable. English Clip title/body in the Arabic capture are fixture/catalog data, not untranslated AYIN product copy. Fixed navigation inside full-page captures is capture context; browser acceptance separately proves no document overflow. Fixture media fallback is deliberate and is not physical-device playback certification.
+
+**Source review:** the Viewer proxy validates cursors, uses the server-only trusted-region bridge and never forwards browser-supplied region headers. Response parsing rejects malformed IDs/assets/durations/counts/ad policy rather than producing false empty/success states. Pagination deduplicates returned Clips and keeps server cursors authoritative. Policy and hard playable boundaries remain separate, so an override cannot weaken publication/privacy/media requirements.
+
+**Advertising/performance boundary:** this phase does not activate Clip ad demand; existing ad boundaries remain opportunities only under the Clips kill switch/frequency. No CWV/API/player speedup is claimed. Full advertising-policy acceptance remains Phase11 and measured performance remains Phase10.
+
+**Next:** pass applicable checks on this closing documentation head, record final author-side review, merge with expected-head protection, then verify main quality/security/inventory, production deploy proof and Cloudflare sync. After release, audit the remaining Phase5 Viewer routes from current source and choose the next focused slice; do not infer completion from historical task labels.
+
+**Rollback:** revert the focused Clips policy/query/presentation/client-state layer through validated deployment. Preserve VideoPolicy records, social records, watch progress, provider state and prior Viewer/security releases.

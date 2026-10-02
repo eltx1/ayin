@@ -7,9 +7,9 @@ AYIN Clips is the short-form vertical video surface. It reuses the existing dire
 - A video has an explicit `VideoForm`: `LONG_FORM` or `CLIP`.
 - Clip uploads use the same creator upload endpoint and storage adapter. The creator selects `videoForm: "CLIP"`.
 - The configurable declared-duration ceiling defaults to 180 seconds. No music catalog or music-license rights are assumed.
-- The public `/clips` feed contains only public, published Clips with a ready MP4 on active channels.
+- The public `/clips` feed contains only public, published Clips with a ready MP4 on active channels and applies trusted-region VideoPolicy before pagination. Browser-supplied country headers are not trusted.
 - Autoplay is muted, only applies to the focused item, and is disabled when reduced motion is requested.
-- Existing watch/comment/channel surfaces remain the source of truth for social actions and moderation.
+- Existing watch/channel/social APIs remain authoritative. Viewer Like/Subscribe state is read from the server; an unconfirmed mutation is never replayed automatically and requires an explicit read refresh before another write. The Clips feed does not expose a fake comments link when no public comment-list read surface exists.
 - Clip analytics have explicit impression/play/swipe/complete/share names so they are measurable separately from long-form viewing.
 - Clip ad inventory has its own enable switch and organic-item frequency. Long-form pre/mid/post policy is never inherited implicitly. The V1 feed exposes ad-opportunity boundaries only; a production ad provider is wired separately under the advertising roadmap.
 
