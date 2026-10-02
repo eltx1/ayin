@@ -227,4 +227,3 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 **Next:** pass applicable checks on the closing documentation head, record final author-side review, merge with expected-head protection, then verify main quality/security/inventory, production deploy proof and Cloudflare sync. After release, Phase5E should begin with the audited Clips server-policy gap: Clips currently enforces public/published/playable rows but does not apply the same trusted-region VideoPolicy used by Watch/Discovery. Fix policy filtering before pagination first, then redesign/localize the Clips Viewer surface and recoverable social actions.
 
 **Rollback:** revert only this public creator presentation/routing/test layer through validated deployment. Preserve durable handle records, playlist/channel data, Community records, Creator TV provider state and prior dependency/security fixes.
-
