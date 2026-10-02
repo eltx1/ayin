@@ -105,7 +105,7 @@ function ClipActions({ clip }: { clip: ClipItem }) {
       });
 
     return () => controller.abort();
-  }, [attempt, clip.channel.id, clip.id]);
+  }, [attempt, clip]);
 
   function signIn() {
     router.push(href("/login"));
