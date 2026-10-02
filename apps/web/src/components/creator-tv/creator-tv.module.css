@@ -490,3 +490,17 @@
   outline: 2px solid var(--foreground);
   outline-offset: 4px;
 }
+
+.errorActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+@media (max-width: 560px) {
+  .errorActions {
+    align-items: stretch;
+    display: grid;
+  }
+}

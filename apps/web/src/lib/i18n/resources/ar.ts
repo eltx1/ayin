@@ -180,7 +180,7 @@ export const arMessages = {
   "channel.tab.home": "الرئيسية",
   "channel.tab.videos": "الفيديوهات",
   "channel.tab.shorts": "المقاطع القصيرة",
-  "channel.tab.posts": "المنشورات",
+  "channel.tab.posts": "المجتمع",
   "channel.tab.playlists": "قوائم التشغيل",
   "channel.tab.tv": "التلفزيون",
   "channel.tab.about": "حول",

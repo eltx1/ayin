@@ -178,7 +178,7 @@ export const enMessages = {
   "channel.tab.home": "Home",
   "channel.tab.videos": "Videos",
   "channel.tab.shorts": "Shorts",
-  "channel.tab.posts": "Posts",
+  "channel.tab.posts": "Community",
   "channel.tab.playlists": "Playlists",
   "channel.tab.tv": "TV",
   "channel.tab.about": "About",

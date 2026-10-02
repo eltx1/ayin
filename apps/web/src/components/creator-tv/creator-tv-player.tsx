@@ -5,10 +5,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AdEnabledAyinPlayer } from "@/components/player/ad-enabled-ayin-player";
 import { LiveAyinPlayer } from "@/components/player/live-ayin-player";
+import { ActionButton, StatusNotice } from "@/components/ui/design-system";
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 import { getAdvertisingConsentSnapshot } from "@/lib/advertising-consent";
 import { mediaAssetUrl } from "@/lib/channel";
+import { formatDate, formatNumber } from "@/lib/i18n/format";
+import {
+  translatePublicCreator,
+  type PublicCreatorTranslationKey,
+} from "@/lib/i18n/public-creator";
+import type { TranslationValues } from "@/lib/i18n/translator";
 import {
   fetchPublicCreatorTvLinear,
   selectCreatorTvMonetizedPlayback,
@@ -26,6 +34,12 @@ export function CreatorTvPlayer({
   initialData: PublicCreatorTvResponse;
   initialLinear: CreatorTvLinearCapability | null;
 }) {
+  const { locale } = useI18n();
+  const t = useCallback(
+    (key: PublicCreatorTranslationKey, values: TranslationValues = {}) =>
+      translatePublicCreator(locale, key, values),
+    [locale],
+  );
   const [data, setData] = useState(initialData);
   const [linear, setLinear] = useState(initialLinear);
   const [ssaiFallback, setSsaiFallback] = useState<{
@@ -193,7 +207,7 @@ export function CreatorTvPlayer({
         }),
         fetchPublicCreatorTvLinear(data.canonicalHandle),
       ]);
-      if (!response.ok) throw new Error("Creator TV could not refresh its guide.");
+      if (!response.ok) throw new Error("CREATOR_TV_REFRESH_FAILED");
       const nextData = (await response.json()) as PublicCreatorTvResponse;
       if (
         monetizedPlayback.mode === "GOOGLE_DAI_SSB" &&
@@ -209,8 +223,8 @@ export function CreatorTvPlayer({
       }
       setData(nextData);
       if (nextLinear) setLinear(nextLinear);
-    } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : "Creator TV could not refresh.");
+    } catch {
+      setRefreshError(t("tv.refreshError"));
     } finally {
       setRefreshing(false);
     }
@@ -220,6 +234,7 @@ export function CreatorTvPlayer({
     handleDaiFatal,
     monetizedPlayback.mode,
     refreshing,
+    t,
   ]);
 
   useEffect(() => {
@@ -263,21 +278,28 @@ export function CreatorTvPlayer({
   if (data.tv.state === "OFF_AIR" || !current) {
     return (
       <main className={styles.page} style={style}>
-        <TvHero data={data} initial={initial} />
+        <TvHero data={data} initial={initial} locale={locale} />
         <section className={styles.offAir}>
           <div>
             <div className={styles.offAirMark}>{initial}</div>
-            <span className={styles.eyebrow}>AYIN Creator TV</span>
-            <h2>{offAirTitle(data.tv.offAirReason)}</h2>
-            <p>{offAirMessage(data.tv.offAirReason, data.channel.name)}</p>
-            <button
+            <span className={styles.eyebrow}>{t("tv.eyebrow")}</span>
+            <h2>{offAirTitle(data.tv.offAirReason, locale)}</h2>
+            <p>{offAirMessage(data.tv.offAirReason, data.channel.name, locale)}</p>
+            <ActionButton
               className={styles.refreshButton}
+              data-tv-focusable="true"
+              data-tv-focus-id="creator-tv-refresh"
+              pending={refreshing}
               type="button"
               onClick={() => void refreshSchedule()}
             >
-              {refreshing ? "Checking…" : "Check again"}
-            </button>
-            {refreshError ? <p className={styles.error}>{refreshError}</p> : null}
+              {refreshing ? t("tv.checking") : t("tv.checkAgain")}
+            </ActionButton>
+            {refreshError ? (
+              <StatusNotice tone="danger" announce="polite">
+                {refreshError}
+              </StatusNotice>
+            ) : null}
           </div>
         </section>
       </main>
@@ -286,7 +308,7 @@ export function CreatorTvPlayer({
 
   return (
     <main className={styles.page} style={style}>
-      <TvHero data={data} initial={initial} />
+      <TvHero data={data} initial={initial} locale={locale} />
       <div className={styles.layout}>
         <section className={styles.playerCard} aria-labelledby="now-playing-heading">
           {monetizedPlayback.mode === "GOOGLE_DAI_SSB" ? (
@@ -317,7 +339,7 @@ export function CreatorTvPlayer({
                 data.schedule.upNext
                   ? {
                       title: data.schedule.upNext.video.title,
-                      detail: formatTime(data.schedule.upNext.startsAt),
+                      detail: formatTime(data.schedule.upNext.startsAt, locale),
                     }
                   : null
               }
@@ -326,62 +348,82 @@ export function CreatorTvPlayer({
           ) : (
             <div className={styles.offAir}>
               <div>
-                <span className={styles.eyebrow}>Media configuration needed</span>
-                <p>AYIN knows what is on air, but this client has no media delivery base URL.</p>
+                <span className={styles.eyebrow}>{t("tv.mediaNeeded")}</span>
+                <p>{t("tv.mediaNeededDescription")}</p>
               </div>
             </div>
           )}
           <div className={styles.nowCopy}>
             <span className={styles.liveBadge}>
-              <span className={styles.liveDot} /> Now Playing
+              <span className={styles.liveDot} /> {t("tv.nowPlaying")}
             </span>
             <h2 id="now-playing-heading">{current.video.title}</h2>
             <p className={styles.meta}>
-              {formatTime(current.startsAt)} – {formatTime(current.endsAt)} ·{" "}
-              {formatDuration(current.video.durationMs)}
+              {formatTime(current.startsAt, locale)} – {formatTime(current.endsAt, locale)} ·{" "}
+              {formatDuration(current.video.durationMs, locale)}
             </p>
             {current.video.description ? <p>{current.video.description}</p> : null}
             <p className={styles.limitation}>
               {monetizedPlayback.mode === "GOOGLE_DAI_SSB"
-                ? "Playing the continuous linear HLS stream with server-side ad insertion."
-                : data.playback.limitation}
+                ? t("tv.playbackContinuous")
+                : t("tv.playbackProgram")}
             </p>
-            {refreshError ? <p className={styles.error}>{refreshError}</p> : null}
+            {refreshError ? (
+              <StatusNotice tone="warning" announce="polite">
+                {refreshError}
+              </StatusNotice>
+            ) : null}
           </div>
         </section>
 
         <aside className={styles.side}>
           <section className={styles.nextCard} aria-labelledby="up-next-heading">
-            <span className={styles.eyebrow}>Up Next</span>
-            <h2 id="up-next-heading">Coming up</h2>
+            <span className={styles.eyebrow}>{t("tv.upNext")}</span>
+            <h2 id="up-next-heading">{t("tv.comingUp")}</h2>
             {data.schedule.upNext ? (
               <>
                 <h3>{data.schedule.upNext.video.title}</h3>
-                <p className={styles.meta}>{formatTime(data.schedule.upNext.startsAt)}</p>
+                <p className={styles.meta}>{formatTime(data.schedule.upNext.startsAt, locale)}</p>
               </>
             ) : (
-              <p className={styles.muted}>The next program will appear when the guide refreshes.</p>
+              <p className={styles.muted}>{t("tv.nextPending")}</p>
             )}
           </section>
 
-          <Guide programs={data.schedule.guide} currentKey={current.occurrenceKey} />
+          <Guide
+            programs={data.schedule.guide}
+            currentKey={current.occurrenceKey}
+            locale={locale}
+          />
         </aside>
       </div>
     </main>
   );
 }
 
-function TvHero({ data, initial }: { data: PublicCreatorTvResponse; initial: string }) {
+function TvHero({
+  data,
+  initial,
+  locale,
+}: {
+  data: PublicCreatorTvResponse;
+  initial: string;
+  locale: "en" | "ar";
+}) {
   return (
     <header className={styles.hero}>
       <div className={styles.heroInner}>
         <div className={styles.avatar}>{data.appearance.avatar ? null : initial}</div>
         <div>
-          <span className={styles.eyebrow}>Automatic Creator TV</span>
+          <span className={styles.eyebrow}>
+            {translatePublicCreator(locale, "tv.automaticEyebrow")}
+          </span>
           <h1>{data.tv.name}</h1>
           <Link
             className={styles.channelLink}
-            href={`/c/${encodeURIComponent(data.canonicalHandle)}`}
+            data-tv-focusable="true"
+            data-tv-focus-id="creator-tv-channel-link"
+            href={hrefForLocale(locale, `/c/${encodeURIComponent(data.canonicalHandle)}`)}
           >
             {data.channel.name} · @{data.canonicalHandle}
           </Link>
@@ -391,24 +433,34 @@ function TvHero({ data, initial }: { data: PublicCreatorTvResponse; initial: str
   );
 }
 
-function Guide({ programs, currentKey }: { programs: CreatorTvProgram[]; currentKey: string }) {
+function Guide({
+  programs,
+  currentKey,
+  locale,
+}: {
+  programs: CreatorTvProgram[];
+  currentKey: string;
+  locale: "en" | "ar";
+}) {
   const visible = programs.slice(0, 12);
   return (
     <section className={styles.guide} aria-labelledby="guide-heading">
-      <span className={styles.eyebrow}>Linear guide</span>
-      <h2 id="guide-heading">Schedule</h2>
+      <span className={styles.eyebrow}>{translatePublicCreator(locale, "tv.linearGuide")}</span>
+      <h2 id="guide-heading">{translatePublicCreator(locale, "tv.schedule")}</h2>
       <ol className={styles.guideList}>
         {visible.map((program) => (
           <li className={styles.guideItem} key={program.occurrenceKey}>
             <span className={styles.guideTime}>
-              {program.occurrenceKey === currentKey ? "Now" : formatTime(program.startsAt)}
+              {program.occurrenceKey === currentKey
+                ? translatePublicCreator(locale, "tv.now")
+                : formatTime(program.startsAt, locale)}
             </span>
             <span>
               <span className={styles.guideTitle}>{program.video.title}</span>
               <span className={styles.videoMeta}>
                 {program.source === "ADMIN"
-                  ? "Scheduled by AYIN"
-                  : formatDuration(program.video.durationMs)}
+                  ? translatePublicCreator(locale, "tv.scheduledByAyin")
+                  : formatDuration(program.video.durationMs, locale)}
               </span>
             </span>
           </li>
@@ -418,37 +470,56 @@ function Guide({ programs, currentKey }: { programs: CreatorTvProgram[]; current
   );
 }
 
-function formatTime(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(
-    new Date(value),
-  );
+function formatTime(value: string, locale: "en" | "ar"): string {
+  return formatDate(value, locale, { hour: "numeric", minute: "2-digit" });
 }
 
-function formatDuration(value: number | null): string {
-  if (!value) return "Duration estimated for guide";
+function formatDuration(value: number | null, locale: "en" | "ar"): string {
+  if (!value) return translatePublicCreator(locale, "tv.durationEstimated");
   const totalMinutes = Math.max(1, Math.round(value / 60_000));
-  if (totalMinutes < 60) return `${totalMinutes} min`;
+  if (totalMinutes < 60) {
+    return translatePublicCreator(locale, "tv.minute", {
+      count: formatNumber(totalMinutes, locale),
+    });
+  }
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  return minutes
+    ? translatePublicCreator(locale, "tv.hoursMinutes", {
+        hours: formatNumber(hours, locale),
+        minutes: formatNumber(minutes, locale),
+      })
+    : translatePublicCreator(locale, "tv.hours", { count: formatNumber(hours, locale) });
 }
 
-function offAirTitle(reason: PublicCreatorTvResponse["tv"]["offAirReason"]): string {
-  if (reason === "NO_ELIGIBLE_VIDEOS") return "Programming starts with the first eligible video";
-  if (reason === "TV_DISABLED") return "This TV is currently unavailable";
-  if (reason === "AUTOMATIC_SCHEDULING_DISABLED") return "Automatic programming is paused";
-  return "Off air for now";
+function offAirTitle(
+  reason: PublicCreatorTvResponse["tv"]["offAirReason"],
+  locale: "en" | "ar",
+): string {
+  if (reason === "NO_ELIGIBLE_VIDEOS")
+    return translatePublicCreator(locale, "tv.offAirNoEligibleTitle");
+  if (reason === "TV_DISABLED") return translatePublicCreator(locale, "tv.offAirDisabledTitle");
+  if (reason === "AUTOMATIC_SCHEDULING_DISABLED")
+    return translatePublicCreator(locale, "tv.offAirAutomaticPausedTitle");
+  return translatePublicCreator(locale, "tv.offAirDefaultTitle");
 }
 
 function offAirMessage(
   reason: PublicCreatorTvResponse["tv"]["offAirReason"],
   channelName: string,
+  locale: "en" | "ar",
 ): string {
   if (reason === "NO_ELIGIBLE_VIDEOS") {
-    return `${channelName} TV is ready. Published public MP4 videos will automatically enter this continuous rotation.`;
+    return translatePublicCreator(locale, "tv.offAirNoEligibleDescription", {
+      channel: channelName,
+    });
   }
   if (reason === "AUTOMATIC_SCHEDULING_DISABLED") {
-    return "The channel remains branded and ready while automatic programming is disabled.";
+    return translatePublicCreator(locale, "tv.offAirAutomaticPausedDescription");
   }
-  return "This Creator TV keeps its channel identity while programming is unavailable.";
+  return translatePublicCreator(locale, "tv.offAirDefaultDescription");
+}
+
+function hrefForLocale(locale: "en" | "ar", path: string): string {
+  return locale === "ar" ? `/ar${path}` : path;
 }

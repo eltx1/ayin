@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 
 import styles from "@/components/playlist/public-playlist.module.css";
+import { ActionLink, DataBadge, PageHeader } from "@/components/ui/design-system";
+import { MediaCard } from "@/components/viewer/media-card";
+import { EmptyState, ErrorState } from "@/components/viewer/view-states";
 import { apiBaseUrl } from "@/lib/api";
 import { mediaAssetUrl } from "@/lib/channel";
+import { formatDate, formatNumber } from "@/lib/i18n/format";
+import { translatePublicCreator } from "@/lib/i18n/public-creator";
+import { localizePath } from "@/lib/i18n/routing";
+import { getRequestLocale } from "@/lib/i18n/server";
 import type { PublicPlaylistResponse } from "@/lib/playlist";
 import { getSeoPlaylist } from "@/lib/seo-content";
 import {
@@ -24,18 +30,26 @@ interface PublicPlaylistPageProperties {
 export async function generateMetadata({
   params,
 }: PublicPlaylistPageProperties): Promise<Metadata> {
-  const { handle, slug } = await params;
+  const [{ handle, slug }, locale] = await Promise.all([params, getRequestLocale()]);
   const playlist = await getSeoPlaylist(handle, slug);
   if (!playlist) {
-    return { title: "Playlist unavailable", robots: metadataRobots(false) };
+    return {
+      title: translatePublicCreator(locale, "playlist.unavailable"),
+      robots: metadataRobots(false),
+    };
   }
 
-  const canonical = absoluteUrl(
+  const canonicalPath = localizePath(
     `/c/${encodeURIComponent(playlist.channel.handle)}/playlists/${encodeURIComponent(playlist.slug)}`,
+    locale,
   );
+  const canonical = absoluteUrl(canonicalPath);
   const description = seoDescription(
     playlist.description,
-    `Watch ${playlist.name}, a video playlist from ${playlist.channel.name}, on AYIN.`,
+    translatePublicCreator(locale, "playlist.metaFallback", {
+      playlist: playlist.name,
+      channel: playlist.channel.name,
+    }),
   );
   const image = mediaSeoUrl(playlist.items[0]?.video.thumbnail?.objectKey) ?? AYIN_DEFAULT_IMAGE;
   const indexable = playlist.visibility === "PUBLIC" && playlist.items.length > 0;
@@ -63,25 +77,65 @@ export async function generateMetadata({
 }
 
 export default async function PublicPlaylistPage({ params }: PublicPlaylistPageProperties) {
-  const { handle, slug } = await params;
-  const [response, seoPlaylist] = await Promise.all([
-    fetch(
-      `${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/playlists/${encodeURIComponent(slug)}`,
-      { cache: "no-store" },
-    ),
-    getSeoPlaylist(handle, slug),
-  ]);
+  const [{ handle, slug }, locale] = await Promise.all([params, getRequestLocale()]);
+  const t = (
+    key: Parameters<typeof translatePublicCreator>[1],
+    values: Parameters<typeof translatePublicCreator>[2] = {},
+  ) => translatePublicCreator(locale, key, values);
+  const response = await fetch(
+    `${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/playlists/${encodeURIComponent(slug)}`,
+    { cache: "no-store" },
+  );
   if (response.status === 404) notFound();
-  if (!response.ok) throw new Error("This playlist could not be loaded right now.");
+  if (!response.ok) {
+    return (
+      <main className={styles.page}>
+        <ErrorState
+          title={t("playlist.loadErrorTitle")}
+          description={t("playlist.loadErrorDescription")}
+          action={
+            <div className={styles.errorActions}>
+              <ActionLink
+                data-tv-focusable="true"
+                data-tv-focus-id="playlist-retry"
+                href={localizePath(
+                  `/c/${encodeURIComponent(handle)}/playlists/${encodeURIComponent(slug)}`,
+                  locale,
+                )}
+              >
+                {t("playlist.retry")}
+              </ActionLink>
+              <ActionLink
+                tone="quiet"
+                data-tv-focusable="true"
+                data-tv-focus-id="playlist-channel"
+                href={localizePath(`/c/${encodeURIComponent(handle)}`, locale)}
+              >
+                {t("playlist.openChannel")}
+              </ActionLink>
+            </div>
+          }
+        />
+      </main>
+    );
+  }
 
   const data = (await response.json()) as PublicPlaylistResponse;
   if (data.redirectedFrom && data.canonicalHandle !== handle) {
     permanentRedirect(
-      `/c/${encodeURIComponent(data.canonicalHandle)}/playlists/${encodeURIComponent(data.playlist.slug)}`,
+      localizePath(
+        `/c/${encodeURIComponent(data.canonicalHandle)}/playlists/${encodeURIComponent(data.playlist.slug)}`,
+        locale,
+      ),
     );
   }
 
-  const structuredData = seoPlaylist ? buildPlaylistStructuredData(seoPlaylist) : null;
+  const seoPlaylist = await getSeoPlaylist(data.canonicalHandle, data.playlist.slug);
+  const structuredData = seoPlaylist ? buildPlaylistStructuredData(seoPlaylist, locale) : null;
+  const videoCount =
+    data.items.length === 1
+      ? t("playlist.video")
+      : t("playlist.videoCount", { count: formatNumber(data.items.length, locale) });
 
   return (
     <main className={styles.page}>
@@ -91,56 +145,69 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(structuredData) }}
         />
       ) : null}
-      <section className={styles.hero} aria-labelledby="playlist-title">
-        <p className={styles.eyebrow}>
-          {data.playlist.systemKey === "UPLOADS" ? "Channel uploads" : "AYIN playlist"}
-        </p>
-        <h1 id="playlist-title">{data.playlist.name}</h1>
-        {data.playlist.description ? (
-          <p className={styles.description}>{data.playlist.description}</p>
-        ) : null}
+
+      <PageHeader
+        {...(styles.hero ? { className: styles.hero } : {})}
+        eyebrow={
+          data.playlist.systemKey === "UPLOADS"
+            ? t("playlist.channelUploads")
+            : t("playlist.ayinPlaylist")
+        }
+        title={data.playlist.name}
+        description={data.playlist.description ?? undefined}
+        actions={
+          <ActionLink
+            data-tv-focusable="true"
+            data-tv-focus-id="playlist-open-channel"
+            href={localizePath(`/c/${data.channel.handle}`, locale)}
+          >
+            {t("playlist.openChannel")}
+          </ActionLink>
+        }
+      >
         <div className={styles.metaRow}>
-          <Link href={`/c/${data.channel.handle}`}>{data.channel.name}</Link>
-          <span>
-            {data.items.length} {data.items.length === 1 ? "video" : "videos"}
-          </span>
-          {data.playlist.visibility === "UNLISTED" ? <span>Unlisted</span> : null}
+          <DataBadge>{videoCount}</DataBadge>
+          {data.playlist.visibility === "UNLISTED" ? (
+            <DataBadge tone="warning">{t("playlist.unlisted")}</DataBadge>
+          ) : null}
         </div>
-      </section>
+      </PageHeader>
 
       <section className={styles.section} aria-labelledby="playlist-videos-title">
-        <div className={styles.sectionHeading}>
-          <h2 id="playlist-videos-title">Videos</h2>
-          <p>Ordered by the creator</p>
-        </div>
+        <PageHeader
+          level={2}
+          title={t("playlist.videos")}
+          description={t("playlist.orderedByCreator")}
+        />
         {data.items.length > 0 ? (
           <div className={styles.grid}>
-            {data.items.map((item) => {
+            {data.items.map((item, index) => {
               const thumbnail = mediaAssetUrl(item.video.thumbnail?.objectKey);
               return (
-                <Link
-                  className={styles.videoCard}
-                  href={`/watch/${encodeURIComponent(item.video.slug)}`}
+                <MediaCard
+                  {...(thumbnail ? { artworkUrl: thumbnail } : {})}
+                  {...(item.video.durationMs
+                    ? { badge: formatDuration(item.video.durationMs) }
+                    : {})}
+                  href={localizePath(`/watch/${encodeURIComponent(item.video.slug)}`, locale)}
                   key={item.id}
-                >
-                  <div
-                    className={styles.thumbnail}
-                    style={thumbnail ? { backgroundImage: `url("${thumbnail}")` } : undefined}
-                  >
-                    {item.video.durationMs ? (
-                      <span className={styles.duration}>
-                        {formatDuration(item.video.durationMs)}
-                      </span>
-                    ) : null}
-                  </div>
-                  <h3>{item.video.title}</h3>
-                  <p>{formatDate(item.video.publishedAt)}</p>
-                </Link>
+                  meta={
+                    item.video.publishedAt
+                      ? formatDate(item.video.publishedAt, locale, { dateStyle: "medium" })
+                      : t("playlist.publishedOnAyin")
+                  }
+                  title={item.video.title}
+                  tone={((index % 5) + 1) as 1 | 2 | 3 | 4 | 5}
+                  variant="landscape"
+                />
               );
             })}
           </div>
         ) : (
-          <p className={styles.empty}>This playlist has no public videos yet.</p>
+          <EmptyState
+            title={t("playlist.emptyTitle")}
+            description={t("playlist.emptyDescription")}
+          />
         )}
       </section>
     </main>
@@ -149,14 +216,22 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
 
 function buildPlaylistStructuredData(
   playlist: NonNullable<Awaited<ReturnType<typeof getSeoPlaylist>>>,
+  locale: Awaited<ReturnType<typeof getRequestLocale>>,
 ) {
-  const canonical = absoluteUrl(
+  const canonicalPath = localizePath(
     `/c/${encodeURIComponent(playlist.channel.handle)}/playlists/${encodeURIComponent(playlist.slug)}`,
+    locale,
   );
-  const channelUrl = absoluteUrl(`/c/${encodeURIComponent(playlist.channel.handle)}`);
+  const canonical = absoluteUrl(canonicalPath);
+  const channelUrl = absoluteUrl(
+    localizePath(`/c/${encodeURIComponent(playlist.channel.handle)}`, locale),
+  );
   const description = seoDescription(
     playlist.description,
-    `Watch ${playlist.name}, a video playlist from ${playlist.channel.name}, on AYIN.`,
+    translatePublicCreator(locale, "playlist.metaFallback", {
+      playlist: playlist.name,
+      channel: playlist.channel.name,
+    }),
     500,
   );
 
@@ -182,7 +257,9 @@ function buildPlaylistStructuredData(
           numberOfItems: playlist.items.length,
           itemListOrder: "https://schema.org/ItemListOrderAscending",
           itemListElement: playlist.items.map((item, index) => {
-            const videoUrl = absoluteUrl(`/watch/${encodeURIComponent(item.video.slug)}`);
+            const videoUrl = absoluteUrl(
+              localizePath(`/watch/${encodeURIComponent(item.video.slug)}`, locale),
+            );
             const thumbnail = mediaSeoUrl(item.video.thumbnail?.objectKey);
             return {
               "@type": "ListItem",
@@ -231,9 +308,4 @@ function formatDuration(milliseconds: number): string {
   return hours > 0
     ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
     : `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function formatDate(value: string | null): string {
-  if (!value) return "Published on AYIN";
-  return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(value));
 }
