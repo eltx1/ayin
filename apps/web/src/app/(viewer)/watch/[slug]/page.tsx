@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PageHeader, ActionLink } from "@/components/ui/design-system";
 import { notFound } from "next/navigation";
 
 import { PageAdSlot } from "@/components/ads/page-ad-slot";
@@ -28,11 +29,25 @@ import styles from "./page.module.css";
 
 interface WatchPageProperties {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ kids?: string | string[] }>;
 }
 
-export async function generateMetadata({ params }: WatchPageProperties): Promise<Metadata> {
-  const [{ slug }, locale] = await Promise.all([params, getRequestLocale()]);
+export async function generateMetadata({
+  params,
+  searchParams,
+}: WatchPageProperties): Promise<Metadata> {
+  const [{ slug }, query, locale] = await Promise.all([params, searchParams, getRequestLocale()]);
+  const kidsMode = query.kids === "1";
   const regionHeaders = await trustedApiRegionHeaders();
+  if (kidsMode) {
+    const eligibility = await fetch(
+      `${apiBaseUrl}/public/videos/${encodeURIComponent(slug)}/playback?kids=1`,
+      { cache: "no-store", headers: regionHeaders },
+    );
+    if (eligibility.status === 404)
+      return { title: translate(locale, "watch.unavailable"), robots: metadataRobots(false) };
+    if (!eligibility.ok) throw new Error(translate(locale, "watch.loadError"));
+  }
   const video = await getSeoVideo(slug, regionHeaders);
   if (!video) {
     return { title: translate(locale, "watch.unavailable"), robots: metadataRobots(false) };
@@ -47,7 +62,7 @@ export async function generateMetadata({ params }: WatchPageProperties): Promise
   );
   const image = mediaSeoUrl(video.thumbnail?.objectKey) ?? AYIN_DEFAULT_IMAGE;
   const contentUrl = mediaSeoUrl(video.source.objectKey);
-  const indexable = video.visibility === "PUBLIC";
+  const indexable = !kidsMode && video.visibility === "PUBLIC";
 
   return {
     title: video.title,
@@ -67,16 +82,20 @@ export async function generateMetadata({ params }: WatchPageProperties): Promise
   };
 }
 
-export default async function WatchPage({ params }: WatchPageProperties) {
-  const [{ slug }, locale] = await Promise.all([params, getRequestLocale()]);
+export default async function WatchPage({ params, searchParams }: WatchPageProperties) {
+  const [{ slug }, query, locale] = await Promise.all([params, searchParams, getRequestLocale()]);
+  const kidsMode = query.kids === "1";
   const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) =>
     translate(locale, key, values);
   const regionHeaders = await trustedApiRegionHeaders();
   const [response, seoVideo] = await Promise.all([
-    fetch(`${apiBaseUrl}/public/videos/${encodeURIComponent(slug)}/playback`, {
-      cache: "no-store",
-      headers: regionHeaders,
-    }),
+    fetch(
+      `${apiBaseUrl}/public/videos/${encodeURIComponent(slug)}/playback${kidsMode ? "?kids=1" : ""}`,
+      {
+        cache: "no-store",
+        headers: regionHeaders,
+      },
+    ),
     getSeoVideo(slug, regionHeaders),
   ]);
   if (response.status === 404) notFound();
@@ -103,7 +122,7 @@ export default async function WatchPage({ params }: WatchPageProperties) {
       : [];
   });
 
-  const structuredData = seoVideo ? buildVideoStructuredData(seoVideo) : null;
+  const structuredData = !kidsMode && seoVideo ? buildVideoStructuredData(seoVideo) : null;
 
   return (
     <main className={styles.page}>
@@ -114,6 +133,8 @@ export default async function WatchPage({ params }: WatchPageProperties) {
         />
       ) : null}
       <AnalyticsAyinPlayer
+        key={`${data.video.id}:${kidsMode}`}
+        advertisingEnabled={!kidsMode}
         adaptiveSourceUrl={adaptiveSourceUrl}
         autoPlay
         className={styles.playerFrame}
@@ -126,21 +147,37 @@ export default async function WatchPage({ params }: WatchPageProperties) {
         videoId={data.video.id}
       />
       <section className={styles.details}>
-        <div>
-          <p className={styles.eyebrow}>{t("watch.eyebrow")}</p>
-          <h1 dir="auto">{data.video.title}</h1>
-          {data.video.description ? <p dir="auto">{data.video.description}</p> : null}
-          <VideoSocialActions className={styles.actions} videoId={data.video.id} />
-        </div>
-        <Link
-          className={styles.channel}
-          dir="auto"
-          href={localizePath(`/c/${encodeURIComponent(data.video.channel.handle)}`, locale)}
+        <PageHeader
+          eyebrow={t("watch.eyebrow")}
+          title={data.video.title}
+          {...(data.video.description ? { description: data.video.description } : {})}
+          {...(!kidsMode
+            ? {
+                actions: (
+                  <ActionLink
+                    tone="secondary"
+                    data-tv-focusable="true"
+                    data-tv-focus-id="watch-channel"
+                    href={localizePath(
+                      `/c/${encodeURIComponent(data.video.channel.handle)}`,
+                      locale,
+                    )}
+                  >
+                    <span dir="auto">{data.video.channel.name}</span> ·{" "}
+                    <bdi dir="ltr">@{data.video.channel.handle}</bdi>
+                  </ActionLink>
+                ),
+              }
+            : {})}
         >
-          {data.video.channel.name} · <bdi dir="ltr">@{data.video.channel.handle}</bdi>
-        </Link>
+          {kidsMode ? (
+            <p dir="auto">{data.video.channel.name}</p>
+          ) : (
+            <VideoSocialActions className={styles.actions} videoId={data.video.id} />
+          )}
+        </PageHeader>
       </section>
-      <PageAdSlot placementKey="watch_below_player" />
+      {!kidsMode ? <PageAdSlot placementKey="watch_below_player" /> : null}
       {data.detail.related.length > 0 ? (
         <section className={styles.related}>
           <h2 dir="auto">{t("watch.moreFrom", { name: data.video.channel.name })}</h2>
@@ -156,7 +193,9 @@ export default async function WatchPage({ params }: WatchPageProperties) {
           </div>
         </section>
       ) : null}
-      <CommentsPanel enabled={data.detail.commentsSlot.enabled} videoId={data.video.id} />
+      {!kidsMode ? (
+        <CommentsPanel enabled={data.detail.commentsSlot.enabled} videoId={data.video.id} />
+      ) : null}
     </main>
   );
 }
