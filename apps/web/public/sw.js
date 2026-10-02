@@ -1,77 +1,65 @@
-const VERSION = "ayin-pwa-v2";
+const VERSION = "ayin-pwa-v3";
 const STATIC_CACHE = `${VERSION}-static`;
-const READ_CACHE = `${VERSION}-read`;
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/ayin-192.svg", "/icons/ayin-512.svg"];
-const STATIC_DESTINATIONS = new Set(["font", "image", "script", "style"]);
+const OFFLINE_PAGE = "/offline.html";
+const APP_SHELL = [OFFLINE_PAGE, "/icons/ayin-192.svg", "/icons/ayin-512.svg"];
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting()),
-  );
+  event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.addAll(APP_SHELL)));
 });
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k))),
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith("ayin-pwa-") && key !== STATIC_CACHE)
+            .map((key) => caches.delete(key)),
+        ),
       )
       .then(() => self.clients.claim()),
   );
 });
 self.addEventListener("message", (event) => {
-  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+  if (event.data?.type === "SKIP_WAITING") event.waitUntil(self.skipWaiting());
 });
-function isMedia(url, request) {
+function mayStore(response) {
   return (
-    request.destination === "video" ||
-    request.destination === "audio" ||
-    url.pathname.startsWith("/watch/") ||
-    url.pathname.startsWith("/media/") ||
-    url.pathname.includes("upload") ||
-    url.pathname.includes("playback")
-  );
-}
-function safeApiRead(url, request) {
-  return (
-    request.method === "GET" &&
-    url.pathname.startsWith("/api/") &&
-    (/\/health$/.test(url.pathname) ||
-      url.pathname.startsWith("/api/discovery/") ||
-      url.pathname.startsWith("/api/public/"))
+    response.ok &&
+    response.type === "basic" &&
+    !/(?:^|,)\s*(?:no-store|private|no-cache)\b/i.test(response.headers.get("cache-control") ?? "")
   );
 }
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || isMedia(url, request)) return;
-  if (STATIC_DESTINATIONS.has(request.destination)) {
+  if (url.origin !== self.location.origin) return;
+  // Documents and policy-sensitive API reads never enter the worker cache.
+  if (request.mode === "navigate") {
     event.respondWith(
-      caches.open(STATIC_CACHE).then(async (cache) => {
-        const hit = await cache.match(request);
-        const network = fetch(request).then(async (response) => {
-          if (response.ok && response.type === "basic") await cache.put(request, response.clone());
-          return response;
-        });
-        return hit ?? network;
+      fetch(request).catch(async () => {
+        const cache = await caches.open(STATIC_CACHE);
+        return (await cache.match(OFFLINE_PAGE)) ?? Response.error();
       }),
     );
     return;
   }
-  if (safeApiRead(url, request)) {
-    event.respondWith(
-      caches.open(READ_CACHE).then(async (cache) => {
-        try {
-          const response = await fetch(request);
-          if (response.ok) await cache.put(request, response.clone());
-          return response;
-        } catch {
-          return (await cache.match(request)) ?? Response.error();
-        }
-      }),
-    );
-  }
+  const staticAsset = url.pathname.startsWith("/_next/static/") || APP_SHELL.includes(url.pathname);
+  if (
+    !staticAsset ||
+    url.search ||
+    request.headers.has("authorization") ||
+    request.cache === "no-store" ||
+    request.cache === "no-cache"
+  )
+    return;
+  event.respondWith(
+    caches.open(STATIC_CACHE).then(async (cache) => {
+      const hit = await cache.match(request);
+      if (hit) return hit;
+      const response = await fetch(request);
+      if (mayStore(response)) await cache.put(request, response.clone());
+      return response;
+    }),
+  );
 });
