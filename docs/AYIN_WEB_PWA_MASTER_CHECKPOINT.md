@@ -6,7 +6,7 @@ The user's master phases0–16 remain authoritative. `https://ayin.stream` is on
 
 The complete preceding ledger is preserved byte-for-byte in [Admin action release history](AYIN_ADMIN_ACTION_RELEASE_HISTORY.md), including all earlier tests/source/visual/performance/rollback links. Its pending statuses are historical. Current authorities: [feature matrix](AYIN_FEATURE_SURFACE_MATRIX.md), [design system](AYIN_DESIGN_SYSTEM.md), [performance evidence](PERFORMANCE_BASELINE_AND_RESULTS.md). Implementation acceptance below supersedes earlier candidate-pending statements in the linked Phase4D evidence, without implying an unobserved merge or deployment.
 
-**Accepted main and observed deployment:** `41121d4e1d00ee5fc0cbb8f2f8948f3db1b9104a`, after #159. Baseline recovery, focused inventory/routes/navigation, design4A–4G and Viewer Phase5A–5D are accepted with their historical limits. Phase5E Clips policy/viewer hardening is current. Creator/Admin transformation6–8, PWA/performance/current-policy ads/visual/E2E/security9–14, native preparation15 and final documentation16 remain open. No whole-master/provider/store/device/legal-certification claim. Adopted dependency security fixes remain part of the current baseline.
+**Accepted main and observed deployment:** `05b31bee83d2ae3c42f95e7a7929d4ed83ccdee1`, after #160. Baseline recovery, focused inventory/routes/navigation, design4A–4G and Viewer Phase5A–5E are accepted with their historical limits. Phase5F Live Viewer hardening is current in PR #161. Creator/Admin transformation6–8, PWA/performance/current-policy ads/visual/E2E/security9–14, native preparation15 and final documentation16 remain open. No whole-master/provider/store/device/legal-certification claim. Adopted dependency security fixes remain part of the current baseline.
 
 ## Accepted Admin request repair — #147
 
@@ -251,3 +251,43 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 **Next:** pass applicable checks on this closing documentation head, record final author-side review, merge with expected-head protection, then verify main quality/security/inventory, production deploy proof and Cloudflare sync. After release, audit the remaining Phase5 Viewer routes from current source and choose the next focused slice; do not infer completion from historical task labels.
 
 **Rollback:** revert the focused Clips policy/query/presentation/client-state layer through validated deployment. Preserve VideoPolicy records, social records, watch progress, provider state and prior Viewer/security releases.
+
+## Current Phase5F — Live Viewer redesign
+
+**Durable resume point:** accepted/deployed main `05b31bee83d2ae3c42f95e7a7929d4ed83ccdee1` after Phase5E / PR #160. **Branch:** `web-pwa-phase-5f-live-viewer`. **Recovered branch head:** `1d182079cf4fc8a29013a4eb16187915543c80a8`. **PR:** not opened yet. Update this entry at every implementation/test/review/merge/deploy milestone; it is the canonical resume pointer if the session is interrupted.
+
+**Recovered partial implementation:** two branch commits already exist. They add route-scoped EN/AR Live Viewer copy, fail-closed client parsers for public stream/chat payloads, status/waiting key helpers and unit tests. Live API/controller/service has a small Viewer-facing change that must be reviewed against current server contracts before acceptance. The actual `LiveWatchClient` still has the old raw/English-only UI and has not yet adopted these contracts.
+
+**Audit finding:** current Live Viewer uses inline layout, unchecked response casts, silent chat-write failures, English-only status/chat copy and exposes “Register ad-break opportunity” as a Viewer button. That button is internal analytics/provider-facing behavior and should not be normal consumer UI. Existing bounded stream polling/backoff/abort behavior is useful and should be preserved. No provider health or store/device success may be inferred.
+
+**Phase5F goal:** connect the recovered contracts to a professional AYIN Viewer surface; remove internal ad-break controls from Viewer presentation while preserving supported player/ad boundaries; make stream/chat loading, unavailable, scheduled, ready, live, ended and failed states truthful; make chat reads/sends recoverable without blind POST replay; retain server auth/ownership/provider contracts; add EN/AR, RTL/mobile/TV-focus and real integration/browser evidence.
+
+**Next exact step:** inspect the branch's Live controller/service changes and all existing Live/player tests, then wire `LiveWatchClient` to the recovered contracts with focused CSS and tests. Open a draft PR only after the branch source is coherent.
+
+### Phase5F implementation milestone — head `ead55dd65e41c4474f254f07cc066c783257859c`
+
+**Implemented before CI:** public Live responses are explicit Viewer allow-lists and public stream/chat GETs remain `private, no-store`. Provider/ingest/creator/recording/ad-break internals are not returned. Route-scoped EN/AR Live copy and fail-closed stream/chat parsers are connected to the real Live Viewer. The page uses shared PageHeader, ActionLink/Button, DataBadge, StatusNotice, TextField and Viewer empty/error states with logical RTL/mobile CSS and TV-focusable actions. Existing LiveAyinPlayer, bounded stream polling/backoff, analytics page-view and player recovery code are unchanged.
+
+**Chat recovery:** public chat reads are cancellable and fail closed. Confirmed POST acknowledgements append once and clear the draft. Explicit non-5xx rejection preserves the draft and shows failure. A 401 exposes a sign-in gate. Lost/network/5xx/malformed-success outcomes are treated as uncertain: the draft is retained, another send is disabled and an explicit chat refresh is required before another mutation. No POST is replayed automatically.
+
+**Viewer cleanup:** the former “Register ad-break opportunity” Viewer control and the public `adBreakHook` field are removed. This does not change player/provider advertising support; it removes an internal analytics/provider hook from consumer presentation.
+
+**Acceptance authored:** a PostgreSQL/API integration test proves exact public stream/chat allow-lists, cache headers, anonymous chat-write rejection, authenticated acknowledgement and no profile/provider leakage. Browser acceptance proves EN desktop + AR mobile presentation, no internal hook copy, simulated committed/lost chat response with one attempted POST/no blind replay, explicit read reconciliation and no document overflow. Existing Task74 HLS/reconnect/terminal acceptance is retained; only READY copy and one stale fixture ID are updated to match the fail-closed contract.
+
+**Next exact step:** run exact-head quality/browser/security/inventory on `ead55dd6...`; fix deterministic findings, inspect retained `design-live-viewer-*.png`, then open a focused draft PR and record final source/visual evidence before merge/deploy.
+
+### Phase5F continuation review — 2026-10-02
+
+Recovered actual PR #161 head `861dca9c1164862d75049acd32a8155bf20d1e94`, rather than the stale ledger pointer. Quality `37076134173`, browser `37076134188`, security `37076134143` and inventory `37076134154` succeeded. Browser artifact `11256308707` downloaded and its SHA256 `87af5f0cdddeba9041311df077389931ba045636a59869423fe470d9c7d6deef` verified. Actually inspected EN desktop and AR mobile Live screenshots; presentation is readable and bounded. Fixture content remains untranslated user/catalog data. No physical-device certification is implied.
+
+Source review found a remaining chat concurrency gap: read recovery could overlap a send and state-only pending guards did not synchronously serialize duplicate submit events. The continuation adds a synchronous send guard, blocks sending until a successful chat read, prevents chat refresh during a pending send, invalidates late send responses when the route/stream identity changes, and keys the Live client by slug so drafts/state cannot cross stream routes. No mutation is automatically replayed and no server/API/schema boundary is relaxed.
+
+Added browser regression holds read recovery and POST acknowledgements independently, requires Send disabled during read recovery, dispatches two submit events in one synchronous turn, and requires exactly one attempted POST and one confirmed rendered message. Local frozen install, packages build, 290 Web tests, Web lint, formatting and TypeScript passed. The new concurrency journey passed against local development. The existing EN journey passed through response-loss recovery but its AR navigation hit a development-mode redirect loop; this is not recorded as full browser acceptance. Production-build browser verification and complete exact-new-head CI remain mandatory before merge.
+
+Phase5E acceptance/deployment is independently recorded in PR #160: final head `042c4a08fb98a5467dac91c4344a16af0c3a8bd8`, main `05b31bee83d2ae3c42f95e7a7929d4ed83ccdee1`, deploy `36953773428` and Cloudflare `36953923894`. Earlier Phase5E pending text above is historical.
+
+Next: verify the focused new head with quality/browser/security/inventory, review source and retained visuals, then expected-head merge and observed production release. Full Phase5 and phases6–16 remain open; no whole-master completion claim.
+
+Further actual-source review found that chat was fetched only once and the API selected the oldest 200 published messages. The focused continuation now returns the latest 200 with deterministic createdAt/id ordering and presents them chronologically. Idle LIVE chat polls every five seconds; a nonempty draft, pending/error/uncertain write or read stops automatic polling. Manual Refresh remains available. PostgreSQL regression creates 205 messages including a hidden newest entry and requires the latest 200 published rows. Browser coverage additionally verifies incoming idle messages and that automatic reads cannot reconcile an uncertain write.
+
+Local production build passed (two existing Edge-runtime instrumentation warnings). The concurrency journey passed under production output too. EN/AR full local navigation still reproduces a cookie-specific redirect loop: `/ar/live/...` is 200 without locale cookie but redirects to itself with `ayin_locale=ar`. This is recorded as an unresolved observed routing finding, not dismissed as development-only and not a new green browser claim. Complete CI and route investigation must resolve or bound it before acceptance.

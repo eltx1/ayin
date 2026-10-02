@@ -355,10 +355,18 @@ export class LiveService {
       select: { id: true, handle: true, name: true },
     });
     if (!channel) throw new LiveError("LIVE_NOT_FOUND", "Live stream not found.", 404);
+
+    // Viewer responses are an explicit allow-list. Studio/provider identifiers, ingest
+    // configuration, creator account IDs and recording-handoff state stay internal.
     return {
-      ...stripSecretHash(stream),
+      id: stream.id,
+      title: stream.title,
+      description: stream.description,
+      status: stream.status,
+      playbackUrl: stream.playbackUrl,
+      scheduledStartAt: stream.scheduledStartAt,
+      chatEnabled: stream.chatEnabled,
       channel,
-      adBreakHook: stream.adBreaksEnabled ? "IMA_CLIENT_BREAK" : null,
       // Task 74: do not infer DVR or captions from a generic HLS seekable range.
       // Mux Task 73 did not advertise either capability, so pure-live semantics stay explicit.
       dvrWindowSeconds: null,
@@ -370,10 +378,11 @@ export class LiveService {
     const stream = await this.publicStream(slug);
     const messages = await this.database.client.liveChatMessage.findMany({
       where: { liveStreamId: stream.id, status: "PUBLISHED" },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 200,
+      select: { id: true, body: true, createdAt: true },
     });
-    return { chatEnabled: stream.chatEnabled, messages };
+    return { chatEnabled: stream.chatEnabled, messages: messages.reverse() };
   }
 
   async postChat(accountId: string, slug: string, body: string) {
@@ -389,6 +398,7 @@ export class LiveService {
     if (!profile) throw new LiveError("PROFILE_REQUIRED", "A viewer profile is required.", 403);
     return this.database.client.liveChatMessage.create({
       data: { liveStreamId: stream.id, authorProfileId: profile.id, body },
+      select: { id: true, body: true, createdAt: true },
     });
   }
 
