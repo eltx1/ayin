@@ -20,8 +20,7 @@ databaseDescribe("Clips trusted-region policy", () => {
     token: process.env.AYIN_INTERNAL_EDGE_TOKEN,
     trust: process.env.AYIN_TRUST_CLOUDFLARE_REGION,
   };
-  const id = (n: number) =>
-    "00000000-0000-4000-8000-" + String(n).padStart(12, "0");
+  const id = (n: number) => "00000000-0000-4000-8000-" + String(n).padStart(12, "0");
   const trustedHeaders = {
     "x-ayin-edge-country": "JP",
     "x-ayin-edge-token": "clips-policy-edge-token",
@@ -130,10 +129,7 @@ databaseDescribe("Clips trusted-region policy", () => {
     ]);
     expect(second.json().nextCursor).toBeNull();
 
-    for (const headers of [
-      { "cf-ipcountry": "JP" },
-      { "x-ayin-edge-country": "JP" },
-    ]) {
+    for (const headers of [{ "cf-ipcountry": "JP" }, { "x-ayin-edge-country": "JP" }]) {
       const unknown = await app.inject({
         url: "/public/clips?take=10",
         headers,

@@ -41,7 +41,11 @@ export class ClipsService {
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
   ) {}
 
-  async feed(input: { take: number; cursor?: string | undefined; countryCode?: string | undefined }) {
+  async feed(input: {
+    take: number;
+    cursor?: string | undefined;
+    countryCode?: string | undefined;
+  }) {
     const [enabled, autoplayEnabled, adsEnabled, adFrequency] = await Promise.all([
       this.settings.get("clipsEnabled"),
       this.settings.get("clipsAutoplayEnabled"),

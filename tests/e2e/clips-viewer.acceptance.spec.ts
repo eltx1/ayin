@@ -93,10 +93,12 @@ test("Clips paginate real rows and recover uncertain social writes in EN/AR", as
   await main.getByRole("button", { name: "Subscribe", exact: true }).click();
   await expect(main.getByRole("button", { name: "Subscribed", exact: true })).toBeVisible();
 
-  expect(db<{ reactions: number; subscriptions: number }>("social-counts", {
-    videoId: fixture.firstVideoId,
-    channelId: fixture.channelId,
-  })).toMatchObject({ reactions: 1, subscriptions: 1 });
+  expect(
+    db<{ reactions: number; subscriptions: number }>("social-counts", {
+      videoId: fixture.firstVideoId,
+      channelId: fixture.channelId,
+    }),
+  ).toMatchObject({ reactions: 1, subscriptions: 1 });
 
   await main.getByRole("button", { name: "Load more Clips", exact: true }).click();
   await expect(main.getByRole("article")).toHaveCount(22);

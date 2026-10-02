@@ -9,12 +9,7 @@ import { ActionButton, StatusNotice } from "@/components/ui/design-system";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
 import { mediaAssetUrl } from "@/lib/channel";
-import {
-  mergeClipItems,
-  parseClipsPage,
-  type ClipItem,
-  type ClipsPage,
-} from "@/lib/clips";
+import { mergeClipItems, parseClipsPage, type ClipItem, type ClipsPage } from "@/lib/clips";
 import { translateClips } from "@/lib/i18n/clips";
 import {
   parseChannelSocialState,
@@ -65,8 +60,7 @@ function ClipActions({ clip }: { clip: ClipItem }) {
   const router = useRouter();
   const { locale, href, formatNumber } = useI18n();
   const t = useCallback(
-    (key: Parameters<typeof translateClips>[1], values = {}) =>
-      translateClips(locale, key, values),
+    (key: Parameters<typeof translateClips>[1], values = {}) => translateClips(locale, key, values),
     [locale],
   );
   const [snapshot, setSnapshot] = useState<ActionSnapshot>(() => initialActions(clip));
@@ -261,7 +255,13 @@ function ClipActions({ clip }: { clip: ClipItem }) {
       {feedback ? (
         <StatusNotice
           className={styles.actionFeedback}
-          tone={snapshot.mode === "uncertain" ? "warning" : snapshot.mode === "error" ? "danger" : "info"}
+          tone={
+            snapshot.mode === "uncertain"
+              ? "warning"
+              : snapshot.mode === "error"
+                ? "danger"
+                : "info"
+          }
           announce={snapshot.mode === "loading" ? "polite" : "assertive"}
         >
           {feedback}
@@ -381,9 +381,7 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
     if (event.target !== event.currentTarget) return;
     const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!delta) return;
-    const target = root.current?.querySelector<HTMLElement>(
-      `[data-clip-index='${index + delta}']`,
-    );
+    const target = root.current?.querySelector<HTMLElement>(`[data-clip-index='${index + delta}']`);
     if (!target) return;
     event.preventDefault();
     event.stopPropagation();

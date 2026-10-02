@@ -60,10 +60,7 @@ export default async function ClipsPage() {
           }
         />
       ) : !page.enabled ? (
-        <EmptyState
-          title={t("clips.disabledTitle")}
-          description={t("clips.disabledDescription")}
-        />
+        <EmptyState title={t("clips.disabledTitle")} description={t("clips.disabledDescription")} />
       ) : page.items.length === 0 ? (
         <EmptyState title={t("clips.emptyTitle")} description={t("clips.emptyDescription")} />
       ) : (
