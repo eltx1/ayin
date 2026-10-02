@@ -264,3 +264,16 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 **Phase5F goal:** connect the recovered contracts to a professional AYIN Viewer surface; remove internal ad-break controls from Viewer presentation while preserving supported player/ad boundaries; make stream/chat loading, unavailable, scheduled, ready, live, ended and failed states truthful; make chat reads/sends recoverable without blind POST replay; retain server auth/ownership/provider contracts; add EN/AR, RTL/mobile/TV-focus and real integration/browser evidence.
 
 **Next exact step:** inspect the branch's Live controller/service changes and all existing Live/player tests, then wire `LiveWatchClient` to the recovered contracts with focused CSS and tests. Open a draft PR only after the branch source is coherent.
+
+
+### Phase5F implementation milestone — head `ead55dd65e41c4474f254f07cc066c783257859c`
+
+**Implemented before CI:** public Live responses are explicit Viewer allow-lists and public stream/chat GETs remain `private, no-store`. Provider/ingest/creator/recording/ad-break internals are not returned. Route-scoped EN/AR Live copy and fail-closed stream/chat parsers are connected to the real Live Viewer. The page uses shared PageHeader, ActionLink/Button, DataBadge, StatusNotice, TextField and Viewer empty/error states with logical RTL/mobile CSS and TV-focusable actions. Existing LiveAyinPlayer, bounded stream polling/backoff, analytics page-view and player recovery code are unchanged.
+
+**Chat recovery:** public chat reads are cancellable and fail closed. Confirmed POST acknowledgements append once and clear the draft. Explicit non-5xx rejection preserves the draft and shows failure. A 401 exposes a sign-in gate. Lost/network/5xx/malformed-success outcomes are treated as uncertain: the draft is retained, another send is disabled and an explicit chat refresh is required before another mutation. No POST is replayed automatically.
+
+**Viewer cleanup:** the former “Register ad-break opportunity” Viewer control and the public `adBreakHook` field are removed. This does not change player/provider advertising support; it removes an internal analytics/provider hook from consumer presentation.
+
+**Acceptance authored:** a PostgreSQL/API integration test proves exact public stream/chat allow-lists, cache headers, anonymous chat-write rejection, authenticated acknowledgement and no profile/provider leakage. Browser acceptance proves EN desktop + AR mobile presentation, no internal hook copy, simulated committed/lost chat response with one attempted POST/no blind replay, explicit read reconciliation and no document overflow. Existing Task74 HLS/reconnect/terminal acceptance is retained; only READY copy and one stale fixture ID are updated to match the fail-closed contract.
+
+**Next exact step:** run exact-head quality/browser/security/inventory on `ead55dd6...`; fix deterministic findings, inspect retained `design-live-viewer-*.png`, then open a focused draft PR and record final source/visual evidence before merge/deploy.
