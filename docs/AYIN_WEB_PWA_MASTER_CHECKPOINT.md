@@ -251,4 +251,3 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 **Next:** pass applicable checks on this closing documentation head, record final author-side review, merge with expected-head protection, then verify main quality/security/inventory, production deploy proof and Cloudflare sync. After release, audit the remaining Phase5 Viewer routes from current source and choose the next focused slice; do not infer completion from historical task labels.
 
 **Rollback:** revert the focused Clips policy/query/presentation/client-state layer through validated deployment. Preserve VideoPolicy records, social records, watch progress, provider state and prior Viewer/security releases.
-
