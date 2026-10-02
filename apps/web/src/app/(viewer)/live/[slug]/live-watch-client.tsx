@@ -112,7 +112,9 @@ export function LiveWatchClient({ slug }: { slug: string }) {
         chatLoadedRef.current = streamId;
         setMessages(chat.messages);
         setChatState("ready");
-        setChatWriteState((current) => (current === "uncertain" ? "idle" : current));
+        setChatWriteState((current) =>
+          current === "uncertain" || current === "signin" ? "idle" : current,
+        );
       } catch {
         if (
           !controller.signal.aborted &&
@@ -236,7 +238,8 @@ export function LiveWatchClient({ slug }: { slug: string }) {
       !draft ||
       !stream ||
       chatWriteState === "sending" ||
-      chatWriteState === "uncertain"
+      chatWriteState === "uncertain" ||
+      chatWriteState === "signin"
     ) {
       return;
     }
@@ -475,7 +478,12 @@ export function LiveWatchClient({ slug }: { slug: string }) {
             {chatWriteState === "signin" ? (
               <StatusNotice tone="info" announce="polite" title={t("live.chatSignIn")}>
                 <p>{t("live.chatSignInDescription")}</p>
-                <ActionLink href={href("/login")} tone="secondary">
+                <ActionLink
+                  href={href("/login")}
+                  tone="secondary"
+                  data-tv-focusable="true"
+                  data-tv-focus-id="live-chat-sign-in"
+                >
                   {t("live.chatSignIn")}
                 </ActionLink>
               </StatusNotice>
@@ -503,7 +511,8 @@ export function LiveWatchClient({ slug }: { slug: string }) {
                   disabled={
                     !body.trim() ||
                     chatWriteState === "sending" ||
-                    chatWriteState === "uncertain"
+                    chatWriteState === "uncertain" ||
+                    chatWriteState === "signin"
                   }
                   data-tv-focusable="true"
                   data-tv-focus-id="live-chat-send"
