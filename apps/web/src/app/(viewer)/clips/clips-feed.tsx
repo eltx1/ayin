@@ -254,7 +254,7 @@ function ClipActions({ clip }: { clip: ClipItem }) {
       </nav>
       {feedback ? (
         <StatusNotice
-          className={styles.actionFeedback}
+          className={styles.actionFeedback ?? ""}
           tone={
             snapshot.mode === "uncertain"
               ? "warning"

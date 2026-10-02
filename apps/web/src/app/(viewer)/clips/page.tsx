@@ -44,7 +44,7 @@ export default async function ClipsPage() {
   return (
     <main className={styles.page}>
       <PageHeader
-        className={styles.header}
+        className={styles.header ?? ""}
         eyebrow={t("clips.eyebrow")}
         title={t("clips.title")}
         description={t("clips.description")}

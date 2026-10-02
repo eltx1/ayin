@@ -70,13 +70,14 @@ function parseItem(value: unknown): ClipItem {
   if (!Array.isArray(item.mediaAssets) || item.mediaAssets.length > 16) {
     throw new Error("INVALID_CLIPS_RESPONSE");
   }
-  const mediaAssets = item.mediaAssets.map((assetValue) => {
+  const mediaAssets: ClipAsset[] = item.mediaAssets.map((assetValue) => {
     const asset = record(assetValue);
-    if (asset.kind !== "SOURCE_VIDEO" && asset.kind !== "THUMBNAIL") {
+    const kind = asset.kind;
+    if (kind !== "SOURCE_VIDEO" && kind !== "THUMBNAIL") {
       throw new Error("INVALID_CLIPS_RESPONSE");
     }
     return {
-      kind: asset.kind,
+      kind,
       r2ObjectKey: nonEmptyString(asset.r2ObjectKey, 1_024),
     };
   });

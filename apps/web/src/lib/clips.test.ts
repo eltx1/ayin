@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { isClipCursor, mergeClipItems, parseClipsPage } from "./clips";
+import { isClipCursor, mergeClipItems, parseClipsPage, type ClipItem } from "./clips";
 
 const id = "00000000-0000-4000-8000-000000000001";
 const channelId = "00000000-0000-4000-8000-000000000002";
-const item = {
+const item: ClipItem = {
   id,
   slug: "clip-one",
   title: "Clip one",
