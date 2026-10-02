@@ -7,7 +7,6 @@ import {
   availableVideoPolicySql,
   publicPlayableVideoSql,
 } from "../video-policy/video-policy-query.js";
-import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
 const clipSelect = {
   id: true,
@@ -40,7 +39,6 @@ export class ClipsService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
-    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
   async feed(input: { take: number; cursor?: string | undefined; countryCode?: string | undefined }) {
@@ -61,6 +59,8 @@ export class ClipsService {
     }
 
     const now = new Date();
+    // Policy tables deliberately have no ORM relation. Select one bounded page
+    // of eligible IDs in PostgreSQL before LIMIT/cursor, then hydrate once.
     const candidates = await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT v.id
       FROM "Video" v
@@ -73,10 +73,13 @@ export class ClipsService {
         })})
         AND ${
           input.cursor
-            ? Prisma.sql`(v."publishedAt", v.id) < (
-                SELECT anchor."publishedAt", anchor.id
+            ? Prisma.sql`EXISTS (
+                SELECT 1
                 FROM "Video" anchor
                 WHERE anchor.id = ${input.cursor}::uuid
+                  AND anchor."videoForm" = 'CLIP'
+                  AND anchor."publishedAt" IS NOT NULL
+                  AND (v."publishedAt", v.id) < (anchor."publishedAt", anchor.id)
               )`
             : Prisma.sql`TRUE`
         }
@@ -86,19 +89,23 @@ export class ClipsService {
 
     const pageIds = candidates.slice(0, input.take).map((row) => row.id);
     const hasMore = candidates.length > input.take;
+    const policy = {
+      enabled: adsEnabled as boolean,
+      minimumOrganicClips: adFrequency as number,
+    };
     if (!pageIds.length) {
       return {
         enabled: true,
         items: [],
         nextCursor: null,
         autoplayEnabled: autoplayEnabled as boolean,
-        adPolicy: {
-          enabled: adsEnabled as boolean,
-          minimumOrganicClips: adFrequency as number,
-        },
+        adPolicy: policy,
       };
     }
 
+    // Re-check only hard publication/playability state during hydration. VideoPolicy
+    // is already enforced before LIMIT above; filtering it again here could create
+    // short pages and reintroduce the pagination defect this query prevents.
     const rows = await this.database.client.video.findMany({
       where: {
         id: { in: pageIds },
@@ -119,11 +126,7 @@ export class ClipsService {
       },
       select: clipSelect,
     });
-    const allowed = await this.videoPolicy.filterAvailableVideoIds(
-      rows.map((row) => row.id),
-      { countryCode: input.countryCode, now },
-    );
-    const byId = new Map(rows.filter((row) => allowed.has(row.id)).map((row) => [row.id, row]));
+    const byId = new Map(rows.map((row) => [row.id, row]));
     const items = pageIds.flatMap((id) => {
       const row = byId.get(id);
       return row ? [row] : [];
@@ -134,10 +137,7 @@ export class ClipsService {
       items,
       nextCursor: hasMore ? (pageIds.at(-1) ?? null) : null,
       autoplayEnabled: autoplayEnabled as boolean,
-      adPolicy: {
-        enabled: adsEnabled as boolean,
-        minimumOrganicClips: adFrequency as number,
-      },
+      adPolicy: policy,
     };
   }
 }

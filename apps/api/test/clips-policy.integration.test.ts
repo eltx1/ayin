@@ -130,16 +130,21 @@ databaseDescribe("Clips trusted-region policy", () => {
     ]);
     expect(second.json().nextCursor).toBeNull();
 
-    const unknown = await app.inject({
-      url: "/public/clips?take=10",
-      headers: { "cf-ipcountry": "JP" },
-    });
-    expect(unknown.statusCode).toBe(200);
-    expect(unknown.json().items.map((item: { id: string }) => item.id)).toEqual([
-      globalOne.id,
-      globalTwo.id,
-      globalThree.id,
-    ]);
+    for (const headers of [
+      { "cf-ipcountry": "JP" },
+      { "x-ayin-edge-country": "JP" },
+    ]) {
+      const unknown = await app.inject({
+        url: "/public/clips?take=10",
+        headers,
+      });
+      expect(unknown.statusCode).toBe(200);
+      expect(unknown.json().items.map((item: { id: string }) => item.id)).toEqual([
+        globalOne.id,
+        globalTwo.id,
+        globalThree.id,
+      ]);
+    }
   });
 
   it("never lets FORCE_ALLOW bypass private playback boundaries", async () => {

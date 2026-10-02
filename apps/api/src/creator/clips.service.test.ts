@@ -14,8 +14,7 @@ describe("ClipsService", () => {
 
   it("returns no catalog rows when the global Clips switch is disabled", async () => {
     const database = { client: { $queryRaw: vi.fn(), video: { findMany: vi.fn() } } };
-    const policy = { filterAvailableVideoIds: vi.fn() };
-    const service = new ClipsService(database as never, settings(false) as never, policy as never);
+    const service = new ClipsService(database as never, settings(false) as never);
     const result = await service.feed({ take: 12 });
     expect(result.enabled).toBe(false);
     expect(database.client.$queryRaw).not.toHaveBeenCalled();
@@ -52,10 +51,7 @@ describe("ClipsService", () => {
       },
     ]);
     const database = { client: { $queryRaw: queryRaw, video: { findMany } } };
-    const policy = {
-      filterAvailableVideoIds: vi.fn(async (ids: string[]) => new Set(ids)),
-    };
-    const service = new ClipsService(database as never, settings() as never, policy as never);
+    const service = new ClipsService(database as never, settings() as never);
 
     const result = await service.feed({ take: 2, countryCode: "JP" });
 
@@ -71,11 +67,22 @@ describe("ClipsService", () => {
         }),
       }),
     );
-    expect(policy.filterAvailableVideoIds).toHaveBeenCalledWith([second, first], {
-      countryCode: "JP",
-      now: expect.any(Date),
-    });
     expect(result.items.map((item: { id: string }) => item.id)).toEqual([first, second]);
     expect(result.nextCursor).toBe(second);
+  });
+
+  it("keeps the disabled response truthful without returning an ad-enabled shell", async () => {
+    const database = { client: { $queryRaw: vi.fn(), video: { findMany: vi.fn() } } };
+    const result = await new ClipsService(database as never, settings(false) as never).feed({
+      take: 1,
+      countryCode: "JP",
+    });
+    expect(result).toMatchObject({
+      enabled: false,
+      items: [],
+      nextCursor: null,
+      autoplayEnabled: false,
+      adPolicy: { enabled: false, minimumOrganicClips: 6 },
+    });
   });
 });
