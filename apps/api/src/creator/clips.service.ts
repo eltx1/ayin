@@ -7,6 +7,7 @@ import {
   availableVideoPolicySql,
   publicPlayableVideoSql,
 } from "../video-policy/video-policy-query.js";
+import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 
 const clipSelect = {
   id: true,
@@ -39,6 +40,7 @@ export class ClipsService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(PlatformSettingsService) private readonly settings: PlatformSettingsService,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
   async feed(input: {
@@ -107,9 +109,9 @@ export class ClipsService {
       };
     }
 
-    // Re-check only hard publication/playability state during hydration. VideoPolicy
-    // is already enforced before LIMIT above; filtering it again here could create
-    // short pages and reintroduce the pagination defect this query prevents.
+    // Re-check hard publication/playability state during hydration. Policy was already
+    // enforced before LIMIT above; the final policy read is defense-in-depth only for
+    // a concurrent rights/override change between the SQL selection and hydration.
     const rows = await this.database.client.video.findMany({
       where: {
         id: { in: pageIds },
@@ -130,7 +132,11 @@ export class ClipsService {
       },
       select: clipSelect,
     });
-    const byId = new Map(rows.map((row) => [row.id, row]));
+    const allowed = await this.videoPolicy.filterAvailableVideoIds(
+      rows.map((row) => row.id),
+      { countryCode: input.countryCode, now },
+    );
+    const byId = new Map(rows.filter((row) => allowed.has(row.id)).map((row) => [row.id, row]));
     const items = pageIds.flatMap((id) => {
       const row = byId.get(id);
       return row ? [row] : [];
