@@ -54,7 +54,7 @@ test("Watch comments expose real pagination and recover a committed response los
     expect(result.status()).toBe(201);
     await route.abort("failed");
   });
-  const draft = main.getByLabel("Join the conversation", { exact: true });
+  const draft = main.getByRole("textbox", { name: "Join the conversation", exact: true });
   await draft.fill("A committed comment with a lost response");
   await main.getByRole("button", { name: "Post comment", exact: true }).click();
   await expect(main.getByText(/could not confirm whether your comment was posted/)).toBeVisible();
