@@ -252,7 +252,6 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 
 **Rollback:** revert the focused Clips policy/query/presentation/client-state layer through validated deployment. Preserve VideoPolicy records, social records, watch progress, provider state and prior Viewer/security releases.
 
-
 ## Current Phase5F — Live Viewer redesign
 
 **Durable resume point:** accepted/deployed main `05b31bee83d2ae3c42f95e7a7929d4ed83ccdee1` after Phase5E / PR #160. **Branch:** `web-pwa-phase-5f-live-viewer`. **Recovered branch head:** `1d182079cf4fc8a29013a4eb16187915543c80a8`. **PR:** not opened yet. Update this entry at every implementation/test/review/merge/deploy milestone; it is the canonical resume pointer if the session is interrupted.
@@ -264,7 +263,6 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 **Phase5F goal:** connect the recovered contracts to a professional AYIN Viewer surface; remove internal ad-break controls from Viewer presentation while preserving supported player/ad boundaries; make stream/chat loading, unavailable, scheduled, ready, live, ended and failed states truthful; make chat reads/sends recoverable without blind POST replay; retain server auth/ownership/provider contracts; add EN/AR, RTL/mobile/TV-focus and real integration/browser evidence.
 
 **Next exact step:** inspect the branch's Live controller/service changes and all existing Live/player tests, then wire `LiveWatchClient` to the recovered contracts with focused CSS and tests. Open a draft PR only after the branch source is coherent.
-
 
 ### Phase5F implementation milestone — head `ead55dd65e41c4474f254f07cc066c783257859c`
 

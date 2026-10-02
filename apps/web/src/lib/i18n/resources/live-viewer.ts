@@ -88,6 +88,5 @@ export const liveViewerAr: Record<keyof typeof liveViewerEn, string> = {
   "live.chatSignIn": "سجّل الدخول للدردشة",
   "live.chatSignInDescription": "سجّل الدخول قبل إرسال رسالة في الدردشة المباشرة.",
   "live.chatRejected": "تعذر إرسال رسالتك. ما زالت محفوظة هنا لتراجعها.",
-  "live.chatUncertain":
-    "تعذر التأكد من إرسال رسالتك. حدّث الدردشة قبل الإرسال مرة أخرى.",
+  "live.chatUncertain": "تعذر التأكد من إرسال رسالتك. حدّث الدردشة قبل الإرسال مرة أخرى.",
 };

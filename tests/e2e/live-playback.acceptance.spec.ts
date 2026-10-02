@@ -600,9 +600,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
     });
 
     await page.goto("/live/task-74");
-    await expect(
-      page.getByText("Live video is getting ready. Check again shortly."),
-    ).toBeVisible();
+    await expect(page.getByText("Live video is getting ready. Check again shortly.")).toBeVisible();
     expect((await state(page)).hlsConstructed).toBe(0);
 
     status = "LIVE";

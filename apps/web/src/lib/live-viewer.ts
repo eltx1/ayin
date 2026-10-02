@@ -1,13 +1,7 @@
 import type { AyinCaptionTrack } from "./ayin-player";
 
 export type LiveViewerStatus =
-  | "DRAFT"
-  | "SCHEDULED"
-  | "READY"
-  | "LIVE"
-  | "ENDED"
-  | "CANCELLED"
-  | "FAILED";
+  "DRAFT" | "SCHEDULED" | "READY" | "LIVE" | "ENDED" | "CANCELLED" | "FAILED";
 
 export interface LiveViewerStream {
   id: string;
@@ -147,8 +141,7 @@ export function parseLiveViewerStream(value: unknown): LiveViewerStream {
     scheduledStartAt: nullableDate(stream.scheduledStartAt),
     chatEnabled: stream.chatEnabled,
     captions: Array.isArray(stream.captions) ? stream.captions.map(parseCaption) : [],
-    dvrWindowSeconds:
-      typeof stream.dvrWindowSeconds === "number" ? stream.dvrWindowSeconds : null,
+    dvrWindowSeconds: typeof stream.dvrWindowSeconds === "number" ? stream.dvrWindowSeconds : null,
     channel: {
       id: channel.id,
       handle: boundedString(channel.handle, 1, 80),

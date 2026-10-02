@@ -57,8 +57,10 @@ function canRenderPlayer(stream: LiveViewerStream) {
 export function LiveWatchClient({ slug }: { slug: string }) {
   const { locale, href, formatDate } = useI18n();
   const t = useCallback(
-    (key: Parameters<typeof translateLiveViewer>[1], values?: Parameters<typeof translateLiveViewer>[2]) =>
-      translateLiveViewer(locale, key, values),
+    (
+      key: Parameters<typeof translateLiveViewer>[1],
+      values?: Parameters<typeof translateLiveViewer>[2],
+    ) => translateLiveViewer(locale, key, values),
     [locale],
   );
 
