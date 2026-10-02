@@ -72,7 +72,7 @@ test("Live Viewer is localized and reconciles an uncertain chat write without re
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { level: 1, name: "Live design fixture" })).toBeVisible();
   await expect(main.getByText("Live on AYIN", { exact: true })).toBeVisible();
-  await expect(main.getByText("Live", { exact: true })).toBeVisible();
+  await expect(main.locator('span[data-tone="success"]')).toHaveText("Live");
   await expect(main.getByRole("link", { name: "View channel", exact: true })).toHaveAttribute(
     "href",
     "/c/live-design",
