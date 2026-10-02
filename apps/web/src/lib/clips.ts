@@ -117,7 +117,7 @@ export function parseClipsPage(value: unknown): ClipsPage {
   const minimumOrganicClips = count(adPolicy.minimumOrganicClips);
   if (
     typeof adPolicy.enabled !== "boolean" ||
-    minimumOrganicClips < 1 ||
+    minimumOrganicClips < 2 ||
     minimumOrganicClips > 1_000
   ) {
     throw new Error("INVALID_CLIPS_RESPONSE");

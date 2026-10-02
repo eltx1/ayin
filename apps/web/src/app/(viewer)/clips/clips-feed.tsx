@@ -77,7 +77,6 @@ function ClipActions({ clip }: { clip: ClipItem }) {
     const controller = new AbortController();
     const requestedVideoId = clip.id;
     const requestedChannelId = clip.channel.id;
-    setSnapshot(initialActions(clip));
 
     void Promise.all([
       fetch(`${apiBaseUrl}/social/videos/${requestedVideoId}`, {
@@ -112,7 +111,7 @@ function ClipActions({ clip }: { clip: ClipItem }) {
       });
 
     return () => controller.abort();
-  }, [attempt, clip]);
+  }, [attempt, clip.channel.id, clip.id]);
 
   function signIn() {
     router.push(href("/login"));

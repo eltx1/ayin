@@ -118,6 +118,56 @@ try {
       result = { id: video.id, slug: video.slug, channelId: channel.id, sourceKey };
       break;
     }
+    case "seed-clips-viewer": {
+      const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const channel = await prisma.channel.create({
+        data: {
+          handle: `clips-viewer-${suffix}`,
+          name: "Clips Viewer Creator",
+          status: "ACTIVE",
+        },
+      });
+      const now = Date.now();
+      const items = [];
+      for (let index = 0; index < 22; index += 1) {
+        const number = index + 1;
+        const video = await prisma.video.create({
+          data: {
+            channelId: channel.id,
+            slug: `clips-viewer-${suffix}-${number}`,
+            title: `Clip ${String(number).padStart(2, "0")}`,
+            description: number === 1 ? "A real short-form Viewer fixture." : null,
+            videoForm: "CLIP",
+            status: "PUBLISHED",
+            visibility: "PUBLIC",
+            durationMs: 30_000,
+            publishedAt: new Date(now - index * 1_000),
+          },
+        });
+        await prisma.mediaAsset.create({
+          data: {
+            videoId: video.id,
+            channelId: channel.id,
+            kind: "SOURCE_VIDEO",
+            status: "VALIDATED",
+            r2ObjectKey: `e2e/clips/${video.id}/canonical.mp4`,
+            mimeType: "video/mp4",
+            sizeBytes: 2_048n,
+            durationMs: 30_000,
+            width: 720,
+            height: 1280,
+          },
+        });
+        items.push({ id: video.id, slug: video.slug, title: video.title });
+      }
+      result = {
+        channelId: channel.id,
+        handle: channel.handle,
+        firstVideoId: items[0].id,
+        items,
+      };
+      break;
+    }
     case "seed-kids-surface": {
       const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const now = Date.now();
