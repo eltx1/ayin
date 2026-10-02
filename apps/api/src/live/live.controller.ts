@@ -35,11 +35,13 @@ export class PublicLiveController {
   constructor(@Inject(LiveService) private readonly live: LiveService) {}
 
   @Get(":slug")
+  @Header("Cache-Control", "private, no-store")
   async stream(@Param("slug") slug: string) {
     return call(() => this.live.publicStream(slug));
   }
 
   @Get(":slug/chat")
+  @Header("Cache-Control", "private, no-store")
   async chat(@Param("slug") slug: string) {
     return call(() => this.live.chat(slug));
   }
