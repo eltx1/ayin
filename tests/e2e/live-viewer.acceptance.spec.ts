@@ -119,3 +119,75 @@ test("Live Viewer is localized and reconciles an uncertain chat write without re
     fullPage: true,
   });
 });
+
+test("Live chat serializes read recovery and duplicate submit events", async ({ page }) => {
+  let reads = 0;
+  let writes = 0;
+  let releaseRead!: () => void;
+  let releaseWrite!: () => void;
+  const readBarrier = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const writeBarrier = new Promise<void>((resolve) => {
+    releaseWrite = resolve;
+  });
+  await page.route(`${API}/live/live-design`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(stream),
+    }),
+  );
+  await page.route(`${API}/analytics/events`, (route) =>
+    route.fulfill({ status: 202, body: "{}" }),
+  );
+  await page.route(`${API}/live/live-design/chat`, async (route) => {
+    if (route.request().method() === "GET") {
+      reads += 1;
+      if (reads === 1) {
+        await route.fulfill({ status: 503, body: "{}" });
+        return;
+      }
+      await readBarrier;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chatEnabled: true, messages: [] }),
+      });
+      return;
+    }
+    writes += 1;
+    await writeBarrier;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "00000000-0000-4000-8000-000000000191",
+        body: "One confirmed message",
+        createdAt: "2026-10-03T00:10:00.000Z",
+      }),
+    });
+  });
+  await page.goto("/live/live-design?lang=en");
+  const main = page.getByRole("main");
+  const input = main.getByLabel("Message", { exact: true });
+  const send = main.getByRole("button", { name: "Send", exact: true });
+  await expect(main.getByRole("button", { name: "Reload chat", exact: true })).toBeVisible();
+  await input.fill("One confirmed message");
+  await expect(send).toBeDisabled();
+  await main.getByRole("button", { name: "Reload chat", exact: true }).click();
+  await expect.poll(() => reads).toBe(2);
+  await expect(send).toBeDisabled();
+  releaseRead();
+  await expect(send).toBeEnabled();
+  await main.locator("form").evaluate((form) => {
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  await expect.poll(() => writes).toBe(1);
+  await expect(main.getByRole("button", { name: "Sending…", exact: true })).toBeDisabled();
+  releaseWrite();
+  await expect(input).toHaveValue("");
+  await expect(main.getByText("One confirmed message", { exact: true })).toHaveCount(1);
+  expect(writes).toBe(1);
+});

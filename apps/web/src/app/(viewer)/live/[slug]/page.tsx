@@ -15,5 +15,5 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function LiveWatchPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  return <LiveWatchClient slug={slug} />;
+  return <LiveWatchClient key={slug} slug={slug} />;
 }

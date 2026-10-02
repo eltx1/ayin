@@ -72,6 +72,18 @@ export function LiveWatchClient({ slug }: { slug: string }) {
   const [chatWriteState, setChatWriteState] = useState<ChatWriteState>("idle");
   const [body, setBody] = useState("");
 
+  const chatSendingRef = useRef(false);
+  const routeGenerationRef = useRef(0);
+
+  useEffect(() => {
+    routeGenerationRef.current += 1;
+    chatSendingRef.current = false;
+    return () => {
+      routeGenerationRef.current += 1;
+      chatSendingRef.current = false;
+    };
+  }, [slug]);
+
   const pageViewReportedRef = useRef<string | null>(null);
   const activeStreamIdRef = useRef<string | null>(null);
   const chatLoadedRef = useRef<string | null>(null);
@@ -81,6 +93,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
 
   const loadChat = useCallback(
     async (streamId: string, force = false) => {
+      if (chatSendingRef.current) return;
       if (
         !force &&
         (chatLoadedRef.current === streamId || chatLoadingForRef.current === streamId)
@@ -239,6 +252,10 @@ export function LiveWatchClient({ slug }: { slug: string }) {
     if (
       !draft ||
       !stream ||
+      !stream.chatEnabled ||
+      stream.status !== "LIVE" ||
+      chatState !== "ready" ||
+      chatSendingRef.current ||
       chatWriteState === "sending" ||
       chatWriteState === "uncertain" ||
       chatWriteState === "signin"
@@ -246,6 +263,12 @@ export function LiveWatchClient({ slug }: { slug: string }) {
       return;
     }
 
+    // Acquire synchronously: two submit events can arrive before React commits pending state.
+    chatSendingRef.current = true;
+    const routeGeneration = routeGenerationRef.current;
+    const streamId = stream.id;
+    const isCurrent = () =>
+      routeGenerationRef.current === routeGeneration && activeStreamIdRef.current === streamId;
     setChatWriteState("sending");
     try {
       const response = await fetch(`${apiBaseUrl}/live/${encodeURIComponent(slug)}/chat`, {
@@ -255,6 +278,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
         body: JSON.stringify({ body: draft }),
       });
 
+      if (!isCurrent()) return;
       if (response.status === 401) {
         setChatWriteState("signin");
         return;
@@ -265,6 +289,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
       }
 
       const message = parseLiveChatMessage(await response.json());
+      if (!isCurrent()) return;
       setMessages((current) =>
         current.some((item) => item.id === message.id) ? current : [...current, message],
       );
@@ -275,12 +300,14 @@ export function LiveWatchClient({ slug }: { slug: string }) {
         metadata: { liveStreamId: stream.id },
       });
     } catch {
-      setChatWriteState("uncertain");
+      if (isCurrent()) setChatWriteState("uncertain");
+    } finally {
+      if (routeGenerationRef.current === routeGeneration) chatSendingRef.current = false;
     }
   }
 
   const retryChat = () => {
-    if (!stream) return;
+    if (!stream || chatSendingRef.current) return;
     void loadChat(stream.id, true);
   };
 
@@ -431,6 +458,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
                   tone="secondary"
                   data-tv-focusable="true"
                   data-tv-focus-id="live-chat-refresh"
+                  disabled={chatWriteState === "sending" || chatState === "loading"}
                   onClick={retryChat}
                 >
                   {chatState === "error" ? t("live.chatRetry") : t("live.chatRefresh")}
@@ -512,6 +540,7 @@ export function LiveWatchClient({ slug }: { slug: string }) {
                   pending={chatWriteState === "sending"}
                   disabled={
                     !body.trim() ||
+                    chatState !== "ready" ||
                     chatWriteState === "sending" ||
                     chatWriteState === "uncertain" ||
                     chatWriteState === "signin"
