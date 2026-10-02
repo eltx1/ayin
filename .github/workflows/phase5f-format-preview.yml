@@ -1,4 +1,4 @@
-name: Phase5F formatting preview
+name: Phase5F formatting apply
 
 on:
   pull_request:
@@ -6,16 +6,18 @@ on:
       - ".github/workflows/phase5f-format-preview.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  format-preview:
+  format-apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'web-pwa-phase-5f-live-viewer'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: true
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -33,14 +35,27 @@ jobs:
             apps/web/src/lib/live-viewer.ts \
             docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md \
             tests/e2e/live-playback.acceptance.spec.ts
-      - name: Upload formatted files
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase5f-formatted-files
-          path: |
-            apps/web/src/app/(viewer)/live/[slug]/live-watch-client.tsx
-            apps/web/src/lib/i18n/resources/live-viewer.ts
-            apps/web/src/lib/live-viewer.ts
-            docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md
+      - name: Commit formatting only
+        shell: bash
+        run: |
+          set -euo pipefail
+          allowed='^(apps/web/src/app/\(viewer\)/live/\[slug\]/live-watch-client\.tsx|apps/web/src/lib/i18n/resources/live-viewer\.ts|apps/web/src/lib/live-viewer\.ts|docs/AYIN_WEB_PWA_MASTER_CHECKPOINT\.md|tests/e2e/live-playback\.acceptance\.spec\.ts)$'
+          changed="$(git diff --name-only)"
+          if [ -z "$changed" ]; then
+            echo "Formatting already current."
+            exit 0
+          fi
+          printf '%s\n' "$changed" | grep -Ev "$allowed" && {
+            echo "Unexpected file changed by formatter." >&2
+            exit 1
+          } || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            "apps/web/src/app/(viewer)/live/[slug]/live-watch-client.tsx" \
+            apps/web/src/lib/i18n/resources/live-viewer.ts \
+            apps/web/src/lib/live-viewer.ts \
+            docs/AYIN_WEB_PWA_MASTER_CHECKPOINT.md \
             tests/e2e/live-playback.acceptance.spec.ts
-          retention-days: 1
+          git commit -m "style(live): apply repository formatting"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
