@@ -522,7 +522,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
           chatEnabled: true,
           messages: [
             {
-              id: "stale-chat-message",
+              id: "00000000-0000-4000-8000-000000000191",
               body: "stale moderated message",
               createdAt: "2026-09-21T00:00:00.000Z",
             },
@@ -601,7 +601,7 @@ test.describe.serial("Task 74 live playback hardening", () => {
 
     await page.goto("/live/task-74");
     await expect(
-      page.getByText("The encoder is ready. Waiting for playable live output…"),
+      page.getByText("Live video is getting ready. Check again shortly."),
     ).toBeVisible();
     expect((await state(page)).hlsConstructed).toBe(0);
 
