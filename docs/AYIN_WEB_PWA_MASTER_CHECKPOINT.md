@@ -251,3 +251,16 @@ Post-merge main quality `36897890648`, security `36897890693` and inventory `368
 **Next:** pass applicable checks on this closing documentation head, record final author-side review, merge with expected-head protection, then verify main quality/security/inventory, production deploy proof and Cloudflare sync. After release, audit the remaining Phase5 Viewer routes from current source and choose the next focused slice; do not infer completion from historical task labels.
 
 **Rollback:** revert the focused Clips policy/query/presentation/client-state layer through validated deployment. Preserve VideoPolicy records, social records, watch progress, provider state and prior Viewer/security releases.
+
+
+## Current Phase5F — Live Viewer redesign
+
+**Durable resume point:** accepted/deployed main `05b31bee83d2ae3c42f95e7a7929d4ed83ccdee1` after Phase5E / PR #160. **Branch:** `web-pwa-phase-5f-live-viewer`. **Recovered branch head:** `1d182079cf4fc8a29013a4eb16187915543c80a8`. **PR:** not opened yet. Update this entry at every implementation/test/review/merge/deploy milestone; it is the canonical resume pointer if the session is interrupted.
+
+**Recovered partial implementation:** two branch commits already exist. They add route-scoped EN/AR Live Viewer copy, fail-closed client parsers for public stream/chat payloads, status/waiting key helpers and unit tests. Live API/controller/service has a small Viewer-facing change that must be reviewed against current server contracts before acceptance. The actual `LiveWatchClient` still has the old raw/English-only UI and has not yet adopted these contracts.
+
+**Audit finding:** current Live Viewer uses inline layout, unchecked response casts, silent chat-write failures, English-only status/chat copy and exposes “Register ad-break opportunity” as a Viewer button. That button is internal analytics/provider-facing behavior and should not be normal consumer UI. Existing bounded stream polling/backoff/abort behavior is useful and should be preserved. No provider health or store/device success may be inferred.
+
+**Phase5F goal:** connect the recovered contracts to a professional AYIN Viewer surface; remove internal ad-break controls from Viewer presentation while preserving supported player/ad boundaries; make stream/chat loading, unavailable, scheduled, ready, live, ended and failed states truthful; make chat reads/sends recoverable without blind POST replay; retain server auth/ownership/provider contracts; add EN/AR, RTL/mobile/TV-focus and real integration/browser evidence.
+
+**Next exact step:** inspect the branch's Live controller/service changes and all existing Live/player tests, then wire `LiveWatchClient` to the recovered contracts with focused CSS and tests. Open a draft PR only after the branch source is coherent.
