@@ -6,6 +6,26 @@ import { isAllowedCookieMutationOrigin, usesCookieSession } from "../security/re
 const request = (headers: FastifyRequest["headers"]) =>
   ({ headers, method: "PATCH" }) as FastifyRequest;
 describe("Explicit session transport identity", () => {
+  it("handles a long whitespace-only explicit bearer without falling back or accepting malformed scheme boundaries", () => {
+    const cookie = "ayin_session=other-identity";
+    expect(
+      readSessionToken(request({ authorization: "bearer\t" + "\t\t".repeat(32_000), cookie })),
+    ).toBeNull();
+    expect(
+      readSessionToken(
+        request({ authorization: "Bearer" + " \t".repeat(32_000) + "actual-token", cookie }),
+      ),
+    ).toBe("actual-token");
+    for (const authorization of [
+      "Beareractual-token",
+      " Bearer actual-token",
+      "Bearer\nactual-token",
+      "Bearer actual\ntoken",
+      "Bearer actual\rtoken",
+    ]) {
+      expect(readSessionToken(request({ authorization, cookie }))).toBeNull();
+    }
+  });
   it("rejects every explicit invalid Authorization value without using a valid cookie", () => {
     for (const authorization of ["", "Bearer", "Bearer ", "Bearer   ", "Basic abc", "Bearer\t "]) {
       const r = request({

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Headers,
   HttpException,
   Inject,
@@ -44,6 +45,8 @@ export class PublicWatchController {
   ) {}
 
   @Get(":slug/playback")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   async playback(
     @Param("slug") slug: string,
     @Query("kids") kids: string | undefined,

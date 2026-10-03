@@ -2,12 +2,12 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const sessionCookiePrefix = "ayin_session=";
-const cacheablePublicPrefixes = [
-  "/public/discovery",
-  "/public/channels",
-  "/public/videos",
-  "/public/playlists",
-];
+const cacheablePublicPrefixes = ["/public/channels", "/public/playlists"];
+const contextualPublicPrefixes = ["/public/discovery", "/public/videos"];
+
+function withinPrefix(url: string, prefix: string) {
+  return url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`);
+}
 
 export function usesCookieSession(request: Pick<FastifyRequest, "headers">): boolean {
   // Match readSessionToken: any explicit Authorization header selects that
@@ -37,12 +37,11 @@ export function isAllowedCookieMutationOrigin(
 }
 
 export function cacheControlForRequest(request: Pick<FastifyRequest, "method" | "url">): string {
-  const cacheable = cacheablePublicPrefixes.some(
-    (prefix) =>
-      request.url === prefix ||
-      request.url.startsWith(`${prefix}/`) ||
-      request.url.startsWith(`${prefix}?`),
-  );
+  // These public responses vary with trusted territory and regional permission.
+  // A URL-only shared cache cannot preserve their rights/availability decision.
+  if (contextualPublicPrefixes.some((prefix) => withinPrefix(request.url, prefix)))
+    return "private, no-store";
+  const cacheable = cacheablePublicPrefixes.some((prefix) => withinPrefix(request.url, prefix));
   if (request.method.toUpperCase() === "GET" && cacheable) {
     return "public, max-age=30, s-maxage=60, stale-while-revalidate=120";
   }
@@ -58,5 +57,7 @@ export function applyApiSecurityHeaders(
   reply.header("referrer-policy", "strict-origin-when-cross-origin");
   reply.header("permissions-policy", "camera=(), microphone=(), geolocation=()");
   reply.header("cross-origin-resource-policy", "same-site");
-  reply.header("cache-control", request ? cacheControlForRequest(request) : "no-store");
+  const cacheControl = request ? cacheControlForRequest(request) : "no-store";
+  reply.header("cache-control", cacheControl);
+  if (cacheControl === "private, no-store") reply.header("pragma", "no-cache");
 }

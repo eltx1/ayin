@@ -9,8 +9,13 @@ export function readSessionToken(request: FastifyRequest): string | null {
   if (authorization !== undefined) {
     // Explicit authorization owns transport selection. A malformed/empty
     // bearer or unsupported scheme must never fall back to a cookie identity.
-    const match = /^Bearer[ \t]+(.+)$/i.exec(authorization);
-    return match?.[1]?.trim() || null;
+    if (authorization.slice(0, 6).toLowerCase() !== "bearer") return null;
+    let start = 6;
+    while (authorization[start] === " " || authorization[start] === "\t") start += 1;
+    if (start === 6) return null;
+    const token = authorization.slice(start).trim();
+    if (token.includes("\r") || token.includes("\n")) return null;
+    return token || null;
   }
 
   const cookieHeader = request.headers.cookie;
