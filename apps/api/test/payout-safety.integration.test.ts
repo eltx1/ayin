@@ -1,6 +1,6 @@
 import "reflect-metadata";
 
-import { createPrismaClient } from "@ayin/db";
+import { createPrismaClient, Prisma } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -593,5 +593,236 @@ databaseDescribe("Creator payout safety", () => {
         },
       }),
     ).resolves.toBeTruthy();
+  });
+  async function holdFinanceChannel(
+    channelId: string,
+    change: (tx: Prisma.TransactionClient) => Promise<void>,
+  ) {
+    let release!: () => void, acquired!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "Channel" WHERE "id" = ${channelId}::uuid FOR UPDATE`,
+        );
+        acquired();
+        await gate;
+        await change(tx);
+      },
+      { timeout: 15000 },
+    );
+    await ready;
+    return { release, holder };
+  }
+  async function financialWaiters(count: number) {
+    await vi.waitFor(
+      async () => {
+        const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(
+          Prisma.sql`SELECT count(*)::bigint AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%ayin-finance-channel-lock%'`,
+        );
+        expect(Number(rows[0]?.count ?? 0)).toBeGreaterThanOrEqual(count);
+      },
+      { timeout: 4000, interval: 25 },
+    );
+  }
+  for (const change of ["membership", "removal"] as const)
+    it(`rechecks actual ${change} after waiting before profile/dispute writes`, async () => {
+      const creator = await register(
+        "Revoked finance creator",
+        `revoked-finance-${change}@example.com`,
+      );
+      const channelId = creator.user.channel.id;
+      const lock = await holdFinanceChannel(channelId, async (tx) => {
+        if (change === "membership")
+          await tx.channelMember.updateMany({
+            where: { channelId, accountId: creator.user.account.id },
+            data: { role: "EDITOR" },
+          });
+        else await tx.channel.update({ where: { id: channelId }, data: { status: "REMOVED" } });
+      });
+      const profile = Promise.resolve(
+        app.inject({
+          method: "PUT",
+          url: "/creator/studio/revenue/payment-profile",
+          headers: { cookie: creator.cookie },
+          payload: {
+            legalName: "Retained unsent beneficiary",
+            preferredCurrency: "USD",
+            provider: "MANUAL",
+            destination: "isolated bank account ending 1234",
+            countryCode: "US",
+          },
+        }),
+      );
+      const dispute = Promise.resolve(
+        app.inject({
+          method: "POST",
+          url: "/creator/studio/revenue/disputes",
+          headers: { cookie: creator.cookie },
+          payload: {
+            category: "EARNINGS",
+            message: "Actual blocked creator dispute must not commit after authority revocation.",
+          },
+        }),
+      );
+      try {
+        await financialWaiters(2);
+      } finally {
+        lock.release();
+      }
+      await lock.holder;
+      expect((await Promise.all([profile, dispute])).map((r) => r.statusCode)).toEqual([403, 403]);
+      expect(await prisma.creatorPayoutProfile.count({ where: { channelId } })).toBe(0);
+      expect(await prisma.revenueDispute.count({ where: { channelId } })).toBe(0);
+      expect(
+        await prisma.adminAuditLog.count({
+          where: {
+            actorAccountId: creator.user.account.id,
+            action: { in: ["creator.payout_profile_updated", "creator.revenue_dispute_created"] },
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.notification.count({
+          where: { accountId: creator.user.account.id, title: "Revenue dispute opened" },
+        }),
+      ).toBe(0);
+    });
+
+  it("rechecks creator authority before reserving a payable balance after a real concurrent revocation", async () => {
+    const creator = await register("Revoked payout creator", "revoked-payout-creator@example.com"),
+      channelId = creator.user.channel.id;
+    const profile = await app.inject({
+      method: "PUT",
+      url: "/creator/studio/revenue/payment-profile",
+      headers: { cookie: creator.cookie },
+      payload: {
+        legalName: "Revoked payout creator",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destination: "isolated bank account ending 4455",
+        countryCode: "US",
+      },
+    });
+    expect(profile.statusCode).toBe(200);
+    const entry = await prisma.earningsLedgerEntry.create({
+      data: {
+        channelId,
+        type: "AD_REVENUE",
+        state: "FINAL",
+        amount: "210.000000",
+        currency: "USD",
+      },
+    });
+    const lock = await holdFinanceChannel(channelId, async (tx) => {
+      await tx.channelMember.updateMany({
+        where: { channelId, accountId: creator.user.account.id },
+        data: { role: "EDITOR" },
+      });
+    });
+    const request = Promise.resolve(
+      app.inject({
+        method: "POST",
+        url: "/creator/studio/revenue/payout-requests",
+        headers: { cookie: creator.cookie },
+        payload: { currency: "USD" },
+      }),
+    );
+    try {
+      await financialWaiters(1);
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    expect((await request).statusCode).toBe(403);
+    expect(await prisma.payout.count({ where: { channelId } })).toBe(0);
+    expect(
+      (await prisma.earningsLedgerEntry.findUniqueOrThrow({ where: { id: entry.id } })).payoutId,
+    ).toBeNull();
+    expect(
+      await prisma.adminAuditLog.count({
+        where: {
+          actorAccountId: creator.user.account.id,
+          action: { in: ["PAYOUT_CREATED", "creator.payout_requested"] },
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("serializes two actual Finance payout requests while retaining one exact beneficiary and ledger reservation", async () => {
+    const creator = await register(
+        "Serialized payout creator",
+        "serialized-payout-creator@example.com",
+      ),
+      channelId = creator.user.channel.id;
+    const finance = await register("Serialized Finance", "serialized-payout-finance@example.com");
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: finance.user.account.id, role: "FINANCE_MANAGER" },
+    });
+    const profile = await app.inject({
+      method: "PUT",
+      url: "/creator/studio/revenue/payment-profile",
+      headers: { cookie: creator.cookie },
+      payload: {
+        legalName: "Serialized payout creator",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destination: "isolated bank account ending 4455",
+        countryCode: "US",
+      },
+    });
+    expect(profile.statusCode).toBe(200);
+    const entry = await prisma.earningsLedgerEntry.create({
+      data: {
+        channelId,
+        type: "AD_REVENUE",
+        state: "FINAL",
+        amount: "210.123456",
+        currency: "USD",
+      },
+    });
+    const lock = await holdFinanceChannel(channelId, async () => undefined);
+    const request = () =>
+      Promise.resolve(
+        app.inject({
+          method: "POST",
+          url: "/admin/revenue/payouts",
+          headers: { cookie: finance.cookie },
+          payload: { channelId, currency: "USD" },
+        }),
+      );
+    const first = request(),
+      second = request();
+    try {
+      await financialWaiters(2);
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    const responses = await Promise.all([first, second]);
+    expect(responses.filter((r) => r.statusCode === 201)).toHaveLength(1);
+    expect(responses.filter((r) => r.statusCode >= 400)).toHaveLength(1);
+    const payout = await prisma.payout.findFirstOrThrow({ where: { channelId } });
+    expect(String(payout.amount)).toBe("210.123456");
+    expect(payout.legalNameSnapshot).toBe("Serialized payout creator");
+    expect(payout.destinationEncryptedSnapshot).toBeTruthy();
+    expect(
+      (await prisma.earningsLedgerEntry.findUniqueOrThrow({ where: { id: entry.id } })).payoutId,
+    ).toBe(payout.id);
+    expect(await prisma.payout.count({ where: { channelId } })).toBe(1);
+    expect(
+      await prisma.adminAuditLog.count({
+        where: {
+          actorAccountId: finance.user.account.id,
+          action: "PAYOUT_CREATED",
+          entityId: payout.id,
+        },
+      }),
+    ).toBe(1);
   });
 });

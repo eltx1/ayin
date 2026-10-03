@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n/i18n-provider";
+import { ActionButton } from "@/components/ui/design-system";
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -92,9 +93,9 @@ export function InstallUpdateController() {
               ? "تم تحديث AYIN. احفظ عملك ثم أعد تحميل الصفحة عندما تكون جاهزًا."
               : "AYIN updated. Save your work, then reload when you are ready."}
           </span>
-          <button onClick={() => window.location.reload()}>
+          <ActionButton onClick={() => window.location.reload()}>
             {ar ? "إعادة تحميل AYIN" : "Reload AYIN"}
-          </button>
+          </ActionButton>
         </>
       ) : update ? (
         <>
@@ -103,7 +104,7 @@ export function InstallUpdateController() {
               ? "تحديث AYIN جاهز. احفظ عملك قبل إعادة تحميل الصفحة."
               : "AYIN update ready. Save your work before reloading."}
           </span>
-          <button
+          <ActionButton
             disabled={updating}
             onClick={() => {
               if (accepting.current) return;
@@ -140,12 +141,12 @@ export function InstallUpdateController() {
               : ar
                 ? "تحديث وإعادة تحميل"
                 : "Update and reload"}
-          </button>
+          </ActionButton>
         </>
       ) : (
         <>
           <span>{ar ? "ثبّت AYIN للوصول السريع." : "Install AYIN for quicker access."}</span>
-          <button
+          <ActionButton
             onClick={() => {
               setError(false);
               void install
@@ -155,8 +156,10 @@ export function InstallUpdateController() {
             }}
           >
             {ar ? "تثبيت" : "Install"}
-          </button>
-          <button onClick={() => setInstall(null)}>{ar ? "ليس الآن" : "Not now"}</button>
+          </ActionButton>
+          <ActionButton tone="quiet" onClick={() => setInstall(null)}>
+            {ar ? "ليس الآن" : "Not now"}
+          </ActionButton>
         </>
       )}
     </aside>
