@@ -1,5 +1,3 @@
-import { apiBaseUrl, readApiError } from "@/lib/api";
-
 export type ChannelTabId = "home" | "videos" | "tv" | "playlists" | "about";
 
 export interface ChannelAsset {
@@ -103,82 +101,4 @@ export function mediaAssetUrl(objectKey: string | null | undefined): string | nu
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   return `${mediaBaseUrl}/${encoded}`;
-}
-
-export async function getEditableChannel(channelId: string): Promise<EditableChannelResponse> {
-  const response = await fetch(`${apiBaseUrl}/creator/channels/${channelId}`, {
-    cache: "no-store",
-    credentials: "include",
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as EditableChannelResponse;
-}
-
-export async function updateEditableChannel(
-  channelId: string,
-  input: {
-    name: string;
-    handle: string;
-    description: string | null;
-    accentColor: string | null;
-  },
-): Promise<EditableChannelResponse> {
-  const response = await fetch(`${apiBaseUrl}/creator/channels/${channelId}`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as EditableChannelResponse;
-}
-
-export async function uploadChannelAsset(
-  channelId: string,
-  kind: "avatar" | "banner",
-  file: File,
-): Promise<ChannelAppearance> {
-  const authorization = await fetch(
-    `${apiBaseUrl}/creator/channels/${channelId}/assets/authorize`,
-    {
-      method: "POST",
-      credentials: "include",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind,
-        mimeType: file.type,
-        sizeBytes: file.size,
-      }),
-    },
-  );
-  if (!authorization.ok) throw new Error(await readApiError(authorization));
-  const authorized = (await authorization.json()) as {
-    assetId: string;
-    upload: { url: string; headers: Record<string, string> };
-  };
-
-  await putImage(authorized.upload.url, file, authorized.upload.headers);
-
-  const completion = await fetch(`${apiBaseUrl}/creator/channels/${channelId}/assets/complete`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ assetId: authorized.assetId }),
-  });
-  if (!completion.ok) throw new Error(await readApiError(completion));
-  return ((await completion.json()) as { appearance: ChannelAppearance }).appearance;
-}
-
-function putImage(url: string, file: File, headers: Record<string, string>): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("PUT", url);
-    for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
-    request.onerror = () => reject(new Error("The channel image upload was interrupted."));
-    request.onload = () => {
-      if (request.status >= 200 && request.status < 300) resolve();
-      else reject(new Error("The channel image could not be stored. Please try another image."));
-    };
-    request.send(file);
-  });
 }
