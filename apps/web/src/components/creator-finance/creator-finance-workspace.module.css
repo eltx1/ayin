@@ -69,3 +69,12 @@
   overflow-wrap: normal;
   overflow-x: auto;
 }
+
+.privateBody {
+  display: grid;
+  gap: 24px;
+  min-inline-size: 0;
+}
+.privateBody[hidden] {
+  display: none;
+}
