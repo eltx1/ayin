@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import { AuthConfig } from "./auth.config.js";
+import type { AuthenticatedRequest } from "./auth.guard.js";
 import { AuthHttpError, conflict, isUniqueConstraintError, unauthorized } from "./auth.errors.js";
 import { AuthTokenService } from "./auth-token.service.js";
 import {
@@ -339,21 +340,49 @@ export class AuthService {
     }
   }
 
-  async changePassword(accountId: string, currentSessionId: string, input: ChangePasswordInput) {
+  async changePassword(auth: AuthenticatedRequest["ayinAuth"], input: ChangePasswordInput) {
+    const { accountId, sessionId: currentSessionId } = auth;
     const account = await this.database.client.account.findUnique({
       where: { id: accountId },
-      select: { passwordHash: true, status: true },
+      select: { passwordHash: true, status: true, authVersion: true },
     });
     if (
       !account ||
       account.status !== "ACTIVE" ||
       !account.passwordHash ||
+      account.authVersion !== auth.authVersion ||
       !(await this.passwordService.verify(input.currentPassword, account.passwordHash))
     ) {
       throw unauthorized("The current password is incorrect.");
     }
     const passwordHash = await this.passwordService.hash(input.newPassword);
     const revoked = await this.database.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id = ${accountId}::uuid FOR UPDATE /* ayin-password-account-lock */`;
+      await tx.$queryRaw`SELECT id FROM "AccountSession" WHERE id = ${currentSessionId}::uuid FOR SHARE /* ayin-password-session-lock */`;
+      const current = await tx.account.findUnique({
+        where: { id: accountId },
+        select: { passwordHash: true, status: true, authVersion: true },
+      });
+      const session = await tx.accountSession.findUnique({
+        where: { id: currentSessionId },
+        select: { accountId: true, authVersion: true, revokedAt: true, expiresAt: true },
+      });
+      if (
+        !current ||
+        current.status !== "ACTIVE" ||
+        current.authVersion !== auth.authVersion ||
+        !session ||
+        session.accountId !== accountId ||
+        session.authVersion !== auth.authVersion ||
+        session.revokedAt !== null ||
+        session.expiresAt.getTime() <= Date.now()
+      )
+        throw unauthorized("The current session is no longer active.");
+      if (current.passwordHash !== account.passwordHash)
+        throw conflict(
+          "PASSWORD_CHANGED",
+          "The password changed while this request was pending. Review your current credentials before another operation.",
+        );
       await tx.account.update({ where: { id: accountId }, data: { passwordHash } });
       if (!input.revokeOtherSessions) return 0;
       const result = await tx.accountSession.updateMany({

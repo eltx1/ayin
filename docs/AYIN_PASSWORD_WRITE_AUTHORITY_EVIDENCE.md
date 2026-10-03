@@ -1,0 +1,9 @@
+# Password write current authority and verified-credential race
+
+Prepared source; PostgreSQL execution and owning source gates are pending. No master security completion claim is made.
+
+The actual deployed AuthService verified a password before hashing and entered its transaction without rechecking the captured account/session or whether that verified password was still current. The updated controller passes the complete captured authenticated identity. The service retains password verification outside the write lock, then acquires the actual account row for update and actual current session row for share. After any waits it checks current account ACTIVE/authVersion, current session ownership/authVersion/revocation/actual expiration clock, and equality of the actual stored hash to the one previously verified. A newer password winner produces409 without overwriting it; expired or revoked authority produces401. Password and optional other-session revocation remain one transaction.
+
+The account lock serializes same-owner password operations before taking the current session lock. No new role authorization requirement, MFA bypass, session transport fallback or public response shape is introduced. The actual current main auth files were independently blob-hash matched before editing.
+
+Ten prepared real PostgreSQL cases observe actual account-row lock waits before applying account status/authVersion, session authVersion/revocation/expiration/deletion or password winners; one also waits for an actual session expiry clock without a mocked Date. They require unchanged actual winning password and session facts. An actual database trigger failure requires full password/session rollback and explicit one-command retry, and two simultaneous verified-old-password requests must yield exactly one200 and one409 with the winning password retained. Local API TypeScript and ESLint passed before the final natural-clock case; owning full gates are required.
