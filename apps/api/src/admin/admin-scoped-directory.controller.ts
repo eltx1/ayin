@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Header, Inject, Query, UseGuards } from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
@@ -125,6 +125,7 @@ export class AdminScopedDirectoryController {
   }
 
   @Get("revenue-channels")
+  @Header("Cache-Control", "private, no-store")
   @RequireAdminRoles("FINANCE_MANAGER")
   async revenueChannels(@Query("query") queryRaw?: string) {
     const query = this.parseQuery(queryRaw, "INVALID_REVENUE_CHANNEL_SEARCH");

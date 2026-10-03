@@ -1,0 +1,9 @@
+# Finance explicit recovery read evidence
+
+The existing control center rereads after writes and can report an acknowledged commit as failed when the subsequent read fails. Replacing that behavior requires explicit current-target review and a Finance-authorized actor ledger. The generic Operations audit surface is not used to broaden Finance access.
+
+`GET /admin/revenue/actions` retains actual AuthGuard/AdminGuard/Finance role/MFA rules and selects the current authenticated account from request context only. Actor/take query parameters cannot alter that scope. It returns the latest100 own financial decisions with deterministic createdAt/id ordering, safe allow-listed primitive metadata and private/no-store responses. It excludes destination reveals, unrelated operations, arbitrary metadata, encrypted destinations, provider payloads and tokens. A missing row in this bounded ledger does not prove that a write did not commit; it cannot justify automatic replay. This is a recovery view, not a global audit/export surface.
+
+Existing Finance settings/contracts/ledger/payouts/summary/disputes, channel target search and reconciliation GET responses now carry private/no-store. Mutation contracts, step-up policy, exact amounts, encrypted immutable beneficiary snapshots and all existing guards remain unchanged.
+
+Three actual AppModule/PostgreSQL cases check103 tied own rows versus another actor and unrelated reveal audit, server100-row bound despite query overrides, zero/false/large exact amount preservation and sensitive metadata exclusion; Operations/anonymous/revoked-role denial; and successful existing private read headers. Actual PostgreSQL/own-head CI acceptance remains pending until independently inspected. The Web consumer rewrite, explicit uncertain-write review, global identity/session/MFA/ownership transitions, target concurrency and full master remain open.
