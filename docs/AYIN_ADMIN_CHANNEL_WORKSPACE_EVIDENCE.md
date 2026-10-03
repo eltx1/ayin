@@ -15,3 +15,7 @@ Five planned actual-browser journeys seed26 real channel/owner/contract records 
 ## Actual first candidate results
 
 Candidate acd quality37109506243 succeeded:396API units,416Web units and667PostgreSQL/AppModule integration tests, including all5admin-control cases. Browser37109506169 passed132of136; Finance zero-directory journey passed, while four new editing journeys could not locate the edit disclosure because their nested Playwright `has` selector redundantly required a `main` ancestor inside each `li`. The corrected selector scopes the heading relative to each row without changing any product assertion, write/audit test, keyboard behavior or uncertainty recovery. Revised actual browser/visual evidence remains pending.
+
+## Scoped fixture follow-up
+
+Actual c05 browser37110573541 passed140of141 journeys, including English save/paging, actual response loss, concurrent-write conflict and Finance denial. Arabic paging found51matching persistent Channels, not26: Account truncation intentionally deletes memberships without deleting globally addressable Channel records. The actual trace proved page2GET200 returned25of51. Each seeded26-row group now shares a unique handle query returned by the fixture; each test uses that exact real directory filter. This isolates its actual rows without deleting production-like persistent channels or weakening the25→1/page-retention assertion. Revised gates and four-locale/width visual closure remain pending.

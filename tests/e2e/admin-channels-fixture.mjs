@@ -18,11 +18,12 @@ try {
       create: { accountId: payload.accountId, role: "OPERATIONS" },
     });
     const channels = [];
+    const group = randomUUID().slice(0, 8);
     for (let i = 0; i < 26; i++) {
       const row = await prisma.channel.create({
         data: {
           name: `Managed channel ${String(i).padStart(2, "0")}`,
-          handle: `managed-${randomUUID().slice(0, 8)}-${i}`,
+          handle: `managed-${group}-${i}`,
           description: `Actual managed channel description ${i} END`,
           createdAt: new Date(Date.now() - i * 60000),
           members: { create: { accountId: payload.accountId, role: "OWNER" } },
@@ -40,6 +41,7 @@ try {
     }
     process.stdout.write(
       JSON.stringify({
+        query: `managed-${group}-`,
         channelId: channels[0].id,
         handle: channels[0].handle,
         secondId: channels[1].id,

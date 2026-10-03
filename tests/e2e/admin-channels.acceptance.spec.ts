@@ -42,7 +42,7 @@ for (const locale of ["en", "ar"] as const)
     const { user, seed } = await operator(page, `admin-channels-${locale}@e2e.ayin.test`),
       ar = locale === "ar";
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`/admin/channels?query=Managed%20channel&lang=${locale}`);
+    await page.goto(`/admin/channels?query=${encodeURIComponent(seed.query)}&lang=${locale}`);
     const main = page.getByRole("main"),
       list = main
         .locator("ul")
@@ -164,7 +164,7 @@ test("Admin channel committed response loss preserves the actual draft and never
   page,
 }) => {
   const { user, seed } = await operator(page, "admin-channel-loss@e2e.ayin.test");
-  await page.goto("/admin/channels?query=Managed%20channel&lang=en");
+  await page.goto(`/admin/channels?query=${encodeURIComponent(seed.query)}&lang=en`);
   const main = page.getByRole("main"),
     row = main
       .locator("li")
@@ -215,7 +215,7 @@ test("Admin channel rejects an actual concurrent edit before the stale browser d
   page,
 }) => {
   const { user, seed } = await operator(page, "admin-channel-stale@e2e.ayin.test");
-  await page.goto("/admin/channels?query=Managed%20channel&lang=en");
+  await page.goto(`/admin/channels?query=${encodeURIComponent(seed.query)}&lang=en`);
   const main = page.getByRole("main"),
     row = main
       .locator("li")
