@@ -24,8 +24,8 @@ try {
     const payout = await prisma.payout.create({
       data: {
         channelId: member.channelId,
-        provider: "MANUAL",
-        status: "PROCESSING",
+        provider: payload.external === true ? "UNCONFIGURED_EXTERNAL" : "MANUAL",
+        status: payload.external === true ? "PENDING" : "PROCESSING",
         amount: "210.123456",
         currency: "USD",
         paymentProfileId: profile.id,
@@ -35,6 +35,27 @@ try {
         destinationMaskSnapshot: profile.destinationMask,
       },
     });
+    if (payload.external === true) {
+      await prisma.earningsLedgerEntry.create({
+        data: {
+          channelId: member.channelId,
+          type: "AD_REVENUE",
+          state: "FINAL",
+          amount: payout.amount,
+          currency: "USD",
+          payoutId: payout.id,
+        },
+      });
+      await prisma.payoutProviderTransfer.create({
+        data: {
+          payoutId: payout.id,
+          provider: payout.provider,
+          state: "READY",
+          idempotencyKey: `controlled-private-key-${payout.id}`,
+          lastErrorMessage: "RAW_PROVIDER_ERROR_MUST_STAY_PRIVATE",
+        },
+      });
+    }
     // A later actual profile update must not replace this payout's immutable beneficiary.
     await prisma.creatorPayoutProfile.update({
       where: { id: profile.id },
@@ -53,7 +74,9 @@ try {
     const audits = await prisma.adminAuditLog.findMany({
       where: {
         actorAccountId: payload.accountId,
-        action: "payout.destination_revealed",
+        action: {
+          in: ["payout.destination_revealed", "payout.provider_cancelled_before_submission"],
+        },
         entityId: payload.payoutId,
       },
       select: { action: true, entityId: true },

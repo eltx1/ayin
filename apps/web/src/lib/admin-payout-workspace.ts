@@ -195,6 +195,32 @@ export function parsePayoutProvider(
       : null,
   };
 }
+// Provider actions return safeResult, not the capability-bearing GET envelope.
+// Keep capabilities from the verified read; do not invent a refreshed capability claim.
+export function parsePayoutProviderAcknowledgment(v: unknown, snapshot: PayoutWorkspace) {
+  const row = object(v),
+    payout = object(row.payout);
+  const transfer = row.transfer === null ? null : object(row.transfer);
+  if (transfer && snapshot.provider.transfer && transfer.id !== snapshot.provider.transfer.id)
+    throw invalid();
+  return parsePayoutProvider(
+    {
+      payout: {
+        ...payout,
+        provider: payout.provider === undefined ? snapshot.detail.provider : payout.provider,
+      },
+      capabilities: snapshot.provider.capabilities,
+      transfer: transfer
+        ? {
+            ...transfer,
+            payoutId:
+              transfer.payoutId === undefined ? snapshot.detail.payoutId : transfer.payoutId,
+          }
+        : null,
+    },
+    snapshot.detail,
+  );
+}
 export function parsePayoutReveal(v: unknown, detail: PayoutDetail) {
   const row = object(v);
   if (
@@ -314,7 +340,10 @@ export async function writePayoutWorkspace(
       const result =
         action === "reveal"
           ? { kind: "reveal" as const, value: parsePayoutReveal(payload, snapshot.detail) }
-          : { kind: "provider" as const, value: parsePayoutProvider(payload, snapshot.detail) };
+          : {
+              kind: "provider" as const,
+              value: parsePayoutProviderAcknowledgment(payload, snapshot),
+            };
       match(actor, await session(signal));
       return result;
     });

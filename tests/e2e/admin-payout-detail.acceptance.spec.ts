@@ -23,7 +23,7 @@ test.beforeEach(() => {
     env: process.env,
   });
 });
-async function actor(page: Page, suffix: string) {
+async function actor(page: Page, suffix: string, external = false) {
   const r = await page.request.post(`${API}/auth/register`, {
     headers: { origin: WEB },
     data: {
@@ -48,7 +48,7 @@ async function actor(page: Page, suffix: string) {
   await enrollMfa(page.request);
   return {
     accountId: user.account.id as string,
-    ...db("seed", { accountId: user.account.id }),
+    ...db("seed", { accountId: user.account.id, external }),
   } as { accountId: string; payoutId: string; channelId: string };
 }
 for (const locale of ["en", "ar"] as const)
@@ -254,4 +254,64 @@ test("Sensitive destination expires after sixty seconds and supports immediate h
   await main.getByRole("button", { name: "Hide destination now", exact: true }).click();
   expect(await main.textContent()).not.toContain(destination);
   expect(db("evidence", seed).audits).toHaveLength(2);
+});
+
+test("Actual unsubmitted cancellation preserves safe smaller acknowledgment and real transfer state without automatic reread", async ({
+  page,
+}) => {
+  const seed = await actor(page, "local-cancel", true);
+  let reads = 0,
+    writes = 0;
+  page.on("request", (request) => {
+    if (request.url().includes(`/admin/revenue/payouts/${seed.payoutId}`)) {
+      if (request.method() === "GET") reads++;
+      if (request.method() === "POST") writes++;
+    }
+  });
+  await page.goto(`/admin/revenue/payouts/${seed.payoutId}?lang=en`);
+  const main = page.getByRole("main");
+  await expect(main.getByText("Production disabled", { exact: true })).toBeVisible();
+  await main
+    .getByLabel("Provider action reason", { exact: true })
+    .fill("Cancel original unsubmitted reserved payout");
+  await expect(
+    main.getByRole("button", { name: "Submit / safe retry", exact: true }),
+  ).toBeDisabled();
+  const response = page.waitForResponse((r) =>
+    r.url().endsWith(`/admin/revenue/payouts/${seed.payoutId}/provider/cancel`),
+  );
+  await main.getByRole("button", { name: "Cancel through provider", exact: true }).click();
+  const acknowledgment = await response;
+  expect(acknowledgment.ok()).toBe(true);
+  const payload = await acknowledgment.json();
+  expect(payload).toMatchObject({
+    payout: { id: seed.payoutId, status: "CANCELLED", amount: "210.123456" },
+    transfer: { state: "CANCELLED" },
+  });
+  for (const hidden of [
+    "destinationEncrypted",
+    "providerDestinationToken",
+    "legalNameSnapshot",
+    "idempotencyKey",
+    "lastErrorMessage",
+    destination,
+  ])
+    expect(JSON.stringify(payload)).not.toContain(hidden);
+  await expect(main.getByText("Acknowledged", { exact: true })).toBeVisible();
+  await expect(main.getByLabel("Provider action reason", { exact: true })).toHaveValue("");
+  await expect(main.getByText("Cancelled", { exact: true })).toHaveCount(2);
+  await expect(main.getByText("Pending", { exact: true })).toHaveCount(1);
+  await main
+    .getByLabel("Provider action reason", { exact: true })
+    .fill("A terminal acknowledgment must block another cancellation");
+  await expect(
+    main.getByRole("button", { name: "Cancel through provider", exact: true }),
+  ).toBeDisabled();
+  expect(reads).toBe(2);
+  expect(writes).toBe(1);
+  expect(db("evidence", seed)).toMatchObject({
+    audits: [{ action: "payout.provider_cancelled_before_submission" }],
+    payout: { status: "CANCELLED" },
+    transfers: 1,
+  });
 });

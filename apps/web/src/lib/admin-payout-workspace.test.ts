@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAdminVerification } from "./admin-reauthentication";
 import {
+  parsePayoutProviderAcknowledgment,
   parsePayoutDetail,
   parsePayoutProvider,
   parsePayoutReveal,
@@ -178,6 +179,45 @@ describe("Private payout workspace", () => {
     expect(JSON.parse(fetch.mock.calls[1]?.[1]?.body)).toEqual({
       reason: "inspect actual beneficiary",
     });
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+  });
+  it("accepts the actual safe provider action envelope without claiming refreshed capabilities", async () => {
+    const current = snapshot();
+    const actual = {
+      payout: {
+        id: payoutId,
+        amount: "210",
+        currency: "USD",
+        status: "CANCELLED",
+        externalReference: null,
+      },
+      transfer: null,
+    };
+    const result = parsePayoutProviderAcknowledgment(actual, current);
+    expect(result.payout.status).toBe("CANCELLED");
+    expect(result.capabilities).toEqual(current.provider.capabilities);
+    expect(result.transfer).toBeNull();
+    expect(() =>
+      parsePayoutProviderAcknowledgment(
+        { ...actual, payout: { ...actual.payout, id: channelId } },
+        current,
+      ),
+    ).toThrow();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(actor))
+      .mockResolvedValueOnce(Response.json(actual))
+      .mockResolvedValueOnce(Response.json(actor));
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      writePayoutWorkspace(
+        "cancel",
+        current,
+        "Cancel original payout",
+        new AbortController().signal,
+      ),
+    ).resolves.toMatchObject({ kind: "provider", value: { payout: { status: "CANCELLED" } } });
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
   });
   it("does not write after a changed actor and retains uncertainty for a lost committed response", async () => {

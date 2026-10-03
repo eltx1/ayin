@@ -224,20 +224,25 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
   const terminal = Boolean(
     transfer && ["COMPLETED", "FAILED", "CANCELLED"].includes(transfer.state),
   );
+  const actionStatus = provider?.payout.status;
+  const payoutTerminal = ["PAID", "FAILED", "CANCELLED"].includes(actionStatus ?? "");
   const maySubmit = Boolean(
     detail &&
     detail.provider !== "MANUAL" &&
     ready &&
     provider?.capabilities.idempotentSubmission &&
     provider.capabilities.supportsDestinationTokenization &&
-    (detail.status === "PENDING" || transfer?.state === "SUBMISSION_UNKNOWN"),
+    !terminal &&
+    !payoutTerminal &&
+    (actionStatus === "PENDING" || transfer?.state === "SUBMISSION_UNKNOWN"),
   );
-  const mayRefresh = Boolean(ready && transfer?.externalTransferId && !terminal);
+  const mayRefresh = Boolean(ready && transfer?.externalTransferId && !terminal && !payoutTerminal);
   const mayCancel = Boolean(
     detail &&
     detail.provider !== "MANUAL" &&
-    (detail.status === "PENDING" ||
-      (ready && provider?.capabilities.supportsCancellation && !terminal)),
+    !terminal &&
+    !payoutTerminal &&
+    (actionStatus === "PENDING" || (ready && provider?.capabilities.supportsCancellation)),
   );
   const yes = (v: boolean) => (v ? copy("Yes", "نعم") : copy("No", "لا"));
   const unavailable = copy("Not returned", "لم يرجع");
