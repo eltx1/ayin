@@ -64,6 +64,15 @@ databaseDescribe("Creator payout safety", () => {
 
   it("calculates payout readiness only from the creator's preferred currency", async () => {
     const creator = await register("Currency Creator", "currency-creator@example.com");
+    await prisma.platformSetting.create({
+      data: {
+        namespace: "MONETIZATION",
+        key: "payoutThresholdMicros",
+        valueType: "STRING",
+        schemaVersion: 1,
+        value: "100000000",
+      },
+    });
     await prisma.earningsLedgerEntry.createMany({
       data: [
         {
