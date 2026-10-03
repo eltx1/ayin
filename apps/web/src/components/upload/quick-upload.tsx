@@ -60,6 +60,7 @@ export function QuickUpload() {
   const [published, setPublished] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const choicesRef = useRef<LocalThumbnailChoice[]>([]);
+  const thumbnailCapture = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -85,12 +86,16 @@ export function QuickUpload() {
 
   useEffect(
     () => () => {
+      thumbnailCapture.current?.abort();
       releaseLocalThumbnailChoices(choicesRef.current);
     },
     [],
   );
 
   async function chooseFile(selected: File | null) {
+    thumbnailCapture.current?.abort();
+    const capture = new AbortController();
+    thumbnailCapture.current = capture;
     releaseLocalThumbnailChoices(thumbnailChoices);
     setThumbnailChoices([]);
     setSelectedThumbnailId(null);
@@ -129,7 +134,11 @@ export function QuickUpload() {
       setCommentsEnabled(draft.video.commentsEnabled);
       setMessage("Your video is uploading…");
 
-      void captureLocalThumbnailChoices(selected).then((choices) => {
+      void captureLocalThumbnailChoices(selected, capture.signal).then((choices) => {
+        if (capture.signal.aborted) {
+          releaseLocalThumbnailChoices(choices);
+          return;
+        }
         setThumbnailChoices((current) => {
           releaseLocalThumbnailChoices(current);
           return choices;

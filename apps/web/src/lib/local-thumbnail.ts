@@ -7,7 +7,10 @@ export interface LocalThumbnailChoice {
 
 const frameFractions = [0.2, 0.5, 0.8] as const;
 
-export async function captureLocalThumbnailChoices(file: File): Promise<LocalThumbnailChoice[]> {
+export async function captureLocalThumbnailChoices(
+  file: File,
+  signal?: AbortSignal,
+): Promise<LocalThumbnailChoice[]> {
   if (typeof document === "undefined" || typeof URL === "undefined") {
     return [];
   }
@@ -16,9 +19,12 @@ export async function captureLocalThumbnailChoices(file: File): Promise<LocalThu
   video.preload = "auto";
   video.muted = true;
   video.playsInline = true;
+  const choices: LocalThumbnailChoice[] = [];
 
   try {
+    signal?.throwIfAborted();
     await waitForMetadata(video, videoUrl);
+    signal?.throwIfAborted();
     if (
       !Number.isFinite(video.duration) ||
       video.duration <= 0 ||
@@ -27,14 +33,15 @@ export async function captureLocalThumbnailChoices(file: File): Promise<LocalThu
     ) {
       return [];
     }
-    const choices: LocalThumbnailChoice[] = [];
     for (const [index, fraction] of frameFractions.entries()) {
       const target = Math.min(
         Math.max(0, video.duration * fraction),
         Math.max(0, video.duration - 0.05),
       );
       await seekVideo(video, target);
+      signal?.throwIfAborted();
       const blob = await frameBlob(video);
+      signal?.throwIfAborted();
       if (!blob) continue;
       choices.push({
         id: `frame-${index + 1}`,
@@ -45,6 +52,7 @@ export async function captureLocalThumbnailChoices(file: File): Promise<LocalThu
     }
     return choices;
   } catch {
+    releaseLocalThumbnailChoices(choices);
     return [];
   } finally {
     video.removeAttribute("src");
@@ -61,30 +69,39 @@ export function releaseLocalThumbnailChoices(choices: LocalThumbnailChoice[]): v
 
 function waitForMetadata(video: HTMLVideoElement, url: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    video.onloadedmetadata = () => resolve();
-    video.onerror = () => reject(new Error("Video metadata unavailable."));
+    const finish = (ok: boolean) => {
+      window.clearTimeout(timeout);
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      if (ok) resolve();
+      else reject(new Error("Video metadata unavailable."));
+    };
+    const timeout = window.setTimeout(() => finish(false), 4000);
+    video.onloadedmetadata = () => finish(true);
+    video.onerror = () => finish(false);
     video.src = url;
   });
 }
 
 function seekVideo(video: HTMLVideoElement, target: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error("Frame capture timed out.")), 4_000);
-    video.onseeked = () => {
+    const finish = (ok: boolean) => {
       window.clearTimeout(timeout);
-      resolve();
+      video.onseeked = null;
+      video.onerror = null;
+      if (ok) resolve();
+      else reject(new Error("Frame capture failed."));
     };
-    video.onerror = () => {
-      window.clearTimeout(timeout);
-      reject(new Error("Frame capture failed."));
-    };
+    const timeout = window.setTimeout(() => finish(false), 4000);
+    video.onseeked = () => finish(true);
+    video.onerror = () => finish(false);
     video.currentTime = target;
   });
 }
 
 function frameBlob(video: HTMLVideoElement): Promise<Blob | null> {
   const maxWidth = 1280;
-  const scale = Math.min(1, maxWidth / video.videoWidth);
+  const scale = Math.min(1, maxWidth / video.videoWidth, maxWidth / video.videoHeight);
   const width = Math.max(1, Math.round(video.videoWidth * scale));
   const height = Math.max(1, Math.round(video.videoHeight * scale));
   const canvas = document.createElement("canvas");
@@ -93,5 +110,15 @@ function frameBlob(video: HTMLVideoElement): Promise<Blob | null> {
   const context = canvas.getContext("2d");
   if (!context) return Promise.resolve(null);
   context.drawImage(video, 0, 0, width, height);
-  return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => resolve(null), 4000);
+    canvas.toBlob(
+      (blob) => {
+        window.clearTimeout(timeout);
+        resolve(blob);
+      },
+      "image/jpeg",
+      0.86,
+    );
+  });
 }
