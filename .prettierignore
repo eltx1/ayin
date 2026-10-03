@@ -11,3 +11,10 @@ docs/AYIN_EXECUTION_ROADMAP.md
 docs/AYIN_MASTER_PLAN.md
 docs/DECISIONS.md
 platforms/tizen/config.xml
+
+# Exact downloaded lifecycle evidence; keep original bytes and recorded hashes.
+docs/pwa/2026-10-03-lifecycle-54f-en.json
+docs/pwa/2026-10-03-lifecycle-54f-ar.json
+docs/pwa/2026-10-03-lifecycle-54f-late.json
+docs/pwa/2026-10-03-lifecycle-54f-migration.json
+docs/pwa/2026-10-03-lifecycle-54f-offline.json
