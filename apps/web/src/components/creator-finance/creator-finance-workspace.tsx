@@ -365,6 +365,32 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
       FAILED: copy("Failed", "فشل"),
       CANCELLED: copy("Cancelled", "ملغى"),
     })[value] ?? value;
+  const eligibilityAction = (action: string) =>
+    !ar
+      ? action
+      : ({
+          "Complete your payout details.": "أكمل بيانات الدفع.",
+          "Choose an available payout method.": "اختر طريقة دفع متاحة.",
+          "Reach the minimum payout amount.": "بلغ الحد الأدنى للسحب.",
+          "Wait for your current payout request to finish.": "انتظر اكتمال طلب الدفع الحالي.",
+          "Identity check could not be verified. Review the requested action.":
+            "تعذر التحقق من الهوية. راجع الإجراء المطلوب.",
+          "Complete the requested identity check action.": "أكمل الإجراء المطلوب للتحقق من الهوية.",
+          "Identity check is still being reviewed.": "ما زال التحقق من الهوية قيد المراجعة.",
+          "Complete identity verification before payout.": "أكمل التحقق من الهوية قبل الدفع.",
+          "Tax information could not be accepted. Review the requested action.":
+            "تعذر قبول البيانات الضريبية. راجع الإجراء المطلوب.",
+          "Complete the requested tax information action.":
+            "أكمل الإجراء المطلوب للبيانات الضريبية.",
+          "Tax information is still being reviewed.": "ما زالت البيانات الضريبية قيد المراجعة.",
+          "Complete the required tax information before payout.":
+            "أكمل البيانات الضريبية المطلوبة قبل الدفع.",
+          "Payout destination could not be verified.": "تعذر التحقق من وجهة الدفع.",
+          "Review your payout destination details.": "راجع بيانات وجهة الدفع.",
+          "Payout destination verification is still pending.":
+            "ما زال التحقق من وجهة الدفع قيد الانتظار.",
+          "Set up and verify a payout destination.": "أعدّ وجهة دفع وتحقق منها.",
+        }[action] ?? action);
   return (
     <section className={styles.workspace}>
       <PageHeader
@@ -777,18 +803,22 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
                           value={draft.provider}
                           onChange={(e) => edit("provider", e.target.value)}
                         >
-                          <option value={overview.paymentProfile?.provider ?? "MANUAL"}>
-                            {overview.paymentProfile?.provider ?? "MANUAL"}
-                          </option>
-                          {overview.providerConnection.manualPayoutEnabled &&
-                            draft.provider !== "MANUAL" && <option value="MANUAL">MANUAL</option>}
-                          {overview.providerConnection.externalProvidersConnected &&
-                            overview.providerConnection.externalProvider.provider !==
-                              (overview.paymentProfile?.provider ?? "MANUAL") && (
-                              <option value={overview.providerConnection.externalProvider.provider}>
-                                {overview.providerConnection.externalProvider.provider}
-                              </option>
-                            )}
+                          {[
+                            ...new Set([
+                              draft.provider,
+                              overview.paymentProfile?.provider ?? "MANUAL",
+                              ...(overview.providerConnection.manualPayoutEnabled
+                                ? ["MANUAL"]
+                                : []),
+                              ...(overview.providerConnection.externalProvidersConnected
+                                ? [overview.providerConnection.externalProvider.provider]
+                                : []),
+                            ]),
+                          ].map((provider) => (
+                            <option key={provider} value={provider}>
+                              {provider}
+                            </option>
+                          ))}
                         </select>
                         <TextField
                           id="finance-country"
@@ -810,6 +840,13 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
                             "تظل في هذه الصفحة حتى يتأكد حفظ مطابق. قد يطلب المزوّد الخارجي إعداد الوجهة عبر مساره الخاص.",
                           )}
                           value={draft.destination}
+                          required={
+                            draft.provider === "MANUAL" &&
+                            !(
+                              overview.paymentProfile?.provider === "MANUAL" &&
+                              overview.paymentProfile.hasDestination
+                            )
+                          }
                           minLength={4}
                           maxLength={1500}
                           autoComplete="off"
@@ -874,7 +911,12 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
                         </ActionButton>
                         <ActionButton
                           tone="secondary"
-                          disabled={disabled}
+                          disabled={
+                            disabled ||
+                            !overview.compliance.provider.connected ||
+                            !overview.compliance.provider.productionEnabled ||
+                            !overview.paymentProfile
+                          }
                           onClick={() => void submit({ kind: "refresh" })}
                         >
                           {copy("Refresh compliance status", "تحديث حالة الامتثال")}
@@ -898,7 +940,7 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
                       <ul>
                         {overview.payoutEligibility.actionsRequired.map((action, i) => (
                           <li key={i} dir="auto">
-                            {action}
+                            {eligibilityAction(action)}
                           </li>
                         ))}
                       </ul>

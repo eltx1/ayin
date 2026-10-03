@@ -126,10 +126,32 @@ describe("Creator finance boundaries", () => {
     expect((await observed).name).toBe("AbortError");
     expect(fetch).toHaveBeenCalledTimes(1);
   });
-  it("does not accept raw encrypted profile data as a substitute for a validated profile or compliance", () => {
-    expect(() =>
-      parseFinanceProfile({ channelId, destinationEncrypted: "private" }, channelId),
-    ).toThrow();
+  it("allow-lists a valid owned profile without encrypted destination or provider token metadata", () => {
+    const profile = parseFinanceProfile(
+      {
+        id: foreignId,
+        channelId,
+        legalName: "Actual Owner",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destinationMask: "****1234",
+        countryCode: null,
+        identityStatus: "NOT_STARTED",
+        taxStatus: "NOT_STARTED",
+        payoutDestinationStatus: "PENDING",
+        complianceProvider: null,
+        complianceLastCheckedAt: null,
+        hasDestination: true,
+        createdAt: "2026-10-03T00:00:00Z",
+        updatedAt: "2026-10-03T00:00:00Z",
+        destinationEncrypted: "private",
+        providerDestinationTokenEncrypted: "private-token",
+      },
+      channelId,
+    );
+    expect(profile.destinationMask).toBe("****1234");
+    expect(profile).not.toHaveProperty("destinationEncrypted");
+    expect(profile).not.toHaveProperty("providerDestinationTokenEncrypted");
     expect(() => parseFinanceCompliance({ channelId: foreignId }, channelId)).toThrow();
   });
 });
