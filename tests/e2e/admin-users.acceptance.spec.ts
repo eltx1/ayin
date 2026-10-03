@@ -395,3 +395,57 @@ test("A real stale account write retains its draft and original-target recovery 
     true,
   );
 });
+
+test("Native users hides private facts synchronously on actual role loss and clears the old search", async ({
+  page,
+  request,
+}) => {
+  const data = await seed(page, request, "authority-hide");
+  await page.goto("/admin/users?query=" + encodeURIComponent(data.query));
+  const main = page.getByRole("main"),
+    row = rowFor(page, data.email);
+  await expect(row).toBeVisible();
+  await row.getByLabel("New display name", { exact: true }).fill("Private account draft");
+  const payload = { accountId: data.operator.account.id, targetId: data.targetId };
+  const before = db("evidence", payload);
+  await page.evaluate(
+    ({ marker, fact }) => {
+      const node = document.querySelector<HTMLElement>(`[data-private-${marker}-records="true"]`);
+      const native = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "hidden");
+      if (!node || !native?.get || !native.set)
+        throw Error("Expected private body and native hidden setter");
+      const get = native.get,
+        set = native.set;
+      Object.defineProperty(node, "hidden", {
+        configurable: true,
+        get() {
+          return get.call(node);
+        },
+        set(value) {
+          set.call(node, value);
+          if (value)
+            (window as unknown as { authorityHide: object }).authorityHide = {
+              oldFactPresent: node.textContent?.includes(fact),
+              visible: node.checkVisibility(),
+            };
+        },
+      });
+    },
+    { marker: "account", fact: data.email },
+  );
+  db("change-role", { accountId: data.operator.account.id });
+  let privateReads = 0;
+  page.on("request", (r) => {
+    if (r.method() === "GET" && r.url().startsWith(API + "/admin/control/users")) privateReads++;
+  });
+  await main.getByRole("button", { name: "Read account records", exact: true }).click();
+  await expect(main.getByRole("alert")).toContainText("access changed");
+  expect(
+    await page.evaluate(() => (window as unknown as { authorityHide: object }).authorityHide),
+  ).toEqual({ oldFactPresent: true, visible: false });
+  await expect(main.locator('[data-private-account-records="true"]')).toBeHidden();
+  await expect(main.locator("article")).toHaveCount(0);
+  await expect(main.getByLabel("Email or display name", { exact: true })).toHaveValue("");
+  expect(privateReads).toBe(0);
+  expect(db("evidence", payload)).toEqual(before);
+});
