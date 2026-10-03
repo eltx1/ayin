@@ -60,6 +60,7 @@ export class CreatorTvController {
   ) {}
 
   @Get("channels/:channelId/tv")
+  @Header("Cache-Control", "private, no-store")
   async getManagement(
     @Req() request: AuthenticatedRequest,
     @Param("channelId") channelIdRaw: string,
