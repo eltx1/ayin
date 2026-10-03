@@ -193,16 +193,14 @@ test("acknowledged image roots keep their identity through upload failure and re
   await main
     .getByRole("textbox", { name: "Message", exact: true })
     .fill("Keep the known image root");
-  await main
-    .getByLabel("Image", { exact: true })
-    .setInputFiles({
-      name: "pixel.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a+AAAAABJRU5ErkJggg==",
-        "base64",
-      ),
-    });
+  await main.getByLabel("Image", { exact: true }).setInputFiles({
+    name: "pixel.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNIET0HAAIoAUh9ho5VAAAAAElFTkSuQmCC",
+      "base64",
+    ),
+  });
   await main.getByRole("button", { name: "Create draft", exact: true }).click();
   await expect(main.getByText(/The post draft was saved, but the image upload/)).toBeVisible();
   await expect(main.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(
