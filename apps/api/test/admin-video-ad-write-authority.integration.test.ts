@@ -238,7 +238,7 @@ databaseDescribe(
         expect((await send(f, command)).statusCode).toBe(200);
         expect(await prisma.adminAuditLog.count()).toBe(before.audits.length + 1);
       });
-    it("allows scoped AD_MANAGER writes and existing orphan cleanup without granting account/TV/video authority; Finance is denied and invalid schema stays400", async () => {
+    it("allows scoped AD_MANAGER writes and actual cascaded-target cleanup without granting account/TV/video authority; Finance is denied and invalid schema stays400", async () => {
       const f = await fixture("AD_MANAGER");
       for (const command of ["SETTINGS", "UPSERT", "DELETE"] as const)
         expect((await send(f, command)).statusCode).toBe(200);
@@ -289,8 +289,16 @@ databaseDescribe(
       expect(await facts(f)).toEqual(before);
       await prisma.videoAdOverride.create({ data: { videoId: f.video.id, enabled: false } });
       await prisma.video.delete({ where: { id: f.video.id } });
+      expect(
+        await prisma.videoAdOverride.findUnique({ where: { videoId: f.video.id } }),
+      ).toBeNull();
+      const cascaded = await facts(f);
       expect((await send(f, "UPSERT")).statusCode).toBe(404);
-      expect((await send(f, "DELETE")).json()).toEqual({ deleted: true });
+      expect(await facts(f)).toEqual(cascaded);
+      const removed = await send(f, "DELETE");
+      expect(removed.statusCode).toBe(200);
+      expect(removed.json()).toEqual({ deleted: false });
+      expect((await facts(f)).audits).toHaveLength(cascaded.audits.length + 1);
     });
   },
 );
