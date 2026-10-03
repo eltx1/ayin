@@ -46,9 +46,11 @@ const videoQuerySchema = pageSchema.extend({
   visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
   channelId: z.string().uuid().optional(),
 });
-const tvQuerySchema = pageSchema.extend({
-  status: z.enum(["ACTIVE", "OFF_AIR", "DISABLED"]).optional(),
-});
+const tvQuerySchema = pageSchema
+  .extend({
+    status: z.enum(["ACTIVE", "OFF_AIR", "DISABLED"]).optional(),
+  })
+  .strict();
 const moderationQuerySchema = pageSchema.extend({
   status: z.enum(["OPEN", "REVIEWING", "RESOLVED", "DISMISSED"]).optional(),
 });
@@ -92,7 +94,11 @@ const bulkVideoSchema = z
   })
   .strict();
 const tvPatchSchema = z
-  .object({ status: z.enum(["ACTIVE", "OFF_AIR", "DISABLED"]), reason: reasonSchema })
+  .object({
+    status: z.enum(["ACTIVE", "OFF_AIR", "DISABLED"]),
+    reason: reasonSchema,
+    expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
+  })
   .strict();
 
 const sharedStaffRoles = [
@@ -223,12 +229,25 @@ export class AdminControlController {
   }
 
   @Get("tv")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   @RequireAdminRoles("OPERATIONS")
   tv(@Query() query: unknown) {
     return this.control.tvChannels(this.parse(tvQuerySchema, query, "INVALID_TV_FILTER"));
   }
 
+  @Get("tv/:tvChannelId")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  @RequireAdminRoles("OPERATIONS")
+  tvRecord(@Param("tvChannelId") idRaw: string) {
+    return this.control.tvRecord(this.id(idRaw));
+  }
+
   @Patch("tv/:tvChannelId")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  @RequireAdminStepUp()
   @RequireAdminRoles("OPERATIONS")
   updateTv(
     @Req() request: AdminAuthenticatedRequest,
@@ -236,7 +255,7 @@ export class AdminControlController {
     @Body() body: unknown,
   ) {
     return this.control.updateTv(
-      request.ayinAuth.accountId,
+      request.ayinAuth,
       this.id(tvChannelIdRaw),
       this.parse(tvPatchSchema, body, "INVALID_TV_UPDATE"),
     );

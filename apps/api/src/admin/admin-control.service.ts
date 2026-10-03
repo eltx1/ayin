@@ -1,3 +1,5 @@
+import { Prisma } from "@ayin/db";
+
 import { ConflictException, NotFoundException, Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -576,49 +578,85 @@ export class AdminControlService {
         : {}),
     };
     const now = new Date();
-    const [total, items] = await Promise.all([
-      this.database.client.creatorTvChannel.count({ where }),
-      this.database.client.creatorTvChannel.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { updatedAt: "desc" },
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          status: true,
-          disabledAt: true,
-          updatedAt: true,
-          channel: { select: { id: true, handle: true, name: true, status: true } },
-          scheduleItems: {
-            where: { endsAt: { gt: now }, status: { in: ["SCHEDULED", "ACTIVE"] } },
-            orderBy: { startsAt: "asc" },
-            take: 2,
-            select: {
-              id: true,
-              startsAt: true,
-              endsAt: true,
-              status: true,
-              video: { select: { id: true, title: true } },
-            },
-          },
-        },
-      }),
-    ]);
+    const [total, items] = await this.database.client.$transaction(
+      [
+        this.database.client.creatorTvChannel.count({ where }),
+        this.database.client.creatorTvChannel.findMany({
+          where,
+          skip,
+          take,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          select: this.tvReadSelection(now),
+        }),
+      ],
+      { isolationLevel: "RepeatableRead" },
+    );
     return { items, pagination: this.pagination(total, page, take) };
   }
 
+  private tvReadSelection(now: Date) {
+    return {
+      id: true,
+      slug: true,
+      name: true,
+      status: true,
+      disabledAt: true,
+      updatedAt: true,
+      channel: { select: { id: true, handle: true, name: true, status: true } },
+      scheduleItems: {
+        where: { endsAt: { gt: now }, status: { in: ["SCHEDULED" as const, "ACTIVE" as const] } },
+        orderBy: [{ startsAt: "asc" as const }, { id: "asc" as const }],
+        take: 2,
+        select: {
+          id: true,
+          startsAt: true,
+          endsAt: true,
+          status: true,
+          video: { select: { id: true, title: true } },
+        },
+      },
+    };
+  }
+
+  async tvRecord(tvChannelId: string) {
+    const record = await this.database.client.creatorTvChannel.findUnique({
+      where: { id: tvChannelId },
+      select: this.tvReadSelection(new Date()),
+    });
+    if (!record) throw new NotFoundException("Creator TV record unavailable.");
+    return record;
+  }
+
   async updateTv(
-    actorAccountId: string,
+    actor: AccountWriteActor,
     tvChannelId: string,
-    input: { status: "ACTIVE" | "OFF_AIR" | "DISABLED"; reason?: string | undefined },
+    input: {
+      status: "ACTIVE" | "OFF_AIR" | "DISABLED";
+      reason?: string | undefined;
+      expectedUpdatedAt?: string | undefined;
+    },
   ) {
+    const actorAccountId = actor.accountId;
     return this.database.client.$transaction(async (tx) => {
+      await lockAdminAccountWrite(tx, actor, actorAccountId);
+      const [current] = await tx.$queryRaw<{ id: string; updatedAt: Date }[]>(
+        Prisma.sql`SELECT "id", "updatedAt" FROM "CreatorTvChannel" WHERE "id" = ${tvChannelId}::uuid FOR UPDATE /* ayin-admin-tv-write-lock */`,
+      );
+      if (!current) throw new NotFoundException("Creator TV record unavailable.");
+      // Authority rows remain locked; renew expiry/step-up checks after the final target wait.
+      await lockAdminAccountWrite(tx, actor, actorAccountId);
+      if (
+        input.expectedUpdatedAt !== undefined &&
+        current.updatedAt.getTime() !== new Date(input.expectedUpdatedAt).getTime()
+      )
+        throw new ConflictException(
+          "Creator TV changed. Read the original TV before reviewing this operation.",
+        );
       const tv = await tx.creatorTvChannel.update({
         where: { id: tvChannelId },
         data: {
           status: input.status,
+          updatedAt: nextAccountVersion(current.updatedAt),
           disabledAt: input.status === "DISABLED" ? new Date() : null,
         },
         select: { id: true, name: true, status: true, disabledAt: true, updatedAt: true },
