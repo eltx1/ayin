@@ -79,11 +79,12 @@
 }
 
 .replies {
-  border-left: 2px solid rgb(220 25 232 / 20%);
+  border-inline-start: 2px solid rgb(220 25 232 / 20%);
   display: grid;
   gap: 0.6rem;
-  margin: 0.8rem 0 0 1.25rem;
-  padding-left: 0.8rem;
+  margin-block-start: 0.8rem;
+  margin-inline-start: 1.25rem;
+  padding-inline-start: 0.8rem;
 }
 
 @media (max-width: 520px) {
@@ -97,7 +98,7 @@
   }
 
   .replies {
-    margin-left: 0.5rem;
+    margin-inline-start: 0.5rem;
   }
 }
 
@@ -105,4 +106,24 @@
   .panel:not([open]) {
     opacity: 0.9;
   }
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-block: 1rem;
+}
+.comment header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.composer button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.panel {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
 }

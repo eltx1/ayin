@@ -4,10 +4,14 @@ import { useEffect, useMemo } from "react";
 
 import { createPlayerAnalytics, trackAnalyticsEvent } from "@/lib/analytics";
 
+import { AyinPlayer } from "./ayin-player";
 import { AdEnabledAyinPlayer } from "./ad-enabled-ayin-player";
 import type { AyinPlayerProps } from "./ayin-player";
 
-export function AnalyticsAyinPlayer(props: AyinPlayerProps) {
+export function AnalyticsAyinPlayer({
+  advertisingEnabled = true,
+  ...props
+}: AyinPlayerProps & { advertisingEnabled?: boolean }) {
   const { profileId, videoId } = props;
   const analytics = useMemo(() => createPlayerAnalytics(profileId), [profileId]);
 
@@ -15,5 +19,9 @@ export function AnalyticsAyinPlayer(props: AyinPlayerProps) {
     trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId });
   }, [videoId]);
 
-  return <AdEnabledAyinPlayer {...props} analytics={analytics} />;
+  return advertisingEnabled ? (
+    <AdEnabledAyinPlayer {...props} analytics={analytics} />
+  ) : (
+    <AyinPlayer {...props} analytics={analytics} />
+  );
 }
