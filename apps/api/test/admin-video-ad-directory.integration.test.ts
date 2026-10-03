@@ -250,4 +250,62 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
     });
     expect(fallback.body).not.toContain("privateInternal");
   });
+
+  it("reads one actual channel/video target with its real nullable override inside a stable target snapshot", async () => {
+    const a = await actor(),
+      f = await seed(1, a.id),
+      v = f.videos[0];
+    if (!v) throw Error("Expected video");
+    const result = await get(a.cookie, "/admin/video-ads/videos/" + v.id + "/record");
+    expect(result.statusCode).toBe(200);
+    expect(result.headers["cache-control"]).toBe("private, no-store");
+    expect(result.json().kind).toBe("VIDEO");
+    expect(result.json().target).toMatchObject({
+      id: v.id,
+      title: v.title,
+      channel: { id: f.owner.id },
+    });
+    expect(result.json().override).toMatchObject({
+      id: f.rows[0]?.id,
+      videoId: v.id,
+      enabled: false,
+    });
+    expect(Object.keys(result.json().override).sort()).toEqual(
+      keys.filter((k) => k !== "channel" && k !== "video"),
+    );
+    const c = await get(a.cookie, "/admin/video-ads/channels/" + f.owner.id + "/record");
+    expect(c.statusCode).toBe(200);
+    expect(c.json()).toEqual({
+      kind: "CHANNEL",
+      target: {
+        id: f.owner.id,
+        name: f.owner.name,
+        handle: f.owner.handle,
+        status: f.owner.status,
+      },
+      override: null,
+    });
+    await prisma.video.delete({ where: { id: v.id } });
+    expect((await get(a.cookie, "/admin/video-ads/videos/" + v.id + "/record")).statusCode).toBe(
+      404,
+    );
+  });
+
+  it("denies Finance before original-target facts and validates missing or malformed actual target identities", async () => {
+    const a = await actor();
+    expect(
+      (await get(a.cookie, "/admin/video-ads/videos/" + randomUUID() + "/record")).statusCode,
+    ).toBe(404);
+    expect((await get(a.cookie, "/admin/video-ads/channels/not-a-uuid/record")).statusCode).toBe(
+      400,
+    );
+    const f = await actor("FINANCE_MANAGER"),
+      reads = vi.spyOn(app.get(VideoAdService), "targetRecord");
+    for (const kind of ["videos", "channels"])
+      expect(
+        (await get(f.cookie, "/admin/video-ads/" + kind + "/" + randomUUID() + "/record"))
+          .statusCode,
+      ).toBe(403);
+    expect(reads).not.toHaveBeenCalled();
+  });
 });
