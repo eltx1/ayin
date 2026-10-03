@@ -161,3 +161,62 @@ test("known saved writes are distinct from failed reads and invalid images creat
   await expect(main.getByRole("article")).toHaveCount(1);
   await expect(main.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
 });
+
+test("acknowledged image roots keep their identity through upload failure and retry", async ({
+  page,
+}) => {
+  await register(page, "studio-community-imagepartial@e2e.ayin.test");
+  let creates = 0,
+    patches = 0,
+    authorizations = 0;
+  await page.route(`${API}/creator/community/posts`, async (route) => {
+    if (route.request().method() === "POST") creates++;
+    await route.continue();
+  });
+  await page.route(`${API}/creator/community/posts/*`, async (route) => {
+    if (route.request().method() === "PATCH") patches++;
+    await route.continue();
+  });
+  await page.route(`${API}/creator/community/posts/*/image/authorize`, async (route) => {
+    authorizations++;
+    if (authorizations === 1) return route.abort("failed");
+    return route.fulfill({
+      status: 503,
+      headers,
+      json: { error: { code: "STORAGE_UNAVAILABLE" } },
+    });
+  });
+  await page.goto("/studio/community?lang=en");
+  const main = page.getByRole("main");
+  await expect(main.getByText("No community posts yet.", { exact: true })).toBeVisible();
+  await main.getByRole("combobox", { name: "Post type", exact: true }).selectOption("IMAGE");
+  await main
+    .getByRole("textbox", { name: "Message", exact: true })
+    .fill("Keep the known image root");
+  await main
+    .getByLabel("Image", { exact: true })
+    .setInputFiles({
+      name: "pixel.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a+AAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    });
+  await main.getByRole("button", { name: "Create draft", exact: true }).click();
+  await expect(main.getByText(/The post draft was saved, but the image upload/)).toBeVisible();
+  await expect(main.getByRole("textbox", { name: "Message", exact: true })).toHaveValue(
+    "Keep the known image root",
+  );
+  await expect(main.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+  await main.getByRole("button", { name: "Refresh posts", exact: true }).click();
+  await expect(main.getByRole("article")).toHaveCount(1);
+  await main.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect.poll(() => authorizations).toBe(2);
+  await expect(main.getByText(/The post draft was saved, but the image upload/)).toBeVisible();
+  expect(creates).toBe(1);
+  expect(patches).toBe(1);
+  const saved = await (await page.request.get(`${API}/creator/community/posts/page`)).json();
+  expect(saved.items).toHaveLength(1);
+  expect(saved.items[0].type).toBe("IMAGE");
+});
