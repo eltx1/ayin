@@ -132,6 +132,7 @@ jobs:
           echo "Pinned AYIN SSH host fingerprint verified."
 
       - name: Verify isolated AYIN account
+        id: verify_isolated_account
         shell: bash
         run: |
           set -euo pipefail
@@ -202,7 +203,7 @@ jobs:
           if-no-files-found: error
 
       - name: Remove bootstrap copy
-        if: always()
+        if: ${{ always() && steps.verify_isolated_account.outcome == 'success' }}
         shell: bash
         run: |
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
