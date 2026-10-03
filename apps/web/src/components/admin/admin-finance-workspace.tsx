@@ -30,6 +30,7 @@ import {
   financeComplianceStates,
   financeDisputeStates,
   financePayoutStates,
+  financeManualPayoutChoices,
   getAdminFinanceSnapshot,
   getFinanceActions,
   getFinanceTarget,
@@ -730,6 +731,130 @@ export function AdminFinanceWorkspace() {
                 },
               ]}
             />
+            <Disclosure
+              summary={copy(
+                "Payout eligibility and provider requirements",
+                "أهلية الصرف ومتطلبات المزود",
+              )}
+            >
+              <dl className={styles.facts}>
+                {[
+                  [
+                    copy("Compliance eligible", "مؤهل من ناحية الامتثال"),
+                    target!.compliance.payoutComplianceEligible,
+                  ],
+                  [
+                    copy("Identity required", "التحقق من الهوية مطلوب"),
+                    target!.compliance.identity.required,
+                  ],
+                  [
+                    copy("Tax verification required", "التحقق الضريبي مطلوب"),
+                    target!.compliance.tax.required,
+                  ],
+                  [
+                    copy("Destination verification required", "التحقق من جهة الدفع مطلوب"),
+                    target!.compliance.payoutDestination.required,
+                  ],
+                  [
+                    copy("Payment destination configured", "جهة الدفع مضبوطة"),
+                    target!.compliance.payoutDestination.configured,
+                  ],
+                  [
+                    copy("Provider connected", "المزود متصل"),
+                    target!.compliance.provider.connected,
+                  ],
+                  [
+                    copy("Production enabled", "الإنتاج مفعّل"),
+                    target!.compliance.provider.productionEnabled,
+                  ],
+                  [
+                    copy("External identity workflow", "إجراء خارجي للهوية"),
+                    target!.compliance.provider.externalIdentityWorkflow,
+                  ],
+                  [
+                    copy("External tax workflow", "إجراء خارجي للضرائب"),
+                    target!.compliance.provider.externalTaxWorkflow,
+                  ],
+                  [
+                    copy("Identity action available", "إجراء الهوية متاح"),
+                    target!.compliance.identity.actionAvailable,
+                  ],
+                  [
+                    copy("Tax action available", "إجراء الضرائب متاح"),
+                    target!.compliance.tax.actionAvailable,
+                  ],
+                ].map(([title, value]) => (
+                  <div key={String(title)}>
+                    <dt>{title}</dt>
+                    <dd>{value ? copy("Yes", "نعم") : copy("No", "لا")}</dd>
+                  </div>
+                ))}
+                <div>
+                  <dt>{copy("Provider", "المزود")}</dt>
+                  <dd>
+                    <bdi>{target!.compliance.provider.name}</bdi>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{copy("Requirements source", "مصدر المتطلبات")}</dt>
+                  <dd>
+                    {target!.compliance.requirements.source === "NONE"
+                      ? copy("No configured requirements", "لا توجد متطلبات مضبوطة")
+                      : target!.compliance.requirements.source === "PROVIDER"
+                        ? copy("Provider", "المزود")
+                        : copy("Approved legal configuration", "إعداد قانوني معتمد")}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{copy("Requirements version", "نسخة المتطلبات")}</dt>
+                  <dd>
+                    <bdi>
+                      {target!.compliance.requirements.version ??
+                        copy("No version returned", "لم تُرجع نسخة")}
+                    </bdi>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{copy("Masked payment destination", "جهة الدفع المحجوبة")}</dt>
+                  <dd>
+                    <bdi>
+                      {target!.compliance.payoutDestination.masked ??
+                        copy("Not configured", "غير مضبوطة")}
+                    </bdi>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{copy("Last checked", "آخر تحقق")}</dt>
+                  <dd>
+                    {target!.compliance.lastCheckedAt
+                      ? formatDate(target!.compliance.lastCheckedAt)
+                      : copy("No check time returned", "لم يُرجع وقت تحقق")}
+                  </dd>
+                </div>
+              </dl>
+              {target!.compliance.actionsRequired.length ? (
+                <ul>
+                  {target!.compliance.actionsRequired.map((action, index) => (
+                    <li key={index} dir="auto">
+                      {action}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>
+                  {copy(
+                    "No required actions returned. Eligibility is checked again by the server when creating a payout.",
+                    "لم تُرجع إجراءات مطلوبة. يتحقق الخادم مجددًا من الأهلية عند إنشاء عملية صرف.",
+                  )}
+                </p>
+              )}
+              <p>
+                {copy(
+                  "Compliance eligibility does not confirm an available balance or a completed payment.",
+                  "أهلية الامتثال لا تؤكد وجود رصيد متاح أو إتمام دفعة.",
+                )}
+              </p>
+            </Disclosure>
             <form
               onSubmit={(event) => {
                 event.preventDefault();
@@ -1661,7 +1786,18 @@ export function AdminFinanceWorkspace() {
                                     )
                                   }
                                 >
-                                  {options(financePayoutStates)}
+                                  {!financeManualPayoutChoices(row.status).includes(
+                                    value.status as typeof row.status,
+                                  ) ? (
+                                    <option value={value.status} disabled>
+                                      {label(value.status)} ·{" "}
+                                      {copy(
+                                        "Retained draft; transition unavailable",
+                                        "مسودة محفوظة؛ الانتقال غير متاح",
+                                      )}
+                                    </option>
+                                  ) : null}
+                                  {options(financeManualPayoutChoices(row.status))}
                                 </SelectField>
                                 <TextField
                                   id={`finance-payout-ref-${row.id}`}

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAdminVerification } from "./admin-reauthentication";
 import {
   financeBps,
+  financeManualPayoutChoices,
   financeInputAmount,
   financeMicros,
   getFinanceActions,
@@ -19,6 +20,18 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("Protected financial administration", () => {
+  it("offers only server-supported manual transitions and never reopens a terminal payout", () => {
+    expect(financeManualPayoutChoices("PENDING")).toEqual(["PENDING", "PROCESSING", "CANCELLED"]);
+    expect(financeManualPayoutChoices("PROCESSING")).toEqual([
+      "PROCESSING",
+      "PAID",
+      "FAILED",
+      "CANCELLED",
+    ]);
+    for (const terminal of ["PAID", "FAILED", "CANCELLED"] as const)
+      expect(financeManualPayoutChoices(terminal)).toEqual([terminal]);
+  });
+
   it("distinguishes explicit zero from blank share and preserves large six-decimal signed amounts without Number", () => {
     expect(financeBps("0")).toBe(0);
     for (const value of ["", " ", "NaN", "1e2", "-1", "10001"])

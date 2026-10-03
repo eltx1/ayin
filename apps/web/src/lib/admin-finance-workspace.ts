@@ -86,6 +86,19 @@ export const financePayoutStates = [
   "FAILED",
   "CANCELLED",
 ] as const;
+export function financeManualPayoutChoices(status: (typeof financePayoutStates)[number]) {
+  const transitions: Record<
+    (typeof financePayoutStates)[number],
+    readonly (typeof financePayoutStates)[number][]
+  > = {
+    PENDING: ["PROCESSING", "CANCELLED"],
+    PROCESSING: ["PAID", "FAILED", "CANCELLED"],
+    PAID: [],
+    FAILED: [],
+    CANCELLED: [],
+  };
+  return [status, ...transitions[status]];
+}
 export const financeDisputeStates = ["OPEN", "REVIEWING", "RESOLVED", "REJECTED"] as const;
 export const financeComplianceStates = [
   "NOT_STARTED",
@@ -790,7 +803,11 @@ function prepareCommand(command: FinanceCommand) {
         body: { channelId: id(command.channelId), currency: currency(command.currency) },
       };
     case "payoutStatus": {
-      if (command.base.provider !== "MANUAL") throw invalid();
+      if (
+        command.base.provider !== "MANUAL" ||
+        !financeManualPayoutChoices(command.base.status).includes(command.input.status)
+      )
+        throw invalid();
       return {
         path: `/admin/revenue/payouts/${id(command.base.id)}`,
         method: "PATCH",

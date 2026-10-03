@@ -176,6 +176,23 @@ for (const locale of ["en", "ar"] as const)
     await expect(history.locator("article")).toHaveCount(20);
     await history.getByRole("button", { name: copy("Next", "التالي"), exact: true }).click();
     await expect(history.locator("article")).toHaveCount(6);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true,
+    );
+    const eligibility = panel
+      .locator("details")
+      .filter({
+        hasText: copy(
+          "Payout eligibility and provider requirements",
+          "أهلية الصرف ومتطلبات المزود",
+        ),
+      });
+    await eligibility.locator("summary").click();
+    await expect(
+      eligibility.getByText(copy("No configured requirements", "لا توجد متطلبات مضبوطة"), {
+        exact: true,
+      }),
+    ).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath(`design-admin-finance-channel-${locale}-390.png`),
       fullPage: true,
