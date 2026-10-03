@@ -1,0 +1,43 @@
+.workspace {
+  display: grid;
+  gap: 24px;
+  min-inline-size: 0;
+}
+.panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  min-inline-size: 0;
+}
+.streams {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 20px;
+}
+.fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 16px;
+  min-inline-size: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block-start: 16px;
+}
+.credentials dd {
+  margin-inline-start: 0;
+  margin-block: 8px 16px;
+}
+.credentials code {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.panel h2 {
+  overflow-wrap: anywhere;
+}
