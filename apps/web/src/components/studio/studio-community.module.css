@@ -1,0 +1,43 @@
+.panel {
+  min-inline-size: 0;
+  padding: var(--space-5);
+  margin-block-end: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.fields {
+  border: 0;
+  padding: 0;
+  margin: 0 0 var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+}
+.fields > * {
+  min-inline-size: 0;
+}
+.fields input[type="file"] {
+  display: block;
+  max-inline-size: 100%;
+  min-block-size: 44px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-block: var(--space-4);
+}
+.list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+  gap: var(--space-4);
+}
+.muted {
+  color: var(--muted);
+}
+.panel p {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
