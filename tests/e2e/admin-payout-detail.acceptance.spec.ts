@@ -60,7 +60,7 @@ for (const locale of ["en", "ar"] as const)
     let reads = 0,
       writes = 0;
     page.on("request", (r) => {
-      if (r.url().includes(`/admin/revenue/payouts/${seed.payoutId}`)) {
+      if (r.url().startsWith(`${API}/admin/revenue/payouts/${seed.payoutId}`)) {
         if (r.method() === "GET") reads++;
         if (r.method() === "POST") writes++;
       }
@@ -217,7 +217,7 @@ test("Operations administrator requests no private payout or provider records", 
   db("operations", seed);
   let reads = 0;
   page.on("request", (r) => {
-    if (r.url().includes(`/admin/revenue/payouts/${seed.payoutId}`)) reads++;
+    if (r.url().startsWith(`${API}/admin/revenue/payouts/${seed.payoutId}`)) reads++;
   });
   await page.goto(`/admin/revenue/payouts/${seed.payoutId}?lang=en`);
   await expect(page.getByText("Payout records unavailable", { exact: true })).toBeVisible();
@@ -263,7 +263,7 @@ test("Actual unsubmitted cancellation preserves safe smaller acknowledgment and 
   let reads = 0,
     writes = 0;
   page.on("request", (request) => {
-    if (request.url().includes(`/admin/revenue/payouts/${seed.payoutId}`)) {
+    if (request.url().startsWith(`${API}/admin/revenue/payouts/${seed.payoutId}`)) {
       if (request.method() === "GET") reads++;
       if (request.method() === "POST") writes++;
     }
