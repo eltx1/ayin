@@ -349,3 +349,49 @@ test("Finance account issues zero private account reads", async ({ page }) => {
   expect(reads).toBe(0);
   await expect(page.getByRole("main").locator("article")).toHaveCount(0);
 });
+
+test("A real stale account write retains its draft and original-target recovery never replays it", async ({
+  page,
+  request,
+}) => {
+  const data = await seed(page, request, "version");
+  await page.goto("/admin/users?query=" + encodeURIComponent(data.query));
+  const main = page.getByRole("main"),
+    row = rowFor(page, data.email);
+  await expect(row).toBeVisible();
+  await row.getByLabel("New display name", { exact: true }).fill("Retained stale original name");
+  const change = db("change-target", {
+    accountId: data.operator.account.id,
+    targetId: data.targetId,
+  });
+  let writes = 0;
+  await page.route(API + "/admin/control/users/" + data.targetId, async (route) => {
+    if (route.request().method() !== "PATCH") return route.continue();
+    writes++;
+    expect(route.request().postDataJSON().expectedUpdatedAt).toBe(change.beforeUpdatedAt);
+    const actual = await route.fetch();
+    expect(actual.status()).toBe(409);
+    await route.fulfill({ response: actual });
+  });
+  await row.getByRole("button", { name: "Save display name", exact: true }).click();
+  await expect(main.getByRole("alert")).toBeVisible();
+  await expect(row.getByLabel("New display name", { exact: true })).toHaveValue(
+    "Retained stale original name",
+  );
+  await expect(row.getByRole("button", { name: "Save display name", exact: true })).toBeDisabled();
+  await unlock(page);
+  await expect(row.getByLabel("New display name", { exact: true })).toHaveValue(
+    "Retained stale original name",
+  );
+  expect(writes).toBe(1);
+  const evidence = db("evidence", { accountId: data.operator.account.id, targetId: data.targetId });
+  expect(evidence.target).toMatchObject({
+    displayName: "Actual concurrent winner",
+    status: "ACTIVE",
+    authVersion: 0,
+  });
+  expect(evidence.audits).toEqual([]);
+  expect(evidence.sessions.every((s: { revokedAt: string | null }) => s.revokedAt === null)).toBe(
+    true,
+  );
+});

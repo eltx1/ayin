@@ -200,11 +200,13 @@ export type AdminUserAck = {
   sessionsRevoked: boolean;
 };
 export function userCommand(record: AdminUserRecord, command: AdminUserCommand) {
-  if (command.kind === "name") return { displayName: text(command.displayName.trim(), 120, 1) };
+  const expectedUpdatedAt = record.updatedAt;
+  if (command.kind === "name")
+    return { displayName: text(command.displayName.trim(), 120, 1), expectedUpdatedAt };
   const reason = text(command.reason.trim(), 500, 8);
-  if (command.kind === "sessions") return { reason };
+  if (command.kind === "sessions") return { reason, expectedUpdatedAt };
   if (record.status === "CLOSED" || record.status === command.status) throw invalid();
-  return { status: known(command.status, ["ACTIVE", "SUSPENDED"]), reason };
+  return { status: known(command.status, ["ACTIVE", "SUSPENDED"]), reason, expectedUpdatedAt };
 }
 export function parseAdminUserAck(
   value: unknown,
