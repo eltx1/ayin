@@ -81,3 +81,12 @@
     word-break: normal;
   }
 }
+
+.privateBody {
+  display: grid;
+  gap: 1.5rem;
+  min-inline-size: 0;
+}
+.privateBody[hidden] {
+  display: none;
+}

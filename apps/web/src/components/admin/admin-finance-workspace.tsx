@@ -160,6 +160,8 @@ export function AdminFinanceWorkspace() {
   const { locale, href, formatNumber, formatDate } = useI18n(),
     ar = locale === "ar",
     copy = (en: string, arabic: string) => (ar ? arabic : en);
+  const privateBody = useRef<HTMLDivElement | null>(null);
+  const [privateGeneration, setPrivateGeneration] = useState(0);
   const [snapshot, setSnapshot] = useState<AdminFinanceSnapshot | null>(null),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
@@ -270,6 +272,7 @@ export function AdminFinanceWorkspace() {
           actor.current ?? undefined,
         );
         if (pending.signal.aborted) return;
+        if (privateBody.current?.hidden) setPrivateGeneration((value) => value + 1);
         actor.current = next.session;
         setSnapshot(next);
         setApplied(filters);
@@ -304,7 +307,14 @@ export function AdminFinanceWorkspace() {
       if (active) void readSnapshot(initialFilters);
     });
     const hide = () => {
-      controller.current?.abort();
+      const pending = controller.current;
+      controller.current = null;
+      operation.current = false;
+      pending?.abort();
+      if (privateBody.current) privateBody.current.hidden = true;
+      setLoading(false);
+      setBusy(false);
+      setReadError(true);
       setSnapshot(null);
       setTarget(null);
       setMatches([]);
@@ -317,15 +327,20 @@ export function AdminFinanceWorkspace() {
       setLocked(true);
       setReviewed(false);
     };
+    const visibility = () => {
+      if (document.visibilityState === "hidden") hide();
+    };
     const restore = (event: PageTransitionEvent) => {
       if (event.persisted) setReadError(true);
     };
     window.addEventListener("pagehide", hide);
+    document.addEventListener("visibilitychange", visibility);
     window.addEventListener("pageshow", restore);
     return () => {
       active = false;
       controller.current?.abort();
       window.removeEventListener("pagehide", hide);
+      document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("pageshow", restore);
     };
   }, [readSnapshot]);
@@ -1238,547 +1253,749 @@ export function AdminFinanceWorkspace() {
           </ActionButton>
         }
       />
-      {denied ? (
-        <StatusNotice title={copy("Finance access unavailable", "صلاحية المالية غير متاحة")}>
-          {copy(
-            "Sign in with an authorized Finance account before reviewing these records.",
-            "سجّل الدخول بحساب مخوّل للمالية قبل مراجعة هذه السجلات.",
-          )}
-        </StatusNotice>
-      ) : null}
-      {snapshot ? (
-        <p>
-          {copy(
-            "Financial records reflect the last explicit read; verified save acknowledgments appear separately.",
-            "السجلات المالية تعرض آخر قراءة يدوية؛ تظهر تأكيدات الحفظ بشكل مستقل.",
-          )}
-        </p>
-      ) : null}
-      {loading ? (
-        <StatusNotice title={copy("Loading financial records", "جارٍ تحميل السجلات المالية")}>
-          {copy("Please wait.", "يرجى الانتظار.")}
-        </StatusNotice>
-      ) : null}
-      {readError ? (
-        <StatusNotice
-          announce="assertive"
-          title={copy("Records could not be read", "تعذرت قراءة السجلات")}
-        >
-          {copy(
-            "Saved acknowledgments and drafts are retained. Retry the read explicitly.",
-            "تظل تأكيدات الحفظ والمسودات محفوظة. أعد القراءة يدويًا.",
-          )}
-        </StatusNotice>
-      ) : null}
-      {notice ? (
-        <StatusNotice
-          announce="polite"
-          title={
-            notice === "saved"
-              ? copy("Saved and acknowledged", "تم الحفظ وتأكيده")
-              : notice === "invalid"
-                ? copy("Check the required fields", "راجع الحقول المطلوبة")
-                : notice === "verification"
-                  ? copy("Additional verification required", "مطلوب تحقق إضافي")
-                  : notice === "conflict"
-                    ? copy(
-                        "The decision conflicts with current records",
-                        "القرار يتعارض مع السجلات الحالية",
-                      )
-                    : copy("The result needs review", "النتيجة تحتاج إلى مراجعة")
-          }
-        >
-          {notice === "saved"
-            ? copy(
-                "This acknowledgment remains valid if a later read fails. Refresh when you want to review the current records.",
-                "يظل هذا التأكيد محفوظًا إذا فشلت قراءة لاحقة. حدّث السجلات عندما تريد مراجعة حالتها الحالية.",
-              )
-            : notice === "verification"
+      <div
+        ref={privateBody}
+        key={privateGeneration}
+        className={styles.privateBody}
+        data-private-finance-body="admin"
+      >
+        {denied ? (
+          <StatusNotice title={copy("Finance access unavailable", "صلاحية المالية غير متاحة")}>
+            {copy(
+              "Sign in with an authorized Finance account before reviewing these records.",
+              "سجّل الدخول بحساب مخوّل للمالية قبل مراجعة هذه السجلات.",
+            )}
+          </StatusNotice>
+        ) : null}
+        {snapshot ? (
+          <p>
+            {copy(
+              "Financial records reflect the last explicit read; verified save acknowledgments appear separately.",
+              "السجلات المالية تعرض آخر قراءة يدوية؛ تظهر تأكيدات الحفظ بشكل مستقل.",
+            )}
+          </p>
+        ) : null}
+        {loading ? (
+          <StatusNotice title={copy("Loading financial records", "جارٍ تحميل السجلات المالية")}>
+            {copy("Please wait.", "يرجى الانتظار.")}
+          </StatusNotice>
+        ) : null}
+        {readError ? (
+          <StatusNotice
+            announce="assertive"
+            title={copy("Records could not be read", "تعذرت قراءة السجلات")}
+          >
+            {copy(
+              "Saved acknowledgments and drafts are retained. Retry the read explicitly.",
+              "تظل تأكيدات الحفظ والمسودات محفوظة. أعد القراءة يدويًا.",
+            )}
+          </StatusNotice>
+        ) : null}
+        {notice ? (
+          <StatusNotice
+            announce="polite"
+            title={
+              notice === "saved"
+                ? copy("Saved and acknowledged", "تم الحفظ وتأكيده")
+                : notice === "invalid"
+                  ? copy("Check the required fields", "راجع الحقول المطلوبة")
+                  : notice === "verification"
+                    ? copy("Additional verification required", "مطلوب تحقق إضافي")
+                    : notice === "conflict"
+                      ? copy(
+                          "The decision conflicts with current records",
+                          "القرار يتعارض مع السجلات الحالية",
+                        )
+                      : copy("The result needs review", "النتيجة تحتاج إلى مراجعة")
+            }
+          >
+            {notice === "saved"
               ? copy(
-                  "Your draft is retained. Complete verification, review your decision and submit explicitly when ready.",
-                  "مسودتك محفوظة. أكمل التحقق وراجع القرار، ثم أرسله يدويًا عندما تكون مستعدًا.",
+                  "This acknowledgment remains valid if a later read fails. Refresh when you want to review the current records.",
+                  "يظل هذا التأكيد محفوظًا إذا فشلت قراءة لاحقة. حدّث السجلات عندما تريد مراجعة حالتها الحالية.",
                 )
-              : notice === "invalid"
+              : notice === "verification"
                 ? copy(
-                    "Enter complete dates, explicit shares, exact amounts and a sufficient reason.",
-                    "أدخل تواريخ كاملة وحصصًا صريحة ومبالغ دقيقة وسببًا كافيًا.",
+                    "Your draft is retained. Complete verification, review your decision and submit explicitly when ready.",
+                    "مسودتك محفوظة. أكمل التحقق وراجع القرار، ثم أرسله يدويًا عندما تكون مستعدًا.",
                   )
-                : copy(
-                    "The operation was not repeated. Review the current records and your recent decisions before another action.",
-                    "لم تُكرر العملية. راجع السجلات الحالية وقراراتك الأخيرة قبل إجراء آخر.",
-                  )}
-          {ack ? (
-            <div data-testid="finance-ack">
-              <p>
-                {copy("Last verified operation", "آخر عملية مؤكدة")}: {label(ack.kind)}{" "}
-                {"id" in ack.record ? <bdi> · {ack.record.id}</bdi> : null}
-              </p>
-              {ack.kind === "payout" || ack.kind === "payoutStatus" || ack.kind === "adjustment" ? (
+                : notice === "invalid"
+                  ? copy(
+                      "Enter complete dates, explicit shares, exact amounts and a sufficient reason.",
+                      "أدخل تواريخ كاملة وحصصًا صريحة ومبالغ دقيقة وسببًا كافيًا.",
+                    )
+                  : copy(
+                      "The operation was not repeated. Review the current records and your recent decisions before another action.",
+                      "لم تُكرر العملية. راجع السجلات الحالية وقراراتك الأخيرة قبل إجراء آخر.",
+                    )}
+            {ack ? (
+              <div data-testid="finance-ack">
                 <p>
-                  {amount(ack.record.currency, ack.record.amount)} ·{" "}
-                  <bdi>{ack.record.channelId}</bdi>
-                  {ack.kind !== "adjustment" ? (
-                    <>
-                      {" "}
-                      · {label(ack.record.status)} · <bdi>{ack.record.provider}</bdi>
-                    </>
-                  ) : null}
+                  {copy("Last verified operation", "آخر عملية مؤكدة")}: {label(ack.kind)}{" "}
+                  {"id" in ack.record ? <bdi> · {ack.record.id}</bdi> : null}
                 </p>
-              ) : null}
-              {ack.kind === "contract" ? (
-                <p>
-                  <bdi>{ack.record.channelId}</bdi> · {copy("Creator share", "حصة المنشئ")}:{" "}
-                  {ack.record.revenueShareBps === null
-                    ? copy("Inherited", "افتراضية")
-                    : formatNumber(ack.record.revenueShareBps)}{" "}
-                  · {label(ack.record.status)}
-                </p>
-              ) : null}
-              {ack.kind === "settings" ? (
-                <p>
-                  {copy("Default creator share", "حصة المنشئ الافتراضية")}:{" "}
-                  {formatNumber(ack.record.defaultCreatorRevenueShareBps)} ·{" "}
-                  {copy("Payout threshold", "حد الصرف")}:{" "}
-                  <bdi>{thresholdAmount(ack.record.payoutThresholdMicros)}</bdi>
-                </p>
-              ) : null}
-              {ack.kind === "import" ? (
-                <p>
-                  {copy("Created", "منشأ")}: {formatNumber(ack.record.created)} ·{" "}
-                  {copy("Already recorded", "مسجل سابقًا")}: {formatNumber(ack.record.duplicates)}
-                </p>
-              ) : null}
-              {ack.kind === "dispute" ? (
-                <p>
-                  {label(ack.record.status)} · <bdi>{ack.record.channelId}</bdi> ·{" "}
-                  <span dir="auto">{ack.record.resolution}</span>
-                </p>
-              ) : null}
-              {ack.kind === "compliance" ? (
-                <p>
-                  {label(ack.record.field)} · {label(ack.record.status)} ·{" "}
-                  <bdi>{ack.record.compliance.channelId}</bdi>
-                </p>
-              ) : null}
-              {ack.kind === "reportImport" ? (
-                <p>
-                  <bdi>
-                    {ack.record.source} · {ack.record.sourceReportId}
-                  </bdi>{" "}
-                  · {formatNumber(ack.record.totalRows)} {copy("rows", "صف")}.{" "}
-                  {ack.record.idempotentReplay
-                    ? copy(
-                        "This report was already recorded; no additional ledger rows were created.",
-                        "هذا التقرير مسجل سابقًا؛ لم تُنشأ قيود إضافية.",
-                      )
-                    : copy("The report was recorded and reconciled.", "تم تسجيل التقرير ومطابقته.")}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-        </StatusNotice>
-      ) : null}
-      {locked ? (
-        <StatusNotice
-          title={copy("Financial writes paused for review", "عمليات التعديل متوقفة للمراجعة")}
-        >
-          {snapshot && reviewCommand ? (
-            <p>
-              {copy("Decision being reviewed", "القرار الجاري مراجعته")}:{" "}
-              <bdi>
-                {reviewCommand.kind === "payoutStatus" || reviewCommand.kind === "dispute"
-                  ? reviewCommand.base.id
-                  : reviewCommand.kind === "adjustment"
-                    ? reviewCommand.input.channelId
-                    : reviewCommand.kind === "import"
-                      ? reviewCommand.input.entries[0].channelId
-                      : reviewCommand.kind === "reportImport"
-                        ? reviewCommand.input.sourceReportId
-                        : "channelId" in reviewCommand
-                          ? reviewCommand.channelId
-                          : copy("Global defaults", "الإعدادات العامة")}
-              </bdi>
-            </p>
-          ) : null}
-          {reviewRecord?.kind === "payoutStatus" ? (
-            <p>
-              {copy("Current payout", "عملية الصرف الحالية")}: {label(reviewRecord.payout.status)} ·{" "}
-              {amount(reviewRecord.payout.currency, reviewRecord.payout.amount)}
-            </p>
-          ) : null}
-          {reviewRecord?.kind === "channel" ? (
-            <p>
-              {copy("The original channel was read", "تمت قراءة القناة الأصلية")}:{" "}
-              <bdi>{reviewRecord.target.channelId}</bdi> ·{" "}
-              {formatNumber(reviewRecord.target.contracts.length)} {copy("contracts", "عقد")}
-            </p>
-          ) : null}
-          {reviewRecord?.kind === "snapshot" && reviewCommand?.kind === "dispute" ? (
-            <p>
-              {copy("Current dispute", "النزاع الحالي")}:{" "}
-              {reviewRecord.snapshot.disputes.find((row) => row.id === reviewCommand.base.id)
-                ? label(
-                    reviewRecord.snapshot.disputes.find((row) => row.id === reviewCommand.base.id)!
-                      .status,
-                  )
-                : copy(
-                    "Not found in the latest 250; the outcome remains inconclusive.",
-                    "غير موجود ضمن آخر ٢٥٠ نزاعًا؛ لا تزال النتيجة غير محسومة.",
-                  )}
-            </p>
-          ) : null}
-          {reviewRecord?.kind === "report" ? (
-            <p>
-              {copy("Original source report", "تقرير المصدر الأصلي")}:{" "}
-              {reviewRecord.report ? (
-                <>
-                  <bdi>{reviewRecord.report.sourceReportId}</bdi> ·{" "}
-                  {formatNumber(reviewRecord.report.totalRows)}{" "}
-                  {copy("rows recorded", "صفًا مسجلًا")}
-                </>
-              ) : (
-                copy(
-                  "Not found at this read; an interrupted request may still be pending. Keep the original reference.",
-                  "غير موجود عند هذه القراءة؛ قد يكون الطلب المنقطع قيد التنفيذ. احتفظ بالمرجع الأصلي.",
-                )
-              )}
-            </p>
-          ) : null}
-          <div className={styles.actions}>
-            <ActionButton disabled={busy || denied} onClick={() => void review()}>
-              {copy("Read current records and my decisions", "قراءة السجلات الحالية وقراراتي")}
-            </ActionButton>
-            <ActionButton
-              tone="secondary"
-              disabled={!reviewed || busy}
-              onClick={() => {
-                if (!reviewed || operation.current) return;
-                if (
-                  !window.confirm(
-                    copy(
-                      "Missing records in this limited view do not prove an operation failed. Confirm you reviewed the current target and your decisions; a new action may add another entry.",
-                      "غياب سجل من هذه النتائج المحدودة لا يثبت فشل العملية. أكّد مراجعتك للهدف الحالي وقراراتك؛ قد يضيف إجراء جديد قيدًا آخر.",
-                    ),
-                  )
-                )
-                  return;
-                decisionLocked.current = false;
-                setLocked(false);
-                setReviewed(false);
-                setReviewCommand(null);
-                setReviewRecord(null);
-              }}
-            >
-              {copy("I reviewed the records", "راجعت السجلات")}
-            </ActionButton>
-          </div>
-        </StatusNotice>
-      ) : null}
-      {snapshot ? (
-        <EditorTabs
-          label={copy("Finance sections", "أقسام المالية")}
-          value={tab}
-          onChange={(id) => {
-            setTab(id);
-            if (id === "reconciliation" && !reportData) void readReports(appliedReportFilters);
-          }}
-          direction={ar ? "rtl" : "ltr"}
-          tabs={[
-            {
-              id: "reconciliation",
-              label: copy("Report reconciliation", "مطابقة التقارير"),
-              content: (
-                <FinanceReconciliation
-                  draft={reportDraft}
-                  data={reportData}
-                  detail={reportDetail}
-                  filters={reportFilters}
-                  applied={appliedReportFilters}
-                  rowPage={reportRowPage}
-                  disabled={disabled}
-                  busy={busy}
-                  onDraft={editReport}
-                  onFilters={(value) => setReportFilters((previous) => ({ ...previous, ...value }))}
-                  onRead={(filters) => void readReports(filters)}
-                  onSave={() => submit(() => financeReportCommand(reportDraft))}
-                  onRowPage={setReportRowPage}
-                  onInspect={(id) => {
-                    if (operation.current) return;
-                    setReportDetail(null);
-                    void runRead(async (signal, session) => {
-                      const next = await getFinanceReportDetail(id, session, signal);
-                      if (!signal.aborted) {
-                        setReportDetail(next);
-                        setReportRowPage(1);
-                      }
-                    });
-                  }}
-                  onFile={(file) => {
-                    if (operation.current) return;
-                    if (file.size > 5000000) {
-                      setNotice("invalid");
-                      return;
-                    }
-                    dirty.current = true;
-                    void runRead(async (signal) => {
-                      const content = await file.text();
-                      if (!signal.aborted) editReport({ payload: content, format: "CSV" });
-                    });
-                  }}
-                />
-              ),
-            },
-            {
-              id: "overview",
-              label: copy("Overview and defaults", "الملخص والإعدادات"),
-              content: (
-                <div className={styles.list}>
-                  <MetricList
-                    label={copy("Financial overview", "الملخص المالي")}
-                    items={[
-                      {
-                        label: copy("Pending payouts", "عمليات الصرف المعلقة"),
-                        value: formatNumber(snapshot.summary.pendingPayouts),
-                      },
-                      {
-                        label: copy("Processing payouts", "عمليات الصرف قيد التنفيذ"),
-                        value: formatNumber(snapshot.summary.processingPayouts),
-                      },
-                      {
-                        label: copy("Open disputes", "النزاعات المفتوحة"),
-                        value: formatNumber(snapshot.summary.openDisputes),
-                      },
-                    ]}
-                  />
-                  <FormSection
-                    id="finance-section-6"
-                    legend={copy("Pending amounts by currency", "المبالغ المعلقة حسب العملة")}
-                  >
-                    <div className={styles.actions}>
-                      {snapshot.summary.pendingValue.length ? (
-                        snapshot.summary.pendingValue.map((row) => (
-                          <span key={row.currency}>{amount(row.currency, row.amount)}</span>
-                        ))
-                      ) : (
-                        <p>{copy("No pending amounts", "لا توجد مبالغ معلقة")}</p>
-                      )}
-                    </div>
-                  </FormSection>
+                {ack.kind === "payout" ||
+                ack.kind === "payoutStatus" ||
+                ack.kind === "adjustment" ? (
                   <p>
-                    {copy("External payment provider", "مزود الدفع الخارجي")}:{" "}
-                    <bdi>{snapshot.summary.externalProvider.provider}</bdi> ·{" "}
-                    {snapshot.summary.externalProvider.connected
-                      ? copy("Connected", "متصل")
-                      : copy("Not connected", "غير متصل")}{" "}
-                    ·{" "}
-                    {snapshot.summary.externalProvider.productionEnabled
-                      ? copy("Production enabled", "مفعّل للإنتاج")
-                      : copy("Production not enabled", "غير مفعّل للإنتاج")}
+                    {amount(ack.record.currency, ack.record.amount)} ·{" "}
+                    <bdi>{ack.record.channelId}</bdi>
+                    {ack.kind !== "adjustment" ? (
+                      <>
+                        {" "}
+                        · {label(ack.record.status)} · <bdi>{ack.record.provider}</bdi>
+                      </>
+                    ) : null}
                   </p>
-                  {settingsDraft ? (
+                ) : null}
+                {ack.kind === "contract" ? (
+                  <p>
+                    <bdi>{ack.record.channelId}</bdi> · {copy("Creator share", "حصة المنشئ")}:{" "}
+                    {ack.record.revenueShareBps === null
+                      ? copy("Inherited", "افتراضية")
+                      : formatNumber(ack.record.revenueShareBps)}{" "}
+                    · {label(ack.record.status)}
+                  </p>
+                ) : null}
+                {ack.kind === "settings" ? (
+                  <p>
+                    {copy("Default creator share", "حصة المنشئ الافتراضية")}:{" "}
+                    {formatNumber(ack.record.defaultCreatorRevenueShareBps)} ·{" "}
+                    {copy("Payout threshold", "حد الصرف")}:{" "}
+                    <bdi>{thresholdAmount(ack.record.payoutThresholdMicros)}</bdi>
+                  </p>
+                ) : null}
+                {ack.kind === "import" ? (
+                  <p>
+                    {copy("Created", "منشأ")}: {formatNumber(ack.record.created)} ·{" "}
+                    {copy("Already recorded", "مسجل سابقًا")}: {formatNumber(ack.record.duplicates)}
+                  </p>
+                ) : null}
+                {ack.kind === "dispute" ? (
+                  <p>
+                    {label(ack.record.status)} · <bdi>{ack.record.channelId}</bdi> ·{" "}
+                    <span dir="auto">{ack.record.resolution}</span>
+                  </p>
+                ) : null}
+                {ack.kind === "compliance" ? (
+                  <p>
+                    {label(ack.record.field)} · {label(ack.record.status)} ·{" "}
+                    <bdi>{ack.record.compliance.channelId}</bdi>
+                  </p>
+                ) : null}
+                {ack.kind === "reportImport" ? (
+                  <p>
+                    <bdi>
+                      {ack.record.source} · {ack.record.sourceReportId}
+                    </bdi>{" "}
+                    · {formatNumber(ack.record.totalRows)} {copy("rows", "صف")}.{" "}
+                    {ack.record.idempotentReplay
+                      ? copy(
+                          "This report was already recorded; no additional ledger rows were created.",
+                          "هذا التقرير مسجل سابقًا؛ لم تُنشأ قيود إضافية.",
+                        )
+                      : copy(
+                          "The report was recorded and reconciled.",
+                          "تم تسجيل التقرير ومطابقته.",
+                        )}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </StatusNotice>
+        ) : null}
+        {locked ? (
+          <StatusNotice
+            title={copy("Financial writes paused for review", "عمليات التعديل متوقفة للمراجعة")}
+          >
+            {snapshot && reviewCommand ? (
+              <p>
+                {copy("Decision being reviewed", "القرار الجاري مراجعته")}:{" "}
+                <bdi>
+                  {reviewCommand.kind === "payoutStatus" || reviewCommand.kind === "dispute"
+                    ? reviewCommand.base.id
+                    : reviewCommand.kind === "adjustment"
+                      ? reviewCommand.input.channelId
+                      : reviewCommand.kind === "import"
+                        ? reviewCommand.input.entries[0].channelId
+                        : reviewCommand.kind === "reportImport"
+                          ? reviewCommand.input.sourceReportId
+                          : "channelId" in reviewCommand
+                            ? reviewCommand.channelId
+                            : copy("Global defaults", "الإعدادات العامة")}
+                </bdi>
+              </p>
+            ) : null}
+            {reviewRecord?.kind === "payoutStatus" ? (
+              <p>
+                {copy("Current payout", "عملية الصرف الحالية")}: {label(reviewRecord.payout.status)}{" "}
+                · {amount(reviewRecord.payout.currency, reviewRecord.payout.amount)}
+              </p>
+            ) : null}
+            {reviewRecord?.kind === "channel" ? (
+              <p>
+                {copy("The original channel was read", "تمت قراءة القناة الأصلية")}:{" "}
+                <bdi>{reviewRecord.target.channelId}</bdi> ·{" "}
+                {formatNumber(reviewRecord.target.contracts.length)} {copy("contracts", "عقد")}
+              </p>
+            ) : null}
+            {reviewRecord?.kind === "snapshot" && reviewCommand?.kind === "dispute" ? (
+              <p>
+                {copy("Current dispute", "النزاع الحالي")}:{" "}
+                {reviewRecord.snapshot.disputes.find((row) => row.id === reviewCommand.base.id)
+                  ? label(
+                      reviewRecord.snapshot.disputes.find(
+                        (row) => row.id === reviewCommand.base.id,
+                      )!.status,
+                    )
+                  : copy(
+                      "Not found in the latest 250; the outcome remains inconclusive.",
+                      "غير موجود ضمن آخر ٢٥٠ نزاعًا؛ لا تزال النتيجة غير محسومة.",
+                    )}
+              </p>
+            ) : null}
+            {reviewRecord?.kind === "report" ? (
+              <p>
+                {copy("Original source report", "تقرير المصدر الأصلي")}:{" "}
+                {reviewRecord.report ? (
+                  <>
+                    <bdi>{reviewRecord.report.sourceReportId}</bdi> ·{" "}
+                    {formatNumber(reviewRecord.report.totalRows)}{" "}
+                    {copy("rows recorded", "صفًا مسجلًا")}
+                  </>
+                ) : (
+                  copy(
+                    "Not found at this read; an interrupted request may still be pending. Keep the original reference.",
+                    "غير موجود عند هذه القراءة؛ قد يكون الطلب المنقطع قيد التنفيذ. احتفظ بالمرجع الأصلي.",
+                  )
+                )}
+              </p>
+            ) : null}
+            <div className={styles.actions}>
+              <ActionButton disabled={busy || denied} onClick={() => void review()}>
+                {copy("Read current records and my decisions", "قراءة السجلات الحالية وقراراتي")}
+              </ActionButton>
+              <ActionButton
+                tone="secondary"
+                disabled={!reviewed || busy}
+                onClick={() => {
+                  if (!reviewed || operation.current) return;
+                  if (
+                    !window.confirm(
+                      copy(
+                        "Missing records in this limited view do not prove an operation failed. Confirm you reviewed the current target and your decisions; a new action may add another entry.",
+                        "غياب سجل من هذه النتائج المحدودة لا يثبت فشل العملية. أكّد مراجعتك للهدف الحالي وقراراتك؛ قد يضيف إجراء جديد قيدًا آخر.",
+                      ),
+                    )
+                  )
+                    return;
+                  decisionLocked.current = false;
+                  setLocked(false);
+                  setReviewed(false);
+                  setReviewCommand(null);
+                  setReviewRecord(null);
+                }}
+              >
+                {copy("I reviewed the records", "راجعت السجلات")}
+              </ActionButton>
+            </div>
+          </StatusNotice>
+        ) : null}
+        {snapshot ? (
+          <EditorTabs
+            label={copy("Finance sections", "أقسام المالية")}
+            value={tab}
+            onChange={(id) => {
+              setTab(id);
+              if (id === "reconciliation" && !reportData) void readReports(appliedReportFilters);
+            }}
+            direction={ar ? "rtl" : "ltr"}
+            tabs={[
+              {
+                id: "reconciliation",
+                label: copy("Report reconciliation", "مطابقة التقارير"),
+                content: (
+                  <FinanceReconciliation
+                    draft={reportDraft}
+                    data={reportData}
+                    detail={reportDetail}
+                    filters={reportFilters}
+                    applied={appliedReportFilters}
+                    rowPage={reportRowPage}
+                    disabled={disabled}
+                    busy={busy}
+                    onDraft={editReport}
+                    onFilters={(value) =>
+                      setReportFilters((previous) => ({ ...previous, ...value }))
+                    }
+                    onRead={(filters) => void readReports(filters)}
+                    onSave={() => submit(() => financeReportCommand(reportDraft))}
+                    onRowPage={setReportRowPage}
+                    onInspect={(id) => {
+                      if (operation.current) return;
+                      setReportDetail(null);
+                      void runRead(async (signal, session) => {
+                        const next = await getFinanceReportDetail(id, session, signal);
+                        if (!signal.aborted) {
+                          setReportDetail(next);
+                          setReportRowPage(1);
+                        }
+                      });
+                    }}
+                    onFile={(file) => {
+                      if (operation.current) return;
+                      if (file.size > 5000000) {
+                        setNotice("invalid");
+                        return;
+                      }
+                      dirty.current = true;
+                      void runRead(async (signal) => {
+                        const content = await file.text();
+                        if (!signal.aborted) editReport({ payload: content, format: "CSV" });
+                      });
+                    }}
+                  />
+                ),
+              },
+              {
+                id: "overview",
+                label: copy("Overview and defaults", "الملخص والإعدادات"),
+                content: (
+                  <div className={styles.list}>
+                    <MetricList
+                      label={copy("Financial overview", "الملخص المالي")}
+                      items={[
+                        {
+                          label: copy("Pending payouts", "عمليات الصرف المعلقة"),
+                          value: formatNumber(snapshot.summary.pendingPayouts),
+                        },
+                        {
+                          label: copy("Processing payouts", "عمليات الصرف قيد التنفيذ"),
+                          value: formatNumber(snapshot.summary.processingPayouts),
+                        },
+                        {
+                          label: copy("Open disputes", "النزاعات المفتوحة"),
+                          value: formatNumber(snapshot.summary.openDisputes),
+                        },
+                      ]}
+                    />
+                    <FormSection
+                      id="finance-section-6"
+                      legend={copy("Pending amounts by currency", "المبالغ المعلقة حسب العملة")}
+                    >
+                      <div className={styles.actions}>
+                        {snapshot.summary.pendingValue.length ? (
+                          snapshot.summary.pendingValue.map((row) => (
+                            <span key={row.currency}>{amount(row.currency, row.amount)}</span>
+                          ))
+                        ) : (
+                          <p>{copy("No pending amounts", "لا توجد مبالغ معلقة")}</p>
+                        )}
+                      </div>
+                    </FormSection>
+                    <p>
+                      {copy("External payment provider", "مزود الدفع الخارجي")}:{" "}
+                      <bdi>{snapshot.summary.externalProvider.provider}</bdi> ·{" "}
+                      {snapshot.summary.externalProvider.connected
+                        ? copy("Connected", "متصل")
+                        : copy("Not connected", "غير متصل")}{" "}
+                      ·{" "}
+                      {snapshot.summary.externalProvider.productionEnabled
+                        ? copy("Production enabled", "مفعّل للإنتاج")
+                        : copy("Production not enabled", "غير مفعّل للإنتاج")}
+                    </p>
+                    {settingsDraft ? (
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          submit(() => ({
+                            kind: "settings",
+                            input: {
+                              defaultCreatorRevenueShareBps: financeBps(settingsDraft.share),
+                              payoutThresholdMicros: thresholdMicros(settingsDraft.threshold),
+                            },
+                          }));
+                        }}
+                      >
+                        <FormSection
+                          id="finance-section-7"
+                          legend={copy("Global revenue defaults", "الإعدادات الافتراضية للإيرادات")}
+                        >
+                          <fieldset disabled={disabled}>
+                            <div className={styles.grid}>
+                              <TextField
+                                id="finance-default-share"
+                                label={copy(
+                                  "Default creator share (0–10000 basis points)",
+                                  "حصة المنشئ الافتراضية (٠–١٠٠٠٠ نقطة أساس)",
+                                )}
+                                value={settingsDraft.share}
+                                maxLength={5}
+                                onChange={(event) => {
+                                  const value = {
+                                    ...settingsDraft,
+                                    share: event.target.value,
+                                    dirty: true,
+                                  };
+                                  dirty.current = true;
+                                  settingsRef.current = value;
+                                  setSettingsDraft(value);
+                                }}
+                              />
+                              <TextField
+                                id="finance-default-threshold"
+                                label={copy(
+                                  "Minimum payout amount (each currency)",
+                                  "الحد الأدنى للصرف (لكل عملة)",
+                                )}
+                                value={settingsDraft.threshold}
+                                maxLength={129}
+                                onChange={(event) => {
+                                  const value = {
+                                    ...settingsDraft,
+                                    threshold: event.target.value,
+                                    dirty: true,
+                                  };
+                                  dirty.current = true;
+                                  settingsRef.current = value;
+                                  setSettingsDraft(value);
+                                }}
+                              />
+                            </div>
+                            <ActionButton type="submit">
+                              {copy("Save defaults", "حفظ الإعدادات")}
+                            </ActionButton>
+                          </fieldset>
+                        </FormSection>
+                      </form>
+                    ) : null}
+                  </div>
+                ),
+              },
+              {
+                id: "channel",
+                label: copy("Channel decisions", "قرارات القناة"),
+                content: (
+                  <div className={styles.list}>
                     <form
                       onSubmit={(event) => {
                         event.preventDefault();
-                        submit(() => ({
-                          kind: "settings",
-                          input: {
-                            defaultCreatorRevenueShareBps: financeBps(settingsDraft.share),
-                            payoutThresholdMicros: thresholdMicros(settingsDraft.threshold),
-                          },
-                        }));
+                        setMatches([]);
+                        void runRead(async (signal, session) => {
+                          const rows = await searchFinanceTargets(query, session, signal);
+                          if (!signal.aborted) setMatches(rows);
+                        });
                       }}
                     >
-                      <FormSection
-                        id="finance-section-7"
-                        legend={copy("Global revenue defaults", "الإعدادات الافتراضية للإيرادات")}
-                      >
-                        <fieldset disabled={disabled}>
-                          <div className={styles.grid}>
-                            <TextField
-                              id="finance-default-share"
-                              label={copy(
-                                "Default creator share (0–10000 basis points)",
-                                "حصة المنشئ الافتراضية (٠–١٠٠٠٠ نقطة أساس)",
-                              )}
-                              value={settingsDraft.share}
-                              maxLength={5}
-                              onChange={(event) => {
-                                const value = {
-                                  ...settingsDraft,
-                                  share: event.target.value,
-                                  dirty: true,
-                                };
-                                dirty.current = true;
-                                settingsRef.current = value;
-                                setSettingsDraft(value);
-                              }}
-                            />
-                            <TextField
-                              id="finance-default-threshold"
-                              label={copy(
-                                "Minimum payout amount (each currency)",
-                                "الحد الأدنى للصرف (لكل عملة)",
-                              )}
-                              value={settingsDraft.threshold}
-                              maxLength={129}
-                              onChange={(event) => {
-                                const value = {
-                                  ...settingsDraft,
-                                  threshold: event.target.value,
-                                  dirty: true,
-                                };
-                                dirty.current = true;
-                                settingsRef.current = value;
-                                setSettingsDraft(value);
-                              }}
-                            />
-                          </div>
-                          <ActionButton type="submit">
-                            {copy("Save defaults", "حفظ الإعدادات")}
-                          </ActionButton>
-                        </fieldset>
-                      </FormSection>
+                      <div className={styles.grid}>
+                        <TextField
+                          id="finance-channel-query"
+                          label={copy("Channel name or handle", "اسم القناة أو معرّفها")}
+                          value={query}
+                          minLength={2}
+                          maxLength={200}
+                          onChange={(event) => setQuery(event.target.value)}
+                        />
+                        <ActionButton type="submit" disabled={busy}>
+                          {copy("Search channels", "البحث عن القنوات")}
+                        </ActionButton>
+                      </div>
                     </form>
-                  ) : null}
-                </div>
-              ),
-            },
-            {
-              id: "channel",
-              label: copy("Channel decisions", "قرارات القناة"),
-              content: (
-                <div className={styles.list}>
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      setMatches([]);
-                      void runRead(async (signal, session) => {
-                        const rows = await searchFinanceTargets(query, session, signal);
-                        if (!signal.aborted) setMatches(rows);
-                      });
-                    }}
-                  >
-                    <div className={styles.grid}>
-                      <TextField
-                        id="finance-channel-query"
-                        label={copy("Channel name or handle", "اسم القناة أو معرّفها")}
-                        value={query}
-                        minLength={2}
-                        maxLength={200}
-                        onChange={(event) => setQuery(event.target.value)}
-                      />
-                      <ActionButton type="submit" disabled={busy}>
-                        {copy("Search channels", "البحث عن القنوات")}
-                      </ActionButton>
+                    <p>
+                      {copy(
+                        "Up to 25 matches. Narrow your search when needed; drafts are retained by channel.",
+                        "حتى ٢٥ نتيجة. حدّد البحث عند الحاجة؛ تُحفظ المسودات لكل قناة.",
+                      )}
+                    </p>
+                    <div className={styles.actions}>
+                      {matches.map((channel) => (
+                        <ActionButton
+                          key={channel.id}
+                          tone="secondary"
+                          disabled={busy}
+                          onClick={() => void selectChannel(channel)}
+                        >
+                          <span dir="auto">{channel.name}</span> <bdi>@{channel.handle}</bdi>
+                        </ActionButton>
+                      ))}
                     </div>
-                  </form>
-                  <p>
-                    {copy(
-                      "Up to 25 matches. Narrow your search when needed; drafts are retained by channel.",
-                      "حتى ٢٥ نتيجة. حدّد البحث عند الحاجة؛ تُحفظ المسودات لكل قناة.",
-                    )}
-                  </p>
-                  <div className={styles.actions}>
-                    {matches.map((channel) => (
-                      <ActionButton
-                        key={channel.id}
-                        tone="secondary"
-                        disabled={busy}
-                        onClick={() => void selectChannel(channel)}
-                      >
-                        <span dir="auto">{channel.name}</span> <bdi>@{channel.handle}</bdi>
-                      </ActionButton>
-                    ))}
+                    {channelForms}
                   </div>
-                  {channelForms}
-                </div>
-              ),
-            },
-            {
-              id: "payouts",
-              label: copy("Payouts", "عمليات الصرف"),
-              content: (
-                <div className={styles.list}>
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void readSnapshot({ ...applied, payoutStatus: payoutFilter, payoutPage: 1 });
-                    }}
-                  >
-                    <SelectField
-                      id="finance-payout-filter"
-                      label={copy("Payout status", "حالة الصرف")}
-                      value={payoutFilter}
-                      onChange={(event) => setPayoutFilter(event.target.value)}
+                ),
+              },
+              {
+                id: "payouts",
+                label: copy("Payouts", "عمليات الصرف"),
+                content: (
+                  <div className={styles.list}>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void readSnapshot({
+                          ...applied,
+                          payoutStatus: payoutFilter,
+                          payoutPage: 1,
+                        });
+                      }}
                     >
-                      <option value="">{copy("All statuses", "كل الحالات")}</option>
-                      {options(financePayoutStates)}
-                    </SelectField>
-                    <ActionButton type="submit" disabled={busy}>
-                      {copy("Apply payout filter", "تطبيق فلتر الصرف")}
-                    </ActionButton>
-                  </form>
-                  {snapshot.payouts.items.map((row) => {
-                    const value = payoutDrafts[row.id] ?? {
-                      status: row.status,
-                      reason: "",
-                      resolution: "",
-                      externalReference: row.externalReference ?? "",
-                      failureReason: row.failureReason ?? "",
-                      dirty: false,
-                    };
-                    return (
-                      <article key={row.id} className={styles.record}>
-                        <h2 dir="auto">{row.channel.name}</h2>
-                        <div className={styles.actions}>
-                          {amount(row.currency, row.amount)}
-                          <DataBadge>{label(row.status)}</DataBadge>
-                          <bdi>{row.provider}</bdi>
-                        </div>
-                        <p>
-                          {formatDate(row.requestedAt)} · <bdi>{row.id}</bdi>
-                        </p>
-                        <Link href={href(`/admin/revenue/payouts/${row.id}`)}>
-                          {copy(
-                            "Payout details and provider workflow",
-                            "تفاصيل الصرف وإجراءات المزود",
-                          )}
-                        </Link>
-                        {row.providerTransfer ? (
+                      <SelectField
+                        id="finance-payout-filter"
+                        label={copy("Payout status", "حالة الصرف")}
+                        value={payoutFilter}
+                        onChange={(event) => setPayoutFilter(event.target.value)}
+                      >
+                        <option value="">{copy("All statuses", "كل الحالات")}</option>
+                        {options(financePayoutStates)}
+                      </SelectField>
+                      <ActionButton type="submit" disabled={busy}>
+                        {copy("Apply payout filter", "تطبيق فلتر الصرف")}
+                      </ActionButton>
+                    </form>
+                    {snapshot.payouts.items.map((row) => {
+                      const value = payoutDrafts[row.id] ?? {
+                        status: row.status,
+                        reason: "",
+                        resolution: "",
+                        externalReference: row.externalReference ?? "",
+                        failureReason: row.failureReason ?? "",
+                        dirty: false,
+                      };
+                      return (
+                        <article key={row.id} className={styles.record}>
+                          <h2 dir="auto">{row.channel.name}</h2>
+                          <div className={styles.actions}>
+                            {amount(row.currency, row.amount)}
+                            <DataBadge>{label(row.status)}</DataBadge>
+                            <bdi>{row.provider}</bdi>
+                          </div>
                           <p>
-                            {copy("Provider transfer", "تحويل المزود")}:{" "}
-                            <span>{label(row.providerTransfer.state)}</span> ·{" "}
-                            <bdi>
-                              {row.providerTransfer.externalTransferId ??
-                                copy("No external reference", "بدون مرجع خارجي")}
-                            </bdi>
+                            {formatDate(row.requestedAt)} · <bdi>{row.id}</bdi>
                           </p>
-                        ) : null}
-                        {row.provider === "MANUAL" ? (
-                          <form
-                            onSubmit={(event) => {
-                              event.preventDefault();
-                              submit(() => ({
-                                kind: "payoutStatus",
-                                base: row,
-                                input: {
-                                  status: value.status as typeof row.status,
-                                  reason: value.reason,
-                                  externalReference: value.externalReference.trim() || null,
-                                  failureReason: value.failureReason.trim() || null,
-                                },
-                              }));
-                            }}
-                          >
-                            <fieldset disabled={disabled}>
-                              <div className={styles.grid}>
+                          <Link href={href(`/admin/revenue/payouts/${row.id}`)}>
+                            {copy(
+                              "Payout details and provider workflow",
+                              "تفاصيل الصرف وإجراءات المزود",
+                            )}
+                          </Link>
+                          {row.providerTransfer ? (
+                            <p>
+                              {copy("Provider transfer", "تحويل المزود")}:{" "}
+                              <span>{label(row.providerTransfer.state)}</span> ·{" "}
+                              <bdi>
+                                {row.providerTransfer.externalTransferId ??
+                                  copy("No external reference", "بدون مرجع خارجي")}
+                              </bdi>
+                            </p>
+                          ) : null}
+                          {row.provider === "MANUAL" ? (
+                            <form
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                submit(() => ({
+                                  kind: "payoutStatus",
+                                  base: row,
+                                  input: {
+                                    status: value.status as typeof row.status,
+                                    reason: value.reason,
+                                    externalReference: value.externalReference.trim() || null,
+                                    failureReason: value.failureReason.trim() || null,
+                                  },
+                                }));
+                              }}
+                            >
+                              <fieldset disabled={disabled}>
+                                <div className={styles.grid}>
+                                  <SelectField
+                                    id={`finance-payout-status-${row.id}`}
+                                    label={copy("New status", "الحالة الجديدة")}
+                                    value={value.status}
+                                    onChange={(event) =>
+                                      editDecision(
+                                        "payout",
+                                        row.id,
+                                        value,
+                                        "status",
+                                        event.target.value,
+                                      )
+                                    }
+                                  >
+                                    {!financeManualPayoutChoices(row.status).includes(
+                                      value.status as typeof row.status,
+                                    ) ? (
+                                      <option value={value.status} disabled>
+                                        {label(value.status)} ·{" "}
+                                        {copy(
+                                          "Retained draft; transition unavailable",
+                                          "مسودة محفوظة؛ الانتقال غير متاح",
+                                        )}
+                                      </option>
+                                    ) : null}
+                                    {options(financeManualPayoutChoices(row.status))}
+                                  </SelectField>
+                                  <TextField
+                                    id={`finance-payout-ref-${row.id}`}
+                                    label={copy(
+                                      "External reference (optional)",
+                                      "مرجع خارجي (اختياري)",
+                                    )}
+                                    value={value.externalReference}
+                                    maxLength={255}
+                                    onChange={(event) =>
+                                      editDecision(
+                                        "payout",
+                                        row.id,
+                                        value,
+                                        "externalReference",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <TextField
+                                    id={`finance-payout-failure-${row.id}`}
+                                    label={copy("Failure reason (optional)", "سبب الفشل (اختياري)")}
+                                    value={value.failureReason}
+                                    maxLength={1000}
+                                    onChange={(event) =>
+                                      editDecision(
+                                        "payout",
+                                        row.id,
+                                        value,
+                                        "failureReason",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  <TextField
+                                    id={`finance-payout-reason-${row.id}`}
+                                    label={copy(
+                                      "Decision reason (8–500 characters)",
+                                      "سبب القرار (٨–٥٠٠ حرف)",
+                                    )}
+                                    value={value.reason}
+                                    maxLength={500}
+                                    onChange={(event) =>
+                                      editDecision(
+                                        "payout",
+                                        row.id,
+                                        value,
+                                        "reason",
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <ActionButton type="submit">
+                                  {copy("Record payout decision", "تسجيل قرار الصرف")}
+                                </ActionButton>
+                              </fieldset>
+                            </form>
+                          ) : (
+                            <p>
+                              {copy(
+                                "Provider-managed payouts use the protected provider workflow.",
+                                "عمليات الصرف التي يديرها المزود تستخدم إجراءاته المحمية.",
+                              )}
+                            </p>
+                          )}
+                        </article>
+                      );
+                    })}
+                    <FinancePager
+                      page={applied.payoutPage}
+                      pages={snapshot.payouts.pagination.pages}
+                      name={copy("Payout pages", "صفحات الصرف")}
+                      busy={busy}
+                      previous={copy("Previous", "السابق")}
+                      next={copy("Next", "التالي")}
+                      summary={copy(
+                        `Page ${formatNumber(applied.payoutPage)} of ${formatNumber(snapshot.payouts.pagination.pages)} · ${formatNumber(snapshot.payouts.pagination.total)} records`,
+                        `صفحة ${formatNumber(applied.payoutPage)} من ${formatNumber(snapshot.payouts.pagination.pages)} · ${formatNumber(snapshot.payouts.pagination.total)} سجل`,
+                      )}
+                      onChange={(page) => void readSnapshot({ ...applied, payoutPage: page })}
+                    />
+                  </div>
+                ),
+              },
+              {
+                id: "disputes",
+                label: copy("Disputes", "النزاعات"),
+                content: (
+                  <div className={styles.list}>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        setDisputePage(1);
+                        void readSnapshot({ ...applied, disputeStatus: disputeFilter });
+                      }}
+                    >
+                      <SelectField
+                        id="finance-dispute-filter"
+                        label={copy("Dispute status", "حالة النزاع")}
+                        value={disputeFilter}
+                        onChange={(event) => setDisputeFilter(event.target.value)}
+                      >
+                        <option value="">{copy("All statuses", "كل الحالات")}</option>
+                        {options(financeDisputeStates)}
+                      </SelectField>
+                      <ActionButton type="submit" disabled={busy}>
+                        {copy("Apply dispute filter", "تطبيق فلتر النزاعات")}
+                      </ActionButton>
+                    </form>
+                    <p>
+                      {copy(
+                        "Latest 250 matching disputes; all returned records are available below. This is not a complete historical export.",
+                        "آخر ٢٥٠ نزاعًا مطابقًا؛ كل السجلات المسترجعة متاحة أدناه. ليست هذه نسخة كاملة من الأرشيف.",
+                      )}
+                    </p>
+                    {snapshot.disputes
+                      .slice((disputePage - 1) * 20, disputePage * 20)
+                      .map((row) => {
+                        const value = disputeDrafts[row.id] ?? {
+                          status: row.status,
+                          reason: "",
+                          resolution: row.resolution ?? "",
+                          externalReference: "",
+                          failureReason: "",
+                          dirty: false,
+                        };
+                        return (
+                          <article className={styles.record} key={row.id}>
+                            <h2 dir="auto">{row.channelName}</h2>
+                            <div className={styles.actions}>
+                              <DataBadge>{label(row.status)}</DataBadge>
+                              <span>{formatDate(row.createdAt)}</span>
+                            </div>
+                            <p dir="auto">{row.message}</p>
+                            <p>
+                              <bdi>{row.creatorEmail}</bdi> · <bdi>{row.id}</bdi>
+                            </p>
+                            {row.payoutId ? (
+                              <Link href={href(`/admin/revenue/payouts/${row.payoutId}`)}>
+                                {copy("Related payout", "عملية الصرف المرتبطة")}
+                              </Link>
+                            ) : null}
+                            <form
+                              onSubmit={(event) => {
+                                event.preventDefault();
+                                submit(() => ({
+                                  kind: "dispute",
+                                  base: row,
+                                  input: {
+                                    status: value.status as typeof row.status,
+                                    resolution: value.resolution.trim() || null,
+                                    reason: value.reason,
+                                  },
+                                }));
+                              }}
+                            >
+                              <fieldset disabled={disabled}>
                                 <SelectField
-                                  id={`finance-payout-status-${row.id}`}
+                                  id={`finance-dispute-status-${row.id}`}
                                   label={copy("New status", "الحالة الجديدة")}
                                   value={value.status}
                                   onChange={(event) =>
                                     editDecision(
-                                      "payout",
+                                      "dispute",
                                       row.id,
                                       value,
                                       "status",
@@ -1786,54 +2003,28 @@ export function AdminFinanceWorkspace() {
                                     )
                                   }
                                 >
-                                  {!financeManualPayoutChoices(row.status).includes(
-                                    value.status as typeof row.status,
-                                  ) ? (
-                                    <option value={value.status} disabled>
-                                      {label(value.status)} ·{" "}
-                                      {copy(
-                                        "Retained draft; transition unavailable",
-                                        "مسودة محفوظة؛ الانتقال غير متاح",
-                                      )}
-                                    </option>
-                                  ) : null}
-                                  {options(financeManualPayoutChoices(row.status))}
+                                  {options(financeDisputeStates)}
                                 </SelectField>
-                                <TextField
-                                  id={`finance-payout-ref-${row.id}`}
+                                <TextAreaField
+                                  id={`finance-dispute-resolution-${row.id}`}
                                   label={copy(
-                                    "External reference (optional)",
-                                    "مرجع خارجي (اختياري)",
+                                    "Resolution (required for resolved or rejected)",
+                                    "القرار (مطلوب للحل أو الرفض)",
                                   )}
-                                  value={value.externalReference}
-                                  maxLength={255}
+                                  value={value.resolution}
+                                  maxLength={5000}
                                   onChange={(event) =>
                                     editDecision(
-                                      "payout",
+                                      "dispute",
                                       row.id,
                                       value,
-                                      "externalReference",
+                                      "resolution",
                                       event.target.value,
                                     )
                                   }
                                 />
                                 <TextField
-                                  id={`finance-payout-failure-${row.id}`}
-                                  label={copy("Failure reason (optional)", "سبب الفشل (اختياري)")}
-                                  value={value.failureReason}
-                                  maxLength={1000}
-                                  onChange={(event) =>
-                                    editDecision(
-                                      "payout",
-                                      row.id,
-                                      value,
-                                      "failureReason",
-                                      event.target.value,
-                                    )
-                                  }
-                                />
-                                <TextField
-                                  id={`finance-payout-reason-${row.id}`}
+                                  id={`finance-dispute-reason-${row.id}`}
                                   label={copy(
                                     "Decision reason (8–500 characters)",
                                     "سبب القرار (٨–٥٠٠ حرف)",
@@ -1842,7 +2033,7 @@ export function AdminFinanceWorkspace() {
                                   maxLength={500}
                                   onChange={(event) =>
                                     editDecision(
-                                      "payout",
+                                      "dispute",
                                       row.id,
                                       value,
                                       "reason",
@@ -1850,347 +2041,204 @@ export function AdminFinanceWorkspace() {
                                     )
                                   }
                                 />
-                              </div>
-                              <ActionButton type="submit">
-                                {copy("Record payout decision", "تسجيل قرار الصرف")}
-                              </ActionButton>
-                            </fieldset>
-                          </form>
-                        ) : (
-                          <p>
-                            {copy(
-                              "Provider-managed payouts use the protected provider workflow.",
-                              "عمليات الصرف التي يديرها المزود تستخدم إجراءاته المحمية.",
-                            )}
-                          </p>
-                        )}
-                      </article>
-                    );
-                  })}
-                  <FinancePager
-                    page={applied.payoutPage}
-                    pages={snapshot.payouts.pagination.pages}
-                    name={copy("Payout pages", "صفحات الصرف")}
-                    busy={busy}
-                    previous={copy("Previous", "السابق")}
-                    next={copy("Next", "التالي")}
-                    summary={copy(
-                      `Page ${formatNumber(applied.payoutPage)} of ${formatNumber(snapshot.payouts.pagination.pages)} · ${formatNumber(snapshot.payouts.pagination.total)} records`,
-                      `صفحة ${formatNumber(applied.payoutPage)} من ${formatNumber(snapshot.payouts.pagination.pages)} · ${formatNumber(snapshot.payouts.pagination.total)} سجل`,
-                    )}
-                    onChange={(page) => void readSnapshot({ ...applied, payoutPage: page })}
-                  />
-                </div>
-              ),
-            },
-            {
-              id: "disputes",
-              label: copy("Disputes", "النزاعات"),
-              content: (
-                <div className={styles.list}>
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      setDisputePage(1);
-                      void readSnapshot({ ...applied, disputeStatus: disputeFilter });
-                    }}
-                  >
-                    <SelectField
-                      id="finance-dispute-filter"
-                      label={copy("Dispute status", "حالة النزاع")}
-                      value={disputeFilter}
-                      onChange={(event) => setDisputeFilter(event.target.value)}
-                    >
-                      <option value="">{copy("All statuses", "كل الحالات")}</option>
-                      {options(financeDisputeStates)}
-                    </SelectField>
-                    <ActionButton type="submit" disabled={busy}>
-                      {copy("Apply dispute filter", "تطبيق فلتر النزاعات")}
-                    </ActionButton>
-                  </form>
-                  <p>
-                    {copy(
-                      "Latest 250 matching disputes; all returned records are available below. This is not a complete historical export.",
-                      "آخر ٢٥٠ نزاعًا مطابقًا؛ كل السجلات المسترجعة متاحة أدناه. ليست هذه نسخة كاملة من الأرشيف.",
-                    )}
-                  </p>
-                  {snapshot.disputes.slice((disputePage - 1) * 20, disputePage * 20).map((row) => {
-                    const value = disputeDrafts[row.id] ?? {
-                      status: row.status,
-                      reason: "",
-                      resolution: row.resolution ?? "",
-                      externalReference: "",
-                      failureReason: "",
-                      dirty: false,
-                    };
-                    return (
-                      <article className={styles.record} key={row.id}>
-                        <h2 dir="auto">{row.channelName}</h2>
-                        <div className={styles.actions}>
-                          <DataBadge>{label(row.status)}</DataBadge>
-                          <span>{formatDate(row.createdAt)}</span>
-                        </div>
-                        <p dir="auto">{row.message}</p>
-                        <p>
-                          <bdi>{row.creatorEmail}</bdi> · <bdi>{row.id}</bdi>
-                        </p>
-                        {row.payoutId ? (
-                          <Link href={href(`/admin/revenue/payouts/${row.payoutId}`)}>
-                            {copy("Related payout", "عملية الصرف المرتبطة")}
-                          </Link>
-                        ) : null}
-                        <form
-                          onSubmit={(event) => {
-                            event.preventDefault();
-                            submit(() => ({
-                              kind: "dispute",
-                              base: row,
-                              input: {
-                                status: value.status as typeof row.status,
-                                resolution: value.resolution.trim() || null,
-                                reason: value.reason,
-                              },
-                            }));
-                          }}
-                        >
-                          <fieldset disabled={disabled}>
-                            <SelectField
-                              id={`finance-dispute-status-${row.id}`}
-                              label={copy("New status", "الحالة الجديدة")}
-                              value={value.status}
-                              onChange={(event) =>
-                                editDecision("dispute", row.id, value, "status", event.target.value)
-                              }
-                            >
-                              {options(financeDisputeStates)}
-                            </SelectField>
-                            <TextAreaField
-                              id={`finance-dispute-resolution-${row.id}`}
-                              label={copy(
-                                "Resolution (required for resolved or rejected)",
-                                "القرار (مطلوب للحل أو الرفض)",
-                              )}
-                              value={value.resolution}
-                              maxLength={5000}
-                              onChange={(event) =>
-                                editDecision(
-                                  "dispute",
-                                  row.id,
-                                  value,
-                                  "resolution",
-                                  event.target.value,
-                                )
-                              }
-                            />
-                            <TextField
-                              id={`finance-dispute-reason-${row.id}`}
-                              label={copy(
-                                "Decision reason (8–500 characters)",
-                                "سبب القرار (٨–٥٠٠ حرف)",
-                              )}
-                              value={value.reason}
-                              maxLength={500}
-                              onChange={(event) =>
-                                editDecision("dispute", row.id, value, "reason", event.target.value)
-                              }
-                            />
-                            <ActionButton type="submit">
-                              {copy("Record dispute decision", "تسجيل قرار النزاع")}
-                            </ActionButton>
-                          </fieldset>
-                        </form>
-                      </article>
-                    );
-                  })}
-                  <FinancePager
-                    page={disputePage}
-                    pages={Math.max(1, Math.ceil(snapshot.disputes.length / 20))}
-                    name={copy("Dispute pages", "صفحات النزاعات")}
-                    busy={busy}
-                    previous={copy("Previous", "السابق")}
-                    next={copy("Next", "التالي")}
-                    summary={copy(
-                      `Page ${formatNumber(disputePage)} of ${formatNumber(Math.max(1, Math.ceil(snapshot.disputes.length / 20)))} · ${formatNumber(snapshot.disputes.length)} records`,
-                      `صفحة ${formatNumber(disputePage)} من ${formatNumber(Math.max(1, Math.ceil(snapshot.disputes.length / 20)))} · ${formatNumber(snapshot.disputes.length)} سجل`,
-                    )}
-                    onChange={setDisputePage}
-                  />
-                </div>
-              ),
-            },
-            {
-              id: "ledger",
-              label: copy("Revenue ledger", "دفتر الإيرادات"),
-              content: (
-                <div className={styles.list}>
-                  <form
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void readSnapshot({
-                        ...applied,
-                        ledgerChannelId: ledgerFilter.trim(),
-                        ledgerPage: 1,
-                      });
-                    }}
-                  >
-                    <TextField
-                      id="finance-ledger-channel"
-                      label={copy("Channel ID (optional)", "معرّف القناة (اختياري)")}
-                      value={ledgerFilter}
-                      maxLength={36}
-                      onChange={(event) => setLedgerFilter(event.target.value)}
+                                <ActionButton type="submit">
+                                  {copy("Record dispute decision", "تسجيل قرار النزاع")}
+                                </ActionButton>
+                              </fieldset>
+                            </form>
+                          </article>
+                        );
+                      })}
+                    <FinancePager
+                      page={disputePage}
+                      pages={Math.max(1, Math.ceil(snapshot.disputes.length / 20))}
+                      name={copy("Dispute pages", "صفحات النزاعات")}
+                      busy={busy}
+                      previous={copy("Previous", "السابق")}
+                      next={copy("Next", "التالي")}
+                      summary={copy(
+                        `Page ${formatNumber(disputePage)} of ${formatNumber(Math.max(1, Math.ceil(snapshot.disputes.length / 20)))} · ${formatNumber(snapshot.disputes.length)} records`,
+                        `صفحة ${formatNumber(disputePage)} من ${formatNumber(Math.max(1, Math.ceil(snapshot.disputes.length / 20)))} · ${formatNumber(snapshot.disputes.length)} سجل`,
+                      )}
+                      onChange={setDisputePage}
                     />
-                    <ActionButton type="submit" disabled={busy}>
-                      {copy("Apply ledger filter", "تطبيق فلتر القيود")}
-                    </ActionButton>
-                  </form>
-                  {snapshot.ledger.items.map((row) => (
-                    <article key={row.id} className={styles.record}>
-                      <h2 dir="auto">{row.channel.name}</h2>
-                      <div className={styles.actions}>
-                        {amount(row.currency, row.amount)}
-                        <DataBadge>{label(row.type)}</DataBadge>
-                        <DataBadge>{label(row.state)}</DataBadge>
-                      </div>
-                      <p>
-                        {formatDate(row.occurredAt)} · <bdi>{row.id}</bdi>
-                      </p>
-                      <Disclosure summary={copy("Entry details", "تفاصيل القيد")}>
-                        <dl className={styles.facts}>
-                          <div>
-                            <dt>{copy("Gross amount", "المبلغ الإجمالي")}</dt>
-                            <dd>
-                              {row.grossAmount === null
-                                ? copy("Not recorded", "غير مسجل")
-                                : amount(row.currency, row.grossAmount)}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>{copy("Advertising source", "مصدر الإعلان")}</dt>
-                            <dd dir="auto">{row.adSource ?? copy("Not recorded", "غير مسجل")}</dd>
-                          </div>
-                          <div>
-                            <dt>{copy("Period", "الفترة")}</dt>
-                            <dd>
-                              {row.periodStart ? formatDate(row.periodStart) : "—"} ·{" "}
-                              {row.periodEnd ? formatDate(row.periodEnd) : "—"}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>{copy("Video", "الفيديو")}</dt>
-                            <dd dir="auto">{row.video?.title ?? "—"}</dd>
-                          </div>
-                          <div>
-                            <dt>{copy("Campaign", "الحملة")}</dt>
-                            <dd dir="auto">{row.campaign?.name ?? "—"}</dd>
-                          </div>
-                          <div>
-                            <dt>{copy("Memo", "الملاحظة")}</dt>
-                            <dd dir="auto">{row.memo ?? "—"}</dd>
-                          </div>
-                        </dl>
-                        {row.payout ? (
-                          <Link href={href(`/admin/revenue/payouts/${row.payout.id}`)}>
-                            {copy("Related payout", "عملية الصرف المرتبطة")} ·{" "}
-                            {label(row.payout.status)}
-                          </Link>
-                        ) : null}
-                      </Disclosure>
-                    </article>
-                  ))}
-                  <FinancePager
-                    page={applied.ledgerPage}
-                    pages={snapshot.ledger.pagination.pages}
-                    name={copy("Ledger pages", "صفحات القيود")}
-                    busy={busy}
-                    previous={copy("Previous", "السابق")}
-                    next={copy("Next", "التالي")}
-                    summary={copy(
-                      `Page ${formatNumber(applied.ledgerPage)} of ${formatNumber(snapshot.ledger.pagination.pages)} · ${formatNumber(snapshot.ledger.pagination.total)} records`,
-                      `صفحة ${formatNumber(applied.ledgerPage)} من ${formatNumber(snapshot.ledger.pagination.pages)} · ${formatNumber(snapshot.ledger.pagination.total)} سجل`,
-                    )}
-                    onChange={(page) => void readSnapshot({ ...applied, ledgerPage: page })}
-                  />
-                </div>
-              ),
-            },
-            {
-              id: "actions",
-              label: copy("My recent decisions", "قراراتي الأخيرة"),
-              content: (
-                <div className={styles.list}>
-                  <p>
-                    {copy(
-                      "Latest 100 financial decisions by this account. Missing entries do not prove a write failed.",
-                      "آخر ١٠٠ قرار مالي لهذا الحساب. غياب قيد لا يثبت فشل عملية الحفظ.",
-                    )}
-                  </p>
-                  <ActionButton
-                    disabled={busy}
-                    onClick={() =>
-                      void runRead(async (signal, session) => {
-                        const next = await getFinanceActions(session, signal);
-                        if (!signal.aborted) {
-                          setActions(next);
-                          setActionPage(1);
-                        }
-                      })
-                    }
-                  >
-                    {copy("Read my decisions", "قراءة قراراتي")}
-                  </ActionButton>
-                  {actions ? (
-                    <>
-                      {actions.slice((actionPage - 1) * 20, actionPage * 20).map((row) => (
-                        <article key={row.id} className={styles.record}>
-                          <h2>{label(row.action)}</h2>
-                          <p>
-                            {formatDate(row.createdAt)} · <bdi>{row.entityId}</bdi>
-                          </p>
-                          <p dir="auto">{row.reason}</p>
-                          <Disclosure summary={copy("Decision details", "تفاصيل القرار")}>
-                            <dl className={styles.facts}>
-                              {Object.entries(row.metadata).map(([key, value]) => (
-                                <div key={key}>
-                                  <dt>{label(key)}</dt>
-                                  <dd dir="auto">
-                                    {value === null
-                                      ? "—"
-                                      : typeof value === "boolean"
-                                        ? value
-                                          ? copy("Yes", "نعم")
-                                          : copy("No", "لا")
-                                        : typeof value === "number"
-                                          ? formatNumber(value)
-                                          : label(String(value))}
-                                  </dd>
-                                </div>
-                              ))}
-                            </dl>
-                          </Disclosure>
-                        </article>
-                      ))}
-                      <FinancePager
-                        page={actionPage}
-                        pages={Math.max(1, Math.ceil(actions.length / 20))}
-                        name={copy("Recent decisions", "القرارات الأخيرة")}
-                        busy={busy}
-                        previous={copy("Previous", "السابق")}
-                        next={copy("Next", "التالي")}
-                        summary={copy(
-                          `Page ${formatNumber(actionPage)} of ${formatNumber(Math.max(1, Math.ceil(actions.length / 20)))} · ${formatNumber(actions.length)} records`,
-                          `صفحة ${formatNumber(actionPage)} من ${formatNumber(Math.max(1, Math.ceil(actions.length / 20)))} · ${formatNumber(actions.length)} سجل`,
-                        )}
-                        onChange={setActionPage}
+                  </div>
+                ),
+              },
+              {
+                id: "ledger",
+                label: copy("Revenue ledger", "دفتر الإيرادات"),
+                content: (
+                  <div className={styles.list}>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void readSnapshot({
+                          ...applied,
+                          ledgerChannelId: ledgerFilter.trim(),
+                          ledgerPage: 1,
+                        });
+                      }}
+                    >
+                      <TextField
+                        id="finance-ledger-channel"
+                        label={copy("Channel ID (optional)", "معرّف القناة (اختياري)")}
+                        value={ledgerFilter}
+                        maxLength={36}
+                        onChange={(event) => setLedgerFilter(event.target.value)}
                       />
-                    </>
-                  ) : null}
-                </div>
-              ),
-            },
-          ]}
-        />
-      ) : null}
+                      <ActionButton type="submit" disabled={busy}>
+                        {copy("Apply ledger filter", "تطبيق فلتر القيود")}
+                      </ActionButton>
+                    </form>
+                    {snapshot.ledger.items.map((row) => (
+                      <article key={row.id} className={styles.record}>
+                        <h2 dir="auto">{row.channel.name}</h2>
+                        <div className={styles.actions}>
+                          {amount(row.currency, row.amount)}
+                          <DataBadge>{label(row.type)}</DataBadge>
+                          <DataBadge>{label(row.state)}</DataBadge>
+                        </div>
+                        <p>
+                          {formatDate(row.occurredAt)} · <bdi>{row.id}</bdi>
+                        </p>
+                        <Disclosure summary={copy("Entry details", "تفاصيل القيد")}>
+                          <dl className={styles.facts}>
+                            <div>
+                              <dt>{copy("Gross amount", "المبلغ الإجمالي")}</dt>
+                              <dd>
+                                {row.grossAmount === null
+                                  ? copy("Not recorded", "غير مسجل")
+                                  : amount(row.currency, row.grossAmount)}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>{copy("Advertising source", "مصدر الإعلان")}</dt>
+                              <dd dir="auto">{row.adSource ?? copy("Not recorded", "غير مسجل")}</dd>
+                            </div>
+                            <div>
+                              <dt>{copy("Period", "الفترة")}</dt>
+                              <dd>
+                                {row.periodStart ? formatDate(row.periodStart) : "—"} ·{" "}
+                                {row.periodEnd ? formatDate(row.periodEnd) : "—"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>{copy("Video", "الفيديو")}</dt>
+                              <dd dir="auto">{row.video?.title ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt>{copy("Campaign", "الحملة")}</dt>
+                              <dd dir="auto">{row.campaign?.name ?? "—"}</dd>
+                            </div>
+                            <div>
+                              <dt>{copy("Memo", "الملاحظة")}</dt>
+                              <dd dir="auto">{row.memo ?? "—"}</dd>
+                            </div>
+                          </dl>
+                          {row.payout ? (
+                            <Link href={href(`/admin/revenue/payouts/${row.payout.id}`)}>
+                              {copy("Related payout", "عملية الصرف المرتبطة")} ·{" "}
+                              {label(row.payout.status)}
+                            </Link>
+                          ) : null}
+                        </Disclosure>
+                      </article>
+                    ))}
+                    <FinancePager
+                      page={applied.ledgerPage}
+                      pages={snapshot.ledger.pagination.pages}
+                      name={copy("Ledger pages", "صفحات القيود")}
+                      busy={busy}
+                      previous={copy("Previous", "السابق")}
+                      next={copy("Next", "التالي")}
+                      summary={copy(
+                        `Page ${formatNumber(applied.ledgerPage)} of ${formatNumber(snapshot.ledger.pagination.pages)} · ${formatNumber(snapshot.ledger.pagination.total)} records`,
+                        `صفحة ${formatNumber(applied.ledgerPage)} من ${formatNumber(snapshot.ledger.pagination.pages)} · ${formatNumber(snapshot.ledger.pagination.total)} سجل`,
+                      )}
+                      onChange={(page) => void readSnapshot({ ...applied, ledgerPage: page })}
+                    />
+                  </div>
+                ),
+              },
+              {
+                id: "actions",
+                label: copy("My recent decisions", "قراراتي الأخيرة"),
+                content: (
+                  <div className={styles.list}>
+                    <p>
+                      {copy(
+                        "Latest 100 financial decisions by this account. Missing entries do not prove a write failed.",
+                        "آخر ١٠٠ قرار مالي لهذا الحساب. غياب قيد لا يثبت فشل عملية الحفظ.",
+                      )}
+                    </p>
+                    <ActionButton
+                      disabled={busy}
+                      onClick={() =>
+                        void runRead(async (signal, session) => {
+                          const next = await getFinanceActions(session, signal);
+                          if (!signal.aborted) {
+                            setActions(next);
+                            setActionPage(1);
+                          }
+                        })
+                      }
+                    >
+                      {copy("Read my decisions", "قراءة قراراتي")}
+                    </ActionButton>
+                    {actions ? (
+                      <>
+                        {actions.slice((actionPage - 1) * 20, actionPage * 20).map((row) => (
+                          <article key={row.id} className={styles.record}>
+                            <h2>{label(row.action)}</h2>
+                            <p>
+                              {formatDate(row.createdAt)} · <bdi>{row.entityId}</bdi>
+                            </p>
+                            <p dir="auto">{row.reason}</p>
+                            <Disclosure summary={copy("Decision details", "تفاصيل القرار")}>
+                              <dl className={styles.facts}>
+                                {Object.entries(row.metadata).map(([key, value]) => (
+                                  <div key={key}>
+                                    <dt>{label(key)}</dt>
+                                    <dd dir="auto">
+                                      {value === null
+                                        ? "—"
+                                        : typeof value === "boolean"
+                                          ? value
+                                            ? copy("Yes", "نعم")
+                                            : copy("No", "لا")
+                                          : typeof value === "number"
+                                            ? formatNumber(value)
+                                            : label(String(value))}
+                                    </dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            </Disclosure>
+                          </article>
+                        ))}
+                        <FinancePager
+                          page={actionPage}
+                          pages={Math.max(1, Math.ceil(actions.length / 20))}
+                          name={copy("Recent decisions", "القرارات الأخيرة")}
+                          busy={busy}
+                          previous={copy("Previous", "السابق")}
+                          next={copy("Next", "التالي")}
+                          summary={copy(
+                            `Page ${formatNumber(actionPage)} of ${formatNumber(Math.max(1, Math.ceil(actions.length / 20)))} · ${formatNumber(actions.length)} records`,
+                            `صفحة ${formatNumber(actionPage)} من ${formatNumber(Math.max(1, Math.ceil(actions.length / 20)))} · ${formatNumber(actions.length)} سجل`,
+                          )}
+                          onChange={setActionPage}
+                        />
+                      </>
+                    ) : null}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
