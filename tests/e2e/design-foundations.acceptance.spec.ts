@@ -129,11 +129,11 @@ test("shared creator fields and Admin counters retain actual workflows and acces
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/admin?lang=en");
   await expect(
-    page.getByRole("heading", { level: 1, name: "AYIN Admin", exact: true }),
+    page.getByRole("heading", { level: 1, name: "Overview", exact: true }),
   ).toBeVisible();
-  await expect(page.getByLabel("Search AYIN administration", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Search administration", { exact: true })).toBeVisible();
   await expect(page.locator('dl[aria-label="Platform counters"] dt').first()).toBeVisible();
-  await page.getByLabel("Search AYIN administration", { exact: true }).fill("design-foundations");
+  await page.getByLabel("Search administration", { exact: true }).fill("design-foundations");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(
     page.locator('main a[href^="/admin/users"]').filter({ hasText: "Design Foundations Creator" }),
