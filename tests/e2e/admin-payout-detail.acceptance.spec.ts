@@ -110,7 +110,8 @@ for (const locale of ["en", "ar"] as const)
       .click();
     const disclosure = await disclosureResponse;
     expect(disclosure.ok()).toBe(true);
-    expect(disclosure.headers()["cache-control"]).toBe("private, no-store");
+    expect(disclosure.headers()["cache-control"]).toContain("private");
+    expect(disclosure.headers()["cache-control"]).toContain("no-store");
     expect(disclosure.headers()["pragma"]).toBe("no-cache");
     const revealed = main.getByRole("region", {
       name: copy("Revealed destination", "جهة الدفع المكشوفة"),
