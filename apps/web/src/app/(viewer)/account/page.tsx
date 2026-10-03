@@ -29,10 +29,6 @@ export default async function AccountPage() {
       <AccountSecurityWorkspace />
       <AccountPrivacyControls />
 
-      <div className={styles.sectionHeading}>
-        <h2>{t("account.earningsTitle")}</h2>
-        <p>{t("account.earningsDescription")}</p>
-      </div>
       <AccountRevenue />
     </main>
   );
