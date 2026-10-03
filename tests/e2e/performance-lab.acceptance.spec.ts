@@ -153,7 +153,12 @@ for (const profile of profiles)
               lcpMs: null as number | null,
               shifts: [] as Array<{ time: number; value: number }>,
               longTasks: [] as Array<{ time: number; duration: number }>,
-              events: [] as Array<{ name: string; duration: number; interactionId: number }>,
+              events: [] as Array<{
+                time: number;
+                name: string;
+                duration: number;
+                interactionId: number;
+              }>,
             };
             (window as unknown as { __ayinLab: typeof state }).__ayinLab = state;
             const observe = (type: string, receive: (entries: PerformanceEntry[]) => void) => {
@@ -188,6 +193,7 @@ for (const profile of profiles)
                 const event = entry as PerformanceEntry & { interactionId: number };
                 if (event.interactionId && state.events.length < 1000)
                   state.events.push({
+                    time: event.startTime,
                     name: event.name,
                     duration: event.duration,
                     interactionId: event.interactionId,
@@ -231,7 +237,12 @@ for (const profile of profiles)
                   lcpMs: number | null;
                   shifts: Array<{ time: number; value: number }>;
                   longTasks: Array<{ time: number; duration: number }>;
-                  events: Array<{ name: string; duration: number; interactionId: number }>;
+                  events: Array<{
+                    time: number;
+                    name: string;
+                    duration: number;
+                    interactionId: number;
+                  }>;
                 };
               }
             ).__ayinLab;
@@ -286,8 +297,119 @@ for (const profile of profiles)
             );
             group.encodedBytes += request.encodedBytes;
           }
+          const disclosureMeasurements: unknown[] = [];
+          if (route === "/studio/analytics") {
+            // Preserve all baseline metrics above. This separate window observes
+            // the previously unmeasured first native detail opening and reopening.
+            await main.getByRole("tab", { name: "Audience", exact: true }).click();
+            const region = main.getByRole("region", {
+              name: "Audience return cohorts",
+              exact: true,
+            });
+            await expect(region.locator("tbody tr")).toHaveCount(7);
+            const detail = region.locator("tbody tr").first().locator("details");
+            const summary = detail.locator("summary");
+            await expect(detail.locator("dl")).toHaveCount(0);
+            const apiRequestsBefore = [...requests.values()].filter(
+              (item) => item.category === "api",
+            ).length;
+            for (const kind of ["first-open", "reopen"] as const) {
+              const before = Object.fromEntries(
+                (await cdp.send("Performance.getMetrics")).metrics.map(
+                  (item: { name: string; value: number }) => [item.name, item.value],
+                ),
+              );
+              const start = await target.evaluate(() => {
+                return {
+                  time: performance.now(),
+                  dom: document.querySelectorAll("*").length,
+                };
+              });
+              const automationStart = clock.now();
+              await summary.focus();
+              await target.keyboard.press("Enter");
+              await expect(detail).toHaveAttribute("open", "");
+              await expect(detail.locator("h3")).toHaveCount(3);
+              await expect(detail.locator("dl").first()).toBeVisible();
+              const end = await target.evaluate(async () => {
+                await new Promise<void>((resolve) =>
+                  requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+                );
+                return { time: performance.now(), dom: document.querySelectorAll("*").length };
+              });
+              const automationToTwoFramesMs = clock.now() - automationStart;
+              const after = Object.fromEntries(
+                (await cdp.send("Performance.getMetrics")).metrics.map(
+                  (item: { name: string; value: number }) => [item.name, item.value],
+                ),
+              );
+              await target.waitForTimeout(250); // Buffered observer delivery; excluded from the measured window.
+              const observations = await target.evaluate(
+                ({ start, end }) => {
+                  const lab = (
+                    window as unknown as {
+                      __ayinLab: {
+                        longTasks: Array<{ time: number; duration: number }>;
+                        events: Array<{
+                          time: number;
+                          name: string;
+                          duration: number;
+                          interactionId: number;
+                        }>;
+                      };
+                    }
+                  ).__ayinLab;
+                  return {
+                    observedLongTasks: lab.longTasks.filter(
+                      (entry) => entry.time < end.time && entry.time + entry.duration > start.time,
+                    ),
+                    observedEventTimingEntries: lab.events.filter(
+                      (entry) => entry.time >= start.time && entry.time < end.time,
+                    ),
+                  };
+                },
+                { start, end },
+              );
+              disclosureMeasurements.push({
+                kind,
+                scope:
+                  "Native keyboard detail toggle after the recorded tab/paging baseline; laboratory observation, not INP",
+                browserWindowMs: end.time - start.time,
+                automationToTwoFramesMs,
+                domElementsBefore: start.dom,
+                domElementsAfter: end.dom,
+                domElementsAdded: end.dom - start.dom,
+                cpuDeltaMs: Object.fromEntries(
+                  ["ScriptDuration", "TaskDuration", "LayoutDuration"].map((key) => {
+                    const first = before[key],
+                      last = after[key];
+                    return [
+                      key,
+                      typeof first === "number" && typeof last === "number" && last >= first
+                        ? (last - first) * 1000
+                        : null,
+                    ];
+                  }),
+                ),
+                rendererHeapBeforeBytes: before.JSHeapUsedSize ?? null,
+                rendererHeapAfterBytes: after.JSHeapUsedSize ?? null,
+                ...observations,
+              });
+              await summary.focus();
+              await target.keyboard.press("Enter");
+              await expect(detail).not.toHaveAttribute("open", "");
+              // Closed read-only facts stay mounted after their first opening.
+              expect(await target.evaluate(() => document.querySelectorAll("*").length)).toBe(
+                end.dom,
+              );
+            }
+            expect([...requests.values()].filter((item) => item.category === "api").length).toBe(
+              apiRequestsBefore,
+            );
+          }
           samples.push({
             route,
+            disclosureMeasurements,
             sample,
             readyIncludingDefinedSettleMs: readyMs,
             beforeInteractionsMs: beforeInteractions,
@@ -345,6 +467,8 @@ for (const profile of profiles)
         "API context reads are unthrottled and include client transfer/JSON body receipt; not server-only query timing",
         "No headers/cookies/storage state/response bodies or account/profile/video IDs are persisted",
         "Real fixture projections test reads; scheduled aggregation/provider/player/upload/concurrency remain separate",
+        "Separate detail windows include native focus/keyboard automation and two frame callbacks; they are not field INP or a user-latency guarantee",
+        "Detail CPU/heap observations are host-dependent and are recorded after the unchanged baseline snapshot; no before/after speedup is inferred",
       ],
       apiMeasurements,
       queryPlans,
