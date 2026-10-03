@@ -29,3 +29,16 @@
   flex-wrap: wrap;
   gap: var(--space-3);
 }
+.choice {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  min-block-size: 44px;
+}
+
+.choice input {
+  block-size: 18px;
+  flex: 0 0 18px;
+  inline-size: 18px;
+}

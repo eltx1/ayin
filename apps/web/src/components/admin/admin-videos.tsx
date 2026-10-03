@@ -1,382 +1,884 @@
 "use client";
-
-import { useEffect, useMemo, useState } from "react";
-
-import styles from "@/app/admin/admin.module.css";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "@/components/i18n/i18n-provider";
 import {
-  bulkAdminVideos,
-  getAdminCollection,
-  patchAdminResource,
-  type AdminPagination,
-} from "@/lib/admin-control";
-
-type VideoItem = {
-  id: string;
-  slug: string;
-  title: string;
-  description: string | null;
-  status: "DRAFT" | "UPLOADING" | "VALIDATING" | "SCHEDULED" | "PUBLISHED" | "REMOVED";
-  visibility: "PUBLIC" | "UNLISTED" | "PRIVATE";
-  commentsEnabled: boolean;
-  updatedAt: string;
-  channel: { id: string; handle: string; name: string; status: string };
-  tvPreferences: Array<{
-    tvChannelId: string;
-    included: boolean;
-    priority: number;
-    sortOrder: number | null;
-  }>;
-  _count: { comments: number; reports: number };
-};
-type Response = { items: VideoItem[]; pagination: AdminPagination };
-type Draft = {
-  title: string;
-  description: string;
-  status: string;
-  visibility: string;
-  commentsEnabled: boolean;
-  tvIncluded: boolean;
-};
-
+  ActionButton,
+  PageHeader,
+  StatusNotice,
+  TextField,
+  TextAreaField,
+  SelectField,
+  FormSection,
+  DataBadge,
+} from "@/components/ui/design-system";
+import { Disclosure } from "@/components/ui/data-presentation";
+import type { AdminSession } from "@/lib/admin-control";
+import {
+  videoStates,
+  videoEditableStates,
+  videoVisibilities,
+  videoBulkActions,
+  AdminVideoError,
+  getAdminVideos,
+  reviewAdminVideoTargets,
+  saveAdminVideo,
+  bulkVerifiedAdminVideos,
+  type AdminVideoRecord,
+  type AdminVideoSnapshot,
+  type AdminVideoCommand,
+  type VideoFilters,
+  type VideoBulkAction,
+} from "@/lib/admin-video-workspace";
+import styles from "./admin-record-workspace.module.css";
+type Draft = { values: AdminVideoCommand; dirty: boolean; changed: Array<keyof AdminVideoCommand> };
+const fresh = (record: AdminVideoRecord): Draft => ({
+  dirty: false,
+  changed: [],
+  values: {
+    title: record.title,
+    description: record.description ?? "",
+    status: record.status,
+    visibility: record.visibility,
+    commentsEnabled: record.commentsEnabled,
+    tvIncluded: record.tvControl?.included,
+    reason: "",
+  },
+});
+function rebase(record: AdminVideoRecord, draft?: Draft): Draft {
+  const next = fresh(record);
+  if (!draft) return next;
+  const values = { ...next.values, reason: draft.values.reason };
+  for (const key of draft.changed) Object.assign(values, { [key]: draft.values[key] });
+  return { ...draft, values };
+}
+type Ack =
+  | { kind: "single"; value: Awaited<ReturnType<typeof saveAdminVideo>> }
+  | { kind: "bulk"; value: Awaited<ReturnType<typeof bulkVerifiedAdminVideos>> };
 export function AdminVideos({ initialQuery = "" }: { initialQuery?: string }) {
-  const [data, setData] = useState<Response | null>(null);
-  const [query, setQuery] = useState(initialQuery);
-  const [status, setStatus] = useState("");
-  const [visibility, setVisibility] = useState("");
-  const [page, setPage] = useState(1);
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const [selected, setSelected] = useState<string[]>([]);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const params = useMemo(() => {
-    const value = new URLSearchParams({ page: String(page), take: "25" });
-    if (query.trim()) value.set("query", query.trim());
-    if (status) value.set("status", status);
-    if (visibility) value.set("visibility", visibility);
-    return value;
-  }, [page, query, status, visibility]);
-
-  function hydrate(response: Response) {
-    setData(response);
-    setDrafts(
-      Object.fromEntries(
-        response.items.map((video) => [
-          video.id,
-          {
-            title: video.title,
-            description: video.description ?? "",
-            status: video.status,
-            visibility: video.visibility,
-            commentsEnabled: video.commentsEnabled,
-            tvIncluded: video.tvPreferences[0]?.included ?? true,
-          },
-        ]),
-      ),
-    );
-    setSelected((current) =>
-      current.filter((id) => response.items.some((video) => video.id === id)),
-    );
-  }
-
-  async function load() {
-    hydrate(await getAdminCollection<Response>("videos", params));
-  }
-
+  const { locale } = useI18n(),
+    ar = locale === "ar",
+    copy = (en: string, arabic: string) => (ar ? arabic : en);
+  const [filters, setFilters] = useState<VideoFilters>({
+    query: initialQuery.slice(0, 200),
+    status: "",
+    visibility: "",
+    page: 1,
+  });
+  const [snapshot, setSnapshot] = useState<AdminVideoSnapshot | null>(null),
+    [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [selected, setSelected] = useState<string[]>([]),
+    [bulkReason, setBulkReason] = useState("");
+  const [editing, setEditing] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState<
+      "read" | "denied" | "invalid" | "uncertain" | "verification" | null
+    >(null);
+  const [ack, setAck] = useState<Ack | null>(null),
+    [locked, setLocked] = useState(false),
+    [reviewed, setReviewed] = useState(false);
+  const [targets, setTargets] = useState<AdminVideoRecord[]>([]),
+    [reviewRecords, setReviewRecords] = useState<
+      Awaited<ReturnType<typeof reviewAdminVideoTargets>> | undefined
+    >(undefined),
+    [generation, setGeneration] = useState(0);
+  const actor = useRef<AdminSession | null>(null),
+    controller = useRef<AbortController | null>(null),
+    operation = useRef(false),
+    lock = useRef(false),
+    body = useRef<HTMLDivElement | null>(null),
+    dirty = useRef(false),
+    initial = useRef(filters);
+  const clearActor = useCallback(() => {
+    if (body.current) body.current.hidden = true;
+    actor.current = null;
+    setSnapshot(null);
+    setDrafts({});
+    setSelected([]);
+    setEditing({});
+    setBulkReason("");
+    setAck(null);
+    setTargets([]);
+    setReviewRecords(undefined);
+    lock.current = true;
+    setLocked(true);
+    setReviewed(false);
+    setError("denied");
+  }, []);
+  const load = useCallback(
+    async (input: VideoFilters) => {
+      if (operation.current) return;
+      operation.current = true;
+      const pending = new AbortController();
+      controller.current = pending;
+      setLoading(true);
+      setError(null);
+      setSnapshot(null);
+      try {
+        const result = await getAdminVideos(input, pending.signal, actor.current ?? undefined);
+        if (pending.signal.aborted) return;
+        if (body.current?.hidden) setGeneration((v) => v + 1);
+        actor.current = result.session;
+        setSnapshot(result);
+        setFilters(input);
+        setSelected([]);
+        setDrafts((current) => ({
+          ...current,
+          ...Object.fromEntries(
+            result.directory.items.map((record) => [record.id, rebase(record, current[record.id])]),
+          ),
+        }));
+      } catch (caught) {
+        if (!pending.signal.aborted) {
+          if (caught instanceof AdminVideoError && [401, 403].includes(caught.status)) clearActor();
+          else setError("read");
+        }
+      } finally {
+        if (controller.current === pending) {
+          controller.current = null;
+          operation.current = false;
+          setLoading(false);
+        }
+      }
+    },
+    [clearActor],
+  );
   useEffect(() => {
     let active = true;
-    const timer = window.setTimeout(() => {
-      void getAdminCollection<Response>("videos", params)
-        .then((response) => {
-          if (active) {
-            hydrate(response);
-            setError(null);
-          }
-        })
-        .catch((caught) => {
-          if (active)
-            setError(caught instanceof Error ? caught.message : "Videos could not be loaded.");
-        });
-    }, 180);
+    void Promise.resolve().then(() => {
+      if (active) void load(initial.current);
+    });
+    const hide = () => {
+      const pending = controller.current;
+      controller.current = null;
+      operation.current = false;
+      pending?.abort();
+      if (body.current) body.current.hidden = true;
+      lock.current = true;
+      setLocked(true);
+      setReviewed(false);
+      setSnapshot(null);
+      setReviewRecords(undefined);
+      setBusy(false);
+      setLoading(false);
+      setError("read");
+    };
+    const visibility = () => {
+      if (document.visibilityState === "hidden") hide();
+    };
+    window.addEventListener("pagehide", hide);
+    document.addEventListener("visibilitychange", visibility);
     return () => {
       active = false;
-      window.clearTimeout(timer);
+      controller.current?.abort();
+      window.removeEventListener("pagehide", hide);
+      document.removeEventListener("visibilitychange", visibility);
     };
-  }, [params]);
+  }, [load]);
+  useEffect(() => {
+    dirty.current =
+      busy ||
+      locked ||
+      Boolean(bulkReason) ||
+      Object.values(drafts).some((d) => d.dirty || d.values.reason);
+  }, [busy, locked, drafts, bulkReason]);
+  useEffect(() => {
+    const unload = (event: BeforeUnloadEvent) => {
+      if (dirty.current) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    const navigate = (event: MouseEvent) => {
+      if (
+        !dirty.current ||
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      const anchor =
+        event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (
+        !anchor ||
+        anchor.target === "_blank" ||
+        anchor.hasAttribute("download") ||
+        anchor.href === location.href
+      )
+        return;
+      if (
+        !window.confirm(
+          ar
+            ? "لديك مسودة أو عملية تحتاج للمراجعة. هل تريد المغادرة؟"
+            : "You have a draft or an operation awaiting review. Leave this page?",
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", unload);
+    document.addEventListener("click", navigate, true);
+    return () => {
+      window.removeEventListener("beforeunload", unload);
+      document.removeEventListener("click", navigate, true);
+    };
+  }, [ar]);
 
-  async function save(video: VideoItem) {
-    const draft = drafts[video.id];
-    if (!draft) return;
-    const reason = window.prompt(`Audit reason for changing “${video.title}”:`);
-    if (!reason?.trim()) return;
-    setBusyId(video.id);
+  function edit(record: AdminVideoRecord, value: Partial<AdminVideoCommand>) {
+    dirty.current = true;
+    setDrafts((current) => {
+      const draft = current[record.id] ?? fresh(record);
+      const changed = [
+        ...new Set([
+          ...draft.changed,
+          ...(Object.keys(value).filter((key) => key !== "reason") as Array<
+            keyof AdminVideoCommand
+          >),
+        ]),
+      ];
+      return {
+        ...current,
+        [record.id]: { dirty: changed.length > 0, changed, values: { ...draft.values, ...value } },
+      };
+    });
+  }
+  async function run(records: AdminVideoRecord[], work: () => Promise<Ack>, success: () => void) {
+    if (operation.current || lock.current || !actor.current) return;
+    operation.current = true;
+    lock.current = true;
+    dirty.current = true;
+    const pending = new AbortController();
+    controller.current = pending;
+    setLocked(true);
+    setBusy(true);
+    setReviewed(false);
+    setReviewRecords(undefined);
+    setTargets(records);
     setError(null);
-    setMessage(null);
     try {
-      await patchAdminResource("videos", video.id, {
-        ...draft,
-        description: draft.description || null,
-        reason: reason.trim(),
-      });
-      await load();
-      setMessage(`Updated “${draft.title}”.`);
+      const result = await work();
+      if (pending.signal.aborted) return;
+      setAck(result);
+      success();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Video could not be updated.");
+      if (pending.signal.aborted) return;
+      if (caught instanceof AdminVideoError && caught.verificationRequired) {
+        lock.current = false;
+        setLocked(false);
+        setError("verification");
+      } else if (caught instanceof AdminVideoError && [401, 403].includes(caught.status))
+        clearActor();
+      else if (caught instanceof AdminVideoError && !caught.writeStarted) {
+        lock.current = false;
+        setLocked(false);
+        setTargets([]);
+        setError("invalid");
+      } else setError("uncertain");
     } finally {
-      setBusyId(null);
+      if (controller.current === pending) {
+        controller.current = null;
+        operation.current = false;
+        setBusy(false);
+      }
     }
   }
-
-  async function runBulk(action: "UNPUBLISH" | "DISABLE_COMMENTS" | "ENABLE_COMMENTS") {
-    if (!selected.length) return;
-    const reason = window.prompt(
-      `Audit reason for ${action.toLowerCase().replaceAll("_", " ")} on ${selected.length} videos:`,
+  async function save(record: AdminVideoRecord, command: AdminVideoCommand) {
+    await run(
+      [record],
+      async () => ({
+        kind: "single",
+        value: await saveAdminVideo(actor.current!, record, command, controller.current!.signal),
+      }),
+      () =>
+        setDrafts((current) => ({
+          ...current,
+          [record.id]: { dirty: false, changed: [], values: { ...command, reason: "" } },
+        })),
     );
-    if (!reason?.trim()) return;
-    setBusyId("bulk");
+  }
+  async function bulk(action: VideoBulkAction) {
+    const records =
+      snapshot?.directory.items.filter((record) => selected.includes(record.id)) ?? [];
+    if (records.length !== selected.length || !records.length) return;
+    await run(
+      records,
+      async () => ({
+        kind: "bulk",
+        value: await bulkVerifiedAdminVideos(
+          actor.current!,
+          records,
+          action,
+          bulkReason,
+          controller.current!.signal,
+        ),
+      }),
+      () => setBulkReason(""),
+    );
+  }
+  async function review() {
+    if (operation.current || !actor.current || !targets.length) return;
+    operation.current = true;
+    const pending = new AbortController();
+    controller.current = pending;
+    setBusy(true);
+    setReviewed(false);
     setError(null);
-    setMessage(null);
     try {
-      const result = await bulkAdminVideos(selected, action, reason.trim());
-      await load();
-      setMessage(`${result.affected} videos updated.`);
+      const result = await reviewAdminVideoTargets(
+        actor.current,
+        targets.map((record) => record.id),
+        pending.signal,
+      );
+      if (pending.signal.aborted) return;
+      setReviewRecords(result);
+      setSnapshot(null);
+      setReviewed(true);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Bulk video action failed.");
+      if (!pending.signal.aborted) {
+        if (caught instanceof AdminVideoError && [401, 403].includes(caught.status)) clearActor();
+        else setError("read");
+      }
     } finally {
-      setBusyId(null);
+      if (controller.current === pending) {
+        controller.current = null;
+        operation.current = false;
+        setBusy(false);
+      }
     }
   }
-
+  const names = {
+    DRAFT: copy("Draft", "مسودة"),
+    UPLOADING: copy("Uploading", "جارٍ الرفع"),
+    VALIDATING: copy("Validating", "جارٍ التحقق"),
+    SCHEDULED: copy("Scheduled", "مجدول"),
+    PUBLISHED: copy("Published", "منشور"),
+    REMOVED: copy("Removed", "محذوف"),
+  };
+  const visibilities = {
+    PUBLIC: copy("Public", "عام"),
+    UNLISTED: copy("Unlisted", "غير مدرج"),
+    PRIVATE: copy("Private", "خاص"),
+  };
+  const bulkNames = {
+    UNPUBLISH: copy("Unpublish selected", "إلغاء نشر المحدد"),
+    DISABLE_COMMENTS: copy("Disable selected comments", "تعطيل تعليقات المحدد"),
+    ENABLE_COMMENTS: copy("Enable selected comments", "تفعيل تعليقات المحدد"),
+  };
+  const disabled = busy || loading || locked || !snapshot;
+  const reasonValid = (value: string) => value.trim().length >= 8 && value.trim().length <= 500;
+  const stamp = (value: string) =>
+    new Intl.DateTimeFormat(ar ? "ar" : "en", {
+      dateStyle: "medium",
+      timeStyle: "medium",
+      timeZone: "UTC",
+    }).format(new Date(value));
+  const filterEdit = (value: Partial<VideoFilters>) => {
+    setFilters((current) => ({ ...current, ...value, page: 1 }));
+    setSnapshot(null);
+    setSelected([]);
+  };
   return (
-    <>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Control Plane</span>
-          <h1>Videos & Content</h1>
-          <p className={styles.muted}>
-            Search every video, edit state, comments and Creator TV inclusion, or apply safe bulk
-            actions.
-          </p>
-        </div>
-      </header>
-      <div className={styles.toolbar}>
-        <input
-          aria-label="Search videos"
-          onChange={(event) => {
-            setPage(1);
-            setQuery(event.target.value);
-          }}
-          placeholder="Search title, slug or channel"
-          value={query}
-        />
-        <select
-          aria-label="Filter video status"
-          onChange={(event) => {
-            setPage(1);
-            setStatus(event.target.value);
-          }}
-          value={status}
-        >
-          <option value="">Active records</option>
-          <option value="PUBLISHED">Published</option>
-          <option value="DRAFT">Draft</option>
-          <option value="UPLOADING">Uploading</option>
-          <option value="VALIDATING">Validating</option>
-          <option value="SCHEDULED">Scheduled</option>
-          <option value="REMOVED">Removed</option>
-        </select>
-        <select
-          aria-label="Filter video visibility"
-          onChange={(event) => {
-            setPage(1);
-            setVisibility(event.target.value);
-          }}
-          value={visibility}
-        >
-          <option value="">All visibility</option>
-          <option value="PUBLIC">Public</option>
-          <option value="UNLISTED">Unlisted</option>
-          <option value="PRIVATE">Private</option>
-        </select>
-      </div>
-      {selected.length ? (
-        <div className={styles.bulk}>
-          <strong>{selected.length} selected</strong>
-          <div className={styles.actions}>
-            <button
-              className={styles.button}
-              disabled={busyId === "bulk"}
-              onClick={() => void runBulk("UNPUBLISH")}
-              type="button"
+    <section className={styles.workspace} dir={ar ? "rtl" : "ltr"}>
+      <PageHeader
+        title={copy("Videos", "الفيديوهات")}
+        description={copy(
+          "Review content and retained edits, then submit a reasoned moderation decision.",
+          "راجع المحتوى وتعديلاتك المحفوظة، ثم أرسل قرار الإشراف مع السبب.",
+        )}
+        actions={
+          <ActionButton
+            tone="secondary"
+            disabled={busy || loading}
+            onClick={() => void load(filters)}
+          >
+            {copy("Read video records", "قراءة سجلات الفيديوهات")}
+          </ActionButton>
+        }
+      />
+      {loading && (
+        <StatusNotice announce="polite">
+          {copy("Reading video records…", "جارٍ قراءة سجلات الفيديوهات…")}
+        </StatusNotice>
+      )}
+      {error && (
+        <StatusNotice tone="warning" announce="assertive">
+          {error === "denied"
+            ? copy(
+                "Video access changed. Sign in with an authorized content account.",
+                "تغيّرت صلاحية الفيديوهات. سجّل الدخول بحساب مخوّل للمحتوى.",
+              )
+            : error === "invalid"
+              ? copy(
+                  "Check the entered changes and reason. No write was started.",
+                  "راجع التعديلات والسبب. لم تبدأ الكتابة.",
+                )
+              : error === "verification"
+                ? copy(
+                    "Verify your session, then submit explicitly. Edits and reasons are retained.",
+                    "أعد التحقق من الجلسة، ثم أرسل بنفسك. احتفظنا بالتعديلات والأسباب.",
+                  )
+                : error === "uncertain"
+                  ? copy(
+                      "The response was not confirmed. Read every original target and review before another decision; this command will not be replayed.",
+                      "لم يتأكد الرد. اقرأ كل فيديو أصلي وراجعه قبل قرار آخر؛ لن يُعاد الأمر تلقائيًا.",
+                    )
+                  : copy(
+                      "Current video records could not be verified. Read them again.",
+                      "تعذّر التحقق من سجلات الفيديوهات الحالية. اقرأها مجددًا.",
+                    )}
+        </StatusNotice>
+      )}
+      <div
+        ref={body}
+        key={generation}
+        className={styles.privateBody}
+        data-private-video-records="true"
+      >
+        <FormSection id="video-search" legend={copy("Find videos", "البحث عن الفيديوهات")}>
+          <div className={styles.filters}>
+            <TextField
+              id="video-query"
+              dir="auto"
+              label={copy("Title, slug or channel name", "العنوان أو الرابط أو اسم القناة")}
+              value={filters.query}
+              maxLength={200}
+              disabled={busy || loading}
+              onChange={(event) => filterEdit({ query: event.target.value })}
+            />
+            <SelectField
+              id="video-filter-status"
+              label={copy("Video status", "حالة الفيديو")}
+              value={filters.status}
+              disabled={busy || loading}
+              onChange={(event) => filterEdit({ status: event.target.value })}
             >
-              Unpublish selected
-            </button>
-            <button
-              className={styles.button}
-              disabled={busyId === "bulk"}
-              onClick={() => void runBulk("DISABLE_COMMENTS")}
-              type="button"
+              <option value="">{copy("All statuses", "كل الحالات")}</option>
+              {videoStates.map((value) => (
+                <option key={value} value={value}>
+                  {names[value]}
+                </option>
+              ))}
+            </SelectField>
+            <SelectField
+              id="video-filter-visibility"
+              label={copy("Visibility", "الظهور")}
+              value={filters.visibility}
+              disabled={busy || loading}
+              onChange={(event) => filterEdit({ visibility: event.target.value })}
             >
-              Disable comments
-            </button>
-            <button
-              className={styles.button}
-              disabled={busyId === "bulk"}
-              onClick={() => void runBulk("ENABLE_COMMENTS")}
-              type="button"
-            >
-              Enable comments
-            </button>
+              <option value="">{copy("All visibility", "كل أنواع الظهور")}</option>
+              {videoVisibilities.map((value) => (
+                <option key={value} value={value}>
+                  {visibilities[value]}
+                </option>
+              ))}
+            </SelectField>
           </div>
-        </div>
-      ) : null}
-      {message ? <p className={styles.notice}>{message}</p> : null}
-      {error ? <p className={styles.error}>{error}</p> : null}
-      <section className={styles.grid}>
-        {data?.items.map((video) => {
-          const draft = drafts[video.id];
-          if (!draft) return null;
-          const disabled = video.status === "REMOVED" || busyId === video.id;
-          return (
-            <article className={styles.card} key={video.id}>
-              <div className={styles.cardHeader}>
-                <label className={styles.check}>
-                  <input
-                    checked={selected.includes(video.id)}
-                    onChange={(event) =>
-                      setSelected((current) =>
-                        event.target.checked
-                          ? [...current, video.id]
-                          : current.filter((id) => id !== video.id),
-                      )
-                    }
-                    type="checkbox"
-                  />
-                  Select
-                </label>
-                <div>
-                  <strong>@{video.channel.handle}</strong>
-                  <p className={styles.muted}>
-                    {video._count.comments} comments · {video._count.reports} reports
-                  </p>
+        </FormSection>
+        {ack && (
+          <StatusNotice
+            tone="success"
+            announce="polite"
+            title={copy("Server acknowledgment", "تأكيد الخادم")}
+          >
+            <div data-testid="video-ack">
+              {ack.kind === "single" ? (
+                <>
+                  <bdi>{ack.value.title}</bdi> · {names[ack.value.status]} ·{" "}
+                  <bdi>{stamp(ack.value.updatedAt)} UTC</bdi>
+                  {ack.value.tvControl && (
+                    <p>
+                      {copy("TV inclusion saved", "حُفظ تفضيل الإدراج في البث")}:{" "}
+                      {ack.value.tvControl.included
+                        ? copy("Included", "مدرج")
+                        : copy("Excluded", "مستبعد")}{" "}
+                      · <bdi>{ack.value.tvControl.id}</bdi>
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  {bulkNames[ack.value.action]} · {ack.value.affected}
+                </>
+              )}
+            </div>
+            <p>
+              {copy(
+                "A failed later read does not undo this acknowledgment. Read the originals before another decision.",
+                "فشل قراءة لاحقة لا يلغي هذا التأكيد. اقرأ الفيديوهات الأصلية قبل قرار آخر.",
+              )}
+            </p>
+          </StatusNotice>
+        )}
+        {locked && (
+          <FormSection
+            id="video-recovery"
+            legend={copy("Review before another operation", "المراجعة قبل عملية أخرى")}
+          >
+            {targets.length > 0 && (
+              <>
+                <ul>
+                  {targets.map((record) => (
+                    <li key={record.id}>
+                      <bdi>{record.title}</bdi> · <bdi>{record.id}</bdi>
+                    </li>
+                  ))}
+                </ul>
+                <ActionButton
+                  tone="secondary"
+                  disabled={busy || loading}
+                  onClick={() => void review()}
+                >
+                  {copy("Read original videos", "قراءة الفيديوهات الأصلية")}
+                </ActionButton>
+                {reviewRecords && (
+                  <>
+                    <ul data-testid="video-review">
+                      {reviewRecords.map((result) => (
+                        <li key={result.id}>
+                          {result.record ? (
+                            <>
+                              <bdi>{result.record.title}</bdi> · {names[result.record.status]} ·{" "}
+                              <bdi>{stamp(result.record.updatedAt)} UTC</bdi>
+                            </>
+                          ) : (
+                            <>
+                              {copy("Original video unavailable", "الفيديو الأصلي غير متاح")} ·{" "}
+                              <bdi>{result.id}</bdi>
+                            </>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <p>
+                      {copy(
+                        "Read video records to refresh the directory, then finish this review.",
+                        "اقرأ سجلات الفيديوهات لتحديث القائمة، ثم أكمل المراجعة.",
+                      )}
+                    </p>
+                  </>
+                )}
+              </>
+            )}
+            <ActionButton
+              disabled={busy || loading || !snapshot || (targets.length > 0 && !reviewed)}
+              onClick={() => {
+                if (operation.current || !snapshot || (targets.length > 0 && !reviewed)) return;
+                lock.current = false;
+                setLocked(false);
+                setTargets([]);
+                setReviewRecords(undefined);
+                setReviewed(false);
+              }}
+            >
+              {copy("I reviewed; enable another operation", "راجعت الحالة؛ فعّل عملية أخرى")}
+            </ActionButton>
+          </FormSection>
+        )}
+        <p>
+          {copy(
+            "Records reflect the last explicit directory read. Dates use UTC.",
+            "تعكس السجلات آخر قراءة صريحة للقائمة. التواريخ بالتوقيت العالمي UTC.",
+          )}
+        </p>
+        {snapshot && (
+          <>
+            {(selected.length > 0 || Boolean(bulkReason)) && (
+              <FormSection id="video-bulk" legend={copy("Selected videos", "الفيديوهات المحددة")}>
+                <p>
+                  {copy(
+                    "Select videos on this page. Batch decisions change status or comments; metadata drafts are retained.",
+                    "حدّد فيديوهات من هذه الصفحة. يغيّر القرار الجماعي الحالة أو التعليقات؛ وتظل مسودات البيانات محفوظة.",
+                  )}{" "}
+                  · {selected.length}
+                </p>
+                <TextAreaField
+                  id="video-bulk-reason"
+                  dir="auto"
+                  label={copy(
+                    "Bulk decision reason (8–500 characters)",
+                    "سبب القرار الجماعي (٨–٥٠٠ حرف)",
+                  )}
+                  maxLength={500}
+                  value={bulkReason}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    dirty.current = true;
+                    setBulkReason(event.target.value);
+                  }}
+                />
+                <div className={styles.actions}>
+                  {videoBulkActions.map((action) => (
+                    <ActionButton
+                      key={action}
+                      tone="danger"
+                      disabled={disabled || !selected.length || !reasonValid(bulkReason)}
+                      onClick={() => void bulk(action)}
+                    >
+                      {bulkNames[action]}
+                    </ActionButton>
+                  ))}
                 </div>
-              </div>
-              <div className={styles.form}>
-                <input
-                  disabled={disabled}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [video.id]: { ...draft, title: event.target.value },
-                    }))
-                  }
-                  value={draft.title}
-                />
-                <select
-                  disabled={disabled}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [video.id]: { ...draft, status: event.target.value },
-                    }))
-                  }
-                  value={draft.status}
-                >
-                  <option value="DRAFT">Draft</option>
-                  <option value="SCHEDULED">Scheduled</option>
-                  <option value="PUBLISHED">Published</option>
-                  <option value="REMOVED">Removed</option>
-                </select>
-                <textarea
-                  disabled={disabled}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [video.id]: { ...draft, description: event.target.value },
-                    }))
-                  }
-                  value={draft.description}
-                />
-                <select
-                  disabled={disabled}
-                  onChange={(event) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [video.id]: { ...draft, visibility: event.target.value },
-                    }))
-                  }
-                  value={draft.visibility}
-                >
-                  <option value="PUBLIC">Public</option>
-                  <option value="UNLISTED">Unlisted</option>
-                  <option value="PRIVATE">Private</option>
-                </select>
-              </div>
-              <div className={styles.actions}>
-                <label className={styles.check}>
-                  <input
-                    checked={draft.commentsEnabled}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [video.id]: { ...draft, commentsEnabled: event.target.checked },
-                      }))
-                    }
-                    type="checkbox"
-                  />
-                  Comments
-                </label>
-                <label className={styles.check}>
-                  <input
-                    checked={draft.tvIncluded}
-                    disabled={disabled}
-                    onChange={(event) =>
-                      setDrafts((current) => ({
-                        ...current,
-                        [video.id]: { ...draft, tvIncluded: event.target.checked },
-                      }))
-                    }
-                    type="checkbox"
-                  />
-                  Creator TV
-                </label>
-                <button
-                  className={draft.status === "REMOVED" ? styles.danger : styles.button}
-                  disabled={disabled}
-                  onClick={() => void save(video)}
-                  type="button"
-                >
-                  Save video
-                </button>
-              </div>
-            </article>
-          );
-        })}
-      </section>
-      {data ? (
-        <div className={styles.pager}>
-          <button
-            className={styles.button}
-            disabled={page <= 1}
-            onClick={() => setPage((value) => Math.max(1, value - 1))}
-            type="button"
-          >
-            Previous
-          </button>
-          <span className={styles.muted}>
-            Page {data.pagination.page} of {data.pagination.pages} · {data.pagination.total} videos
-          </span>
-          <button
-            className={styles.button}
-            disabled={page >= data.pagination.pages}
-            onClick={() => setPage((value) => value + 1)}
-            type="button"
-          >
-            Next
-          </button>
-        </div>
-      ) : null}
-    </>
+              </FormSection>
+            )}
+            <div className={styles.list}>
+              {snapshot.directory.items.map((record) => {
+                const draft = drafts[record.id] ?? fresh(record),
+                  values = draft.values,
+                  readOnly = disabled || record.status === "REMOVED";
+                return (
+                  <article className={styles.record} key={record.id} data-video-record={record.id}>
+                    <h2 dir="auto">{record.title}</h2>
+                    <div className={styles.actions}>
+                      <DataBadge>{names[record.status]}</DataBadge>
+                      <DataBadge>{visibilities[record.visibility]}</DataBadge>
+                      <bdi>@{record.channel.handle}</bdi>
+                    </div>
+                    <p>
+                      {copy("Last updated", "آخر تحديث")} <bdi>{stamp(record.updatedAt)} UTC</bdi>
+                    </p>
+                    <label className={styles.choice}>
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(record.id)}
+                        disabled={readOnly}
+                        onChange={(event) =>
+                          setSelected((current) =>
+                            event.target.checked
+                              ? [...current, record.id]
+                              : current.filter((value) => value !== record.id),
+                          )
+                        }
+                      />
+                      {copy("Select video for batch decision", "تحديد الفيديو للقرار الجماعي")}
+                    </label>
+                    <Disclosure
+                      summary={copy("Channel, comments and reports", "القناة والتعليقات والبلاغات")}
+                    >
+                      <p>
+                        <bdi>{record.channel.name}</bdi> · <bdi>{record.channel.id}</bdi>
+                      </p>
+                      <p>
+                        {copy("Comments", "التعليقات")}: {record.counts.comments} ·{" "}
+                        {copy("Reports", "البلاغات")}: {record.counts.reports}
+                      </p>
+                      <p>
+                        {record.videoForm === "CLIP"
+                          ? copy("Clip", "مقطع قصير")
+                          : copy("Long form video", "فيديو طويل")}
+                      </p>
+                      {record.publishedAt && (
+                        <p>
+                          {copy("Published", "تاريخ النشر")}{" "}
+                          <bdi>{stamp(record.publishedAt)} UTC</bdi>
+                        </p>
+                      )}
+                    </Disclosure>
+                    <Disclosure
+                      summary={copy("Review and edit video", "مراجعة الفيديو وتعديله")}
+                      open={Boolean(editing[record.id])}
+                      onToggle={(event) => {
+                        const open = event.currentTarget.open;
+                        setEditing((current) =>
+                          current[record.id] === open ? current : { ...current, [record.id]: open },
+                        );
+                      }}
+                    >
+                      {editing[record.id] && (
+                        <div className={styles.list}>
+                          <TextField
+                            id={`video-title-${record.id}`}
+                            dir="auto"
+                            label={copy("Title", "العنوان")}
+                            value={values.title}
+                            maxLength={200}
+                            disabled={readOnly}
+                            onChange={(event) => edit(record, { title: event.target.value })}
+                          />
+                          <TextAreaField
+                            id={`video-description-${record.id}`}
+                            dir="auto"
+                            label={copy("Description", "الوصف")}
+                            value={values.description}
+                            maxLength={20000}
+                            rows={4}
+                            disabled={readOnly}
+                            onChange={(event) => edit(record, { description: event.target.value })}
+                          />
+                          <div className={styles.filters}>
+                            <SelectField
+                              id={`video-status-${record.id}`}
+                              label={copy("New status", "الحالة الجديدة")}
+                              value={values.status}
+                              disabled={readOnly}
+                              onChange={(event) =>
+                                edit(record, {
+                                  status: event.target.value as AdminVideoRecord["status"],
+                                })
+                              }
+                            >
+                              {!videoEditableStates.includes(
+                                record.status as (typeof videoEditableStates)[number],
+                              ) && <option value={record.status}>{names[record.status]}</option>}
+                              {videoEditableStates.map((status) => (
+                                <option key={status} value={status}>
+                                  {names[status]}
+                                </option>
+                              ))}
+                            </SelectField>
+                            <SelectField
+                              id={`video-visibility-${record.id}`}
+                              label={copy("New visibility", "الظهور الجديد")}
+                              value={values.visibility}
+                              disabled={readOnly}
+                              onChange={(event) =>
+                                edit(record, {
+                                  visibility: event.target.value as AdminVideoRecord["visibility"],
+                                })
+                              }
+                            >
+                              {videoVisibilities.map((value) => (
+                                <option key={value} value={value}>
+                                  {visibilities[value]}
+                                </option>
+                              ))}
+                            </SelectField>
+                          </div>
+                          <label className={styles.choice}>
+                            <input
+                              type="checkbox"
+                              checked={values.commentsEnabled}
+                              disabled={readOnly}
+                              onChange={(event) =>
+                                edit(record, { commentsEnabled: event.target.checked })
+                              }
+                            />
+                            {copy("Comments enabled", "التعليقات مفعّلة")}
+                          </label>
+                          {record.tvControl ? (
+                            <FormSection
+                              id={`video-tv-${record.id}`}
+                              legend={copy("TV inclusion preference", "تفضيل الإدراج في البث")}
+                            >
+                              <p>
+                                <bdi>{record.tvControl.name}</bdi> ·{" "}
+                                <bdi>{record.tvControl.id}</bdi>
+                              </p>
+                              <p>
+                                {record.tvControl.origin === "DEFAULT"
+                                  ? copy(
+                                      "Default inclusion; no explicit preference is stored.",
+                                      "إدراج افتراضي؛ لا يوجد تفضيل صريح محفوظ.",
+                                    )
+                                  : copy(
+                                      "Explicit preference last read",
+                                      "آخر قراءة للتفضيل الصريح",
+                                    )}
+                                {record.tvControl.updatedAt && (
+                                  <>
+                                    {" "}
+                                    · <bdi>{stamp(record.tvControl.updatedAt)} UTC</bdi>
+                                  </>
+                                )}
+                              </p>
+                              <label className={styles.choice}>
+                                <input
+                                  type="checkbox"
+                                  checked={values.tvIncluded ?? record.tvControl.included}
+                                  disabled={readOnly}
+                                  onChange={(event) =>
+                                    edit(record, { tvIncluded: event.target.checked })
+                                  }
+                                />
+                                {copy(
+                                  "Include in this TV channel",
+                                  "إدراج في هذه القناة التلفزيونية",
+                                )}
+                              </label>
+                            </FormSection>
+                          ) : (
+                            <p>
+                              {copy(
+                                "No TV channel is available for this video.",
+                                "لا توجد قناة تلفزيونية متاحة لهذا الفيديو.",
+                              )}
+                            </p>
+                          )}
+                          <TextAreaField
+                            id={`video-reason-${record.id}`}
+                            dir="auto"
+                            label={copy(
+                              "Video decision reason (8–500 characters)",
+                              "سبب قرار الفيديو (٨–٥٠٠ حرف)",
+                            )}
+                            maxLength={500}
+                            rows={3}
+                            value={values.reason}
+                            disabled={readOnly}
+                            onChange={(event) => edit(record, { reason: event.target.value })}
+                          />
+                          <ActionButton
+                            tone={values.status === "REMOVED" ? "danger" : "primary"}
+                            disabled={
+                              readOnly ||
+                              !draft.dirty ||
+                              !reasonValid(values.reason) ||
+                              !values.title.trim()
+                            }
+                            onClick={() => void save(record, values)}
+                          >
+                            {copy(
+                              "Save reviewed video changes",
+                              "حفظ تعديلات الفيديو بعد المراجعة",
+                            )}
+                          </ActionButton>
+                        </div>
+                      )}
+                    </Disclosure>
+                  </article>
+                );
+              })}
+            </div>
+            {snapshot.directory.items.length === 0 && (
+              <StatusNotice>
+                {copy("No videos match these filters.", "لا توجد فيديوهات تطابق هذه المرشحات.")}
+              </StatusNotice>
+            )}
+            <nav
+              className={styles.actions}
+              aria-label={copy("Video directory pages", "صفحات قائمة الفيديوهات")}
+            >
+              <ActionButton
+                tone="secondary"
+                disabled={busy || loading || snapshot.directory.pagination.page <= 1}
+                onClick={() => void load({ ...filters, page: filters.page - 1 })}
+              >
+                {copy("Previous page", "الصفحة السابقة")}
+              </ActionButton>
+              <span>
+                {snapshot.directory.pagination.page} / {snapshot.directory.pagination.pages} ·{" "}
+                {snapshot.directory.pagination.total} {copy("videos", "فيديو")}
+              </span>
+              <ActionButton
+                tone="secondary"
+                disabled={
+                  busy ||
+                  loading ||
+                  snapshot.directory.pagination.page >= snapshot.directory.pagination.pages ||
+                  snapshot.directory.pagination.page >= 1000
+                }
+                onClick={() => void load({ ...filters, page: filters.page + 1 })}
+              >
+                {copy("Next page", "الصفحة التالية")}
+              </ActionButton>
+            </nav>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
