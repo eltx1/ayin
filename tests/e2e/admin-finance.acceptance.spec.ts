@@ -179,14 +179,9 @@ for (const locale of ["en", "ar"] as const)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
       true,
     );
-    const eligibility = panel
-      .locator("details")
-      .filter({
-        hasText: copy(
-          "Payout eligibility and provider requirements",
-          "أهلية الصرف ومتطلبات المزود",
-        ),
-      });
+    const eligibility = panel.locator("details").filter({
+      hasText: copy("Payout eligibility and provider requirements", "أهلية الصرف ومتطلبات المزود"),
+    });
     await eligibility.locator("summary").click();
     await expect(
       eligibility.getByText(copy("No configured requirements", "لا توجد متطلبات مضبوطة"), {
