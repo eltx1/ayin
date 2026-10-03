@@ -274,7 +274,7 @@ async function apiJson<T>(path: string, payload: unknown, signal?: AbortSignal):
   }
 }
 
-function uploadBlob(
+export function uploadBlob(
   url: string,
   blob: Blob,
   headers: Record<string, string>,
