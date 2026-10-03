@@ -16,6 +16,7 @@ function setup(overrides: Record<string, unknown> = {}, allowed = true, kids = f
     ...overrides,
   };
   const client = {
+    $queryRaw: vi.fn(async () => []),
     video: { findUnique: vi.fn(async () => video), update: vi.fn(async () => video) },
     channelMember: { findFirst: vi.fn(async (): Promise<{ id: string } | null> => null) },
     adminRoleAssignment: {
@@ -36,8 +37,14 @@ function setup(overrides: Record<string, unknown> = {}, allowed = true, kids = f
   };
   const policy = { decide: vi.fn(async () => ({ allowed })) };
   const mfa = { assertAdminMfa: vi.fn(async () => undefined) };
+  const databaseClient = {
+    ...client,
+    $transaction: vi.fn(async (callback: (tx: typeof client) => Promise<unknown>) =>
+      callback(client),
+    ),
+  };
   const service = new CommentsService(
-    { client } as unknown as DatabaseService,
+    { client: databaseClient } as unknown as DatabaseService,
     new CommentRateLimiter(),
     policy as unknown as VideoPolicyService,
     mfa as unknown as MfaService,
