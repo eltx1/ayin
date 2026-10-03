@@ -21,3 +21,7 @@ Local strict browser/config TypeScript, canonical Web React lint/types, root fix
 ## Limits and remaining master scope
 
 This extends software acceptance. Real Android/iOS/Safari installed-app startup, OS installation prompts, device background/resume and store/provider certification remain open. The worker version fixture does not prove a deployed changed application asset release. Global multi-tab account-change/draft routing, field performance, full phase9/15 gates and the whole master consolidation remain open.
+
+## First actual lifecycle results
+
+Candidate d680 production build/quality37110942234/security37110942254/inventory37110942255 passed. Browser37110942271 passed all136unchanged ordinary journeys10.6min, then3of5real lifecycle cases passed: late actual activation without navigation, actual v3 legacy-cache migration/foreign preservation, and real logout/reopened neutral offline navigation. Both EN/AR multi-tab cases verified actual activation, both retained drafts, zero navigation and the dismissed native warning, but their final explicit refresh remained correctly blocked because merely typing the old name does not acknowledge/save a dirty editor. The revised journeys explicitly save the retained draft through the existing real protected PATCH, verify its actual acknowledgment and exactly one write, then refresh and verify persisted draft/other-tab retention. The native guard is preserved; no product check is removed. Final rerun/visual/release acceptance remains pending.

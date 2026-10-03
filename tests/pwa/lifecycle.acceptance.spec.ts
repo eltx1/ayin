@@ -72,8 +72,10 @@ for (const locale of ["en", "ar"] as const)
     await otherName.fill("Retained second-tab draft");
     let firstNavigations = 0,
       otherNavigations = 0,
+      writes = 0,
       dialogs = 0;
     page.on("request", (r) => {
+      if (r.method() === "PATCH" && r.url().includes("/creator/channels/")) writes++;
       if (r.isNavigationRequest() && r.frame() === page.mainFrame()) firstNavigations++;
     });
     other.on("request", (r) => {
@@ -106,14 +108,28 @@ for (const locale of ["en", "ar"] as const)
       path: info.outputPath(`design-pwa-refresh-390-${locale}.png`),
       fullPage: true,
     });
-    await name.fill(user.channel.name);
+    expect(writes).toBe(0);
+    await page
+      .getByRole("button", { name: ar ? "حفظ القناة" : "Save channel", exact: true })
+      .click();
+    await expect(
+      page.getByText(
+        ar
+          ? "حُفظت تغييرات القناة. توجه روابط المعرّف السابق إلى هذه القناة."
+          : "Channel changes saved. Previous handle links redirect to this channel.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(writes).toBe(1);
     await page.getByRole("button", { name: refresh, exact: true }).click();
     await expect.poll(() => firstNavigations).toBe(1);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(
       ar ? "إعدادات القناة" : "Channel settings",
     );
     expect(otherNavigations).toBe(0);
+    await expect(name).toHaveValue("Retained first-tab draft");
     await expect(otherName).toHaveValue("Retained second-tab draft");
+    expect(dialogs).toBe(1);
     await writeFile(
       info.outputPath(`pwa-lifecycle-${locale}.json`),
       JSON.stringify(
@@ -124,6 +140,7 @@ for (const locale of ["en", "ar"] as const)
           initialVersion: "v3",
           activatedVersion: "v4-test",
           dismissedNativeWarnings: dialogs,
+          explicitSavedDraftWrites: writes,
           explicitRefreshNavigations: firstNavigations,
           otherTabNavigations: otherNavigations,
           ownedCacheNames: (await cacheState(page)).names,

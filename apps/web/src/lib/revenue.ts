@@ -182,71 +182,6 @@ async function revenueFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function getCreatorRevenue() {
-  return revenueFetch<CreatorRevenueOverview>("/creator/studio/revenue");
-}
-
-export function getCreatorMonetizationAnalytics() {
-  return revenueFetch<CreatorMonetizationAnalytics>("/creator/studio/revenue/analytics");
-}
-
-export async function downloadCreatorStatement() {
-  const payload = await revenueFetch<{
-    filename: string;
-    generatedAt: string;
-    channel: { id: string; name: string; handle: string };
-    format: "CSV";
-    content: string;
-  }>("/creator/studio/revenue/statement");
-  const blob = new Blob([payload.content], { type: "text/csv;charset=utf-8" });
-  const href = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = href;
-  anchor.download = payload.filename;
-  anchor.click();
-  URL.revokeObjectURL(href);
-  return payload;
-}
-
-export function getCreatorPaymentProfile() {
-  return revenueFetch<CreatorPaymentProfile | null>("/creator/studio/revenue/payment-profile");
-}
-
-export function updateCreatorPaymentProfile(input: {
-  legalName: string;
-  preferredCurrency: string;
-  provider: PayoutProvider;
-  destination?: string;
-  countryCode?: string | null;
-}) {
-  return revenueFetch<CreatorPaymentProfile>("/creator/studio/revenue/payment-profile", {
-    method: "PUT",
-    body: JSON.stringify(input),
-  });
-}
-
-export function getCreatorCompliance() {
-  return revenueFetch<CreatorComplianceView>("/creator/studio/revenue/compliance");
-}
-
-export function startCreatorCompliance(step: "IDENTITY" | "TAX") {
-  return revenueFetch<{
-    step: "IDENTITY" | "TAX";
-    status: CreatorComplianceStatus;
-    actionUrl: string | null;
-  }>("/creator/studio/revenue/compliance/start", {
-    method: "POST",
-    body: JSON.stringify({ step }),
-  });
-}
-
-export function refreshCreatorCompliance() {
-  return revenueFetch<CreatorComplianceView>("/creator/studio/revenue/compliance/refresh", {
-    method: "POST",
-    body: "{}",
-  });
-}
-
 export function getAdminCreatorCompliance(channelId: string) {
   return revenueFetch<CreatorComplianceView>(
     `/admin/revenue/channels/${encodeURIComponent(channelId)}/compliance`,
@@ -268,31 +203,6 @@ export function overrideAdminCreatorCompliance(
     compliance: CreatorComplianceView;
   }>(`/admin/revenue/channels/${encodeURIComponent(channelId)}/compliance`, {
     method: "PATCH",
-    body: JSON.stringify(input),
-  });
-}
-
-export function requestCreatorPayout(currency?: string) {
-  return revenueFetch<{ payout: { id: string; status: string; amount: string; currency: string } }>(
-    "/creator/studio/revenue/payout-requests",
-    {
-      method: "POST",
-      body: JSON.stringify(currency ? { currency } : {}),
-    },
-  );
-}
-
-export function getCreatorRevenueDisputes() {
-  return revenueFetch<{ items: RevenueDispute[] }>("/creator/studio/revenue/disputes");
-}
-
-export function createCreatorRevenueDispute(input: {
-  category: "EARNINGS" | "PAYOUT" | "OTHER";
-  payoutId?: string | null;
-  message: string;
-}) {
-  return revenueFetch<RevenueDispute>("/creator/studio/revenue/disputes", {
-    method: "POST",
     body: JSON.stringify(input),
   });
 }
