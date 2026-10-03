@@ -37,12 +37,47 @@ const videoReadSelection = {
   commentsEnabled: true,
   publishedAt: true,
   updatedAt: true,
-  channel: { select: { id: true, handle: true, name: true, status: true } },
+  channel: {
+    select: {
+      id: true,
+      handle: true,
+      name: true,
+      status: true,
+      creatorTvChannels: {
+        take: 1,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, name: true, status: true },
+      },
+    },
+  },
   tvPreferences: {
-    select: { tvChannelId: true, included: true, priority: true, sortOrder: true },
+    select: { tvChannelId: true, included: true, priority: true, sortOrder: true, updatedAt: true },
   },
   _count: { select: { comments: true, reports: true } },
-} as const;
+} satisfies Prisma.VideoSelect;
+
+type SafeVideoRow = Prisma.VideoGetPayload<{ select: typeof videoReadSelection }>;
+function videoProjection(row: SafeVideoRow) {
+  const { creatorTvChannels, ...channel } = row.channel;
+  const tv = creatorTvChannels[0];
+  const preference = tv
+    ? row.tvPreferences.find((entry) => entry.tvChannelId === tv.id)
+    : undefined;
+  return {
+    ...row,
+    channel,
+    tvControl: tv
+      ? {
+          id: tv.id,
+          name: tv.name,
+          status: tv.status,
+          included: preference?.included ?? true,
+          origin: preference ? "EXPLICIT" : "DEFAULT",
+          updatedAt: preference?.updatedAt ?? null,
+        }
+      : null,
+  };
+}
 
 const MAX_ADMIN_PAGE = 1_000;
 
@@ -89,6 +124,7 @@ export interface AdminChannelPatch {
 }
 
 export interface AdminVideoPatch {
+  expectedTvPreference?: { tvChannelId: string; updatedAt: string | null } | undefined;
   expectedUpdatedAt?: string | undefined;
   title?: string | undefined;
   description?: string | null | undefined;
@@ -451,16 +487,16 @@ export class AdminControlService {
       ],
       { isolationLevel: "RepeatableRead" },
     );
-    return { items, pagination: this.pagination(total, page, take) };
+    return { items: items.map(videoProjection), pagination: this.pagination(total, page, take) };
   }
 
   async video(videoId: string) {
-    const video = await this.database.client.video.findUnique({
-      where: { id: videoId },
-      select: videoReadSelection,
-    });
+    const video = await this.database.client.$transaction(
+      (tx) => tx.video.findUnique({ where: { id: videoId }, select: videoReadSelection }),
+      { isolationLevel: "RepeatableRead" },
+    );
     if (!video) throw new NotFoundException("Video record unavailable.");
-    return video;
+    return videoProjection(video);
   }
 
   async updateVideo(actor: AccountWriteActor, videoId: string, patch: AdminVideoPatch) {
@@ -503,25 +539,73 @@ export class AdminControlService {
           updatedAt: true,
         },
       });
+      let tvControl:
+        { id: string; included: boolean; origin: "EXPLICIT"; updatedAt: Date } | undefined;
       if (patch.tvIncluded !== undefined) {
-        const tv = await tx.creatorTvChannel.findFirst({
+        const selected = await tx.creatorTvChannel.findFirst({
           where: { channelId: existing.channelId },
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           select: { id: true },
         });
-        if (tv) {
-          await tx.creatorTvVideoPreference.upsert({
+        if (
+          patch.expectedTvPreference &&
+          selected?.id !== patch.expectedTvPreference.tvChannelId.toLowerCase()
+        )
+          throw new ConflictException(
+            "TV target changed. Read the original video before reviewing this operation.",
+          );
+        if (selected) {
+          const [tv] = await tx.$queryRaw<Array<{ id: string }>>(
+            Prisma.sql`SELECT "id" FROM "CreatorTvChannel" WHERE "id" = ${selected.id}::uuid FOR SHARE /* ayin-admin-video-tv-lock */`,
+          );
+          if (!tv)
+            throw new ConflictException(
+              "TV target changed. Read the original video before reviewing this operation.",
+            );
+          const [current] = await tx.$queryRaw<Array<{ updatedAt: Date }>>(
+            Prisma.sql`SELECT "updatedAt" FROM "CreatorTvVideoPreference" WHERE "tvChannelId" = ${tv.id}::uuid AND "videoId" = ${videoId}::uuid FOR UPDATE /* ayin-admin-video-tv-preference-lock */`,
+          );
+          await this.videoWriteAuthority(tx, actor);
+          if (
+            patch.expectedTvPreference &&
+            (current?.updatedAt.getTime() ?? null) !==
+              (patch.expectedTvPreference.updatedAt === null
+                ? null
+                : new Date(patch.expectedTvPreference.updatedAt).getTime())
+          )
+            throw new ConflictException(
+              "TV inclusion changed. Read the original video before reviewing this operation.",
+            );
+          const preference = await tx.creatorTvVideoPreference.upsert({
             where: { tvChannelId_videoId: { tvChannelId: tv.id, videoId } },
             create: { tvChannelId: tv.id, videoId, included: patch.tvIncluded, priority: 0 },
-            update: { included: patch.tvIncluded },
+            update: {
+              included: patch.tvIncluded,
+              updatedAt: current ? nextAccountVersion(current.updatedAt) : new Date(),
+            },
+            select: { included: true, updatedAt: true },
           });
+          tvControl = {
+            id: tv.id,
+            included: preference.included,
+            origin: "EXPLICIT",
+            updatedAt: preference.updatedAt,
+          };
         }
       }
       if (nextStatus === "REMOVED") {
+        const preferences = await tx.$queryRaw<Array<{ updatedAt: Date }>>(
+          Prisma.sql`SELECT "updatedAt" FROM "CreatorTvVideoPreference" WHERE "videoId" = ${videoId}::uuid ORDER BY "id" FOR UPDATE /* ayin-admin-video-tv-preference-lock */`,
+        );
+        await this.videoWriteAuthority(tx, actor);
+        const updatedAt = new Date(
+          Math.max(Date.now(), ...preferences.map((entry) => entry.updatedAt.getTime() + 1)),
+        );
         await tx.creatorTvVideoPreference.updateMany({
           where: { videoId },
-          data: { included: false },
+          data: { included: false, updatedAt },
         });
+        if (tvControl) tvControl = { ...tvControl, included: false, updatedAt };
       }
       await this.audit.recordInTransaction(tx, {
         actorAccountId: actor.accountId,
@@ -536,7 +620,7 @@ export class AdminControlService {
           ...(patch.tvIncluded !== undefined ? { tvIncluded: patch.tvIncluded } : {}),
         },
       });
-      return video;
+      return { ...video, ...(tvControl ? { tvControl } : {}) };
     });
   }
 

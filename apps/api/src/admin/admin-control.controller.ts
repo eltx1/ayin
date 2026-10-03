@@ -86,9 +86,19 @@ const videoPatchSchema = z
     visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
     commentsEnabled: z.boolean().optional(),
     tvIncluded: z.boolean().optional(),
+    expectedTvPreference: z
+      .object({
+        tvChannelId: z.string().uuid(),
+        updatedAt: z.string().datetime({ offset: true }).nullable(),
+      })
+      .strict()
+      .optional(),
     reason: reasonSchema,
   })
-  .strict();
+  .strict()
+  .refine((value) => value.expectedTvPreference === undefined || value.tvIncluded !== undefined, {
+    message: "TV version requires an explicit inclusion command.",
+  });
 const bulkVideoSchema = z
   .object({
     ids: z.array(z.string().uuid()).min(1).max(100),
