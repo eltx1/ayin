@@ -90,7 +90,8 @@ export async function uploadPreparedVideoDirectly(input: {
   let highestReportedPercent = 0;
   const reportProgress = (loadedBytes: number) => {
     const next = Math.min(99, Math.round((loadedBytes / file.size) * 100));
-    highestReportedPercent = Math.max(highestReportedPercent, next);
+    if (next <= highestReportedPercent) return;
+    highestReportedPercent = next;
     onProgress(highestReportedPercent);
   };
 
