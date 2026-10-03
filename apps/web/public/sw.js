@@ -3,7 +3,18 @@ const STATIC_CACHE = `${VERSION}-static`;
 const OFFLINE_PAGE = "/offline.html";
 const APP_SHELL = [OFFLINE_PAGE, "/icons/ayin-192.svg", "/icons/ayin-512.svg"];
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.addAll(APP_SHELL))
+      .then(async () => {
+        // Migrate the known unsafe v2 worker immediately, without reloading any tab.
+        // Future safe-version updates retain the explicit user-acceptance lifecycle.
+        const keys = await caches.keys();
+        if (keys.some((key) => key === "ayin-pwa-v2-static" || key === "ayin-pwa-v2-read"))
+          await self.skipWaiting();
+      }),
+  );
 });
 self.addEventListener("activate", (event) => {
   event.waitUntil(

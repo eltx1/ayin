@@ -18,12 +18,7 @@ function harness() {
   };
   const caches = {
     open: vi.fn(async () => cache),
-    keys: vi.fn(async () => [
-      "ayin-pwa-v2-static",
-      "ayin-pwa-v2-read",
-      "ayin-pwa-v3-static",
-      "other-app",
-    ]),
+    keys: vi.fn(async (): Promise<string[]> => []),
     delete: vi.fn(async (name: string) => Boolean(name)),
   };
   const fetch = vi.fn(async () => {
@@ -81,8 +76,20 @@ describe("AYIN service worker behavior", () => {
     await h.dispatch("message", { data: { type: "SKIP_WAITING" } });
     expect(h.self.skipWaiting).toHaveBeenCalledOnce();
   });
+  it("immediately migrates the known unsafe v2 worker without any page reload instruction", async () => {
+    const h = harness();
+    h.caches.keys.mockResolvedValue(["ayin-pwa-v2-read"]);
+    await h.dispatch("install");
+    expect(h.self.skipWaiting).toHaveBeenCalledOnce();
+  });
   it("purges old AYIN caches without deleting another application's cache", async () => {
     const h = harness();
+    h.caches.keys.mockResolvedValue([
+      "ayin-pwa-v2-static",
+      "ayin-pwa-v2-read",
+      "ayin-pwa-v3-static",
+      "other-app",
+    ]);
     await h.dispatch("activate");
     expect(h.caches.delete.mock.calls.map(([name]) => name)).toEqual([
       "ayin-pwa-v2-static",
