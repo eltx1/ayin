@@ -130,7 +130,10 @@ for (const locale of ["en", "ar"] as const)
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
       await testInfo.attach(`design-creator-tv-${width}-${locale}.png`, {
-        body: await page.screenshot({ fullPage: true }),
+        body: await page.screenshot({
+          path: testInfo.outputPath(`design-creator-tv-management-${width}-${locale}.png`),
+          fullPage: true,
+        }),
         contentType: "image/png",
       });
       expect(
