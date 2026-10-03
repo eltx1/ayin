@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 import {
   canEditComment,
   defaultCommentPolicy,
@@ -15,16 +16,11 @@ export class CommentsService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CommentRateLimiter) private readonly rateLimiter: CommentRateLimiter,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
-  async list(videoId: string, cursor = 0, limit = 30) {
-    const video = await this.database.client.video.findUnique({
-      where: { id: videoId },
-      select: { id: true, commentsEnabled: true, status: true, visibility: true },
-    });
-    if (!video || video.status !== "PUBLISHED" || video.visibility !== "PUBLIC") {
-      throw new CommentsError("VIDEO_NOT_FOUND", "Video not found.", 404);
-    }
+  async list(videoId: string, cursor = 0, limit = 30, countryCode?: string) {
+    const video = await this.availableVideo(videoId, countryCode, true);
     if (!video.commentsEnabled) return { enabled: false, items: [], nextCursor: null };
     const rows = await this.database.client.comment.findMany({
       where: { videoId, parentId: null, status: "PUBLISHED" },
@@ -85,24 +81,15 @@ export class CommentsService {
     body: string,
     parentId?: string,
     requestedProfileId?: string,
+    countryCode?: string,
   ) {
     this.rateLimiter.consume(`write:${accountId}`);
     const [profile, video, policy] = await Promise.all([
       this.resolveProfile(accountId, requestedProfileId),
-      this.database.client.video.findUnique({
-        where: { id: videoId },
-        select: {
-          id: true,
-          channelId: true,
-          commentsEnabled: true,
-          status: true,
-          visibility: true,
-        },
-      }),
+      this.availableVideo(videoId, countryCode),
       this.policy(),
     ]);
-    if (!video || video.status !== "PUBLISHED" || video.visibility === "PRIVATE")
-      throw new CommentsError("VIDEO_NOT_FOUND", "Video not found.", 404);
+    this.assertAdultProfile(profile);
     if (!video.commentsEnabled)
       throw new CommentsError("COMMENTS_DISABLED", "Comments are disabled for this video.", 409);
     const hidden = await this.database.client.channelHiddenProfile.findUnique({
@@ -192,10 +179,12 @@ export class CommentsService {
     commentId: string,
     enabled: boolean,
     requestedProfileId?: string,
+    countryCode?: string,
   ) {
     this.rateLimiter.consume(`reaction:${accountId}`, 90);
     const profile = await this.resolveProfile(accountId, requestedProfileId);
-    await this.assertPublishedComment(commentId);
+    this.assertAdultProfile(profile);
+    await this.assertPublishedComment(commentId, countryCode);
     if (enabled) {
       await this.database.client.reaction.upsert({
         where: { profileId_commentId: { profileId: profile.id, commentId } },
@@ -239,10 +228,12 @@ export class CommentsService {
     reason: "SPAM" | "HARASSMENT" | "HATE" | "SEXUAL_CONTENT" | "VIOLENCE" | "MISLEADING" | "OTHER",
     details?: string,
     requestedProfileId?: string,
+    countryCode?: string,
   ) {
     this.rateLimiter.consume(`report:${accountId}`, 10);
     const profile = await this.resolveProfile(accountId, requestedProfileId);
-    await this.assertPublishedComment(commentId);
+    this.assertAdultProfile(profile);
+    await this.assertPublishedComment(commentId, countryCode);
     return this.database.client.report.create({
       data: {
         reporterProfileId: profile.id,
@@ -346,25 +337,66 @@ export class CommentsService {
     return Boolean(member || admin);
   }
 
-  private async assertPublishedComment(commentId: string) {
+  private async availableVideo(videoId: string, countryCode?: string, publicOnly = false) {
+    const video = await this.database.client.video.findUnique({
+      where: { id: videoId },
+      select: {
+        id: true,
+        channelId: true,
+        commentsEnabled: true,
+        status: true,
+        visibility: true,
+        removedAt: true,
+        channel: { select: { status: true, removedAt: true } },
+      },
+    });
+    if (
+      !video ||
+      video.status !== "PUBLISHED" ||
+      video.visibility === "PRIVATE" ||
+      (publicOnly && video.visibility !== "PUBLIC") ||
+      video.removedAt ||
+      video.channel.status !== "ACTIVE" ||
+      video.channel.removedAt ||
+      !(await this.videoPolicy.decide(videoId, { countryCode })).allowed
+    )
+      throw new CommentsError("VIDEO_NOT_FOUND", "Video not found.", 404);
+    return video;
+  }
+
+  private async assertPublishedComment(commentId: string, countryCode?: string) {
     const comment = await this.database.client.comment.findUnique({
       where: { id: commentId },
-      select: { status: true },
+      select: { status: true, videoId: true, parent: { select: { status: true } } },
     });
-    if (!comment || comment.status !== "PUBLISHED")
+    if (
+      !comment ||
+      comment.status !== "PUBLISHED" ||
+      (comment.parent && comment.parent.status !== "PUBLISHED")
+    )
       throw new CommentsError("COMMENT_NOT_FOUND", "Comment not found.", 404);
+    await this.availableVideo(comment.videoId, countryCode);
+  }
+
+  private assertAdultProfile(profile: { isKids: boolean }) {
+    if (profile.isKids)
+      throw new CommentsError(
+        "KIDS_COMMENTS_DISABLED",
+        "Comments are unavailable for Kids profiles.",
+        403,
+      );
   }
 
   private async resolveProfile(accountId: string, requestedProfileId?: string) {
     const profile = requestedProfileId
       ? await this.database.client.viewerProfile.findFirst({
           where: { id: requestedProfileId, accountId, deletedAt: null },
-          select: { id: true },
+          select: { id: true, isKids: true },
         })
       : await this.database.client.viewerProfile.findFirst({
           where: { accountId, deletedAt: null },
           orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
-          select: { id: true },
+          select: { id: true, isKids: true },
         });
     if (!profile)
       throw new CommentsError("PROFILE_NOT_FOUND", "A viewer profile is required.", 403);

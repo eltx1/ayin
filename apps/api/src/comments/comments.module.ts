@@ -2,12 +2,13 @@ import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
+import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import { CommentRateLimiter } from "./comment-rate-limiter.js";
 import { CommentsController } from "./comments.controller.js";
 import { CommentsService } from "./comments.service.js";
 
 @Module({
-  imports: [AuthModule, DatabaseModule],
+  imports: [AuthModule, DatabaseModule, VideoPolicyModule],
   controllers: [CommentsController],
   providers: [CommentsService, CommentRateLimiter],
   exports: [CommentsService],
