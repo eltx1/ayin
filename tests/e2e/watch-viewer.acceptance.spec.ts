@@ -63,7 +63,7 @@ test("Watch comments expose real pagination and recover a committed response los
   expect(writes).toBe(1);
   await main.getByRole("button", { name: "Refresh comments", exact: true }).click();
   await expect(
-    main.getByText("A committed comment with a lost response", { exact: true }),
+    main.locator("article p").filter({ hasText: /^A committed comment with a lost response$/ }),
   ).toHaveCount(1);
   expect(writes).toBe(1);
   await page.screenshot({
@@ -73,7 +73,7 @@ test("Watch comments expose real pagination and recover a committed response los
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/ar/watch/${video.slug}?lang=ar`);
   await main.locator("summary").filter({ hasText: "التعليقات" }).click();
-  await expect(main.getByLabel("شارك في الحوار", { exact: true })).toBeVisible();
+  await expect(main.getByRole("textbox", { name: "شارك في الحوار", exact: true })).toBeVisible();
   await expect(main.getByRole("button", { name: "نشر التعليق", exact: true })).toBeVisible();
   await expect
     .poll(() =>
