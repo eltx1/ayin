@@ -10,7 +10,9 @@ const cacheablePublicPrefixes = [
 ];
 
 export function usesCookieSession(request: Pick<FastifyRequest, "headers">): boolean {
-  if (request.headers.authorization?.startsWith("Bearer ")) return false;
+  // Match readSessionToken: any explicit Authorization header selects that
+  // transport; invalid schemes/tokens are rejected, never cookie fallback.
+  if (request.headers.authorization !== undefined) return false;
   return (request.headers.cookie ?? "")
     .split(";")
     .some((part) => part.trim().startsWith(sessionCookiePrefix));
