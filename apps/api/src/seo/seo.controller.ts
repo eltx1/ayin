@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Header,
   Headers,
   Inject,
   Param,
@@ -30,17 +31,31 @@ export class SeoController {
   getVideo(@Param("slug") slug: string, @Headers() headers: HeaderBag) {
     return this.seo.getVideo(slug, { countryCode: this.trustedRegion.countryFromHeaders(headers) });
   }
-  @Get("channels/:handle") getChannel(@Param("handle") handle: string) {
-    return this.seo.getChannel(handle);
+  @Get("channels/:handle")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  getChannel(
+    @Param("handle") handle: string,
+    @Headers() headers: HeaderBag,
+    @Query("kids") kids: string | undefined,
+  ) {
+    return this.seo.getChannel(handle, {
+      countryCode: this.trustedRegion.countryFromHeaders(headers),
+      isKidsProfile: kids === "1",
+    });
   }
   @Get("playlists/:handle/:slug")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   getPlaylist(
     @Param("handle") handle: string,
     @Param("slug") slug: string,
     @Headers() headers: HeaderBag,
+    @Query("kids") kids: string | undefined,
   ) {
     return this.seo.getPlaylist(handle, slug, {
       countryCode: this.trustedRegion.countryFromHeaders(headers),
+      isKidsProfile: kids === "1",
     });
   }
   @Get("sitemap/:kind")

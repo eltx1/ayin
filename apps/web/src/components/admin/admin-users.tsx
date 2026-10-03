@@ -25,7 +25,7 @@ import {
   type AdminUsersSnapshot,
   type UserFilters,
 } from "@/lib/admin-users-workspace";
-import styles from "./admin-users.module.css";
+import styles from "./admin-record-workspace.module.css";
 type Draft = { name: string; dirty: boolean; statusReason: string; sessionReason: string };
 const fresh = (record: AdminUserRecord): Draft => ({
   name: record.displayName,

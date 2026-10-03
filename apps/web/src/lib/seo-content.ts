@@ -74,14 +74,29 @@ export async function getSeoVideo(
   );
 }
 
-export const getSeoChannel = cache(async (handle: string): Promise<SeoChannelResponse | null> => {
-  return fetchSeo<SeoChannelResponse>(`/public/seo/channels/${encodeURIComponent(handle)}`);
-});
+export const getSeoChannel = cache(
+  async (
+    handle: string,
+    requestHeaders: Record<string, string> = {},
+    kidsMode = false,
+  ): Promise<SeoChannelResponse | null> => {
+    return fetchSeo<SeoChannelResponse>(
+      `/public/seo/channels/${encodeURIComponent(handle)}${kidsMode ? "?kids=1" : ""}`,
+      requestHeaders,
+    );
+  },
+);
 
 export const getSeoPlaylist = cache(
-  async (handle: string, slug: string): Promise<SeoPlaylistResponse | null> => {
+  async (
+    handle: string,
+    slug: string,
+    requestHeaders: Record<string, string> = {},
+    kidsMode = false,
+  ): Promise<SeoPlaylistResponse | null> => {
     return fetchSeo<SeoPlaylistResponse>(
-      `/public/seo/playlists/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`,
+      `/public/seo/playlists/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}${kidsMode ? "?kids=1" : ""}`,
+      requestHeaders,
     );
   },
 );
@@ -93,6 +108,7 @@ async function fetchSeo<T>(
   const response = await fetch(`${apiBaseUrl}${path}`, {
     cache: "no-store",
     headers: requestHeaders,
+    signal: AbortSignal.timeout(10_000),
   });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`SEO metadata request failed with ${response.status}.`);

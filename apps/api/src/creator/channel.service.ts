@@ -13,6 +13,9 @@ import {
 import type { MediaStorageConfig } from "../media/media-storage.config.js";
 import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 
+import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
+import { publicVideoEligibility, publicVideoSelect } from "./public-video-read.js";
+
 const CHANNEL_FLAG_KEYS = ["channel.shorts", "channel.posts"] as const;
 const CHANNEL_IMAGE_TYPES = new Map([
   ["image/jpeg", "jpg"],
@@ -69,35 +72,77 @@ export class ChannelService {
     @Inject(MEDIA_STORAGE_CONFIG) private readonly storageConfig: MediaStorageConfig,
   ) {}
 
-  async getPublicChannel(handleRaw: string) {
+  async getPublicChannel(handleRaw: string, context: VideoPolicyContext = {}) {
     const requestedHandle = normalizeHandle(handleRaw);
     if (!validHandle(requestedHandle)) {
       throw new ChannelError("CHANNEL_NOT_FOUND", "This AYIN channel could not be found.", 404);
     }
 
-    let redirectedFrom: string | null = null;
-    let channel = await this.database.client.channel.findUnique({
-      where: { handle: requestedHandle },
-      select: this.publicChannelSelect(),
-    });
+    const policyContext = { ...context, now: context.now ?? new Date() };
+    const { channel, redirectedFrom, videos, playlistCounts } =
+      await this.database.client.$transaction(
+        async (tx) => {
+          let redirectedFrom: string | null = null;
+          let channel = await tx.channel.findUnique({
+            where: { handle: requestedHandle },
+            select: this.publicChannelSelect(),
+          });
 
-    if (!channel) {
-      const redirect = await this.database.client.channelHandleRedirect.findUnique({
-        where: { oldHandle: requestedHandle },
-        select: { channelId: true },
-      });
-      if (redirect) {
-        channel = await this.database.client.channel.findUnique({
-          where: { id: redirect.channelId },
-          select: this.publicChannelSelect(),
-        });
-        redirectedFrom = requestedHandle;
-      }
-    }
+          if (!channel) {
+            const redirect = await tx.channelHandleRedirect.findUnique({
+              where: { oldHandle: requestedHandle },
+              select: { channelId: true },
+            });
+            if (redirect) {
+              channel = await tx.channel.findUnique({
+                where: { id: redirect.channelId },
+                select: this.publicChannelSelect(),
+              });
+              redirectedFrom = requestedHandle;
+            }
+          }
 
-    if (!channel || channel.status !== "ACTIVE" || channel.removedAt) {
-      throw new ChannelError("CHANNEL_NOT_FOUND", "This AYIN channel could not be found.", 404);
-    }
+          if (!channel || channel.status !== "ACTIVE" || channel.removedAt) {
+            throw new ChannelError(
+              "CHANNEL_NOT_FOUND",
+              "This AYIN channel could not be found.",
+              404,
+            );
+          }
+
+          const candidates = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+        SELECT v.id FROM "Video" v WHERE v."channelId" = ${channel.id}::uuid
+        AND ${publicVideoEligibility(policyContext)}
+        ORDER BY v."publishedAt" DESC NULLS LAST, v."createdAt" DESC, v.id DESC LIMIT 24
+      `);
+          const hydrated = candidates.length
+            ? await tx.video.findMany({
+                where: { id: { in: candidates.map((video) => video.id) } },
+                select: publicVideoSelect,
+              })
+            : [];
+          const byId = new Map(hydrated.map((video) => [video.id, video]));
+          const videos = candidates.flatMap(({ id }) => {
+            const video = byId.get(id);
+            return video ? [video] : [];
+          });
+          const counts = channel.playlists.length
+            ? await tx.$queryRaw<{ playlistId: string; count: number }[]>(Prisma.sql`
+        SELECT i."playlistId", COUNT(*)::integer AS count FROM "PlaylistItem" i
+        JOIN "Video" v ON v.id = i."videoId"
+        WHERE i."playlistId" IN (${Prisma.join(channel.playlists.map((playlist) => Prisma.sql`${playlist.id}::uuid`))})
+        AND ${publicVideoEligibility(policyContext)} GROUP BY i."playlistId"
+      `)
+            : [];
+          return {
+            channel,
+            redirectedFrom,
+            videos,
+            playlistCounts: new Map(counts.map((row) => [row.playlistId, row.count])),
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+      );
 
     const [appearance, flags] = await Promise.all([
       this.readAppearance(channel.id),
@@ -131,7 +176,7 @@ export class ChannelService {
             status: channel.primaryTvChannel.status,
           }
         : null,
-      videos: channel.videos.map((video) => ({
+      videos: videos.map((video) => ({
         id: video.id,
         slug: video.slug,
         title: video.title,
@@ -150,7 +195,7 @@ export class ChannelService {
         slug: playlist.slug,
         name: playlist.name,
         description: playlist.description,
-        itemCount: playlist._count.items,
+        itemCount: playlistCounts.get(playlist.id) ?? 0,
       })),
     };
   }
@@ -477,51 +522,15 @@ export class ChannelService {
       primaryTvChannel: {
         select: { id: true, slug: true, name: true, status: true },
       },
-      videos: {
-        where: {
-          status: "PUBLISHED" as const,
-          visibility: "PUBLIC" as const,
-          removedAt: null,
-          mediaAssets: {
-            some: {
-              kind: "SOURCE_VIDEO" as const,
-              status: "VALIDATED" as const,
-              removedAt: null,
-              mimeType: "video/mp4",
-            },
-          },
-        },
-        orderBy: [{ publishedAt: "desc" as const }, { createdAt: "desc" as const }],
-        take: 24,
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          description: true,
-          durationMs: true,
-          publishedAt: true,
-          mediaAssets: {
-            where: {
-              kind: "THUMBNAIL" as const,
-              status: { in: ["UPLOADED" as const, "VALIDATED" as const] },
-              removedAt: null,
-            },
-            orderBy: { updatedAt: "desc" as const },
-            take: 1,
-            select: { r2ObjectKey: true, mimeType: true },
-          },
-        },
-      },
       playlists: {
-        where: { isPublic: true, deletedAt: null },
-        orderBy: { createdAt: "desc" as const },
+        where: { isPublic: true, visibility: "PUBLIC" as const, deletedAt: null },
+        orderBy: [{ createdAt: "desc" as const }, { id: "desc" as const }],
         take: 12,
         select: {
           id: true,
           slug: true,
           name: true,
           description: true,
-          _count: { select: { items: true } },
         },
       },
     };

@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
+
+import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
+import { publicVideoEligibility, publicVideoSelect } from "./public-video-read.js";
 
 export type PlaylistVisibilityValue = "PUBLIC" | "UNLISTED" | "PRIVATE";
 export type PlaylistEditActor =
@@ -407,7 +410,7 @@ export class PlaylistService {
     });
   }
 
-  async getPublicPlaylist(handleRaw: string, slugRaw: string) {
+  async getPublicPlaylist(handleRaw: string, slugRaw: string, context: VideoPolicyContext = {}) {
     const requestedHandle = handleRaw.normalize("NFKC").trim().toLowerCase();
     if (
       requestedHandle.length > 80 ||
@@ -420,121 +423,106 @@ export class PlaylistService {
       throw new PlaylistError("PLAYLIST_NOT_FOUND", "This AYIN playlist could not be found.", 404);
     }
 
-    let redirectedFrom: string | null = null;
-    let channel = await this.database.client.channel.findUnique({
-      where: { handle: requestedHandle },
-      select: { id: true, handle: true, name: true, status: true, removedAt: true },
-    });
-    if (!channel) {
-      const redirect = await this.database.client.channelHandleRedirect.findUnique({
-        where: { oldHandle: requestedHandle },
-        select: { channelId: true },
-      });
-      if (redirect) {
-        channel = await this.database.client.channel.findUnique({
-          where: { id: redirect.channelId },
+    const policyContext = { ...context, now: context.now ?? new Date() };
+    return this.database.client.$transaction(
+      async (tx) => {
+        let redirectedFrom: string | null = null;
+        let channel = await tx.channel.findUnique({
+          where: { handle: requestedHandle },
           select: { id: true, handle: true, name: true, status: true, removedAt: true },
         });
-        redirectedFrom = requestedHandle;
-      }
-    }
-    if (!channel || channel.status !== "ACTIVE" || channel.removedAt) {
-      throw new PlaylistError("PLAYLIST_NOT_FOUND", "This AYIN playlist could not be found.", 404);
-    }
+        if (!channel) {
+          const redirect = await tx.channelHandleRedirect.findUnique({
+            where: { oldHandle: requestedHandle },
+            select: { channelId: true },
+          });
+          if (redirect) {
+            channel = await tx.channel.findUnique({
+              where: { id: redirect.channelId },
+              select: { id: true, handle: true, name: true, status: true, removedAt: true },
+            });
+            redirectedFrom = requestedHandle;
+          }
+        }
+        if (!channel || channel.status !== "ACTIVE" || channel.removedAt) {
+          throw new PlaylistError(
+            "PLAYLIST_NOT_FOUND",
+            "This AYIN playlist could not be found.",
+            404,
+          );
+        }
 
-    const playlist = await this.database.client.playlist.findUnique({
-      where: { channelId_slug: { channelId: channel.id, slug } },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        description: true,
-        visibility: true,
-        systemKey: true,
-        deletedAt: true,
-        items: {
-          where: {
-            video: {
-              status: "PUBLISHED",
-              visibility: "PUBLIC",
-              removedAt: null,
-              mediaAssets: {
-                some: {
-                  kind: "SOURCE_VIDEO",
-                  status: "VALIDATED",
-                  removedAt: null,
-                  mimeType: "video/mp4",
-                },
-              },
-            },
-          },
-          orderBy: { position: "asc" },
+        const playlist = await tx.playlist.findUnique({
+          where: { channelId_slug: { channelId: channel.id, slug } },
           select: {
             id: true,
-            position: true,
-            video: {
-              select: {
-                id: true,
-                slug: true,
-                title: true,
-                description: true,
-                durationMs: true,
-                publishedAt: true,
-                mediaAssets: {
-                  where: {
-                    kind: "THUMBNAIL",
-                    status: { in: ["UPLOADED", "VALIDATED"] },
-                    removedAt: null,
-                  },
-                  orderBy: { updatedAt: "desc" },
-                  take: 1,
-                  select: { r2ObjectKey: true, mimeType: true },
-                },
-              },
-            },
+            slug: true,
+            name: true,
+            description: true,
+            visibility: true,
+            systemKey: true,
+            deletedAt: true,
           },
-        },
-      },
-    });
-    if (
-      !playlist ||
-      playlist.deletedAt ||
-      (playlist.visibility !== "PUBLIC" && playlist.visibility !== "UNLISTED")
-    ) {
-      throw new PlaylistError("PLAYLIST_NOT_FOUND", "This AYIN playlist could not be found.", 404);
-    }
+        });
+        if (
+          !playlist ||
+          playlist.deletedAt ||
+          (playlist.visibility !== "PUBLIC" && playlist.visibility !== "UNLISTED")
+        ) {
+          throw new PlaylistError(
+            "PLAYLIST_NOT_FOUND",
+            "This AYIN playlist could not be found.",
+            404,
+          );
+        }
 
-    return {
-      canonicalHandle: channel.handle,
-      redirectedFrom,
-      channel: { id: channel.id, handle: channel.handle, name: channel.name },
-      playlist: {
-        id: playlist.id,
-        slug: playlist.slug,
-        name: playlist.name,
-        description: playlist.description,
-        visibility: playlist.visibility,
-        systemKey: playlist.systemKey,
+        const candidates = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT i.id FROM "PlaylistItem" i JOIN "Video" v ON v.id = i."videoId"
+      WHERE i."playlistId" = ${playlist.id}::uuid AND ${publicVideoEligibility(policyContext)}
+      ORDER BY i.position ASC, i.id ASC
+    `);
+        const items = candidates.length
+          ? await tx.playlistItem.findMany({
+              where: { id: { in: candidates.map((item) => item.id) } },
+              orderBy: [{ position: "asc" }, { id: "asc" }],
+              select: { id: true, position: true, video: { select: publicVideoSelect } },
+            })
+          : [];
+
+        return {
+          canonicalHandle: channel.handle,
+          redirectedFrom,
+          channel: { id: channel.id, handle: channel.handle, name: channel.name },
+          playlist: {
+            id: playlist.id,
+            slug: playlist.slug,
+            name: playlist.name,
+            description: playlist.description,
+            visibility: playlist.visibility,
+            systemKey: playlist.systemKey,
+          },
+          items: items.map((item) => ({
+            id: item.id,
+            position: item.position,
+            video: {
+              id: item.video.id,
+              slug: item.video.slug,
+              title: item.video.title,
+              description: item.video.description,
+              durationMs: item.video.durationMs,
+              publishedAt: item.video.publishedAt,
+              thumbnail: item.video.mediaAssets[0]
+                ? {
+                    objectKey: item.video.mediaAssets[0].r2ObjectKey,
+                    mimeType: item.video.mediaAssets[0].mimeType,
+                  }
+                : null,
+            },
+          })),
+        };
       },
-      items: playlist.items.map((item) => ({
-        id: item.id,
-        position: item.position,
-        video: {
-          id: item.video.id,
-          slug: item.video.slug,
-          title: item.video.title,
-          description: item.video.description,
-          durationMs: item.video.durationMs,
-          publishedAt: item.video.publishedAt,
-          thumbnail: item.video.mediaAssets[0]
-            ? {
-                objectKey: item.video.mediaAssets[0].r2ObjectKey,
-                mimeType: item.video.mediaAssets[0].mimeType,
-              }
-            : null,
-        },
-      })),
-    };
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
   async ensureUploadsItemInTransaction(

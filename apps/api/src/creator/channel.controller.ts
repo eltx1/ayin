@@ -2,6 +2,9 @@ import {
   Body,
   Controller,
   Get,
+  Header,
+  Headers,
+  Query,
   HttpException,
   Inject,
   Param,
@@ -12,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 
+import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { MediaStorageUnavailableError } from "../media/media-storage.adapter.js";
 import { ChannelError, ChannelService, type ChannelEditInput } from "./channel.service.js";
@@ -37,11 +41,25 @@ const assetCompleteSchema = z.object({ assetId: z.string().uuid() }).strict();
 
 @Controller("public/channels")
 export class PublicChannelController {
-  constructor(@Inject(ChannelService) private readonly channels: ChannelService) {}
+  constructor(
+    @Inject(ChannelService) private readonly channels: ChannelService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+  ) {}
 
   @Get(":handle")
-  async getChannel(@Param("handle") handle: string) {
-    return this.run(() => this.channels.getPublicChannel(handle));
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  async getChannel(
+    @Param("handle") handle: string,
+    @Query("kids") kids: string | undefined,
+    @Headers() headers: HeaderBag,
+  ) {
+    return this.run(() =>
+      this.channels.getPublicChannel(handle, {
+        countryCode: this.trustedRegion.countryFromHeaders(headers),
+        isKidsProfile: kids === "1",
+      }),
+    );
   }
 
   private async run<T>(operation: () => Promise<T>): Promise<T> {

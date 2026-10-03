@@ -1,3 +1,5 @@
+import { Prisma } from "@ayin/db";
+
 import { ConflictException, NotFoundException, Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -22,6 +24,24 @@ const accountReadSelection = {
     take: 3,
     select: { channel: { select: { id: true, handle: true, name: true, status: true } } },
   },
+} as const;
+
+const videoReadSelection = {
+  id: true,
+  slug: true,
+  title: true,
+  description: true,
+  status: true,
+  visibility: true,
+  videoForm: true,
+  commentsEnabled: true,
+  publishedAt: true,
+  updatedAt: true,
+  channel: { select: { id: true, handle: true, name: true, status: true } },
+  tvPreferences: {
+    select: { tvChannelId: true, included: true, priority: true, sortOrder: true },
+  },
+  _count: { select: { comments: true, reports: true } },
 } as const;
 
 const MAX_ADMIN_PAGE = 1_000;
@@ -69,6 +89,7 @@ export interface AdminChannelPatch {
 }
 
 export interface AdminVideoPatch {
+  expectedUpdatedAt?: string | undefined;
   title?: string | undefined;
   description?: string | null | undefined;
   status?: "DRAFT" | "SCHEDULED" | "PUBLISHED" | "REMOVED" | undefined;
@@ -417,49 +438,47 @@ export class AdminControlService {
           }
         : {}),
     };
-    const [total, items] = await Promise.all([
-      this.database.client.video.count({ where }),
-      this.database.client.video.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { updatedAt: "desc" },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          description: true,
-          status: true,
-          visibility: true,
-          videoForm: true,
-          commentsEnabled: true,
-          publishedAt: true,
-          updatedAt: true,
-          channel: { select: { id: true, handle: true, name: true, status: true } },
-          tvPreferences: {
-            select: { tvChannelId: true, included: true, priority: true, sortOrder: true },
-          },
-          _count: { select: { comments: true, reports: true } },
-        },
-      }),
-    ]);
+    const [total, items] = await this.database.client.$transaction(
+      [
+        this.database.client.video.count({ where }),
+        this.database.client.video.findMany({
+          where,
+          skip,
+          take,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          select: videoReadSelection,
+        }),
+      ],
+      { isolationLevel: "RepeatableRead" },
+    );
     return { items, pagination: this.pagination(total, page, take) };
   }
 
-  async updateVideo(actorAccountId: string, videoId: string, patch: AdminVideoPatch) {
+  async video(videoId: string) {
+    const video = await this.database.client.video.findUnique({
+      where: { id: videoId },
+      select: videoReadSelection,
+    });
+    if (!video) throw new NotFoundException("Video record unavailable.");
+    return video;
+  }
+
+  async updateVideo(actor: AccountWriteActor, videoId: string, patch: AdminVideoPatch) {
     const title = patch.title?.trim();
     if (patch.title !== undefined && !title) {
       throw adminBadRequest("INVALID_VIDEO_TITLE", "Video title cannot be empty.");
     }
     return this.database.client.$transaction(async (tx) => {
-      const existing = await tx.video.findUniqueOrThrow({
-        where: { id: videoId },
-        select: { id: true, channelId: true, status: true },
-      });
+      await this.videoWriteAuthority(tx, actor);
+      const [existing] = await this.lockVideos(tx, [videoId]);
+      await this.videoWriteAuthority(tx, actor);
+      if (!existing) throw new NotFoundException("Video record unavailable.");
+      this.assertVideoVersion(existing, patch.expectedUpdatedAt);
       const nextStatus = patch.status;
       const video = await tx.video.update({
         where: { id: videoId },
         data: {
+          updatedAt: nextAccountVersion(existing.updatedAt),
           ...(title !== undefined ? { title } : {}),
           ...(patch.description !== undefined ? { description: patch.description } : {}),
           ...(patch.visibility !== undefined ? { visibility: patch.visibility } : {}),
@@ -505,7 +524,7 @@ export class AdminControlService {
         });
       }
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "video.admin_updated",
         entityType: "Video",
         entityId: videoId,
@@ -522,35 +541,51 @@ export class AdminControlService {
   }
 
   async bulkVideos(
-    actorAccountId: string,
+    actor: AccountWriteActor,
     input: {
       ids: string[];
       action: "UNPUBLISH" | "DISABLE_COMMENTS" | "ENABLE_COMMENTS";
       reason: string;
+      expectedVideos?: Array<{ id: string; updatedAt: string }> | undefined;
     },
   ) {
-    const ids = [...new Set(input.ids)];
+    const ids = [...new Set(input.ids.map((id) => id.toLowerCase()))].sort();
     if (!ids.length || ids.length > 100) {
       throw adminBadRequest("INVALID_BULK_SELECTION", "Select between 1 and 100 videos.");
     }
     return this.database.client.$transaction(async (tx) => {
-      const existing = await tx.video.findMany({
-        where: { id: { in: ids } },
-        select: { id: true },
-      });
-      if (existing.length !== ids.length) {
-        throw adminBadRequest("VIDEO_NOT_FOUND", "One or more selected videos no longer exist.");
-      }
+      await this.videoWriteAuthority(tx, actor);
+      const existing = await this.lockVideos(tx, ids);
+      await this.videoWriteAuthority(tx, actor);
+      if (existing.length !== ids.length)
+        throw new NotFoundException("One or more selected videos no longer exist.");
+      const versions = input.expectedVideos
+        ? new Map(input.expectedVideos.map((row) => [row.id.toLowerCase(), row.updatedAt]))
+        : null;
+      if (
+        versions &&
+        (versions.size !== input.expectedVideos?.length ||
+          versions.size !== ids.length ||
+          ids.some((id) => !versions.has(id)))
+      )
+        throw adminBadRequest(
+          "INVALID_BULK_VERSIONS",
+          "Provide exactly one version for every selected video.",
+        );
+      for (const row of existing) this.assertVideoVersion(row, versions?.get(row.id));
+      const updatedAt = new Date(
+        Math.max(Date.now(), ...existing.map((row) => row.updatedAt.getTime() + 1)),
+      );
       const data =
         input.action === "UNPUBLISH"
           ? { status: "DRAFT" as const, publishedAt: null, scheduledPublishAt: null }
           : { commentsEnabled: input.action === "ENABLE_COMMENTS" };
       const result = await tx.video.updateMany({
         where: { id: { in: ids }, status: { not: "REMOVED" } },
-        data,
+        data: { ...data, updatedAt },
       });
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "video.bulk_updated",
         entityType: "Video",
         reason: input.reason,
@@ -558,6 +593,38 @@ export class AdminControlService {
       });
       return { affected: result.count, action: input.action };
     });
+  }
+
+  private videoWriteAuthority(tx: Prisma.TransactionClient, actor: AccountWriteActor) {
+    return lockAdminAccountWrite(tx, actor, actor.accountId, undefined, [
+      "OPERATIONS",
+      "CONTENT_MODERATOR",
+    ]);
+  }
+
+  private lockVideos(tx: Prisma.TransactionClient, ids: string[]) {
+    return tx.$queryRaw<Array<{ id: string; channelId: string; status: string; updatedAt: Date }>>(
+      Prisma.sql`SELECT "id", "channelId", "status", "updatedAt" FROM "Video"
+        WHERE "id" IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))})
+        ORDER BY "id" FOR UPDATE /* ayin-admin-video-write-lock */`,
+    );
+  }
+
+  private assertVideoVersion(
+    video: { status: string; updatedAt: Date },
+    expectedUpdatedAt?: string,
+  ) {
+    if (video.status === "REMOVED")
+      throw new ConflictException(
+        "Removed video cannot be edited. Read the original video before reviewing this operation.",
+      );
+    if (
+      expectedUpdatedAt !== undefined &&
+      video.updatedAt.getTime() !== new Date(expectedUpdatedAt).getTime()
+    )
+      throw new ConflictException(
+        "Video changed. Read the original video before reviewing this operation.",
+      );
   }
 
   async tvChannels(input: TvFilters) {
@@ -576,49 +643,85 @@ export class AdminControlService {
         : {}),
     };
     const now = new Date();
-    const [total, items] = await Promise.all([
-      this.database.client.creatorTvChannel.count({ where }),
-      this.database.client.creatorTvChannel.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { updatedAt: "desc" },
-        select: {
-          id: true,
-          slug: true,
-          name: true,
-          status: true,
-          disabledAt: true,
-          updatedAt: true,
-          channel: { select: { id: true, handle: true, name: true, status: true } },
-          scheduleItems: {
-            where: { endsAt: { gt: now }, status: { in: ["SCHEDULED", "ACTIVE"] } },
-            orderBy: { startsAt: "asc" },
-            take: 2,
-            select: {
-              id: true,
-              startsAt: true,
-              endsAt: true,
-              status: true,
-              video: { select: { id: true, title: true } },
-            },
-          },
-        },
-      }),
-    ]);
+    const [total, items] = await this.database.client.$transaction(
+      [
+        this.database.client.creatorTvChannel.count({ where }),
+        this.database.client.creatorTvChannel.findMany({
+          where,
+          skip,
+          take,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          select: this.tvReadSelection(now),
+        }),
+      ],
+      { isolationLevel: "RepeatableRead" },
+    );
     return { items, pagination: this.pagination(total, page, take) };
   }
 
+  private tvReadSelection(now: Date) {
+    return {
+      id: true,
+      slug: true,
+      name: true,
+      status: true,
+      disabledAt: true,
+      updatedAt: true,
+      channel: { select: { id: true, handle: true, name: true, status: true } },
+      scheduleItems: {
+        where: { endsAt: { gt: now }, status: { in: ["SCHEDULED" as const, "ACTIVE" as const] } },
+        orderBy: [{ startsAt: "asc" as const }, { id: "asc" as const }],
+        take: 2,
+        select: {
+          id: true,
+          startsAt: true,
+          endsAt: true,
+          status: true,
+          video: { select: { id: true, title: true } },
+        },
+      },
+    };
+  }
+
+  async tvRecord(tvChannelId: string) {
+    const record = await this.database.client.creatorTvChannel.findUnique({
+      where: { id: tvChannelId },
+      select: this.tvReadSelection(new Date()),
+    });
+    if (!record) throw new NotFoundException("Creator TV record unavailable.");
+    return record;
+  }
+
   async updateTv(
-    actorAccountId: string,
+    actor: AccountWriteActor,
     tvChannelId: string,
-    input: { status: "ACTIVE" | "OFF_AIR" | "DISABLED"; reason?: string | undefined },
+    input: {
+      status: "ACTIVE" | "OFF_AIR" | "DISABLED";
+      reason?: string | undefined;
+      expectedUpdatedAt?: string | undefined;
+    },
   ) {
+    const actorAccountId = actor.accountId;
     return this.database.client.$transaction(async (tx) => {
+      await lockAdminAccountWrite(tx, actor, actorAccountId);
+      const [current] = await tx.$queryRaw<{ id: string; updatedAt: Date }[]>(
+        Prisma.sql`SELECT "id", "updatedAt" FROM "CreatorTvChannel" WHERE "id" = ${tvChannelId}::uuid FOR UPDATE /* ayin-admin-tv-write-lock */`,
+      );
+      if (!current) throw new NotFoundException("Creator TV record unavailable.");
+      // Authority rows remain locked; renew expiry/step-up checks after the final target wait.
+      await lockAdminAccountWrite(tx, actor, actorAccountId);
+      if (
+        input.expectedUpdatedAt !== undefined &&
+        current.updatedAt.getTime() !== new Date(input.expectedUpdatedAt).getTime()
+      )
+        throw new ConflictException(
+          "Creator TV changed. Read the original TV before reviewing this operation.",
+        );
       const tv = await tx.creatorTvChannel.update({
         where: { id: tvChannelId },
         data: {
           status: input.status,
+          updatedAt: nextAccountVersion(current.updatedAt),
           disabledAt: input.status === "DISABLED" ? new Date() : null,
         },
         select: { id: true, name: true, status: true, disabledAt: true, updatedAt: true },

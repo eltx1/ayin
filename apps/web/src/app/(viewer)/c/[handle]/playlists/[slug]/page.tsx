@@ -5,6 +5,7 @@ import styles from "@/components/playlist/public-playlist.module.css";
 import { ActionLink, DataBadge, PageHeader } from "@/components/ui/design-system";
 import { MediaCard } from "@/components/viewer/media-card";
 import { EmptyState, ErrorState } from "@/components/viewer/view-states";
+import { trustedApiRegionHeaders } from "@/lib/trusted-region";
 import { apiBaseUrl } from "@/lib/api";
 import { mediaAssetUrl } from "@/lib/channel";
 import { formatDate, formatNumber } from "@/lib/i18n/format";
@@ -25,13 +26,20 @@ import {
 
 interface PublicPlaylistPageProperties {
   params: Promise<{ handle: string; slug: string }>;
+  searchParams: Promise<{ kids?: string | string[] }>;
 }
 
 export async function generateMetadata({
   params,
+  searchParams,
 }: PublicPlaylistPageProperties): Promise<Metadata> {
-  const [{ handle, slug }, locale] = await Promise.all([params, getRequestLocale()]);
-  const playlist = await getSeoPlaylist(handle, slug);
+  const [{ handle, slug }, locale, query] = await Promise.all([
+    params,
+    getRequestLocale(),
+    searchParams,
+  ]);
+  const kidsMode = query.kids === "1";
+  const playlist = await getSeoPlaylist(handle, slug, await trustedApiRegionHeaders(), kidsMode);
   if (!playlist) {
     return {
       title: translatePublicCreator(locale, "playlist.unavailable"),
@@ -52,7 +60,7 @@ export async function generateMetadata({
     }),
   );
   const image = mediaSeoUrl(playlist.items[0]?.video.thumbnail?.objectKey) ?? AYIN_DEFAULT_IMAGE;
-  const indexable = playlist.visibility === "PUBLIC" && playlist.items.length > 0;
+  const indexable = !kidsMode && playlist.visibility === "PUBLIC" && playlist.items.length > 0;
 
   return {
     title: playlist.name,
@@ -76,15 +84,28 @@ export async function generateMetadata({
   };
 }
 
-export default async function PublicPlaylistPage({ params }: PublicPlaylistPageProperties) {
-  const [{ handle, slug }, locale] = await Promise.all([params, getRequestLocale()]);
+export default async function PublicPlaylistPage({
+  params,
+  searchParams,
+}: PublicPlaylistPageProperties) {
+  const [{ handle, slug }, locale, query] = await Promise.all([
+    params,
+    getRequestLocale(),
+    searchParams,
+  ]);
+  const kidsMode = query.kids === "1";
+  const policySuffix = kidsMode ? "?kids=1" : "";
   const t = (
     key: Parameters<typeof translatePublicCreator>[1],
     values: Parameters<typeof translatePublicCreator>[2] = {},
   ) => translatePublicCreator(locale, key, values);
   const response = await fetch(
-    `${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/playlists/${encodeURIComponent(slug)}`,
-    { cache: "no-store" },
+    `${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/playlists/${encodeURIComponent(slug)}${policySuffix}`,
+    {
+      cache: "no-store",
+      headers: await trustedApiRegionHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    },
   );
   if (response.status === 404) notFound();
   if (!response.ok) {
@@ -99,7 +120,7 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
                 data-tv-focusable="true"
                 data-tv-focus-id="playlist-retry"
                 href={localizePath(
-                  `/c/${encodeURIComponent(handle)}/playlists/${encodeURIComponent(slug)}`,
+                  `/c/${encodeURIComponent(handle)}/playlists/${encodeURIComponent(slug)}${policySuffix}`,
                   locale,
                 )}
               >
@@ -109,7 +130,7 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
                 tone="quiet"
                 data-tv-focusable="true"
                 data-tv-focus-id="playlist-channel"
-                href={localizePath(`/c/${encodeURIComponent(handle)}`, locale)}
+                href={localizePath(`/c/${encodeURIComponent(handle)}${policySuffix}`, locale)}
               >
                 {t("playlist.openChannel")}
               </ActionLink>
@@ -124,13 +145,19 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
   if (data.redirectedFrom && data.canonicalHandle !== handle) {
     permanentRedirect(
       localizePath(
-        `/c/${encodeURIComponent(data.canonicalHandle)}/playlists/${encodeURIComponent(data.playlist.slug)}`,
+        `/c/${encodeURIComponent(data.canonicalHandle)}/playlists/${encodeURIComponent(data.playlist.slug)}${policySuffix}`,
         locale,
       ),
     );
   }
 
-  const seoPlaylist = await getSeoPlaylist(data.canonicalHandle, data.playlist.slug);
+  const seoPlaylist = kidsMode
+    ? null
+    : await getSeoPlaylist(
+        data.canonicalHandle,
+        data.playlist.slug,
+        await trustedApiRegionHeaders(),
+      );
   const structuredData = seoPlaylist ? buildPlaylistStructuredData(seoPlaylist, locale) : null;
   const videoCount =
     data.items.length === 1
@@ -159,7 +186,7 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
           <ActionLink
             data-tv-focusable="true"
             data-tv-focus-id="playlist-open-channel"
-            href={localizePath(`/c/${data.channel.handle}`, locale)}
+            href={localizePath(`/c/${data.channel.handle}${policySuffix}`, locale)}
           >
             {t("playlist.openChannel")}
           </ActionLink>
@@ -189,7 +216,10 @@ export default async function PublicPlaylistPage({ params }: PublicPlaylistPageP
                   {...(item.video.durationMs
                     ? { badge: formatDuration(item.video.durationMs) }
                     : {})}
-                  href={localizePath(`/watch/${encodeURIComponent(item.video.slug)}`, locale)}
+                  href={localizePath(
+                    `/watch/${encodeURIComponent(item.video.slug)}${policySuffix}`,
+                    locale,
+                  )}
                   key={item.id}
                   meta={
                     item.video.publishedAt
