@@ -3,9 +3,13 @@ import "reflect-metadata";
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test, type TestingModule } from "@nestjs/testing";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
+import {
+  CREATOR_COMPLIANCE_ADAPTER,
+  type CreatorComplianceAdapter,
+} from "../src/revenue/creator-compliance.adapter.js";
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const databaseDescribe = testDatabaseUrl ? describe : describe.skip;
@@ -102,7 +106,78 @@ databaseDescribe("Creator payout safety", () => {
       finalizedRevenue: "50.000000",
       availableForPayout: "50.000000",
       onHoldForPayout: "0.000000",
+      canRequestPayout: false,
+      payoutEligibility: {
+        eligible: false,
+        actionsRequired: ["Reach the minimum payout amount."],
+      },
     });
+  });
+
+  it("keeps actual overview payouts blocked while required identity verification is pending", async () => {
+    const creator = await register("Pending Identity Creator", "pending-identity@example.com");
+    await prisma.earningsLedgerEntry.create({
+      data: {
+        channelId: creator.user.channel.id,
+        type: "AD_REVENUE",
+        state: "FINAL",
+        amount: "150.000000",
+        currency: "USD",
+      },
+    });
+    const profile = await app.inject({
+      method: "PUT",
+      url: "/creator/studio/revenue/payment-profile",
+      headers: { cookie: creator.cookie },
+      payload: {
+        legalName: "Pending Identity Creator",
+        preferredCurrency: "USD",
+        provider: "MANUAL",
+        destination: "bank account ending 8765",
+        countryCode: "US",
+      },
+    });
+    expect(profile.statusCode).toBe(200);
+    // Only the external requirements boundary is controlled; API, ledger, profile,
+    // compliance evaluation and currency normalization execute their real code.
+    const adapter = moduleReference.get<CreatorComplianceAdapter>(CREATOR_COMPLIANCE_ADAPTER);
+    const requirements = vi.spyOn(adapter, "requirements").mockResolvedValue({
+      identityRequired: true,
+      taxRequired: false,
+      payoutDestinationVerificationRequired: false,
+      source: "PROVIDER",
+      version: "isolated-test-v1",
+    });
+    try {
+      const overview = await app.inject({
+        method: "GET",
+        url: "/creator/studio/revenue",
+        headers: { cookie: creator.cookie },
+      });
+      expect(overview.statusCode).toBe(200);
+      expect(overview.json()).toMatchObject({
+        currency: "USD",
+        availableForPayout: "150.000000",
+        payoutReadiness: {
+          profileReady: true,
+          thresholdMet: true,
+          providerReady: true,
+          complianceReady: false,
+        },
+        compliance: {
+          identity: { required: true, status: "NOT_STARTED" },
+          payoutComplianceEligible: false,
+        },
+        canRequestPayout: false,
+        payoutEligibility: { eligible: false },
+      });
+      expect(overview.json().payoutEligibility.actionsRequired).toEqual(
+        overview.json().compliance.actionsRequired,
+      );
+      expect(overview.json().compliance.actionsRequired.length).toBeGreaterThan(0);
+    } finally {
+      requirements.mockRestore();
+    }
   });
 
   it("uses one authorized channel consistently when an older editor membership also exists", async () => {

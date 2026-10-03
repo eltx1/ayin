@@ -118,6 +118,20 @@ export class CreatorRevenueCurrencyViewService {
       thresholdMet,
       openPayout,
     };
+    const canRequestPayout =
+      payoutReadiness.profileReady &&
+      payoutReadiness.thresholdMet &&
+      !payoutReadiness.openPayout &&
+      payoutReadiness.providerReady &&
+      payoutReadiness.complianceReady &&
+      overview.compliance.payoutComplianceEligible;
+    const actionsRequired = [
+      ...(!payoutReadiness.profileReady ? ["Complete your payout details."] : []),
+      ...(!payoutReadiness.providerReady ? ["Choose an available payout method."] : []),
+      ...(!thresholdMet ? ["Reach the minimum payout amount."] : []),
+      ...(openPayout ? ["Wait for your current payout request to finish."] : []),
+      ...overview.compliance.actionsRequired,
+    ];
 
     return {
       ...overview,
@@ -128,11 +142,8 @@ export class CreatorRevenueCurrencyViewService {
       onHoldForPayout: formatMoneyMicros(onHold),
       payoutProgressPercent: Math.min(100, Math.max(0, progress)),
       payoutReadiness,
-      canRequestPayout:
-        payoutReadiness.profileReady &&
-        payoutReadiness.thresholdMet &&
-        !payoutReadiness.openPayout &&
-        payoutReadiness.providerReady,
+      canRequestPayout,
+      payoutEligibility: { eligible: canRequestPayout, actionsRequired },
       byVideo: videoRows.map((item) => ({
         videoId: item.videoId,
         title: item.title,

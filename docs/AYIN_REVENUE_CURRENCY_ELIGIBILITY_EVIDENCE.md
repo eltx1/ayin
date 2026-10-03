@@ -1,0 +1,9 @@
+# Creator payout eligibility after currency normalization
+
+Candidate for the AYIN Web/PWA master Phase6/8/13/14. Full monetization consolidation and provider/legal certification remain open.
+
+Actual source review found that the currency normalizer recomputed `canRequestPayout` from profile, threshold, open payout and provider availability while dropping the existing compliance requirement. It also returned stale `payoutEligibility` from the previous currency. The corrected calculation requires both the existing compliance readiness and actual compliance eligibility, and returns eligibility/actions matching the selected currency and all existing gates. Exact ledger values, currency filters, threshold, provider capability policy and authoritative payout mutation remain unchanged.
+
+Four focused regression cases cover blocked identity compliance despite sufficient funds, selected USD below minimum despite stale qualifying EUR values, all actual gates ready, and restrictive readiness despite apparently eligible compliance detail. Local396 API unit cases, API typecheck, canonical lint and formatting passed. These are unit contracts, not a provider certification.
+
+The existing real AppModule/PostgreSQL payout-safety suite now asserts that the already seeded below-threshold USD overview reports coherent false eligibility and a minimum-balance action. A new integration case seeds actual finalized USD funds and an actual manual profile, controlling only the external compliance-requirements adapter boundary. The real compliance evaluation, database and currency normalization must report identity NOT_STARTED, sufficient balance/profile/provider readiness, false compliance and false payout eligibility with actual required actions. This controlled requirement source is an isolated test boundary, not a connected provider or legal approval. Real PostgreSQL CI and final-head acceptance/deployment remain pending.
