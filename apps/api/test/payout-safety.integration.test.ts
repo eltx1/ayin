@@ -40,6 +40,8 @@ databaseDescribe("Creator payout safety", () => {
   beforeEach(async () => {
     await prisma.$executeRawUnsafe('TRUNCATE TABLE "Account" CASCADE');
     await prisma.adminAuditLog.deleteMany();
+    // Other integration files update platform settings; isolate these readiness cases.
+    await prisma.platformSetting.deleteMany({ where: { namespace: "MONETIZATION" } });
   });
 
   afterAll(async () => {
