@@ -1,10 +1,12 @@
 export type AdvertisingConsentMode = "PERSONALIZED" | "NON_PERSONALIZED" | "LIMITED_ADS";
 export type AdvertisingConsentSource = "SAFE_DEFAULT" | "CMP" | "APPLICATION";
+export type AdvertisingAgeTreatment = "CHILD" | "TEEN";
 
 export interface AdvertisingConsentSnapshot {
   mode: AdvertisingConsentMode;
   source: AdvertisingConsentSource;
   providerManaged: boolean;
+  ageTreatment?: AdvertisingAgeTreatment;
 }
 
 export interface AdvertisingConsentProvider {
@@ -32,19 +34,31 @@ export function getAdvertisingConsentSnapshot(): AdvertisingConsentSnapshot {
 export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentSnapshot {
   if (!value || typeof value !== "object") return safeDefault;
   const snapshot = value as Record<string, unknown>;
+  const ageTreatment: AdvertisingAgeTreatment | undefined =
+    snapshot.ageTreatment === "CHILD" || snapshot.ageTreatment === "TEEN"
+      ? snapshot.ageTreatment
+      : undefined;
+  const fallback: AdvertisingConsentSnapshot = ageTreatment
+    ? { ...safeDefault, ageTreatment }
+    : safeDefault;
   if (
     typeof snapshot.mode !== "string" ||
     !["PERSONALIZED", "NON_PERSONALIZED", "LIMITED_ADS"].includes(snapshot.mode) ||
     typeof snapshot.source !== "string" ||
     !["SAFE_DEFAULT", "CMP", "APPLICATION"].includes(snapshot.source) ||
     typeof snapshot.providerManaged !== "boolean" ||
-    snapshot.source === "SAFE_DEFAULT"
+    snapshot.source === "SAFE_DEFAULT" ||
+    (snapshot.ageTreatment !== undefined && !ageTreatment)
   )
-    return safeDefault;
+    return fallback;
   return {
-    mode: snapshot.mode as AdvertisingConsentMode,
+    mode:
+      ageTreatment && snapshot.mode === "PERSONALIZED"
+        ? "NON_PERSONALIZED"
+        : (snapshot.mode as AdvertisingConsentMode),
     source: snapshot.source as AdvertisingConsentSource,
     providerManaged: snapshot.providerManaged,
+    ...(ageTreatment ? { ageTreatment } : {}),
   };
 }
 

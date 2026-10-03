@@ -32,10 +32,15 @@ interface GptPubAdsService {
     type: string,
     listener: (event: GptSlotEvent | GptSlotRenderEvent) => void,
   ): void;
-  setPrivacySettings(settings: { nonPersonalizedAds?: boolean; limitedAds?: boolean }): void;
+  setPrivacySettings(settings: {
+    nonPersonalizedAds?: boolean;
+    limitedAds?: boolean;
+    tagForAgeTreatment?: number | string;
+  }): void;
 }
 
 interface GptApi {
+  enums?: { TagForAgeTreatment?: Partial<Record<"CHILD" | "TEEN", number | string>> };
   cmd: Array<() => void>;
   defineSlot(path: string, sizes: PageAdSize[], divId: string): GptSlot | null;
   pubads(): GptPubAdsService;
@@ -77,11 +82,29 @@ export function gptScriptUrlForConsent(consent: AdvertisingConsentSnapshot) {
     : GPT_STANDARD_SRC;
 }
 
-export function gptPrivacySettingsForConsent(consent: AdvertisingConsentSnapshot) {
+export function gptPrivacySettingsForConsent(
+  consent: AdvertisingConsentSnapshot,
+  ageEnums?: Partial<Record<"CHILD" | "TEEN", number | string>>,
+) {
   const resolved = normalizeAdvertisingConsent(consent);
-  if (resolved.mode === "LIMITED_ADS") return { limitedAds: true } as const;
-  if (resolved.mode === "NON_PERSONALIZED") return { nonPersonalizedAds: true } as const;
-  return {};
+  const settings: {
+    limitedAds?: boolean;
+    nonPersonalizedAds?: boolean;
+    tagForAgeTreatment?: number | string;
+  } = {};
+  if (resolved.mode === "LIMITED_ADS") settings.limitedAds = true;
+  if (resolved.mode === "NON_PERSONALIZED") settings.nonPersonalizedAds = true;
+  if (resolved.ageTreatment) {
+    const value = ageEnums?.[resolved.ageTreatment];
+    if (
+      (typeof value !== "number" && typeof value !== "string") ||
+      (typeof value === "number" && !Number.isFinite(value)) ||
+      value === ""
+    )
+      throw new GptRuntimeError("GPT_AGE_TREATMENT_API_UNAVAILABLE");
+    settings.tagForAgeTreatment = value;
+  }
+  return settings;
 }
 
 export function loadGooglePublisherTag(consent: AdvertisingConsentSnapshot) {
@@ -163,13 +186,17 @@ export async function mountGooglePublisherTagSlot(input: {
 }) {
   await loadGooglePublisherTag(input.consent);
   const googleTag = api();
+  const privacySettings = gptPrivacySettingsForConsent(
+    input.consent,
+    googleTag.enums?.TagForAgeTreatment,
+  );
   let slot: GptSlot | null = null;
   const removers: Array<() => void> = [];
 
   await new Promise<void>((resolve, reject) => {
     googleTag.cmd.push(() => {
       const pubads = googleTag.pubads();
-      pubads.setPrivacySettings(gptPrivacySettingsForConsent(input.consent));
+      pubads.setPrivacySettings(privacySettings);
       slot = googleTag.defineSlot(input.adUnitPath, input.sizes, input.divId);
       if (!slot) {
         reject(new GptRuntimeError("GPT_SLOT_DEFINITION_FAILED"));

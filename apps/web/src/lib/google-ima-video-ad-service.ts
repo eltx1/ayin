@@ -96,6 +96,19 @@ export function applyGoogleImaConsent(tagUrl: string, consent: AdvertisingConsen
   }
   if (!isGoogleAdTagHost(parsed.hostname)) return tagUrl;
   const resolved = normalizeAdvertisingConsent(consent);
+  // Positive age restrictions already on the server tag are retained. CHILD
+  // dominates TEEN, including legacy tags; never emit tfat=0 to clear them.
+  const existingAge = parsed.searchParams.getAll("tfat");
+  const child =
+    resolved.ageTreatment === "CHILD" ||
+    existingAge.includes("1") ||
+    parsed.searchParams.getAll("tfcd").includes("1") ||
+    parsed.searchParams.getAll("tfua").includes("1");
+  const teen = resolved.ageTreatment === "TEEN" || existingAge.includes("2");
+  if (child || teen) {
+    parsed.searchParams.set("tfat", child ? "1" : "2");
+    parsed.searchParams.set("npa", "1");
+  }
   // Tag restrictions can originate from server policy or the publisher. A
   // client consent decision can add restrictions, never remove existing ones.
   if (resolved.mode === "LIMITED_ADS") {

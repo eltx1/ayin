@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadGamProductionConfig } from "./gam-production.config.js";
 import {
   buildGamVideoTagUrl,
+  gamRequestPrivacy,
   classifyGamRuntimeEvents,
   configuredGoogleSellerRows,
   isConfiguredDisplayAdUnitPath,
@@ -153,5 +154,37 @@ describe("Google Ad Manager production configuration", () => {
     expect(runtime.gpt.ambiguousEmpty).toBe(1);
     expect(runtime.gpt.technicalErrors).toBe(1);
     expect(runtime.gpt.health).toBe("DEGRADED");
+  });
+});
+
+describe("Google age treatment request boundary", () => {
+  const context = { deviceClass: "UNKNOWN" as const, consentMode: "PERSONALIZED" as const };
+  it("maps explicit legacy child flags to current TFAT without personalized delivery", () => {
+    for (const flag of ["childDirected", "underAgeOfConsent"] as const) {
+      const result = gamRequestPrivacy({ ...context, [flag]: true, ageTreatment: "TEEN" });
+      expect(result.privacy.mode).toBe("NON_PERSONALIZED");
+      expect(result.privacy.nonPersonalizedAds).toBe(true);
+      expect(result.privacy.ageTreatment).toBe("CHILD");
+      expect(result.imaParameters).toMatchObject({ npa: "1", tfat: "1" });
+      expect(result.imaParameters[flag === "childDirected" ? "tfcd" : "tfua"]).toBe("1");
+    }
+  });
+  it("keeps limited mode while applying CHILD or TEEN, and never invents an age classification", () => {
+    for (const ageTreatment of ["CHILD", "TEEN"] as const) {
+      const result = gamRequestPrivacy({ ...context, consentMode: "LIMITED_ADS", ageTreatment });
+      expect(result.privacy.mode).toBe("LIMITED_ADS");
+      expect(result.imaParameters).toMatchObject({
+        ltd: "1",
+        tfat: ageTreatment === "CHILD" ? "1" : "2",
+      });
+    }
+    const unknown = gamRequestPrivacy(context);
+    expect(unknown.privacy.ageTreatment).toBe("UNSPECIFIED");
+    expect(unknown.privacy.mode).toBe("PERSONALIZED");
+    expect(unknown.imaParameters).toEqual({});
+    expect(gamRequestPrivacy({ ...context, ageTreatment: "TEEN" }).imaParameters).toEqual({
+      npa: "1",
+      tfat: "2",
+    });
   });
 });
