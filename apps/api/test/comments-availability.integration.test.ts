@@ -4,6 +4,7 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { Test } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module.js";
+import { AuthTokenService } from "../src/auth/auth-token.service.js";
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const databaseDescribe = databaseUrl ? describe : describe.skip;
 databaseDescribe("Comments public availability and Kids server boundary", () => {
@@ -166,7 +167,19 @@ databaseDescribe("Comments public availability and Kids server boundary", () => 
     const assignment = await prisma.adminRoleAssignment.create({
       data: { accountId: f.user.account.id, role: "AD_MANAGER" },
     });
-    const headers = { cookie: f.cookie };
+    // Registration verifies the password and creates a fresh reauth assurance.
+    // Sign a real persisted session without that assurance to test the deny boundary.
+    const tokens = app.get(AuthTokenService);
+    const payload = tokens.verifySession(
+      decodeURIComponent(f.cookie.split("=").slice(1).join("=")),
+    )!;
+    const unassured = tokens.issueSession(
+      payload.sub,
+      payload.av,
+      payload.sid!,
+      new Date(payload.exp * 1000),
+    );
+    const headers = { cookie: `ayin_session=${encodeURIComponent(unassured)}` };
     const requests = [
       {
         method: "PATCH" as const,
