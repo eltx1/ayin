@@ -1,11 +1,16 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
+import {
+  verifyAdminTrustAcknowledgment,
+  parseActorTrustActions,
+  type ActorTrustAction,
+} from "@/lib/admin-trust-acknowledgment";
 import { apiBaseUrl } from "@/lib/api";
 import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
-import { getAdminSession, type AdminSession } from "@/lib/admin-control";
+import { type AdminSession } from "@/lib/admin-control";
 
 type Report = {
   id: string;
@@ -55,18 +60,39 @@ type Queue = {
 };
 type TrustSettings = { blockedTerms: string[]; newCreatorsRequireReview: boolean };
 
+class TrustRequestError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 async function trustApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    credentials: "include",
-    cache: "no-store",
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as T;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  init?.signal?.addEventListener("abort", abort, { once: true });
+  if (init?.signal?.aborted) controller.abort();
+  const timer = setTimeout(abort, init?.method ? 30000 : 15000);
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      ...init,
+      signal: controller.signal,
+      credentials: "include",
+      cache: "no-store",
+      headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
+    });
+    if (!response.ok) throw new TrustRequestError(response.status, await readApiError(response));
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
+    init?.signal?.removeEventListener("abort", abort);
+  }
 }
 
 export function AdminTrustSafety() {
+  const [actorActions, setActorActions] = useState<ActorTrustAction[] | null>(null);
   const [queue, setQueue] = useState<Queue | null>(null);
   const [settings, setSettings] = useState<TrustSettings | null>(null);
   const [session, setSession] = useState<AdminSession | null>(null);
@@ -75,31 +101,81 @@ export function AdminTrustSafety() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    const [nextQueue, nextSettings, nextSession] = await Promise.all([
-      trustApi<Queue>("/admin/trust/queue"),
-      trustApi<TrustSettings>("/admin/trust/settings"),
-      getAdminSession(),
-    ]);
-    setQueue(nextQueue);
-    setSettings(nextSettings);
-    setSession(nextSession);
-    setBlockedTermsText(nextSettings.blockedTerms.join("\n"));
+  const writeGuard = useRef(false);
+  const decisionLocked = useRef(false);
+  const pendingOperation = useRef<AbortController | null>(null);
+  const readGuard = useRef(false);
+  const dirtySettings = useRef(false);
+  const [reviewRequired, setReviewRequired] = useState(false);
+  const [reviewed, setReviewed] = useState(false);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    if (readGuard.current || writeGuard.current) return;
+    readGuard.current = true;
+    setQueue(null);
+    setActorActions(null);
+    setError(null);
+    setReviewed(false);
+    try {
+      const deadline = AbortSignal.timeout(15000);
+      const bounded = signal ? AbortSignal.any([signal, deadline]) : deadline;
+      const nextSession = await trustApi<AdminSession>("/admin/session", { signal: bounded });
+      if (
+        !nextSession.roles.some((role) =>
+          ["SUPERADMIN", "ADMIN", "OPERATIONS", "CONTENT_MODERATOR"].includes(role),
+        )
+      )
+        throw new TrustRequestError(403, "This role cannot read Trust & Safety.");
+      const [nextQueue, nextSettings, nextActions] = await Promise.all([
+        trustApi<Queue>("/admin/trust/queue", { signal: bounded }),
+        trustApi<TrustSettings>("/admin/trust/settings", { signal: bounded }),
+        trustApi<unknown>("/admin/trust/actions", { signal: bounded }),
+      ]);
+      const currentSession = await trustApi<AdminSession>("/admin/session", { signal: bounded });
+      if (
+        bounded.aborted ||
+        currentSession.accountId !== nextSession.accountId ||
+        JSON.stringify([...currentSession.roles].sort()) !==
+          JSON.stringify([...nextSession.roles].sort())
+      )
+        throw new TrustRequestError(401, "Admin identity changed. Reload this page.");
+      const actions = parseActorTrustActions(nextActions, currentSession.accountId);
+      setQueue(nextQueue);
+      setActorActions(actions);
+      setSession(currentSession);
+      if (!dirtySettings.current) {
+        setSettings(nextSettings);
+        setBlockedTermsText(nextSettings.blockedTerms.join("\n"));
+      }
+      setReviewed(true);
+    } catch (caught) {
+      if (caught instanceof TrustRequestError && [401, 403].includes(caught.status)) {
+        setSession(null);
+        setSettings(null);
+        setBlockedTermsText("");
+        dirtySettings.current = false;
+      }
+      if (!signal?.aborted)
+        setError(caught instanceof Error ? caught.message : "Trust & Safety could not be loaded.");
+    } finally {
+      readGuard.current = false;
+    }
   }, []);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void load().catch((caught) => {
-        if (active)
-          setError(
-            caught instanceof Error ? caught.message : "Trust & Safety could not be loaded.",
-          );
-      });
+      void load(controller.signal);
     }, 0);
+    const pageHide = () => {
+      pendingOperation.current?.abort();
+    };
+    window.addEventListener("pagehide", pageHide);
     return () => {
-      active = false;
+      controller.abort();
+      pendingOperation.current?.abort();
       window.clearTimeout(timer);
+      window.removeEventListener("pagehide", pageHide);
     };
   }, [load]);
 
@@ -115,19 +191,41 @@ export function AdminTrustSafety() {
     (queue?.takedowns.length ?? 0) +
     (queue?.appeals.length ?? 0);
 
-  async function mutate<T>(key: string, path: string, method: string, body: unknown): Promise<T> {
+  async function mutate(
+    key: string,
+    path: string,
+    method: string,
+    body: unknown,
+  ): Promise<boolean> {
+    if (writeGuard.current || readGuard.current || decisionLocked.current || !queue || !session)
+      return false;
+    writeGuard.current = true;
+    decisionLocked.current = true;
     setBusy(key);
     setError(null);
     setMessage(null);
+    setReviewed(false);
     try {
-      const result = await trustApi<T>(path, { method, body: JSON.stringify(body) });
-      await load();
-      return result;
-    } catch (caught) {
-      const next = caught instanceof Error ? caught.message : "Trust & Safety operation failed.";
-      setError(next);
-      throw caught;
+      const controller = new AbortController();
+      pendingOperation.current = controller;
+      const result = await trustApi<unknown>(path, {
+        method,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      verifyAdminTrustAcknowledgment(path, result, body, session.accountId);
+      setMessage("Operation saved. Refresh the queue before another decision.");
+      setReviewRequired(true);
+      return true;
+    } catch {
+      setError(
+        "The operation outcome could not be verified. Keep your draft, review current server records and confirm before any further decision. Do not repeat automatically.",
+      );
+      setReviewRequired(true);
+      return false;
     } finally {
+      pendingOperation.current = null;
+      writeGuard.current = false;
       setBusy(null);
     }
   }
@@ -138,31 +236,25 @@ export function AdminTrustSafety() {
     await mutate(item.id, `/admin/trust/cases/${encodeURIComponent(item.id)}`, "PATCH", {
       status,
       ...(resolution.trim() ? { resolution: resolution.trim() } : {}),
-    }).then(() => setMessage(`Case marked ${status}.`));
+    });
   }
 
   async function decideTakedown(item: Takedown, status: string) {
-    const resolution = window.prompt(
-      `Decision reason for ${item.claimantName}'s takedown:`,
-      "Reviewed against AYIN copyright policy and submitted rights evidence.",
-    );
+    const resolution = window.prompt(`Decision reason for ${item.claimantName}'s takedown:`, "");
     if (!resolution?.trim()) return;
     await mutate(item.id, `/admin/trust/takedowns/${encodeURIComponent(item.id)}`, "PATCH", {
       status,
       resolution: resolution.trim(),
-    }).then(() => setMessage(`Takedown marked ${status}.`));
+    });
   }
 
   async function decideAppeal(item: Appeal, status: string) {
-    const resolution = window.prompt(
-      `Appeal resolution for ${item.action.kind}:`,
-      status === "OVERTURNED" ? "Action overturned after review." : "Action upheld after review.",
-    );
+    const resolution = window.prompt(`Appeal resolution for ${item.action.kind}:`, "");
     if (!resolution?.trim()) return;
     await mutate(item.id, `/admin/trust/appeals/${encodeURIComponent(item.id)}`, "PATCH", {
       status,
       resolution: resolution.trim(),
-    }).then(() => setMessage(`Appeal marked ${status}.`));
+    });
   }
 
   async function saveSettings(event: FormEvent<HTMLFormElement>) {
@@ -175,44 +267,47 @@ export function AdminTrustSafety() {
     await mutate("settings", "/admin/trust/settings", "PUT", {
       blockedTerms,
       newCreatorsRequireReview: settings.newCreatorsRequireReview,
-    }).then(() => setMessage("Trust & Safety settings saved."));
+    });
   }
 
   async function moderationAction(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const kind = String(form.get("kind") ?? "");
     const reason = String(form.get("reason") ?? "").trim();
     const targetAccountId = String(form.get("targetAccountId") ?? "").trim();
     const channelId = String(form.get("channelId") ?? "").trim();
     const videoId = String(form.get("videoId") ?? "").trim();
     const caseId = String(form.get("caseId") ?? "").trim();
-    await mutate("action", "/admin/trust/actions", "POST", {
+    const saved = await mutate("action", "/admin/trust/actions", "POST", {
       kind,
       reason,
       ...(targetAccountId ? { targetAccountId } : {}),
       ...(channelId ? { channelId } : {}),
       ...(videoId ? { videoId } : {}),
       ...(caseId ? { caseId } : {}),
-    }).then(() => {
-      setMessage(`Moderation action ${kind} recorded.`);
-      event.currentTarget.reset();
     });
+    if (saved) formElement.reset();
   }
 
   async function updateCreatorTrust(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const channelId = String(form.get("channelId") ?? "").trim();
     const level = String(form.get("level") ?? "STANDARD");
     const reviewRequired = form.get("reviewRequired") === "on";
-    await mutate("creator-trust", `/admin/trust/channels/${encodeURIComponent(channelId)}`, "PUT", {
-      level,
-      reviewRequired,
-    }).then(() => {
-      setMessage(`Creator trust updated to ${level}.`);
-      event.currentTarget.reset();
-    });
+    const saved = await mutate(
+      "creator-trust",
+      `/admin/trust/channels/${encodeURIComponent(channelId)}`,
+      "PUT",
+      {
+        level,
+        reviewRequired,
+      },
+    );
+    if (saved) formElement.reset();
   }
 
   return (
@@ -227,32 +322,97 @@ export function AdminTrustSafety() {
           </p>
         </div>
         <div>
-          <strong>{totalOpen}</strong> <span className={styles.muted}>open queue items</span>
+          <strong>{queue ? totalOpen : "Unavailable"}</strong>{" "}
+          <span className={styles.muted}>open queue items</span>
         </div>
       </header>
 
-      {message ? <p className={styles.notice}>{message}</p> : null}
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {message ? (
+        <p className={styles.notice} role="status">
+          {message}
+        </p>
+      ) : null}
+      <button
+        className={styles.button}
+        disabled={Boolean(busy)}
+        type="button"
+        onClick={() => void load()}
+      >
+        Review current queue
+      </button>
+      {reviewRequired ? (
+        <div className={styles.notice}>
+          <p>
+            Decision controls remain locked until you review the current server records. Draft
+            settings are retained separately.
+          </p>
+          <button
+            className={styles.button}
+            type="button"
+            disabled={!reviewed || Boolean(busy)}
+            onClick={() => {
+              decisionLocked.current = false;
+              setReviewRequired(false);
+              setMessage("Current queue reviewed. Choose the next decision explicitly.");
+            }}
+          >
+            Confirm review and enable decisions
+          </button>
+        </div>
+      ) : null}
+      {error ? (
+        <p className={styles.error} role="alert">
+          {error}
+        </p>
+      ) : null}
 
+      {actorActions ? (
+        <section className={styles.card} aria-label="Your recent enforcement actions">
+          <h2>Your recent enforcement actions</h2>
+          <p>
+            Latest {actorActions.length} actions recorded by your account, up to 100. Review the
+            reason, target and timestamp before deciding whether an uncertain submission was
+            recorded. This is not a complete archive or proof of duplicate prevention.
+          </p>
+          <details>
+            <summary>Review recorded actions</summary>
+            <ol>
+              {actorActions.map((action) => (
+                <li key={action.id}>
+                  <strong>{action.kind}</strong>
+                  <p>{action.reason}</p>
+                  <p>
+                    Action: {action.id} · {new Date(action.createdAt).toISOString()} (UTC)
+                  </p>
+                  {action.targetAccountId ? <p>Account: {action.targetAccountId}</p> : null}
+                  {action.channelId ? <p>Channel: {action.channelId}</p> : null}
+                  {action.videoId ? <p>Video: {action.videoId}</p> : null}
+                  {action.caseId ? <p>Case: {action.caseId}</p> : null}
+                </li>
+              ))}
+            </ol>
+          </details>
+        </section>
+      ) : null}
       <section className={styles.grid} style={{ marginBottom: "1.5rem" }}>
         <article className={styles.card}>
           <span className={styles.eyebrow}>Reports</span>
-          <h2>{queue?.reports.length ?? 0}</h2>
+          <h2>{queue ? queue.reports.length : "Unavailable"}</h2>
           <p className={styles.muted}>Open or reviewing user reports.</p>
         </article>
         <article className={styles.card}>
           <span className={styles.eyebrow}>Cases</span>
-          <h2>{queue?.cases.length ?? 0}</h2>
+          <h2>{queue ? queue.cases.length : "Unavailable"}</h2>
           <p className={styles.muted}>Moderation investigations requiring disposition.</p>
         </article>
         <article className={styles.card}>
           <span className={styles.eyebrow}>Copyright</span>
-          <h2>{queue?.takedowns.length ?? 0}</h2>
+          <h2>{queue ? queue.takedowns.length : "Unavailable"}</h2>
           <p className={styles.muted}>Open or reviewing takedown requests.</p>
         </article>
         <article className={styles.card}>
           <span className={styles.eyebrow}>Appeals</span>
-          <h2>{queue?.appeals.length ?? 0}</h2>
+          <h2>{queue ? queue.appeals.length : "Unavailable"}</h2>
           <p className={styles.muted}>Creator appeals awaiting review.</p>
         </article>
       </section>
@@ -286,7 +446,11 @@ export function AdminTrustSafety() {
             maxLength={4000}
             placeholder="Detailed enforcement reason"
           />
-          <button className={styles.button} disabled={busy === "action"} type="submit">
+          <button
+            className={styles.button}
+            disabled={Boolean(busy) || reviewRequired || !queue}
+            type="submit"
+          >
             Record enforcement action
           </button>
         </form>
@@ -306,7 +470,11 @@ export function AdminTrustSafety() {
             <input name="reviewRequired" type="checkbox" />
             <span>Require manual review</span>
           </label>
-          <button className={styles.button} disabled={busy === "creator-trust"} type="submit">
+          <button
+            className={styles.button}
+            disabled={Boolean(busy) || reviewRequired || !queue}
+            type="submit"
+          >
             Update creator trust
           </button>
         </form>
@@ -351,7 +519,7 @@ export function AdminTrustSafety() {
             <div className={styles.actions}>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideCase(item, "REVIEWING")}
                 type="button"
               >
@@ -359,7 +527,7 @@ export function AdminTrustSafety() {
               </button>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideCase(item, "ACTIONED")}
                 type="button"
               >
@@ -367,7 +535,7 @@ export function AdminTrustSafety() {
               </button>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideCase(item, "DISMISSED")}
                 type="button"
               >
@@ -375,7 +543,7 @@ export function AdminTrustSafety() {
               </button>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideCase(item, "CLOSED")}
                 type="button"
               >
@@ -410,7 +578,7 @@ export function AdminTrustSafety() {
             <div className={styles.actions}>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideTakedown(item, "REVIEWING")}
                 type="button"
               >
@@ -418,7 +586,7 @@ export function AdminTrustSafety() {
               </button>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideTakedown(item, "ACTIONED")}
                 type="button"
               >
@@ -426,7 +594,7 @@ export function AdminTrustSafety() {
               </button>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideTakedown(item, "DISMISSED")}
                 type="button"
               >
@@ -458,7 +626,7 @@ export function AdminTrustSafety() {
             <div className={styles.actions}>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideAppeal(item, "REVIEWING")}
                 type="button"
               >
@@ -466,7 +634,7 @@ export function AdminTrustSafety() {
               </button>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideAppeal(item, "UPHELD")}
                 type="button"
               >
@@ -474,7 +642,7 @@ export function AdminTrustSafety() {
               </button>
               <button
                 className={styles.button}
-                disabled={busy === item.id}
+                disabled={Boolean(busy) || reviewRequired || !queue}
                 onClick={() => void decideAppeal(item, "OVERTURNED")}
                 type="button"
               >
@@ -497,24 +665,32 @@ export function AdminTrustSafety() {
             <label>
               <span>Blocked terms — one per line</span>
               <textarea
-                disabled={!canManageSettings}
+                disabled={!canManageSettings || Boolean(busy) || reviewRequired || !queue}
                 value={blockedTermsText}
-                onChange={(event) => setBlockedTermsText(event.target.value)}
+                onChange={(event) => {
+                  dirtySettings.current = true;
+                  setBlockedTermsText(event.target.value);
+                }}
               />
             </label>
             <label style={{ display: "flex", gap: ".55rem", alignItems: "center" }}>
               <input
                 checked={settings.newCreatorsRequireReview}
-                disabled={!canManageSettings}
+                disabled={!canManageSettings || Boolean(busy) || reviewRequired || !queue}
                 type="checkbox"
-                onChange={(event) =>
-                  setSettings({ ...settings, newCreatorsRequireReview: event.target.checked })
-                }
+                onChange={(event) => {
+                  dirtySettings.current = true;
+                  setSettings({ ...settings, newCreatorsRequireReview: event.target.checked });
+                }}
               />
               <span>New creators require review</span>
             </label>
             {canManageSettings ? (
-              <button className={styles.button} disabled={busy === "settings"} type="submit">
+              <button
+                className={styles.button}
+                disabled={!canManageSettings || Boolean(busy) || reviewRequired || !queue}
+                type="submit"
+              >
                 Save safety defaults
               </button>
             ) : (
