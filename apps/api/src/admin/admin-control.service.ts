@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { ConflictException, NotFoundException, Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
@@ -37,6 +37,7 @@ export interface AdminAccountPatch {
 }
 
 export interface AdminChannelPatch {
+  expectedUpdatedAt?: string | undefined;
   name?: string | undefined;
   description?: string | null | undefined;
   status?: "ACTIVE" | "HIDDEN" | "SUSPENDED" | undefined;
@@ -215,7 +216,7 @@ export class AdminControlService {
         where,
         skip,
         take,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: {
           id: true,
           handle: true,
@@ -224,6 +225,7 @@ export class AdminControlService {
           status: true,
           isPlatformOwned: true,
           createdAt: true,
+          updatedAt: true,
           members: {
             where: { role: "OWNER" },
             take: 1,
@@ -232,7 +234,7 @@ export class AdminControlService {
             },
           },
           creatorContracts: {
-            orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+            orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }, { id: "desc" }],
             take: 1,
             select: { id: true, status: true, revenueShareBps: true, effectiveFrom: true },
           },
@@ -242,6 +244,28 @@ export class AdminControlService {
       }),
     ]);
     return { items, pagination: this.pagination(total, page, take) };
+  }
+
+  async channelRecord(channelId: string) {
+    const record = await this.database.client.channel.findUnique({
+      where: { id: channelId },
+      select: {
+        id: true,
+        handle: true,
+        name: true,
+        description: true,
+        status: true,
+        isPlatformOwned: true,
+        updatedAt: true,
+        creatorContracts: {
+          orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { id: true, status: true, revenueShareBps: true, effectiveFrom: true },
+        },
+      },
+    });
+    if (!record) throw new NotFoundException("Channel not found.");
+    return record;
   }
 
   async updateChannel(actorAccountId: string, channelId: string, patch: AdminChannelPatch) {
@@ -260,6 +284,18 @@ export class AdminControlService {
       );
     }
     return this.database.client.$transaction(async (tx) => {
+      const observed = await tx.$queryRaw<Array<{ updatedAt: Date }>>`
+        SELECT "updatedAt" FROM "Channel" WHERE "id" = ${channelId}::uuid FOR UPDATE
+      `;
+      if (!observed[0]) throw new NotFoundException("Channel not found.");
+      if (
+        patch.expectedUpdatedAt &&
+        observed[0].updatedAt.getTime() !== new Date(patch.expectedUpdatedAt).getTime()
+      ) {
+        throw new ConflictException(
+          "Channel changed. Review its current state before another update.",
+        );
+      }
       const channel = await tx.channel.update({
         where: { id: channelId },
         data: {
@@ -284,7 +320,7 @@ export class AdminControlService {
       if (patch.contractStatus !== undefined || patch.revenueShareBps !== undefined) {
         const contract = await tx.creatorContract.findFirst({
           where: { channelId },
-          orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }],
+          orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }, { id: "desc" }],
         });
         if (!contract) {
           await tx.creatorContract.create({
@@ -328,7 +364,13 @@ export class AdminControlService {
             : {}),
         },
       });
-      return channel;
+      const creatorContracts = await tx.creatorContract.findMany({
+        where: { channelId },
+        orderBy: [{ effectiveFrom: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+        take: 1,
+        select: { id: true, status: true, revenueShareBps: true, effectiveFrom: true },
+      });
+      return { ...channel, creatorContracts };
     });
   }
 

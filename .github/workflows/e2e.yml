@@ -121,3 +121,27 @@ jobs:
           path: test-results-pwa/**/design-pwa-*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Preserve Admin channel visual evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-channel-visuals
+          path: test-results/**/design-admin-channels-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve Creator finance visual evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: creator-finance-visuals
+          path: test-results/**/design-creator-finance-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve Creator TV visual evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: creator-tv-visuals
+          path: test-results/**/design-creator-tv-management-*.png
+          if-no-files-found: ignore
+          retention-days: 7

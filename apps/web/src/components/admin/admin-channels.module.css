@@ -1,0 +1,81 @@
+.workspace {
+  display: grid;
+  gap: 24px;
+  min-inline-size: 0;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: end;
+}
+.filters > div {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+.list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 24px;
+}
+.list > li {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  min-inline-size: 0;
+}
+.list header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.list h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 12px;
+}
+.facts dt {
+  color: var(--muted);
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.checkbox {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.workspace select {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--foreground);
+}
+@media (max-width: 40rem) {
+  .facts {
+    grid-template-columns: 1fr;
+  }
+  .list > li {
+    padding: 14px;
+  }
+}

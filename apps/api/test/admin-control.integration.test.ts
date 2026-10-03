@@ -61,6 +61,105 @@ databaseDescribe("Task 17 Admin control plane", () => {
     await prisma.adminRoleAssignment.create({ data: { accountId, role: "ADMIN" } });
   }
 
+  it("returns the actual committed channel contract and rejects an observed stale channel without a second audit", async () => {
+    const admin = await register("Channel Admin", "channel-version-admin@example.com");
+    const creator = await register("Channel Owner", "channel-version-owner@example.com");
+    await grant(admin.user.account.id);
+    const original = await app.inject({
+      method: "GET",
+      url: `/admin/control/channels/${creator.user.channel.id}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(original.statusCode).toBe(200);
+    expect(original.headers["cache-control"]).toContain("no-store");
+    const saved = await app.inject({
+      method: "PATCH",
+      url: `/admin/control/channels/${creator.user.channel.id}`,
+      headers: { cookie: admin.cookie },
+      payload: {
+        name: "Actual committed channel",
+        contractStatus: "ACTIVE",
+        revenueShareBps: 0,
+        expectedUpdatedAt: original.json().updatedAt,
+        reason: "Actual reviewed zero share contract",
+      },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({
+      id: creator.user.channel.id,
+      name: "Actual committed channel",
+      creatorContracts: [{ status: "ACTIVE", revenueShareBps: 0 }],
+    });
+    const stale = await app.inject({
+      method: "PATCH",
+      url: `/admin/control/channels/${creator.user.channel.id}`,
+      headers: { cookie: admin.cookie },
+      payload: {
+        name: "Stale overwrite",
+        expectedUpdatedAt: original.json().updatedAt,
+        reason: "Actual stale attempted overwrite",
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(
+      await prisma.channel.findUnique({
+        where: { id: creator.user.channel.id },
+        select: { name: true },
+      }),
+    ).toEqual({ name: "Actual committed channel" });
+    expect(
+      await prisma.adminAuditLog.count({
+        where: {
+          actorAccountId: admin.user.account.id,
+          action: "channel.admin_updated",
+          entityId: creator.user.channel.id,
+        },
+      }),
+    ).toBe(1);
+    const read = await app.inject({
+      method: "GET",
+      url: `/admin/control/channels/${creator.user.channel.id}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(read.json().creatorContracts).toEqual(saved.json().creatorContracts);
+  });
+
+  it("keeps the direct channel record behind Operations scope and validates IDs before reading", async () => {
+    const finance = await register("Channel Finance", "channel-record-finance@example.com");
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: finance.user.account.id, role: "FINANCE_MANAGER" },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/admin/control/channels/${finance.user.channel.id}`,
+          headers: { cookie: finance.cookie },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const admin = await register("Channel Record Admin", "channel-record-admin@example.com");
+    await grant(admin.user.account.id);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/admin/control/channels/invalid",
+          headers: { cookie: admin.cookie },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/admin/control/channels/00000000-0000-4000-8000-000000000099",
+          headers: { cookie: admin.cookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+
   it("keeps every control-plane endpoint behind admin RBAC", async () => {
     const viewer = await register("Viewer", "control-viewer@example.com");
     const response = await app.inject({
