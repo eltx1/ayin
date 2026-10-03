@@ -52,6 +52,17 @@ databaseDescribe("video ad trusted availability", () => {
     await prisma.$disconnect();
   });
   async function fixture() {
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        name: "Ad policy fixture",
+        email: `ad-${randomUUID()}@example.test`,
+        password: "strong-pass-123",
+      },
+    });
+    expect(registration.statusCode).toBe(201);
+    const actorAccountId = registration.json().user.account.id as string;
     const channel = await prisma.channel.create({
       data: { handle: `ad-${randomUUID()}`, name: "Ad policy", status: "ACTIVE" },
     });
@@ -64,7 +75,7 @@ databaseDescribe("video ad trusted availability", () => {
         visibility: "PUBLIC",
       },
     });
-    return { channel, video, url: `/ads/video/decision/${video.id}` };
+    return { channel, video, actorAccountId, url: `/ads/video/decision/${video.id}` };
   }
   async function decision(url: string, headers: Record<string, string> = {}) {
     const response = await app.inject({ method: "GET", url, headers });
@@ -92,7 +103,7 @@ databaseDescribe("video ad trusted availability", () => {
         videoId: f.video.id,
         disposition: "FORCE_BLOCK",
         reason: "Test boundary",
-        actorAccountId: randomUUID(),
+        actorAccountId: f.actorAccountId,
       },
     });
     expect(await decision(f.url)).toEqual(denied);
@@ -136,7 +147,7 @@ databaseDescribe("video ad trusted availability", () => {
         videoId: f.video.id,
         disposition: "FORCE_ALLOW",
         reason: "Test boundary",
-        actorAccountId: randomUUID(),
+        actorAccountId: f.actorAccountId,
       },
     });
     await prisma.video.update({ where: { id: f.video.id }, data: { visibility: "UNLISTED" } });
