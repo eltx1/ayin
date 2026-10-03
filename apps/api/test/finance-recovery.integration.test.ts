@@ -91,6 +91,7 @@ databaseDescribe("Finance explicit recovery reads", () => {
         },
       ],
     });
+    const auditCountBeforeRead = await prisma.adminAuditLog.count();
     const response = await app.inject({
       method: "GET",
       url: `/admin/revenue/actions?actorAccountId=${other.user.account.id}&take=1000`,
@@ -117,7 +118,12 @@ databaseDescribe("Finance explicit recovery reads", () => {
         beneficiarySnapshotted: false,
       });
     expect(response.body).not.toContain("must-not-leak");
-    expect(await prisma.adminAuditLog.count()).toBe(105);
+    expect(await prisma.adminAuditLog.count()).toBe(auditCountBeforeRead);
+    expect(
+      await prisma.adminAuditLog.count({
+        where: { action: { in: ["PAYOUT_CREATED", "payout.destination_revealed"] } },
+      }),
+    ).toBe(105);
   });
   it("denies Operations and an actual Finance actor after role revocation without exposing decisions", async () => {
     const finance = await actor("FINANCE_MANAGER", "revoke"),
