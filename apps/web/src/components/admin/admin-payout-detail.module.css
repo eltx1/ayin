@@ -1,0 +1,60 @@
+.workspace,
+.records {
+  display: grid;
+  gap: var(--space-5);
+  min-inline-size: 0;
+}
+.workspace {
+  overflow-wrap: anywhere;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-4);
+  margin: 0;
+}
+.facts > div {
+  min-inline-size: 0;
+}
+.facts dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.facts dd {
+  margin: var(--space-2) 0 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.summary > dl dd {
+  font-size: 1.125rem;
+}
+.summary > dl > div {
+  min-inline-size: 0;
+}
+.money {
+  display: block;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.sensitive {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  border: 1px solid var(--border);
+  padding: var(--space-4);
+}
+@media (max-width: 640px) {
+  .actions > * {
+    flex: 1 1 100%;
+  }
+}
+
+.records[hidden] {
+  display: none;
+}

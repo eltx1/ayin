@@ -1,377 +1,602 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-
-import styles from "@/app/admin/admin.module.css";
-import { apiBaseUrl } from "@/lib/api";
-import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
+import { useEffect, useRef, useState } from "react";
+import { useI18n } from "@/components/i18n/i18n-provider";
 import {
-  cancelPayoutAtProvider,
-  getPayoutProviderTransfer,
-  refreshPayoutProviderStatus,
-  submitPayoutToProvider,
-  type PayoutProviderTransferView,
-} from "@/lib/payout-provider";
-
-type PayoutDetail = {
-  payoutId: string;
-  channel: { id: string; name: string; handle: string };
-  status: string;
-  provider: string;
-  amount: string;
-  currency: string;
-  requestedAt: string;
-  processedAt: string | null;
-  paidAt: string | null;
-  externalReference: string | null;
-  failureReason: string | null;
-  paymentProfile: {
-    id: string;
-    legalName: string | null;
-    provider: string | null;
-    destinationMask: string | null;
-    countryCode: string | null;
-    hasDestination: boolean;
-  } | null;
-  destinationRevealAllowed: boolean;
-};
-
-type RevealedDestination = {
-  payoutId: string;
-  provider: string;
-  legalName: string;
-  countryCode: string | null;
-  destination: string;
-  destinationMask: string | null;
-  sensitive: true;
-  cacheable: false;
-};
-
-async function payoutFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    credentials: "include",
-    cache: "no-store",
-    headers: { "content-type": "application/json", ...init?.headers },
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as T;
-}
-
-function displayDate(value: string | null) {
-  return value ? new Date(value).toLocaleString() : "—";
-}
+  ActionButton,
+  ActionLink,
+  DataBadge,
+  FormSection,
+  MetricList,
+  PageHeader,
+  StatusNotice,
+  TextAreaField,
+} from "@/components/ui/design-system";
+import { Disclosure } from "@/components/ui/data-presentation";
+import {
+  PayoutWorkspaceError,
+  readPayoutWorkspace,
+  writePayoutWorkspace,
+  type PayoutAction,
+  type PayoutReveal,
+  type PayoutWorkspace,
+} from "@/lib/admin-payout-workspace";
+import { exactFinanceMoney } from "@/lib/creator-finance";
+import styles from "./admin-payout-detail.module.css";
 
 export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
-  const [detail, setDetail] = useState<PayoutDetail | null>(null);
-  const [provider, setProvider] = useState<PayoutProviderTransferView | null>(null);
-  const [revealed, setRevealed] = useState<RevealedDestination | null>(null);
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-
-  const load = useCallback(async () => {
-    const [nextDetail, nextProvider] = await Promise.all([
-      payoutFetch<PayoutDetail>(`/admin/revenue/payouts/${encodeURIComponent(payoutId)}`),
-      getPayoutProviderTransfer(payoutId),
-    ]);
-    setDetail(nextDetail);
-    setProvider(nextProvider);
-  }, [payoutId]);
-
+  const { locale, href } = useI18n();
+  const copy = (en: string, ar: string) => (locale === "ar" ? ar : en);
+  const [snapshot, setSnapshot] = useState<PayoutWorkspace | null>(null);
+  const [busy, setBusy] = useState(true),
+    [readFailed, setReadFailed] = useState(false);
+  const [providerReason, setProviderReason] = useState(""),
+    [revealReason, setRevealReason] = useState("");
+  const [revealed, setRevealed] = useState<PayoutReveal | null>(null);
+  const [notice, setNotice] = useState<"saved" | "unknown" | "verification" | "failed" | null>(
+    null,
+  );
+  const [uncertain, setUncertain] = useState(false),
+    [reviewed, setReviewed] = useState(false);
+  const [readSequence, setReadSequence] = useState(0);
+  const operationKind = useRef<"read" | "write">("read");
+  const operation = useRef<AbortController | null>(null),
+    locked = useRef(false);
+  const facts = useRef<HTMLDivElement | null>(null),
+    sensitive = useRef<HTMLPreElement | null>(null);
+  const actorId = useRef<string | null>(null);
+  function hideSensitive() {
+    if (sensitive.current) sensitive.current.textContent = "";
+    setRevealed(null);
+  }
   useEffect(() => {
-    let active = true;
-    void Promise.all([
-      payoutFetch<PayoutDetail>(`/admin/revenue/payouts/${encodeURIComponent(payoutId)}`),
-      getPayoutProviderTransfer(payoutId),
-    ])
-      .then(([nextDetail, nextProvider]) => {
-        if (!active) return;
-        setDetail(nextDetail);
-        setProvider(nextProvider);
+    const controller = new AbortController();
+    operation.current = controller;
+    operationKind.current = "read";
+    void readPayoutWorkspace(payoutId, controller.signal)
+      .then((next) => {
+        if (!controller.signal.aborted) {
+          actorId.current = next.actor.accountId;
+          setSnapshot(next);
+          setReadSequence((n) => n + 1);
+        }
       })
-      .catch((error) => {
-        if (active)
-          setMessage(error instanceof Error ? error.message : "Payout could not be loaded.");
+      .catch(() => {
+        if (!controller.signal.aborted) setReadFailed(true);
+      })
+      .finally(() => {
+        if (operation.current === controller) {
+          operation.current = null;
+          if (!controller.signal.aborted) setBusy(false);
+        }
       });
+    const hide = () => {
+      if (operation.current && operationKind.current === "write") {
+        locked.current = true;
+        setUncertain(true);
+        setNotice("unknown");
+      }
+      operation.current?.abort();
+      operation.current = null;
+      if (sensitive.current) sensitive.current.textContent = "";
+      if (facts.current) facts.current.hidden = true;
+      setRevealed(null);
+      setSnapshot(null);
+      setBusy(false);
+      setReadFailed(true);
+      setReviewed(false);
+    };
+    const visibility = () => {
+      if (document.visibilityState === "hidden") hide();
+    };
+    window.addEventListener("pagehide", hide);
+    document.addEventListener("visibilitychange", visibility);
     return () => {
-      active = false;
+      controller.abort();
+      operation.current?.abort();
+      window.removeEventListener("pagehide", hide);
+      document.removeEventListener("visibilitychange", visibility);
     };
   }, [payoutId]);
-
-  async function reveal() {
-    if (reason.trim().length < 8) return;
+  useEffect(() => {
+    if (!revealed) return;
+    const timer = setTimeout(() => {
+      if (sensitive.current) sensitive.current.textContent = "";
+      setRevealed(null);
+    }, 60000);
+    return () => clearTimeout(timer);
+  }, [revealed]);
+  useEffect(() => {
+    if (!providerReason.trim() && !revealReason.trim() && !uncertain) return;
+    const unload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const navigate = (event: MouseEvent) => {
+      const a = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (
+        !(a instanceof HTMLAnchorElement) ||
+        a.target === "_blank" ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey ||
+        a.href === window.location.href
+      )
+        return;
+      if (
+        !window.confirm(
+          locale === "ar"
+            ? "مغادرة تفاصيل الصرف؟ ستفقد المسودات غير المرسلة. راجع أي نتيجة غير مؤكدة قبل محاولة أخرى."
+            : "Leave payout details? Unsent reasons will be lost. Review any uncertain result before another attempt.",
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", unload);
+    document.addEventListener("click", navigate, true);
+    return () => {
+      window.removeEventListener("beforeunload", unload);
+      document.removeEventListener("click", navigate, true);
+    };
+  }, [providerReason, revealReason, uncertain, locale]);
+  async function read() {
+    if (operation.current) return;
+    const controller = new AbortController();
+    operation.current = controller;
+    operationKind.current = "read";
     setBusy(true);
-    setMessage("");
+    setReadFailed(false);
+    setReviewed(false);
+    setSnapshot(null);
+    hideSensitive();
     try {
-      const value = await payoutFetch<RevealedDestination>(
-        `/admin/revenue/payouts/${encodeURIComponent(payoutId)}/destination`,
-        { method: "POST", body: JSON.stringify({ reason: reason.trim() }) },
-      );
-      setRevealed(value);
-      setMessage("Sensitive payout destination revealed for this audited finance action only.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Destination could not be revealed.");
+      const next = await readPayoutWorkspace(payoutId, controller.signal);
+      if (controller.signal.aborted) return;
+      if (actorId.current && actorId.current !== next.actor.accountId) {
+        setProviderReason("");
+        setRevealReason("");
+      }
+      actorId.current = next.actor.accountId;
+      setSnapshot(next);
+      setReadSequence((n) => n + 1);
+      setReviewed(true);
+    } catch {
+      if (!controller.signal.aborted) setReadFailed(true);
     } finally {
-      setBusy(false);
+      if (operation.current === controller) {
+        operation.current = null;
+        setBusy(false);
+      }
     }
   }
-
-  async function providerAction(
-    action: (payoutId: string, reason: string) => Promise<PayoutProviderTransferView>,
-    success: string,
-  ) {
-    if (reason.trim().length < 8) return;
+  async function act(action: PayoutAction) {
+    if (operation.current || locked.current || !snapshot) return;
+    const reason = action === "reveal" ? revealReason : providerReason;
+    if (reason.trim().length < 8 || reason.trim().length > 500) return;
+    const controller = new AbortController();
+    operation.current = controller;
+    operationKind.current = "write";
     setBusy(true);
-    setMessage("");
+    setNotice(null);
+    setReviewed(false);
+    hideSensitive();
     try {
-      await action(payoutId, reason.trim());
-      setMessage(success);
-      await load();
+      const result = await writePayoutWorkspace(action, snapshot, reason, controller.signal);
+      if (controller.signal.aborted) throw new PayoutWorkspaceError(0, true);
+      setNotice("saved");
+      if (result.kind === "reveal") {
+        setRevealed(result.value);
+        setRevealReason("");
+      } else {
+        setSnapshot({ ...snapshot, provider: result.value });
+        setProviderReason("");
+      }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Provider action failed.");
+      if (operation.current !== controller) return;
+      const e = error instanceof PayoutWorkspaceError ? error : new PayoutWorkspaceError(0, true);
+      if (e.verificationRequired) setNotice("verification");
+      else if (e.writeStarted) {
+        locked.current = true;
+        setUncertain(true);
+        setNotice("unknown");
+      } else setNotice("failed");
+      if (e.status === 401 || (e.status === 403 && !e.verificationRequired)) {
+        setSnapshot(null);
+        setProviderReason("");
+        setRevealReason("");
+      }
     } finally {
-      setBusy(false);
+      if (operation.current === controller) {
+        operation.current = null;
+        setBusy(false);
+      }
     }
   }
-
-  const providerReady = Boolean(
+  const detail = snapshot?.detail,
+    provider = snapshot?.provider,
+    transfer = provider?.transfer;
+  const ready = Boolean(
     provider?.capabilities.connected && provider.capabilities.productionEnabled,
   );
-  const transferState = provider?.transfer?.state ?? "NOT_CREATED";
-  const maySubmit =
-    detail?.provider !== "MANUAL" &&
-    providerReady &&
-    (detail?.status === "PENDING" || transferState === "SUBMISSION_UNKNOWN");
-  const mayRefresh =
-    providerReady &&
-    Boolean(provider?.transfer?.externalTransferId) &&
-    !["COMPLETED", "FAILED", "CANCELLED"].includes(transferState);
-  const mayCancel =
-    detail?.provider !== "MANUAL" &&
-    (detail?.status === "PENDING" ||
-      (providerReady && !["COMPLETED", "FAILED", "CANCELLED"].includes(transferState)));
-
+  const terminal = Boolean(
+    transfer && ["COMPLETED", "FAILED", "CANCELLED"].includes(transfer.state),
+  );
+  const actionStatus = provider?.payout.status;
+  const payoutTerminal = ["PAID", "FAILED", "CANCELLED"].includes(actionStatus ?? "");
+  const maySubmit = Boolean(
+    detail &&
+    detail.provider !== "MANUAL" &&
+    ready &&
+    provider?.capabilities.idempotentSubmission &&
+    provider.capabilities.supportsDestinationTokenization &&
+    !terminal &&
+    !payoutTerminal &&
+    (actionStatus === "PENDING" || transfer?.state === "SUBMISSION_UNKNOWN"),
+  );
+  const mayRefresh = Boolean(ready && transfer?.externalTransferId && !terminal && !payoutTerminal);
+  const mayCancel = Boolean(
+    detail &&
+    detail.provider !== "MANUAL" &&
+    !terminal &&
+    !payoutTerminal &&
+    (actionStatus === "PENDING" || (ready && provider?.capabilities.supportsCancellation)),
+  );
+  const yes = (v: boolean) => (v ? copy("Yes", "نعم") : copy("No", "لا"));
+  const unavailable = copy("Not returned", "لم يرجع");
+  const date = (v: string | null) =>
+    v
+      ? new Intl.DateTimeFormat(locale, {
+          dateStyle: "medium",
+          timeStyle: "medium",
+          timeZone: "UTC",
+        }).format(new Date(v)) + " UTC"
+      : "—";
+  const disabled = busy || uncertain;
+  const names: Record<string, string> = {
+    PENDING: copy("Pending", "قيد الانتظار"),
+    PROCESSING: copy("Processing", "جارٍ التنفيذ"),
+    PAID: copy("Paid", "مدفوع"),
+    FAILED: copy("Failed", "فشل"),
+    CANCELLED: copy("Cancelled", "ملغى"),
+    READY: copy("Ready", "جاهز"),
+    SUBMITTING: copy("Submitting", "جارٍ الإرسال"),
+    SUBMISSION_UNKNOWN: copy("Submission uncertain", "الإرسال غير مؤكد"),
+    SUBMITTED: copy("Submitted", "تم الإرسال"),
+    CANCEL_REQUESTED: copy("Cancellation requested", "طُلب الإلغاء"),
+    COMPLETED: copy("Completed", "مكتمل"),
+    UNKNOWN: copy("Unknown", "غير معروف"),
+  };
   return (
-    <div className={styles.grid}>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Finance Operations</span>
-          <h1>Payout detail</h1>
-          <p className={styles.muted}>
-            Manual payout controls and provider-managed transfer diagnostics share the same
-            immutable payout record. Provider submission never marks a payout paid.
+    <div className={styles.workspace}>
+      <PageHeader
+        title={copy("Payout detail", "تفاصيل الصرف")}
+        description={copy(
+          "Review the saved payout and provider transfer separately. A provider submission does not confirm payment.",
+          "راجع عملية الصرف المحفوظة وتحويل المزود كلًّا على حدة. إرسال التحويل لا يؤكد الدفع.",
+        )}
+        actions={
+          <>
+            <ActionButton tone="secondary" pending={busy} onClick={() => void read()}>
+              {copy("Read payout records", "قراءة سجلات الصرف")}
+            </ActionButton>
+            <ActionLink href={href("/admin/revenue")}>
+              {copy("Back to Finance", "العودة إلى المالية")}
+            </ActionLink>
+          </>
+        }
+      />
+      {notice && (
+        <StatusNotice
+          announce="polite"
+          tone={notice === "saved" ? "success" : "warning"}
+          title={
+            notice === "saved"
+              ? copy("Acknowledged", "تم التأكيد")
+              : notice === "verification"
+                ? copy("Verify your session", "تحقق من جلستك")
+                : notice === "unknown"
+                  ? copy("Result uncertain", "النتيجة غير مؤكدة")
+                  : copy("Action unavailable", "الإجراء غير متاح")
+          }
+        >
+          {notice === "saved"
+            ? copy(
+                "The server acknowledged this action. Read the records explicitly when you want their latest state.",
+                "أكد الخادم هذا الإجراء. اقرأ السجلات صراحةً عندما تريد أحدث حالتها.",
+              )
+            : notice === "verification"
+              ? copy(
+                  "Complete verification, review the retained reason and submit explicitly. Nothing is replayed.",
+                  "أكمل التحقق، وراجع السبب المحفوظ ثم أرسل صراحةً. لا يعاد إرسال شيء تلقائيًا.",
+                )
+              : notice === "unknown"
+                ? copy(
+                    "Do not assume failure or repeat the action. Read this original payout and provider state, then review before another explicit action.",
+                    "لا تفترض الفشل أو تكرر الإجراء. اقرأ عملية الصرف الأصلية وحالة المزود، ثم راجعهما قبل إجراء صريح آخر.",
+                  )
+                : copy(
+                    "The current authority or response could not be verified.",
+                    "تعذر التحقق من الصلاحية الحالية أو الرد.",
+                  )}
+        </StatusNotice>
+      )}
+      {readFailed && (
+        <StatusNotice
+          announce="polite"
+          tone="warning"
+          title={copy("Payout records unavailable", "سجلات الصرف غير متاحة")}
+        >
+          {copy(
+            "Read again to verify current Finance authority and this payout. Earlier private details have been hidden.",
+            "اقرأ مجددًا للتحقق من صلاحية المالية الحالية وعملية الصرف هذه. أُخفيت التفاصيل الخاصة السابقة.",
+          )}
+        </StatusNotice>
+      )}
+      {uncertain && reviewed && snapshot && (
+        <ActionButton
+          tone="secondary"
+          onClick={() => {
+            locked.current = false;
+            setUncertain(false);
+            setReviewed(false);
+          }}
+        >
+          {copy("I reviewed this payout and provider state", "راجعت عملية الصرف وحالة المزود")}
+        </ActionButton>
+      )}
+      {snapshot && detail && provider && (
+        <div
+          ref={facts}
+          data-private-payout-facts="true"
+          key={`${snapshot.actor.accountId}:${readSequence}`}
+          className={styles.records}
+        >
+          <p>
+            {copy(
+              "Records reflect the last explicit read; provider acknowledgments are shown separately. Dates use UTC.",
+              "تعكس السجلات آخر قراءة صريحة؛ وتظهر تأكيدات المزود بصورة مستقلة. التواريخ بالتوقيت العالمي UTC.",
+            )}
           </p>
-        </div>
-        <Link className={styles.button} href="/admin/revenue">
-          Back to revenue
-        </Link>
-      </header>
-
-      {message ? <p className={styles.notice}>{message}</p> : null}
-
-      {detail ? (
-        <>
-          <section className={styles.metrics} aria-label="Payout summary">
-            <article className={styles.metric}>
-              <span className={styles.muted}>Amount</span>
-              <strong>
-                {detail.currency} {detail.amount}
-              </strong>
-            </article>
-            <article className={styles.metric}>
-              <span className={styles.muted}>Status</span>
-              <strong>{detail.status}</strong>
-            </article>
-            <article className={styles.metric}>
-              <span className={styles.muted}>Provider</span>
-              <strong>{detail.provider}</strong>
-            </article>
-            <article className={styles.metric}>
-              <span className={styles.muted}>Channel</span>
-              <strong>@{detail.channel.handle}</strong>
-            </article>
-          </section>
-
-          <section className={styles.card}>
-            <h2>Operational context</h2>
-            <div className={styles.grid}>
-              <p>
-                <strong>Channel:</strong> {detail.channel.name} (@{detail.channel.handle})
-              </p>
-              <p>
-                <strong>Requested:</strong> {displayDate(detail.requestedAt)}
-              </p>
-              <p>
-                <strong>Processing:</strong> {displayDate(detail.processedAt)}
-              </p>
-              <p>
-                <strong>Paid:</strong> {displayDate(detail.paidAt)}
-              </p>
-              <p>
-                <strong>External reference:</strong> {detail.externalReference ?? "—"}
-              </p>
-              <p>
-                <strong>Failure reason:</strong> {detail.failureReason ?? "—"}
-              </p>
-            </div>
-          </section>
-
-          <section className={styles.card}>
-            <div className={styles.cardHeader}>
-              <div>
-                <h2>External payout provider</h2>
-                <p className={styles.muted}>
-                  Provider state is separate from AYIN payout state. PAID is only written after a
-                  confirmed provider completion from status retrieval or a verified webhook.
-                </p>
-              </div>
-              <span className={styles.statusPill}>
-                {providerReady ? "Production enabled" : "Production disabled"}
-              </span>
-            </div>
-            <div className={styles.grid}>
-              <p>
-                <strong>Configured adapter:</strong>{" "}
-                {provider?.capabilities.provider ?? "Unavailable"}
-              </p>
-              <p>
-                <strong>Transfer state:</strong> {transferState}
-              </p>
-              <p>
-                <strong>External transfer ID:</strong>{" "}
-                {provider?.transfer?.externalTransferId ?? "—"}
-              </p>
-              <p>
-                <strong>Provider response state:</strong>{" "}
-                {provider?.transfer?.providerResponseState ?? "—"}
-              </p>
-              <p>
-                <strong>Attempts:</strong> submit {provider?.transfer?.submitAttempts ?? 0} · status{" "}
-                {provider?.transfer?.statusAttempts ?? 0} · cancel{" "}
-                {provider?.transfer?.cancelAttempts ?? 0}
-              </p>
-              <p>
-                <strong>Next safe retry:</strong>{" "}
-                {provider?.transfer?.nextRetryAt
-                  ? new Date(provider.transfer.nextRetryAt).toLocaleString()
-                  : "—"}
-              </p>
-            </div>
-            {!providerReady ? (
-              <p className={styles.muted}>
-                No approved external provider/account is configured. AYIN will not submit a real
-                transfer until a provider adapter is connected and explicitly production-enabled.
-              </p>
-            ) : null}
-            <textarea
-              aria-label="Provider action reason"
-              minLength={8}
-              placeholder="Mandatory finance reason for provider action"
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
+          <div className={styles.summary}>
+            <MetricList
+              label={copy("Saved payout summary", "ملخص الصرف المحفوظ")}
+              items={[
+                {
+                  label: copy("Amount", "المبلغ"),
+                  value: (
+                    <span dir="ltr" className={styles.money} tabIndex={0}>
+                      {exactFinanceMoney(detail.currency, detail.amount)}
+                    </span>
+                  ),
+                },
+                {
+                  label: copy("Saved payout status", "حالة الصرف المحفوظة"),
+                  value: names[detail.status],
+                },
+                { label: copy("Payout provider", "مزود الصرف"), value: detail.provider },
+                {
+                  label: copy("Channel", "القناة"),
+                  value: <span dir="auto">@{detail.channel.handle}</span>,
+                },
+              ]}
+            />
+          </div>
+          <Disclosure summary={copy("Payout context and beneficiary", "سياق الصرف والمستفيد")} open>
+            <dl className={styles.facts}>
+              {[
+                [copy("Channel name", "اسم القناة"), detail.channel.name],
+                [copy("Requested", "طُلب"), date(detail.requestedAt)],
+                [copy("Processing", "بدء التنفيذ"), date(detail.processedAt)],
+                [copy("Paid", "الدفع"), date(detail.paidAt)],
+                [copy("External reference", "المرجع الخارجي"), detail.externalReference ?? "—"],
+                [copy("Failure reason", "سبب الفشل"), detail.failureReason ?? "—"],
+                [
+                  copy("Immutable snapshot available", "لقطة المستفيد الأصلية متاحة"),
+                  yes(detail.beneficiarySnapshotAvailable),
+                ],
+                [
+                  copy("Legal name", "الاسم القانوني"),
+                  detail.paymentProfile?.legalName ?? unavailable,
+                ],
+                [
+                  copy("Masked destination", "جهة الدفع المحجوبة"),
+                  detail.paymentProfile?.destinationMask ?? unavailable,
+                ],
+                [
+                  copy("Country / region", "البلد / المنطقة"),
+                  detail.paymentProfile?.countryCode ?? "—",
+                ],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd dir="auto">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </Disclosure>
+          <FormSection
+            id="payout-provider-action"
+            legend={copy("Provider transfer", "تحويل المزود")}
+            description={copy(
+              "Only an actual confirmed status or verified webhook can confirm provider payment. Submission and payout state are separate.",
+              "تأكيد الدفع يعتمد على حالة فعلية مؤكدة أو إشعار مزود موثَّق. الإرسال وحالة الصرف أمران منفصلان.",
+            )}
+          >
+            <DataBadge tone={ready ? "info" : "warning"}>
+              {ready
+                ? copy("Production enabled", "الإنتاج مُفعّل")
+                : copy("Production disabled", "الإنتاج غير مُفعّل")}
+            </DataBadge>
+            <dl className={styles.facts}>
+              {[
+                [copy("Configured adapter", "المحول المضبوط"), provider.capabilities.provider],
+                [
+                  copy("Provider payout status", "حالة الصرف لدى المزود"),
+                  names[provider.payout.status],
+                ],
+                [
+                  copy("Transfer state", "حالة التحويل"),
+                  transfer ? names[transfer.state] : copy("No transfer created", "لم يُنشأ تحويل"),
+                ],
+                [
+                  copy("External transfer ID", "معرّف التحويل الخارجي"),
+                  transfer?.externalTransferId ?? "—",
+                ],
+                [
+                  copy("Provider response state", "حالة رد المزود"),
+                  transfer?.providerResponseState ?? "—",
+                ],
+                [
+                  copy("Submission attempts", "محاولات الإرسال"),
+                  transfer ? String(transfer.submitAttempts) : unavailable,
+                ],
+                [
+                  copy("Status attempts", "محاولات قراءة الحالة"),
+                  transfer ? String(transfer.statusAttempts) : unavailable,
+                ],
+                [
+                  copy("Cancellation attempts", "محاولات الإلغاء"),
+                  transfer ? String(transfer.cancelAttempts) : unavailable,
+                ],
+                [copy("Next retry", "المحاولة التالية"), date(transfer?.nextRetryAt ?? null)],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd dir="auto">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <Disclosure
+              summary={copy(
+                "Actual provider capabilities and retry policy",
+                "قدرات المزود وسياسة المحاولة الفعلية",
+              )}
+            >
+              <dl className={styles.facts}>
+                {[
+                  [copy("Connected", "متصل"), yes(provider.capabilities.connected)],
+                  [
+                    copy("Idempotent submission", "إرسال يمنع التكرار"),
+                    yes(provider.capabilities.idempotentSubmission),
+                  ],
+                  [
+                    copy("Cancellation supported", "يدعم الإلغاء"),
+                    yes(provider.capabilities.supportsCancellation),
+                  ],
+                  [
+                    copy("Destination tokenization", "ترميز جهة الدفع"),
+                    yes(provider.capabilities.supportsDestinationTokenization),
+                  ],
+                  [
+                    copy("Webhook verification", "توثيق إشعار المزود"),
+                    provider.capabilities.webhookVerification,
+                  ],
+                  [
+                    copy("Maximum submission attempts", "أقصى محاولات إرسال"),
+                    String(provider.capabilities.retryPolicy.maxSubmissionAttempts),
+                  ],
+                  [
+                    copy("Initial retry delay (seconds)", "تأخير أول محاولة (ثوانٍ)"),
+                    String(provider.capabilities.retryPolicy.baseDelaySeconds),
+                  ],
+                  [
+                    copy("Maximum retry delay (seconds)", "أقصى تأخير للمحاولة (ثوانٍ)"),
+                    String(provider.capabilities.retryPolicy.maxDelaySeconds),
+                  ],
+                  [
+                    copy("Same key across retries", "المفتاح نفسه في المحاولات"),
+                    yes(provider.capabilities.retryPolicy.sameIdempotencyKeyAcrossRetries),
+                  ],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd dir="auto">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Disclosure>
+            <TextAreaField
+              id="payout-provider-reason"
+              label={copy("Provider action reason", "سبب إجراء المزود")}
+              hint={copy(
+                "8–500 characters. No action is sent automatically.",
+                "٨–٥٠٠ حرف. لا يُرسل إجراء تلقائيًا.",
+              )}
+              value={providerReason}
+              maxLength={500}
+              disabled={disabled}
+              onChange={(e) => setProviderReason(e.target.value)}
             />
             <div className={styles.actions}>
-              <button
-                className={styles.button}
-                disabled={busy || !maySubmit || reason.trim().length < 8}
-                type="button"
-                onClick={() =>
-                  void providerAction(
-                    submitPayoutToProvider,
-                    "Payout submission was acknowledged; payment remains unconfirmed.",
-                  )
-                }
-              >
-                Submit / safe retry
-              </button>
-              <button
-                className={styles.button}
-                disabled={busy || !mayRefresh || reason.trim().length < 8}
-                type="button"
-                onClick={() =>
-                  void providerAction(
-                    refreshPayoutProviderStatus,
-                    "Provider transfer status refreshed.",
-                  )
-                }
-              >
-                Refresh provider status
-              </button>
-              <button
-                className={styles.danger}
-                disabled={busy || !mayCancel || reason.trim().length < 8}
-                type="button"
-                onClick={() =>
-                  void providerAction(cancelPayoutAtProvider, "Provider cancellation processed.")
-                }
-              >
-                Cancel through provider
-              </button>
-            </div>
-          </section>
-
-          <section className={styles.card}>
-            <h2>Beneficiary</h2>
-            <p>
-              <strong>Legal name:</strong> {detail.paymentProfile?.legalName ?? "Not configured"}
-            </p>
-            <p>
-              <strong>Destination:</strong>{" "}
-              {detail.paymentProfile?.destinationMask ?? "Not configured"}
-            </p>
-            <p>
-              <strong>Country / region:</strong> {detail.paymentProfile?.countryCode ?? "—"}
-            </p>
-            <p className={styles.muted}>
-              Full destination instructions are never included in ordinary payout APIs. External
-              provider automation uses only a provider-issued token stored encrypted when
-              tokenization is supported.
-            </p>
-
-            {detail.destinationRevealAllowed ? (
-              <div className={styles.grid}>
-                <textarea
-                  aria-label="Reason for revealing payout destination"
-                  minLength={8}
-                  placeholder="Mandatory finance reason, e.g. Executing approved manual payout"
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                />
-                <button
-                  className={styles.danger}
-                  disabled={busy || reason.trim().length < 8}
-                  onClick={() => void reveal()}
-                  type="button"
+              {(
+                [
+                  ["submit", maySubmit, copy("Submit / safe retry", "إرسال / محاولة آمنة")],
+                  ["status", mayRefresh, copy("Refresh provider status", "تحديث حالة المزود")],
+                  ["cancel", mayCancel, copy("Cancel through provider", "إلغاء عبر المزود")],
+                ] as const
+              ).map(([action, allowed, label]) => (
+                <ActionButton
+                  key={action}
+                  tone={action === "cancel" ? "danger" : "secondary"}
+                  disabled={disabled || !allowed || providerReason.trim().length < 8}
+                  onClick={() => void act(action)}
                 >
-                  Reveal sensitive destination
-                </button>
-              </div>
+                  {label}
+                </ActionButton>
+              ))}
+            </div>
+          </FormSection>
+          <FormSection
+            id="payout-destination-reveal"
+            legend={copy("Sensitive destination", "جهة الدفع الحساسة")}
+            description={copy(
+              "A manual reveal is audited and uses the immutable payout beneficiary. It is hidden after 60 seconds, when this page is hidden or when you leave.",
+              "كشف بيانات الصرف اليدوي مُدقّق ويستخدم المستفيد الأصلي للعملية. تُخفى البيانات بعد ٦٠ ثانية، وعند إخفاء الصفحة أو مغادرتها.",
+            )}
+          >
+            {detail.destinationRevealAllowed ? (
+              <>
+                <TextAreaField
+                  id="payout-reveal-reason"
+                  label={copy("Reason for revealing payout destination", "سبب كشف جهة الصرف")}
+                  value={revealReason}
+                  maxLength={500}
+                  disabled={disabled}
+                  onChange={(e) => setRevealReason(e.target.value)}
+                />
+                <ActionButton
+                  tone="danger"
+                  disabled={disabled || revealReason.trim().length < 8}
+                  onClick={() => void act("reveal")}
+                >
+                  {copy("Reveal sensitive destination", "كشف جهة الدفع الحساسة")}
+                </ActionButton>
+              </>
             ) : (
-              <p className={styles.muted}>
-                Raw destination reveal is unavailable for this payout status or provider.
+              <p>
+                {copy(
+                  "Reveal is unavailable for this saved payout status or snapshot.",
+                  "الكشف غير متاح لحالة الصرف المحفوظة أو لقطة المستفيد هذه.",
+                )}
               </p>
             )}
-          </section>
-
-          {revealed ? (
-            <section className={styles.card}>
-              <h2>Sensitive destination — do not copy into logs</h2>
-              <p>
-                <strong>{revealed.legalName}</strong>
-              </p>
-              <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                {revealed.destination}
-              </pre>
-              <p className={styles.muted}>
-                This response is marked no-store and the reveal event has been audited. Close or
-                leave this page when the manual payment action is complete.
-              </p>
-            </section>
-          ) : null}
-        </>
-      ) : null}
+            {revealed && (
+              <section aria-label={copy("Revealed destination", "جهة الدفع المكشوفة")}>
+                <p dir="auto">{revealed.legalName}</p>
+                <pre ref={sensitive} dir="auto" className={styles.sensitive}>
+                  {revealed.destination}
+                </pre>
+                <ActionButton tone="secondary" onClick={hideSensitive}>
+                  {copy("Hide destination now", "إخفاء جهة الدفع الآن")}
+                </ActionButton>
+              </section>
+            )}
+          </FormSection>
+        </div>
+      )}
     </div>
   );
 }

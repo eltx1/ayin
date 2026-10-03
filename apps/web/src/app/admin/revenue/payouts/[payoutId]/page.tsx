@@ -6,5 +6,5 @@ type AdminPayoutDetailPageProps = {
 
 export default async function AdminPayoutDetailPage({ params }: AdminPayoutDetailPageProps) {
   const { payoutId } = await params;
-  return <AdminPayoutDetail payoutId={payoutId} />;
+  return <AdminPayoutDetail key={payoutId} payoutId={payoutId} />;
 }
