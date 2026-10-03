@@ -27,15 +27,24 @@ export function UploadHistory() {
   const [busy, setBusy] = useState(false),
     [failed, setFailed] = useState(false);
   const operation = useRef<AbortController | null>(null);
+  const facts = useRef<HTMLDivElement | null>(null);
+  const [readSequence, setReadSequence] = useState(0);
   useEffect(() => {
     const hide = () => {
       operation.current?.abort();
+      operation.current = null;
+      if (facts.current) facts.current.hidden = true;
       setSnapshot(null);
       setBusy(false);
     };
+    const visibility = () => {
+      if (document.visibilityState === "hidden") hide();
+    };
     window.addEventListener("pagehide", hide);
+    document.addEventListener("visibilitychange", visibility);
     return () => {
       window.removeEventListener("pagehide", hide);
+      document.removeEventListener("visibilitychange", visibility);
       operation.current?.abort();
     };
   }, []);
@@ -51,6 +60,7 @@ export function UploadHistory() {
       if (!controller.signal.aborted) {
         setSnapshot(result);
         setApplied(filter);
+        setReadSequence((n) => n + 1);
       }
     } catch {
       if (!controller.signal.aborted) setFailed(true);
@@ -133,7 +143,7 @@ export function UploadHistory() {
           </StatusNotice>
         ) : null}
         {snapshot ? (
-          <>
+          <div ref={facts} key={readSequence}>
             <p>
               {copy(
                 "Records reflect this explicit read. Open Studio to edit a saved video's details.",
@@ -211,7 +221,7 @@ export function UploadHistory() {
                 )}
               </p>
             ) : null}
-          </>
+          </div>
         ) : null}
       </Disclosure>
     </section>

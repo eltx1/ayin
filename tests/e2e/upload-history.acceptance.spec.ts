@@ -149,6 +149,30 @@ for (const locale of ["en", "ar"] as const)
       .click();
     await expect(history.locator("article")).toHaveCount(1);
     await expect(history.locator("article")).toContainText(copy("Draft", "مسودة"));
+    // Erase visibility before the persisted page can freeze, not only after React renders.
+    expect(
+      await history.evaluate((element) => {
+        window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+        return element.querySelector("article")?.checkVisibility() === false;
+      }),
+    ).toBe(true);
+    await expect(history.locator("article")).toHaveCount(0);
+    await expect(history.getByLabel(copy("Video status", "حالة الفيديو"))).toHaveValue("DRAFT");
+    const readsBeforeRecovery = reads;
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+    );
+    expect(reads).toBe(readsBeforeRecovery);
+    await history
+      .getByRole("button", {
+        name: copy("Read saved uploads", "قراءة ملفات الرفع المحفوظة"),
+        exact: true,
+      })
+      .click();
+    await expect(history.locator("article")).toHaveCount(1);
+    await expect(history.locator("article")).toBeVisible();
+    expect(reads).toBe(readsBeforeRecovery + 1);
+
     await page.route("**/creator/videos/uploads?**", (route) =>
       route.fulfill({ status: 503, json: { message: "Controlled history read unavailable" } }),
     );
