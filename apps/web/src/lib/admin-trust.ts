@@ -1,5 +1,5 @@
 import { apiBaseUrl } from "./api";
-import { readAdminApiError } from "./admin-reauthentication";
+import { adminVerificationRequired, readAdminApiError } from "./admin-reauthentication";
 import type { AdminSession, AdminRole } from "./admin-control";
 import {
   parseActorTrustActions,
@@ -10,6 +10,7 @@ export class AdminTrustError extends Error {
   constructor(
     readonly status: number,
     readonly writeStarted = false,
+    readonly verificationRequired = false,
   ) {
     super("Trust snapshot or operation could not be verified");
   }
@@ -198,8 +199,9 @@ async function request(path: string, init: RequestInit, timeout: number): Promis
       headers: { "content-type": "application/json" },
     });
     if (!response.ok) {
+      const verificationRequired = await adminVerificationRequired(response);
       await readAdminApiError(response);
-      throw new AdminTrustError(response.status, Boolean(init.method));
+      throw new AdminTrustError(response.status, Boolean(init.method), verificationRequired);
     }
     return await response.json();
   } finally {

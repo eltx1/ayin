@@ -266,3 +266,45 @@ test("Finance access never requests the Operations directory", async ({ page }) 
     (await page.request.get(`${API}/admin/control/channels/${user.channel.id}`)).status(),
   ).toBe(403);
 });
+
+test("explicit channel step-up rejection retains its draft, opens verification and never replays", async ({
+  page,
+}) => {
+  const { user, seed } = await operator(page, "channels-verification@e2e.ayin.test");
+  let writes = 0;
+  await page.route(`${API}/admin/control/channels/${seed.channelId}`, (route) => {
+    if (route.request().method() !== "PATCH") return route.continue();
+    writes++;
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: "STEP_UP_REQUIRED", message: "Verify the session" } },
+    });
+  });
+  await page.goto(`/admin/channels?query=${encodeURIComponent(seed.query)}&lang=en`);
+  const main = page.getByRole("main"),
+    row = main
+      .locator("li")
+      .filter({ has: page.getByRole("heading", { name: new RegExp(seed.handle) }) });
+  await row
+    .locator("summary")
+    .filter({ hasText: `Edit @${seed.handle}` })
+    .click();
+  await row.getByLabel("Channel name", { exact: true }).fill("Retained verification channel draft");
+  await row
+    .getByLabel("Actual audit reason", { exact: true })
+    .fill("Actual retained verification reason");
+  await row.getByRole("button", { name: "Save channel", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(main.getByRole("status").filter({ hasText: "Verify your session" })).toBeVisible();
+  await expect(row.getByLabel("Channel name", { exact: true })).toHaveValue(
+    "Retained verification channel draft",
+  );
+  await expect(row.getByLabel("Actual audit reason", { exact: true })).toHaveValue(
+    "Actual retained verification reason",
+  );
+  await expect(row.getByRole("button", { name: "Save channel", exact: true })).toBeEnabled();
+  expect(writes).toBe(1);
+  expect(db("evidence", { accountId: user.account.id, channelId: seed.channelId }).audits).toBe(0);
+});

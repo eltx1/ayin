@@ -1,10 +1,11 @@
 import { apiBaseUrl } from "./api";
-import { readAdminApiError } from "./admin-reauthentication";
+import { adminVerificationRequired, readAdminApiError } from "./admin-reauthentication";
 import type { AdminSession, AdminRole } from "./admin-control";
 export class AdminChannelsError extends Error {
   constructor(
     readonly status: number,
     readonly writeStarted = false,
+    readonly verificationRequired = false,
   ) {
     super("Channel administration could not be verified");
   }
@@ -160,8 +161,9 @@ async function request(path: string, signal: AbortSignal, init: RequestInit = {}
     cache: "no-store",
   });
   if (!response.ok) {
+    const verificationRequired = await adminVerificationRequired(response);
     await readAdminApiError(response);
-    throw new AdminChannelsError(response.status, Boolean(init.method));
+    throw new AdminChannelsError(response.status, Boolean(init.method), verificationRequired);
   }
   return (await response.json()) as unknown;
 }
@@ -278,7 +280,8 @@ export async function saveAdminChannel(
         input,
       );
     } catch (error) {
-      if (error instanceof AdminChannelsError) throw new AdminChannelsError(error.status, true);
+      if (error instanceof AdminChannelsError)
+        throw new AdminChannelsError(error.status, true, error.verificationRequired);
       throw error;
     }
   });

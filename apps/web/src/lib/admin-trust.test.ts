@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { registerAdminVerification } from "./admin-reauthentication";
 import {
   AdminTrustError,
   adminActionInput,
@@ -225,4 +226,30 @@ it("refuses a stale actor before sending a protected mutation", async () => {
     ),
   ).rejects.toMatchObject({ status: 401, writeStarted: false });
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it("preserves explicit step-up rejection and dispatches verification once without replay or queue reads", async () => {
+  const verification = vi.fn(),
+    dispose = registerAdminVerification(verification);
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json(session))
+    .mockResolvedValueOnce(Response.json({ error: { code: "STEP_UP_REQUIRED" } }, { status: 403 }));
+  vi.stubGlobal("fetch", fetch);
+  try {
+    await expect(
+      saveAdminTrust(
+        "/admin/trust/actions",
+        "POST",
+        { kind: "WARN", targetAccountId: actor, reason: "Actual retained warning reason" },
+        actor,
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ status: 403, writeStarted: true, verificationRequired: true });
+    expect(verification).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1]?.[1]?.method).toBe("POST");
+  } finally {
+    dispose();
+  }
 });
