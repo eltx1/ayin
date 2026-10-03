@@ -1,0 +1,10 @@
+{
+  "scope": "Reopened Chromium tab, not OS installed-app startup",
+  "logoutAcknowledged": true,
+  "cachedPaths": [
+    "/offline.html",
+    "/icons/ayin-192.svg",
+    "/icons/ayin-512.svg"
+  ],
+  "neutralOfflineDocument": true
+}

@@ -1,0 +1,8 @@
+{
+  "scope": "Controlled legacy behavior fixture, not literal historical worker or physical installed device",
+  "ownedCacheNames": [
+    "ayin-pwa-v3-static"
+  ],
+  "foreignCachePreserved": true,
+  "navigations": 0
+}
