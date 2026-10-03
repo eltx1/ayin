@@ -69,6 +69,7 @@ databaseDescribe("video ad trusted availability", () => {
   async function decision(url: string, headers: Record<string, string> = {}) {
     const response = await app.inject({ method: "GET", url, headers });
     expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("private, no-store");
     return response.json();
   }
   const denied = { enabled: false, reason: "VIDEO_NOT_ELIGIBLE" };

@@ -35,6 +35,7 @@ export class VideoAdController {
   ) {}
 
   @Get("video/decision/:videoId")
+  @Header("Cache-Control", "private, no-store")
   async getDecision(
     @Param("videoId") videoIdRaw: string,
     @Req() request: { protocol?: string; headers?: Record<string, unknown> },
