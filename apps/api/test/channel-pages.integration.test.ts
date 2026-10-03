@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { createPrismaClient } from "@ayin/db";
+import { createPrismaClient, Prisma } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -314,5 +314,271 @@ databaseDescribe("Task 08 public creator channels", () => {
       where: { channelId: owner.user.channel.id },
     });
     expect(appearance?.avatarAssetId).toBe(authorized.assetId);
+  });
+  async function authorize(owner: RegisteredUser) {
+    const response = await app.inject({
+      method: "POST",
+      url: `/creator/channels/${owner.user.channel.id}/assets/authorize`,
+      headers: { cookie: owner.cookie },
+      payload: { kind: "avatar", mimeType: "image/png", sizeBytes: 1024 },
+    });
+    expect(response.statusCode).toBe(201);
+    return response.json() as { assetId: string };
+  }
+  async function waitForChannelLocks(minimum = 1) {
+    await vi.waitFor(
+      async () => {
+        const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(
+          Prisma.sql`SELECT count(*)::bigint AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%Channel%FOR UPDATE%'`,
+        );
+        expect(Number(rows[0]?.count ?? 0)).toBeGreaterThanOrEqual(minimum);
+      },
+      { timeout: 3000, interval: 25 },
+    );
+  }
+  async function heldChannel(
+    owner: RegisteredUser,
+    work: (tx: Prisma.TransactionClient) => Promise<void>,
+  ) {
+    let release!: () => void, acquired!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "Channel" WHERE "id" = ${owner.user.channel.id}::uuid FOR UPDATE`,
+        );
+        acquired();
+        await gate;
+        await work(tx);
+      },
+      { timeout: 15000 },
+    );
+    await ready;
+    return { release, holder };
+  }
+  it("serializes handle changes and preserves every committed old-handle redirect", async () => {
+    const owner = await register("Handle race", "handle-race@example.com");
+    const lock = await heldChannel(owner, async (tx) => {
+      await tx.channel.update({
+        where: { id: owner.user.channel.id },
+        data: { handle: "intermediate-handle" },
+      });
+      await tx.channelHandleRedirect.create({
+        data: { oldHandle: owner.user.channel.handle, channelId: owner.user.channel.id },
+      });
+    });
+    const update = app.inject({
+      method: "PATCH",
+      url: `/creator/channels/${owner.user.channel.id}`,
+      headers: { cookie: owner.cookie },
+      payload: { handle: "final-handle", name: "Final name" },
+    });
+    try {
+      await waitForChannelLocks();
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    const response = await update;
+    expect(response.statusCode).toBe(200);
+    expect(response.json().previousHandle).toBe("intermediate-handle");
+    for (const handle of [owner.user.channel.handle, "intermediate-handle"]) {
+      const publicRead = await app.inject({ method: "GET", url: `/public/channels/${handle}` });
+      expect(publicRead.statusCode).toBe(200);
+      expect(publicRead.json().canonicalHandle).toBe("final-handle");
+    }
+  });
+  it("rechecks concurrent channel removal before editing or changing appearance", async () => {
+    const owner = await register("Removed channel", "removed-channel-race@example.com"),
+      asset = await authorize(owner);
+    const lock = await heldChannel(owner, async (tx) => {
+      await tx.channel.update({
+        where: { id: owner.user.channel.id },
+        data: { status: "REMOVED", removedAt: new Date() },
+      });
+    });
+    const update = app.inject({
+      method: "PATCH",
+      url: `/creator/channels/${owner.user.channel.id}`,
+      headers: { cookie: owner.cookie },
+      payload: { name: "Must not save", accentColor: "#ABCDEF" },
+    });
+    const complete = app.inject({
+      method: "POST",
+      url: `/creator/channels/${owner.user.channel.id}/assets/complete`,
+      headers: { cookie: owner.cookie },
+      payload: { assetId: asset.assetId },
+    });
+    try {
+      await waitForChannelLocks(2);
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    expect((await update).statusCode).toBe(404);
+    expect((await complete).statusCode).toBe(404);
+    expect(
+      (await prisma.channel.findUniqueOrThrow({ where: { id: owner.user.channel.id } })).name,
+    ).toBe(owner.user.channel.name);
+    expect(
+      (await prisma.mediaAsset.findUniqueOrThrow({ where: { id: asset.assetId } })).status,
+    ).toBe("PENDING");
+    expect(
+      (await prisma.channelAppearance.findUnique({ where: { channelId: owner.user.channel.id } }))
+        ?.avatarAssetId ?? null,
+    ).toBeNull();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+  it("serializes competing image completions and deletes only the superseded asset", async () => {
+    const owner = await register("Image race", "image-race@example.com"),
+      first = await authorize(owner),
+      second = await authorize(owner);
+    const lock = await heldChannel(owner, async () => {});
+    const completion = (assetId: string) =>
+      app.inject({
+        method: "POST",
+        url: `/creator/channels/${owner.user.channel.id}/assets/complete`,
+        headers: { cookie: owner.cookie },
+        payload: { assetId },
+      });
+    const firstRequest = completion(first.assetId),
+      secondRequest = completion(second.assetId);
+    try {
+      await waitForChannelLocks(2);
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    expect((await firstRequest).statusCode).toBe(201);
+    expect((await secondRequest).statusCode).toBe(201);
+    const appearance = await prisma.channelAppearance.findUniqueOrThrow({
+      where: { channelId: owner.user.channel.id },
+    });
+    const assets = await prisma.mediaAsset.findMany({
+      where: { id: { in: [first.assetId, second.assetId] } },
+    });
+    expect(assets.filter((asset) => asset.status === "UPLOADED")).toHaveLength(1);
+    expect(assets.filter((asset) => asset.status === "REMOVED")).toHaveLength(1);
+    const selected = assets.find((asset) => asset.id === appearance.avatarAssetId),
+      superseded = assets.find((asset) => asset.id !== appearance.avatarAssetId);
+    expect(selected?.status).toBe("UPLOADED");
+    expect(superseded?.removedAt).not.toBeNull();
+    expect(storage.deleteObject).toHaveBeenCalledExactlyOnceWith(superseded?.r2ObjectKey);
+    expect(storage.deleteObject).not.toHaveBeenCalledWith(selected?.r2ObjectKey);
+  });
+  it("rolls back image state and cleanup if the channel pointer write fails", async () => {
+    const owner = await register("Image rollback", "image-rollback@example.com"),
+      old = await authorize(owner);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/creator/channels/${owner.user.channel.id}/assets/complete`,
+          headers: { cookie: owner.cookie },
+          payload: { assetId: old.assetId },
+        })
+      ).statusCode,
+    ).toBe(201);
+    const next = await authorize(owner);
+    await prisma.$executeRawUnsafe(
+      "CREATE FUNCTION ayin_test_channel_image_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test channel pointer failure'; END; $$",
+    );
+    try {
+      await prisma.$executeRawUnsafe(
+        'CREATE TRIGGER ayin_test_channel_image_failure BEFORE UPDATE ON "ChannelAppearance" FOR EACH ROW EXECUTE FUNCTION ayin_test_channel_image_failure()',
+      );
+      const response = await app.inject({
+        method: "POST",
+        url: `/creator/channels/${owner.user.channel.id}/assets/complete`,
+        headers: { cookie: owner.cookie },
+        payload: { assetId: next.assetId },
+      });
+      expect(response.statusCode).toBe(500);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS ayin_test_channel_image_failure ON "ChannelAppearance"',
+      );
+      await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS ayin_test_channel_image_failure()");
+    }
+    expect(
+      (await prisma.mediaAsset.findUniqueOrThrow({ where: { id: next.assetId } })).status,
+    ).toBe("PENDING");
+    expect((await prisma.mediaAsset.findUniqueOrThrow({ where: { id: old.assetId } })).status).toBe(
+      "UPLOADED",
+    );
+    expect(
+      (
+        await prisma.channelAppearance.findUniqueOrThrow({
+          where: { channelId: owner.user.channel.id },
+        })
+      ).avatarAssetId,
+    ).toBe(old.assetId);
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+  it("rechecks owner membership after waiting for a concurrent revocation", async () => {
+    const owner = await register("Revoked owner", "revoked-owner-channel@example.com");
+    const lock = await heldChannel(owner, async (tx) => {
+      await tx.channelMember.deleteMany({
+        where: {
+          channelId: owner.user.channel.id,
+          accountId: owner.user.account.id,
+          role: "OWNER",
+        },
+      });
+    });
+    const update = app.inject({
+      method: "PATCH",
+      url: `/creator/channels/${owner.user.channel.id}`,
+      headers: { cookie: owner.cookie },
+      payload: { name: "Must not save" },
+    });
+    try {
+      await waitForChannelLocks();
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    expect((await update).statusCode).toBe(403);
+    expect(
+      (await prisma.channel.findUniqueOrThrow({ where: { id: owner.user.channel.id } })).name,
+    ).toBe(owner.user.channel.name);
+  });
+  it("rejects duplicate concurrent completion after the first commits", async () => {
+    const owner = await register("Duplicate image", "duplicate-channel-image@example.com"),
+      asset = await authorize(owner);
+    const lock = await heldChannel(owner, async () => {});
+    const complete = () =>
+      app.inject({
+        method: "POST",
+        url: `/creator/channels/${owner.user.channel.id}/assets/complete`,
+        headers: { cookie: owner.cookie },
+        payload: { assetId: asset.assetId },
+      });
+    const first = complete(),
+      second = complete();
+    try {
+      await waitForChannelLocks(2);
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    const statuses = [(await first).statusCode, (await second).statusCode].sort();
+    expect(statuses).toEqual([201, 404]);
+    expect(
+      (await prisma.mediaAsset.findUniqueOrThrow({ where: { id: asset.assetId } })).status,
+    ).toBe("UPLOADED");
+    expect(
+      (
+        await prisma.channelAppearance.findUniqueOrThrow({
+          where: { channelId: owner.user.channel.id },
+        })
+      ).avatarAssetId,
+    ).toBe(asset.assetId);
+    expect(storage.deleteObject).not.toHaveBeenCalled();
   });
 });
