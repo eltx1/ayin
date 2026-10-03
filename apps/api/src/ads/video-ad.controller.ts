@@ -10,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
@@ -26,6 +27,13 @@ import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-re
 import { VideoAdService, adEventSchema } from "./video-ad.service.js";
 
 const uuid = z.string().uuid();
+const overrideDirectorySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(1000).optional(),
+    query: z.string().trim().max(200).optional(),
+    targetType: z.enum(["CHANNEL", "VIDEO"]).optional(),
+  })
+  .strict();
 
 @Controller("ads")
 export class VideoAdController {
@@ -100,6 +108,38 @@ export class AdminVideoAdController {
   @Get("settings")
   getSettings() {
     return this.videoAds.getSettings();
+  }
+
+  @Get("settings/record")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  settingsRecord() {
+    return this.videoAds.settingsRecord();
+  }
+
+  @Get("overrides/directory")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  overrideDirectory(@Query() query: unknown) {
+    const parsed = overrideDirectorySchema.safeParse(query);
+    if (!parsed.success)
+      throw new HttpException(
+        {
+          error: {
+            code: "INVALID_AD_DIRECTORY",
+            message: "Check the advertising directory filters.",
+          },
+        },
+        400,
+      );
+    return this.videoAds.overrideDirectory(parsed.data);
+  }
+
+  @Get("overrides/records/:overrideId")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  overrideRecord(@Param("overrideId") id: string) {
+    return this.videoAds.overrideRecord(this.id(id));
   }
 
   @Patch("settings")

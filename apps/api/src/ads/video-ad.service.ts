@@ -55,6 +55,20 @@ export const overrideSchema = z.object({
 
 type VideoAdOverrideInput = z.infer<typeof overrideSchema>;
 
+const overrideReadSelection = {
+  id: true,
+  channelId: true,
+  videoId: true,
+  enabled: true,
+  preRollEnabled: true,
+  midRollEnabled: true,
+  postRollEnabled: true,
+  provider: true,
+  vastTagUrl: true,
+  midRollEverySec: true,
+  updatedAt: true,
+} satisfies Prisma.VideoAdOverrideSelect;
+
 export const adEventSchema = z.object({
   videoId: z.string().uuid(),
   slot: z.enum(["PRE_ROLL", "MID_ROLL", "POST_ROLL"]),
@@ -135,18 +149,108 @@ export class VideoAdService {
   async listOverrides() {
     const rows = await this.database.client.videoAdOverride.findMany({
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: 100,
+      select: overrideReadSelection,
     });
+    return this.overrideFacts(this.database.client, rows);
+  }
+
+  async settingsRecord() {
+    const row = await this.database.client.platformSetting.findUnique({
+      where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
+      select: { value: true, updatedAt: true },
+    });
+    const parsed = videoAdSettingsSchema.safeParse(row?.value);
+    return {
+      settings: parsed.success ? parsed.data : defaultVideoAdSettings,
+      source: !row ? "DEFAULT" : parsed.success ? "STORED" : "INVALID_STORED_DEFAULT",
+      updatedAt: row?.updatedAt ?? null,
+    };
+  }
+
+  async overrideDirectory(input: {
+    page?: number | undefined;
+    query?: string | undefined;
+    targetType?: "CHANNEL" | "VIDEO" | undefined;
+  }) {
+    const page = input.page ?? 1,
+      take = 25,
+      query = input.query?.trim();
+    const typeClause =
+      input.targetType === "CHANNEL"
+        ? Prisma.sql`o."channelId" IS NOT NULL`
+        : input.targetType === "VIDEO"
+          ? Prisma.sql`o."videoId" IS NOT NULL`
+          : Prisma.sql`TRUE`;
+    const queryClause = query
+      ? Prisma.sql`(
+      position(lower(${query}) in lower(COALESCE(c."name", ''))) > 0 OR
+      position(lower(${query}) in lower(COALESCE(c."handle", ''))) > 0 OR
+      position(lower(${query}) in lower(COALESCE(v."title", ''))) > 0
+    )`
+      : Prisma.sql`TRUE`;
+    const from = Prisma.sql`FROM "VideoAdOverride" o LEFT JOIN "Channel" c ON c."id"=o."channelId"
+      LEFT JOIN "Video" v ON v."id"=o."videoId" WHERE ${typeClause} AND ${queryClause}`;
+    return this.database.client.$transaction(
+      async (tx) => {
+        const [counts, ids] = await Promise.all([
+          tx.$queryRaw<Array<{ total: bigint }>>(
+            Prisma.sql`SELECT count(*)::bigint AS total ${from}`,
+          ),
+          tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT o."id" ${from}
+          ORDER BY o."updatedAt" DESC, o."id" DESC LIMIT ${take} OFFSET ${(page - 1) * take}`),
+        ]);
+        const total = Number(counts[0]?.total ?? 0);
+        const rows = await tx.videoAdOverride.findMany({
+          where: { id: { in: ids.map((x) => x.id) } },
+          select: overrideReadSelection,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          take,
+        });
+        return {
+          items: await this.overrideFacts(tx, rows),
+          pagination: {
+            page,
+            take,
+            total,
+            totalPages: Math.ceil(total / take),
+            hasNext: page * take < total,
+          },
+        };
+      },
+      { isolationLevel: "RepeatableRead" },
+    );
+  }
+
+  async overrideRecord(id: string) {
+    return this.database.client.$transaction(
+      async (tx) => {
+        const row = await tx.videoAdOverride.findUnique({
+          where: { id },
+          select: overrideReadSelection,
+        });
+        if (!row) throw new NotFoundException("Advertising override unavailable.");
+        return (await this.overrideFacts(tx, [row]))[0];
+      },
+      { isolationLevel: "RepeatableRead" },
+    );
+  }
+
+  private async overrideFacts(
+    client: Prisma.TransactionClient,
+    rows: Array<Prisma.VideoAdOverrideGetPayload<{ select: typeof overrideReadSelection }>>,
+  ) {
     const channelIds = rows.flatMap((row) => (row.channelId ? [row.channelId] : []));
     const videoIds = rows.flatMap((row) => (row.videoId ? [row.videoId] : []));
     const [channels, videos] = await Promise.all([
       channelIds.length
-        ? this.database.client.channel.findMany({
+        ? client.channel.findMany({
             where: { id: { in: channelIds } },
             select: { id: true, name: true, handle: true, status: true },
           })
         : Promise.resolve([]),
       videoIds.length
-        ? this.database.client.video.findMany({
+        ? client.video.findMany({
             where: { id: { in: videoIds } },
             select: {
               id: true,
