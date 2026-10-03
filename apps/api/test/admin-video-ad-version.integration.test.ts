@@ -96,6 +96,11 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
     expect(saved.statusCode).toBe(200);
     const old = (await facts()).settings[0];
     if (!old) throw Error("Expected stored settings");
+    expect(saved.json()).toEqual({
+      settings: defaultVideoAdSettings,
+      source: "STORED",
+      updatedAt: old.updatedAt.toISOString(),
+    });
     expect(
       (await command(a, settingsUrl, { ...defaultVideoAdSettings, frequencyCapPerSession: 5 }))
         .statusCode,

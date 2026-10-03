@@ -115,7 +115,10 @@ export class VideoAdService {
     return parsed.success ? parsed.data : defaultVideoAdSettings;
   }
 
-  async updateSettings(actor: AccountWriteActor, input: unknown): Promise<VideoAdSettings> {
+  async updateSettings(
+    actor: AccountWriteActor,
+    input: unknown,
+  ): Promise<VideoAdSettings | { settings: VideoAdSettings; updatedAt: Date; source: "STORED" }> {
     const { expectedUpdatedAt, ...settings } = settingsWriteSchema.parse(input);
     const value = settings as unknown as Prisma.InputJsonValue;
     return this.database.client.$transaction(async (tx) => {
@@ -151,7 +154,9 @@ export class VideoAdService {
           frequencyCapPerSession: settings.frequencyCapPerSession,
         },
       });
-      return settings;
+      return expectedUpdatedAt !== undefined
+        ? { settings, updatedAt, source: "STORED" as const }
+        : settings;
     });
   }
 
@@ -472,7 +477,7 @@ export class VideoAdService {
         ? "ayin:video-ads:settings"
         : `ayin:video-ads:${target?.channelId ? "channel" : "video"}:${target?.channelId ?? target?.videoId}`;
     await tx.$queryRaw(
-      Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0)) /* ayin-admin-video-ad-config-lock */`,
+      Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text /* ayin-admin-video-ad-config-lock */`,
     );
     const rows =
       kind === "SETTINGS"

@@ -6,4 +6,6 @@ Settings and per-target overrides serialize creation with transaction advisory l
 
 Seven prepared real PostgreSQL cases cover superseded missing/stored settings, future settings and actual audit failure rollback/retry, default override creation and safe acknowledgement, future override stale patch/delete, channel/video separation and malformed versions, an observed row-lock winner, and two distinct actors attempting the same captured missing settings. Local checks and exact-source gates must be recorded after actual execution.
 
+Captured settings commands acknowledge actual stored settings and their new version without a follow-up GET; legacy unversioned commands keep their existing settings-only response. The PostgreSQL test compares the acknowledgement against the actual saved row.
+
 This does not complete native EN/AR advertising controls, original-target recovery and cancellation UI, CMP/consent/age/provider acceptance, or the full master. No provider is activated and production advertising settings are not changed by this task.
