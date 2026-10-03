@@ -36,13 +36,44 @@ export class LiveService {
     @Inject(LIVE_INGEST_PROVIDER) private readonly provider: LiveIngestProvider,
   ) {}
 
-  async studioStreams(accountId: string) {
+  async studioStreams(
+    accountId: string,
+    page: { limit?: number | undefined; cursor?: string | undefined } = {},
+  ) {
     const channel = await this.creatorChannel(accountId);
-    const streams = await this.database.client.liveStream.findMany({
-      where: { channelId: channel.id },
-      orderBy: [{ scheduledStartAt: "desc" }, { createdAt: "desc" }],
+    const limit = page.limit ?? 20;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+      throw new LiveError("LIVE_INVALID_PAGE", "Choose a page size from 1 to 50.", 400);
+    const cursor = page.cursor
+      ? await this.database.client.liveStream.findFirst({
+          where: { id: page.cursor, channelId: channel.id },
+          select: { id: true, createdAt: true },
+        })
+      : null;
+    if (page.cursor && !cursor)
+      throw new LiveError("LIVE_CURSOR_NOT_FOUND", "Live cursor not found.", 404);
+    const rows = await this.database.client.liveStream.findMany({
+      where: {
+        channelId: channel.id,
+        ...(cursor
+          ? {
+              OR: [
+                { createdAt: { lt: cursor.createdAt } },
+                { createdAt: cursor.createdAt, id: { lt: cursor.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
     });
-    return { provider: this.providerStatus(), channel, streams: streams.map(stripSecretHash) };
+    const streams = rows.slice(0, limit);
+    return {
+      provider: this.providerStatus(),
+      channel,
+      streams: streams.map(stripSecretHash),
+      nextCursor: rows.length > limit ? (streams.at(-1)?.id ?? null) : null,
+    };
   }
 
   async create(accountId: string, input: CreateLiveInput) {

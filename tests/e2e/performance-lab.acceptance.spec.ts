@@ -203,7 +203,7 @@ for (const profile of profiles)
           const main = target.getByRole("main");
           await expect(main.getByRole("heading", { level: 1 })).toHaveCount(1);
           if (route === "/studio/analytics") await expect(main.getByRole("tablist")).toBeVisible();
-          else await expect(main.getByRole("heading", { level: 1 })).toHaveText("Browse");
+          else await expect(main.getByRole("heading", { level: 1 })).toHaveText("Explore AYIN");
           await target.waitForTimeout(1000); // Defined settling window, not a score or synchronization fallback.
           const readyMs = clock.now() - started;
           const beforeInteractions = await target.evaluate(() => performance.now());
