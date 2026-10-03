@@ -108,8 +108,8 @@ async function studioFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function getStudioOverview(): Promise<StudioOverview> {
-  return studioFetch("/creator/studio/overview");
+export function getStudioOverview(signal?: AbortSignal): Promise<StudioOverview> {
+  return studioFetch("/creator/studio/overview", signal ? { signal } : undefined);
 }
 
 export function getStudioAnalytics(days = 28): Promise<StudioAnalytics> {
