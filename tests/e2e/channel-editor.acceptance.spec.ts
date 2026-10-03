@@ -192,7 +192,9 @@ test("bounded read failure hides server snapshots and uncertain asset completion
     });
   });
   await main.getByRole("button", { name: "Refresh channel", exact: true }).click();
-  await expect(main.getByRole("alert")).toContainText("Your channel could not be loaded");
+  await expect(
+    main.getByRole("alert").filter({ hasText: "Your channel could not be loaded" }),
+  ).toContainText("Your channel could not be loaded");
   await expect(main.getByRole("region", { name: "Current saved identity" })).toHaveCount(0);
   await expect(main.getByText("operator diagnostic must not leak", { exact: false })).toHaveCount(
     0,
