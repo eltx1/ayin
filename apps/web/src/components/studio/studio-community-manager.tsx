@@ -1,33 +1,37 @@
 "use client";
-
-import { FormEvent, useEffect, useState } from "react";
-
-import styles from "@/app/studio/studio.module.css";
-import { apiBaseUrl, readApiError } from "@/lib/api";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import {
+  ActionButton,
+  DataBadge,
+  PageHeader,
+  SelectField,
+  StatusNotice,
+  TextAreaField,
+  TextField,
+} from "@/components/ui/design-system";
+import { studioCommunityAr, studioCommunityEn } from "@/lib/i18n/resources/studio-community";
 import { getStudioContent, type StudioVideo } from "@/lib/studio";
-
-type PostType = "TEXT" | "IMAGE" | "POLL" | "VIDEO_SHARE";
-type CommunityPost = {
-  id: string;
-  type: PostType;
-  status: "DRAFT" | "SCHEDULED" | "PUBLISHED" | "HIDDEN";
-  body: string | null;
-  scheduledPublishAt: string | null;
-  publishedAt: string | null;
-  imageAsset: { status: string } | null;
-  sharedVideo: { id: string; title: string } | null;
-  pollOptions: Array<{ id: string; label: string }>;
-};
-
+import {
+  inspectStudioCommunityImage,
+  parseStudioCommunityPost,
+  readStudioCommunity,
+  StudioCommunityRequestError,
+  studioCommunityRequest,
+  uploadStudioCommunityImage,
+  type StudioCommunityPost,
+  type StudioPostType,
+} from "@/lib/studio-community";
+import styles from "./studio-community.module.css";
 type Editor = {
-  type: PostType;
+  type: StudioPostType;
   body: string;
   pollOptions: string;
   sharedVideoId: string;
   scheduledPublishAt: string;
   imageFile: File | null;
 };
-
 const emptyEditor: Editor = {
   type: "TEXT",
   body: "",
@@ -36,392 +40,531 @@ const emptyEditor: Editor = {
   scheduledPublishAt: "",
   imageFile: null,
 };
-
-async function communityRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    credentials: "include",
-    cache: "no-store",
-    headers: {
-      ...(init?.body ? { "content-type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as T;
-}
-
-async function imageDimensions(file: File): Promise<{ width: number; height: number }> {
-  if (typeof createImageBitmap === "function") {
-    const bitmap = await createImageBitmap(file);
-    const dimensions = { width: bitmap.width, height: bitmap.height };
-    bitmap.close();
-    return dimensions;
-  }
-  const url = URL.createObjectURL(file);
-  try {
-    return await new Promise((resolve, reject) => {
-      const image = new window.Image();
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => reject(new Error("The selected image could not be inspected."));
-      image.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-async function uploadImage(postId: string, file: File) {
-  const dimensions = await imageDimensions(file);
-  const authorization = await communityRequest<{
-    assetId: string;
-    upload: { url: string; method: "PUT"; headers: Record<string, string> };
-  }>(`/creator/community/posts/${postId}/image/authorize`, {
-    method: "POST",
-    body: JSON.stringify({ mimeType: file.type, sizeBytes: file.size }),
-  });
-  const upload = await fetch(authorization.upload.url, {
-    method: authorization.upload.method,
-    headers: authorization.upload.headers,
-    body: file,
-  });
-  if (!upload.ok) throw new Error("The community image could not be uploaded.");
-  await communityRequest(`/creator/community/posts/${postId}/image/complete`, {
-    method: "POST",
-    body: JSON.stringify({ assetId: authorization.assetId, ...dimensions }),
+function signature(editor: Editor) {
+  return JSON.stringify({
+    ...editor,
+    imageFile: editor.imageFile
+      ? [editor.imageFile.name, editor.imageFile.size, editor.imageFile.lastModified]
+      : null,
   });
 }
-
-function localDateTime(value: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+function postEditor(post: StudioCommunityPost): Editor {
+  const date = post.scheduledPublishAt ? new Date(post.scheduledPublishAt) : null;
+  return {
+    type: post.type,
+    body: post.body ?? "",
+    pollOptions: post.pollOptions.map((option) => option.label).join("\n"),
+    sharedVideoId: post.sharedVideo?.id ?? "",
+    scheduledPublishAt: date
+      ? new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+      : "",
+    imageFile: null,
+  };
 }
-
+type Feedback =
+  | "saved"
+  | "published"
+  | "removed"
+  | "savedRefreshFailed"
+  | "uncertain"
+  | "partial"
+  | "rejected"
+  | "validation"
+  | "imageInvalid";
+type Decision =
+  { kind: "edit" | "publish" | "remove"; post: StudioCommunityPost } | { kind: "new" };
 export function StudioCommunityManager() {
-  const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const { locale, direction, formatDate } = useI18n();
+  const copy = locale === "ar" ? studioCommunityAr : studioCommunityEn;
+  const [selectedPost, setSelectedPost] = useState<StudioCommunityPost | null>(null);
+  const [posts, setPosts] = useState<StudioCommunityPost[]>([]);
   const [videos, setVideos] = useState<StudioVideo[]>([]);
   const [editor, setEditor] = useState<Editor>(emptyEditor);
+  const [baseline, setBaseline] = useState(signature(emptyEditor));
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [readState, setReadState] = useState<"loading" | "ready" | "error">("loading");
+  const [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function refresh() {
-    const [nextPosts, content] = await Promise.all([
-      communityRequest<CommunityPost[]>("/creator/community/posts"),
-      getStudioContent({ status: "PUBLISHED" }),
-    ]);
-    setPosts(nextPosts);
-    setVideos(content.videos);
-  }
-
-  useEffect(() => {
-    let active = true;
-    void Promise.all([
-      communityRequest<CommunityPost[]>("/creator/community/posts"),
-      getStudioContent({ status: "PUBLISHED" }),
+  const [uncertain, setUncertain] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const mounted = useRef(false);
+  const read = useRef<AbortController | null>(null);
+  const write = useRef<AbortController | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const dirty = signature(editor) !== baseline;
+  const load = useCallback((nextCursor?: string) => {
+    read.current?.abort();
+    const controller = new AbortController();
+    read.current = controller;
+    return Promise.all([
+      readStudioCommunity(nextCursor, controller.signal),
+      getStudioContent({ status: "PUBLISHED" }, controller.signal),
     ])
-      .then(([nextPosts, content]) => {
-        if (!active) return;
-        setPosts(nextPosts);
+      .then(([page, content]) => {
+        if (!mounted.current || controller.signal.aborted) return false;
+        setPosts((current) =>
+          nextCursor
+            ? [
+                ...current,
+                ...page.items.filter(
+                  (item) => !current.some((previous) => previous.id === item.id),
+                ),
+              ]
+            : page.items,
+        );
+        setSelectedPost((current) =>
+          current ? (page.items.find((item) => item.id === current.id) ?? current) : null,
+        );
         setVideos(content.videos);
-        setError(null);
+        setCursor(page.nextCursor);
+        setReadState("ready");
+        return true;
       })
-      .catch((caught) => {
-        if (active)
-          setError(caught instanceof Error ? caught.message : "Community posts could not load.");
+      .catch(() => {
+        if (mounted.current && !controller.signal.aborted) setReadState("error");
+        return false;
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (read.current === controller) read.current = null;
       });
-    return () => {
-      active = false;
-    };
   }, []);
-
-  function resetEditor() {
-    setEditor(emptyEditor);
-    setEditingId(null);
-  }
-
-  function edit(post: CommunityPost) {
-    setEditingId(post.id);
-    setEditor({
-      type: post.type,
-      body: post.body ?? "",
-      pollOptions: post.pollOptions.map((option) => option.label).join("\n"),
-      sharedVideoId: post.sharedVideo?.id ?? "",
-      scheduledPublishAt: localDateTime(post.scheduledPublishAt),
-      imageFile: null,
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      read.current?.abort();
+      write.current?.abort();
+    };
+  }, [load]);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  function refresh(nextCursor?: string) {
+    if (write.current || read.current) return;
+    setReadState("loading");
+    void load(nextCursor).then((ok) => {
+      if (ok && !nextCursor) setUncertain(false);
     });
-    setMessage(null);
-    setError(null);
   }
-
+  function selectPost(post: StudioCommunityPost | null) {
+    const next = post ? postEditor(post) : emptyEditor;
+    setEditor(next);
+    setBaseline(signature(next));
+    setEditingId(post?.id ?? null);
+    setSelectedPost(post);
+    setFeedback(null);
+    setUncertain(false);
+    if (fileInput.current) fileInput.current.value = "";
+  }
+  function requestEdit(post: StudioCommunityPost | null) {
+    if (busy || uncertain || readState !== "ready") return;
+    if (dirty) setDecision(post ? { kind: "edit", post } : { kind: "new" });
+    else selectPost(post);
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (write.current || read.current || readState !== "ready" || uncertain) return;
+    const controller = new AbortController();
+    write.current = controller;
     setBusy(true);
-    setMessage(null);
-    setError(null);
+    setFeedback(null);
+    let submitted = false,
+      acknowledged = false;
     try {
-      const editingPost = editingId ? posts.find((post) => post.id === editingId) : null;
-      if ((editor.type === "TEXT" || editor.type === "IMAGE") && !editor.body.trim())
-        throw new Error("Add text to this post.");
-      if (
-        editor.type === "IMAGE" &&
-        !editor.imageFile &&
-        editingPost?.imageAsset?.status !== "VALIDATED"
-      )
-        throw new Error("Choose a JPG, PNG or WebP image.");
-      const pollOptions = editor.pollOptions
+      const existing = selectedPost;
+      const options = editor.pollOptions
         .split("\n")
         .map((option) => option.trim())
         .filter(Boolean);
-      if (editor.type === "POLL" && pollOptions.length < 2)
-        throw new Error("Add at least two poll options, one per line.");
-      if (editor.type === "VIDEO_SHARE" && !editor.sharedVideoId)
-        throw new Error("Choose a published video to share.");
-
+      if (
+        ((editor.type === "TEXT" || editor.type === "IMAGE") && !editor.body.trim()) ||
+        (editor.type === "POLL" &&
+          (options.length < 2 ||
+            options.length > 6 ||
+            options.some((option) => option.length > 160))) ||
+        (editor.type === "VIDEO_SHARE" &&
+          !videos.some((video) => video.id === editor.sharedVideoId)) ||
+        (editor.scheduledPublishAt &&
+          (!Number.isFinite(Date.parse(editor.scheduledPublishAt)) ||
+            Date.parse(editor.scheduledPublishAt) <= Date.now()))
+      ) {
+        setFeedback("validation");
+        return;
+      }
+      let dimensions: { width: number; height: number } | null = null;
+      if (editor.type === "IMAGE") {
+        if (editor.imageFile) {
+          try {
+            dimensions = await inspectStudioCommunityImage(editor.imageFile);
+          } catch {
+            setFeedback("imageInvalid");
+            return;
+          }
+        } else if (existing?.imageAsset?.status !== "VALIDATED") {
+          setFeedback("imageInvalid");
+          return;
+        }
+      }
+      if (controller.signal.aborted || !mounted.current) return;
       const payload = {
         type: editor.type,
         body: editor.body.trim() || null,
         sharedVideoId: editor.type === "VIDEO_SHARE" ? editor.sharedVideoId : null,
-        ...(editor.type === "POLL" ? { pollOptions } : {}),
+        ...(editor.type === "POLL" ? { pollOptions: options } : {}),
         scheduledPublishAt: editor.scheduledPublishAt
           ? new Date(editor.scheduledPublishAt).toISOString()
           : null,
       };
-      const post = editingId
-        ? await communityRequest<CommunityPost>(`/creator/community/posts/${editingId}`, {
-            method: "PATCH",
+      submitted = true;
+      const post = parseStudioCommunityPost(
+        await studioCommunityRequest(
+          `/creator/community/posts${editingId ? `/${editingId}` : ""}`,
+          {
+            method: editingId ? "PATCH" : "POST",
             body: JSON.stringify(payload),
-          })
-        : await communityRequest<CommunityPost>("/creator/community/posts", {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
-      if (editor.type === "IMAGE" && editor.imageFile) await uploadImage(post.id, editor.imageFile);
-      await refresh();
-      setMessage(
-        editor.scheduledPublishAt
-          ? "Community post scheduled."
-          : editingId
-            ? "Community draft updated."
-            : "Community draft created.",
+            signal: controller.signal,
+          },
+        ),
       );
-      resetEditor();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The community post could not be saved.");
+      if (controller.signal.aborted || !mounted.current) return;
+      if ((editingId && post.id !== editingId) || post.type !== editor.type)
+        throw new Error("Invalid post acknowledgment");
+      acknowledged = true;
+      setEditingId(post.id);
+      setSelectedPost(post);
+      if (editor.type === "IMAGE" && editor.imageFile && dimensions) {
+        await uploadStudioCommunityImage(post.id, editor.imageFile, dimensions, controller.signal);
+        setSelectedPost({ ...post, imageAsset: { status: "VALIDATED" } });
+      }
+      if (controller.signal.aborted || !mounted.current) return;
+      const next = postEditor(post);
+      setEditor(next);
+      setBaseline(signature(next));
+      if (fileInput.current) fileInput.current.value = "";
+      setFeedback("saved");
+      setReadState("loading");
+      if (!(await load())) if (mounted.current) setFeedback("savedRefreshFailed");
+    } catch (error) {
+      if (!mounted.current || controller.signal.aborted) return;
+      if (acknowledged) {
+        setFeedback("partial");
+        setUncertain(true);
+      } else if (
+        error instanceof StudioCommunityRequestError &&
+        error.status < 500 &&
+        error.status !== 408
+      )
+        setFeedback("rejected");
+      else {
+        setFeedback(submitted ? "uncertain" : "validation");
+        setUncertain(submitted);
+      }
     } finally {
-      setBusy(false);
+      if (write.current === controller) write.current = null;
+      if (mounted.current && !controller.signal.aborted) setBusy(false);
     }
   }
-
-  async function act(post: CommunityPost, action: "publish" | "remove") {
-    if (action === "remove" && !window.confirm("Remove this community post?")) return;
+  async function act(post: StudioCommunityPost, action: "publish" | "remove") {
+    if (write.current || read.current || readState !== "ready" || uncertain) return;
+    const controller = new AbortController();
+    write.current = controller;
     setBusy(true);
-    setMessage(null);
-    setError(null);
+    setFeedback(null);
     try {
-      await communityRequest(
+      const result = await studioCommunityRequest(
         `/creator/community/posts/${post.id}${action === "publish" ? "/publish" : ""}`,
         {
           method: action === "publish" ? "POST" : "DELETE",
+          ...(action === "publish" ? { body: "{}" } : {}),
+          signal: controller.signal,
         },
       );
-      await refresh();
-      if (editingId === post.id) resetEditor();
-      setMessage(action === "publish" ? "Community post published." : "Community post removed.");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The community action failed.");
+      if (action === "publish") {
+        const published = parseStudioCommunityPost(result);
+        if (published.id !== post.id || published.status !== "PUBLISHED")
+          throw new Error("Invalid acknowledgment");
+      } else if (
+        !result ||
+        typeof result !== "object" ||
+        !("id" in result) ||
+        result.id !== post.id ||
+        !("status" in result) ||
+        result.status !== "REMOVED"
+      )
+        throw new Error("Invalid acknowledgment");
+      if (!mounted.current || controller.signal.aborted) return;
+      if (editingId === post.id) selectPost(null);
+      setFeedback(action === "publish" ? "published" : "removed");
+      setReadState("loading");
+      if (!(await load())) if (mounted.current) setFeedback("savedRefreshFailed");
+    } catch (error) {
+      if (!mounted.current || controller.signal.aborted) return;
+      if (
+        error instanceof StudioCommunityRequestError &&
+        error.status < 500 &&
+        error.status !== 408
+      )
+        setFeedback("rejected");
+      else {
+        setUncertain(true);
+        setFeedback("uncertain");
+      }
     } finally {
-      setBusy(false);
+      if (write.current === controller) write.current = null;
+      if (mounted.current && !controller.signal.aborted) setBusy(false);
     }
   }
-
+  const disabled = busy || readState !== "ready" || uncertain;
+  const errorFeedback =
+    feedback &&
+    [
+      "uncertain",
+      "partial",
+      "rejected",
+      "validation",
+      "imageInvalid",
+      "savedRefreshFailed",
+    ].includes(feedback);
   return (
     <>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>Creator Studio</span>
-          <h1>Community</h1>
-          <p className={styles.muted}>
-            Publish channel updates, images, polls and video shares now or on a schedule.
-          </p>
-        </div>
-      </header>
-
-      <form className={styles.card} onSubmit={save}>
-        <div className={styles.formGrid}>
-          <label>
-            Post type
-            <select
-              disabled={busy || Boolean(editingId)}
-              onChange={(event) =>
-                setEditor((current) => ({ ...current, type: event.target.value as PostType }))
-              }
-              value={editor.type}
+      <PageHeader
+        title={copy.title}
+        eyebrow={copy.studio}
+        description={copy.description}
+        actions={
+          <>
+            <ActionButton
+              tone="secondary"
+              disabled={busy || readState === "loading"}
+              onClick={() => refresh()}
             >
-              <option value="TEXT">Text</option>
-              <option value="IMAGE">Image</option>
-              <option value="POLL">Poll</option>
-              <option value="VIDEO_SHARE">Video share</option>
-            </select>
-          </label>
-          <label>
-            Publish time (optional)
-            <input
-              disabled={busy}
+              {copy.refresh}
+            </ActionButton>
+            <ActionButton
+              disabled={busy || uncertain || readState !== "ready"}
+              onClick={() => requestEdit(null)}
+            >
+              {copy.newPost}
+            </ActionButton>
+          </>
+        }
+      />
+      {feedback && (
+        <StatusNotice tone={errorFeedback ? "warning" : "success"} announce="polite">
+          {copy[feedback]}
+        </StatusNotice>
+      )}
+      {readState === "loading" && <StatusNotice announce="polite">{copy.loading}</StatusNotice>}
+      {readState === "error" && (
+        <StatusNotice tone="danger" announce="assertive">
+          {copy.readError}{" "}
+          <ActionButton disabled={busy} onClick={() => refresh()}>
+            {copy.retry}
+          </ActionButton>
+        </StatusNotice>
+      )}
+      <form className={styles.panel} aria-label={copy.composer} onSubmit={save}>
+        {dirty && <p className={styles.muted}>{copy.dirty}</p>}
+        <fieldset disabled={disabled} className={styles.fields}>
+          <SelectField
+            id="community-type"
+            label={copy.type}
+            value={editor.type}
+            disabled={Boolean(editingId)}
+            onChange={(event) =>
+              setEditor((current) => ({ ...current, type: event.target.value as StudioPostType }))
+            }
+          >
+            {(["TEXT", "IMAGE", "POLL", "VIDEO_SHARE"] as const).map((type) => (
+              <option key={type} value={type}>
+                {copy[type]}
+              </option>
+            ))}
+          </SelectField>
+          <TextField
+            id="community-schedule"
+            label={copy.schedule}
+            type="datetime-local"
+            value={editor.scheduledPublishAt}
+            onChange={(event) =>
+              setEditor((current) => ({ ...current, scheduledPublishAt: event.target.value }))
+            }
+          />
+          <TextAreaField
+            id="community-body"
+            label={copy.body}
+            maxLength={5000}
+            value={editor.body}
+            onChange={(event) => setEditor((current) => ({ ...current, body: event.target.value }))}
+          />
+          {editor.type === "POLL" && (
+            <TextAreaField
+              id="community-options"
+              label={copy.options}
+              maxLength={1000}
+              value={editor.pollOptions}
               onChange={(event) =>
-                setEditor((current) => ({ ...current, scheduledPublishAt: event.target.value }))
+                setEditor((current) => ({ ...current, pollOptions: event.target.value }))
               }
-              type="datetime-local"
-              value={editor.scheduledPublishAt}
             />
-          </label>
-          <label>
-            Message {editor.type === "POLL" || editor.type === "VIDEO_SHARE" ? "(optional)" : ""}
-            <textarea
-              disabled={busy}
-              maxLength={5000}
+          )}
+          {editor.type === "VIDEO_SHARE" && (
+            <SelectField
+              id="community-video"
+              label={copy.video}
+              value={editor.sharedVideoId}
               onChange={(event) =>
-                setEditor((current) => ({ ...current, body: event.target.value }))
+                setEditor((current) => ({ ...current, sharedVideoId: event.target.value }))
               }
-              value={editor.body}
-            />
-          </label>
-          {editor.type === "POLL" ? (
-            <label>
-              Poll options (one per line)
-              <textarea
-                disabled={busy}
-                onChange={(event) =>
-                  setEditor((current) => ({ ...current, pollOptions: event.target.value }))
-                }
-                value={editor.pollOptions}
-              />
-            </label>
-          ) : null}
-          {editor.type === "VIDEO_SHARE" ? (
-            <label>
-              Published video
-              <select
-                disabled={busy}
-                onChange={(event) =>
-                  setEditor((current) => ({ ...current, sharedVideoId: event.target.value }))
-                }
-                value={editor.sharedVideoId}
-              >
-                <option value="">Choose a video</option>
-                {videos.map((video) => (
-                  <option key={video.id} value={video.id}>
-                    {video.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
-          {editor.type === "IMAGE" ? (
-            <label>
-              Image {editingId ? "(choose only to replace)" : ""}
+            >
+              <option value="">{copy.chooseVideo}</option>
+              {videos.map((video) => (
+                <option key={video.id} value={video.id}>
+                  {video.title}
+                </option>
+              ))}
+            </SelectField>
+          )}
+          {editor.type === "IMAGE" && (
+            <div>
+              <label htmlFor="community-image">{copy.image}</label>
+              <p id="community-image-hint" className={styles.muted}>
+                {copy.imageHint}
+              </p>
               <input
+                ref={fileInput}
+                id="community-image"
+                aria-describedby="community-image-hint"
+                type="file"
                 accept="image/jpeg,image/png,image/webp"
-                disabled={busy}
                 onChange={(event) =>
                   setEditor((current) => ({
                     ...current,
                     imageFile: event.target.files?.[0] ?? null,
                   }))
                 }
-                type="file"
               />
-            </label>
-          ) : null}
-        </div>
-        <div className={styles.actions}>
-          <button className={styles.primary} disabled={busy} type="submit">
-            {busy ? "Saving…" : editingId ? "Save changes" : "Create post"}
-          </button>
-          {editingId ? (
-            <button
-              className={styles.secondary}
-              disabled={busy}
-              onClick={resetEditor}
-              type="button"
-            >
-              Cancel editing
-            </button>
-          ) : null}
-        </div>
+            </div>
+          )}
+        </fieldset>
+        <ActionButton type="submit" pending={busy} disabled={disabled}>
+          {busy ? copy.saving : editingId ? copy.save : copy.create}
+        </ActionButton>
       </form>
-
-      {message ? <p className={styles.notice}>{message}</p> : null}
-      {error ? <p className={styles.error}>{error}</p> : null}
-      {loading ? <p className={styles.muted}>Loading community posts…</p> : null}
-
-      <section className={styles.videoGrid} aria-label="Community posts">
-        {!loading && posts.length === 0 ? (
-          <p className={styles.muted}>No community posts yet.</p>
-        ) : null}
-        {posts.map((post) => (
-          <article className={styles.card} key={post.id}>
-            <div className={styles.cardHeader}>
-              <div>
-                <strong>{post.type.replaceAll("_", " ")}</strong>
-                <p className={styles.muted}>
-                  {post.status.toLowerCase()}
-                  {post.scheduledPublishAt
-                    ? ` · ${new Date(post.scheduledPublishAt).toLocaleString()}`
-                    : ""}
-                </p>
+      <section aria-label={copy.posts}>
+        <PageHeader level={2} title={copy.posts} />
+        <div className={styles.list}>
+          {posts.map((post) => (
+            <article className={styles.panel} key={post.id}>
+              <header className={styles.actions}>
+                <DataBadge>{copy[post.type]}</DataBadge>
+                <DataBadge>{copy[post.status]}</DataBadge>
+                {post.imageAsset && (
+                  <DataBadge>
+                    {post.imageAsset.status === "VALIDATED" ? copy.imageReady : copy.imagePending}
+                  </DataBadge>
+                )}
+              </header>
+              {post.scheduledPublishAt && (
+                <time dateTime={post.scheduledPublishAt}>
+                  {formatDate(post.scheduledPublishAt, { dateStyle: "medium", timeStyle: "short" })}
+                </time>
+              )}
+              {post.body && <p dir="auto">{post.body}</p>}
+              {post.sharedVideo && <p dir="auto">{post.sharedVideo.title}</p>}
+              {post.pollOptions.length > 0 && (
+                <ul>
+                  {post.pollOptions.map((option) => (
+                    <li key={option.id} dir="auto">
+                      {option.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className={styles.actions}>
+                {post.status !== "PUBLISHED" && (
+                  <>
+                    <ActionButton
+                      tone="secondary"
+                      disabled={disabled}
+                      onClick={() => requestEdit(post)}
+                    >
+                      {copy.edit}
+                    </ActionButton>
+                    <ActionButton
+                      disabled={disabled}
+                      onClick={() => setDecision({ kind: "publish", post })}
+                    >
+                      {copy.publish}
+                    </ActionButton>
+                  </>
+                )}
+                <ActionButton
+                  tone="danger"
+                  disabled={disabled}
+                  onClick={() => setDecision({ kind: "remove", post })}
+                >
+                  {copy.remove}
+                </ActionButton>
               </div>
-              {post.imageAsset ? <span>{post.imageAsset.status.toLowerCase()} image</span> : null}
-            </div>
-            {post.body ? <p>{post.body}</p> : null}
-            {post.sharedVideo ? <p>Video: {post.sharedVideo.title}</p> : null}
-            {post.pollOptions.length ? (
-              <ul>
-                {post.pollOptions.map((option) => (
-                  <li key={option.id}>{option.label}</li>
-                ))}
-              </ul>
-            ) : null}
-            <div className={styles.actions}>
-              {post.status !== "PUBLISHED" ? (
-                <button
-                  className={styles.secondary}
-                  disabled={busy}
-                  onClick={() => edit(post)}
-                  type="button"
-                >
-                  Edit
-                </button>
-              ) : null}
-              {post.status !== "PUBLISHED" ? (
-                <button
-                  className={styles.primary}
-                  disabled={busy}
-                  onClick={() => void act(post, "publish")}
-                  type="button"
-                >
-                  Publish now
-                </button>
-              ) : null}
-              <button
-                className={styles.danger}
-                disabled={busy}
-                onClick={() => void act(post, "remove")}
-                type="button"
-              >
-                Remove
-              </button>
-            </div>
-          </article>
-        ))}
+            </article>
+          ))}
+          {readState === "ready" && posts.length === 0 && <StatusNotice>{copy.empty}</StatusNotice>}
+        </div>
+        {cursor && readState === "ready" && (
+          <ActionButton
+            tone="secondary"
+            disabled={busy || uncertain}
+            onClick={() => refresh(cursor)}
+          >
+            {copy.more}
+          </ActionButton>
+        )}
       </section>
+      <ConfirmationDialog
+        open={decision !== null}
+        direction={direction}
+        busy={busy}
+        title={
+          decision?.kind === "remove"
+            ? copy.removeTitle
+            : decision?.kind === "publish"
+              ? copy.publishTitle
+              : copy.discardTitle
+        }
+        description={
+          decision?.kind === "remove"
+            ? `${copy.removeCopy} ${decision.post.body?.slice(0, 120) ?? copy[decision.post.type]} ${dirty && editingId === decision.post.id ? copy.discardCopy : ""}`
+            : decision?.kind === "publish"
+              ? `${copy.publishCopy} ${decision.post.body?.slice(0, 120) ?? copy[decision.post.type]} ${dirty && editingId === decision.post.id ? copy.discardCopy : ""}`
+              : copy.discardCopy
+        }
+        confirmLabel={
+          decision?.kind === "remove"
+            ? copy.remove
+            : decision?.kind === "publish"
+              ? copy.publish
+              : copy.confirm
+        }
+        cancelLabel={copy.cancel}
+        onCancel={() => setDecision(null)}
+        onConfirm={() => {
+          const current = decision;
+          setDecision(null);
+          if (!current) return;
+          if (current.kind === "new") selectPost(null);
+          else if (current.kind === "edit") selectPost(current.post);
+          else void act(current.post, current.kind);
+        }}
+      />
     </>
   );
 }

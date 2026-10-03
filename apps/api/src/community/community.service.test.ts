@@ -95,4 +95,56 @@ describe("CommunityService", () => {
     ).rejects.toMatchObject({ code: "PUBLISHED_IMAGE_IMMUTABLE", statusCode: 409 });
     expect(transaction).not.toHaveBeenCalled();
   });
+  it("rejects a foreign paging cursor before querying any posts", async () => {
+    const findMany = vi.fn();
+    const service = new CommunityService(
+      {
+        client: {
+          channelMember: {
+            findFirst: vi.fn(async () => ({ channel: { id: "own", name: "Own" } })),
+          },
+          communityPost: {
+            findUnique: vi.fn(async () => ({
+              id: "cursor",
+              channelId: "foreign",
+              createdAt: new Date(),
+            })),
+            findMany,
+          },
+        },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await expect(service.creatorPostsPage("account", 30, "cursor")).rejects.toMatchObject({
+      code: "CURSOR_NOT_FOUND",
+      statusCode: 404,
+    });
+    expect(findMany).not.toHaveBeenCalled();
+  });
+  it("bounds internal paging callers and requests one extra row only", async () => {
+    const findMany = vi.fn(async () => []);
+    const service = new CommunityService(
+      {
+        client: {
+          channelMember: {
+            findFirst: vi.fn(async () => ({ channel: { id: "own", name: "Own" } })),
+          },
+          communityPost: { findMany },
+        },
+      } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await service.creatorPostsPage("account", 100000);
+    expect(findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ take: 51, where: expect.objectContaining({ channelId: "own" }) }),
+    );
+    await service.creatorPostsPage("account", NaN);
+    expect(findMany).toHaveBeenLastCalledWith(expect.objectContaining({ take: 31 }));
+  });
 });

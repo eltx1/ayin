@@ -43,6 +43,38 @@ export class CommunityService {
     });
   }
 
+  async creatorPostsPage(accountId: string, take = 30, cursor?: string) {
+    take = Number.isFinite(take) ? Math.max(1, Math.min(50, Math.trunc(take))) : 30;
+    const channel = await this.creatorChannel(accountId);
+    const anchor = cursor
+      ? await this.database.client.communityPost.findUnique({
+          where: { id: cursor },
+          select: { id: true, channelId: true, createdAt: true },
+        })
+      : null;
+    if (cursor && (!anchor || anchor.channelId !== channel.id))
+      throw new CommunityError("CURSOR_NOT_FOUND", "This community page is unavailable.", 404);
+    const rows = await this.database.client.communityPost.findMany({
+      where: {
+        channelId: channel.id,
+        status: { not: "REMOVED" },
+        ...(anchor
+          ? {
+              OR: [
+                { createdAt: { lt: anchor.createdAt } },
+                { createdAt: anchor.createdAt, id: { lt: anchor.id } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: take + 1,
+      include: this.include(),
+    });
+    const items = rows.slice(0, take);
+    return { items, nextCursor: rows.length > take ? (items.at(-1)?.id ?? null) : null };
+  }
+
   async create(accountId: string, input: CommunityPostInput) {
     await this.ensureEnabled();
     const channel = await this.creatorChannel(accountId);

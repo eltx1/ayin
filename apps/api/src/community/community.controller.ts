@@ -61,6 +61,15 @@ export class CreatorCommunityController {
   @Get("posts") list(@Req() request: AuthenticatedRequest) {
     return run(() => this.service.creatorPosts(request.ayinAuth.accountId));
   }
+  @Get("posts/page") page(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
+    const parsed = z
+      .object({ take: z.coerce.number().int().min(1).max(50).default(30), cursor: uuid.optional() })
+      .strict()
+      .parse(query);
+    return run(() =>
+      this.service.creatorPostsPage(request.ayinAuth.accountId, parsed.take, parsed.cursor),
+    );
+  }
   @Post("posts") create(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     return run(() =>
       this.service.create(request.ayinAuth.accountId, communityPostInputSchema.parse(body)),
