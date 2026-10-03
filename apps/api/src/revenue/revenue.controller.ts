@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpException,
   Inject,
   Param,
@@ -37,6 +38,7 @@ export class CreatorRevenueController {
   ) {}
 
   @Get()
+  @Header("Cache-Control", "private, no-store")
   async overview(@Req() request: AuthenticatedRequest) {
     const result = await this.finance.overview(request.ayinAuth.accountId);
     if (!result) throw new HttpException("Creator channel not found.", 404);
@@ -44,6 +46,7 @@ export class CreatorRevenueController {
   }
 
   @Get("analytics")
+  @Header("Cache-Control", "private, no-store")
   async analytics(@Req() request: AuthenticatedRequest) {
     const result = await this.monetizationAnalytics.analytics(request.ayinAuth.accountId);
     if (!result) throw new HttpException("Creator channel not found.", 404);
@@ -51,6 +54,7 @@ export class CreatorRevenueController {
   }
 
   @Get("statement")
+  @Header("Cache-Control", "private, no-store")
   async statement(@Req() request: AuthenticatedRequest) {
     const result = await this.monetizationAnalytics.statement(request.ayinAuth.accountId);
     if (!result) throw new HttpException("Creator channel not found.", 404);
@@ -58,6 +62,7 @@ export class CreatorRevenueController {
   }
 
   @Get("payment-profile")
+  @Header("Cache-Control", "private, no-store")
   async paymentProfile(@Req() request: AuthenticatedRequest) {
     const result = await this.finance.getProfile(request.ayinAuth.accountId);
     if (result === null) return null;
@@ -88,6 +93,7 @@ export class CreatorRevenueController {
   }
 
   @Get("disputes")
+  @Header("Cache-Control", "private, no-store")
   async disputes(@Req() request: AuthenticatedRequest) {
     const result = await this.finance.listDisputes(request.ayinAuth.accountId);
     if (!result) throw new HttpException("Creator channel not found.", 404);

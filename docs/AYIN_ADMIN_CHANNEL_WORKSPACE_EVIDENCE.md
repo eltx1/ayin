@@ -19,3 +19,7 @@ Candidate acd quality37109506243 succeeded:396API units,416Web units and667Postg
 ## Scoped fixture follow-up
 
 Actual c05 browser37110573541 passed140of141 journeys, including English save/paging, actual response loss, concurrent-write conflict and Finance denial. Arabic paging found51matching persistent Channels, not26: Account truncation intentionally deletes memberships without deleting globally addressable Channel records. The actual trace proved page2GET200 returned25of51. Each seeded26-row group now shares a unique handle query returned by the fixture; each test uses that exact real directory filter. This isolates its actual rows without deleting production-like persistent channels or weakening the25→1/page-retention assertion. Revised gates and four-locale/width visual closure remain pending.
+
+## Final browser proof and reviewable visuals
+
+Actual a540 browser37111410324/job111169889421 passed141journeys9.6min; quality37111410340/security37111410349/inventory37111410382 passed. The full visual artifact11270180357 grew to34,454,668bytes, above the executor's32MiB transfer limit, so screenshots have not been independently inspected and visual acceptance is still pending. The workflow now additionally preserves small per-surface Admin-channel, Creator-finance and Creator-TV visual artifacts, retaining the original combined evidence. This makes the exact final source screenshots independently reviewable without deleting any evidence or changing application behavior/test assertions. Revised source/workflow gates and visual closure remain pending.
