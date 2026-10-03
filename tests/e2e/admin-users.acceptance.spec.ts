@@ -414,6 +414,8 @@ test("Native users hides private facts synchronously on actual role loss and cle
       const native = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "hidden");
       if (!node || !native?.get || !native.set)
         throw Error("Expected private body and native hidden setter");
+      if (!node.textContent?.includes(fact))
+        throw Error("Expected actual private fact before observing hide");
       const get = native.get,
         set = native.set;
       Object.defineProperty(node, "hidden", {
@@ -423,7 +425,7 @@ test("Native users hides private facts synchronously on actual role loss and cle
         },
         set(value) {
           set.call(node, value);
-          if (value)
+          if (value && !(window as unknown as { authorityHide?: object }).authorityHide)
             (window as unknown as { authorityHide: object }).authorityHide = {
               oldFactPresent: node.textContent?.includes(fact),
               visible: node.checkVisibility(),
