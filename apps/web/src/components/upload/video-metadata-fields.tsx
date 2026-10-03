@@ -354,12 +354,12 @@ export function VideoMetadataFields({
       ) : null}
 
       <label className={fullWidthClassName}>
-        <span>{copy("Series / episode placeholder")}</span>
+        <span>{copy("Series title")}</span>
         <input
           disabled={disabled}
           maxLength={120}
           value={value.seriesTitle}
-          placeholder={copy("Series title \u2014 optional until AYIN Catalog is available")}
+          placeholder={copy("Optional series title")}
           onChange={(event) => set("seriesTitle", event.target.value)}
         />
       </label>
@@ -405,7 +405,7 @@ export function VideoMetadataFields({
       </label>
 
       <label>
-        <span>{copy("Age restriction hook")}</span>
+        <span>{copy("Age restriction")}</span>
         <select
           disabled={disabled}
           value={value.ageRestriction}
@@ -414,14 +414,10 @@ export function VideoMetadataFields({
           }
         >
           <option value="">{copy("None (default)")}</option>
-          <option value="AGE_13_PLUS">{copy("13+ hook")}</option>
-          <option value="AGE_18_PLUS">{copy("18+ hook")}</option>
+          <option value="AGE_13_PLUS">{copy("13 and older")}</option>
+          <option value="AGE_18_PLUS">{copy("18 and older")}</option>
         </select>
-        <small>
-          {copy(
-            "This is a product-policy hook, not a claim of regulatory compliance or age verification.",
-          )}
-        </small>
+        <small>{copy("Set the minimum audience age for this video.")}</small>
       </label>
 
       <label className={fullWidthClassName}>
@@ -492,7 +488,7 @@ export function VideoMetadataFields({
           placeholder="120, 480, 900"
           onChange={(event) => set("adBreakOffsets", event.target.value)}
         />
-        <small>{copy("Seconds from the start; the ad system remains authoritative.")}</small>
+        <small>{copy("Preferred times in seconds from the start.")}</small>
       </label>
     </>
   );

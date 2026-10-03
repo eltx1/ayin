@@ -1,5 +1,8 @@
 import type { Locale } from "./i18n/config";
 const arabic: Record<string, string> = {
+  "Upload a video": "رفع فيديو",
+  "Choose a format and file, review the details, then save or publish your video.":
+    "اختر نوع الفيديو والملف، ثم راجع التفاصيل واحفظها أو انشر الفيديو.",
   "Creator upload": "رفع الفيديو",
   "Bring your next video to AYIN.": "ارفع فيديوك القادم على AYIN",
   "Choose the experience, add your file, and publish from one focused workspace. AYIN checks compatibility and prepares reliable playback automatically.":
@@ -142,20 +145,19 @@ const arabic: Record<string, string> = {
   "Rights expiration": "انتهاء الحقوق",
   "Optional distribution-rights expiry. Channel owner only in Studio.":
     "موعد اختياري لانتهاء حقوق التوزيع، يحدده مالك القناة.",
-  "Series / episode placeholder": "السلسلة أو الحلقة",
-  "Series title — optional until AYIN Catalog is available": "عنوان السلسلة (اختياري)",
+  "Series title": "السلسلة أو الحلقة",
+  "Optional series title": "عنوان السلسلة (اختياري)",
   "Season number": "رقم الموسم",
   "Episode number": "رقم الحلقة",
   "Maturity level": "الفئة العمرية للمحتوى",
   General: "عام",
   Teen: "للمراهقين",
   Mature: "للبالغين",
-  "Age restriction hook": "تقييد العمر",
+  "Age restriction": "تقييد العمر",
   "None (default)": "بلا تقييد (افتراضي)",
-  "13+ hook": "١٣ عامًا فأكثر",
-  "18+ hook": "١٨ عامًا فأكثر",
-  "This is a product-policy hook, not a claim of regulatory compliance or age verification.":
-    "يطبق هذا الخيار سياسة عمر المحتوى؛ لا يتحقق من عمر المشاهد.",
+  "13 and older": "١٣ عامًا فأكثر",
+  "18 and older": "١٨ عامًا فأكثر",
+  "Set the minimum audience age for this video.": "حدد الحد الأدنى لعمر جمهور الفيديو.",
   "Allowed territories": "الدول المسموح بها",
   "ISO two-letter country codes. Leave allowed and blocked lists empty for worldwide availability.":
     "رموز الدول من حرفين. اترك قائمتي السماح والحظر فارغتين للإتاحة عالميًا.",
@@ -171,8 +173,7 @@ const arabic: Record<string, string> = {
   "No creator-requested breaks": "بدون فواصل يطلبها المنشئ",
   "Custom preferred offsets": "أوقات مفضلة مخصصة",
   "Custom ad-break offsets": "أوقات فواصل الإعلانات",
-  "Seconds from the start; the ad system remains authoritative.":
-    "الأوقات بالثواني من بداية الفيديو؛ يحدد نظام الإعلانات التنفيذ الفعلي.",
+  "Preferred times in seconds from the start.": "الأوقات المفضلة بالثواني من بداية الفيديو.",
 };
 export function uploadText(value: string, locale: Locale): string {
   return locale === "ar" ? (arabic[value] ?? value) : value;

@@ -4,6 +4,7 @@ import { uploadText } from "@/lib/upload-copy";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ActionButton, PageHeader } from "@/components/ui/design-system";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { scheduleTimestamp, uploadId, uploadRecord } from "@/lib/quick-upload-contract";
 import { UploadProtocolError } from "@/lib/upload-session";
@@ -64,6 +65,9 @@ export function QuickUpload() {
   const [processingReady, setProcessingReady] = useState(false);
   const [processingLabel, setProcessingLabel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mutationKind, setMutationKind] = useState<
+    "upload" | "save" | "thumbnail" | "publish" | null
+  >(null);
   const [message, setMessage] = useState<string | null>(null);
   const [thumbnailChoices, setThumbnailChoices] = useState<LocalThumbnailChoice[]>([]);
   const [selectedThumbnailId, setSelectedThumbnailId] = useState<string | null>(null);
@@ -199,6 +203,7 @@ export function QuickUpload() {
     setMetadataDraft({ ...EMPTY_METADATA_DRAFT });
     setMessage(null);
     setBusy(true);
+    setMutationKind("upload");
     const nextTitle = titleFromFilename(selected.name);
     setTitle(nextTitle);
     try {
@@ -279,6 +284,7 @@ export function QuickUpload() {
     } finally {
       mutation.current = false;
       setBusy(false);
+      setMutationKind(null);
     }
   }
 
@@ -372,6 +378,7 @@ export function QuickUpload() {
     }
     mutation.current = true;
     setBusy(true);
+    setMutationKind("save");
     const controller = new AbortController();
     operation.current = controller;
     try {
@@ -391,6 +398,7 @@ export function QuickUpload() {
     } finally {
       mutation.current = false;
       setBusy(false);
+      setMutationKind(null);
     }
   }
 
@@ -415,6 +423,7 @@ export function QuickUpload() {
     }
     mutation.current = true;
     setBusy(true);
+    setMutationKind("thumbnail");
     const controller = new AbortController();
     operation.current = controller;
     try {
@@ -434,6 +443,7 @@ export function QuickUpload() {
     } finally {
       mutation.current = false;
       setBusy(false);
+      setMutationKind(null);
     }
   }
 
@@ -459,6 +469,7 @@ export function QuickUpload() {
     operation.current = controller;
     setBusy(true);
     setMessage(null);
+    setMutationKind("publish");
     try {
       const result = await publishQuickVideo(
         videoId,
@@ -499,6 +510,7 @@ export function QuickUpload() {
       }
     } finally {
       setBusy(false);
+      setMutationKind(null);
       mutation.current = false;
     }
   }
@@ -533,36 +545,14 @@ export function QuickUpload() {
           : copy("Not started");
 
   return (
-    <section className={styles.shell} aria-labelledby="quick-upload-title" dir={direction}>
-      <header className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <div className={styles.eyebrowRow}>
-            <span className={styles.eyebrowDot} aria-hidden="true" />
-            <p className={styles.eyebrow}>{copy("Creator upload")}</p>
-          </div>
-          <h1 id="quick-upload-title">{copy("Bring your next video to AYIN.")}</h1>
-          <p className={styles.heroLead}>
-            {copy(
-              "Choose the experience, add your file, and publish from one focused workspace. AYIN checks compatibility and prepares reliable playback automatically.",
-            )}
-          </p>
-        </div>
-
-        <div className={styles.heroSignals} aria-label={copy("Upload workflow")}>
-          <span>
-            <i aria-hidden="true" />
-            {copy("Direct upload")}
-          </span>
-          <span>
-            <i aria-hidden="true" />
-            {copy("Compatibility check")}
-          </span>
-          <span>
-            <i aria-hidden="true" />
-            {copy("Playback processing")}
-          </span>
-        </div>
-      </header>
+    <section className={styles.shell} aria-label={copy("Creator upload")} dir={direction}>
+      <PageHeader
+        eyebrow={copy("Creator upload")}
+        title={copy("Upload a video")}
+        description={copy(
+          "Choose a format and file, review the details, then save or publish your video.",
+        )}
+      />
 
       <div className={styles.workspace}>
         <section className={styles.stepCard} aria-labelledby="format-heading">
@@ -879,7 +869,11 @@ export function QuickUpload() {
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={choice.previewUrl}
-                              alt={`${locale === "ar" ? `صورة ${choice.id.split("-").at(-1)}` : choice.label} preview`}
+                              alt={
+                                locale === "ar"
+                                  ? `معاينة صورة ${choice.id.split("-").at(-1)}`
+                                  : `${choice.label} preview`
+                              }
                             />
                             <span>
                               {locale === "ar"
@@ -919,16 +913,17 @@ export function QuickUpload() {
                 )}
               </p>
 
-              <button
-                className={styles.publish}
+              <ActionButton
+                className={styles.actionLayout}
+                tone="secondary"
                 type="button"
                 disabled={busy || published || uncertain || signature === savedSignature}
                 onClick={() => void saveDetails()}
               >
                 {copy("Save details")}
-              </button>
-              <button
-                className={styles.publish}
+              </ActionButton>
+              <ActionButton
+                className={styles.actionLayout}
                 type="button"
                 disabled={
                   !uploadComplete ||
@@ -943,12 +938,12 @@ export function QuickUpload() {
                 <span>
                   {published
                     ? copy("Published")
-                    : busy && uploadComplete
+                    : mutationKind === "publish"
                       ? copy("Publishing…")
                       : copy("Publish video")}
                 </span>
                 {!published ? <span aria-hidden="true">→</span> : null}
-              </button>
+              </ActionButton>
             </div>
           </section>
         ) : null}
