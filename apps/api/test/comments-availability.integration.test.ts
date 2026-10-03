@@ -141,4 +141,87 @@ databaseDescribe("Comments public availability and Kids server boundary", () => 
         .statusCode,
     ).toBe(200);
   });
+  it("rejects unrelated staff and unverified administrators across creator moderation paths", async () => {
+    const f = await fixture();
+    const channel = await prisma.channel.create({
+      data: { handle: `foreign-${randomUUID()}`, name: "Foreign creator", status: "ACTIVE" },
+    });
+    const video = await prisma.video.create({
+      data: {
+        channelId: channel.id,
+        title: "Foreign video",
+        slug: `foreign-${randomUUID()}`,
+        status: "PUBLISHED",
+        visibility: "PUBLIC",
+        commentsEnabled: true,
+      },
+    });
+    const comment = await prisma.comment.create({
+      data: {
+        videoId: video.id,
+        authorProfileId: f.user.profile.id,
+        body: "Owned comment on a foreign channel",
+      },
+    });
+    const assignment = await prisma.adminRoleAssignment.create({
+      data: { accountId: f.user.account.id, role: "AD_MANAGER" },
+    });
+    const headers = { cookie: f.cookie };
+    const requests = [
+      {
+        method: "PATCH" as const,
+        url: `/comments/videos/${video.id}/settings`,
+        payload: { enabled: false },
+      },
+      {
+        method: "PATCH" as const,
+        url: `/comments/${comment.id}/moderation`,
+        payload: { status: "HIDDEN" },
+      },
+      { method: "PUT" as const, url: `/comments/${comment.id}/heart` },
+      {
+        method: "PUT" as const,
+        url: `/comments/channels/${channel.id}/hidden-profiles/${f.user.profile.id}`,
+      },
+    ];
+    for (const request of requests)
+      expect((await app.inject({ ...request, headers })).statusCode).toBe(403);
+    await prisma.adminRoleAssignment.update({
+      where: { id: assignment.id },
+      data: { role: "CONTENT_MODERATOR" },
+    });
+    for (const request of requests) {
+      const response = await app.inject({ ...request, headers });
+      expect(response.statusCode).toBe(403);
+      expect(response.json().error.code).toBe("STEP_UP_REQUIRED");
+    }
+    await prisma.adminRoleAssignment.update({
+      where: { id: assignment.id },
+      data: { role: "ADMIN" },
+    });
+    for (const request of requests)
+      expect((await app.inject({ ...request, headers })).statusCode).toBe(403);
+    expect(
+      (await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).commentsEnabled,
+    ).toBe(true);
+    expect((await prisma.comment.findUniqueOrThrow({ where: { id: comment.id } })).status).toBe(
+      "PUBLISHED",
+    );
+    expect(await prisma.commentControl.count({ where: { commentId: comment.id } })).toBe(0);
+    expect(await prisma.channelHiddenProfile.count({ where: { channelId: channel.id } })).toBe(0);
+    // Own-channel operations still use creator membership rather than global staff privilege.
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/comments/videos/${f.video.id}/settings`,
+          headers,
+          payload: { enabled: false },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await app.inject({ method: "DELETE", url: `/comments/${comment.id}`, headers })).statusCode,
+    ).toBe(200);
+  });
 });

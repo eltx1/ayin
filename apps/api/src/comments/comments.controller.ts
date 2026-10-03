@@ -117,7 +117,9 @@ export class CommentsController {
   @UseGuards(AuthGuard)
   remove(@Req() request: AuthenticatedRequest, @Param("commentId") rawId: string) {
     this.rateLimiter.consume(`remove:${request.ayinAuth.accountId}`, 30);
-    return run(() => this.comments.remove(request.ayinAuth.accountId, parseUuid(rawId)));
+    return run(() =>
+      this.comments.remove(request.ayinAuth.accountId, parseUuid(rawId), request.ayinAuth),
+    );
   }
 
   @Put(":commentId/like")
@@ -169,7 +171,13 @@ export class CommentsController {
   ) {
     const mark = parseMark(rawMark);
     return run(() =>
-      this.comments.creatorMark(request.ayinAuth.accountId, parseUuid(rawId), mark, true),
+      this.comments.creatorMark(
+        request.ayinAuth.accountId,
+        parseUuid(rawId),
+        mark,
+        true,
+        request.ayinAuth,
+      ),
     );
   }
 
@@ -182,7 +190,13 @@ export class CommentsController {
   ) {
     const mark = parseMark(rawMark);
     return run(() =>
-      this.comments.creatorMark(request.ayinAuth.accountId, parseUuid(rawId), mark, false),
+      this.comments.creatorMark(
+        request.ayinAuth.accountId,
+        parseUuid(rawId),
+        mark,
+        false,
+        request.ayinAuth,
+      ),
     );
   }
 
@@ -217,7 +231,12 @@ export class CommentsController {
   ) {
     const body = parse(toggle, rawBody);
     return run(() =>
-      this.comments.setVideoComments(request.ayinAuth.accountId, parseUuid(rawId), body.enabled),
+      this.comments.setVideoComments(
+        request.ayinAuth.accountId,
+        parseUuid(rawId),
+        body.enabled,
+        request.ayinAuth,
+      ),
     );
   }
 
@@ -234,6 +253,7 @@ export class CommentsController {
         parseUuid(channel),
         parseUuid(profileId),
         true,
+        request.ayinAuth,
       ),
     );
   }
@@ -251,6 +271,7 @@ export class CommentsController {
         parseUuid(channel),
         parseUuid(profileId),
         false,
+        request.ayinAuth,
       ),
     );
   }
@@ -269,6 +290,7 @@ export class CommentsController {
         parseUuid(rawId),
         body.status,
         body.reason,
+        request.ayinAuth,
       ),
     );
   }
