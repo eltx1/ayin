@@ -183,7 +183,7 @@
   min-height: 8rem;
   padding: 1rem;
   position: relative;
-  text-align: left;
+  text-align: start;
 }
 
 .typeCard:hover:not(:disabled) {
@@ -287,7 +287,7 @@
   height: 1.55rem;
   justify-content: center;
   position: absolute;
-  right: 0.72rem;
+  inset-inline-end: 0.72rem;
   top: 0.72rem;
   width: 1.55rem;
 }
@@ -405,7 +405,7 @@
   bottom: 1rem;
   color: rgb(170 164 184 / 72%);
   font-size: 0.7rem;
-  left: clamp(1.25rem, 3vw, 2rem);
+  inset-inline-start: clamp(1.25rem, 3vw, 2rem);
   position: absolute;
 }
 
@@ -543,7 +543,7 @@
 .progressValue {
   color: #ddbfff;
   font-size: 0.74rem !important;
-  text-align: right;
+  text-align: end;
 }
 
 .progressTrack {
@@ -676,7 +676,7 @@
   min-width: 0;
   overflow: hidden;
   padding: 0;
-  text-align: left;
+  text-align: start;
 }
 
 .thumbnail:hover,
@@ -736,7 +736,7 @@
   color: var(--foreground);
   cursor: pointer;
   font-weight: 760;
-  margin-right: 0.6rem;
+  margin-inline-end: 0.6rem;
   min-height: 2.35rem;
   padding: 0.48rem 0.72rem;
 }
@@ -947,4 +947,20 @@
   .publishConsent {
     font-size: 0.74rem;
   }
+}
+
+.fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.shell :focus-visible {
+  outline: 3px solid var(--brand-magenta);
+  outline-offset: 3px;
+}
+.shell[dir="rtl"] .hero h1 {
+  line-height: 1.35;
+  letter-spacing: 0;
+  max-width: 20ch;
 }

@@ -1,4 +1,7 @@
 "use client";
+import { uploadText } from "@/lib/upload-copy";
+
+import { useI18n } from "@/components/i18n/i18n-provider";
 
 import type {
   QuickVideoMetadata,
@@ -114,12 +117,34 @@ export function metadataDraftFromApi(
 
 export function buildMetadataPayload(
   draft: MetadataDraft,
-  options: { includeEmpty?: boolean; includeRights?: boolean } = {},
+  options: {
+    includeEmpty?: boolean;
+    includeRights?: boolean;
+    durationSeconds?: number | null;
+  } = {},
 ): QuickVideoMetadata {
   const includeEmpty = options.includeEmpty === true;
   const includeRights = options.includeRights !== false;
   const result: QuickVideoMetadata = {};
   const tags = splitList(draft.tags);
+  if (tags.length > 20 || tags.some((tag) => tag.length > 40)) throw new Error("Check the tags.");
+  if (draft.primaryLanguage.trim()) {
+    if (
+      draft.primaryLanguage.trim().length > 35 ||
+      Intl.getCanonicalLocales(draft.primaryLanguage.trim()).length !== 1
+    )
+      throw new Error("Check the language code.");
+  }
+  if (draft.recordingDate) {
+    const date = new Date(`${draft.recordingDate}T00:00:00Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(draft.recordingDate) ||
+      !Number.isFinite(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== draft.recordingDate ||
+      date.getTime() > Date.now()
+    )
+      throw new Error("Check the recording date.");
+  }
   if (tags.length || includeEmpty) result.tags = tags;
   if (draft.category) result.category = draft.category;
   else if (includeEmpty) result.category = null;
@@ -133,14 +158,18 @@ export function buildMetadataPayload(
     if (draft.rightsBasis) result.rightsBasis = draft.rightsBasis;
     if (draft.rightsNote.trim()) result.rightsNote = draft.rightsNote.trim();
     else if (includeEmpty) result.rightsNote = null;
-    if (draft.rightsExpiresAt)
-      result.rightsExpiresAt = new Date(draft.rightsExpiresAt).toISOString();
-    else if (includeEmpty) result.rightsExpiresAt = null;
+    if (draft.rightsExpiresAt) {
+      const date = new Date(draft.rightsExpiresAt);
+      if (!Number.isFinite(date.getTime())) throw new Error("Check the rights expiration.");
+      result.rightsExpiresAt = date.toISOString();
+    } else if (includeEmpty) result.rightsExpiresAt = null;
   }
   if (draft.seriesTitle.trim()) result.seriesTitle = draft.seriesTitle.trim();
   else if (includeEmpty) result.seriesTitle = null;
   const seasonNumber = optionalInteger(draft.seasonNumber, "Season number", includeEmpty);
   const episodeNumber = optionalInteger(draft.episodeNumber, "Episode number", includeEmpty);
+  if ((seasonNumber ?? 0) > 10000 || (episodeNumber ?? 0) > 100000)
+    throw new Error("Check the season and episode numbers.");
   if (seasonNumber !== undefined) result.seasonNumber = seasonNumber;
   if (episodeNumber !== undefined) result.episodeNumber = episodeNumber;
   if (draft.maturityLevel) result.maturityLevel = draft.maturityLevel;
@@ -153,6 +182,13 @@ export function buildMetadataPayload(
   const blockedTerritories = splitList(draft.blockedTerritories).map((value) =>
     value.toUpperCase(),
   );
+  if (
+    allowedTerritories.length > 100 ||
+    blockedTerritories.length > 100 ||
+    [...allowedTerritories, ...blockedTerritories].some((value) => !/^[A-Z]{2}$/.test(value)) ||
+    allowedTerritories.some((value) => blockedTerritories.includes(value))
+  )
+    throw new Error("Check the territory lists.");
   if (allowedTerritories.length || includeEmpty) result.allowedTerritories = allowedTerritories;
   if (blockedTerritories.length || includeEmpty) result.blockedTerritories = blockedTerritories;
   if (draft.chapters.trim()) result.chapters = parseChapterLines(draft.chapters);
@@ -162,6 +198,25 @@ export function buildMetadataPayload(
   if (draft.adBreakOffsets.trim())
     result.adBreakOffsetsSeconds = parseOffsets(draft.adBreakOffsets);
   else if (includeEmpty) result.adBreakOffsetsSeconds = [];
+  if (
+    (result.chapters?.length ?? 0) > 100 ||
+    result.chapters?.some(
+      (chapter, index, all) =>
+        chapter.title.length > 100 ||
+        (index > 0 && chapter.startSeconds <= all[index - 1]!.startSeconds) ||
+        (options.durationSeconds != null && chapter.startSeconds >= options.durationSeconds),
+    )
+  )
+    throw new Error("Check chapter titles and increasing times within the video.");
+  if (
+    (result.adBreakOffsetsSeconds?.length ?? 0) > 20 ||
+    (draft.adBreakPreference === "CUSTOM" && !result.adBreakOffsetsSeconds?.length) ||
+    (draft.adBreakPreference !== "CUSTOM" && (result.adBreakOffsetsSeconds?.length ?? 0) > 0) ||
+    result.adBreakOffsetsSeconds?.some(
+      (offset) => options.durationSeconds != null && offset >= options.durationSeconds,
+    )
+  )
+    throw new Error("Check ad-break times within the video.");
   return result;
 }
 
@@ -178,13 +233,15 @@ export function VideoMetadataFields({
   disabled?: boolean;
   showRights?: boolean;
 }) {
+  const { locale } = useI18n();
+  const copy = (value: string) => uploadText(value, locale);
   const set = <K extends keyof MetadataDraft>(key: K, next: MetadataDraft[K]) =>
     onChange({ ...value, [key]: next });
 
   return (
     <>
       <label className={fullWidthClassName}>
-        <span>Tags</span>
+        <span>{copy("Tags")}</span>
         <input
           disabled={disabled}
           maxLength={820}
@@ -192,32 +249,32 @@ export function VideoMetadataFields({
           placeholder="documentary, cairo, architecture"
           onChange={(event) => set("tags", event.target.value)}
         />
-        <small>Up to 20 tags, 40 characters each. Separate tags with commas.</small>
+        <small>{copy("Up to 20 tags, 40 characters each. Separate tags with commas.")}</small>
       </label>
 
       <label>
-        <span>Category</span>
+        <span>{copy("Category")}</span>
         <select
           disabled={disabled}
           value={value.category}
           onChange={(event) => set("category", event.target.value as MetadataDraft["category"])}
         >
-          <option value="">Not set</option>
-          <option value="ENTERTAINMENT">Entertainment</option>
-          <option value="EDUCATION">Education</option>
-          <option value="GAMING">Gaming</option>
-          <option value="MUSIC">Music</option>
-          <option value="NEWS">News</option>
-          <option value="SPORTS">Sports</option>
-          <option value="TECHNOLOGY">Technology</option>
-          <option value="LIFESTYLE">Lifestyle</option>
-          <option value="FILM_ANIMATION">Film & animation</option>
-          <option value="OTHER">Other</option>
+          <option value="">{copy("Not set")}</option>
+          <option value="ENTERTAINMENT">{copy("Entertainment")}</option>
+          <option value="EDUCATION">{copy("Education")}</option>
+          <option value="GAMING">{copy("Gaming")}</option>
+          <option value="MUSIC">{copy("Music")}</option>
+          <option value="NEWS">{copy("News")}</option>
+          <option value="SPORTS">{copy("Sports")}</option>
+          <option value="TECHNOLOGY">{copy("Technology")}</option>
+          <option value="LIFESTYLE">{copy("Lifestyle")}</option>
+          <option value="FILM_ANIMATION">{copy("Film & animation")}</option>
+          <option value="OTHER">{copy("Other")}</option>
         </select>
       </label>
 
       <label>
-        <span>Primary language</span>
+        <span>{copy("Primary language")}</span>
         <input
           disabled={disabled}
           maxLength={35}
@@ -228,7 +285,7 @@ export function VideoMetadataFields({
       </label>
 
       <label>
-        <span>Recording date</span>
+        <span>{copy("Recording date")}</span>
         <input
           disabled={disabled}
           type="date"
@@ -238,7 +295,7 @@ export function VideoMetadataFields({
       </label>
 
       <label>
-        <span>Content type</span>
+        <span>{copy("Content type")}</span>
         <select
           disabled={disabled}
           value={value.contentType}
@@ -246,16 +303,16 @@ export function VideoMetadataFields({
             set("contentType", event.target.value as MetadataDraft["contentType"])
           }
         >
-          <option value="">Creator video (default)</option>
-          <option value="MOVIE">Movie</option>
-          <option value="DOCUMENTARY">Documentary</option>
+          <option value="">{copy("Creator video (default)")}</option>
+          <option value="MOVIE">{copy("Movie")}</option>
+          <option value="DOCUMENTARY">{copy("Documentary")}</option>
         </select>
       </label>
 
       {showRights ? (
         <>
           <label>
-            <span>Rights basis</span>
+            <span>{copy("Rights basis")}</span>
             <select
               disabled={disabled}
               value={value.rightsBasis}
@@ -263,50 +320,52 @@ export function VideoMetadataFields({
                 set("rightsBasis", event.target.value as MetadataDraft["rightsBasis"])
               }
             >
-              <option value="">Standard authorization</option>
-              <option value="OWNED">I own it</option>
-              <option value="LICENSED">Licensed</option>
-              <option value="AUTHORIZED">Authorized</option>
-              <option value="PUBLIC_DOMAIN">Public domain</option>
-              <option value="OTHER">Other</option>
+              <option value="">{copy("Standard authorization")}</option>
+              <option value="OWNED">{copy("I own it")}</option>
+              <option value="LICENSED">{copy("Licensed")}</option>
+              <option value="AUTHORIZED">{copy("Authorized")}</option>
+              <option value="PUBLIC_DOMAIN">{copy("Public domain")}</option>
+              <option value="OTHER">{copy("Other")}</option>
             </select>
           </label>
           <label>
-            <span>Rights note</span>
+            <span>{copy("Rights note")}</span>
             <input
               disabled={disabled}
               maxLength={1000}
               value={value.rightsNote}
-              placeholder="Optional license or rights note"
+              placeholder={copy("Optional license or rights note")}
               onChange={(event) => set("rightsNote", event.target.value)}
             />
           </label>
           <label>
-            <span>Rights expiration</span>
+            <span>{copy("Rights expiration")}</span>
             <input
               disabled={disabled}
               type="datetime-local"
               value={value.rightsExpiresAt}
               onChange={(event) => set("rightsExpiresAt", event.target.value)}
             />
-            <small>Optional distribution-rights expiry. Channel owner only in Studio.</small>
+            <small>
+              {copy("Optional distribution-rights expiry. Channel owner only in Studio.")}
+            </small>
           </label>
         </>
       ) : null}
 
       <label className={fullWidthClassName}>
-        <span>Series / episode placeholder</span>
+        <span>{copy("Series / episode placeholder")}</span>
         <input
           disabled={disabled}
           maxLength={120}
           value={value.seriesTitle}
-          placeholder="Series title — optional until AYIN Catalog is available"
+          placeholder={copy("Series title \u2014 optional until AYIN Catalog is available")}
           onChange={(event) => set("seriesTitle", event.target.value)}
         />
       </label>
 
       <label>
-        <span>Season number</span>
+        <span>{copy("Season number")}</span>
         <input
           disabled={disabled}
           min={1}
@@ -318,7 +377,7 @@ export function VideoMetadataFields({
       </label>
 
       <label>
-        <span>Episode number</span>
+        <span>{copy("Episode number")}</span>
         <input
           disabled={disabled}
           min={1}
@@ -330,7 +389,7 @@ export function VideoMetadataFields({
       </label>
 
       <label>
-        <span>Maturity level</span>
+        <span>{copy("Maturity level")}</span>
         <select
           disabled={disabled}
           value={value.maturityLevel}
@@ -338,15 +397,15 @@ export function VideoMetadataFields({
             set("maturityLevel", event.target.value as MetadataDraft["maturityLevel"])
           }
         >
-          <option value="">Not set</option>
-          <option value="GENERAL">General</option>
-          <option value="TEEN">Teen</option>
-          <option value="MATURE">Mature</option>
+          <option value="">{copy("Not set")}</option>
+          <option value="GENERAL">{copy("General")}</option>
+          <option value="TEEN">{copy("Teen")}</option>
+          <option value="MATURE">{copy("Mature")}</option>
         </select>
       </label>
 
       <label>
-        <span>Age restriction hook</span>
+        <span>{copy("Age restriction hook")}</span>
         <select
           disabled={disabled}
           value={value.ageRestriction}
@@ -354,17 +413,19 @@ export function VideoMetadataFields({
             set("ageRestriction", event.target.value as MetadataDraft["ageRestriction"])
           }
         >
-          <option value="">None (default)</option>
-          <option value="AGE_13_PLUS">13+ hook</option>
-          <option value="AGE_18_PLUS">18+ hook</option>
+          <option value="">{copy("None (default)")}</option>
+          <option value="AGE_13_PLUS">{copy("13+ hook")}</option>
+          <option value="AGE_18_PLUS">{copy("18+ hook")}</option>
         </select>
         <small>
-          This is a product-policy hook, not a claim of regulatory compliance or age verification.
+          {copy(
+            "This is a product-policy hook, not a claim of regulatory compliance or age verification.",
+          )}
         </small>
       </label>
 
       <label className={fullWidthClassName}>
-        <span>Allowed territories</span>
+        <span>{copy("Allowed territories")}</span>
         <input
           disabled={disabled}
           value={value.allowedTerritories}
@@ -372,13 +433,14 @@ export function VideoMetadataFields({
           onChange={(event) => set("allowedTerritories", event.target.value)}
         />
         <small>
-          ISO two-letter country codes. Leave allowed and blocked lists empty for worldwide
-          availability.
+          {copy(
+            "ISO two-letter country codes. Leave allowed and blocked lists empty for worldwide availability.",
+          )}
         </small>
       </label>
 
       <label className={fullWidthClassName}>
-        <span>Blocked territories</span>
+        <span>{copy("Blocked territories")}</span>
         <input
           disabled={disabled}
           value={value.blockedTerritories}
@@ -386,13 +448,14 @@ export function VideoMetadataFields({
           onChange={(event) => set("blockedTerritories", event.target.value)}
         />
         <small>
-          Server-side playback, search, discovery, SEO and Creator TV all enforce these
-          restrictions.
+          {copy(
+            "Server-side playback, search, discovery, SEO and Creator TV all enforce these restrictions.",
+          )}
         </small>
       </label>
 
       <label className={fullWidthClassName}>
-        <span>Custom chapters</span>
+        <span>{copy("Custom chapters")}</span>
         <textarea
           disabled={disabled}
           rows={5}
@@ -400,11 +463,13 @@ export function VideoMetadataFields({
           placeholder={"00:00 Introduction\n02:15 Main topic\n08:40 Final notes"}
           onChange={(event) => set("chapters", event.target.value)}
         />
-        <small>One chapter per line: MM:SS Title or HH:MM:SS Title. Starts must increase.</small>
+        <small>
+          {copy("One chapter per line: MM:SS Title or HH:MM:SS Title. Starts must increase.")}
+        </small>
       </label>
 
       <label>
-        <span>Ad-break preference</span>
+        <span>{copy("Ad-break preference")}</span>
         <select
           disabled={disabled}
           value={value.adBreakPreference}
@@ -412,22 +477,22 @@ export function VideoMetadataFields({
             set("adBreakPreference", event.target.value as MetadataDraft["adBreakPreference"])
           }
         >
-          <option value="">Platform default</option>
-          <option value="AUTOMATIC">Automatic</option>
-          <option value="DISABLED">No creator-requested breaks</option>
-          <option value="CUSTOM">Custom preferred offsets</option>
+          <option value="">{copy("Platform default")}</option>
+          <option value="AUTOMATIC">{copy("Automatic")}</option>
+          <option value="DISABLED">{copy("No creator-requested breaks")}</option>
+          <option value="CUSTOM">{copy("Custom preferred offsets")}</option>
         </select>
       </label>
 
       <label>
-        <span>Custom ad-break offsets</span>
+        <span>{copy("Custom ad-break offsets")}</span>
         <input
           disabled={disabled || value.adBreakPreference !== "CUSTOM"}
           value={value.adBreakOffsets}
           placeholder="120, 480, 900"
           onChange={(event) => set("adBreakOffsets", event.target.value)}
         />
-        <small>Seconds from the start; the ad system remains authoritative.</small>
+        <small>{copy("Seconds from the start; the ad system remains authoritative.")}</small>
       </label>
     </>
   );
