@@ -240,4 +240,116 @@ databaseDescribe("Comments public availability and Kids server boundary", () => 
       (await app.inject({ method: "DELETE", url: `/comments/${comment.id}`, headers })).statusCode,
     ).toBe(200);
   });
+  async function failProfileAudit(
+    action: "COMMENT_PROFILE_HIDE" | "COMMENT_PROFILE_UNHIDE",
+    run: () => Promise<void>,
+  ) {
+    // Test-only database fault exercises rollback after the real companion writes.
+    await prisma.$executeRawUnsafe(
+      `CREATE FUNCTION ayin_test_profile_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."action" = '${action}' THEN RAISE EXCEPTION 'test profile audit failure'; END IF; RETURN NEW; END; $$`,
+    );
+    try {
+      await prisma.$executeRawUnsafe(
+        'CREATE TRIGGER ayin_test_profile_audit_failure BEFORE INSERT ON "AdminAuditLog" FOR EACH ROW EXECUTE FUNCTION ayin_test_profile_audit_failure()',
+      );
+      await run();
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS ayin_test_profile_audit_failure ON "AdminAuditLog"',
+      );
+      await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS ayin_test_profile_audit_failure()");
+    }
+  }
+  it("commits profile suppression, existing comment hiding and audit together; unhide never republishes old comments", async () => {
+    const f = await fixture();
+    const url = `/comments/channels/${f.video.channelId}/hidden-profiles/${f.user.profile.id}`;
+    const headers = { cookie: f.cookie, origin: "http://localhost:3000" };
+    expect((await app.inject({ method: "PUT", url, headers })).statusCode).toBe(200);
+    expect(
+      await prisma.channelHiddenProfile.count({
+        where: { channelId: f.video.channelId, profileId: f.user.profile.id },
+      }),
+    ).toBe(1);
+    expect((await prisma.comment.findUniqueOrThrow({ where: { id: f.comment.id } })).status).toBe(
+      "HIDDEN",
+    );
+    const audit = await prisma.adminAuditLog.findFirstOrThrow({
+      where: {
+        actorAccountId: f.user.account.id,
+        action: "COMMENT_PROFILE_HIDE",
+        entityId: f.user.profile.id,
+      },
+    });
+    expect(audit.metadata).toMatchObject({ channelId: f.video.channelId, hidden: true });
+    expect((await app.inject({ method: "DELETE", url, headers })).statusCode).toBe(200);
+    expect(
+      await prisma.channelHiddenProfile.count({
+        where: { channelId: f.video.channelId, profileId: f.user.profile.id },
+      }),
+    ).toBe(0);
+    expect((await prisma.comment.findUniqueOrThrow({ where: { id: f.comment.id } })).status).toBe(
+      "HIDDEN",
+    );
+    expect(
+      await prisma.adminAuditLog.count({
+        where: { actorAccountId: f.user.account.id, action: "COMMENT_PROFILE_UNHIDE" },
+      }),
+    ).toBe(1);
+  });
+  it("rolls profile and comment changes back when the final hide audit write fails", async () => {
+    const f = await fixture();
+    await failProfileAudit("COMMENT_PROFILE_HIDE", async () => {
+      const response = await app.inject({
+        method: "PUT",
+        url: `/comments/channels/${f.video.channelId}/hidden-profiles/${f.user.profile.id}`,
+        headers: { cookie: f.cookie, origin: "http://localhost:3000" },
+      });
+      expect(response.statusCode).toBe(500);
+      expect(
+        await prisma.channelHiddenProfile.count({
+          where: { channelId: f.video.channelId, profileId: f.user.profile.id },
+        }),
+      ).toBe(0);
+      expect((await prisma.comment.findUniqueOrThrow({ where: { id: f.comment.id } })).status).toBe(
+        "PUBLISHED",
+      );
+      expect(
+        await prisma.adminAuditLog.count({
+          where: { actorAccountId: f.user.account.id, action: "COMMENT_PROFILE_HIDE" },
+        }),
+      ).toBe(0);
+    });
+  });
+  it("retains profile suppression when the final unhide audit write fails", async () => {
+    const f = await fixture();
+    await prisma.channelHiddenProfile.create({
+      data: {
+        channelId: f.video.channelId,
+        profileId: f.user.profile.id,
+        hiddenByAccountId: f.user.account.id,
+      },
+    });
+    await prisma.comment.update({ where: { id: f.comment.id }, data: { status: "HIDDEN" } });
+    await failProfileAudit("COMMENT_PROFILE_UNHIDE", async () => {
+      const response = await app.inject({
+        method: "DELETE",
+        url: `/comments/channels/${f.video.channelId}/hidden-profiles/${f.user.profile.id}`,
+        headers: { cookie: f.cookie, origin: "http://localhost:3000" },
+      });
+      expect(response.statusCode).toBe(500);
+      expect(
+        await prisma.channelHiddenProfile.count({
+          where: { channelId: f.video.channelId, profileId: f.user.profile.id },
+        }),
+      ).toBe(1);
+      expect((await prisma.comment.findUniqueOrThrow({ where: { id: f.comment.id } })).status).toBe(
+        "HIDDEN",
+      );
+      expect(
+        await prisma.adminAuditLog.count({
+          where: { actorAccountId: f.user.account.id, action: "COMMENT_PROFILE_UNHIDE" },
+        }),
+      ).toBe(0);
+    });
+  });
 });

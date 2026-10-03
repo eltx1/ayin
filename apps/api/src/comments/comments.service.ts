@@ -284,21 +284,35 @@ export class CommentsService {
   ) {
     if (!(await this.canModerateChannel(accountId, channelId, auth)))
       throw new CommentsError("CHANNEL_FORBIDDEN", "You cannot moderate this channel.", 403);
-    if (hidden) {
-      await this.database.client.channelHiddenProfile.upsert({
-        where: { channelId_profileId: { channelId, profileId } },
-        update: { hiddenByAccountId: accountId },
-        create: { channelId, profileId, hiddenByAccountId: accountId },
-      });
-      await this.database.client.comment.updateMany({
-        where: { authorProfileId: profileId, video: { channelId }, status: "PUBLISHED" },
-        data: { status: "HIDDEN" },
-      });
-    } else {
-      await this.database.client.channelHiddenProfile.deleteMany({
-        where: { channelId, profileId },
-      });
-    }
+    const changes = hidden
+      ? [
+          this.database.client.channelHiddenProfile.upsert({
+            where: { channelId_profileId: { channelId, profileId } },
+            update: { hiddenByAccountId: accountId },
+            create: { channelId, profileId, hiddenByAccountId: accountId },
+          }),
+          this.database.client.comment.updateMany({
+            where: { authorProfileId: profileId, video: { channelId }, status: "PUBLISHED" },
+            data: { status: "HIDDEN" },
+          }),
+        ]
+      : [
+          this.database.client.channelHiddenProfile.deleteMany({
+            where: { channelId, profileId },
+          }),
+        ];
+    await this.database.client.$transaction([
+      ...changes,
+      this.database.client.adminAuditLog.create({
+        data: {
+          actorAccountId: accountId,
+          action: hidden ? "COMMENT_PROFILE_HIDE" : "COMMENT_PROFILE_UNHIDE",
+          entityType: "ViewerProfile",
+          entityId: profileId,
+          metadata: { channelId, hidden },
+        },
+      }),
+    ]);
     return { channelId, profileId, hidden };
   }
 
