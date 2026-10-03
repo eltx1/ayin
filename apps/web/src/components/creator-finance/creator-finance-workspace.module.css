@@ -1,0 +1,61 @@
+.workspace {
+  min-inline-size: 0;
+  display: grid;
+  gap: 24px;
+}
+.report {
+  display: grid;
+  gap: 24px;
+  min-inline-size: 0;
+}
+.section {
+  min-inline-size: 0;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 12px;
+}
+.facts dt {
+  color: var(--muted);
+}
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.workspace select {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  inline-size: 100%;
+  padding: 12px;
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.workspace [role="tab"] {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.workspace table {
+  min-inline-size: 44rem;
+  table-layout: auto;
+}
+@media (max-width: 40rem) {
+  .facts {
+    grid-template-columns: 1fr;
+  }
+  .workspace [role="tab"] {
+    flex: 1 1 8rem;
+  }
+}

@@ -161,7 +161,9 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
     });
     await expect(accountName).toBeVisible();
     await expect(page.getByRole("heading", { name: "Earnings & payouts" })).toBeVisible();
+    await page.getByRole("tab", { name: "Payment details", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Payment details" })).toBeVisible();
+    await page.getByRole("tab", { name: "Payouts", exact: true }).click();
     await expect(page.getByRole("button", { name: "Request payout" })).toBeVisible();
     await expect(page.getByText(/adapter/i)).toHaveCount(0);
     await expect(page.getByText(/Manual payout V1/i)).toHaveCount(0);
