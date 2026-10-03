@@ -113,3 +113,11 @@ jobs:
           path: test-results-pwa/**/pwa-lifecycle-*.json
           if-no-files-found: ignore
           retention-days: 30
+      - name: Preserve PWA lifecycle visual evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pwa-lifecycle-visuals
+          path: test-results-pwa/**/design-pwa-*.png
+          if-no-files-found: ignore
+          retention-days: 7
