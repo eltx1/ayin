@@ -1,8 +1,10 @@
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { AdminPayoutCreationService } from "./admin-payout-creation.service.js";
 import { CreatorComplianceService } from "./creator-compliance.service.js";
+import { assertCreatorFinanceAuthority } from "./creator-finance-authority.js";
 import { encryptPayoutDestination, maskPayoutDestination } from "./creator-finance.crypto.js";
 import {
   EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
@@ -181,6 +183,7 @@ export class CreatorFinanceService {
     const mask = input.destination ? maskPayoutDestination(input.destination) : null;
 
     const saved = await this.database.client.$transaction(async (tx) => {
+      await assertCreatorFinanceAuthority(tx, channel.id, accountId);
       const existing = await tx.creatorPayoutProfile.findUnique({
         where: { channelId: channel.id },
         select: {
@@ -386,14 +389,14 @@ export class CreatorFinanceService {
     const input = revenueDisputeCreateSchema.parse(raw);
     const channel = await this.creatorChannel(accountId);
     if (!channel) throw new Error("CREATOR_CHANNEL_NOT_FOUND");
-    if (input.payoutId) {
-      const payout = await this.database.client.payout.findFirst({
-        where: { id: input.payoutId, channelId: channel.id },
-        select: { id: true },
-      });
-      if (!payout) throw new Error("PAYOUT_NOT_FOUND");
-    }
     return this.database.client.$transaction(async (tx) => {
+      await assertCreatorFinanceAuthority(tx, channel.id, accountId);
+      if (input.payoutId) {
+        const payouts = await tx.$queryRaw<Array<{ id: string }>>(
+          Prisma.sql`SELECT "id" FROM "Payout" WHERE "id" = ${input.payoutId}::uuid AND "channelId" = ${channel.id}::uuid FOR SHARE`,
+        );
+        if (!payouts[0]) throw new Error("PAYOUT_NOT_FOUND");
+      }
       const dispute = await this.finance.createDispute(
         {
           channelId: channel.id,
