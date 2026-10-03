@@ -4,7 +4,7 @@ Actual settings/override handlers previously passed only an account ID into thei
 
 Settings PATCH and channel/video override PATCH/DELETE now carry the captured authenticated actor into the actual transaction. They explicitly allow AD_MANAGER/Admin/Superadmin, using the held credential, current ACTIVE account/authVersion, actual session/expiry, applicable privileged MFA and step-up checks already used by other Admin write domains. Accounts/TV retain their Operations default and Videos retain their separate Content Moderator scope; adding the explicit advertising role does not grant those domains to AD_MANAGER.
 
-Authority is checked before configuration writes, after channel/video target lock waits, and again after settings/override writes that can wait before the final atomic audit. Real DB session expiry and captured step-up time are rechecked at those points. Existing target rows are held FOR SHARE during override writes. Creation requires an actual target; deletion preserves safe cleanup of existing missing-target overrides and actual deleted:false when no override exists. The override model has no target foreign-key relation, so missing-target cleanup must not be blocked by an invented ownership requirement.
+Authority is checked before configuration writes, after channel/video target lock waits, and again after settings/override writes that can wait before the final atomic audit. Real DB session expiry and captured step-up time are rechecked at those points. Existing target rows are held FOR SHARE during override writes. Creation requires an actual target; deletion preserves actual deleted:false when no override exists. The scalar-only Prisma model omits relation declarations; actual SQL migrations enforce cascading target foreign keys. Missing-target deletion reports actual deleted:false after cascade.
 
 PATCH translates only actual Zod validation failures to the existing400 error. Authority401/403, missing-target404, and genuine final-audit500 retain their correct meaning and cannot be reported as a successful write. No provider is called or activated by this change. Existing configuration defaults, Google IMA decision/policy logic, ad event behavior, and role-specific guard requirements remain.
 
@@ -12,9 +12,9 @@ PATCH translates only actual Zod validation failures to the existing400 error. A
 
 Twenty-five actual AppModule/PostgreSQL cases are prepared:
 
--21 observed-lock winners: revoked role/actor/authVersion/session/privileged MFA and expired step-up/real database session, separately for settings PATCH, video override PATCH and DELETE. Each requires complete prior settings/overrides/audits unchanged. Clock cases observe the actual settings upsert or named target lock; other cases observe credential authority waits.
--3 actual final-audit trigger failures return500 with complete config/audit rollback, followed by exactly one explicit successful retry/audit.
--1 scoped AD_MANAGER positive/control-isolation case covers settings and both channel/video override paths, actual Finance denial without facts changing, schema400, missing creation404 and actual missing-target deletion.
+- 21 observed-lock winners: revoked role/actor/authVersion/session/privileged MFA and expired step-up/real database session, separately for settings PATCH, video override PATCH and DELETE. Each requires complete prior settings/overrides/audits unchanged. Clock cases observe the actual settings upsert or named target lock; other cases observe credential authority waits.
+- 3 actual final-audit trigger failures return500 with complete config/audit rollback, followed by exactly one explicit successful retry/audit.
+- 1 scoped AD_MANAGER positive/control-isolation case covers settings and both channel/video override paths, actual Finance denial without facts changing, schema400, missing creation404 and actual cascading deletion followed by deleted:false.
 
 These cases are **prepared, not passed** at this checkpoint. Final-head local checks, full migrations/integration/unit/build/security/browser/PWA gates, independent review/source union and matching production proof remain required. Optimistic configuration versions, bounded safe override directory reads and native EN/AR ad UI recovery remain separate required work. This is not whole master, advertising/CMP/legal/provider/device certification.
 
