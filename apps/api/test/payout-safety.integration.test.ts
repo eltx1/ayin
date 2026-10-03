@@ -6,6 +6,7 @@ import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppModule } from "../src/app.module.js";
+import { RevenueService } from "../src/revenue/revenue.service.js";
 import {
   CREATOR_COMPLIANCE_ADAPTER,
   type CreatorComplianceAdapter,
@@ -630,7 +631,7 @@ databaseDescribe("Creator payout safety", () => {
       { timeout: 4000, interval: 25 },
     );
   }
-  for (const change of ["membership", "removal"] as const)
+  for (const change of ["membership", "removal", "account"] as const)
     it(`rechecks actual ${change} after waiting before profile/dispute writes`, async () => {
       const creator = await register(
         "Revoked finance creator",
@@ -642,6 +643,11 @@ databaseDescribe("Creator payout safety", () => {
           await tx.channelMember.updateMany({
             where: { channelId, accountId: creator.user.account.id },
             data: { role: "EDITOR" },
+          });
+        else if (change === "account")
+          await tx.account.update({
+            where: { id: creator.user.account.id },
+            data: { status: "SUSPENDED" },
           });
         else await tx.channel.update({ where: { id: channelId }, data: { status: "REMOVED" } });
       });
@@ -1036,5 +1042,182 @@ databaseDescribe("Creator payout safety", () => {
           !l.bankDataAccessed,
       ),
     ).toBe(true);
+  });
+  for (const change of ["creator-account", "finance-account", "finance-role"] as const)
+    it(`denies actual payout after blocked ${change} authority is revoked`, async () => {
+      const { creator, finance, entry, channelId } = await compliantFixture(change);
+      const actor = change === "creator-account" ? creator : finance;
+      const lock = await holdFinanceChannel(channelId, async (tx) => {
+        if (change === "finance-role")
+          await tx.adminRoleAssignment.deleteMany({
+            where: { accountId: finance.user.account.id },
+          });
+        else
+          await tx.account.update({
+            where: { id: actor.user.account.id },
+            data: { status: "SUSPENDED" },
+          });
+      });
+      const request = Promise.resolve(
+        app.inject({
+          method: "POST",
+          url:
+            change === "creator-account"
+              ? "/creator/studio/revenue/payout-requests"
+              : "/admin/revenue/payouts",
+          headers: { cookie: actor.cookie },
+          payload:
+            change === "creator-account" ? { currency: "USD" } : { channelId, currency: "USD" },
+        }),
+      );
+      try {
+        await financialWaiters(1);
+      } finally {
+        lock.release();
+      }
+      await lock.holder;
+      expect((await request).statusCode).toBe(403);
+      expect(await prisma.payout.count({ where: { channelId } })).toBe(0);
+      expect(
+        (await prisma.earningsLedgerEntry.findUniqueOrThrow({ where: { id: entry.id } })).payoutId,
+      ).toBeNull();
+      expect(
+        await prisma.adminAuditLog.count({
+          where: { entityType: "Payout", actorAccountId: actor.user.account.id },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.notification.count({
+          where: {
+            accountId: creator.user.account.id,
+            title: { in: ["Payout created", "Payout request received"] },
+          },
+        }),
+      ).toBe(0);
+    });
+
+  it("reads a newly inserted threshold after Creator and Finance wait, without reserving either payout", async () => {
+    const { creator, finance, entry, channelId } = await compliantFixture("threshold");
+    expect(await prisma.platformSetting.count({ where: { namespace: "MONETIZATION" } })).toBe(0);
+    const lock = await holdFinanceChannel(channelId, async (tx) => {
+      await tx.platformSetting.create({
+        data: {
+          namespace: "MONETIZATION",
+          key: "payoutThresholdMicros",
+          valueType: "STRING",
+          schemaVersion: 1,
+          value: "300000000",
+        },
+      });
+    });
+    const requests = [
+      Promise.resolve(
+        app.inject({
+          method: "POST",
+          url: "/creator/studio/revenue/payout-requests",
+          headers: { cookie: creator.cookie },
+          payload: { currency: "USD" },
+        }),
+      ),
+      Promise.resolve(
+        app.inject({
+          method: "POST",
+          url: "/admin/revenue/payouts",
+          headers: { cookie: finance.cookie },
+          payload: { channelId, currency: "USD" },
+        }),
+      ),
+    ];
+    try {
+      await financialWaiters(2);
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    const results = await Promise.all(requests);
+    expect(results.map((r) => r.statusCode)).toEqual([409, 409]);
+    for (const r of results) expect(r.json().message).toBe("PAYOUT_THRESHOLD_NOT_MET");
+    expect(await prisma.payout.count({ where: { channelId } })).toBe(0);
+    expect(
+      (await prisma.earningsLedgerEntry.findUniqueOrThrow({ where: { id: entry.id } })).payoutId,
+    ).toBeNull();
+    expect(
+      await prisma.adminAuditLog.count({
+        where: {
+          entityType: "Payout",
+          actorAccountId: { in: [creator.user.account.id, finance.user.account.id] },
+        },
+      }),
+    ).toBe(0);
+    expect(
+      await prisma.notification.count({
+        where: {
+          accountId: creator.user.account.id,
+          title: { in: ["Payout created", "Payout request received"] },
+        },
+      }),
+    ).toBe(0);
+  });
+
+  it("serializes actual settings insertion with the held payout settings lock even when no setting rows exist", async () => {
+    const { finance } = await compliantFixture("settings-lock");
+    let release!: () => void, ready!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const acquired = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    const revenue = moduleReference.get(RevenueService);
+    const holder = prisma.$transaction(
+      async (tx) => {
+        expect(await revenue.getPayoutSettings(tx)).toEqual({
+          defaultCreatorRevenueShareBps: 0,
+          payoutThresholdMicros: "0",
+        });
+        ready();
+        await gate;
+      },
+      { timeout: 15000 },
+    );
+    await acquired;
+    const write = Promise.resolve(
+      app.inject({
+        method: "PATCH",
+        url: "/admin/revenue/settings",
+        headers: { cookie: finance.cookie },
+        payload: { defaultCreatorRevenueShareBps: 0, payoutThresholdMicros: "300000000" },
+      }),
+    );
+    try {
+      await vi.waitFor(
+        async () => {
+          const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(
+            Prisma.sql`SELECT count(*)::bigint AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%ayin-settings-update-lock%'`,
+          );
+          expect(Number(rows[0]?.count ?? 0)).toBeGreaterThanOrEqual(1);
+        },
+        { timeout: 4000, interval: 25 },
+      );
+      expect(await prisma.platformSetting.count({ where: { namespace: "MONETIZATION" } })).toBe(0);
+      expect(
+        await prisma.adminAuditLog.count({
+          where: { actorAccountId: finance.user.account.id, action: "REVENUE_SETTINGS_UPDATED" },
+        }),
+      ).toBe(0);
+    } finally {
+      release();
+    }
+    await holder;
+    expect((await write).statusCode).toBe(200);
+    expect(await revenue.getSettings()).toEqual({
+      defaultCreatorRevenueShareBps: 0,
+      payoutThresholdMicros: "300000000",
+    });
+    expect(
+      await prisma.adminAuditLog.count({
+        where: { actorAccountId: finance.user.account.id, action: "REVENUE_SETTINGS_UPDATED" },
+      }),
+    ).toBe(1);
   });
 });

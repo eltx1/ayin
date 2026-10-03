@@ -17,6 +17,10 @@ export async function assertCreatorFinanceAuthority(
 ) {
   const channel = await lockFinanceChannel(tx, channelId);
   if (channel.status === "REMOVED") throw new ForbiddenException("Creator channel unavailable.");
+  const accounts = await tx.$queryRaw<Array<{ id: string }>>(
+    Prisma.sql`SELECT "id" FROM "Account" WHERE "id" = ${accountId}::uuid AND "status" = 'ACTIVE' FOR SHARE`,
+  );
+  if (!accounts[0]) throw new ForbiddenException("Creator account unavailable.");
   // Hold the actual membership through commit, so concurrent revocation cannot
   // pass an earlier, out-of-transaction ownership check.
   const members = await tx.$queryRaw<Array<{ id: string }>>(
