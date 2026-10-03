@@ -53,7 +53,6 @@ try {
           reporterProfileId: profile.id,
           moderationCaseId: row.id,
           videoId: video.id,
-          channelId,
           reason: "COPYRIGHT",
           details: `Actual full report ${index} END`,
           status: "OPEN",

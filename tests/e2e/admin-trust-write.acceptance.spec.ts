@@ -149,6 +149,7 @@ test("finance identity cannot initiate trust queue or settings reads", async ({ 
   await page.goto("/admin/trust?lang=en");
   await expect(page.getByRole("main").getByRole("alert")).toContainText("cannot read Trust");
   expect(reads).toBe(0);
+  await page.getByRole("main").getByRole("tab", { name: "Decisions", exact: true }).click();
   await expect(
     page.getByRole("main").getByRole("button", { name: "Record enforcement action", exact: true }),
   ).toBeDisabled();
