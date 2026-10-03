@@ -90,105 +90,117 @@ databaseDescribe("Admin video current authority, original reads and atomic bulk 
       { timeout: 4000, interval: 25 },
     );
   }
-  for (const change of [
-    "ROLE",
-    "ACCOUNT",
-    "AUTHVERSION",
-    "SESSION",
-    "MFA",
-    "TARGET",
-    "REAUTHTIME",
-    "SESSIONEXPIRY",
-  ] as const)
-    it(`rejects actual ${change} winner after an observed authority/video wait without command audit effects`, async () => {
-      const f = await fixture();
-      const priorAudits = await prisma.adminAuditLog.findMany({ orderBy: { id: "asc" } });
-      const targetWait = ["TARGET", "REAUTHTIME", "SESSIONEXPIRY"].includes(change);
-      if (change === "SESSIONEXPIRY")
-        await prisma.accountSession.updateMany({
-          where: { accountId: f.id, revokedAt: null },
-          data: { expiresAt: new Date(Date.now() + 1500) },
-        });
-      let acquired!: () => void, release!: () => void;
-      const locked = new Promise<void>((resolve) => {
-        acquired = resolve;
-      });
-      const gate = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      const holder = prisma.$transaction(
-        async (tx) => {
-          if (targetWait)
-            await tx.$queryRaw(
-              Prisma.sql`SELECT id FROM "Video" WHERE id = ${f.video.id}::uuid FOR UPDATE`,
-            );
-          else
-            await tx.$queryRaw(
-              Prisma.sql`SELECT "accountId" FROM "AccountMfaCredential" WHERE "accountId" = ${f.id}::uuid FOR UPDATE`,
-            );
-          acquired();
-          await gate;
-          if (change === "MFA")
-            await tx.accountMfaCredential.update({
-              where: { accountId: f.id },
-              data: { version: { increment: 1 } },
-            });
-          if (change === "TARGET")
-            await tx.video.update({
-              where: { id: f.video.id },
-              data: { status: "DRAFT", updatedAt: new Date(f.video.updatedAt.getTime() + 1) },
-            });
-        },
-        { timeout: 15000 },
-      );
-      await locked;
-      const pending = send(f.cookie, f.video.id, f.video.updatedAt.toISOString());
-      try {
-        await observed(
-          targetWait ? "ayin-admin-video-write-lock" : "ayin-admin-account-write-lock",
-        );
-        if (change === "ROLE")
-          await prisma.adminRoleAssignment.deleteMany({ where: { accountId: f.id } });
-        if (change === "ACCOUNT")
-          await prisma.account.update({ where: { id: f.id }, data: { status: "SUSPENDED" } });
-        if (change === "AUTHVERSION")
-          await prisma.account.update({
-            where: { id: f.id },
-            data: { authVersion: { increment: 1 } },
-          });
-        if (change === "SESSION")
-          await prisma.accountSession.updateMany({
-            where: { accountId: f.id },
-            data: { revokedAt: new Date(), revokeReason: "CONTROLLED_VIDEO_AUTHORITY_WINNER" },
-          });
-        if (change === "REAUTHTIME") vi.spyOn(Date, "now").mockReturnValue(Date.now() + 301000);
+  for (const command of ["UPDATE", "BULK"] as const)
+    for (const change of [
+      "ROLE",
+      "ACCOUNT",
+      "AUTHVERSION",
+      "SESSION",
+      "MFA",
+      "TARGET",
+      "REAUTHTIME",
+      "SESSIONEXPIRY",
+    ] as const)
+      it(`rejects actual ${change} winner for ${command} after an observed authority/video wait without command audit effects`, async () => {
+        const f = await fixture();
+        const priorAudits = await prisma.adminAuditLog.findMany({ orderBy: { id: "asc" } });
+        const targetWait = ["TARGET", "REAUTHTIME", "SESSIONEXPIRY"].includes(change);
         if (change === "SESSIONEXPIRY")
-          await vi.waitFor(
-            async () => {
-              const [row] = await prisma.$queryRaw<{ expired: boolean }[]>(
-                Prisma.sql`SELECT bool_and("expiresAt" <= clock_timestamp()) AS expired FROM "AccountSession" WHERE "accountId" = ${f.id}::uuid AND "revokedAt" IS NULL`,
+          await prisma.accountSession.updateMany({
+            where: { accountId: f.id, revokedAt: null },
+            data: { expiresAt: new Date(Date.now() + 1500) },
+          });
+        let acquired!: () => void, release!: () => void;
+        const locked = new Promise<void>((resolve) => {
+          acquired = resolve;
+        });
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const holder = prisma.$transaction(
+          async (tx) => {
+            if (targetWait)
+              await tx.$queryRaw(
+                Prisma.sql`SELECT id FROM "Video" WHERE id = ${f.video.id}::uuid FOR UPDATE`,
               );
-              expect(row?.expired).toBe(true);
-            },
-            { timeout: 3000, interval: 25 },
+            else
+              await tx.$queryRaw(
+                Prisma.sql`SELECT "accountId" FROM "AccountMfaCredential" WHERE "accountId" = ${f.id}::uuid FOR UPDATE`,
+              );
+            acquired();
+            await gate;
+            if (change === "MFA")
+              await tx.accountMfaCredential.update({
+                where: { accountId: f.id },
+                data: { version: { increment: 1 } },
+              });
+            if (change === "TARGET")
+              await tx.video.update({
+                where: { id: f.video.id },
+                data: { status: "DRAFT", updatedAt: new Date(f.video.updatedAt.getTime() + 1) },
+              });
+          },
+          { timeout: 15000 },
+        );
+        await locked;
+        const pending =
+          command === "UPDATE"
+            ? send(f.cookie, f.video.id, f.video.updatedAt.toISOString())
+            : Promise.resolve(
+                bulk(
+                  f.cookie,
+                  [f.video.id],
+                  [{ id: f.video.id, updatedAt: f.video.updatedAt.toISOString() }],
+                ),
+              );
+        try {
+          await observed(
+            targetWait ? "ayin-admin-video-write-lock" : "ayin-admin-account-write-lock",
           );
-      } finally {
-        release();
-      }
-      await holder;
-      const response = await pending;
-      vi.restoreAllMocks();
-      expect(response.statusCode).toBe(
-        change === "TARGET" ? 409 : change === "ROLE" || change === "REAUTHTIME" ? 403 : 401,
-      );
-      expect(await prisma.adminAuditLog.findMany({ orderBy: { id: "asc" } })).toEqual(priorAudits);
-      const actual = await prisma.video.findUniqueOrThrow({ where: { id: f.video.id } });
-      expect(actual).toEqual(
-        change === "TARGET"
-          ? { ...f.video, status: "DRAFT", updatedAt: new Date(f.video.updatedAt.getTime() + 1) }
-          : f.video,
-      );
-    });
+          if (change === "ROLE")
+            await prisma.adminRoleAssignment.deleteMany({ where: { accountId: f.id } });
+          if (change === "ACCOUNT")
+            await prisma.account.update({ where: { id: f.id }, data: { status: "SUSPENDED" } });
+          if (change === "AUTHVERSION")
+            await prisma.account.update({
+              where: { id: f.id },
+              data: { authVersion: { increment: 1 } },
+            });
+          if (change === "SESSION")
+            await prisma.accountSession.updateMany({
+              where: { accountId: f.id },
+              data: { revokedAt: new Date(), revokeReason: "CONTROLLED_VIDEO_AUTHORITY_WINNER" },
+            });
+          if (change === "REAUTHTIME") vi.spyOn(Date, "now").mockReturnValue(Date.now() + 301000);
+          if (change === "SESSIONEXPIRY")
+            await vi.waitFor(
+              async () => {
+                const [row] = await prisma.$queryRaw<{ expired: boolean }[]>(
+                  Prisma.sql`SELECT bool_and("expiresAt" <= clock_timestamp()) AS expired FROM "AccountSession" WHERE "accountId" = ${f.id}::uuid AND "revokedAt" IS NULL`,
+                );
+                expect(row?.expired).toBe(true);
+              },
+              { timeout: 3000, interval: 25 },
+            );
+        } finally {
+          release();
+        }
+        await holder;
+        const response = await pending;
+        vi.restoreAllMocks();
+        expect(response.statusCode).toBe(
+          change === "TARGET" ? 409 : change === "ROLE" || change === "REAUTHTIME" ? 403 : 401,
+        );
+        expect(await prisma.adminAuditLog.findMany({ orderBy: { id: "asc" } })).toEqual(
+          priorAudits,
+        );
+        const actual = await prisma.video.findUniqueOrThrow({ where: { id: f.video.id } });
+        expect(actual).toEqual(
+          change === "TARGET"
+            ? { ...f.video, status: "DRAFT", updatedAt: new Date(f.video.updatedAt.getTime() + 1) }
+            : f.video,
+        );
+      });
   it("reads all26actual rows in stable25-row pages and safe direct recovery; rejects Finance, malformed IDs and unknown filters", async () => {
     const f = await fixture();
     const same = new Date("2035-01-01T00:00:00Z");
