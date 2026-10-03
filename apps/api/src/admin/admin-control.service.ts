@@ -2,6 +2,11 @@ import { ConflictException, NotFoundException, Inject, Injectable } from "@nestj
 
 import { DatabaseService } from "../database/database.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
+import {
+  lockAdminAccountWrite,
+  nextAccountVersion,
+  type AccountWriteActor,
+} from "./admin-account-write-authority.js";
 import { adminBadRequest } from "./admin.errors.js";
 
 const accountReadSelection = {
@@ -46,6 +51,7 @@ interface TvFilters extends PageInput {
 }
 
 export interface AdminAccountPatch {
+  expectedUpdatedAt?: string | undefined;
   displayName?: string | undefined;
   status?: "ACTIVE" | "SUSPENDED" | undefined;
   reason?: string | undefined;
@@ -161,7 +167,8 @@ export class AdminControlService {
     return record;
   }
 
-  async updateAccount(actorAccountId: string, accountId: string, patch: AdminAccountPatch) {
+  async updateAccount(actor: AccountWriteActor, accountId: string, patch: AdminAccountPatch) {
+    const actorAccountId = actor.accountId;
     if (actorAccountId === accountId && patch.status === "SUSPENDED") {
       throw adminBadRequest(
         "SELF_SUSPEND_BLOCKED",
@@ -173,9 +180,13 @@ export class AdminControlService {
       throw adminBadRequest("INVALID_DISPLAY_NAME", "Display name cannot be empty.");
     }
     return this.database.client.$transaction(async (tx) => {
+      const current = await lockAdminAccountWrite(tx, actor, accountId, patch.expectedUpdatedAt);
+      if (patch.status !== undefined && current.status === "CLOSED")
+        throw new ConflictException("A closed account cannot be reactivated or suspended.");
       const account = await tx.account.update({
         where: { id: accountId },
         data: {
+          updatedAt: nextAccountVersion(current.updatedAt),
           ...(displayName !== undefined ? { displayName } : {}),
           ...(patch.status !== undefined
             ? {

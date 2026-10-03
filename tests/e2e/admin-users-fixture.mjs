@@ -42,6 +42,19 @@ try {
       data: { accountId: payload.accountId, role: "FINANCE_MANAGER" },
     });
     console.log(JSON.stringify({ accountId: payload.accountId }));
+  } else if (command === "change-target") {
+    const current = await prisma.account.findUniqueOrThrow({ where: { id: payload.targetId } });
+    const target = await prisma.account.update({
+      where: { id: current.id },
+      data: {
+        displayName: "Actual concurrent winner",
+        updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1)),
+      },
+      select: { id: true, updatedAt: true },
+    });
+    console.log(
+      JSON.stringify({ beforeUpdatedAt: current.updatedAt, updatedAt: target.updatedAt }),
+    );
   } else if (command === "evidence") {
     const target = await prisma.account.findUniqueOrThrow({
       where: { id: payload.targetId },

@@ -55,6 +55,7 @@ const moderationQuerySchema = pageSchema.extend({
 const reasonSchema = z.string().trim().min(3).max(500).optional();
 const accountPatchSchema = z
   .object({
+    expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
     displayName: z.string().trim().min(1).max(120).optional(),
     status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
     reason: reasonSchema,
@@ -155,7 +156,7 @@ export class AdminControlController {
     @Body() body: unknown,
   ) {
     return this.control.updateAccount(
-      request.ayinAuth.accountId,
+      request.ayinAuth,
       this.id(accountIdRaw),
       this.parse(accountPatchSchema, body, "INVALID_ACCOUNT_UPDATE"),
     );
