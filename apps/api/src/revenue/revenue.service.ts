@@ -12,6 +12,7 @@ import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { selectEffectiveContract } from "./contract-selection.js";
 import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
+import { financeRecoveryActions, financeRecoveryMetadata } from "./finance-action-view.js";
 import { applyRevenueShareMicros, formatMoneyMicros, parseMoneyMicros } from "./money.js";
 import {
   adjustmentSchema,
@@ -55,6 +56,28 @@ export class RevenueService {
         typeof rawThreshold === "string" && /^\d+$/.test(rawThreshold)
           ? rawThreshold
           : DEFAULT_PAYOUT_THRESHOLD_MICROS,
+    };
+  }
+
+  async recentFinanceActions(actorAccountId: string) {
+    const rows = await this.database.client.adminAuditLog.findMany({
+      where: { actorAccountId, action: { in: [...financeRecoveryActions] } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+      select: {
+        id: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        reason: true,
+        createdAt: true,
+        metadata: true,
+      },
+    });
+    return {
+      actorAccountId,
+      limit: 100,
+      items: rows.map((row) => ({ ...row, metadata: financeRecoveryMetadata(row.metadata) })),
     };
   }
 

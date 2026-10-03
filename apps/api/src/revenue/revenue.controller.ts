@@ -133,6 +133,7 @@ export class AdminRevenueController {
   ) {}
 
   @Get("settings")
+  @Header("Cache-Control", "private, no-store")
   settings() {
     return this.revenue.getSettings();
   }
@@ -143,6 +144,7 @@ export class AdminRevenueController {
   }
 
   @Get("channels/:channelId/contracts")
+  @Header("Cache-Control", "private, no-store")
   contracts(@Param("channelId") channelId: string) {
     return this.revenue.getChannelContracts(channelId);
   }
@@ -167,6 +169,7 @@ export class AdminRevenueController {
   }
 
   @Get("ledger")
+  @Header("Cache-Control", "private, no-store")
   ledger(@Query() query: Record<string, string | undefined>) {
     return this.revenue.searchLedger(query);
   }
@@ -178,6 +181,7 @@ export class AdminRevenueController {
   }
 
   @Get("payouts")
+  @Header("Cache-Control", "private, no-store")
   async payouts(
     @Query("channelId") channelId?: string,
     @Query("status") status?: string,
@@ -235,13 +239,21 @@ export class AdminRevenueController {
   }
 
   @Get("finance-summary")
+  @Header("Cache-Control", "private, no-store")
   financeSummary() {
     return this.finance.adminFinanceSummary();
   }
 
   @Get("disputes")
+  @Header("Cache-Control", "private, no-store")
   disputes(@Query("status") status?: string) {
     return this.finance.adminDisputes(status);
+  }
+
+  @Get("actions")
+  @Header("Cache-Control", "private, no-store")
+  actions(@Req() request: AuthenticatedRequest) {
+    return this.revenue.recentFinanceActions(request.ayinAuth.accountId);
   }
 
   @Patch("disputes/:disputeId")

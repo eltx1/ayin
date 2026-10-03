@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 
 import { AdminGuard, RequireAdminRoles } from "../admin/admin.guard.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -14,6 +25,7 @@ export class RevenueReconciliationController {
   ) {}
 
   @Get("capabilities")
+  @Header("Cache-Control", "private, no-store")
   capabilities() {
     return this.reconciliation.capabilities();
   }
@@ -24,11 +36,13 @@ export class RevenueReconciliationController {
   }
 
   @Get("reports")
+  @Header("Cache-Control", "private, no-store")
   reports(@Query() query: Record<string, string | undefined>) {
     return this.reconciliation.listReports(query);
   }
 
   @Get("reports/:reportId")
+  @Header("Cache-Control", "private, no-store")
   report(@Param("reportId") reportId: string) {
     return this.reconciliation.getReport(reportId);
   }
