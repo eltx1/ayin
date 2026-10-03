@@ -155,6 +155,23 @@ function MilestoneDetails({ milestone }: { milestone: Milestone }) {
     />
   );
 }
+
+// Read-only detail trees mount on the first native disclosure toggle. Retain
+// them afterwards so closing/reopening and tab switches keep the same content.
+function ReportDisclosure({ summary, details }: { summary: string; details: () => ReactNode }) {
+  const [visited, setVisited] = useState(false);
+  return (
+    <Disclosure
+      summary={summary}
+      onToggle={(event) => {
+        if (event.currentTarget.open) setVisited(true);
+      }}
+    >
+      {visited ? details() : null}
+    </Disclosure>
+  );
+}
+
 function CohortPanel({ title, rows }: { title: string; rows: Cohort[] }) {
   const { copy, number, percent, date } = useReportFormat();
   return (
@@ -182,14 +199,23 @@ function CohortPanel({ title, rows }: { title: string; rows: Cohort[] }) {
               key: "details",
               heading: copy.milestone,
               render: (row) => (
-                <Disclosure summary={copy.milestone}>
-                  {(["d1", "d7", "d30"] as const).map((key) => (
-                    <section key={key}>
-                      <h3>{key.toUpperCase()}</h3>
-                      {row[key] ? <MilestoneDetails milestone={row[key]} /> : <p>{copy.pending}</p>}
-                    </section>
-                  ))}
-                </Disclosure>
+                <ReportDisclosure
+                  summary={copy.milestone}
+                  details={() => (
+                    <>
+                      {(["d1", "d7", "d30"] as const).map((key) => (
+                        <section key={key}>
+                          <h3>{key.toUpperCase()}</h3>
+                          {row[key] ? (
+                            <MilestoneDetails milestone={row[key]} />
+                          ) : (
+                            <p>{copy.pending}</p>
+                          )}
+                        </section>
+                      ))}
+                    </>
+                  )}
+                />
               ),
             },
           ]}
@@ -223,19 +249,22 @@ function AudienceDaily({ data }: { data: CreatorAnalytics }) {
               key: "details",
               heading: copy.dataQuality,
               render: (row) => (
-                <Disclosure summary={copy.dataQuality}>
-                  <Facts
-                    items={[
-                      [copy.sessions, number(row.sessions)],
-                      [copy.sessionsPerProfile, number(row.sessionsPerActiveProfile)],
-                      [copy.watchTime, duration(row.watchTimeMs)],
-                      [
-                        copy.contentReturn,
-                        `${number(row.contentReturnProfiles)} (${percent(row.contentReturnRate)})`,
-                      ],
-                    ]}
-                  />
-                </Disclosure>
+                <ReportDisclosure
+                  summary={copy.dataQuality}
+                  details={() => (
+                    <Facts
+                      items={[
+                        [copy.sessions, number(row.sessions)],
+                        [copy.sessionsPerProfile, number(row.sessionsPerActiveProfile)],
+                        [copy.watchTime, duration(row.watchTimeMs)],
+                        [
+                          copy.contentReturn,
+                          `${number(row.contentReturnProfiles)} (${percent(row.contentReturnRate)})`,
+                        ],
+                      ]}
+                    />
+                  )}
+                />
               ),
             },
           ]}
