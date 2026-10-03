@@ -2,8 +2,13 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const sessionCookiePrefix = "ayin_session=";
-const cacheablePublicPrefixes = ["/public/channels", "/public/playlists"];
-const contextualPublicPrefixes = ["/public/discovery", "/public/videos"];
+const cacheablePublicPrefixes = ["/public/playlists"];
+const contextualPublicPrefixes = [
+  "/public/discovery",
+  "/public/videos",
+  "/public/channels",
+  "/public/seo",
+];
 
 function withinPrefix(url: string, prefix: string) {
   return url === prefix || url.startsWith(`${prefix}/`) || url.startsWith(`${prefix}?`);

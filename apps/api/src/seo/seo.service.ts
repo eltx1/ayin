@@ -1,3 +1,5 @@
+import { Prisma } from "@ayin/db";
+import { publicVideoEligibility, publicVideoSelect } from "../creator/public-video-read.js";
 import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -121,172 +123,167 @@ export class SeoService {
     };
   }
 
-  async getChannel(handle: string) {
-    const channel = await this.database.client.channel.findUnique({
-      where: { handle },
-      select: {
-        id: true,
-        handle: true,
-        name: true,
-        description: true,
-        status: true,
-        createdAt: true,
-        updatedAt: true,
-        removedAt: true,
-        mediaAssets: {
-          where: {
-            removedAt: null,
-            status: { in: [...completedImageStatuses] },
-            kind: { in: ["CHANNEL_AVATAR", "CHANNEL_BANNER"] },
-          },
-          orderBy: { createdAt: "desc" },
+  async getChannel(handle: string, context: VideoPolicyContext = {}) {
+    const policyContext = { ...context, now: context.now ?? new Date() };
+    return this.database.client.$transaction(
+      async (tx) => {
+        const channel = await tx.channel.findUnique({
+          where: { handle },
           select: {
-            kind: true,
-            r2ObjectKey: true,
-            mimeType: true,
-            width: true,
-            height: true,
-          },
-        },
-        _count: {
-          select: {
-            videos: { where: playableVideoWhere },
-            playlists: {
+            id: true,
+            handle: true,
+            name: true,
+            description: true,
+            status: true,
+            createdAt: true,
+            updatedAt: true,
+            removedAt: true,
+            mediaAssets: {
               where: {
-                visibility: "PUBLIC",
-                isPublic: true,
-                deletedAt: null,
-                items: { some: publicPlaylistVideoWhere },
+                removedAt: null,
+                status: { in: [...completedImageStatuses] },
+                kind: { in: ["CHANNEL_AVATAR", "CHANNEL_BANNER"] },
+              },
+              orderBy: { createdAt: "desc" },
+              select: {
+                kind: true,
+                r2ObjectKey: true,
+                mimeType: true,
+                width: true,
+                height: true,
               },
             },
           },
-        },
+        });
+
+        if (!channel || channel.status !== "ACTIVE" || channel.removedAt) {
+          throw new NotFoundException("This channel is not available for SEO metadata.");
+        }
+
+        const [counts] = await tx.$queryRaw<
+          { videoCount: number; playlistCount: number }[]
+        >(Prisma.sql`
+      SELECT (SELECT COUNT(*)::integer FROM "Video" v WHERE v."channelId" = ${channel.id}::uuid
+        AND ${publicVideoEligibility(policyContext)}) AS "videoCount",
+      (SELECT COUNT(*)::integer FROM "Playlist" p WHERE p."channelId" = ${channel.id}::uuid
+        AND p.visibility = 'PUBLIC' AND p."isPublic" = TRUE AND p."deletedAt" IS NULL
+        AND EXISTS (SELECT 1 FROM "PlaylistItem" i JOIN "Video" v ON v.id = i."videoId"
+          WHERE i."playlistId" = p.id AND ${publicVideoEligibility(policyContext)})) AS "playlistCount"
+    `);
+        if (!counts) throw new Error("Missing channel count projection.");
+        const avatar = channel.mediaAssets.find((asset) => asset.kind === "CHANNEL_AVATAR");
+        const banner = channel.mediaAssets.find((asset) => asset.kind === "CHANNEL_BANNER");
+        return {
+          id: channel.id,
+          handle: channel.handle,
+          name: channel.name,
+          description: channel.description,
+          createdAt: channel.createdAt,
+          updatedAt: channel.updatedAt,
+          publicVideoCount: counts.videoCount,
+          publicPlaylistCount: counts.playlistCount,
+          avatar: avatar
+            ? {
+                objectKey: avatar.r2ObjectKey,
+                mimeType: avatar.mimeType,
+                width: avatar.width,
+                height: avatar.height,
+              }
+            : null,
+          banner: banner
+            ? {
+                objectKey: banner.r2ObjectKey,
+                mimeType: banner.mimeType,
+                width: banner.width,
+                height: banner.height,
+              }
+            : null,
+        };
       },
-    });
-
-    if (!channel || channel.status !== "ACTIVE" || channel.removedAt) {
-      throw new NotFoundException("This channel is not available for SEO metadata.");
-    }
-
-    const avatar = channel.mediaAssets.find((asset) => asset.kind === "CHANNEL_AVATAR");
-    const banner = channel.mediaAssets.find((asset) => asset.kind === "CHANNEL_BANNER");
-    return {
-      id: channel.id,
-      handle: channel.handle,
-      name: channel.name,
-      description: channel.description,
-      createdAt: channel.createdAt,
-      updatedAt: channel.updatedAt,
-      publicVideoCount: channel._count.videos,
-      publicPlaylistCount: channel._count.playlists,
-      avatar: avatar
-        ? {
-            objectKey: avatar.r2ObjectKey,
-            mimeType: avatar.mimeType,
-            width: avatar.width,
-            height: avatar.height,
-          }
-        : null,
-      banner: banner
-        ? {
-            objectKey: banner.r2ObjectKey,
-            mimeType: banner.mimeType,
-            width: banner.width,
-            height: banner.height,
-          }
-        : null,
-    };
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
   async getPlaylist(handle: string, slug: string, context: VideoPolicyContext = {}) {
-    const playlist = await this.database.client.playlist.findFirst({
-      where: {
-        slug,
-        deletedAt: null,
-        visibility: { in: ["PUBLIC", "UNLISTED"] },
-        isPublic: true,
-        channel: { handle, status: "ACTIVE", removedAt: null },
-      },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        description: true,
-        visibility: true,
-        createdAt: true,
-        updatedAt: true,
-        channel: { select: { id: true, handle: true, name: true } },
-        items: {
-          where: publicPlaylistVideoWhere,
-          orderBy: { position: "asc" },
-          take: 50,
+    const policyContext = { ...context, now: context.now ?? new Date() };
+    return this.database.client.$transaction(
+      async (tx) => {
+        const playlist = await tx.playlist.findFirst({
+          where: {
+            slug,
+            deletedAt: null,
+            visibility: { in: ["PUBLIC", "UNLISTED"] },
+            isPublic: true,
+            channel: { handle, status: "ACTIVE", removedAt: null },
+          },
           select: {
-            position: true,
-            video: {
+            id: true,
+            slug: true,
+            name: true,
+            description: true,
+            visibility: true,
+            createdAt: true,
+            updatedAt: true,
+            channel: { select: { id: true, handle: true, name: true } },
+          },
+        });
+
+        if (!playlist) {
+          throw new NotFoundException("This playlist is not available for SEO metadata.");
+        }
+
+        const candidates = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT i.id FROM "PlaylistItem" i JOIN "Video" v ON v.id = i."videoId"
+      WHERE i."playlistId" = ${playlist.id}::uuid AND ${publicVideoEligibility(policyContext)}
+      ORDER BY i.position ASC, i.id ASC LIMIT 50
+    `);
+        const availableItems = candidates.length
+          ? await tx.playlistItem.findMany({
+              where: { id: { in: candidates.map((item) => item.id) } },
+              orderBy: [{ position: "asc" }, { id: "asc" }],
               select: {
-                id: true,
-                slug: true,
-                title: true,
-                description: true,
-                durationMs: true,
-                publishedAt: true,
-                mediaAssets: {
-                  where: {
-                    kind: "THUMBNAIL",
-                    status: { in: [...completedImageStatuses] },
-                    removedAt: null,
-                  },
-                  orderBy: { createdAt: "desc" },
-                  take: 1,
+                position: true,
+                video: {
                   select: {
-                    r2ObjectKey: true,
-                    mimeType: true,
-                    width: true,
-                    height: true,
+                    ...publicVideoSelect,
+                    mediaAssets: {
+                      ...publicVideoSelect.mediaAssets,
+                      select: { r2ObjectKey: true, mimeType: true, width: true, height: true },
+                    },
                   },
                 },
               },
+            })
+          : [];
+        if (!availableItems.length) {
+          throw new NotFoundException("This playlist is not available for SEO metadata.");
+        }
+
+        return {
+          id: playlist.id,
+          slug: playlist.slug,
+          name: playlist.name,
+          description: playlist.description,
+          visibility: playlist.visibility,
+          createdAt: playlist.createdAt,
+          updatedAt: playlist.updatedAt,
+          channel: playlist.channel,
+          items: availableItems.map((item) => ({
+            position: item.position,
+            video: {
+              id: item.video.id,
+              slug: item.video.slug,
+              title: item.video.title,
+              description: item.video.description,
+              durationMs: item.video.durationMs,
+              publishedAt: item.video.publishedAt,
+              thumbnail: item.video.mediaAssets[0] ?? null,
             },
-          },
-        },
+          })),
+        };
       },
-    });
-
-    if (!playlist) {
-      throw new NotFoundException("This playlist is not available for SEO metadata.");
-    }
-
-    const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
-      playlist.items.map((item) => item.video.id),
-      context,
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
-    const availableItems = playlist.items.filter((item) => allowedVideoIds.has(item.video.id));
-    if (!availableItems.length) {
-      throw new NotFoundException("This playlist is not available for SEO metadata.");
-    }
-
-    return {
-      id: playlist.id,
-      slug: playlist.slug,
-      name: playlist.name,
-      description: playlist.description,
-      visibility: playlist.visibility,
-      createdAt: playlist.createdAt,
-      updatedAt: playlist.updatedAt,
-      channel: playlist.channel,
-      items: availableItems.map((item) => ({
-        position: item.position,
-        video: {
-          id: item.video.id,
-          slug: item.video.slug,
-          title: item.video.title,
-          description: item.video.description,
-          durationMs: item.video.durationMs,
-          publishedAt: item.video.publishedAt,
-          thumbnail: item.video.mediaAssets[0] ?? null,
-        },
-      })),
-    };
   }
 
   async listSitemap(kind: SeoSitemapKind, offset: number, limit: number) {

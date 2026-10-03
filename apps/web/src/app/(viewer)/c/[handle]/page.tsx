@@ -6,6 +6,7 @@ import type { CSSProperties } from "react";
 import { OwnerChannelActions } from "@/components/channel/owner-channel-actions";
 import { SubscribeButton } from "@/components/social/subscribe-button";
 import styles from "@/components/channel/public-channel.module.css";
+import { trustedApiRegionHeaders } from "@/lib/trusted-region";
 import { apiBaseUrl } from "@/lib/api";
 import {
   channelTabs,
@@ -30,12 +31,16 @@ import {
 
 interface PublicChannelPageProperties {
   params: Promise<{ handle: string }>;
-  searchParams: Promise<{ tab?: string | string[] }>;
+  searchParams: Promise<{ tab?: string | string[]; kids?: string | string[] }>;
 }
 
-export async function generateMetadata({ params }: PublicChannelPageProperties): Promise<Metadata> {
-  const [{ handle }, locale] = await Promise.all([params, getRequestLocale()]);
-  const channel = await getSeoChannel(handle);
+export async function generateMetadata({
+  params,
+  searchParams,
+}: PublicChannelPageProperties): Promise<Metadata> {
+  const [{ handle }, locale, query] = await Promise.all([params, getRequestLocale(), searchParams]);
+  const kidsMode = query.kids === "1";
+  const channel = await getSeoChannel(handle, await trustedApiRegionHeaders(), kidsMode);
   if (!channel)
     return { title: translate(locale, "channel.unavailable"), robots: metadataRobots(false) };
 
@@ -55,7 +60,7 @@ export async function generateMetadata({ params }: PublicChannelPageProperties):
     title: channel.name,
     description,
     alternates: { canonical },
-    robots: metadataRobots(true),
+    robots: metadataRobots(!kidsMode),
     openGraph: {
       type: "profile",
       siteName: "AYIN",
@@ -78,31 +83,42 @@ export default async function PublicChannelPage({
   searchParams,
 }: PublicChannelPageProperties) {
   const [{ handle }, query, locale] = await Promise.all([params, searchParams, getRequestLocale()]);
+  const kidsMode = query.kids === "1";
+  const policySuffix = kidsMode ? "?kids=1" : "";
   const t = (key: TranslationKey, values?: TranslationValues) => translate(locale, key, values);
   const [response, seoChannel] = await Promise.all([
-    fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}`, { cache: "no-store" }),
-    getSeoChannel(handle),
+    fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}${policySuffix}`, {
+      cache: "no-store",
+      headers: await trustedApiRegionHeaders(),
+      signal: AbortSignal.timeout(10_000),
+    }),
+    getSeoChannel(handle, await trustedApiRegionHeaders(), kidsMode),
   ]);
   if (response.status === 404) notFound();
   if (!response.ok) throw new Error(t("channel.loadError"));
 
   const data = (await response.json()) as PublicChannelResponse;
   if (data.redirectedFrom && data.canonicalHandle !== handle) {
-    permanentRedirect(localizePath(`/c/${encodeURIComponent(data.canonicalHandle)}`, locale));
+    permanentRedirect(
+      localizePath(`/c/${encodeURIComponent(data.canonicalHandle)}${policySuffix}`, locale),
+    );
   }
 
   const requestedTab = Array.isArray(query.tab) ? query.tab[0] : query.tab;
-  if (requestedTab === "posts" && data.features.posts) {
+  if (!kidsMode && requestedTab === "posts" && data.features.posts) {
     permanentRedirect(localizePath(`/c/${data.channel.handle}/community`, locale));
   }
 
-  const activeTab = resolveChannelTab(query.tab, data.features);
-  const tabs = channelTabs(data.features);
+  const activeTab =
+    kidsMode && (requestedTab === "tv" || requestedTab === "posts")
+      ? "home"
+      : resolveChannelTab(query.tab, data.features);
+  const tabs = channelTabs(data.features).filter((tab) => !kidsMode || tab.id !== "tv");
   const avatarUrl = mediaAssetUrl(data.appearance.avatar?.objectKey);
   const bannerUrl = mediaAssetUrl(data.appearance.banner?.objectKey);
   const accent = data.appearance.accentColor ?? "#63D1CC";
   const initial = data.channel.name.trim().charAt(0).toUpperCase() || "A";
-  const structuredData = seoChannel ? buildChannelStructuredData(seoChannel) : null;
+  const structuredData = !kidsMode && seoChannel ? buildChannelStructuredData(seoChannel) : null;
 
   return (
     <main className={styles.page} style={{ "--channel-accent": accent } as CSSProperties}>
@@ -159,8 +175,8 @@ export default async function PublicChannelPage({
             data-tv-focus-id={`channel-tab-${tab.id}`}
             href={localizePath(
               tab.id === "home"
-                ? `/c/${data.channel.handle}`
-                : `/c/${data.channel.handle}?tab=${tab.id}`,
+                ? `/c/${data.channel.handle}${policySuffix}`
+                : `/c/${data.channel.handle}?tab=${tab.id}${kidsMode ? "&kids=1" : ""}`,
               locale,
             )}
             key={tab.id}
@@ -168,7 +184,7 @@ export default async function PublicChannelPage({
             {channelTabLabel(tab.id, tab.label, locale)}
           </Link>
         ))}
-        {data.features.posts ? (
+        {!kidsMode && data.features.posts ? (
           <Link
             className={styles.tab}
             data-tv-focusable="true"
@@ -183,14 +199,18 @@ export default async function PublicChannelPage({
       <div className={styles.content}>
         {activeTab === "home" ? (
           <>
-            <CreatorTvSection data={data} locale={locale} />
-            <VideoSection data={data} limit={8} locale={locale} />
-            <PlaylistSection data={data} limit={4} locale={locale} />
+            {!kidsMode ? <CreatorTvSection data={data} locale={locale} /> : null}
+            <VideoSection data={data} limit={8} locale={locale} kidsMode={kidsMode} />
+            <PlaylistSection data={data} limit={4} locale={locale} kidsMode={kidsMode} />
           </>
         ) : null}
-        {activeTab === "videos" ? <VideoSection data={data} locale={locale} /> : null}
+        {activeTab === "videos" ? (
+          <VideoSection data={data} locale={locale} kidsMode={kidsMode} />
+        ) : null}
         {activeTab === "tv" ? <CreatorTvSection data={data} locale={locale} /> : null}
-        {activeTab === "playlists" ? <PlaylistSection data={data} locale={locale} /> : null}
+        {activeTab === "playlists" ? (
+          <PlaylistSection data={data} locale={locale} kidsMode={kidsMode} />
+        ) : null}
         {activeTab === "about" ? <AboutSection data={data} locale={locale} /> : null}
       </div>
     </main>
@@ -229,10 +249,12 @@ function VideoSection({
   data,
   limit,
   locale,
+  kidsMode,
 }: {
   data: PublicChannelResponse;
   limit?: number;
   locale: Locale;
+  kidsMode: boolean;
 }) {
   const t = (key: TranslationKey) => translate(locale, key);
   const videos = limit ? data.videos.slice(0, limit) : data.videos;
@@ -249,7 +271,10 @@ function VideoSection({
             return (
               <Link
                 className={styles.videoCard}
-                href={localizePath(`/watch/${encodeURIComponent(video.slug)}`, locale)}
+                href={localizePath(
+                  `/watch/${encodeURIComponent(video.slug)}${kidsMode ? "?kids=1" : ""}`,
+                  locale,
+                )}
                 key={video.id}
               >
                 <div
@@ -279,10 +304,12 @@ function PlaylistSection({
   data,
   limit,
   locale,
+  kidsMode,
 }: {
   data: PublicChannelResponse;
   limit?: number;
   locale: Locale;
+  kidsMode: boolean;
 }) {
   const t = (key: TranslationKey, values?: TranslationValues) => translate(locale, key, values);
   const playlists = limit ? data.playlists.slice(0, limit) : data.playlists;
@@ -296,7 +323,10 @@ function PlaylistSection({
           {playlists.map((playlist) => (
             <Link
               className={styles.playlistCard}
-              href={localizePath(`/c/${data.channel.handle}/playlists/${playlist.slug}`, locale)}
+              href={localizePath(
+                `/c/${data.channel.handle}/playlists/${playlist.slug}${kidsMode ? "?kids=1" : ""}`,
+                locale,
+              )}
               key={playlist.id}
             >
               <h3 dir="auto">{playlist.name}</h3>

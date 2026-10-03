@@ -3,6 +3,9 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
+  Headers,
+  Query,
   HttpException,
   Inject,
   Param,
@@ -14,6 +17,7 @@ import {
 } from "@nestjs/common";
 import { z } from "zod";
 
+import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import {
   PlaylistError,
@@ -43,11 +47,26 @@ const reorderSchema = z.object({ itemIds: z.array(uuidSchema).max(500) }).strict
 
 @Controller("public/channels")
 export class PublicPlaylistController {
-  constructor(@Inject(PlaylistService) private readonly playlists: PlaylistService) {}
+  constructor(
+    @Inject(PlaylistService) private readonly playlists: PlaylistService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+  ) {}
 
   @Get(":handle/playlists/:slug")
-  async getPlaylist(@Param("handle") handle: string, @Param("slug") slug: string) {
-    return runPlaylistOperation(() => this.playlists.getPublicPlaylist(handle, slug));
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  async getPlaylist(
+    @Param("handle") handle: string,
+    @Param("slug") slug: string,
+    @Query("kids") kids: string | undefined,
+    @Headers() headers: HeaderBag,
+  ) {
+    return runPlaylistOperation(() =>
+      this.playlists.getPublicPlaylist(handle, slug, {
+        countryCode: this.trustedRegion.countryFromHeaders(headers),
+        isKidsProfile: kids === "1",
+      }),
+    );
   }
 }
 

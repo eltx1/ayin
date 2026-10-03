@@ -82,7 +82,7 @@ describe("request security", () => {
 
   it("retains short shared caching only for public prefixes without trusted-region response context", () => {
     expect(
-      cacheControlForRequest({ method: "GET", url: "/public/channels/actual-handle" } as never),
+      cacheControlForRequest({ method: "GET", url: "/public/playlists/actual-slug" } as never),
     ).toBe("public, max-age=30, s-maxage=60, stale-while-revalidate=120");
     expect(cacheControlForRequest({ method: "GET", url: "/auth/me" } as never)).toBe("no-store");
     expect(cacheControlForRequest({ method: "POST", url: "/public/discovery/home" } as never)).toBe(
@@ -91,6 +91,10 @@ describe("request security", () => {
   });
   it("never shares public territory/personalization responses or their errors across contexts", () => {
     for (const url of [
+      "/public/seo/channels/actual-handle",
+      "/public/seo/playlists/actual-handle/actual-slug?kids=1",
+      "/public/channels/actual-handle",
+      "/public/channels/actual-handle/playlists/actual-slug?kids=1",
       "/public/discovery",
       "/public/discovery?limit=2",
       "/public/discovery/home",
@@ -99,7 +103,12 @@ describe("request security", () => {
     ])
       for (const method of ["GET", "HEAD", "POST"])
         expect(cacheControlForRequest({ method, url })).toBe("private, no-store");
-    for (const url of ["/public/discovery-other", "/public/videos-other", "/auth/me"])
+    for (const url of [
+      "/public/discovery-other",
+      "/public/videos-other",
+      "/public/channels-other",
+      "/auth/me",
+    ])
       expect(cacheControlForRequest({ method: "GET", url })).toBe("no-store");
   });
 });

@@ -36,6 +36,8 @@ export default defineConfig({
         WEB_ORIGIN: "http://127.0.0.1:3000",
         CORS_ORIGIN: "http://127.0.0.1:3000",
         AYIN_E2E_STORAGE: "1",
+        AYIN_INTERNAL_EDGE_TOKEN: "controlled-e2e-viewer-policy-edge-token-more-than32",
+        AYIN_TRUST_CLOUDFLARE_REGION: "false",
       },
     },
     {
@@ -48,6 +50,7 @@ export default defineConfig({
         PORT: "3000",
         NEXT_PUBLIC_API_BASE_URL: "http://127.0.0.1:3001",
         NEXT_PUBLIC_MEDIA_BASE_URL: "http://media.invalid",
+        AYIN_INTERNAL_EDGE_TOKEN: "controlled-e2e-viewer-policy-edge-token-more-than32",
       },
     },
   ],
