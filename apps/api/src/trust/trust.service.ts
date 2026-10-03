@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
@@ -146,7 +146,9 @@ export class TrustService {
     };
   }
   async readRecord(kind: string, id: string) {
-    const parsed = trustRecordSchema.parse({ kind, id });
+    const result = trustRecordSchema.safeParse({ kind, id });
+    if (!result.success) throw new BadRequestException("This Trust record link is invalid.");
+    const parsed = result.data;
     const record =
       parsed.kind === "cases"
         ? await this.db.client.moderationCase.findUnique({ where: { id: parsed.id } })
