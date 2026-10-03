@@ -1,3 +1,4 @@
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
@@ -60,19 +61,24 @@ export class AdminPayoutCreationService {
   }) {
     const settings = await this.revenue.getSettings();
     const threshold = BigInt(settings.payoutThresholdMicros);
-    await this.compliance.assertPayoutEligible(input.channelId);
+    // Resolve the asynchronous provider requirement boundary before holding locks.
+    const compliance = await this.compliance.preparePayoutCompliance(input.channelId);
 
     return this.database.client.$transaction(async (tx) => {
       if (input.requestSource === "CREATOR")
         await assertCreatorFinanceAuthority(tx, input.channelId, input.actorAccountId);
       else await lockFinanceChannel(tx, input.channelId);
 
+      await tx.$queryRaw(
+        Prisma.sql`/* ayin-payout-compliance-profile-lock */ SELECT "id" FROM "CreatorPayoutProfile" WHERE "channelId" = ${input.channelId}::uuid FOR SHARE`,
+      );
       const profile = await tx.creatorPayoutProfile.findUnique({
         where: { channelId: input.channelId },
       });
       if (!profile?.destinationMask || !profile.legalName) {
         throw new Error("PAYOUT_PROFILE_INCOMPLETE");
       }
+      this.compliance.assertPreparedPayoutEligible(profile, compliance);
       if (input.expectedProvider && profile.provider !== input.expectedProvider) {
         throw new Error("PAYOUT_PROVIDER_NOT_CONNECTED");
       }
