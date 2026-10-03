@@ -1,0 +1,7 @@
+{
+  "scope": "Actual worker fixture delays skipWaiting 15s; UI deadline remains 10s",
+  "navigations": 0,
+  "ownedCacheNames": [
+    "ayin-pwa-v5-late-test-static"
+  ]
+}

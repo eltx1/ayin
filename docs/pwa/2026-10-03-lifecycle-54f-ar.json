@@ -1,0 +1,13 @@
+{
+  "scope": "Chromium production-bundle loopback software acceptance; worker version fixture only",
+  "locale": "ar",
+  "initialVersion": "v3",
+  "activatedVersion": "v4-test",
+  "dismissedNativeWarnings": 1,
+  "explicitSavedDraftWrites": 1,
+  "explicitRefreshNavigations": 1,
+  "otherTabNavigations": 0,
+  "ownedCacheNames": [
+    "ayin-pwa-v4-test-static"
+  ]
+}
