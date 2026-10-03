@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Inject,
   Param,
   Patch,
@@ -34,7 +35,9 @@ export class TrustController {
     this.rateLimiter.consume(`appeal:${r.ayinAuth.accountId}`, 10);
     return this.trust.appeal(r.ayinAuth.accountId, b);
   }
-  @Get("creator/history") history(@Req() r: AuthenticatedRequest) {
+  @Get("creator/history")
+  @Header("Cache-Control", "no-store")
+  history(@Req() r: AuthenticatedRequest) {
     return this.trust.creatorHistory(r.ayinAuth.accountId);
   }
 }
@@ -44,13 +47,24 @@ export class TrustController {
 @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
 export class AdminTrustController {
   constructor(@Inject(TrustService) private readonly trust: TrustService) {}
-  @Get("queue") queue() {
+  @Get("queue")
+  @Header("Cache-Control", "no-store")
+  queue() {
     return this.trust.listQueue();
   }
-  @Get("actions") recentActions(@Req() r: AuthenticatedRequest) {
+  @Get("actions")
+  @Header("Cache-Control", "no-store")
+  recentActions(@Req() r: AuthenticatedRequest) {
     return this.trust.listActorActions(r.ayinAuth.accountId);
   }
-  @Get("settings") settings() {
+  @Get("records/:kind/:id")
+  @Header("Cache-Control", "no-store")
+  record(@Param("kind") kind: string, @Param("id") id: string) {
+    return this.trust.readRecord(kind, id);
+  }
+  @Get("settings")
+  @Header("Cache-Control", "no-store")
+  settings() {
     return this.trust.settings();
   }
   @Put("settings")

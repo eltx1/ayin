@@ -6,7 +6,6 @@ import { Disclosure, PageControls } from "@/components/ui/data-presentation";
 import {
   ActionButton,
   ActionLink,
-  DataBadge,
   MetricList,
   PageHeader,
   StatusNotice,
@@ -21,6 +20,7 @@ import {
   type TvSnapshot,
 } from "@/lib/creator-tv-management";
 import styles from "./creator-tv-manager.module.css";
+import { CreatorTvStatus } from "./creator-tv-status";
 
 type Draft = { included: boolean; priority: string; sortOrder: string };
 const initial = (row: ManagedTvVideo): Draft => ({
@@ -216,7 +216,6 @@ export function CreatorTvManager({ embedded = false }: { embedded?: boolean } = 
   const rows = snapshot?.videos ?? [],
     currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / 20))),
     start = (currentPage - 1) * 20,
-    output = snapshot?.output.output,
     disabled = saving || loading || locked;
   return (
     <Surface className={styles.workspace}>
@@ -339,37 +338,12 @@ export function CreatorTvManager({ embedded = false }: { embedded?: boolean } = 
               },
             ]}
           />
-          <section className={styles.panel} aria-label={text("TV output", "خرج التلفزيون")}>
-            <h2>{text("TV output", "خرج التلفزيون")}</h2>
-            <DataBadge>
-              {output &&
-                (!output.configured
-                  ? text("Not configured", "غير مهيأ")
-                  : output.available
-                    ? text("Ready", "جاهز")
-                    : output.status === "ERROR"
-                      ? text("Error", "خطأ")
-                      : output.status === "STOPPED"
-                        ? text("Stopped", "متوقف")
-                        : text("Waiting", "قيد الانتظار"))}
-            </DataBadge>
-            <p>
-              {text("Programs in this schedule snapshot", "البرامج في هذه القراءة")}:{" "}
-              {formatNumber(snapshot.output.schedule.programCount)}
-            </p>
-            <p>
-              {text("Checked at", "وقت القراءة")}:{" "}
-              <time dir="ltr" dateTime={snapshot.output.checkedAt}>
-                {snapshot.output.checkedAt}
-              </time>
-            </p>
-            <p>
-              {text(
-                "This is a status snapshot, not a provider readiness guarantee.",
-                "هذه قراءة للحالة وليست ضمانًا لجاهزية مزود البث.",
-              )}
-            </p>
-          </section>
+          <CreatorTvStatus
+            key={snapshot.tv.id}
+            tvChannelId={snapshot.tv.id}
+            accountId={snapshot.accountId}
+            channelId={snapshot.channel.id}
+          />
           <section className={styles.panel} aria-label={text("TV library", "مكتبة التلفزيون")}>
             <h2>{text("TV library", "مكتبة التلفزيون")}</h2>
             <p>

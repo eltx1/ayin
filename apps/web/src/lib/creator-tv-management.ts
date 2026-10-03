@@ -1,9 +1,5 @@
 import { apiBaseUrl } from "./api";
-import {
-  CreatorTvStatusError,
-  getCreatorTvStatus,
-  type CreatorTvStatus,
-} from "./creator-tv-status";
+import { getCreatorTvStatus } from "./creator-tv-status";
 
 export class TvManagementError extends Error {
   constructor(
@@ -145,7 +141,7 @@ export function parseTvPreferenceAck(value: unknown, videoId: string, input: TvP
     throw invalid();
   return { ...saved, videoId, updatedAt: date(row.updatedAt) };
 }
-export type TvSnapshot = TvManagement & { accountId: string; output: CreatorTvStatus };
+export type TvSnapshot = TvManagement & { accountId: string };
 async function request(path: string, signal: AbortSignal, init: RequestInit = {}) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
@@ -192,14 +188,10 @@ export async function getTvManagement(
         await request(`/creator/channels/${actor.channelId}/tv`, signal),
         actor.channelId,
       ),
-      output = await getCreatorTvStatus(data.tv.id, signal).catch((error) => {
-        if (error instanceof CreatorTvStatusError) throw new TvManagementError(error.status);
-        throw error;
-      }),
       after = await identity(signal);
     if (after.accountId !== actor.accountId || after.channelId !== actor.channelId)
       throw new TvManagementError(403);
-    return { ...data, accountId: actor.accountId, output };
+    return { ...data, accountId: actor.accountId };
   });
 }
 export async function saveTvPreference(
@@ -224,5 +216,22 @@ export async function saveTvPreference(
       videoId,
       input,
     );
+  });
+}
+
+export async function getManagedTvStatus(
+  tvChannelId: string,
+  expected: { accountId: string; channelId: string },
+  signal: AbortSignal,
+) {
+  return bounded(signal, 15000, async (signal) => {
+    const before = await identity(signal);
+    if (before.accountId !== expected.accountId || before.channelId !== expected.channelId)
+      throw new TvManagementError(403);
+    const result = await getCreatorTvStatus(tvChannelId, signal),
+      after = await identity(signal);
+    if (after.accountId !== expected.accountId || after.channelId !== expected.channelId)
+      throw new TvManagementError(403);
+    return result;
   });
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getTvManagement,
+  getManagedTvStatus,
   parseTvManagement,
   parseTvPreferenceAck,
   saveTvPreference,
@@ -39,21 +40,8 @@ function data() {
     ],
   };
 }
-const output = {
-  tvChannelId: tvId,
-  checkedAt: "2026-10-03T00:00:00.000Z",
-  output: {
-    configured: false,
-    status: "UNCONFIGURED" as const,
-    available: false,
-    lastPlanGeneratedAt: null,
-    lastManifestAt: null,
-  },
-  schedule: { generatedAt: "2026-10-03T00:00:00.000Z", programCount: 0 },
-  fallback: { strategy: "PROGRESSIVE_MP4" as const, enabled: true },
-};
 const identity = { account: { id: accountId }, channel: { id: channelId } };
-const snapshot = (): TvSnapshot => ({ ...parseTvManagement(data(), channelId), accountId, output });
+const snapshot = (): TvSnapshot => ({ ...parseTvManagement(data(), channelId), accountId });
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -120,13 +108,37 @@ describe("Creator TV management boundaries", () => {
       .fn()
       .mockResolvedValueOnce(Response.json(identity))
       .mockResolvedValueOnce(Response.json(data()))
-      .mockResolvedValueOnce(Response.json(output))
       .mockResolvedValueOnce(Response.json({ ...identity, account: { id: tvId } }));
     vi.stubGlobal("fetch", fetch);
     await expect(getTvManagement(new AbortController().signal)).rejects.toMatchObject({
       status: 403,
     });
-    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+  it("does not display broadcast status obtained across an account switch", async () => {
+    const status = {
+      tvChannelId: tvId,
+      checkedAt: "2026-10-03T00:00:00.000Z",
+      output: {
+        configured: false,
+        status: "UNCONFIGURED",
+        available: false,
+        lastPlanGeneratedAt: null,
+        lastManifestAt: null,
+      },
+      schedule: { generatedAt: "2026-10-03T00:00:00.000Z", programCount: 0 },
+      fallback: { strategy: "PROGRESSIVE_MP4", enabled: true },
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(identity))
+      .mockResolvedValueOnce(Response.json(status))
+      .mockResolvedValueOnce(Response.json({ ...identity, account: { id: tvId } }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      getManagedTvStatus(tvId, { accountId, channelId }, new AbortController().signal),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
   it("bounds an actual stalled read and never retries it", async () => {
     vi.useFakeTimers();

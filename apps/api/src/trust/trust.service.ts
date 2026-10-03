@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
@@ -11,6 +11,7 @@ import {
   takedownDecisionSchema,
   takedownSchema,
   trustSchema,
+  trustRecordSchema,
 } from "./trust.schemas.js";
 import { containsBlockedTerm } from "./trust-policy.js";
 
@@ -143,6 +144,23 @@ export class TrustService {
         },
       }),
     };
+  }
+  async readRecord(kind: string, id: string) {
+    const result = trustRecordSchema.safeParse({ kind, id });
+    if (!result.success) throw new BadRequestException("This Trust record link is invalid.");
+    const parsed = result.data;
+    const record =
+      parsed.kind === "cases"
+        ? await this.db.client.moderationCase.findUnique({ where: { id: parsed.id } })
+        : parsed.kind === "appeals"
+          ? await this.db.client.moderationAppeal.findUnique({ where: { id: parsed.id } })
+          : parsed.kind === "takedowns"
+            ? await this.db.client.takedownRequest.findUnique({ where: { id: parsed.id } })
+            : await this.db.client.creatorTrustState.findUnique({
+                where: { channelId: parsed.id },
+              });
+    if (!record) throw new NotFoundException("Trust record was not found.");
+    return { kind: parsed.kind, id: parsed.id, record };
   }
   async updateCase(actor: string, id: string, input: unknown) {
     const d = caseSchema.parse(input);

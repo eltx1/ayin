@@ -393,27 +393,32 @@ export class CreatorFinanceService {
       });
       if (!payout) throw new Error("PAYOUT_NOT_FOUND");
     }
-    const dispute = await this.finance.createDispute({
-      channelId: channel.id,
-      payoutId: input.payoutId ?? null,
-      createdByAccountId: accountId,
-      category: input.category,
-      message: input.message,
-    });
-    await this.database.client.adminAuditLog.create({
-      data: {
-        actorAccountId: accountId,
-        action: "creator.revenue_dispute_created",
-        entityType: "RevenueDispute",
-        entityId: dispute.id,
-        metadata: {
+    return this.database.client.$transaction(async (tx) => {
+      const dispute = await this.finance.createDispute(
+        {
           channelId: channel.id,
-          category: dispute.category,
-          ...(dispute.payoutId ? { payoutId: dispute.payoutId } : {}),
+          payoutId: input.payoutId ?? null,
+          createdByAccountId: accountId,
+          category: input.category,
+          message: input.message,
         },
-      },
+        tx,
+      );
+      await tx.adminAuditLog.create({
+        data: {
+          actorAccountId: accountId,
+          action: "creator.revenue_dispute_created",
+          entityType: "RevenueDispute",
+          entityId: dispute.id,
+          metadata: {
+            channelId: channel.id,
+            category: dispute.category,
+            ...(dispute.payoutId ? { payoutId: dispute.payoutId } : {}),
+          },
+        },
+      });
+      return dispute;
     });
-    return dispute;
   }
 
   async adminDisputes(status?: string) {
