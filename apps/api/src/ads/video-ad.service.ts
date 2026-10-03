@@ -1,5 +1,5 @@
 import { Prisma } from "@ayin/db";
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
@@ -29,6 +29,9 @@ export const videoAdSettingsSchema = z.object({
 });
 
 export type VideoAdSettings = z.infer<typeof videoAdSettingsSchema>;
+const expectedVersion = z.string().datetime({ offset: true }).nullable().optional();
+const settingsWriteSchema = videoAdSettingsSchema.extend({ expectedUpdatedAt: expectedVersion });
+const overrideDeleteSchema = z.object({ expectedUpdatedAt: expectedVersion }).strict();
 
 export const defaultVideoAdSettings: VideoAdSettings = {
   masterEnabled: false,
@@ -44,6 +47,7 @@ export const defaultVideoAdSettings: VideoAdSettings = {
 };
 
 export const overrideSchema = z.object({
+  expectedUpdatedAt: expectedVersion,
   enabled: z.boolean().nullable().optional(),
   preRollEnabled: z.boolean().nullable().optional(),
   midRollEnabled: z.boolean().nullable().optional(),
@@ -111,19 +115,27 @@ export class VideoAdService {
     return parsed.success ? parsed.data : defaultVideoAdSettings;
   }
 
-  async updateSettings(actor: AccountWriteActor, input: unknown): Promise<VideoAdSettings> {
-    const settings = videoAdSettingsSchema.parse(input);
+  async updateSettings(
+    actor: AccountWriteActor,
+    input: unknown,
+  ): Promise<VideoAdSettings | { settings: VideoAdSettings; updatedAt: Date; source: "STORED" }> {
+    const { expectedUpdatedAt, ...settings } = settingsWriteSchema.parse(input);
     const value = settings as unknown as Prisma.InputJsonValue;
     return this.database.client.$transaction(async (tx) => {
       await this.writeAuthority(tx, actor);
+      const current = await this.lockConfiguration(tx, "SETTINGS");
+      await this.writeAuthority(tx, actor);
+      this.checkConfigurationVersion(current, expectedUpdatedAt);
+      const updatedAt = this.nextConfigurationVersion(current?.updatedAt);
       await tx.platformSetting.upsert({
         where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
-        update: { value, valueType: "JSON", schemaVersion: 1 },
+        update: { value, valueType: "JSON", schemaVersion: 1, updatedAt },
         create: {
           namespace: "ADVERTISING",
           key: "videoAdsV1",
           valueType: "JSON",
           value,
+          updatedAt,
           schemaVersion: 1,
           description: "Task 19 typed in-player video advertising defaults.",
         },
@@ -142,7 +154,9 @@ export class VideoAdService {
           frequencyCapPerSession: settings.frequencyCapPerSession,
         },
       });
-      return settings;
+      return expectedUpdatedAt !== undefined
+        ? { settings, updatedAt, source: "STORED" as const }
+        : settings;
     });
   }
 
@@ -355,7 +369,7 @@ export class VideoAdService {
     target: { channelId?: string; videoId?: string },
     input: unknown,
   ) {
-    const data = overrideSchema.parse(input);
+    const { expectedUpdatedAt, ...data } = overrideSchema.parse(input);
     if ((target.channelId ? 1 : 0) + (target.videoId ? 1 : 0) !== 1) {
       throw new Error("Exactly one video ad override target is required.");
     }
@@ -364,6 +378,13 @@ export class VideoAdService {
       await this.writeAuthority(tx, actor);
       await this.lockOverrideTarget(tx, target);
       await this.writeAuthority(tx, actor);
+      const current = await this.lockConfiguration(tx, "OVERRIDE", target);
+      await this.writeAuthority(tx, actor);
+      this.checkConfigurationVersion(current, expectedUpdatedAt);
+      const versionedWrite = {
+        ...writeData,
+        updatedAt: this.nextConfigurationVersion(current?.updatedAt),
+      };
       let row;
       let entityType: "Channel" | "Video";
       let entityId: string;
@@ -371,8 +392,9 @@ export class VideoAdService {
         await tx.channel.findUniqueOrThrow({ where: { id: target.channelId } });
         row = await tx.videoAdOverride.upsert({
           where: { channelId: target.channelId },
-          update: writeData,
-          create: { channelId: target.channelId, ...writeData },
+          update: versionedWrite,
+          create: { channelId: target.channelId, ...versionedWrite },
+          select: overrideReadSelection,
         });
         entityType = "Channel";
         entityId = target.channelId;
@@ -381,8 +403,9 @@ export class VideoAdService {
         await tx.video.findUniqueOrThrow({ where: { id: targetVideoId } });
         row = await tx.videoAdOverride.upsert({
           where: { videoId: targetVideoId },
-          update: writeData,
-          create: { videoId: targetVideoId, ...writeData },
+          update: versionedWrite,
+          create: { videoId: targetVideoId, ...versionedWrite },
+          select: overrideReadSelection,
         });
         entityType = "Video";
         entityId = targetVideoId;
@@ -399,7 +422,12 @@ export class VideoAdService {
     });
   }
 
-  async deleteOverride(actor: AccountWriteActor, target: { channelId?: string; videoId?: string }) {
+  async deleteOverride(
+    actor: AccountWriteActor,
+    target: { channelId?: string; videoId?: string },
+    input: unknown = {},
+  ) {
+    const { expectedUpdatedAt } = overrideDeleteSchema.parse(input);
     if ((target.channelId ? 1 : 0) + (target.videoId ? 1 : 0) !== 1) {
       throw new Error("Exactly one video ad override target is required.");
     }
@@ -407,6 +435,9 @@ export class VideoAdService {
       await this.writeAuthority(tx, actor);
       await this.lockOverrideTarget(tx, target, false);
       await this.writeAuthority(tx, actor);
+      const current = await this.lockConfiguration(tx, "OVERRIDE", target);
+      await this.writeAuthority(tx, actor);
+      this.checkConfigurationVersion(current, expectedUpdatedAt);
       let result: { count: number };
       let entityType: "Channel" | "Video";
       let entityId: string;
@@ -434,6 +465,52 @@ export class VideoAdService {
 
   private writeAuthority(tx: Prisma.TransactionClient, actor: AccountWriteActor) {
     return lockAdminAccountWrite(tx, actor, actor.accountId, undefined, ["AD_MANAGER"]);
+  }
+
+  private async lockConfiguration(
+    tx: Prisma.TransactionClient,
+    kind: "SETTINGS" | "OVERRIDE",
+    target?: { channelId?: string; videoId?: string },
+  ) {
+    const key =
+      kind === "SETTINGS"
+        ? "ayin:video-ads:settings"
+        : `ayin:video-ads:${target?.channelId ? "channel" : "video"}:${target?.channelId ?? target?.videoId}`;
+    await tx.$queryRaw(
+      Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text /* ayin-admin-video-ad-config-lock */`,
+    );
+    const rows =
+      kind === "SETTINGS"
+        ? await tx.$queryRaw<Array<{ updatedAt: Date }>>(
+            Prisma.sql`SELECT "updatedAt" FROM "PlatformSetting" WHERE "namespace"='ADVERTISING' AND "key"='videoAdsV1' FOR UPDATE /* ayin-admin-video-ad-config-lock */`,
+          )
+        : target?.channelId
+          ? await tx.$queryRaw<Array<{ updatedAt: Date }>>(
+              Prisma.sql`SELECT "updatedAt" FROM "VideoAdOverride" WHERE "channelId"=${target.channelId}::uuid FOR UPDATE /* ayin-admin-video-ad-config-lock */`,
+            )
+          : await tx.$queryRaw<Array<{ updatedAt: Date }>>(
+              Prisma.sql`SELECT "updatedAt" FROM "VideoAdOverride" WHERE "videoId"=${target?.videoId}::uuid FOR UPDATE /* ayin-admin-video-ad-config-lock */`,
+            );
+    return rows[0];
+  }
+
+  private checkConfigurationVersion(
+    current: { updatedAt: Date } | undefined,
+    expected: string | null | undefined,
+  ) {
+    if (expected === undefined) return;
+    if (
+      expected === null
+        ? Boolean(current)
+        : !current || current.updatedAt.getTime() !== new Date(expected).getTime()
+    )
+      throw new ConflictException(
+        "Advertising configuration changed. Read the original target before reviewing the operation.",
+      );
+  }
+
+  private nextConfigurationVersion(previous?: Date) {
+    return new Date(Math.max(Date.now(), (previous?.getTime() ?? 0) + 1));
   }
 
   private async lockOverrideTarget(

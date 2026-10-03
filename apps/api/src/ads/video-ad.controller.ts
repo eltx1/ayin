@@ -193,10 +193,9 @@ export class AdminVideoAdController {
   deleteChannelOverride(
     @Req() request: AdminAuthenticatedRequest,
     @Param("channelId") channelIdRaw: string,
+    @Body() body: unknown,
   ) {
-    return this.videoAds.deleteOverride(request.ayinAuth, {
-      channelId: this.id(channelIdRaw),
-    });
+    return this.removeOverride(request, { channelId: this.id(channelIdRaw) }, body);
   }
 
   @Patch("videos/:videoId")
@@ -226,10 +225,30 @@ export class AdminVideoAdController {
   deleteVideoOverride(
     @Req() request: AdminAuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
+    @Body() body: unknown,
   ) {
-    return this.videoAds.deleteOverride(request.ayinAuth, {
-      videoId: this.id(videoIdRaw),
-    });
+    return this.removeOverride(request, { videoId: this.id(videoIdRaw) }, body);
+  }
+
+  private async removeOverride(
+    request: AdminAuthenticatedRequest,
+    target: { channelId?: string; videoId?: string },
+    body: unknown,
+  ) {
+    try {
+      return await this.videoAds.deleteOverride(request.ayinAuth, target, body ?? {});
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
+      throw new HttpException(
+        {
+          error: {
+            code: "INVALID_VIDEO_AD_OVERRIDE",
+            message: "Check the advertising override version.",
+          },
+        },
+        400,
+      );
+    }
   }
 
   private id(value: string) {
