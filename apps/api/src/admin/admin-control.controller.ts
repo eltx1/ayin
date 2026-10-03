@@ -31,9 +31,11 @@ const pageSchema = z.object({
   take: z.coerce.number().int().min(1).max(100).optional(),
   query: z.string().trim().max(200).optional(),
 });
-const userQuerySchema = pageSchema.extend({
-  status: z.enum(["ACTIVE", "SUSPENDED", "CLOSED"]).optional(),
-});
+const userQuerySchema = pageSchema
+  .extend({
+    status: z.enum(["ACTIVE", "SUSPENDED", "CLOSED"]).optional(),
+  })
+  .strict();
 const channelQuerySchema = pageSchema.extend({
   status: z.enum(["ACTIVE", "HIDDEN", "SUSPENDED", "REMOVED"]).optional(),
 });
@@ -127,12 +129,24 @@ export class AdminControlController {
   }
 
   @Get("users")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   @RequireAdminRoles("OPERATIONS")
   users(@Query() query: unknown) {
     return this.control.users(this.parse(userQuerySchema, query, "INVALID_USER_FILTER"));
   }
 
+  @Get("users/:accountId")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  @RequireAdminRoles("OPERATIONS")
+  userRecord(@Param("accountId") accountIdRaw: string) {
+    return this.control.userRecord(this.id(accountIdRaw));
+  }
+
   @Patch("users/:accountId")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   @RequireAdminRoles("OPERATIONS")
   @RequireAdminStepUp()
   updateUser(
