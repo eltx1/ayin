@@ -81,6 +81,17 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
     read.current?.abort();
     const controller = new AbortController();
     read.current = controller;
+    const timeout = setTimeout(() => {
+      if (controller.signal.aborted || read.current !== controller) return;
+      controller.abort();
+      read.current = null;
+      setCounters((current) => (current === undefined ? null : current));
+      setAnalytics((current) => (current === undefined ? null : current));
+      setHealth((current) => (current === undefined ? null : current));
+      setFinance((current) => (current === undefined ? null : current));
+      setLoading(false);
+    }, 15000);
+    controller.signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
     const financeAllowed = session.roles.some((role) =>
       ["SUPERADMIN", "ADMIN", "FINANCE_MANAGER"].includes(role),
     );
@@ -108,6 +119,7 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
         ? summary(getAdminFinanceSummary(controller.signal), parseDashboardFinance, setFinance)
         : Promise.resolve(),
     ]);
+    clearTimeout(timeout);
     if (!controller.signal.aborted) setLoading(false);
     if (read.current === controller) read.current = null;
   }, [session]);
@@ -134,6 +146,13 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
     if (!session || normalized.length < 2 || normalized.length > 200 || searchRead.current) return;
     const controller = new AbortController();
     searchRead.current = controller;
+    const timeout = setTimeout(() => {
+      if (controller.signal.aborted || searchRead.current !== controller) return;
+      controller.abort();
+      searchRead.current = null;
+      setSearch({ status: "error", items: [] });
+    }, 15000);
+    controller.signal.addEventListener("abort", () => clearTimeout(timeout), { once: true });
     setSearch({ status: "loading", items: [] });
     try {
       const items = parseDashboardSearch(
@@ -144,6 +163,7 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
     } catch {
       if (!controller.signal.aborted) setSearch({ status: "error", items: [] });
     } finally {
+      clearTimeout(timeout);
       if (searchRead.current === controller) searchRead.current = null;
     }
   }

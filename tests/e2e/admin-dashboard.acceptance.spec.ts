@@ -147,3 +147,37 @@ test("privileged overview uses real MFA and keeps validated finance mode and acc
   ).toBeVisible();
   await expect(main.getByRole("region", { name: "Platform counters", exact: true })).toHaveCount(0);
 });
+
+test("a stalled overview read reaches bounded recovery without hiding completed summaries", async ({
+  page,
+}) => {
+  const user = await register(page, "dashboard-stalled@e2e.ayin.test");
+  db("grant-operator-role", { accountId: user.account.id, role: "OPERATIONS" });
+  let held = true,
+    release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`${API}/admin/control/dashboard`, async (route) => {
+    if (held) {
+      await gate;
+      await route.continue().catch(() => {});
+    } else await route.continue();
+  });
+  await page.goto("/admin?lang=en");
+  const main = page.getByRole("main"),
+    counters = main.getByRole("region", { name: "Platform counters", exact: true });
+  await expect(
+    main
+      .getByRole("region", { name: "System status", exact: true })
+      .getByText("Test", { exact: true }),
+  ).toBeVisible();
+  await expect(counters.getByText(/This summary could not be loaded/)).toBeVisible({
+    timeout: 20000,
+  });
+  await expect(main.getByRole("button", { name: "Refresh overview", exact: true })).toBeEnabled();
+  held = false;
+  release();
+  await main.getByRole("button", { name: "Refresh overview", exact: true }).click();
+  await expect(counters.locator("dd")).toHaveCount(8);
+});
