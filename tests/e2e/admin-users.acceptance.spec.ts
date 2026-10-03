@@ -436,11 +436,17 @@ test("Native users hides private facts synchronously on actual role loss and cle
     { marker: "account", fact: data.email },
   );
   db("change-role", { accountId: data.operator.account.id });
-  let privateReads = 0;
+  let privateReads = 0,
+    writes = 0;
   page.on("request", (r) => {
+    if (
+      ["POST", "PATCH", "DELETE"].includes(r.method()) &&
+      r.url().startsWith(API + "/admin/control/users")
+    )
+      writes++;
     if (r.method() === "GET" && r.url().startsWith(API + "/admin/control/users")) privateReads++;
   });
-  await main.getByRole("button", { name: "Read account records", exact: true }).click();
+  await row.getByRole("button", { name: "Save display name", exact: true }).click();
   await expect(main.getByRole("alert")).toContainText("access changed");
   expect(
     await page.evaluate(() => (window as unknown as { authorityHide: object }).authorityHide),
@@ -449,5 +455,6 @@ test("Native users hides private facts synchronously on actual role loss and cle
   await expect(main.locator("article")).toHaveCount(0);
   await expect(main.getByLabel("Email or display name", { exact: true })).toHaveValue("");
   expect(privateReads).toBe(0);
+  expect(writes).toBe(0);
   expect(db("evidence", payload)).toEqual(before);
 });

@@ -347,6 +347,7 @@ test("Native tv hides private facts synchronously on actual role loss and clears
   await row
     .getByLabel("TV decision reason (8–500 characters)", { exact: true })
     .fill("Private TV decision reason");
+  await row.locator("summary").click();
   const payload = { accountId: data.operator.account.id, targetId: data.targetId };
   const before = db("evidence", payload);
   await page.evaluate(
@@ -377,11 +378,17 @@ test("Native tv hides private facts synchronously on actual role loss and clears
     { marker: "tv", fact: data.name },
   );
   db("change-role", { accountId: data.operator.account.id });
-  let privateReads = 0;
+  let privateReads = 0,
+    writes = 0;
   page.on("request", (r) => {
+    if (
+      ["POST", "PATCH", "DELETE"].includes(r.method()) &&
+      r.url().startsWith(API + "/admin/control/tv")
+    )
+      writes++;
     if (r.method() === "GET" && r.url().startsWith(API + "/admin/control/tv")) privateReads++;
   });
-  await main.getByRole("button", { name: "Read TV records", exact: true }).click();
+  await row.getByRole("button", { name: "Disable TV", exact: true }).click();
   await expect(main.getByRole("alert")).toContainText("access changed");
   expect(
     await page.evaluate(() => (window as unknown as { authorityHide: object }).authorityHide),
@@ -390,5 +397,6 @@ test("Native tv hides private facts synchronously on actual role loss and clears
   await expect(main.locator("article")).toHaveCount(0);
   await expect(main.getByLabel("TV or owner channel name", { exact: true })).toHaveValue("");
   expect(privateReads).toBe(0);
+  expect(writes).toBe(0);
   expect(db("evidence", payload)).toEqual(before);
 });

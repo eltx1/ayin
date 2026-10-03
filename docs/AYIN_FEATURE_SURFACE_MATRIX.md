@@ -1,5 +1,13 @@
 # AYIN feature surface matrix
 
+## Accepted native advertising and matching runtime
+
+Native advertising #228 exact source2eb3833b0ab7d68511728d5aa6b836e105656dc8/treeac0700f57c6d22868d1f187f573707f206e58c81 passed own quality37159204883 (404API/502Web/830PostgreSQL), security37159204874, inventory37159204898 and browser37159204872 (204ordinary14.2m + fivePWA33.6s). All eight final EN/AR390/1440 heading/record original images from11287042284 SHA256`4e9badb22768d15143b83dc3ae069aab561ea52c25363e34d7681adf0a2809ab` were independently downloaded, hashed and each inspected. Review5403306183/no unresolved threads preceded merge0b35745869a25bc80a3be169fda0a4d614b4027c; actual parents and exact18-file source union/tree were checked before/after merge. Initial source7a3d browser204+five did not replace its501Web/1obsolete source-count quality failure/no PostgreSQL execution. Final actual JSON transport coverage preserves the failure history.
+
+Matching runtime0b35745869a25bc80a3be169fda0a4d614b4027c independently verified: main quality37160330946/security37160330943/inventory37160330970 passed, deploy37160808899 and Cloudflare37160914285 passed. Actual ZIP11287177968 SHA256`ca3f7d25d1397bf0b63f6a266aa26b54d20b88e4dc5c87fada8fcdb68387716b` and ZIP11287845436 SHA256`58aee25cea18c819f1d8bbf8afde301aaa799c36a72dd318fbb57208800aedb0` were hashed/parsed and match actual release/validation/deploy/sync IDs, ayin.stream/media.ayin.stream/ayin-production-media. Additional skipped run metadata is not separate release proof.
+
+Account/TV authority-loss hiding, Viewer session/password acknowledgment recovery, current password-write authority and sitemap policy/count/cache fixes are prepared for consolidated owning-source gates. Prior failed observers remain failures. All seventeen master phases remain open; no provider, device, crawler/CDN legacy-purge, field-performance or native-app certification is inferred. [Prepared consolidated evidence](AYIN_ACCOUNT_SITEMAP_CONSOLIDATION_EVIDENCE.md). Earlier pending records below are historical and superseded only where this actual accepted proof says so.
+
 ## Current authority and preserved full inventory
 
 AYIN at https://ayin.stream is one canonical Web/PWA with shared APIs. Master phases0–16 remain authoritative. [The checkpoint](AYIN_WEB_PWA_MASTER_CHECKPOINT.md) records exact accepted heads, actual tests/visual inspection, releases and unfinished work.
