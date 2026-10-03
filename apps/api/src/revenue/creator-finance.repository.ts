@@ -127,16 +127,19 @@ export class CreatorFinanceRepository {
     `;
   }
 
-  async createDispute(input: {
-    channelId: string;
-    payoutId: string | null;
-    createdByAccountId: string;
-    category: RevenueDisputeCategory;
-    message: string;
-  }): Promise<RevenueDisputeRow> {
+  async createDispute(
+    input: {
+      channelId: string;
+      payoutId: string | null;
+      createdByAccountId: string;
+      category: RevenueDisputeCategory;
+      message: string;
+    },
+    client: Pick<DatabaseService["client"], "$queryRaw"> = this.database.client,
+  ): Promise<RevenueDisputeRow> {
     const id = randomUUID();
     const now = new Date();
-    const rows = await this.database.client.$queryRaw<RevenueDisputeRow[]>`
+    const rows = await client.$queryRaw<RevenueDisputeRow[]>`
       INSERT INTO "RevenueDispute" (
         "id", "channelId", "payoutId", "createdByAccountId", "category", "message",
         "status", "createdAt", "updatedAt"
