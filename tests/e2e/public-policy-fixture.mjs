@@ -7,6 +7,12 @@ if (!["localhost", "127.0.0.1"].includes(url.hostname) || url.pathname !== "/ayi
 const prisma = createPrismaClient(databaseUrl);
 try {
   const group = randomUUID().slice(0, 8);
+  const actor = await prisma.account.create({
+    data: {
+      email: `browser-policy-${group}@example.test`,
+      displayName: "Actual browser policy actor",
+    },
+  });
   const channel = await prisma.channel.create({
     data: { name: "Actual eligible creator", handle: "eligible-creator-" + group },
   });
@@ -64,7 +70,7 @@ try {
           videoId: id,
           disposition: "FORCE_BLOCK",
           reason: "Controlled browser fixture block",
-          actorAccountId: randomUUID(),
+          actorAccountId: actor.id,
         },
       });
     await prisma.playlistItem.create({

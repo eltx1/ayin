@@ -56,13 +56,19 @@ databaseDescribe(
       }
     });
     async function fixture() {
+      const actor = await prisma.account.create({
+        data: {
+          email: `public-policy-${randomUUID()}@example.test`,
+          displayName: "Actual policy fixture actor",
+        },
+      });
       const channel = await prisma.channel.create({
         data: { name: "Actual policy channel", handle: "actual-policy-channel" },
       });
       const playlist = await prisma.playlist.create({
         data: { channelId: channel.id, slug: "actual-policy-list", name: "Actual policy list" },
       });
-      return { channel, playlist };
+      return { channel, playlist, actor };
     }
     async function video(channelId: string, n: number) {
       const id = `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -246,7 +252,7 @@ databaseDescribe(
           data: {
             videoId: v.id,
             disposition: "FORCE_ALLOW",
-            actorAccountId: randomUUID(),
+            actorAccountId: f.actor.id,
             reason: "Controlled availability boundary override",
           },
         });
@@ -300,7 +306,7 @@ databaseDescribe(
         data: {
           videoId: v.id,
           disposition: "FORCE_BLOCK",
-          actorAccountId: randomUUID(),
+          actorAccountId: f.actor.id,
           reason: "Actual controlled policy block",
         },
       });
@@ -332,6 +338,17 @@ databaseDescribe(
         },
       });
       await item(unlisted.id, v.id, 7);
+      await expect(
+        prisma.playlist.create({
+          data: {
+            channelId: f.channel.id,
+            slug: "contradictory-private",
+            name: "Must be rejected by existing database invariant",
+            visibility: "PRIVATE",
+            isPublic: true,
+          },
+        }),
+      ).rejects.toMatchObject({ code: "P2039" });
       await prisma.playlist.createMany({
         data: [
           {
@@ -339,7 +356,7 @@ databaseDescribe(
             slug: "private",
             name: "Private must never appear",
             visibility: "PRIVATE",
-            isPublic: true,
+            isPublic: false,
           },
           {
             channelId: f.channel.id,
