@@ -11,6 +11,7 @@ export function InstallUpdateController() {
   const [install, setInstall] = useState<BeforeInstallPromptEvent | null>(null);
   const [update, setUpdate] = useState<ServiceWorkerRegistration | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [reloadAvailable, setReloadAvailable] = useState(false);
   const [error, setError] = useState(false);
   const accepting = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -18,6 +19,7 @@ export function InstallUpdateController() {
     let active = true;
     let registration: ServiceWorkerRegistration | undefined;
     const workers = new Set<ServiceWorker>();
+    let controlled = "serviceWorker" in navigator && Boolean(navigator.serviceWorker.controller);
     const onState = () => {
       if (active && registration?.waiting && navigator.serviceWorker.controller)
         setUpdate(registration);
@@ -35,7 +37,21 @@ export function InstallUpdateController() {
       setInstall(event as BeforeInstallPromptEvent);
     };
     const onController = () => {
-      if (accepting.current) window.location.reload();
+      if (!active) return;
+      const shouldReload = accepting.current;
+      if (controlled || shouldReload) {
+        accepting.current = false;
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = null;
+        setUpdating(false);
+        setError(false);
+        setUpdate(null);
+        setReloadAvailable(true);
+        // The other tabs, a late activation, or a dismissed native leave
+        // dialog retain an explicit refresh action instead of losing work.
+        if (shouldReload) window.location.reload();
+      }
+      controlled = Boolean(navigator.serviceWorker.controller);
     };
     window.addEventListener("beforeinstallprompt", onInstall);
     if ("serviceWorker" in navigator) {
@@ -61,7 +77,7 @@ export function InstallUpdateController() {
       if (timer.current) clearTimeout(timer.current);
     };
   }, []);
-  if (!install && !update) return null;
+  if (!install && !update && !reloadAvailable) return null;
   return (
     <aside className="pwa-prompt" aria-live="polite">
       {error && (
@@ -69,7 +85,18 @@ export function InstallUpdateController() {
           {ar ? "تعذر إكمال الطلب. حاول مرة أخرى." : "Could not complete the request. Try again."}
         </span>
       )}
-      {update ? (
+      {reloadAvailable ? (
+        <>
+          <span>
+            {ar
+              ? "تم تحديث AYIN. احفظ عملك ثم أعد تحميل الصفحة عندما تكون جاهزًا."
+              : "AYIN updated. Save your work, then reload when you are ready."}
+          </span>
+          <button onClick={() => window.location.reload()}>
+            {ar ? "إعادة تحميل AYIN" : "Reload AYIN"}
+          </button>
+        </>
+      ) : update ? (
         <>
           <span>
             {ar
@@ -79,20 +106,31 @@ export function InstallUpdateController() {
           <button
             disabled={updating}
             onClick={() => {
+              if (accepting.current) return;
               const worker = update.waiting;
               if (!worker) {
                 setUpdate(null);
+                setReloadAvailable(true);
                 return;
               }
               accepting.current = true;
               setUpdating(true);
               setError(false);
               timer.current = setTimeout(() => {
+                timer.current = null;
                 accepting.current = false;
                 setUpdating(false);
                 setError(true);
               }, 10000);
-              worker.postMessage({ type: "SKIP_WAITING" });
+              try {
+                worker.postMessage({ type: "SKIP_WAITING" });
+              } catch {
+                if (timer.current) clearTimeout(timer.current);
+                timer.current = null;
+                accepting.current = false;
+                setUpdating(false);
+                setError(true);
+              }
             }}
           >
             {updating
