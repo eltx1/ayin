@@ -10,6 +10,7 @@ import {
   Patch,
   Post,
   Req,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { z } from "zod";
@@ -20,7 +21,16 @@ import { LiveError, LiveService } from "./live.service.js";
 const createSchema = z.object({
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().max(5000).nullable().optional(),
-  scheduledStartAt: z.string().datetime({ offset: true }).nullable().optional(),
+  scheduledStartAt: z
+    .string()
+    .datetime({ offset: true })
+    .refine((value) => Date.parse(value) > Date.now(), "Choose a future start time.")
+    .nullable()
+    .optional(),
+});
+const studioPageSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  cursor: z.string().uuid().optional(),
 });
 const stateSchema = z.object({ status: z.enum(["LIVE", "ENDED", "CANCELLED"]) });
 const chatSchema = z.object({ body: z.string().trim().min(1).max(500) });
@@ -84,13 +94,22 @@ export class StudioLiveController {
 
   @Get()
   @Header("Cache-Control", "private, no-store")
-  async list(@Req() request: AuthenticatedRequest) {
-    return call(() => this.live.studioStreams(request.ayinAuth.accountId));
+  async list(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
+    const parsed = studioPageSchema.safeParse(query);
+    if (!parsed.success)
+      throw new HttpException({ code: "LIVE_INVALID_PAGE", message: "Invalid live page." }, 400);
+    return call(() => this.live.studioStreams(request.ayinAuth.accountId, parsed.data));
   }
 
   @Post()
   async create(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
-    return call(() => this.live.create(request.ayinAuth.accountId, createSchema.parse(body)));
+    const parsed = createSchema.safeParse(body);
+    if (!parsed.success)
+      throw new HttpException(
+        { code: "LIVE_INVALID_INPUT", message: "Invalid live session details." },
+        400,
+      );
+    return call(() => this.live.create(request.ayinAuth.accountId, parsed.data));
   }
 
   @Post(":id/provision")

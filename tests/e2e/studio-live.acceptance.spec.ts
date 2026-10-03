@@ -97,7 +97,7 @@ test("Studio Live creates once, audits chat changes and enforces channel ownersh
   await page.getByLabel("Title", { exact: true }).fill("Preserved live draft");
   await page.getByRole("button", { name: "Create live session", exact: true }).click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Creation temporarily unavailable" }),
+    page.getByRole("alert").filter({ hasText: "The result may be uncertain" }),
   ).toBeVisible();
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Preserved live draft");
   expect(
@@ -117,11 +117,13 @@ test("Studio Live creates once, audits chat changes and enforces channel ownersh
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.context().addCookies([{ name: "ayin_locale", value: "ar", url: WEB }]);
+  page.once("dialog", (dialog) => dialog.accept());
   await page.reload();
   await expect(page.getByRole("heading", { name: "البث المباشر", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "تفعيل دردشة البث" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.context().clearCookies();
+  page.once("dialog", (dialog) => dialog.accept());
   await page.reload();
   // Locale belongs to the canonical /ar/ URL even after cookies are cleared.
   await expect(page).toHaveURL(/\/ar\/studio\/live$/);
@@ -158,11 +160,12 @@ test("Studio Live confirms rotation, retains received keys after refresh failure
             channel: user.channel,
             provider: { configured: true, productionEnabled: true },
             streams: [stream],
+            nextCursor: null,
           },
         }),
   );
   await page.route(`${API}/studio/live/*/sync`, (route) =>
-    route.fulfill({ json: { evidence: { playable: false, state: "CONNECTING" } } }),
+    route.fulfill({ json: { stream, evidence: { playable: false, state: "IDLE" } } }),
   );
   let release!: () => void;
   const pending = new Promise<void>((resolve) => {
@@ -178,6 +181,7 @@ test("Studio Live confirms rotation, retains received keys after refresh failure
     failRead = true;
     await route.fulfill({
       json: {
+        stream,
         encoder: {
           rtmps: { serverUrl: "rtmps://fixture.invalid/app", streamKey: "fixture-key-".repeat(20) },
           srt: { url: "srt://fixture.invalid?passphrase=fixture-private" },
@@ -208,7 +212,7 @@ test("Studio Live confirms rotation, retains received keys after refresh failure
   const credentials = page.getByRole("complementary", { name: "One-time encoder configuration" });
   await expect(credentials).toBeVisible();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Live list temporarily unavailable" }),
+    page.getByRole("alert").filter({ hasText: "Live sessions could not be loaded" }),
   ).toBeVisible();
   await expect(credentials.getByText("fixture-key-".repeat(20), { exact: true })).toBeVisible();
   expect(
@@ -233,10 +237,19 @@ test("Studio Live confirms rotation, retains received keys after refresh failure
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Rotate encoder credentials", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Review sessions", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "I have reviewed the result", exact: true }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "I have reviewed the result", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Rotate encoder credentials", exact: true }),
   ).toBeEnabled();
   expect(writes).toBe(2);
   await expect(credentials).not.toBeVisible();
   await page.context().addCookies([{ name: "ayin_locale", value: "ar", url: WEB }]);
+  page.once("dialog", (dialog) => dialog.accept());
   await page.reload();
   await page.getByRole("button", { name: "تدوير بيانات المرمّز", exact: true }).click();
   await expect(dialog).toHaveAttribute("dir", "rtl");
@@ -245,3 +258,122 @@ test("Studio Live confirms rotation, retains received keys after refresh failure
   await page.keyboard.press("Escape");
   expect(writes).toBe(2);
 });
+
+test("Creator Live retains a committed root after response loss and requires explicit review before another write", async ({
+  page,
+}, testInfo) => {
+  db("reset");
+  db("reset-studio-live");
+  const user = await register(page, "creator-live-loss@e2e.ayin.test");
+  let creates = 0,
+    reads = 0;
+  await page.route(`${API}/studio/live`, async (route) => {
+    if (route.request().method() === "POST") {
+      creates++;
+      const saved = await route.fetch();
+      expect(saved.ok()).toBe(true);
+      await route.abort("failed");
+    } else {
+      reads++;
+      await route.continue();
+    }
+  });
+  await page.goto("/studio/live?lang=en");
+  await expect(
+    page.getByText("No live sessions yet. Create your first session above.", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Title", { exact: true }).fill("Committed live root");
+  const before = reads;
+  await page.getByRole("button", { name: "Create live session", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("The result may be uncertain");
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Committed live root");
+  await expect(
+    page.getByRole("button", { name: "Create live session", exact: true }),
+  ).toBeDisabled();
+  expect(reads).toBe(before);
+  expect(creates).toBe(1);
+  expect(
+    db("studio-live-evidence", { channelId: user.channel.id, accountId: user.account.id }).streams,
+  ).toHaveLength(1);
+  await page.getByRole("button", { name: "Review sessions", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Committed live root", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create live session", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "I have reviewed the result", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Create live session", exact: true }),
+  ).toBeEnabled();
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("link", { name: "Back to AYIN", exact: true }).click();
+  await expect(page).toHaveURL(/\/studio\/live/);
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Committed live root");
+  expect(creates).toBe(1);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("design-creator-live-loss-390-en.png"),
+    fullPage: true,
+  });
+});
+
+for (const locale of ["en", "ar"] as const)
+  test(`Creator Live reads every owned database page and recovers stalled reads ${locale}`, async ({
+    page,
+  }, testInfo) => {
+    db("reset");
+    db("reset-studio-live");
+    const user = await register(page, `creator-live-paging-${locale}@e2e.ayin.test`);
+    for (let index = 0; index < 25; index++) {
+      const response = await page.request.post(`${API}/studio/live`, {
+        headers: { origin: WEB },
+        data: { title: `Paged live ${index}` },
+      });
+      expect(response.ok()).toBe(true);
+    }
+    const ar = locale === "ar";
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(ar ? "/ar/studio/live" : "/studio/live?lang=en");
+    const main = page.getByRole("main");
+    await expect(main.locator("article")).toHaveCount(20);
+    await main.getByRole("button", { name: ar ? "التالي" : "Next", exact: true }).click();
+    await expect(main.locator("article")).toHaveCount(5);
+    await main.getByRole("button", { name: ar ? "السابق" : "Previous", exact: true }).click();
+    await expect(main.locator("article")).toHaveCount(20);
+    expect(
+      db("studio-live-evidence", { channelId: user.channel.id, accountId: user.account.id })
+        .streams,
+    ).toHaveLength(25);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+      true,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`design-creator-live-390-${locale}.png`),
+      fullPage: true,
+    });
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(`${API}/studio/live`, async (route) => {
+      await held;
+      await route.abort("failed").catch(() => {});
+    });
+    await main
+      .getByRole("button", { name: ar ? "تحديث الجلسات" : "Refresh sessions", exact: true })
+      .click();
+    await expect(main.getByRole("alert")).toContainText(
+      ar ? "تعذر تحميل جلسات البث" : "Live sessions could not be loaded",
+      { timeout: 20_000 },
+    );
+    await expect(main.locator("article")).toHaveCount(0);
+    release();
+    await page.unroute(`${API}/studio/live`);
+    await main.getByRole("button", { name: ar ? "إعادة المحاولة" : "Retry", exact: true }).click();
+    await expect(main.locator("article")).toHaveCount(20);
+    await expect(main.getByRole("heading", { level: 1 })).toHaveCount(1);
+  });

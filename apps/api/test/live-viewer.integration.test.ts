@@ -59,6 +59,65 @@ databaseDescribe("Live Viewer public boundary", () => {
     };
   }
 
+  it("pages owned creator sessions deterministically and rejects foreign cursors/invalid limits", async () => {
+    const owner = await register("Page owner", "live-page-owner@example.com");
+    const other = await register("Other page owner", "live-page-other@example.com");
+    const createdAt = new Date("2026-10-01T12:00:00.000Z");
+    for (let index = 0; index < 32; index++)
+      await prisma.liveStream.create({
+        data: {
+          channelId: owner.user.channel.id,
+          createdByAccountId: owner.user.account.id,
+          slug: `page-stream-${index}`,
+          title: `Session ${index}`,
+          status: "DRAFT",
+          createdAt,
+        },
+      });
+    const headers = { cookie: owner.cookie };
+    const first = await app.inject({ method: "GET", url: "/studio/live", headers });
+    expect(first.statusCode).toBe(200);
+    expect(first.headers["cache-control"]).toBe("private, no-store");
+    const firstPage = first.json();
+    expect(firstPage.streams).toHaveLength(20);
+    expect(firstPage.nextCursor).toBe(firstPage.streams.at(-1).id);
+    const next = await app.inject({
+      method: "GET",
+      url: `/studio/live?cursor=${firstPage.nextCursor}`,
+      headers,
+    });
+    expect(next.statusCode).toBe(200);
+    const nextPage = next.json();
+    expect(nextPage.streams).toHaveLength(12);
+    expect(nextPage.nextCursor).toBeNull();
+    expect(
+      new Set([...firstPage.streams, ...nextPage.streams].map((row: { id: string }) => row.id))
+        .size,
+    ).toBe(32);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/studio/live?cursor=${firstPage.nextCursor}`,
+          headers: { cookie: other.cookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    for (const payload of [
+      { title: " " },
+      { title: "Past", scheduledStartAt: "2000-01-01T00:00:00Z" },
+      { title: "Invalid", scheduledStartAt: "2030-02-31T00:00:00Z" },
+    ])
+      expect(
+        (await app.inject({ method: "POST", url: "/studio/live", headers, payload })).statusCode,
+      ).toBe(400);
+    expect(await prisma.liveStream.count({ where: { channelId: owner.user.channel.id } })).toBe(32);
+    for (const query of ["limit=0", "limit=51", "limit=2.5", "cursor=not-a-uuid"])
+      expect(
+        (await app.inject({ method: "GET", url: `/studio/live?${query}`, headers })).statusCode,
+      ).toBe(400);
+  });
+
   it("returns only Viewer-safe stream/chat fields and keeps chat writes authenticated", async () => {
     const owner = await register("Live owner", "live-viewer-owner@example.com");
     const viewer = await register("Live viewer", "live-viewer-viewer@example.com");
