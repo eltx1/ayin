@@ -3,6 +3,7 @@ import { Module } from "@nestjs/common";
 import { AdminModule } from "../admin/admin.module.js";
 import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
+import { VideoPolicyModule } from "../video-policy/video-policy.module.js";
 import {
   AdminAdvertisingControlController,
   DirectAdController,
@@ -28,7 +29,7 @@ import { AdminVideoAdController, VideoAdController } from "./video-ad.controller
 import { VideoAdService } from "./video-ad.service.js";
 
 @Module({
-  imports: [DatabaseModule, AuthModule, AdminModule],
+  imports: [DatabaseModule, AuthModule, AdminModule, VideoPolicyModule],
   controllers: [
     VideoAdController,
     AdminVideoAdController,

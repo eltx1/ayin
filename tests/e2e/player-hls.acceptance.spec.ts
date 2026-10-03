@@ -13,6 +13,7 @@ type HarnessState = {
   hlsAttachCalls: number;
   hlsLoadCalls: number;
   imaStarted: number;
+  imaTags: string[];
 };
 
 function db<T>(command: string, payload: Record<string, unknown> = {}): T {
@@ -43,6 +44,7 @@ async function installMediaHarness(
         hlsAttachCalls: 0,
         hlsLoadCalls: 0,
         imaStarted: 0,
+        imaTags: [] as string[],
       };
       Object.defineProperty(window, "__ayinHarness", { value: state, configurable: true });
 
@@ -218,7 +220,8 @@ async function installMediaHarness(
           addEventListener(type: string, listener: (event: unknown) => void) {
             this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
           }
-          requestAds() {
+          requestAds(request: { adTagUrl: string }) {
+            state.imaTags.push(request.adTagUrl);
             const manager = new AdsManager();
             queueMicrotask(() => {
               for (const listener of this.listeners.get(events.managerLoaded) ?? []) {
@@ -285,7 +288,11 @@ async function mockNoAds(page: Page, videoId: string) {
   });
 }
 
-async function mockPreroll(page: Page, fixture: VideoFixture) {
+async function mockPreroll(
+  page: Page,
+  fixture: VideoFixture,
+  tagUrl = "https://ads.invalid/task-41",
+) {
   await page.route(`**/ads/video/decision/${fixture.id}`, async (route) => {
     await route.fulfill({
       status: 200,
@@ -293,7 +300,7 @@ async function mockPreroll(page: Page, fixture: VideoFixture) {
       body: JSON.stringify({
         enabled: true,
         provider: "GOOGLE_IMA",
-        tagUrl: "https://ads.invalid/task-41",
+        tagUrl,
         preRollEnabled: true,
         midRollEnabled: false,
         postRollEnabled: false,
@@ -402,6 +409,27 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
 
     await expect.poll(async () => (await harnessState(page)).hlsLoadCalls).toBe(1);
     await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
+    await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
+    await expect(page.locator("video:visible")).toHaveCount(1);
+  });
+
+  test("IMA receives the restrictive tag intact and resumes content under the safe consent default", async ({
+    page,
+  }) => {
+    await installMediaHarness(page, { ima: true });
+    await mockPreroll(
+      page,
+      fixture,
+      "https://securepubads.g.doubleclick.net/gampad/ads?iu=%2F123%2Fvideo&npa=1&tfua=1&tfcd=1&rdp=1",
+    );
+    await page.goto(`/watch/${fixture.slug}`);
+    await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
+    const state = await harnessState(page);
+    expect(state.imaTags).toHaveLength(1);
+    const tag = new URL(state.imaTags[0]!);
+    for (const key of ["ltd", "npa", "tfua", "tfcd", "rdp"])
+      expect(tag.searchParams.get(key)).toBe("1");
+    expect(tag.searchParams.get("iu")).toBe("/123/video");
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
     await expect(page.locator("video:visible")).toHaveCount(1);
   });
