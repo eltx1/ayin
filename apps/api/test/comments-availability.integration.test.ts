@@ -212,8 +212,11 @@ databaseDescribe("Comments public availability and Kids server boundary", () => 
       where: { id: assignment.id },
       data: { role: "ADMIN" },
     });
-    for (const request of requests)
-      expect((await app.inject({ ...request, headers })).statusCode).toBe(403);
+    for (const request of requests) {
+      const response = await app.inject({ ...request, headers });
+      expect(response.statusCode).toBe(401);
+      expect(response.json().error.message).toBe("Administrator MFA verification is required.");
+    }
     expect(
       (await prisma.video.findUniqueOrThrow({ where: { id: video.id } })).commentsEnabled,
     ).toBe(true);
