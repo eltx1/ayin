@@ -115,6 +115,7 @@ export async function uploadPreparedVideoDirectly(input: {
         }),
       signal,
     );
+    reportProgress(file.size);
     onStatus?.({ phase: "finalizing", message: "Finalizing upload…" });
     const completed = parseUploadCompletion(
       await apiJson<unknown>(
