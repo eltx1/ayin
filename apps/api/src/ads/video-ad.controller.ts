@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Header,
+  Headers,
   HttpException,
   Inject,
   Param,
@@ -21,23 +22,30 @@ import {
   RequireAdminStepUp,
 } from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
+import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { VideoAdService, adEventSchema } from "./video-ad.service.js";
 
 const uuid = z.string().uuid();
 
 @Controller("ads")
 export class VideoAdController {
-  constructor(@Inject(VideoAdService) private readonly videoAds: VideoAdService) {}
+  constructor(
+    @Inject(VideoAdService) private readonly videoAds: VideoAdService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+  ) {}
 
   @Get("video/decision/:videoId")
   async getDecision(
     @Param("videoId") videoIdRaw: string,
     @Req() request: { protocol?: string; headers?: Record<string, unknown> },
+    @Headers() headers: HeaderBag,
   ) {
     const videoId = this.id(videoIdRaw);
     const host = typeof request.headers?.host === "string" ? request.headers.host : null;
     const origin = host ? `${request.protocol === "http" ? "http" : "https"}://${host}` : null;
-    return this.videoAds.getDecision(videoId, origin);
+    return this.videoAds.getDecision(videoId, origin, {
+      countryCode: this.trustedRegion.countryFromHeaders(headers),
+    });
   }
 
   @Post("video/events")

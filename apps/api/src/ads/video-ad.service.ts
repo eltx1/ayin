@@ -4,6 +4,10 @@ import { z } from "zod";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import {
+  VideoPolicyService,
+  type VideoPolicyContext,
+} from "../video-policy/video-policy.service.js";
 import { GamProductionService, type GamVideoSlot } from "./gam-production.service.js";
 import { resolveVideoAdPolicy } from "./video-ad-policy.js";
 
@@ -77,6 +81,7 @@ export class VideoAdService {
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
     @Inject(GamProductionService) private readonly gam: GamProductionService,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
   ) {}
 
   async getSettings(): Promise<VideoAdSettings> {
@@ -156,7 +161,7 @@ export class VideoAdService {
     }));
   }
 
-  async getDecision(videoId: string, origin: string | null) {
+  async getDecision(videoId: string, origin: string | null, context: VideoPolicyContext = {}) {
     const killSwitch = await this.database.client.platformSetting.findUnique({
       where: { namespace_key: { namespace: "ADVERTISING", key: "emergencyKillSwitch" } },
       select: { value: true },
@@ -166,10 +171,17 @@ export class VideoAdService {
     }
 
     const video = await this.database.client.video.findFirst({
-      where: { id: videoId, status: "PUBLISHED", visibility: { in: ["PUBLIC", "UNLISTED"] } },
+      where: {
+        id: videoId,
+        status: "PUBLISHED",
+        visibility: { in: ["PUBLIC", "UNLISTED"] },
+        removedAt: null,
+        channel: { status: "ACTIVE", removedAt: null },
+      },
       select: { id: true, channelId: true, slug: true, durationMs: true },
     });
-    if (!video) return { enabled: false, reason: "VIDEO_NOT_ELIGIBLE" as const };
+    if (!video || !(await this.videoPolicy.decide(video.id, context)).allowed)
+      return { enabled: false, reason: "VIDEO_NOT_ELIGIBLE" as const };
 
     const [settings, channelOverride, videoOverride] = await Promise.all([
       this.getSettings(),
