@@ -245,4 +245,43 @@ databaseDescribe("Manual payout status transaction", () => {
       }),
     ).toBe(1);
   });
+  for (const revoke of ["role", "account"] as const)
+    it(`rechecks actual ${revoke} authority after waiting before a manual financial decision`, async () => {
+      const { finance, payout, entry } = await fixture(`authority-${revoke}`);
+      const lock = await hold(payout.id, async (tx) => {
+        if (revoke === "role")
+          await tx.adminRoleAssignment.deleteMany({
+            where: { accountId: finance.user.account.id, role: "FINANCE_MANAGER" },
+          });
+        else
+          await tx.account.update({
+            where: { id: finance.user.account.id },
+            data: { status: "SUSPENDED" },
+          });
+      });
+      const request = Promise.resolve(change(finance.cookie, payout.id, "CANCELLED"));
+      try {
+        await waiters(1);
+      } finally {
+        lock.release();
+      }
+      await lock.holder;
+      expect((await request).statusCode).toBe(403);
+      expect((await prisma.payout.findUniqueOrThrow({ where: { id: payout.id } })).status).toBe(
+        "PROCESSING",
+      );
+      expect(
+        (await prisma.earningsLedgerEntry.findUniqueOrThrow({ where: { id: entry.id } })).payoutId,
+      ).toBe(payout.id);
+      expect(
+        await prisma.adminAuditLog.count({
+          where: { action: "PAYOUT_STATUS_UPDATED", entityId: payout.id },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.notification.count({
+          where: { accountId: finance.user.account.id, title: "Payout cancelled" },
+        }),
+      ).toBe(0);
+    });
 });

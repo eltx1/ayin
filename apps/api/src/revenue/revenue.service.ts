@@ -11,6 +11,7 @@ import { z } from "zod";
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { selectEffectiveContract } from "./contract-selection.js";
+import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
 import { applyRevenueShareMicros, formatMoneyMicros, parseMoneyMicros } from "./money.js";
 import {
   adjustmentSchema,
@@ -455,6 +456,7 @@ export class RevenueService {
         Prisma.sql`/* ayin-manual-payout-status-lock */ SELECT "id" FROM "Payout" WHERE "id" = ${payoutId}::uuid FOR UPDATE`,
       );
       if (!locked.length) throw new NotFoundException("Payout not found.");
+      await assertAdminFinanceAuthority(tx, actorAccountId);
       const current = await tx.payout.findUniqueOrThrow({ where: { id: payoutId } });
       if (current.provider !== "MANUAL") {
         throw new ConflictException("PAYOUT_PROVIDER_MANAGED_STATUS");
