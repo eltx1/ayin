@@ -25,3 +25,9 @@ Kids channel pages now omit the ordinary subscription and owner management compo
 ## Actual replacement browser failure
 
 Candidate61beca quality37148264778 passed404API/468Web/752PG, security37148264787 and inventory37148264781 passed. Browser37148264779 completed175passing/two failing: the new geometry helper used nav[data-mobile-visible], which matches both the closed drawer navigation and the fixed mobile navigation. Strict locator ambiguity occurred before the viewport proof; it did not establish a card-overlap failure. The corrected selector uses the actual unique localized Mobile navigation role/name. Navigation, geometry inequalities, zero Kids social reads, policy HTML/link assertions and full12image requirement remain unchanged. The failed run did not execute the gated PWA step and is not accepted or relabelled as passing.
+
+## Final viewport evidence refinement for consolidated review
+
+Source78b13058 quality37149257248 passed404API/468Web/752PG; security37149257239/inventory37149257219 passed. Browser37149257251 passed177ordinary plus5PWA. All12original images11282914784 were independently hashed and viewed, SHA25636dcf5e5fefc5b9c1ca11e78cb8e88f83ed4438b5c3dde87693eb7a3d54f4dca. Kids interaction error is absent. However mobile viewport captures after full-page capture did not visibly preserve bottom navigation, so they were not accepted as proof of above-visible-navigation geometry.
+
+The geometry check now requires navigation itself to fit the actual configured viewport with positive height. Mobile card captures happen before full-page capture, with two animation frames after scrolling; full-page context is then captured after scrolling back to the header. Navigation is never hidden or altered to obtain a good picture. Policy/zero social reads/strict role-name/bounds assertions remain. The consolidated exact-source candidate must rerun the full suite and provide all12new images; earlier green captures are not relabelled.

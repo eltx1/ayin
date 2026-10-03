@@ -25,11 +25,23 @@ async function expectReadableAboveNavigation(page: Page, card: Locator) {
         .getByRole("navigation", { name: /^(Mobile navigation|التنقل على الهاتف)$/ })
         .boundingBox();
       return Boolean(
-        bounds && navigation && bounds.y >= 0 && bounds.y + bounds.height <= navigation.y,
+        bounds &&
+        navigation &&
+        bounds.y >= 0 &&
+        bounds.y + bounds.height <= navigation.y &&
+        navigation.height > 0 &&
+        navigation.y > 0 &&
+        navigation.y + navigation.height <= (page.viewportSize()?.height ?? 0) + 1,
       );
     })
     .toBe(true);
   await expect(card).toBeVisible();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
 }
 for (const locale of ["en", "ar"] as const)
   test(`real channel and playlist preserve eligible Kids destinations and localized cards ${locale}`, async ({
@@ -70,10 +82,6 @@ for (const locale of ["en", "ar"] as const)
           () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
         ),
       ).toBe(true);
-      await page.screenshot({
-        path: info.outputPath(`design-policy-channel-${locale}-${width}.png`),
-        fullPage: true,
-      });
       if (width === 390) {
         await expectReadableAboveNavigation(
           page,
@@ -83,6 +91,17 @@ for (const locale of ["en", "ar"] as const)
           path: info.outputPath(`design-policy-channel-${locale}-${width}-card-viewport.png`),
         });
       }
+      await page.evaluate(() => scrollTo(0, 0));
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await page.screenshot({
+        path: info.outputPath(`design-policy-channel-${locale}-${width}.png`),
+        fullPage: true,
+      });
       await page.goto(`${prefix}/c/${f.handle}?kids=1&tab=playlists&lang=${locale}`);
       const link = main.getByRole("link", { name: /Actual eligible collection/ });
       await expect(link).toHaveAttribute(
@@ -109,10 +128,6 @@ for (const locale of ["en", "ar"] as const)
           () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
         ),
       ).toBe(true);
-      await page.screenshot({
-        path: info.outputPath(`design-policy-playlist-${locale}-${width}.png`),
-        fullPage: true,
-      });
       if (width === 390) {
         await expectReadableAboveNavigation(
           page,
@@ -122,6 +137,17 @@ for (const locale of ["en", "ar"] as const)
           path: info.outputPath(`design-policy-playlist-${locale}-${width}-card-viewport.png`),
         });
       }
+      await page.evaluate(() => scrollTo(0, 0));
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await page.screenshot({
+        path: info.outputPath(`design-policy-playlist-${locale}-${width}.png`),
+        fullPage: true,
+      });
     }
     expect(socialReads).toEqual([]);
     await page.goto(`${prefix}/c/${f.oldHandle}/playlists/${f.playlistSlug}?kids=1&lang=${locale}`);
