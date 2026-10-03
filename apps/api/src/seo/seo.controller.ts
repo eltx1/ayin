@@ -59,6 +59,8 @@ export class SeoController {
     });
   }
   @Get("sitemap/:kind")
+  @Header("Cache-Control", "no-store")
+  @Header("Pragma", "no-cache")
   listSitemap(@Param("kind") kindRaw: string, @Query() query: unknown) {
     if (!sitemapKinds.has(kindRaw as SeoSitemapKind))
       throw new BadRequestException("Unsupported SEO sitemap kind.");

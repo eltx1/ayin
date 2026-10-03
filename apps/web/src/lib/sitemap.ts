@@ -53,10 +53,26 @@ interface SitemapPlaylistItem {
 
 export async function getSitemapCounts(): Promise<SitemapCounts> {
   const response = await fetch(`${apiBaseUrl}/public/seo/sitemap-counts`, {
-    next: { revalidate: 900 },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`SEO sitemap counts failed with ${response.status}.`);
-  return (await response.json()) as SitemapCounts;
+  const value = (await response.json()) as unknown;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw Error("Invalid sitemap counts.");
+  const counts = value as Record<string, unknown>;
+  for (const kind of ["videos", "channels", "playlists"] as const)
+    if (
+      typeof counts[kind] !== "number" ||
+      !Number.isSafeInteger(counts[kind]) ||
+      (counts[kind] as number) < 0
+    )
+      throw Error("Invalid sitemap counts.");
+  return {
+    videos: counts.videos as number,
+    channels: counts.channels as number,
+    playlists: counts.playlists as number,
+  };
 }
 
 export function getSitemapShardSize(kind: SitemapKind): number {
@@ -69,7 +85,12 @@ export function getSitemapShardCount(kind: SitemapKind, total: number): number {
 }
 
 export async function getSitemapShard(kind: SitemapKind, shard: number): Promise<string> {
-  if (!Number.isInteger(shard) || shard < 0) throw new Error("Invalid sitemap shard.");
+  if (
+    !Number.isSafeInteger(shard) ||
+    shard < 0 ||
+    shard * getSitemapShardSize(kind) > 1_000_000_000
+  )
+    throw new Error("Invalid sitemap shard.");
   const shardSize = getSitemapShardSize(kind);
   const page = await fetchSitemapPage(kind, shard * shardSize, shardSize);
   const entries = page.items.map((item) => renderEntry(kind, item));
@@ -80,11 +101,18 @@ export async function getSitemapShard(kind: SitemapKind, shard: number): Promise
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${namespaces}>\n${entries.join("\n")}\n</urlset>`;
 }
 
-export function xmlResponse(xml: string): Response {
+export function parseSitemapShard(filename: string): number | null {
+  if (!/^(0|[1-9][0-9]*)\.xml$/.test(filename)) return null;
+  const shard = Number(filename.slice(0, -4));
+  return Number.isSafeInteger(shard) ? shard : null;
+}
+export function xmlResponse(xml: string, staticOnly = false): Response {
   return new Response(xml, {
     headers: {
       "content-type": "application/xml; charset=utf-8",
-      "cache-control": "public, max-age=300, s-maxage=900, stale-while-revalidate=3600",
+      "cache-control": staticOnly
+        ? "public, max-age=300, s-maxage=900, stale-while-revalidate=3600"
+        : "no-store",
     },
   });
 }
@@ -101,7 +129,8 @@ export function xmlEscape(value: string): string {
 async function fetchSitemapPage(kind: SitemapKind, offset: number, limit: number) {
   const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
   const response = await fetch(`${apiBaseUrl}/public/seo/sitemap/${kind}?${query.toString()}`, {
-    next: { revalidate: 900 },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`SEO sitemap ${kind} feed failed with ${response.status}.`);
   return (await response.json()) as SitemapPage<

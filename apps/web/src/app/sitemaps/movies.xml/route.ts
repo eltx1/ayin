@@ -13,7 +13,8 @@ interface MovieSitemapItem {
 
 export async function GET() {
   const response = await fetch(`${apiBaseUrl}/public/movie-sitemap`, {
-    next: { revalidate: 900 },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error(`Movie sitemap feed failed with ${response.status}.`);
   const body = (await response.json()) as { items: MovieSitemapItem[] };

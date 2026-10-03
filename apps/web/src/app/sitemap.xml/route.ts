@@ -11,7 +11,15 @@ export async function GET() {
     absoluteUrl("/sitemaps/series.xml"),
   ];
 
-  for (const kind of ["videos", "channels", "playlists"] as const) {
+  const kinds = ["videos", "channels", "playlists"] as const;
+  if (
+    kinds.reduce(
+      (total, kind) => total + getSitemapShardCount(kind, counts[kind]),
+      sitemapUrls.length,
+    ) > 50_000
+  )
+    throw Error("Sitemap index capacity exceeded.");
+  for (const kind of kinds) {
     const shards = getSitemapShardCount(kind, counts[kind]);
     for (let shard = 0; shard < shards; shard += 1) {
       sitemapUrls.push(absoluteUrl(`/sitemaps/${kind}/${shard}.xml`));
