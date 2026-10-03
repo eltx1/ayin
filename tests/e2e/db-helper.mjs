@@ -168,6 +168,25 @@ try {
       };
       break;
     }
+    case "seed-viewer-comments": {
+      const account = await prisma.account.findUniqueOrThrow({
+        where: { email: payload.email },
+        include: { viewerProfiles: true },
+      });
+      const profile = account.viewerProfiles.find((item) => item.isDefault && !item.deletedAt);
+      if (!profile) throw new Error("Expected default profile");
+      const now = Date.now();
+      await prisma.comment.createMany({
+        data: Array.from({ length: 32 }, (_, index) => ({
+          videoId: payload.videoId,
+          authorProfileId: profile.id,
+          body: `Existing comment ${index + 1}`,
+          createdAt: new Date(now - index * 1000),
+        })),
+      });
+      result = { count: 32 };
+      break;
+    }
     case "seed-kids-surface": {
       const suffix = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const now = Date.now();
@@ -220,7 +239,12 @@ try {
           ),
         );
       }
-      result = { eligibleIds: eligible.map((video) => video.id), ordinaryId: ordinary.id };
+      result = {
+        eligibleIds: eligible.map((video) => video.id),
+        eligibleSlugs: eligible.map((video) => video.slug),
+        ordinaryId: ordinary.id,
+        ordinarySlug: ordinary.slug,
+      };
       break;
     }
     case "seed-my-ayin-lens": {
