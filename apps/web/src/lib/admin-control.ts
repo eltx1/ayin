@@ -324,22 +324,25 @@ export function getAdminSession(signal?: AbortSignal) {
   return adminFetch<AdminSession>("/admin/session", { signal: signal ?? null });
 }
 
-export function getAdminDashboard() {
-  return adminFetch<Record<string, unknown>>("/admin/control/dashboard");
+export function getAdminDashboard(signal?: AbortSignal) {
+  return adminFetch<Record<string, unknown>>("/admin/control/dashboard", {
+    signal: signal ?? null,
+  });
 }
 
-export function getAdminAnalytics() {
-  return adminFetch<AdminAnalyticsMetrics>("/admin/analytics");
+export function getAdminAnalytics(signal?: AbortSignal) {
+  return adminFetch<AdminAnalyticsMetrics>("/admin/analytics", { signal: signal ?? null });
 }
 
-export function searchAdmin(query: string) {
+export function searchAdmin(query: string, signal?: AbortSignal) {
   return adminFetch<{ query: string; items: AdminGlobalSearchResult[] }>(
     `/admin/control/search?query=${encodeURIComponent(query)}`,
+    { signal: signal ?? null },
   );
 }
 
-export function getAdminSystemHealth() {
-  return adminFetch<AdminSystemHealth>("/admin/control/health");
+export function getAdminSystemHealth(signal?: AbortSignal) {
+  return adminFetch<AdminSystemHealth>("/admin/control/health", { signal: signal ?? null });
 }
 
 export function getAdminCollection<T>(
