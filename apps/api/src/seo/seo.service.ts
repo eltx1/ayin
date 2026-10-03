@@ -16,7 +16,7 @@ function publicPlaylistEligibility(context: VideoPolicyContext) {
     AND EXISTS (SELECT 1 FROM "PlaylistItem" i JOIN "Video" v ON v.id = i."videoId"
       WHERE i."playlistId" = p.id AND ${publicVideoEligibility(context)})`;
 }
-interface SitemapVideoRow {
+export interface SitemapVideoRow {
   id: string;
   slug: string;
   title: string;
@@ -28,7 +28,7 @@ interface SitemapVideoRow {
   thumbnailObjectKey: string | null;
   sourceObjectKey: string | null;
 }
-interface SitemapChannelRow {
+export interface SitemapChannelRow {
   id: string;
   handle: string;
   name: string;
@@ -36,7 +36,7 @@ interface SitemapChannelRow {
   updatedAt: Date;
   imageObjectKey: string | null;
 }
-interface SitemapPlaylistRow {
+export interface SitemapPlaylistRow {
   id: string;
   slug: string;
   name: string;
