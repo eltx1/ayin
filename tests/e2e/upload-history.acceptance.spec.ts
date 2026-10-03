@@ -87,6 +87,12 @@ for (const locale of ["en", "ar"] as const)
           return bounds !== null && bounds.y >= 80 && bounds.y + bounds.height < 300;
         })
         .toBe(true);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
       await page.screenshot({
         path: testInfo.outputPath(`design-upload-history-${locale}-${width}.png`),
       });
@@ -94,7 +100,8 @@ for (const locale of ["en", "ar"] as const)
         name: copy("Previous", "السابق"),
         exact: true,
       });
-      await previous.evaluate((element) => element.scrollIntoView({ block: "center" }));
+      if (width === 390)
+        await previous.evaluate((element) => element.scrollIntoView({ block: "center" }));
       await expect(previous).toBeEnabled();
       await expect
         .poll(async () =>
@@ -118,9 +125,17 @@ for (const locale of ["en", "ar"] as const)
           }),
         )
         .toBe(true);
-      await page.screenshot({
-        path: testInfo.outputPath(`design-upload-history-${locale}-${width}-pager.png`),
-      });
+      if (width === 390) {
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+            ),
+        );
+        await page.screenshot({
+          path: testInfo.outputPath(`design-upload-history-${locale}-${width}-pager.png`),
+        });
+      }
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
       ).toBe(true);
