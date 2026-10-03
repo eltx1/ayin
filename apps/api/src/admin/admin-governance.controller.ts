@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Inject,
   Param,
   Patch,
@@ -209,6 +210,8 @@ export class AdminGovernanceController {
   }
 
   @Post("accounts/:accountId/revoke-sessions")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   @RequireAdminStepUp()
   @RequireAdminRoles("OPERATIONS")
   revokeSessions(

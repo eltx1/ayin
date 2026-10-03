@@ -7,5 +7,5 @@ type AdminUsersPageProps = {
 export default async function AdminUsersPage({ searchParams }: AdminUsersPageProps) {
   const params = await searchParams;
   const query = Array.isArray(params.query) ? (params.query[0] ?? "") : (params.query ?? "");
-  return <AdminUsers initialQuery={query} />;
+  return <AdminUsers key={query} initialQuery={query} />;
 }
