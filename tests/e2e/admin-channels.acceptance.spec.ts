@@ -53,7 +53,7 @@ for (const locale of ["en", "ar"] as const)
     await expect(list.locator(":scope > li")).toHaveCount(25);
     const row = main
         .locator("li")
-        .filter({ has: main.getByRole("heading", { name: new RegExp(seed.handle) }) }),
+        .filter({ has: page.getByRole("heading", { name: new RegExp(seed.handle) }) }),
       edit = row
         .locator("summary")
         .filter({ hasText: ar ? `تعديل @${seed.handle}` : `Edit @${seed.handle}` });
@@ -168,7 +168,7 @@ test("Admin channel committed response loss preserves the actual draft and never
   const main = page.getByRole("main"),
     row = main
       .locator("li")
-      .filter({ has: main.getByRole("heading", { name: new RegExp(seed.handle) }) });
+      .filter({ has: page.getByRole("heading", { name: new RegExp(seed.handle) }) });
   await row
     .locator("summary")
     .filter({ hasText: `Edit @${seed.handle}` })
@@ -219,7 +219,7 @@ test("Admin channel rejects an actual concurrent edit before the stale browser d
   const main = page.getByRole("main"),
     row = main
       .locator("li")
-      .filter({ has: main.getByRole("heading", { name: new RegExp(seed.handle) }) });
+      .filter({ has: page.getByRole("heading", { name: new RegExp(seed.handle) }) });
   await row
     .locator("summary")
     .filter({ hasText: `Edit @${seed.handle}` })

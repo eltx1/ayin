@@ -66,72 +66,12 @@ export interface PublicCreatorTvResponse {
   };
 }
 
-export interface CreatorTvManagementResponse {
-  channel: { id: string; handle: string; name: string };
-  tv: {
-    id: string;
-    slug: string;
-    name: string;
-    status: "ACTIVE" | "OFF_AIR" | "DISABLED";
-  };
-  automation: {
-    platformEnabled: boolean;
-    channelAutoAddEnabled: boolean;
-    channelScheduleEnabled: boolean;
-    rotationMode: "PRIORITY_ORDER_OLDEST" | "PRIORITY_ORDER_NEWEST";
-    fallbackDurationMs: number;
-    guideWindowMinutes: number;
-  };
-  videos: Array<
-    CreatorTvVideo & {
-      included: boolean;
-      priority: number;
-      sortOrder: number | null;
-      effectiveDurationMs: number;
-    }
-  >;
-}
-
 export async function fetchPublicCreatorTv(handle: string): Promise<PublicCreatorTvResponse> {
   const response = await fetch(`${apiBaseUrl}/public/channels/${encodeURIComponent(handle)}/tv`, {
     cache: "no-store",
   });
   if (!response.ok) throw new Error(await readApiError(response));
   return (await response.json()) as PublicCreatorTvResponse;
-}
-
-export async function getCreatorTvManagement(
-  channelId: string,
-): Promise<CreatorTvManagementResponse> {
-  const response = await fetch(`${apiBaseUrl}/creator/channels/${channelId}/tv`, {
-    cache: "no-store",
-    credentials: "include",
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as CreatorTvManagementResponse;
-}
-
-export async function updateCreatorTvVideoPreference(
-  tvChannelId: string,
-  videoId: string,
-  input: { included: boolean; priority: number; sortOrder: number | null },
-) {
-  const response = await fetch(`${apiBaseUrl}/creator/tv/${tvChannelId}/videos/${videoId}`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as {
-    preference: {
-      videoId: string;
-      included: boolean;
-      priority: number;
-      sortOrder: number | null;
-      updatedAt: string;
-    };
-  };
 }
 
 export interface CreatorTvLinearCapability {
