@@ -46,4 +46,10 @@ export class RevenueReconciliationController {
   report(@Param("reportId") reportId: string) {
     return this.reconciliation.getReport(reportId);
   }
+
+  @Get("lookup")
+  @Header("Cache-Control", "private, no-store")
+  lookup(@Query("source") source?: string, @Query("sourceReportId") sourceReportId?: string) {
+    return this.reconciliation.lookupReport(source, sourceReportId);
+  }
 }

@@ -1,5 +1,5 @@
 import type { Prisma } from "@ayin/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
@@ -351,6 +351,21 @@ export class RevenueReconciliationService {
       ...this.serializeReport(report),
       rows: report.rows.map((row) => this.serializeRow(row)),
     };
+  }
+
+  async lookupReport(source: string | undefined, sourceReportId: string | undefined) {
+    if (
+      typeof source !== "string" ||
+      typeof sourceReportId !== "string" ||
+      !source.trim() ||
+      source.trim().length > 80 ||
+      !sourceReportId?.trim() ||
+      sourceReportId.trim().length > 160
+    )
+      throw new BadRequestException("Invalid source report reference.");
+    const report = await this.findReport(source.trim(), sourceReportId.trim());
+    if (!report) throw new NotFoundException("Source report not found.");
+    return this.serializeReport(report);
   }
 
   private async findReport(source: string, sourceReportId: string) {
