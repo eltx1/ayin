@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -237,13 +237,7 @@ export class ChannelService {
     let previousHandle: string | null = null;
     try {
       await this.database.client.$transaction(async (tx) => {
-        const current = await tx.channel.findUnique({
-          where: { id: channelId },
-          select: { handle: true, status: true },
-        });
-        if (!current || current.status === "REMOVED") {
-          throw new ChannelError("CHANNEL_NOT_FOUND", "This AYIN channel could not be found.", 404);
-        }
+        const current = await this.lockEditableChannel(tx, actor, channelId);
 
         if (handle !== undefined && handle !== current.handle) {
           await this.assertHandleAvailable(tx, handle, channelId);
@@ -332,16 +326,19 @@ export class ChannelService {
     const assetKind = input.kind === "avatar" ? "CHANNEL_AVATAR" : "CHANNEL_BANNER";
     const objectKey = `channels/${channelId}/channel-assets/${assetId}/${input.kind}.${extension}`;
 
-    await this.database.client.mediaAsset.create({
-      data: {
-        id: assetId,
-        channelId,
-        kind: assetKind,
-        status: "PENDING",
-        r2ObjectKey: objectKey,
-        mimeType,
-        sizeBytes: BigInt(input.sizeBytes),
-      },
+    await this.database.client.$transaction(async (tx) => {
+      await this.lockEditableChannel(tx, actor, channelId);
+      await tx.mediaAsset.create({
+        data: {
+          id: assetId,
+          channelId,
+          kind: assetKind,
+          status: "PENDING",
+          r2ObjectKey: objectKey,
+          mimeType,
+          sizeBytes: BigInt(input.sizeBytes),
+        },
+      });
     });
 
     try {
@@ -407,41 +404,56 @@ export class ChannelService {
       );
     }
 
-    const appearance = await this.database.client.channelAppearance.findUnique({
-      where: { channelId },
-      select: { avatarAssetId: true, bannerAssetId: true },
-    });
-    const previousAssetId =
-      asset.kind === "CHANNEL_AVATAR" ? appearance?.avatarAssetId : appearance?.bannerAssetId;
-    const previousAsset =
-      previousAssetId && previousAssetId !== asset.id
-        ? await this.database.client.mediaAsset.findUnique({
-            where: { id: previousAssetId },
-            select: { id: true, r2ObjectKey: true },
-          })
-        : null;
-    const selectedField =
-      asset.kind === "CHANNEL_AVATAR" ? { avatarAssetId: asset.id } : { bannerAssetId: asset.id };
-
-    await this.database.client.$transaction([
-      this.database.client.mediaAsset.update({
-        where: { id: asset.id },
-        data: { status: "UPLOADED" },
-      }),
-      this.database.client.channelAppearance.upsert({
+    const previousAsset = await this.database.client.$transaction(async (tx) => {
+      await this.lockEditableChannel(tx, actor, channelId);
+      // Serialize competing completion/removal for the same asset as well as the channel pointer.
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "MediaAsset" WHERE "id" = ${assetId}::uuid FOR UPDATE`,
+      );
+      const currentAsset = await tx.mediaAsset.findFirst({
+        where: { id: assetId, channelId, kind: asset.kind, status: "PENDING", removedAt: null },
+        select: { id: true, r2ObjectKey: true, mimeType: true, sizeBytes: true },
+      });
+      if (
+        !currentAsset ||
+        currentAsset.r2ObjectKey !== asset.r2ObjectKey ||
+        currentAsset.mimeType !== asset.mimeType ||
+        currentAsset.sizeBytes !== asset.sizeBytes
+      ) {
+        throw new ChannelError(
+          "CHANNEL_IMAGE_NOT_FOUND",
+          "This channel image upload is no longer active.",
+          404,
+        );
+      }
+      const appearance = await tx.channelAppearance.findUnique({
+        where: { channelId },
+        select: { avatarAssetId: true, bannerAssetId: true },
+      });
+      const previousAssetId =
+        asset.kind === "CHANNEL_AVATAR" ? appearance?.avatarAssetId : appearance?.bannerAssetId;
+      const previousAsset =
+        previousAssetId && previousAssetId !== asset.id
+          ? await tx.mediaAsset.findUnique({
+              where: { id: previousAssetId },
+              select: { id: true, r2ObjectKey: true },
+            })
+          : null;
+      const selectedField =
+        asset.kind === "CHANNEL_AVATAR" ? { avatarAssetId: asset.id } : { bannerAssetId: asset.id };
+      await tx.mediaAsset.update({ where: { id: asset.id }, data: { status: "UPLOADED" } });
+      await tx.channelAppearance.upsert({
         where: { channelId },
         update: selectedField,
         create: { channelId, ...selectedField },
-      }),
-      ...(previousAsset
-        ? [
-            this.database.client.mediaAsset.updateMany({
-              where: { id: previousAsset.id, status: { in: ["UPLOADED", "VALIDATED"] } },
-              data: { status: "REMOVED", removedAt: new Date() },
-            }),
-          ]
-        : []),
-    ]);
+      });
+      if (previousAsset)
+        await tx.mediaAsset.updateMany({
+          where: { id: previousAsset.id, status: { in: ["UPLOADED", "VALIDATED"] } },
+          data: { status: "REMOVED", removedAt: new Date() },
+        });
+      return previousAsset;
+    });
 
     if (previousAsset) {
       await this.storage.deleteObject(previousAsset.r2ObjectKey).catch(() => undefined);
@@ -553,9 +565,31 @@ export class ChannelService {
     };
   }
 
-  private async assertCanEdit(actor: ChannelEditActor, channelId: string): Promise<void> {
+  private async lockEditableChannel(
+    tx: Prisma.TransactionClient,
+    actor: ChannelEditActor,
+    channelId: string,
+  ) {
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "Channel" WHERE "id" = ${channelId}::uuid FOR UPDATE`,
+    );
+    await this.assertCanEdit(actor, channelId, tx);
+    const channel = await tx.channel.findUnique({
+      where: { id: channelId },
+      select: { handle: true, status: true, removedAt: true },
+    });
+    if (!channel || channel.status === "REMOVED" || channel.removedAt)
+      throw new ChannelError("CHANNEL_NOT_FOUND", "This AYIN channel could not be found.", 404);
+    return channel;
+  }
+
+  private async assertCanEdit(
+    actor: ChannelEditActor,
+    channelId: string,
+    client: Prisma.TransactionClient = this.database.client,
+  ): Promise<void> {
     if (actor.kind === "owner") {
-      const membership = await this.database.client.channelMember.findFirst({
+      const membership = await client.channelMember.findFirst({
         where: { accountId: actor.accountId, channelId, role: "OWNER" },
         select: { id: true },
       });
@@ -569,7 +603,7 @@ export class ChannelService {
       return;
     }
 
-    const assignment = await this.database.client.adminRoleAssignment.findFirst({
+    const assignment = await client.adminRoleAssignment.findFirst({
       where: {
         accountId: actor.accountId,
         role: { in: ["ADMIN", "SUPERADMIN"] },
