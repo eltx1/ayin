@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { randomUUID } from "node:crypto";
 
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -60,6 +61,76 @@ databaseDescribe("Task 17 Admin control plane", () => {
   async function grant(accountId: string) {
     await prisma.adminRoleAssignment.create({ data: { accountId, role: "ADMIN" } });
   }
+
+  it("reads deterministic private account pages and a safe original target without exposing credentials or granting Finance access", async () => {
+    const operator = await register("Directory Operations", "directory-operator@example.com");
+    const finance = await register("Directory Finance", "directory-finance@example.com");
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: operator.user.account.id, role: "OPERATIONS" },
+    });
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: finance.user.account.id, role: "FINANCE_MANAGER" },
+    });
+    const ids = Array.from({ length: 26 }, () => randomUUID())
+      .sort()
+      .reverse();
+    await prisma.account.createMany({
+      data: ids.map((id, i) => ({
+        id,
+        email: "directory-owned-" + i + "@example.com",
+        displayName: "Actual directory target " + i,
+        status: i === 0 ? "SUSPENDED" : "ACTIVE",
+        createdAt: new Date("2026-10-01T00:00:00Z"),
+        passwordHash: "test-only-inaccessible-password-marker",
+        authVersion: 17,
+      })),
+    });
+    const auditBeforeReads = await prisma.adminAuditLog.findMany({ orderBy: { id: "asc" } });
+    expect(auditBeforeReads).toHaveLength(4);
+    expect(auditBeforeReads.every((entry) => entry.entityType !== "Account")).toBe(true);
+    const read = (url: string, cookie = operator.cookie) =>
+      app.inject({ method: "GET", url, headers: { cookie } });
+    const first = await read("/admin/control/users?query=directory-owned-&take=25&page=1");
+    expect(first.statusCode).toBe(200);
+    expect(first.headers["cache-control"]).toContain("private");
+    expect(first.headers["cache-control"]).toContain("no-store");
+    expect(first.headers.pragma).toBe("no-cache");
+    expect(first.json().items.map((r: { id: string }) => r.id)).toEqual(ids.slice(0, 25));
+    expect(first.json().pagination).toEqual({ page: 1, take: 25, total: 26, pages: 2 });
+    const second = await read("/admin/control/users?query=directory-owned-&take=25&page=2");
+    expect(second.json().items.map((r: { id: string }) => r.id)).toEqual(ids.slice(25));
+    const filtered = await read(
+      "/admin/control/users?query=directory-owned-&take=25&page=1&status=SUSPENDED",
+    );
+    expect(filtered.json().items.map((r: { id: string }) => r.id)).toEqual(ids.slice(0, 1));
+    const target = await read("/admin/control/users/" + ids[0]);
+    expect(target.statusCode).toBe(200);
+    expect(target.headers["cache-control"]).toContain("no-store");
+    expect(target.headers.pragma).toBe("no-cache");
+    expect(target.json()).toMatchObject({
+      id: ids[0],
+      status: "SUSPENDED",
+      channelMemberships: [],
+      emailVerifiedAt: null,
+    });
+    for (const response of [first, second, filtered, target]) {
+      expect(response.body).not.toContain("password");
+      expect(response.body).not.toContain("authVersion");
+      expect(response.body).not.toContain("test-only-inaccessible-password-marker");
+    }
+    expect((await read("/admin/control/users?take=25&providerKey=injected")).statusCode).toBe(400);
+    expect((await read("/admin/control/users/not-a-uuid")).statusCode).toBe(400);
+    expect((await read("/admin/control/users/" + randomUUID())).statusCode).toBe(404);
+    expect((await read("/admin/control/users?take=25", finance.cookie)).statusCode).toBe(403);
+    expect((await read("/admin/control/users/" + ids[0], finance.cookie)).statusCode).toBe(403);
+    expect(
+      (await app.inject({ method: "GET", url: "/admin/control/users/" + ids[0] })).statusCode,
+    ).toBe(401);
+    expect(await prisma.adminAuditLog.findMany({ orderBy: { id: "asc" } })).toEqual(
+      auditBeforeReads,
+    );
+    expect(await prisma.account.count({ where: { id: { in: ids }, authVersion: 17 } })).toBe(26);
+  });
 
   it("returns the actual committed channel contract and rejects an observed stale channel without a second audit", async () => {
     const admin = await register("Channel Admin", "channel-version-admin@example.com");

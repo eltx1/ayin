@@ -1,0 +1,31 @@
+.workspace,
+.privateBody,
+.list,
+.record {
+  display: grid;
+  gap: var(--space-5);
+  min-inline-size: 0;
+}
+.privateBody[hidden] {
+  display: none;
+}
+.record {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow-wrap: anywhere;
+}
+.record h2 {
+  font-size: var(--text-lg);
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-4);
+}
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}

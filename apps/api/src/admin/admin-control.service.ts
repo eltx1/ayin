@@ -4,6 +4,21 @@ import { DatabaseService } from "../database/database.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { adminBadRequest } from "./admin.errors.js";
 
+const accountReadSelection = {
+  id: true,
+  email: true,
+  displayName: true,
+  status: true,
+  emailVerifiedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  channelMemberships: {
+    where: { role: "OWNER" },
+    take: 3,
+    select: { channel: { select: { id: true, handle: true, name: true, status: true } } },
+  },
+} as const;
+
 const MAX_ADMIN_PAGE = 1_000;
 
 interface PageInput {
@@ -120,30 +135,30 @@ export class AdminControlService {
           }
         : {}),
     };
-    const [total, items] = await Promise.all([
-      this.database.client.account.count({ where }),
-      this.database.client.account.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          email: true,
-          displayName: true,
-          status: true,
-          emailVerifiedAt: true,
-          createdAt: true,
-          updatedAt: true,
-          channelMemberships: {
-            where: { role: "OWNER" },
-            take: 3,
-            select: { channel: { select: { id: true, handle: true, name: true, status: true } } },
-          },
-        },
-      }),
-    ]);
+    const [total, items] = await this.database.client.$transaction(
+      async (tx) =>
+        Promise.all([
+          tx.account.count({ where }),
+          tx.account.findMany({
+            where,
+            skip,
+            take,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: accountReadSelection,
+          }),
+        ]),
+      { isolationLevel: "RepeatableRead" },
+    );
     return { items, pagination: this.pagination(total, page, take) };
+  }
+
+  async userRecord(accountId: string) {
+    const record = await this.database.client.account.findUnique({
+      where: { id: accountId },
+      select: accountReadSelection,
+    });
+    if (!record) throw new NotFoundException("Account record unavailable.");
+    return record;
   }
 
   async updateAccount(actorAccountId: string, accountId: string, patch: AdminAccountPatch) {
