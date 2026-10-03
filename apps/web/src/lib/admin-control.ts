@@ -348,9 +348,10 @@ export function getAdminSystemHealth(signal?: AbortSignal) {
 export function getAdminCollection<T>(
   resource: "users" | "channels" | "videos" | "tv" | "moderation",
   params: URLSearchParams,
+  signal?: AbortSignal,
 ): Promise<T> {
   const suffix = params.size ? `?${params.toString()}` : "";
-  return adminFetch(`/admin/control/${resource}${suffix}`);
+  return adminFetch(`/admin/control/${resource}${suffix}`, { signal: signal ?? null });
 }
 
 export function patchAdminResource<T>(
