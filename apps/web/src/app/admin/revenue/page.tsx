@@ -1,11 +1,5 @@
-import { AdminRevenueControlCenter } from "@/components/admin/admin-revenue-control-center";
-import { AdminRevenueReconciliation } from "@/components/admin/admin-revenue-reconciliation";
+import { AdminFinanceWorkspace } from "@/components/admin/admin-finance-workspace";
 
 export default function AdminRevenuePage() {
-  return (
-    <>
-      <AdminRevenueControlCenter />
-      <AdminRevenueReconciliation />
-    </>
-  );
+  return <AdminFinanceWorkspace />;
 }
