@@ -68,6 +68,7 @@ databaseDescribe("Finance contract/channel atomic aggregate", () => {
     const actor = await finance("race");
     const channelId = actor.user.channel.id;
     const original = await prisma.channel.findUniqueOrThrow({ where: { id: channelId } });
+    const initialContracts = await prisma.creatorContract.count({ where: { channelId } });
     const heldVersion = new Date(original.updatedAt.getTime() + 1000);
     let release!: () => void, acquired!: () => void;
     const gate = new Promise<void>((resolve) => {
@@ -100,7 +101,7 @@ databaseDescribe("Finance contract/channel atomic aggregate", () => {
         },
         { timeout: 4000, interval: 25 },
       );
-      expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(0);
+      expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(initialContracts);
     } finally {
       release();
     }
@@ -108,7 +109,7 @@ databaseDescribe("Finance contract/channel atomic aggregate", () => {
     const responses = await Promise.all([first, second]);
     expect(responses.map((r) => r.statusCode)).toEqual([201, 201]);
     expect(responses.map((r) => r.json().revenueShareBps)).toEqual([0, 3210]);
-    expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(2);
+    expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(initialContracts + 2);
     expect(
       await prisma.adminAuditLog.count({
         where: { actorAccountId: actor.user.account.id, action: "CREATOR_CONTRACT_CREATED" },
@@ -122,6 +123,7 @@ databaseDescribe("Finance contract/channel atomic aggregate", () => {
     const actor = await finance("rollback"),
       channelId = actor.user.channel.id;
     const before = await prisma.channel.findUniqueOrThrow({ where: { id: channelId } });
+    const initialContracts = await prisma.creatorContract.count({ where: { channelId } });
     await prisma.$executeRawUnsafe(
       "CREATE FUNCTION ayin_test_contract_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'CREATOR_CONTRACT_CREATED' THEN RAISE EXCEPTION 'test contract audit failure'; END IF; RETURN NEW; END; $$",
     );
@@ -130,7 +132,7 @@ databaseDescribe("Finance contract/channel atomic aggregate", () => {
         'CREATE TRIGGER ayin_test_contract_audit_failure BEFORE INSERT ON "AdminAuditLog" FOR EACH ROW EXECUTE FUNCTION ayin_test_contract_audit_failure()',
       );
       expect((await create(actor.cookie, channelId, 0)).statusCode).toBe(500);
-      expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(0);
+      expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(initialContracts);
       expect(
         await prisma.adminAuditLog.count({ where: { action: "CREATOR_CONTRACT_CREATED" } }),
       ).toBe(0);
@@ -145,7 +147,7 @@ databaseDescribe("Finance contract/channel atomic aggregate", () => {
     }
     const saved = await create(actor.cookie, channelId, 0);
     expect(saved.statusCode).toBe(201);
-    expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(1);
+    expect(await prisma.creatorContract.count({ where: { channelId } })).toBe(initialContracts + 1);
     expect(
       await prisma.adminAuditLog.count({
         where: { action: "CREATOR_CONTRACT_CREATED", entityId: saved.json().id },
@@ -159,12 +161,13 @@ databaseDescribe("Finance contract/channel atomic aggregate", () => {
     const creator = await register("denied");
     expect((await create(creator.cookie, creator.user.channel.id, 0)).statusCode).toBe(403);
     const actor = await finance("invalid");
+    const initialContracts = await prisma.creatorContract.count();
     expect((await create(actor.cookie, "invalid-id", 0)).statusCode).toBe(400);
     expect((await create(actor.cookie, "00000000-0000-4000-8000-000000000000", 0)).statusCode).toBe(
       404,
     );
     expect((await create(actor.cookie, actor.user.channel.id, 10001)).statusCode).toBe(400);
-    expect(await prisma.creatorContract.count()).toBe(0);
+    expect(await prisma.creatorContract.count()).toBe(initialContracts);
     expect(
       await prisma.adminAuditLog.count({ where: { action: "CREATOR_CONTRACT_CREATED" } }),
     ).toBe(0);
