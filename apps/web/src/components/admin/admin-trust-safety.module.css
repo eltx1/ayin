@@ -77,6 +77,11 @@
   max-inline-size: 100%;
 }
 @media (max-width: 40rem) {
+  .workspace [role="tab"] {
+    flex: 1 1 8rem;
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
   .panel {
     padding: 0.85rem;
   }
