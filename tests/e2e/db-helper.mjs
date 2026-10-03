@@ -816,6 +816,69 @@ try {
       };
       break;
     }
+    case "measure-analytics-query-plans": {
+      const url = new URL(databaseUrl);
+      if (!["localhost", "127.0.0.1"].includes(url.hostname) || url.pathname !== "/ayin_e2e")
+        throw new Error("Query lab requires isolated local ayin_e2e");
+      const member = await prisma.channelMember.findFirstOrThrow({
+        where: { accountId: payload.accountId, role: "OWNER" },
+      });
+      const channelId = member.channelId;
+      const to = new Date();
+      to.setUTCHours(0, 0, 0, 0);
+      const from = new Date(to.getTime() - 365 * 86400000);
+      const sanitize = (node) => {
+        const keys = [
+          "Node Type",
+          "Relation Name",
+          "Index Name",
+          "Scan Direction",
+          "Plan Rows",
+          "Actual Rows",
+          "Actual Loops",
+          "Actual Startup Time",
+          "Actual Total Time",
+          "Shared Hit Blocks",
+          "Shared Read Blocks",
+          "Rows Removed by Filter",
+        ];
+        return {
+          ...Object.fromEntries(
+            keys.filter((key) => node[key] !== undefined).map((key) => [key, node[key]]),
+          ),
+          ...(node.Plans ? { Plans: node.Plans.map(sanitize) } : {}),
+        };
+      };
+      const aggregate = await prisma.$queryRaw`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+        SELECT SUM("views"), SUM("watchTimeMs"), SUM("starts"), SUM("adRequests"), SUM("adFills")
+        FROM "AnalyticsChannelDailyRollup" WHERE "channelId" = ${channelId}::uuid AND "bucketStart" >= ${from} AND "bucketStart" < ${to}`;
+      const audience = await prisma.$queryRaw`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+        SELECT "bucketStart", "activeProfiles", "newProfiles", "returningProfiles", "sessions", "watchTimeMs", "contentReturnProfiles"
+        FROM "AnalyticsChannelAudienceDailyRollup" WHERE "channelId" = ${channelId}::uuid AND "bucketStart" >= ${from} AND "bucketStart" < ${to} AND "activeProfiles" >= 20 ORDER BY "bucketStart" ASC`;
+      const cohorts = await prisma.$queryRaw`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+        SELECT "cohortDate", "cohortSize", "d1Retained", "d7Retained", "d30Retained"
+        FROM "AnalyticsSubscriberCohortRollup" WHERE "channelId" = ${channelId}::uuid AND "cohortDate" >= ${from} AND "cohortDate" < ${to} AND "cohortSize" >= 20 ORDER BY "cohortDate" ASC`;
+      const [version] = await prisma.$queryRaw`SELECT version() AS version`;
+      result = {
+        database: version.version,
+        rangeDays: 365,
+        fixtureMinimum: 20,
+        plans: [aggregate, audience, cohorts].map((rows, index) => {
+          const item = rows[0]["QUERY PLAN"][0];
+          return {
+            kind: [
+              "channel-aggregate",
+              "threshold-qualified-audience",
+              "threshold-qualified-subscriber-cohorts",
+            ][index],
+            planningMs: item["Planning Time"],
+            executionMs: item["Execution Time"],
+            plan: sanitize(item.Plan),
+          };
+        }),
+      };
+      break;
+    }
     case "seed-creator-analytics": {
       const url = new URL(databaseUrl);
       if (!["localhost", "127.0.0.1"].includes(url.hostname) || url.pathname !== "/ayin_e2e")

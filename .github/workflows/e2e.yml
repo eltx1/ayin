@@ -84,3 +84,11 @@ jobs:
             test-results/**/design-*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Preserve controlled runtime measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: controlled-runtime-measurements
+          path: test-results/**/performance-baseline-*.json
+          if-no-files-found: ignore
+          retention-days: 30
