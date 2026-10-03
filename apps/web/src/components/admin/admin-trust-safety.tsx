@@ -199,7 +199,9 @@ export function AdminTrustSafety() {
     [reviewed, setReviewed] = useState(false),
     [uncertain, setUncertain] = useState(false),
     [notice, setNotice] = useState<"saved" | "reviewed" | null>(null),
-    [error, setError] = useState<"read" | "denied" | "invalid" | "uncertain" | null>(null),
+    [error, setError] = useState<
+      "read" | "denied" | "invalid" | "uncertain" | "verification" | null
+    >(null),
     [currentRecord, setCurrentRecord] = useState<TrustCurrentRecord | null>(null);
   const mounted = useRef(false),
     read = useRef<AbortController | null>(null),
@@ -380,7 +382,12 @@ export function AdminTrustSafety() {
       return true;
     } catch (caught: unknown) {
       if (mounted.current) {
-        if (
+        if (caught instanceof AdminTrustError && caught.verificationRequired) {
+          decisionLocked.current = false;
+          setLocked(false);
+          setUncertain(false);
+          setError("verification");
+        } else if (
           caught instanceof AdminTrustError &&
           !caught.writeStarted &&
           [401, 403].includes(caught.status)
@@ -828,20 +835,25 @@ export function AdminTrustSafety() {
                 "This role cannot read Trust & Safety, or your identity changed. Reload after signing in.",
                 "هذه الصلاحية لا تسمح بقراءة الثقة والسلامة، أو تغير الحساب. أعد التحميل بعد تسجيل الدخول.",
               )
-            : error === "invalid"
+            : error === "verification"
               ? text(
-                  "Check the decision, required resource references and reason.",
-                  "راجع القرار ومراجع الموارد المطلوبة والسبب.",
+                  "Verify your session, review the retained draft and submit it explicitly. No decision was accepted or replayed.",
+                  "تحقق من الجلسة، وراجع المسودة المحفوظة ثم أرسلها صراحةً. لم يُقبل قرار ولم يُعد إرساله.",
                 )
-              : error === "uncertain"
+              : error === "invalid"
                 ? text(
-                    "The operation outcome could not be verified. Your draft is retained. Review current records before deciding what to do next.",
-                    "تعذر التحقق من نتيجة العملية. تم الاحتفاظ بالمسودة. راجع السجلات الحالية قبل اختيار الخطوة التالية.",
+                    "Check the decision, required resource references and reason.",
+                    "راجع القرار ومراجع الموارد المطلوبة والسبب.",
                   )
-                : text(
-                    "Current records could not be verified. Retry the read; decision controls remain unavailable.",
-                    "تعذر التحقق من السجلات الحالية. أعد القراءة؛ تظل أدوات القرار غير متاحة.",
-                  )}
+                : error === "uncertain"
+                  ? text(
+                      "The operation outcome could not be verified. Your draft is retained. Review current records before deciding what to do next.",
+                      "تعذر التحقق من نتيجة العملية. تم الاحتفاظ بالمسودة. راجع السجلات الحالية قبل اختيار الخطوة التالية.",
+                    )
+                  : text(
+                      "Current records could not be verified. Retry the read; decision controls remain unavailable.",
+                      "تعذر التحقق من السجلات الحالية. أعد القراءة؛ تظل أدوات القرار غير متاحة.",
+                    )}
         </StatusNotice>
       ) : null}
       {locked ? (

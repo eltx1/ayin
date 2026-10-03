@@ -58,7 +58,9 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
     [locked, setLocked] = useState(false),
     [readError, setReadError] = useState(false),
     [denied, setDenied] = useState(false),
-    [notice, setNotice] = useState<"saved" | "uncertain" | "invalid" | "conflict" | null>(null),
+    [notice, setNotice] = useState<
+      "saved" | "uncertain" | "invalid" | "conflict" | "verification" | null
+    >(null),
     [ack, setAck] = useState<AdminChannelRecord | null>(null),
     [reviewTarget, setReviewTarget] = useState<string | null>(null),
     [reviewed, setReviewed] = useState(false),
@@ -254,7 +256,11 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
       setDrafts(next);
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (error instanceof AdminChannelsError && !error.writeStarted) {
+      if (error instanceof AdminChannelsError && error.verificationRequired) {
+        decisionLocked.current = false;
+        setLocked(false);
+        setNotice("verification");
+      } else if (error instanceof AdminChannelsError && !error.writeStarted) {
         if ([401, 403].includes(error.status)) clearActor();
         else {
           decisionLocked.current = false;
@@ -533,20 +539,25 @@ export function AdminChannels({ initialQuery = "" }: { initialQuery?: string }) 
                 "Channel and actual contract acknowledged. Review the target before another write.",
                 "تم تأكيد القناة والعقد الفعلي. راجع القناة قبل تعديل آخر.",
               )
-            : notice === "invalid"
+            : notice === "verification"
               ? copy(
-                  "Check the draft values and actual reason; no update was started.",
-                  "راجع بيانات المسودة والسبب الفعلي؛ لم يبدأ التعديل.",
+                  "Verify your session, review the retained draft and submit it explicitly. No update was accepted or replayed.",
+                  "تحقق من الجلسة، وراجع المسودة المحفوظة ثم أرسلها صراحةً. لم يُقبل تعديل ولم يُعد إرساله.",
                 )
-              : notice === "conflict"
+              : notice === "invalid"
                 ? copy(
-                    "The channel changed since your draft. No stale overwrite was accepted. Review the current record and decide explicitly.",
-                    "تغيّرت القناة منذ مسودتك. لم يُقبل التعديل القديم. راجع السجل الحالي واتخذ قرارك.",
+                    "Check the draft values and actual reason; no update was started.",
+                    "راجع بيانات المسودة والسبب الفعلي؛ لم يبدأ التعديل.",
                   )
-                : copy(
-                    "The update response was not confirmed. The draft is retained and will not be replayed. Review the actual target.",
-                    "لم يتأكد رد التعديل. احتفظنا بالمسودة ولن نعيد إرسالها. راجع القناة الفعلية.",
-                  )}
+                : notice === "conflict"
+                  ? copy(
+                      "The channel changed since your draft. No stale overwrite was accepted. Review the current record and decide explicitly.",
+                      "تغيّرت القناة منذ مسودتك. لم يُقبل التعديل القديم. راجع السجل الحالي واتخذ قرارك.",
+                    )
+                  : copy(
+                      "The update response was not confirmed. The draft is retained and will not be replayed. Review the actual target.",
+                      "لم يتأكد رد التعديل. احتفظنا بالمسودة ولن نعيد إرسالها. راجع القناة الفعلية.",
+                    )}
         </StatusNotice>
       )}
       {ack && (

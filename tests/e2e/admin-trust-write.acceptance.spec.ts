@@ -179,3 +179,36 @@ test("the real recent-action endpoint is actor scoped and denies unrelated staff
   await operator(page, "trust-actor-finance@e2e.ayin.test", "FINANCE_MANAGER");
   expect((await page.request.get(`${API}/admin/trust/actions`)).status()).toBe(403);
 });
+
+test("explicit Trust step-up rejection retains its draft, opens verification and never replays", async ({
+  page,
+}) => {
+  const user = await operator(page, "trust-verification@e2e.ayin.test");
+  let writes = 0;
+  await page.route(`${API}/admin/trust/actions`, (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    writes++;
+    return route.fulfill({
+      status: 403,
+      json: { error: { code: "STEP_UP_REQUIRED", message: "Verify the session" } },
+    });
+  });
+  await page.goto("/admin/trust?lang=en");
+  const main = await fillAction(page, user.account.id);
+  await main.getByRole("button", { name: "Record enforcement action", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(main.getByRole("alert")).toContainText("Verify your session");
+  await expect(main.getByPlaceholder("Detailed enforcement reason", { exact: true })).toHaveValue(
+    "Specific actual evidence requiring a warning.",
+  );
+  await expect(
+    main.getByRole("button", { name: "Record enforcement action", exact: true }),
+  ).toBeEnabled();
+  expect(writes).toBe(1);
+  const history = await page.request.get(`${API}/trust/creator/history`);
+  expect(
+    (await history.json()).actions.filter((a: { kind: string }) => a.kind === "WARN"),
+  ).toHaveLength(0);
+});
