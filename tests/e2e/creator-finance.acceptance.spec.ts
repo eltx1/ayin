@@ -276,3 +276,81 @@ test("Creator finance bounds a stalled snapshot and rejects malformed money befo
   await main.getByRole("button", { name: "Review current state", exact: true }).click();
   await expect(main.getByRole("tab", { name: "Payment details", exact: true })).toBeVisible();
 });
+
+for (const locale of ["en", "ar"] as const)
+  test(
+    "creator Finance hides private facts before controlled freeze and recovers explicitly " +
+      locale,
+    async ({ page }) => {
+      const user = await register(page, `finance-freeze-${locale}@e2e.ayin.test`);
+      db("seed", { accountId: user.account.id });
+      const ar = locale === "ar",
+        copy = (en: string, arabic: string) => (ar ? arabic : en);
+      await page.goto(`/studio/monetization?lang=${locale}`);
+      const main = page.getByRole("main"),
+        body = main.locator('[data-private-finance-body="creator"]');
+      await expect(
+        main.getByRole("tab", { name: copy("Payment details", "بيانات الدفع"), exact: true }),
+      ).toBeVisible();
+      await main
+        .getByRole("tab", { name: copy("Payment details", "بيانات الدفع"), exact: true })
+        .click();
+      await main
+        .getByLabel(copy("New payout destination · optional", "وجهة دفع جديدة · اختيارية"), {
+          exact: true,
+        })
+        .fill("Volatile private destination 778899");
+      let reads = 0,
+        writes = 0;
+      page.on("request", (request) => {
+        if (!request.url().startsWith(`${API}/creator/studio/revenue`)) return;
+        if (request.method() === "GET") reads++;
+        else writes++;
+      });
+      for (const event of ["pagehide", "visibilitychange"] as const) {
+        const observed = await page.evaluate((kind) => {
+          const facts = document.querySelector<HTMLElement>(
+            '[data-private-finance-body="creator"]',
+          );
+          if (!facts) throw Error("Expected private Finance body");
+          if (kind === "pagehide")
+            window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+          else {
+            Object.defineProperty(document, "visibilityState", {
+              configurable: true,
+              get: () => "hidden",
+            });
+            document.dispatchEvent(new Event("visibilitychange"));
+            Reflect.deleteProperty(document, "visibilityState");
+          }
+          return { hidden: facts.hidden, visible: facts.checkVisibility() };
+        }, event);
+        expect(observed).toEqual({ hidden: true, visible: false });
+        await expect(body).toBeHidden();
+        const before = reads;
+        await page.evaluate(() =>
+          window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+        );
+        await expect(body).toBeHidden();
+        expect(reads).toBe(before);
+        expect(writes).toBe(0);
+        await main
+          .getByRole("button", {
+            name: copy("Review current state", "مراجعة الحالة الحالية"),
+            exact: true,
+          })
+          .click();
+        await expect(body).toBeVisible();
+        await main
+          .getByRole("tab", { name: copy("Payment details", "بيانات الدفع"), exact: true })
+          .click();
+        await expect(
+          main.getByLabel(copy("New payout destination · optional", "وجهة دفع جديدة · اختيارية"), {
+            exact: true,
+          }),
+        ).toHaveValue("Volatile private destination 778899");
+        expect(reads).toBeGreaterThan(before);
+        expect(writes).toBe(0);
+      }
+    },
+  );
