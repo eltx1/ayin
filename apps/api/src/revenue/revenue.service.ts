@@ -1,5 +1,11 @@
 import { Prisma } from "@ayin/db";
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
@@ -440,11 +446,18 @@ export class RevenueService {
   }
 
   async updatePayoutStatus(actorAccountId: string, payoutId: string, input: unknown) {
-    const data = payoutStatusSchema.parse(input);
+    const parsed = payoutStatusSchema.safeParse(input);
+    if (!parsed.success || !z.string().uuid().safeParse(payoutId).success)
+      throw new BadRequestException("Invalid payout status request.");
+    const data = parsed.data;
     return this.database.client.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`/* ayin-manual-payout-status-lock */ SELECT "id" FROM "Payout" WHERE "id" = ${payoutId}::uuid FOR UPDATE`,
+      );
+      if (!locked.length) throw new NotFoundException("Payout not found.");
       const current = await tx.payout.findUniqueOrThrow({ where: { id: payoutId } });
       if (current.provider !== "MANUAL") {
-        throw new Error("PAYOUT_PROVIDER_MANAGED_STATUS");
+        throw new ConflictException("PAYOUT_PROVIDER_MANAGED_STATUS");
       }
       this.assertPayoutTransition(current.status, data.status);
       const now = new Date();
@@ -620,6 +633,7 @@ export class RevenueService {
       PAID: [],
       CANCELLED: [],
     };
-    if (!allowed[from]?.includes(to)) throw new Error("INVALID_PAYOUT_STATUS_TRANSITION");
+    if (!allowed[from]?.includes(to))
+      throw new ConflictException("INVALID_PAYOUT_STATUS_TRANSITION");
   }
 }
