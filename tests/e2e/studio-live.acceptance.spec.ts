@@ -285,7 +285,9 @@ test("Creator Live retains a committed root after response loss and requires exp
   await page.getByLabel("Title", { exact: true }).fill("Committed live root");
   const before = reads;
   await page.getByRole("button", { name: "Create live session", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("The result may be uncertain");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "The result may be uncertain",
+  );
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue("Committed live root");
   await expect(
     page.getByRole("button", { name: "Create live session", exact: true }),
