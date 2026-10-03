@@ -174,15 +174,18 @@ export class CreatorFinanceRepository {
     `;
   }
 
-  async updateDispute(input: {
-    disputeId: string;
-    status: RevenueDisputeStatus;
-    resolution: string | null;
-    resolvedByAccountId: string;
-  }): Promise<RevenueDisputeRow> {
+  async updateDispute(
+    input: {
+      disputeId: string;
+      status: RevenueDisputeStatus;
+      resolution: string | null;
+      resolvedByAccountId: string;
+    },
+    client: Pick<DatabaseService["client"], "$queryRaw"> = this.database.client,
+  ): Promise<RevenueDisputeRow> {
     const now = new Date();
     const terminal = input.status === "RESOLVED" || input.status === "REJECTED";
-    const rows = await this.database.client.$queryRaw<RevenueDisputeRow[]>`
+    const rows = await client.$queryRaw<RevenueDisputeRow[]>`
       UPDATE "RevenueDispute"
       SET
         "status" = ${input.status},

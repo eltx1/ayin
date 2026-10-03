@@ -434,27 +434,32 @@ export class CreatorFinanceService {
 
   async updateAdminDispute(actorAccountId: string, disputeId: string, raw: unknown) {
     const input = revenueDisputeUpdateSchema.parse(raw);
-    const dispute = await this.finance.updateDispute({
-      disputeId,
-      status: input.status,
-      resolution: input.resolution ?? null,
-      resolvedByAccountId: actorAccountId,
-    });
-    await this.database.client.adminAuditLog.create({
-      data: {
-        actorAccountId,
-        action: "revenue.dispute_updated",
-        entityType: "RevenueDispute",
-        entityId: dispute.id,
-        reason: input.reason,
-        metadata: {
-          status: dispute.status,
-          channelId: dispute.channelId,
-          ...(dispute.payoutId ? { payoutId: dispute.payoutId } : {}),
+    return this.database.client.$transaction(async (tx) => {
+      const dispute = await this.finance.updateDispute(
+        {
+          disputeId,
+          status: input.status,
+          resolution: input.resolution ?? null,
+          resolvedByAccountId: actorAccountId,
         },
-      },
+        tx,
+      );
+      await tx.adminAuditLog.create({
+        data: {
+          actorAccountId,
+          action: "revenue.dispute_updated",
+          entityType: "RevenueDispute",
+          entityId: dispute.id,
+          reason: input.reason,
+          metadata: {
+            status: dispute.status,
+            channelId: dispute.channelId,
+            ...(dispute.payoutId ? { payoutId: dispute.payoutId } : {}),
+          },
+        },
+      });
+      return dispute;
     });
-    return dispute;
   }
 
   async adminFinanceSummary() {
