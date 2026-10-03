@@ -218,7 +218,9 @@ export function CreatorTvManager({ embedded = false }: { embedded?: boolean } = 
     start = (currentPage - 1) * 20,
     disabled = saving || loading || locked;
   return (
-    <Surface className={styles.workspace}>
+    <Surface
+      className={[styles.workspace, !embedded ? styles.standalone : ""].filter(Boolean).join(" ")}
+    >
       <PageHeader
         title={text("Creator TV", "تلفزيون المنشئ")}
         description={text(

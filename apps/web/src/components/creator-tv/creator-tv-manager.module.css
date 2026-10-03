@@ -42,3 +42,12 @@
 .workspace p {
   overflow-wrap: anywhere;
 }
+
+.standalone {
+  max-inline-size: 80rem;
+  margin-inline: auto;
+  padding: 24px clamp(18px, 4vw, 48px) 100px;
+}
+.workspace dl[aria-label] dd {
+  font-size: clamp(1.4rem, 2.5vw, 2rem);
+}

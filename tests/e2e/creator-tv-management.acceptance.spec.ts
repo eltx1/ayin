@@ -129,6 +129,10 @@ for (const locale of ["en", "ar"] as const)
     expect(snapshot.headers()["cache-control"]).toContain("no-store");
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
+      const titleBox = await main.getByRole("heading", { level: 1 }).boundingBox();
+      expect(titleBox).not.toBeNull();
+      expect(titleBox!.x).toBeGreaterThanOrEqual(14);
+      expect(titleBox!.x + titleBox!.width).toBeLessThanOrEqual(width - 14);
       await testInfo.attach(`design-creator-tv-${width}-${locale}.png`, {
         body: await page.screenshot({
           path: testInfo.outputPath(`design-creator-tv-management-${width}-${locale}.png`),
