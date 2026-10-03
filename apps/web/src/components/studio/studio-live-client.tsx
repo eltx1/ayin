@@ -60,52 +60,60 @@ export function StudioLiveClient() {
     mounted = useRef(false),
     uncertainty = useRef(false),
     currentCursors = useRef<string[]>([]);
-  const load = useCallback(async (nextCursors: string[] = []) => {
+  const readSnapshot = useCallback((nextCursors: string[] = []) => {
     read.current?.abort();
     const controller = new AbortController();
     read.current = controller;
     currentCursors.current = nextCursors;
-    setCursors(nextCursors);
-    setLoading(true);
-    setLoadError(false);
-    setSignInRequired(false);
-    setData(null);
-    setReviewed(false);
-    try {
-      const next = await getStudioLive(controller.signal, nextCursors.at(-1));
-      if (controller.signal.aborted || !mounted.current) return;
-      if (channel.current && channel.current !== next.channel.id) {
-        setEncoder(null);
-        setTitle("");
-        setStart("");
-        setFeedback(null);
-        setUncertain(false);
-        uncertainty.current = false;
-      }
-      channel.current = next.channel.id;
-      setData(next);
-      setReviewed(true);
-    } catch (error) {
-      if (controller.signal.aborted || !mounted.current) return;
-      if (error instanceof StudioLiveRequestError && [401, 403].includes(error.status)) {
-        setEncoder(null);
-        setFeedback(null);
-        setSignInRequired(error.status === 401);
-        channel.current = null;
-        setTitle("");
-        setStart("");
-      }
-      setLoadError(true);
-    } finally {
-      if (!controller.signal.aborted && mounted.current) {
-        read.current = null;
-        setLoading(false);
-      }
-    }
+    return getStudioLive(controller.signal, nextCursors.at(-1))
+      .then((next) => {
+        if (controller.signal.aborted || !mounted.current) return;
+        if (channel.current && channel.current !== next.channel.id) {
+          setEncoder(null);
+          setTitle("");
+          setStart("");
+          setFeedback(null);
+          setUncertain(false);
+          uncertainty.current = false;
+        }
+        channel.current = next.channel.id;
+        setData(next);
+        setReviewed(true);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted || !mounted.current) return;
+        if (error instanceof StudioLiveRequestError && [401, 403].includes(error.status)) {
+          setEncoder(null);
+          setFeedback(null);
+          setSignInRequired(error.status === 401);
+          channel.current = null;
+          setTitle("");
+          setStart("");
+        }
+        setLoadError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && mounted.current) {
+          read.current = null;
+          setLoading(false);
+        }
+      });
   }, []);
+  const load = useCallback(
+    (nextCursors: string[] = []) => {
+      setCursors(nextCursors);
+      setLoading(true);
+      setLoadError(false);
+      setSignInRequired(false);
+      setData(null);
+      setReviewed(false);
+      return readSnapshot(nextCursors);
+    },
+    [readSnapshot],
+  );
   useEffect(() => {
     mounted.current = true;
-    void load();
+    void readSnapshot();
     const hide = () => {
       setEncoder(null);
       read.current?.abort();
@@ -133,7 +141,7 @@ export function StudioLiveClient() {
       window.removeEventListener("pagehide", hide);
       window.removeEventListener("pageshow", restore);
     };
-  }, [load]);
+  }, [load, readSnapshot]);
   useEffect(() => {
     const dirty = () => Boolean(title.trim() || start || mutation.current || uncertainty.current);
     const warn = (event: BeforeUnloadEvent) => {

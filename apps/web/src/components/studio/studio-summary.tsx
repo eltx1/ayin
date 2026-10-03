@@ -51,8 +51,8 @@ export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) 
             <span className={styles.eyebrow}>Creator Studio</span>
             <h1>Analytics</h1>
             <p className={styles.muted}>
-              Real sampled event metrics for the last {analytics.periodDays} days. Refresh is
-              query-time, not realtime streaming.
+              Complete UTC rollups for the last {analytics.periodDays} days. Scheduled refresh is
+              not realtime streaming.
             </p>
           </div>
         </header>
@@ -75,7 +75,7 @@ export function StudioSummary({ kind }: { kind: "analytics" | "monetization" }) 
           </article>
           <article className={styles.metric}>
             <span className={styles.muted}>Subscribers</span>
-            <strong>{analytics.subscribers.toLocaleString()}</strong>
+            <strong>{analytics.subscribersTotal.toLocaleString()}</strong>
           </article>
         </section>
         <section className={styles.panel}>
