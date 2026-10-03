@@ -134,12 +134,12 @@ test("responsive viewer, account, Studio and Admin paths remain usable", async (
 
     await page.goto("/upload", { waitUntil: "networkidle" });
     const uploadTitle = page.getByRole("heading", {
-      name: "Bring your next video to AYIN.",
+      name: "Upload a video",
       exact: true,
     });
     await expect(uploadTitle).toBeVisible();
     const uploadWorkspace = page.getByRole("region", {
-      name: "Bring your next video to AYIN.",
+      name: "Creator upload",
       exact: true,
     });
     await expect(

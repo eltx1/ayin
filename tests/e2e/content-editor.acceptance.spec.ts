@@ -559,6 +559,6 @@ test("confirmed navigation leaves once without saving or replaying link handlers
       button.click();
     });
   await expect(page).toHaveURL(/\/upload$/);
-  await expect(page.getByRole("heading", { name: "Bring your next video to AYIN." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Upload a video" })).toBeVisible();
   expect(writes).toBe(0);
 });

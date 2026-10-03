@@ -1,10 +1,16 @@
 "use client";
+import { uploadText } from "@/lib/upload-copy";
 
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ActionButton, PageHeader } from "@/components/ui/design-system";
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { scheduleTimestamp, uploadId, uploadRecord } from "@/lib/quick-upload-contract";
+import { UploadProtocolError } from "@/lib/upload-session";
 
 import { trackAnalyticsEvent } from "@/lib/analytics";
-import { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";
+import { apiBaseUrl } from "@/lib/api";
 import { uploadPreparedVideoDirectly } from "@/lib/direct-video-upload";
 import {
   captureLocalThumbnailChoices,
@@ -38,7 +44,12 @@ type Visibility = "PUBLIC" | "UNLISTED" | "PRIVATE";
 
 export function QuickUpload() {
   const router = useRouter();
-  const [identity, setIdentity] = useState<AyinIdentity | null>(null);
+  const { href, locale, direction } = useI18n();
+  const copy = useCallback((value: string) => uploadText(value, locale), [locale]);
+  const [identity, setIdentity] = useState<{
+    account: { id: string };
+    channel: { id: string };
+  } | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<VideoInspectionResult | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
@@ -54,6 +65,9 @@ export function QuickUpload() {
   const [processingReady, setProcessingReady] = useState(false);
   const [processingLabel, setProcessingLabel] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mutationKind, setMutationKind] = useState<
+    "upload" | "save" | "thumbnail" | "publish" | null
+  >(null);
   const [message, setMessage] = useState<string | null>(null);
   const [thumbnailChoices, setThumbnailChoices] = useState<LocalThumbnailChoice[]>([]);
   const [selectedThumbnailId, setSelectedThumbnailId] = useState<string | null>(null);
@@ -61,9 +75,66 @@ export function QuickUpload() {
   const [dragActive, setDragActive] = useState(false);
   const choicesRef = useRef<LocalThumbnailChoice[]>([]);
   const thumbnailCapture = useRef<AbortController | null>(null);
+  const mutation = useRef(false);
+  const operation = useRef<AbortController | null>(null);
+  const [uncertain, setUncertain] = useState(false);
+  const [identityFailed, setIdentityFailed] = useState(false);
+  const [identityAttempt, setIdentityAttempt] = useState(0);
+  const [processingAttempt, setProcessingAttempt] = useState(0);
+  const [processingFailed, setProcessingFailed] = useState(false);
+  const [savedSignature, setSavedSignature] = useState("");
+  const signature = JSON.stringify([
+    title,
+    description,
+    visibility,
+    commentsEnabled,
+    videoForm,
+    scheduledPublishAt,
+    metadataDraft,
+  ]);
+  const dirty =
+    !published && (busy || uncertain || Boolean(videoId && signature !== savedSignature));
+
+  useEffect(() => {
+    if (!dirty) return;
+    const unload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const navigate = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (
+        !(target instanceof HTMLAnchorElement) ||
+        target.target === "_blank" ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      if (target.href === window.location.href) return;
+      if (
+        !window.confirm(
+          copy(
+            "Leave this upload? Unsaved changes and local file progress will be lost. Saved drafts remain in Studio.",
+          ),
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", unload);
+    document.addEventListener("click", navigate, true);
+    return () => {
+      window.removeEventListener("beforeunload", unload);
+      document.removeEventListener("click", navigate, true);
+    };
+  }, [dirty, copy]);
 
   useEffect(() => {
     const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(), 15000);
     void fetch(`${apiBaseUrl}/auth/me`, {
       credentials: "include",
       cache: "no-store",
@@ -71,14 +142,27 @@ export function QuickUpload() {
     })
       .then(async (response) => {
         if (!response.ok) {
-          setMessage(await readApiError(response));
+          setIdentityFailed(true);
           return;
         }
-        setIdentity((await response.json()) as AyinIdentity);
+        const row = uploadRecord(await response.json());
+        const account = uploadRecord(row.account),
+          channel = uploadRecord(row.channel);
+        const accountId = uploadId(account.id),
+          channelId = uploadId(channel.id);
+        if (!controller.signal.aborted)
+          setIdentity({ account: { id: accountId }, channel: { id: channelId } });
       })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, []);
+      .catch(() => {
+        if (!controller.signal.aborted || controller.signal.reason?.name === "AbortError")
+          setIdentityFailed(true);
+      })
+      .finally(() => clearTimeout(deadline));
+    return () => {
+      clearTimeout(deadline);
+      controller.abort(new DOMException("Unmounted", "Unmounted"));
+    };
+  }, [identityAttempt]);
 
   useEffect(() => {
     choicesRef.current = thumbnailChoices;
@@ -87,12 +171,21 @@ export function QuickUpload() {
   useEffect(
     () => () => {
       thumbnailCapture.current?.abort();
+      operation.current?.abort();
       releaseLocalThumbnailChoices(choicesRef.current);
     },
     [],
   );
 
   async function chooseFile(selected: File | null) {
+    if (!selected || !identity || mutation.current || videoId || uncertain || published) return;
+    if (!selected.size || !isSupportedVideoFile(selected)) {
+      setMessage(copy("Drop one supported video file to start an upload."));
+      return;
+    }
+    mutation.current = true;
+    const controller = new AbortController();
+    operation.current = controller;
     thumbnailCapture.current?.abort();
     const capture = new AbortController();
     thumbnailCapture.current = capture;
@@ -109,13 +202,13 @@ export function QuickUpload() {
     setPublished(false);
     setMetadataDraft({ ...EMPTY_METADATA_DRAFT });
     setMessage(null);
-    if (!selected || !identity) return;
-
     setBusy(true);
+    setMutationKind("upload");
     const nextTitle = titleFromFilename(selected.name);
     setTitle(nextTitle);
     try {
       const result = await inspectVideoFile(selected);
+      controller.signal.throwIfAborted();
       setInspection(result);
       if (result.status === "incompatible") {
         setMessage(result.message);
@@ -128,11 +221,13 @@ export function QuickUpload() {
         file: selected,
         durationMs: result.durationSeconds ? Math.round(result.durationSeconds * 1000) : null,
         videoForm,
+        signal: controller.signal,
       });
+      controller.signal.throwIfAborted();
       setVideoId(draft.video.id);
       setVisibility(draft.video.visibility);
       setCommentsEnabled(draft.video.commentsEnabled);
-      setMessage("Your video is uploading…");
+      setMessage(copy("Your video is uploading…"));
 
       void captureLocalThumbnailChoices(selected, capture.signal).then((choices) => {
         if (capture.signal.aborted) {
@@ -149,11 +244,21 @@ export function QuickUpload() {
         session: draft.uploadSession,
         file: selected,
         onProgress: setProgress,
-        onStatus: (status) => setMessage(status.message),
+        onStatus: (status) =>
+          setMessage(
+            copy(
+              status.phase === "finalizing"
+                ? "Finalizing upload…"
+                : status.phase === "retrying"
+                  ? "Connection paused. Retrying the upload safely…"
+                  : "Uploading video…",
+            ),
+          ),
+        signal: controller.signal,
       });
-      const confirmation = await confirmQuickUpload(draft.video.id);
+      const confirmation = await confirmQuickUpload(draft.video.id, controller.signal);
       setProcessingReady(confirmation.status === "DRAFT");
-      setProcessingLabel(confirmation.status === "DRAFT" ? "Ready" : "Queued");
+      setProcessingLabel(confirmation.status === "DRAFT" ? copy("Ready") : copy("Queued"));
       trackAnalyticsEvent("UPLOAD_COMPLETE", {
         channelId: identity.channel.id,
         videoId: draft.video.id,
@@ -161,19 +266,31 @@ export function QuickUpload() {
       setUploadComplete(true);
       setMessage(
         confirmation.status === "DRAFT"
-          ? "Upload and processing complete. Your video is ready to publish."
-          : "Upload complete. AYIN is preparing a reliable playback version in the background.",
+          ? copy("Upload and processing complete. Your video is ready to publish.")
+          : copy(
+              "Upload complete. AYIN is preparing a reliable playback version in the background.",
+            ),
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "This upload could not be completed.");
+      if (controller.signal.aborted) return;
+      setUncertain(true);
+      setMessage(
+        error instanceof UploadProtocolError
+          ? copy(error.message)
+          : copy(
+              "Upload could not be confirmed. Review your saved uploads in Studio before starting again.",
+            ),
+      );
     } finally {
+      mutation.current = false;
       setBusy(false);
+      setMutationKind(null);
     }
   }
 
   function handleDragOver(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
-    if (!identity || busy || published) return;
+    if (!identity || mutation.current || videoId || uncertain || published) return;
     event.dataTransfer.dropEffect = "copy";
     setDragActive(true);
   }
@@ -186,52 +303,59 @@ export function QuickUpload() {
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setDragActive(false);
-    if (!identity || busy || published) return;
+    if (!identity || mutation.current || videoId || uncertain || published) return;
     const selected = Array.from(event.dataTransfer.files).find(isSupportedVideoFile);
     if (!selected) {
-      setMessage("Drop one supported video file to start an upload.");
+      setMessage(copy("Drop one supported video file to start an upload."));
       return;
     }
     void chooseFile(selected);
   }
 
   useEffect(() => {
-    if (!videoId || !uploadComplete || processingReady || published) return;
+    if (!videoId || !uploadComplete || processingReady || published || uncertain) return;
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | null = null;
     let active = true;
+    let reads = 0;
 
     const poll = async () => {
       try {
         const status = await getQuickProcessingStatus(videoId, controller.signal);
+        reads++;
         if (!active) return;
+        setProcessingFailed(false);
         const processing = status.processing;
         setProcessingReady(status.ready);
         setProcessingLabel(
           status.ready
-            ? "Ready"
+            ? copy("Ready")
             : processing?.status === "FAILED"
-              ? "Failed"
-              : (processing?.stage?.replaceAll("_", " ") ?? processing?.status ?? "Queued"),
+              ? copy("Failed")
+              : processing?.status === "QUEUED"
+                ? copy("Queued")
+                : copy("Processing"),
         );
         if (status.ready) {
-          setMessage("Processing complete. This video is ready to publish.");
+          setMessage(copy("Processing complete. This video is ready to publish."));
           return;
         }
-        if (processing?.status === "FAILED") {
+        if (processing?.status === "FAILED" || processing?.status === "CANCELLED" || reads >= 30) {
+          setProcessingFailed(true);
           setMessage(
-            processing.errorMessage ||
-              "AYIN could not prepare this video for playback. It remains saved in Studio.",
+            copy(
+              "Playback is not ready. The video remains saved in Studio; check its status before publishing.",
+            ),
           );
           return;
         }
         timeout = setTimeout(() => void poll(), 2000);
-      } catch (error) {
+      } catch {
         if (!active || controller.signal.aborted) return;
+        setProcessingFailed(true);
         setMessage(
-          error instanceof Error ? error.message : "Processing status is temporarily unavailable.",
+          copy("Processing status is temporarily unavailable. Retry checking its status."),
         );
-        timeout = setTimeout(() => void poll(), 4000);
       }
     };
 
@@ -241,50 +365,121 @@ export function QuickUpload() {
       controller.abort();
       if (timeout) clearTimeout(timeout);
     };
-  }, [processingReady, published, uploadComplete, videoId]);
+  }, [processingReady, published, uploadComplete, videoId, processingAttempt, uncertain, copy]);
 
   async function saveDetails() {
-    if (!videoId) return;
+    if (!videoId || mutation.current || uncertain || published) return;
+    let payload;
     try {
-      await saveQuickVideoDetails(videoId, detailsPayload());
-      setMessage("Video details saved.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The video details could not be saved.");
+      payload = detailsPayload();
+    } catch {
+      setMessage(copy("Check the title, schedule and advanced metadata before saving."));
+      return;
+    }
+    mutation.current = true;
+    setBusy(true);
+    setMutationKind("save");
+    const controller = new AbortController();
+    operation.current = controller;
+    try {
+      await saveQuickVideoDetails(videoId, payload, controller.signal);
+      controller.signal.throwIfAborted();
+      setSavedSignature(signature);
+      setMessage(copy("Video details saved."));
+    } catch {
+      if (!controller.signal.aborted) {
+        setUncertain(true);
+        setMessage(
+          copy(
+            "The save response could not be confirmed. Review this draft in Studio before writing again.",
+          ),
+        );
+      }
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+      setMutationKind(null);
     }
   }
 
   async function chooseCapturedThumbnail(choice: LocalThumbnailChoice) {
-    if (!videoId) return;
-    setSelectedThumbnailId(choice.id);
-    try {
-      await uploadQuickThumbnail(videoId, choice.blob);
-      setMessage(`${choice.label} saved as the video thumbnail.`);
-    } catch (error) {
-      setSelectedThumbnailId(null);
-      setMessage(error instanceof Error ? error.message : "The thumbnail could not be saved.");
-    }
+    await saveThumbnail(choice.blob, choice.id);
   }
 
   async function chooseCustomThumbnail(selected: File | null) {
-    if (!selected || !videoId) return;
+    if (!selected) return;
+    await saveThumbnail(selected, "custom");
+  }
+
+  async function saveThumbnail(selected: Blob, choiceId: string) {
+    if (!videoId || mutation.current || uncertain || published) return;
+    if (
+      !["image/png", "image/jpeg"].includes(selected.type) ||
+      selected.size < 1 ||
+      selected.size > 5 * 1024 * 1024
+    ) {
+      setMessage(copy("Choose a JPG or PNG thumbnail up to 5 MB."));
+      return;
+    }
+    mutation.current = true;
+    setBusy(true);
+    setMutationKind("thumbnail");
+    const controller = new AbortController();
+    operation.current = controller;
     try {
-      await uploadQuickThumbnail(videoId, selected);
-      setSelectedThumbnailId("custom");
-      setMessage("Custom thumbnail saved.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The thumbnail could not be saved.");
+      await uploadQuickThumbnail(videoId, selected, controller.signal);
+      controller.signal.throwIfAborted();
+      setSelectedThumbnailId(choiceId);
+      setMessage(copy("Thumbnail saved."));
+    } catch {
+      if (!controller.signal.aborted) {
+        setUncertain(true);
+        setMessage(
+          copy(
+            "The thumbnail response could not be confirmed. Review this draft in Studio before writing again.",
+          ),
+        );
+      }
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+      setMutationKind(null);
     }
   }
 
   async function publish() {
-    if (!videoId || !uploadComplete || !processingReady || !title.trim()) return;
+    if (
+      !videoId ||
+      !uploadComplete ||
+      !processingReady ||
+      mutation.current ||
+      uncertain ||
+      published
+    )
+      return;
+    let payload;
+    try {
+      payload = detailsPayload();
+    } catch {
+      setMessage(copy("Check the title, schedule and advanced metadata before publishing."));
+      return;
+    }
+    mutation.current = true;
+    const controller = new AbortController();
+    operation.current = controller;
     setBusy(true);
     setMessage(null);
+    setMutationKind("publish");
     try {
-      const result = await publishQuickVideo(videoId, {
-        ...detailsPayload(),
-        rightsConfirmed: true,
-      });
+      const result = await publishQuickVideo(
+        videoId,
+        {
+          ...payload,
+          rightsConfirmed: true,
+        },
+        controller.signal,
+      );
+      controller.signal.throwIfAborted();
       trackAnalyticsEvent("PUBLISH", {
         ...(identity ? { channelId: identity.channel.id } : {}),
         videoId,
@@ -295,85 +490,113 @@ export function QuickUpload() {
       if (result.video.status === "SCHEDULED" || visibility === "PRIVATE") {
         setMessage(
           result.video.status === "SCHEDULED"
-            ? "Video scheduled. Opening your Studio content…"
-            : "Published privately. Opening your Studio content…",
+            ? copy("Video scheduled. Opening your Studio content…")
+            : copy("Published privately. Opening your Studio content…"),
         );
-        router.push("/studio/content");
+        router.push(href("/studio/content"));
         return;
       }
 
-      setMessage("Published. Opening your video…");
-      router.push(`/watch/${encodeURIComponent(result.video.slug)}`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "The video could not be published.");
+      setMessage(copy("Published. Opening your video…"));
+      router.push(href(`/watch/${encodeURIComponent(result.video.slug)}`));
+    } catch {
+      if (!controller.signal.aborted) {
+        setUncertain(true);
+        setMessage(
+          copy(
+            "Publication could not be confirmed. Review this video's status in Studio before publishing again.",
+          ),
+        );
+      }
     } finally {
       setBusy(false);
+      setMutationKind(null);
+      mutation.current = false;
     }
   }
 
   function detailsPayload() {
+    if (!title.trim() || title.trim().length > 200) throw new Error("Invalid title");
     return {
       title: title.trim(),
       description: description.trim() || null,
       visibility,
       commentsEnabled,
-      scheduledPublishAt: scheduledPublishAt ? new Date(scheduledPublishAt).toISOString() : null,
+      scheduledPublishAt: scheduleTimestamp(scheduledPublishAt),
       videoForm,
-      ...buildMetadataPayload(metadataDraft),
+      ...buildMetadataPayload(metadataDraft, {
+        includeEmpty: true,
+        durationSeconds: inspection?.durationSeconds ?? null,
+      }),
     };
   }
 
-  const formatLabel = videoForm === "CLIP" ? "AYIN Clip" : "Standard video";
+  const formatLabel = videoForm === "CLIP" ? copy("AYIN Clip") : copy("Standard video");
   const statusLabel = published
-    ? "Published"
+    ? copy("Published")
     : processingReady
-      ? "Ready"
+      ? copy("Ready")
       : uploadComplete
-        ? (processingLabel ?? "Processing")
+        ? (processingLabel ?? copy("Processing"))
         : videoId
-          ? `${progress}% uploaded`
-          : "Not started";
+          ? locale === "ar"
+            ? `تم رفع ${progress}٪`
+            : `${progress}% uploaded`
+          : copy("Not started");
 
   return (
-    <section className={styles.shell} aria-labelledby="quick-upload-title">
-      <header className={styles.hero}>
-        <div className={styles.heroCopy}>
-          <div className={styles.eyebrowRow}>
-            <span className={styles.eyebrowDot} aria-hidden="true" />
-            <p className={styles.eyebrow}>Creator upload</p>
-          </div>
-          <h1 id="quick-upload-title">Bring your next video to AYIN.</h1>
-          <p className={styles.heroLead}>
-            Choose the experience, add your file, and publish from one focused workspace. AYIN
-            checks compatibility and prepares reliable playback automatically.
-          </p>
-        </div>
-
-        <div className={styles.heroSignals} aria-label="Upload workflow">
-          <span>
-            <i aria-hidden="true" /> Direct upload
-          </span>
-          <span>
-            <i aria-hidden="true" /> Compatibility check
-          </span>
-          <span>
-            <i aria-hidden="true" /> Playback processing
-          </span>
-        </div>
-      </header>
+    <section className={styles.shell} aria-label={copy("Creator upload")} dir={direction}>
+      <PageHeader
+        eyebrow={copy("Creator upload")}
+        title={copy("Upload a video")}
+        description={copy(
+          "Choose a format and file, review the details, then save or publish your video.",
+        )}
+      />
 
       <div className={styles.workspace}>
         <section className={styles.stepCard} aria-labelledby="format-heading">
           <div className={styles.stepHeading}>
             <div>
               <span className={styles.stepNumber}>01</span>
-              <h2 id="format-heading">Choose the viewing experience</h2>
-              <p>Pick how this upload should appear across AYIN before selecting the file.</p>
+              <h2 id="format-heading">{copy("Choose the viewing experience")}</h2>
+              <p>
+                {copy("Pick how this upload should appear across AYIN before selecting the file.")}
+              </p>
             </div>
             <span className={styles.selectionPill}>{formatLabel}</span>
           </div>
 
-          <div className={styles.typeGrid} role="radiogroup" aria-label="Video format">
+          <div
+            className={styles.typeGrid}
+            role="radiogroup"
+            aria-label={copy("Video format")}
+            onKeyDown={(event) => {
+              if (
+                videoId ||
+                busy ||
+                uncertain ||
+                published ||
+                !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(
+                  event.key,
+                )
+              )
+                return;
+              event.preventDefault();
+              const next =
+                event.key === "Home"
+                  ? "LONG_FORM"
+                  : event.key === "End"
+                    ? "CLIP"
+                    : videoForm === "CLIP"
+                      ? "LONG_FORM"
+                      : "CLIP";
+              setVideoForm(next);
+              event.currentTarget
+                .querySelectorAll<HTMLButtonElement>('[role="radio"]')
+                [next === "CLIP" ? 1 : 0]?.focus();
+            }}
+          >
             <button
               className={`${styles.typeCard} ${videoForm === "LONG_FORM" ? styles.typeCardSelected : ""}`}
               type="button"
@@ -386,10 +609,10 @@ export function QuickUpload() {
                 <span className={styles.landscapeFrame} />
               </span>
               <span className={styles.typeCopy}>
-                <strong>Standard video</strong>
-                <small>Full videos, episodes, tutorials and long-form stories.</small>
+                <strong>{copy("Standard video")}</strong>
+                <small>{copy("Full videos, episodes, tutorials and long-form stories.")}</small>
               </span>
-              <span className={styles.typeMeta}>Landscape + flexible</span>
+              <span className={styles.typeMeta}>{copy("Landscape + flexible")}</span>
               <span className={styles.typeCheck} aria-hidden="true">
                 ✓
               </span>
@@ -407,10 +630,10 @@ export function QuickUpload() {
                 <span className={styles.portraitFrame} />
               </span>
               <span className={styles.typeCopy}>
-                <strong>AYIN Clip</strong>
-                <small>Fast, vertical-first videos built for the Clips feed.</small>
+                <strong>{copy("AYIN Clip")}</strong>
+                <small>{copy("Fast, vertical-first videos built for the Clips feed.")}</small>
               </span>
-              <span className={styles.typeMeta}>Vertical-first</span>
+              <span className={styles.typeMeta}>{copy("Vertical-first")}</span>
               <span className={styles.typeCheck} aria-hidden="true">
                 ✓
               </span>
@@ -418,14 +641,28 @@ export function QuickUpload() {
           </div>
         </section>
 
+        {identityFailed ? (
+          <p role="alert">
+            {copy("Your creator workspace could not be loaded.")}
+            <button
+              type="button"
+              onClick={() => {
+                setIdentityFailed(false);
+                setIdentityAttempt((value) => value + 1);
+              }}
+            >
+              {copy("Retry loading workspace")}
+            </button>
+          </p>
+        ) : null}
         <section className={styles.stepCard} aria-labelledby="file-heading">
           <div className={styles.stepHeading}>
             <div>
               <span className={styles.stepNumber}>02</span>
-              <h2 id="file-heading">Add your video</h2>
-              <p>Drag it here on desktop or open your library on mobile.</p>
+              <h2 id="file-heading">{copy("Add your video")}</h2>
+              <p>{copy("Drag it here on desktop or open your library on mobile.")}</p>
             </div>
-            {file ? <span className={styles.selectionPill}>File selected</span> : null}
+            {file ? <span className={styles.selectionPill}>{copy("File selected")}</span> : null}
           </div>
 
           <label
@@ -439,7 +676,7 @@ export function QuickUpload() {
               className={styles.fileInput}
               type="file"
               accept="video/*,.mp4,.mov,.mkv,.webm,.avi,.mpeg,.mpg,.mts,.m2ts,.ts,.3gp,.3g2,.m4v,.wmv,.flv,.ogv,.mxf"
-              disabled={!identity || busy || published}
+              disabled={!identity || busy || published || uncertain || Boolean(videoId)}
               onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
             />
 
@@ -454,30 +691,36 @@ export function QuickUpload() {
                 {file
                   ? file.name
                   : dragActive
-                    ? "Drop your video here"
-                    : "Select a video to upload"}
+                    ? copy("Drop your video here")
+                    : copy("Select a video to upload")}
               </strong>
               <span>
                 {file
                   ? `${formatFileSize(file.size)} · ${formatLabel}`
                   : identity
-                    ? "Drag & drop a file here, or browse your device."
-                    : "Preparing your creator workspace…"}
+                    ? copy("Drag & drop a file here, or browse your device.")
+                    : copy("Preparing your creator workspace…")}
               </span>
             </span>
 
             <span className={styles.browseButton}>
-              {busy ? "Checking…" : file ? "Choose another" : "Browse video"}
+              {busy ? copy("Checking…") : file ? copy("Choose another") : copy("Browse video")}
             </span>
 
             <span className={styles.pickerMeta}>
-              MP4, MOV, MKV, WebM and other common video formats
+              {copy("MP4, MOV, MKV, WebM and other common video formats")}
             </span>
           </label>
 
           {inspection ? (
             <p className={styles[inspection.status]} role="status">
-              {inspection.message}
+              {locale === "ar"
+                ? inspection.status === "incompatible"
+                  ? "صيغة الفيديو غير مدعومة. اختر ملف فيديو شائعًا."
+                  : inspection.status === "compatible"
+                    ? "الملف متوافق للمشاهدة؛ سيجري تجهيز النسخة بعد الرفع."
+                    : "لا يمكن معاينة الملف محليًا. سيتم فحصه وتجهيزه بعد الرفع."
+                : inspection.message}
             </p>
           ) : null}
         </section>
@@ -490,9 +733,11 @@ export function QuickUpload() {
             <div className={styles.stepHeading}>
               <div>
                 <span className={styles.stepNumber}>03</span>
-                <h2 id="details-heading">Finish your video</h2>
+                <h2 id="details-heading">{copy("Finish your video")}</h2>
                 <p>
-                  Review the essentials while AYIN completes the upload and playback preparation.
+                  {copy(
+                    "Review the essentials while AYIN completes the upload and playback preparation.",
+                  )}
                 </p>
               </div>
               <span
@@ -503,180 +748,224 @@ export function QuickUpload() {
               </span>
             </div>
 
-            <div className={styles.editorTopGrid}>
-              <label className={styles.titleField}>
-                <span>Title</span>
-                <input
-                  maxLength={200}
-                  value={title}
-                  placeholder="Give your video a clear title"
-                  onBlur={() => void saveDetails()}
-                  onChange={(event) => setTitle(event.target.value)}
-                />
-              </label>
+            <fieldset className={styles.fields} disabled={busy || published || uncertain}>
+              <div className={styles.editorTopGrid}>
+                <label className={styles.titleField}>
+                  <span>{copy("Title")}</span>
+                  <input
+                    maxLength={200}
+                    value={title}
+                    placeholder={copy("Give your video a clear title")}
+                    onChange={(event) => setTitle(event.target.value)}
+                  />
+                </label>
 
-              <div className={styles.progressCard}>
-                <div className={styles.progressText}>
-                  <span>
-                    <small>Upload status</small>
-                    <strong>
-                      {uploadComplete
-                        ? processingReady
-                          ? "Ready to publish"
-                          : "Preparing playback"
-                        : "Uploading video"}
+                <div className={styles.progressCard}>
+                  <div className={styles.progressText}>
+                    <span>
+                      <small>{copy("Upload status")}</small>
+                      <strong>
+                        {uploadComplete
+                          ? processingReady
+                            ? copy("Ready to publish")
+                            : copy("Preparing playback")
+                          : copy("Uploading video")}
+                      </strong>
+                    </span>
+                    <strong className={styles.progressValue}>
+                      {uploadComplete ? (processingLabel ?? copy("Queued")) : `${progress}%`}
                     </strong>
-                  </span>
-                  <strong className={styles.progressValue}>
-                    {uploadComplete ? (processingLabel ?? "Queued") : `${progress}%`}
-                  </strong>
-                </div>
-                <div
-                  className={styles.progressTrack}
-                  role="progressbar"
-                  aria-label="Upload progress"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={progress}
-                >
-                  <span style={{ width: `${Math.max(2, progress)}%` }} />
+                  </div>
+                  <div
+                    className={styles.progressTrack}
+                    role="progressbar"
+                    aria-label={copy("Upload progress")}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={progress}
+                  >
+                    <span style={{ width: `${Math.max(2, progress)}%` }} />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <details className={styles.advanced}>
-              <summary>
-                <span>
-                  <strong>Advanced settings</strong>
-                  <small>
-                    Optional metadata, publishing controls and thumbnail · SEO stays automatic
-                  </small>
-                </span>
-                <span className={styles.summaryChevron} aria-hidden="true">
-                  ⌄
-                </span>
-              </summary>
-              <div className={styles.advancedGrid}>
-                <label className={styles.fullWidth}>
-                  <span>Description</span>
-                  <textarea
-                    rows={5}
-                    maxLength={20_000}
-                    value={description}
-                    placeholder="Tell viewers what this video is about"
-                    onBlur={() => void saveDetails()}
-                    onChange={(event) => setDescription(event.target.value)}
-                  />
-                </label>
-
-                <VideoMetadataFields
-                  fullWidthClassName={styles.fullWidth}
-                  value={metadataDraft}
-                  onChange={setMetadataDraft}
-                />
-
-                <label>
-                  <span>Visibility</span>
-                  <select
-                    value={visibility}
-                    onBlur={() => void saveDetails()}
-                    onChange={(event) => setVisibility(event.target.value as Visibility)}
-                  >
-                    <option value="PUBLIC">Public</option>
-                    <option value="UNLISTED">Unlisted</option>
-                    <option value="PRIVATE">Private</option>
-                  </select>
-                </label>
-
-                <label>
-                  <span>Schedule</span>
-                  <input
-                    type="datetime-local"
-                    value={scheduledPublishAt}
-                    onBlur={() => void saveDetails()}
-                    onChange={(event) => setScheduledPublishAt(event.target.value)}
-                  />
-                </label>
-
-                <label className={styles.checkboxRow}>
-                  <input
-                    type="checkbox"
-                    checked={commentsEnabled}
-                    onChange={(event) => setCommentsEnabled(event.target.checked)}
-                  />
-                  <span>Allow comments</span>
-                </label>
-
-                <div className={styles.fullWidth}>
-                  <span className={styles.fieldLabel}>Thumbnail</span>
-                  {thumbnailChoices.length ? (
-                    <div className={styles.thumbnailGrid}>
-                      {thumbnailChoices.map((choice) => (
-                        <button
-                          className={
-                            selectedThumbnailId === choice.id
-                              ? styles.thumbnailSelected
-                              : styles.thumbnail
-                          }
-                          key={choice.id}
-                          type="button"
-                          onClick={() => void chooseCapturedThumbnail(choice)}
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={choice.previewUrl} alt={`${choice.label} preview`} />
-                          <span>{choice.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className={styles.hint}>
-                      Thumbnail suggestions appear when they are available.
-                    </p>
-                  )}
-                  <label className={styles.customThumbnail}>
-                    <span>
-                      {selectedThumbnailId === "custom"
-                        ? "Custom thumbnail saved"
-                        : "Upload a custom JPG or PNG"}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-                      onChange={(event) =>
-                        void chooseCustomThumbnail(event.target.files?.[0] ?? null)
-                      }
+              <details className={styles.advanced}>
+                <summary>
+                  <span>
+                    <strong>{copy("Advanced settings")}</strong>
+                    <small>
+                      {copy(
+                        "Optional metadata, publishing controls and thumbnail · SEO stays automatic",
+                      )}
+                    </small>
+                  </span>
+                  <span className={styles.summaryChevron} aria-hidden="true">
+                    ⌄
+                  </span>
+                </summary>
+                <div className={styles.advancedGrid}>
+                  <label className={styles.fullWidth}>
+                    <span>{copy("Description")}</span>
+                    <textarea
+                      rows={5}
+                      maxLength={20_000}
+                      value={description}
+                      placeholder={copy("Tell viewers what this video is about")}
+                      onChange={(event) => setDescription(event.target.value)}
                     />
                   </label>
-                </div>
-              </div>
-            </details>
 
+                  <VideoMetadataFields
+                    fullWidthClassName={styles.fullWidth}
+                    value={metadataDraft}
+                    onChange={setMetadataDraft}
+                  />
+
+                  <label>
+                    <span>{copy("Visibility")}</span>
+                    <select
+                      value={visibility}
+                      onChange={(event) => setVisibility(event.target.value as Visibility)}
+                    >
+                      <option value="PUBLIC">{copy("Public")}</option>
+                      <option value="UNLISTED">{copy("Unlisted")}</option>
+                      <option value="PRIVATE">{copy("Private")}</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>{copy("Schedule")}</span>
+                    <input
+                      type="datetime-local"
+                      value={scheduledPublishAt}
+                      onChange={(event) => setScheduledPublishAt(event.target.value)}
+                    />
+                  </label>
+
+                  <label className={styles.checkboxRow}>
+                    <input
+                      type="checkbox"
+                      checked={commentsEnabled}
+                      onChange={(event) => setCommentsEnabled(event.target.checked)}
+                    />
+                    <span>{copy("Allow comments")}</span>
+                  </label>
+
+                  <div className={styles.fullWidth}>
+                    <span className={styles.fieldLabel}>{copy("Thumbnail")}</span>
+                    {thumbnailChoices.length ? (
+                      <div className={styles.thumbnailGrid}>
+                        {thumbnailChoices.map((choice) => (
+                          <button
+                            className={
+                              selectedThumbnailId === choice.id
+                                ? styles.thumbnailSelected
+                                : styles.thumbnail
+                            }
+                            key={choice.id}
+                            type="button"
+                            onClick={() => void chooseCapturedThumbnail(choice)}
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={choice.previewUrl}
+                              alt={
+                                locale === "ar"
+                                  ? `معاينة صورة ${choice.id.split("-").at(-1)}`
+                                  : `${choice.label} preview`
+                              }
+                            />
+                            <span>
+                              {locale === "ar"
+                                ? `صورة ${choice.id.split("-").at(-1)}`
+                                : choice.label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className={styles.hint}>
+                        {copy("Thumbnail suggestions appear when they are available.")}
+                      </p>
+                    )}
+                    <label className={styles.customThumbnail}>
+                      <span>
+                        {selectedThumbnailId === "custom"
+                          ? copy("Custom thumbnail saved")
+                          : copy("Upload a custom JPG or PNG")}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                        onChange={(event) =>
+                          void chooseCustomThumbnail(event.target.files?.[0] ?? null)
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              </details>
+            </fieldset>
             <div className={styles.publishDock}>
               <p className={styles.publishConsent}>
-                By publishing, you confirm that you own this video or have all rights and
-                permissions required to publish it on AYIN.
+                {copy(
+                  "By publishing, you confirm that you own this video or have all rights and permissions required to publish it on AYIN.",
+                )}
               </p>
 
-              <button
-                className={styles.publish}
+              <ActionButton
+                className={styles.actionLayout}
+                tone="secondary"
                 type="button"
-                disabled={!uploadComplete || !processingReady || !title.trim() || busy || published}
+                disabled={busy || published || uncertain || signature === savedSignature}
+                onClick={() => void saveDetails()}
+              >
+                {copy("Save details")}
+              </ActionButton>
+              <ActionButton
+                className={styles.actionLayout}
+                type="button"
+                disabled={
+                  !uploadComplete ||
+                  !processingReady ||
+                  !title.trim() ||
+                  busy ||
+                  published ||
+                  uncertain
+                }
                 onClick={() => void publish()}
               >
                 <span>
                   {published
-                    ? "Published"
-                    : busy && uploadComplete
-                      ? "Publishing…"
-                      : "Publish video"}
+                    ? copy("Published")
+                    : mutationKind === "publish"
+                      ? copy("Publishing…")
+                      : copy("Publish video")}
                 </span>
                 {!published ? <span aria-hidden="true">→</span> : null}
-              </button>
+              </ActionButton>
             </div>
           </section>
         ) : null}
       </div>
 
+      {videoId || uncertain ? (
+        <p className={styles.hint}>
+          <Link href={href("/studio/content")}>{copy("Review saved uploads in Studio")}</Link>
+          {uncertain ? copy(" · The last response is uncertain; further writes are paused.") : null}
+        </p>
+      ) : null}
+      {processingFailed && !uncertain ? (
+        <button
+          type="button"
+          onClick={() => {
+            setProcessingFailed(false);
+            setProcessingAttempt((value) => value + 1);
+          }}
+        >
+          {copy("Check processing status")}
+        </button>
+      ) : null}
       {message ? (
         <p className={styles.message} role="status" aria-live="polite">
           <span aria-hidden="true" />

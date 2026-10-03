@@ -768,7 +768,9 @@ try {
       break;
     }
     case "grant-operator-role": {
-      if (!["OPERATIONS", "SUPERADMIN", "FINANCE_MANAGER"].includes(payload.role))
+      if (
+        !["OPERATIONS", "CONTENT_MODERATOR", "SUPERADMIN", "FINANCE_MANAGER"].includes(payload.role)
+      )
         throw new Error("Unsupported test operator role.");
       await prisma.adminRoleAssignment.upsert({
         where: { accountId_role: { accountId: payload.accountId, role: payload.role } },
