@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { registerAdminVerification } from "./admin-reauthentication";
 import {
   adminChannelInput,
   getAdminChannels,
@@ -118,5 +119,27 @@ describe("Admin channel update boundaries", () => {
     await vi.advanceTimersByTimeAsync(15000);
     expect((await observed).name).toBe("AbortError");
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it("preserves explicit step-up rejection and dispatches verification once without replay or financial rereads", async () => {
+    const actor = { accountId: actorId, roles: ["OPERATIONS" as const] };
+    const verification = vi.fn(),
+      dispose = registerAdminVerification(verification);
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(actor))
+      .mockResolvedValueOnce(
+        Response.json({ error: { code: "STEP_UP_REQUIRED" } }, { status: 403 }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    try {
+      await expect(
+        saveAdminChannel(actor, row(), draft(), new AbortController().signal),
+      ).rejects.toMatchObject({ status: 403, writeStarted: true, verificationRequired: true });
+      expect(verification).toHaveBeenCalledTimes(1);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch.mock.calls[1]?.[1]?.method).toBe("PATCH");
+    } finally {
+      dispose();
+    }
   });
 });

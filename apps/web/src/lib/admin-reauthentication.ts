@@ -9,15 +9,18 @@ export function registerAdminVerification(handler: () => void) {
   };
 }
 
+export async function adminVerificationRequired(response: Response): Promise<boolean> {
+  if (response.status !== 403) return false;
+  const body = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  return body?.error?.code === "STEP_UP_REQUIRED";
+}
+
 // A rejected operation is never replayed. After verification the administrator
 // reviews and explicitly submits the original action again.
 export async function readAdminApiError(response: Response): Promise<string> {
-  if (response.status === 403) {
-    const body = await response
-      .clone()
-      .json()
-      .catch(() => null);
-    if (body?.error?.code === "STEP_UP_REQUIRED") requestVerification?.();
-  }
+  if (await adminVerificationRequired(response)) requestVerification?.();
   return readApiError(response);
 }
