@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Inject,
   Param,
   Patch,
@@ -59,6 +60,7 @@ const accountPatchSchema = z
   .strict();
 const channelPatchSchema = z
   .object({
+    expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
     name: z.string().trim().min(1).max(120).optional(),
     description: z.string().max(20_000).nullable().optional(),
     status: z.enum(["ACTIVE", "HIDDEN", "SUSPENDED"]).optional(),
@@ -146,9 +148,17 @@ export class AdminControlController {
   }
 
   @Get("channels")
+  @Header("Cache-Control", "private, no-store")
   @RequireAdminRoles("OPERATIONS")
   channels(@Query() query: unknown) {
     return this.control.channels(this.parse(channelQuerySchema, query, "INVALID_CHANNEL_FILTER"));
+  }
+
+  @Get("channels/:channelId")
+  @Header("Cache-Control", "private, no-store")
+  @RequireAdminRoles("OPERATIONS")
+  channelRecord(@Param("channelId") channelIdRaw: string) {
+    return this.control.channelRecord(this.id(channelIdRaw));
   }
 
   @Patch("channels/:channelId")
