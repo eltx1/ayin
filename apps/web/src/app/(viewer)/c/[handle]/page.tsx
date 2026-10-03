@@ -157,14 +157,16 @@ export default async function PublicChannelPage({
           ) : null}
         </div>
 
-        <div className={styles.actions}>
-          <SubscribeButton
-            channelId={data.channel.id}
-            className={styles.subscribe}
-            initialCount={data.subscription.subscriberCount}
-          />
-          <OwnerChannelActions handle={data.channel.handle} />
-        </div>
+        {!kidsMode ? (
+          <div className={styles.actions}>
+            <SubscribeButton
+              channelId={data.channel.id}
+              className={styles.subscribe}
+              initialCount={data.subscription.subscriberCount}
+            />
+            <OwnerChannelActions handle={data.channel.handle} />
+          </div>
+        ) : null}
       </section>
 
       <nav aria-label={t("channel.sections")} className={styles.tabs}>
