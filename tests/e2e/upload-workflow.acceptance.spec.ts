@@ -45,7 +45,16 @@ async function setup(page: Page, locale = "en") {
     }),
   );
   await page.goto(`${locale === "ar" ? "/ar" : ""}/upload?lang=${locale}`);
-  await expect(page.locator('input[type="file"][accept^="video/"]')).toBeEnabled();
+  const picker = page.locator('input[type="file"][accept^="video/"]');
+  // The streamed server tree and hydrated tree can briefly overlap. Require
+  // one actual picker before exercising it; never select the first duplicate.
+  await expect
+    .poll(() =>
+      picker.evaluateAll((nodes) => nodes.length === 1 && !(nodes[0] as HTMLInputElement).disabled),
+    )
+    .toBe(true);
+  await expect(picker).toHaveCount(1);
+  await expect(picker).toBeEnabled();
 }
 async function uploadReady(page: Page, locale = "en") {
   const draftResponse = page.waitForResponse(

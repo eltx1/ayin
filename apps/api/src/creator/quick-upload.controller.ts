@@ -2,12 +2,14 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpException,
   Inject,
   Param,
   Patch,
   Post,
   Req,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { z } from "zod";
@@ -57,6 +59,21 @@ export class QuickUploadController {
     @Inject(QuickUploadService) private readonly quickUpload: QuickUploadService,
     @Inject(VideoMetadataService) private readonly metadata: VideoMetadataService,
   ) {}
+
+  @Get("uploads")
+  @Header("Cache-Control", "private, no-store")
+  async uploadHistory(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
+    const parsed = z
+      .object({
+        channelId: z.string().uuid(),
+        page: z.coerce.number().int().min(1).max(1000).default(1),
+        status: z.enum(["UPLOADING", "VALIDATING", "DRAFT", "PUBLISHED", "SCHEDULED"]).optional(),
+      })
+      .strict()
+      .safeParse(query);
+    if (!parsed.success) throw new HttpException("Invalid upload history query.", 400);
+    return this.run(() => this.quickUpload.uploadHistory(request.ayinAuth.accountId, parsed.data));
+  }
 
   @Post("drafts")
   async createDraft(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
