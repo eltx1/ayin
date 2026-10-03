@@ -814,6 +814,57 @@ try {
       };
       break;
     }
+    case "seed-moderation-queue": {
+      const url = new URL(databaseUrl);
+      if (!["localhost", "127.0.0.1"].includes(url.hostname) || !url.pathname.includes("ayin_e2e"))
+        throw new Error("Moderation fixture requires isolated local ayin_e2e");
+      const profile = await prisma.viewerProfile.findFirstOrThrow({
+        where: { accountId: payload.accountId },
+      });
+      const channel = await prisma.channel.create({
+        data: { handle: `reports-${profile.id}`, name: "Reported channel", status: "ACTIVE" },
+      });
+      const video = await prisma.video.create({
+        data: {
+          channelId: channel.id,
+          slug: `reports-${profile.id}`,
+          title: "Reported video",
+          status: "PUBLISHED",
+          visibility: "PUBLIC",
+          publishedAt: new Date(),
+        },
+      });
+      const comment = await prisma.comment.create({
+        data: {
+          videoId: video.id,
+          authorProfileId: profile.id,
+          body: "Reported comment ".repeat(40) + "FULL COMMENT END",
+        },
+      });
+      for (let index = 0; index < 31; index++) {
+        await prisma.report.create({
+          data: {
+            reporterProfileId: profile.id,
+            commentId: comment.id,
+            reason: "OTHER",
+            status: "OPEN",
+            details: `Open report ${index}`,
+            createdAt: new Date(Date.UTC(2026, 9, 1, 0, 0, index)),
+          },
+        });
+      }
+      await prisma.report.create({
+        data: {
+          reporterProfileId: profile.id,
+          channelId: channel.id,
+          reason: "SPAM",
+          status: "RESOLVED",
+          details: "Resolved queue report",
+        },
+      });
+      result = { totalOpen: 31 };
+      break;
+    }
     case "moderation": {
       const [video, account, auditCount] = await Promise.all([
         prisma.video.findUniqueOrThrow({ where: { id: payload.videoId } }),
