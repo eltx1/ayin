@@ -28,14 +28,20 @@ export class VideoMetadataError extends Error {
 export class VideoMetadataService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  async applyForOwner(accountId: string, videoId: string, input: VideoMetadataInput) {
-    const video = await this.database.client.video.findUnique({
+  async applyForOwner(
+    accountId: string,
+    videoId: string,
+    input: VideoMetadataInput,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.database.client;
+    const video = await client.video.findUnique({
       where: { id: videoId },
       select: { id: true, channelId: true, durationMs: true, status: true },
     });
     if (!video)
       throw new VideoMetadataError("VIDEO_NOT_FOUND", "This video could not be found.", 404);
-    const membership = await this.database.client.channelMember.findFirst({
+    const membership = await client.channelMember.findFirst({
       where: { accountId, channelId: video.channelId, role: "OWNER" },
       select: { id: true },
     });
@@ -47,7 +53,7 @@ export class VideoMetadataService {
       );
     if (video.status === "REMOVED")
       throw new VideoMetadataError("VIDEO_REMOVED", "This video can no longer be edited.", 409);
-    return this.apply(video.id, video.durationMs, input);
+    return this.apply(video.id, video.durationMs, input, tx);
   }
 
   async applyForStudio(accountId: string, videoId: string, input: VideoMetadataInput) {
@@ -83,21 +89,27 @@ export class VideoMetadataService {
     return this.apply(video.id, video.durationMs, input);
   }
 
-  async updateRightsForOwner(accountId: string, videoId: string, input: VideoMetadataInput) {
+  async updateRightsForOwner(
+    accountId: string,
+    videoId: string,
+    input: VideoMetadataInput,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.database.client;
     if (input.rightsBasis === undefined && input.rightsNote === undefined) return;
-    const video = await this.database.client.video.findFirst({
+    const video = await client.video.findFirst({
       where: { id: videoId, channel: { members: { some: { accountId, role: "OWNER" } } } },
       select: { id: true },
     });
     if (!video)
       throw new VideoMetadataError("VIDEO_NOT_FOUND", "This video could not be found.", 404);
-    const declaration = await this.database.client.contentRightsDeclaration.findFirst({
+    const declaration = await client.contentRightsDeclaration.findFirst({
       where: { videoId, status: "CONFIRMED" },
       orderBy: { version: "desc" },
       select: { id: true, statement: true },
     });
     if (!declaration) return;
-    await this.database.client.contentRightsDeclaration.update({
+    await client.contentRightsDeclaration.update({
       where: { id: declaration.id },
       data: {
         ...(input.rightsBasis !== undefined ? { basis: input.rightsBasis } : {}),
@@ -108,15 +120,16 @@ export class VideoMetadataService {
     });
   }
 
-  async readOne(videoId: string) {
+  async readOne(videoId: string, tx?: Prisma.TransactionClient) {
+    const client = tx ?? this.database.client;
     const [video, metadata, policy, rights] = await Promise.all([
-      this.database.client.video.findUnique({
+      client.video.findUnique({
         where: { id: videoId },
         select: { id: true, contentType: true },
       }),
-      this.database.client.videoCreatorMetadata.findUnique({ where: { videoId } }),
-      this.database.client.videoPolicy.findUnique({ where: { videoId } }),
-      this.database.client.contentRightsDeclaration.findFirst({
+      client.videoCreatorMetadata.findUnique({ where: { videoId } }),
+      client.videoPolicy.findUnique({ where: { videoId } }),
+      client.contentRightsDeclaration.findFirst({
         where: { videoId, status: "CONFIRMED" },
         orderBy: { version: "desc" },
         select: { basis: true, statement: true },
@@ -164,7 +177,12 @@ export class VideoMetadataService {
     );
   }
 
-  private async apply(videoId: string, durationMs: number | null, input: VideoMetadataInput) {
+  private async apply(
+    videoId: string,
+    durationMs: number | null,
+    input: VideoMetadataInput,
+    transaction?: Prisma.TransactionClient,
+  ) {
     try {
       validateMetadataDuration(input, durationMs);
     } catch (error) {
@@ -185,8 +203,8 @@ export class VideoMetadataService {
       !hasCompanionMetadata(input) &&
       !hasPolicyMetadata(input)
     )
-      return this.readOne(videoId);
-    await this.database.client.$transaction(async (tx) => {
+      return this.readOne(videoId, transaction);
+    const write = async (tx: Prisma.TransactionClient) => {
       if (input.contentType !== undefined)
         await tx.video.update({ where: { id: videoId }, data: { contentType: input.contentType } });
       if (hasCompanionMetadata(input)) {
@@ -212,8 +230,10 @@ export class VideoMetadataService {
           update: data,
         });
       }
-    });
-    return this.readOne(videoId);
+    };
+    if (transaction) await write(transaction);
+    else await this.database.client.$transaction(write);
+    return this.readOne(videoId, transaction);
   }
 }
 

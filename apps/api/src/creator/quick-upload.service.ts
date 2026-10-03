@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@ayin/db";
 
 import { Inject, Injectable } from "@nestjs/common";
 
@@ -258,13 +259,19 @@ export class QuickUploadService {
     };
   }
 
-  async updateDetails(accountId: string, videoId: string, input: DraftDetailsInput) {
-    const video = await this.ownedVideo(accountId, videoId);
+  async updateDetails(
+    accountId: string,
+    videoId: string,
+    input: DraftDetailsInput,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.database.client;
+    const video = await this.ownedVideo(accountId, videoId, tx);
     if (video.status === "REMOVED") {
       throw new QuickUploadError("VIDEO_REMOVED", "This video can no longer be edited.", 409);
     }
     const data = this.detailsData(input);
-    return this.database.client.video.update({
+    return client.video.update({
       where: { id: videoId },
       data,
       select: {
@@ -284,6 +291,7 @@ export class QuickUploadService {
     videoId: string,
     rightsConfirmed: boolean,
     input: DraftDetailsInput,
+    transaction?: Prisma.TransactionClient,
   ) {
     if (!rightsConfirmed) {
       throw new QuickUploadError(
@@ -294,7 +302,10 @@ export class QuickUploadService {
     const globalAutoTv = (await this.settings.get("autoAddPublishedUploadsToCreatorTv")) as boolean;
     const now = new Date();
 
-    return this.database.client.$transaction(async (tx) => {
+    const write = async (tx: Prisma.TransactionClient) => {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "Video" WHERE "id" = ${videoId}::uuid FOR UPDATE`,
+      );
       const video = await tx.video.findUnique({
         where: { id: videoId },
         include: {
@@ -329,6 +340,8 @@ export class QuickUploadService {
           403,
         );
       }
+      if (video.status === "REMOVED")
+        throw new QuickUploadError("VIDEO_REMOVED", "This video can no longer be published.", 409);
       const canonicalReady = video.mediaAssets.some(
         (asset) => asset.status === "VALIDATED" && asset.mimeType === "video/mp4",
       );
@@ -365,7 +378,10 @@ export class QuickUploadService {
         throw new QuickUploadError("TITLE_TOO_LONG", "Keep the video title under 200 characters.");
       }
       const finalVisibility = input.visibility ?? video.visibility;
-      const scheduledAt = input.scheduledPublishAt ?? video.scheduledPublishAt;
+      const scheduledAt =
+        input.scheduledPublishAt !== undefined
+          ? input.scheduledPublishAt
+          : video.scheduledPublishAt;
       const isScheduled = scheduledAt ? scheduledAt.getTime() > now.getTime() : false;
 
       await tx.contentRightsDeclaration.upsert({
@@ -456,7 +472,8 @@ export class QuickUploadService {
         uploadsPlaylistId: uploadsPlaylist.id,
         creatorTvAssociated,
       };
-    });
+    };
+    return transaction ? write(transaction) : this.database.client.$transaction(write);
   }
 
   async authorizeThumbnail(
@@ -587,20 +604,26 @@ export class QuickUploadService {
     };
   }
 
-  private async ownedVideo(accountId: string, videoId: string) {
-    const video = await this.database.client.video.findUnique({
+  private async ownedVideo(accountId: string, videoId: string, tx?: Prisma.TransactionClient) {
+    const client = tx ?? this.database.client;
+    const video = await client.video.findUnique({
       where: { id: videoId },
       select: { id: true, channelId: true, status: true },
     });
     if (!video) {
       throw new QuickUploadError("VIDEO_NOT_FOUND", "This video could not be found.", 404);
     }
-    await this.assertOwner(accountId, video.channelId);
+    await this.assertOwner(accountId, video.channelId, tx);
     return video;
   }
 
-  private async assertOwner(accountId: string, channelId: string): Promise<void> {
-    const membership = await this.database.client.channelMember.findFirst({
+  private async assertOwner(
+    accountId: string,
+    channelId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx ?? this.database.client;
+    const membership = await client.channelMember.findFirst({
       where: { accountId, channelId, role: "OWNER" },
       select: { id: true },
     });

@@ -1,6 +1,7 @@
 import "reflect-metadata";
 
-import { createPrismaClient } from "@ayin/db";
+import { createPrismaClient, Prisma } from "@ayin/db";
+import { VideoMetadataService } from "../src/creator/video-metadata.service.js";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test, type TestingModule } from "@nestjs/testing";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -281,5 +282,170 @@ databaseDescribe("video metadata v2", () => {
       payload: { tags: ["not-mine"] },
     });
     expect(forbidden.statusCode).toBe(403);
+  });
+
+  it("rolls back basic details when duration-bound metadata is rejected", async () => {
+    const owner = await register("Atomic details", "atomic-details@example.com");
+    const draft = await createDraft(owner.cookie, owner.user.channel.id, "Original title");
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/creator/videos/${draft.video.id}`,
+      headers: { cookie: owner.cookie },
+      payload: {
+        title: "Must roll back",
+        visibility: "PRIVATE",
+        chapters: [{ title: "Outside", startSeconds: 120 }],
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("CHAPTER_OUTSIDE_VIDEO");
+    const video = await prisma.video.findUniqueOrThrow({ where: { id: draft.video.id } });
+    expect(video.title).toBe("Original title");
+    expect(video.visibility).toBe("PUBLIC");
+    expect(
+      await prisma.videoCreatorMetadata.findUnique({ where: { videoId: video.id } }),
+    ).toBeNull();
+  });
+
+  it("does not commit advanced policy changes when publication lacks rights confirmation", async () => {
+    const owner = await register("Atomic rights", "atomic-rights@example.com");
+    const draft = await createDraft(owner.cookie, owner.user.channel.id, "Original rights");
+    const response = await app.inject({
+      method: "POST",
+      url: `/creator/videos/${draft.video.id}/publish`,
+      headers: { cookie: owner.cookie },
+      payload: {
+        rightsConfirmed: false,
+        tags: ["must-roll-back"],
+        maturityLevel: "MATURE",
+        contentType: "MOVIE",
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("RIGHTS_CONFIRMATION_REQUIRED");
+    const video = await prisma.video.findUniqueOrThrow({ where: { id: draft.video.id } });
+    expect(video.contentType).toBe("CREATOR_VIDEO");
+    expect(video.status).toBe("UPLOADING");
+    expect(
+      await prisma.videoCreatorMetadata.findUnique({ where: { videoId: video.id } }),
+    ).toBeNull();
+    expect(await prisma.videoPolicy.findUnique({ where: { videoId: video.id } })).toBeNull();
+    expect(await prisma.contentRightsDeclaration.count({ where: { videoId: video.id } })).toBe(0);
+  });
+
+  it("rolls back publication, rights and playlist association after a late rights-write failure", async () => {
+    const owner = await register("Atomic publish", "atomic-publish@example.com");
+    const draft = await createDraft(owner.cookie, owner.user.channel.id, "Original publish");
+    await completeAndMarkReady(owner.cookie, draft);
+    const spy = vi
+      .spyOn(moduleReference.get(VideoMetadataService), "updateRightsForOwner")
+      .mockRejectedValueOnce(new Error("Injected late rights-write failure"));
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: `/creator/videos/${draft.video.id}/publish`,
+        headers: { cookie: owner.cookie },
+        payload: {
+          rightsConfirmed: true,
+          title: "Must roll back",
+          tags: ["must-roll-back"],
+          rightsBasis: "LICENSED",
+        },
+      });
+      expect(response.statusCode).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    const video = await prisma.video.findUniqueOrThrow({ where: { id: draft.video.id } });
+    expect(video.status).toBe("DRAFT");
+    expect(video.title).toBe("Original publish");
+    expect(video.publishedAt).toBeNull();
+    expect(
+      await prisma.videoCreatorMetadata.findUnique({ where: { videoId: video.id } }),
+    ).toBeNull();
+    expect(await prisma.contentRightsDeclaration.count({ where: { videoId: video.id } })).toBe(0);
+    expect(await prisma.playlistItem.count({ where: { videoId: video.id } })).toBe(0);
+  });
+
+  it("explicitly clears a saved schedule when publishing immediately", async () => {
+    const owner = await register("Clear schedule", "clear-schedule@example.com");
+    const draft = await createDraft(owner.cookie, owner.user.channel.id, "Clear schedule");
+    await completeAndMarkReady(owner.cookie, draft);
+    const saved = await app.inject({
+      method: "PATCH",
+      url: `/creator/videos/${draft.video.id}`,
+      headers: { cookie: owner.cookie },
+      payload: { scheduledPublishAt: new Date(Date.now() + 86400000).toISOString() },
+    });
+    expect(saved.statusCode).toBe(200);
+    const response = await app.inject({
+      method: "POST",
+      url: `/creator/videos/${draft.video.id}/publish`,
+      headers: { cookie: owner.cookie },
+      payload: { rightsConfirmed: true, scheduledPublishAt: null },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().video.status).toBe("PUBLISHED");
+    const video = await prisma.video.findUniqueOrThrow({ where: { id: draft.video.id } });
+    expect(video.scheduledPublishAt).toBeNull();
+    expect(video.publishedAt).not.toBeNull();
+  });
+
+  it("waits for a concurrent removal and never revives the removed video", async () => {
+    const owner = await register("Concurrent removal", "concurrent-removal@example.com");
+    const draft = await createDraft(owner.cookie, owner.user.channel.id, "Removed during publish");
+    await completeAndMarkReady(owner.cookie, draft);
+    let acquired = () => {},
+      release = () => {};
+    const locked = new Promise<void>((resolve) => {
+      acquired = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const removal = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "Video" WHERE "id" = ${draft.video.id}::uuid FOR UPDATE`,
+        );
+        acquired();
+        await gate;
+        await tx.video.update({ where: { id: draft.video.id }, data: { status: "REMOVED" } });
+      },
+      { timeout: 15000 },
+    );
+    await locked;
+    const publication = app.inject({
+      method: "POST",
+      url: `/creator/videos/${draft.video.id}/publish`,
+      headers: { cookie: owner.cookie },
+      payload: { rightsConfirmed: true, tags: ["must-not-write"] },
+    });
+    try {
+      await vi.waitFor(
+        async () => {
+          const waiting = await prisma.$queryRaw<Array<{ count: bigint }>>(
+            Prisma.sql`SELECT count(*)::bigint AS count FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FOR UPDATE%' AND datname = current_database()`,
+          );
+          expect(Number(waiting[0]?.count ?? 0)).toBeGreaterThan(0);
+        },
+        { timeout: 3000 },
+      );
+    } finally {
+      release();
+    }
+    await removal;
+    const response = await publication;
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error.code).toBe("VIDEO_REMOVED");
+    expect((await prisma.video.findUniqueOrThrow({ where: { id: draft.video.id } })).status).toBe(
+      "REMOVED",
+    );
+    expect(
+      await prisma.videoCreatorMetadata.findUnique({ where: { videoId: draft.video.id } }),
+    ).toBeNull();
+    expect(
+      await prisma.contentRightsDeclaration.count({ where: { videoId: draft.video.id } }),
+    ).toBe(0);
   });
 });
