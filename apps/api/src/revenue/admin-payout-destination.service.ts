@@ -1,8 +1,16 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Prisma } from "@ayin/db";
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
 import { decryptPayoutDestination } from "./creator-finance.crypto.js";
 
 const revealPayoutDestinationSchema = z
@@ -40,7 +48,7 @@ export class AdminPayoutDestinationService {
   ) {}
 
   async details(payoutId: string) {
-    const row = await this.payoutRow(payoutId);
+    const row = await this.payoutRow(this.validPayoutId(payoutId));
     const snapshotAvailable = Boolean(row.destinationEncrypted && row.legalName);
     return {
       payoutId: row.payoutId,
@@ -77,29 +85,28 @@ export class AdminPayoutDestinationService {
   }
 
   async reveal(actorAccountId: string, payoutId: string, raw: unknown) {
-    const input = revealPayoutDestinationSchema.parse(raw);
-    const row = await this.payoutRow(payoutId);
-    if (!row.destinationEncrypted || !row.legalName) {
-      // Never fall back to a creator's current mutable profile. Legacy payouts without an
-      // immutable snapshot require explicit finance remediation rather than a potentially
-      // redirected payment destination.
-      throw new Error("PAYOUT_BENEFICIARY_SNAPSHOT_NOT_CONFIGURED");
-    }
-    if (!new Set(["PENDING", "PROCESSING"]).has(row.payoutStatus)) {
-      throw new Error("PAYOUT_DESTINATION_REVEAL_NOT_ALLOWED_FOR_STATUS");
-    }
-    if (row.payoutProvider !== "MANUAL") {
-      throw new Error("PAYOUT_DESTINATION_REVEAL_ONLY_FOR_MANUAL_PAYOUTS");
-    }
+    const parsed = revealPayoutDestinationSchema.safeParse(raw);
+    if (!parsed.success) throw new BadRequestException("Invalid destination reveal reason.");
+    const targetId = this.validPayoutId(payoutId);
+    return this.database.client.$transaction(async (tx) => {
+      const row = await this.payoutRow(targetId, tx, true);
+      await assertAdminFinanceAuthority(tx, actorAccountId);
+      if (!row.destinationEncrypted || !row.legalName)
+        throw new ConflictException("PAYOUT_BENEFICIARY_SNAPSHOT_NOT_CONFIGURED");
+      if (!new Set(["PENDING", "PROCESSING"]).has(row.payoutStatus))
+        throw new ConflictException("PAYOUT_DESTINATION_REVEAL_NOT_ALLOWED_FOR_STATUS");
+      if (row.payoutProvider !== "MANUAL")
+        throw new ConflictException("PAYOUT_DESTINATION_REVEAL_ONLY_FOR_MANUAL_PAYOUTS");
 
-    const destination = decryptPayoutDestination(row.destinationEncrypted);
-    await this.database.client.$transaction(async (tx) => {
+      // Snapshot/status/authority remain locked until the audit commits. An audit
+      // failure cannot return sensitive data, and mutable profiles are never read.
+      const destination = decryptPayoutDestination(row.destinationEncrypted);
       await this.audit.recordInTransaction(tx, {
         actorAccountId,
         action: "payout.destination_revealed",
         entityType: "Payout",
         entityId: row.payoutId,
-        reason: input.reason,
+        reason: parsed.data.reason,
         metadata: {
           channelId: row.channelId,
           paymentProfileId: row.paymentProfileId,
@@ -109,23 +116,33 @@ export class AdminPayoutDestinationService {
           source: "IMMUTABLE_PAYOUT_SNAPSHOT",
         },
       });
+      return {
+        payoutId: row.payoutId,
+        channelId: row.channelId,
+        provider: row.payoutProvider,
+        legalName: row.legalName,
+        countryCode: row.countryCode,
+        destination,
+        destinationMask: row.destinationMask,
+        sensitive: true,
+        cacheable: false,
+      };
     });
-
-    return {
-      payoutId: row.payoutId,
-      channelId: row.channelId,
-      provider: row.payoutProvider,
-      legalName: row.legalName,
-      countryCode: row.countryCode,
-      destination,
-      destinationMask: row.destinationMask,
-      sensitive: true,
-      cacheable: false,
-    };
   }
 
-  private async payoutRow(payoutId: string): Promise<PayoutDestinationRow> {
-    const rows = await this.database.client.$queryRaw<PayoutDestinationRow[]>`
+  private validPayoutId(value: string) {
+    const parsed = z.string().uuid().safeParse(value);
+    if (!parsed.success) throw new BadRequestException("Invalid payout identifier.");
+    return parsed.data;
+  }
+
+  private async payoutRow(
+    payoutId: string,
+    tx?: Prisma.TransactionClient,
+    lock = false,
+  ): Promise<PayoutDestinationRow> {
+    const client = tx ?? this.database.client;
+    const rows = await client.$queryRaw<PayoutDestinationRow[]>`
       SELECT
         p."id" AS "payoutId",
         p."channelId" AS "channelId",
@@ -149,9 +166,10 @@ export class AdminPayoutDestinationService {
       JOIN "Channel" c ON c."id" = p."channelId"
       WHERE p."id" = ${payoutId}::uuid
       LIMIT 1
+      ${lock ? Prisma.sql`/* ayin-payout-destination-lock */ FOR UPDATE OF p` : Prisma.empty}
     `;
     const row = rows[0];
-    if (!row) throw new Error("PAYOUT_NOT_FOUND");
+    if (!row) throw new NotFoundException("PAYOUT_NOT_FOUND");
     return row;
   }
 }
