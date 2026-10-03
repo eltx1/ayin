@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { CreatorComplianceService } from "./creator-compliance.service.js";
+import { assertCreatorFinanceAuthority, lockFinanceChannel } from "./creator-finance-authority.js";
 import {
   EXTERNAL_PAYOUT_PROVIDER_ADAPTER,
   type ExternalPayoutProviderAdapter,
@@ -62,7 +63,9 @@ export class AdminPayoutCreationService {
     await this.compliance.assertPayoutEligible(input.channelId);
 
     return this.database.client.$transaction(async (tx) => {
-      await tx.channel.findUniqueOrThrow({ where: { id: input.channelId } });
+      if (input.requestSource === "CREATOR")
+        await assertCreatorFinanceAuthority(tx, input.channelId, input.actorAccountId);
+      else await lockFinanceChannel(tx, input.channelId);
 
       const profile = await tx.creatorPayoutProfile.findUnique({
         where: { channelId: input.channelId },
