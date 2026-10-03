@@ -128,19 +128,17 @@ describe("owned channel editor recovery contract", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("rejects unsafe upload destinations before sending the file", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValue(
-        Response.json({
-          assetId,
-          kind: "avatar",
-          upload: {
-            method: "PUT",
-            url: "http://external.invalid/upload",
-            headers: { "content-type": "image/png" },
-          },
-        }),
-      );
+    const fetch = vi.fn().mockResolvedValue(
+      Response.json({
+        assetId,
+        kind: "avatar",
+        upload: {
+          method: "PUT",
+          url: "http://external.invalid/upload",
+          headers: { "content-type": "image/png" },
+        },
+      }),
+    );
     vi.stubGlobal("fetch", fetch);
     const authorized = vi.fn();
     await expect(
