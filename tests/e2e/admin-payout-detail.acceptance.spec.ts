@@ -97,12 +97,21 @@ for (const locale of ["en", "ar"] as const)
     await providerReason.fill("Retained independent provider draft");
     await revealReason.fill("Inspect the immutable beneficiary");
     const beforeReveal = reads;
+    const disclosureResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/admin/revenue/payouts/${seed.payoutId}/destination`) &&
+        response.request().method() === "POST",
+    );
     await main
       .getByRole("button", {
         name: copy("Reveal sensitive destination", "كشف جهة الدفع الحساسة"),
         exact: true,
       })
       .click();
+    const disclosure = await disclosureResponse;
+    expect(disclosure.ok()).toBe(true);
+    expect(disclosure.headers()["cache-control"]).toBe("private, no-store");
+    expect(disclosure.headers()["pragma"]).toBe("no-cache");
     const revealed = main.getByRole("region", {
       name: copy("Revealed destination", "جهة الدفع المكشوفة"),
       exact: true,
@@ -214,4 +223,34 @@ test("Operations administrator requests no private payout or provider records", 
   expect(reads).toBe(0);
   expect(await page.locator("body").textContent()).not.toContain(destination);
   expect(db("evidence", seed).audits).toHaveLength(0);
+});
+
+test("Sensitive destination expires after sixty seconds and supports immediate hide", async ({
+  page,
+}) => {
+  const seed = await actor(page, "expiry");
+  await page.clock.install();
+  await page.goto(`/admin/revenue/payouts/${seed.payoutId}?lang=en`);
+  const main = page.getByRole("main"),
+    reason = main.getByLabel("Reason for revealing payout destination", { exact: true });
+  const reveal = main.getByRole("button", { name: "Reveal sensitive destination", exact: true });
+  await reason.fill("Review immutable beneficiary with expiry");
+  await reveal.click();
+  await expect(
+    main.getByRole("region", { name: "Revealed destination", exact: true }),
+  ).toContainText(destination);
+  await page.clock.fastForward(60000);
+  await expect(main.getByRole("region", { name: "Revealed destination", exact: true })).toHaveCount(
+    0,
+  );
+  expect(await main.textContent()).not.toContain(destination);
+  expect(db("evidence", seed).audits).toHaveLength(1);
+  await reason.fill("Review immutable beneficiary then hide");
+  await reveal.click();
+  await expect(
+    main.getByRole("region", { name: "Revealed destination", exact: true }),
+  ).toContainText(destination);
+  await main.getByRole("button", { name: "Hide destination now", exact: true }).click();
+  expect(await main.textContent()).not.toContain(destination);
+  expect(db("evidence", seed).audits).toHaveLength(2);
 });
