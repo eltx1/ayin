@@ -352,6 +352,7 @@ export function AdminTv({ initialQuery = "" }: { initialQuery?: string }) {
           <div className={styles.filters}>
             <TextField
               id="tv-query"
+              dir="auto"
               label={copy("TV or owner channel name", "اسم القناة التلفزيونية أو القناة المالكة")}
               value={filters.query}
               maxLength={200}
@@ -496,6 +497,7 @@ export function AdminTv({ initialQuery = "" }: { initialQuery?: string }) {
                     </Disclosure>
                     <TextAreaField
                       id={`tv-reason-${record.id}`}
+                      dir="auto"
                       label={copy(
                         "TV decision reason (8–500 characters)",
                         "سبب قرار القناة التلفزيونية (٨–٥٠٠ حرف)",
