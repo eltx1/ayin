@@ -1,498 +1,499 @@
 "use client";
-
-import Link from "next/link";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
-
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "@/components/i18n/i18n-provider";
 import {
   ActionButton,
+  ActionLink,
   DataBadge,
   MetricList,
   PageHeader,
+  StatusNotice,
   TextField,
 } from "@/components/ui/design-system";
-
-import styles from "@/app/admin/admin.module.css";
+import { DataTable } from "@/components/ui/data-presentation";
 import {
   getAdminAnalytics,
   getAdminDashboard,
-  getAdminSession,
   getAdminSystemHealth,
   searchAdmin,
-  type AdminAnalyticsMetrics,
-  type AdminGlobalSearchResult,
-  type AdminRole,
   type AdminSession,
-  type AdminSystemHealth,
 } from "@/lib/admin-control";
 import { getAdminFinanceSummary } from "@/lib/revenue";
-
-interface DashboardData {
-  accounts: number;
-  activeAccounts: number;
-  channels: number;
-  videos: number;
-  publishedVideos: number;
-  tvChannels: number;
-  openReports: number;
-  openCases: number;
-}
-
-type FinanceSummary = Awaited<ReturnType<typeof getAdminFinanceSummary>>;
-
-type RoleAction = {
-  label: string;
-  detail: string;
-  href: string;
-  roles: AdminRole[] | "ALL";
+import {
+  dashboardCounterKeys,
+  parseDashboardAnalytics,
+  parseDashboardCounters,
+  parseDashboardFinance,
+  parseDashboardHealth,
+  parseDashboardSearch,
+} from "@/lib/admin-dashboard";
+import { adminDashboardAr, adminDashboardEn } from "@/lib/i18n/resources/admin-dashboard";
+import { visibleAdminNavigation } from "@/lib/workspace-navigation";
+import { useAdminAccess } from "./admin-access";
+import styles from "./admin-dashboard.module.css";
+type Snapshot<T> = T | null | undefined;
+type SearchState = {
+  status: "idle" | "loading" | "error" | "ready";
+  items: ReturnType<typeof parseDashboardSearch>;
 };
-
-const quickActions: RoleAction[] = [
-  {
-    label: "Content Library",
-    detail: "Seed rights-tracked AYIN catalog content",
-    href: "/admin/content",
-    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
-  },
-  {
-    label: "Trust & Safety",
-    detail: "Review reports, takedowns, cases and appeals",
-    href: "/admin/trust",
-    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
-  },
-  {
-    label: "Moderation",
-    detail: "Review the moderation queue and content reports",
-    href: "/admin/moderation",
-    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
-  },
-  {
-    label: "Videos",
-    detail: "Operate video state, comments and publication",
-    href: "/admin/videos",
-    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
-  },
-  {
-    label: "Channels",
-    detail: "Creator state, platform ownership and contracts",
-    href: "/admin/channels",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Users",
-    detail: "Search accounts and control account state",
-    href: "/admin/users",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Creator TV",
-    detail: "Operate channel TV state and availability",
-    href: "/admin/tv",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Product Controls",
-    detail: "Navigation, announcements and product surfaces",
-    href: "/admin/product-controls",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Feature Flags",
-    detail: "Control guarded feature rollout",
-    href: "/admin/feature-flags",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Operations",
-    detail: "Capacity, reliability, unit economics, staff, audit and support",
-    href: "/admin/operations",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Settings",
-    detail: "Manage protected platform configuration",
-    href: "/admin/settings",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Advertising",
-    detail: "Inventory, campaigns, GAM and seller files",
-    href: "/admin/advertising",
-    roles: ["AD_MANAGER"],
-  },
-  {
-    label: "Video Ads",
-    detail: "Operate video advertising controls",
-    href: "/admin/video-ads",
-    roles: ["AD_MANAGER"],
-  },
-  {
-    label: "Revenue",
-    detail: "Creator earnings, payouts and disputes",
-    href: "/admin/revenue",
-    roles: ["FINANCE_MANAGER"],
-  },
-];
-
-const priorityActions: RoleAction[] = [
-  {
-    label: "Trust & Safety",
-    detail: "Open reports, cases, takedowns and appeals",
-    href: "/admin/trust",
-    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
-  },
-  {
-    label: "Content Library & rights",
-    detail: "Rights-tracked catalog publishing",
-    href: "/admin/content",
-    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
-  },
-  {
-    label: "Video operations",
-    detail: "Publication and moderation state",
-    href: "/admin/videos",
-    roles: ["OPERATIONS", "CONTENT_MODERATOR"],
-  },
-  {
-    label: "Creator TV operations",
-    detail: "TV channel availability and state",
-    href: "/admin/tv",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Home & product controls",
-    detail: "Merchandising and product surfaces",
-    href: "/admin/product-controls",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Feature flags",
-    detail: "Guarded feature rollout",
-    href: "/admin/feature-flags",
-    roles: ["OPERATIONS"],
-  },
-  {
-    label: "Advertising operations",
-    detail: "Inventory, seller files and ad controls",
-    href: "/admin/advertising",
-    roles: ["AD_MANAGER"],
-  },
-  {
-    label: "Revenue operations",
-    detail: "Payouts and disputes",
-    href: "/admin/revenue",
-    roles: ["FINANCE_MANAGER"],
-  },
-];
-
-function roleCanSee(action: RoleAction, roles: AdminRole[]): boolean {
-  if (roles.includes("SUPERADMIN") || roles.includes("ADMIN")) return true;
-  if (action.roles === "ALL") return roles.length > 0;
-  return action.roles.some((role) => roles.includes(role));
-}
-
-function cohortRetentionLabel(
-  milestone: AdminAnalyticsMetrics["cohorts"]["retention"][number]["d1"],
-): string {
-  return milestone ? `${(milestone.retentionRate * 100).toFixed(1)}%` : "pending";
-}
-
 export function AdminDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [analytics, setAnalytics] = useState<AdminAnalyticsMetrics | null>(null);
-  const [health, setHealth] = useState<AdminSystemHealth | null>(null);
-  const [finance, setFinance] = useState<FinanceSummary | null>(null);
-  const [session, setSession] = useState<AdminSession | null>(null);
+  const { locale } = useI18n();
+  const copy = locale === "ar" ? adminDashboardAr : adminDashboardEn;
+  const { session, loading, refresh } = useAdminAccess();
+  if (session)
+    return (
+      <AdminDashboardContent
+        key={`${session.accountId}:${session.roles.join(":")}`}
+        session={session}
+      />
+    );
+  return (
+    <>
+      <PageHeader title={copy.title} eyebrow={copy.eyebrow} description={copy.description} />
+      {loading ? (
+        <StatusNotice announce="polite">{copy.loading}</StatusNotice>
+      ) : (
+        <StatusNotice tone="danger" announce="assertive">
+          {copy.accessError} <ActionButton onClick={refresh}>{copy.retryAccess}</ActionButton>
+        </StatusNotice>
+      )}
+    </>
+  );
+}
+function AdminDashboardContent({ session }: { session: AdminSession }) {
+  const { locale, t, href, formatNumber, formatDate } = useI18n();
+  const copy = locale === "ar" ? adminDashboardAr : adminDashboardEn;
+  const [counters, setCounters] = useState<Snapshot<ReturnType<typeof parseDashboardCounters>>>();
+  const [analytics, setAnalytics] =
+    useState<Snapshot<ReturnType<typeof parseDashboardAnalytics>>>();
+  const [health, setHealth] = useState<Snapshot<ReturnType<typeof parseDashboardHealth>>>();
+  const [finance, setFinance] = useState<Snapshot<ReturnType<typeof parseDashboardFinance>>>();
+  const [observed, setObserved] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<AdminGlobalSearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+  const [search, setSearch] = useState<SearchState>({ status: "idle", items: [] });
+  const read = useRef<AbortController | null>(null),
+    searchRead = useRef<AbortController | null>(null);
+  const canReadFinance = Boolean(
+    session?.roles.some((role) => ["SUPERADMIN", "ADMIN", "FINANCE_MANAGER"].includes(role)),
+  );
+  const load = useCallback(async () => {
+    read.current?.abort();
+    const controller = new AbortController();
+    read.current = controller;
+    const financeAllowed = session.roles.some((role) =>
+      ["SUPERADMIN", "ADMIN", "FINANCE_MANAGER"].includes(role),
+    );
+    // Independent summaries can fail without hiding role-authorized navigation or other data.
+    async function summary<T>(
+      request: Promise<unknown>,
+      parse: (value: unknown) => T,
+      set: (value: T | null) => void,
+    ) {
+      try {
+        const value = parse(await request);
+        if (!controller.signal.aborted) set(value);
+      } catch {
+        if (!controller.signal.aborted) set(null);
+      }
+    }
+    await Promise.allSettled([
+      summary(getAdminDashboard(controller.signal), parseDashboardCounters, (value) => {
+        setCounters(value);
+        if (value) setObserved(new Date().toISOString());
+      }),
+      summary(getAdminAnalytics(controller.signal), parseDashboardAnalytics, setAnalytics),
+      summary(getAdminSystemHealth(controller.signal), parseDashboardHealth, setHealth),
+      financeAllowed
+        ? summary(getAdminFinanceSummary(controller.signal), parseDashboardFinance, setFinance)
+        : Promise.resolve(),
+    ]);
+    if (!controller.signal.aborted) setLoading(false);
+    if (read.current === controller) read.current = null;
+  }, [session]);
   useEffect(() => {
     let active = true;
-    void getAdminSession()
-      .then(async (nextSession) => {
-        const canReadFinance = nextSession.roles.some((role) =>
-          ["SUPERADMIN", "ADMIN", "FINANCE_MANAGER"].includes(role),
-        );
-        const [body, nextAnalytics, nextHealth, nextFinance] = await Promise.all([
-          getAdminDashboard(),
-          getAdminAnalytics(),
-          getAdminSystemHealth(),
-          canReadFinance ? getAdminFinanceSummary() : Promise.resolve(null),
-        ]);
-        if (!active) return;
-        setSession(nextSession);
-        setData(body as unknown as DashboardData);
-        setAnalytics(nextAnalytics);
-        setHealth(nextHealth);
-        setFinance(nextFinance);
-      })
-      .catch((caught) => {
-        if (active) {
-          setError(
-            caught instanceof Error ? caught.message : "Admin dashboard could not be loaded.",
-          );
-        }
-      });
+    void Promise.resolve().then(() => {
+      if (active) void load();
+    });
     return () => {
       active = false;
+      read.current?.abort();
+      searchRead.current?.abort();
     };
-  }, []);
-
-  const visibleQuickActions = useMemo(
-    () => (session ? quickActions.filter((action) => roleCanSee(action, session.roles)) : []),
-    [session],
-  );
-  const visiblePriorityActions = useMemo(
-    () => (session ? priorityActions.filter((action) => roleCanSee(action, session.roles)) : []),
-    [session],
-  );
-
-  async function runSearch(event: FormEvent<HTMLFormElement>) {
+  }, [load]);
+  function changeQuery(value: string) {
+    searchRead.current?.abort();
+    searchRead.current = null;
+    setQuery(value);
+    setSearch({ status: "idle", items: [] });
+  }
+  async function runSearch(event: FormEvent) {
     event.preventDefault();
     const normalized = query.trim();
-    if (normalized.length < 2) return;
-    setSearching(true);
-    setError(null);
+    if (!session || normalized.length < 2 || normalized.length > 200 || searchRead.current) return;
+    const controller = new AbortController();
+    searchRead.current = controller;
+    setSearch({ status: "loading", items: [] });
     try {
-      const result = await searchAdmin(normalized);
-      setSearchResults(result.items);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Global search failed.");
+      const items = parseDashboardSearch(
+        await searchAdmin(normalized, controller.signal),
+        normalized,
+      );
+      if (!controller.signal.aborted) setSearch({ status: "ready", items });
+    } catch {
+      if (!controller.signal.aborted) setSearch({ status: "error", items: [] });
     } finally {
-      setSearching(false);
+      if (searchRead.current === controller) searchRead.current = null;
     }
   }
-
-  if (error && !data) return <p className={styles.error}>{error}</p>;
-  if (!data || !analytics || !health || !session) {
-    return <p className={styles.muted}>Loading Admin Control Center…</p>;
-  }
-
-  const metrics = [
-    ["Accounts", data.accounts],
-    ["Active accounts", data.activeAccounts],
-    ["Channels", data.channels],
-    ["Videos", data.videos],
-    ["Published", data.publishedVideos],
-    ["Creator TVs", data.tvChannels],
-    ["Open reports", data.openReports],
-    ["Open cases", data.openCases],
-  ] as const;
-
-  const analyticsMetrics = [
-    ["DAU approx / last complete UTC day", analytics.dauApprox.toLocaleString()],
-    ["MAU approx / 30 complete UTC days", analytics.mauApprox.toLocaleString()],
-    ["Watch hours / 30d", analytics.watchHours.toFixed(1)],
-    ["Uploads / 30d", analytics.uploads.toLocaleString()],
-    ["TV starts / 30d", analytics.tvStarts.toLocaleString()],
-    ["Ad events / 30d", analytics.adEvents.toLocaleString()],
-    ["Tracked errors / 30d", analytics.errors.toLocaleString()],
-  ] as const;
-
+  const groups = visibleAdminNavigation(session?.roles ?? []).filter(
+    (group) => group.id !== "overview",
+  );
+  const primary = groups.filter((group) =>
+    ["content", "safety", "monetization"].includes(group.id),
+  );
+  const state = (value: unknown) =>
+    value === undefined ? (
+      <StatusNotice announce="polite">{copy.loading}</StatusNotice>
+    ) : value === null ? (
+      <StatusNotice tone="warning" announce="polite">
+        {copy.unavailable}
+      </StatusNotice>
+    ) : null;
+  const timestamp = (value: string) =>
+    formatDate(value, { dateStyle: "medium", timeStyle: "short" });
+  const rate = (value: { retentionRate: number } | null) =>
+    value
+      ? formatNumber(value.retentionRate, { style: "percent", maximumFractionDigits: 1 })
+      : copy.pending;
   return (
     <>
       <PageHeader
-        title="AYIN Admin"
-        eyebrow="Control Center"
-        description="Search, operate, moderate, publish and observe AYIN through protected, audited controls."
+        title={copy.title}
+        eyebrow={copy.eyebrow}
+        description={copy.description}
         actions={
-          <div>
-            <DataBadge>Scheduled UTC rollup view</DataBadge>
-            <p className={styles.muted}>{session.roles.join(" · ")}</p>
-          </div>
+          session ? (
+            <ActionButton
+              tone="secondary"
+              disabled={loading}
+              onClick={() => {
+                if (!read.current) {
+                  setCounters(undefined);
+                  setAnalytics(undefined);
+                  setHealth(undefined);
+                  setFinance(undefined);
+                  setObserved(null);
+                  setLoading(true);
+                  void load();
+                }
+              }}
+            >
+              {copy.refresh}
+            </ActionButton>
+          ) : undefined
         }
       />
-
-      {error ? <p className={styles.error}>{error}</p> : null}
-
-      <section className={styles.card} style={{ marginBottom: 18 }}>
-        <h2>Quick actions</h2>
-        <p className={styles.muted}>
-          Only control surfaces permitted for your current admin role are shown.
-        </p>
-        <div className={styles.commandGrid}>
-          {visibleQuickActions.map((action) => (
-            <Link className={styles.card} href={action.href} key={action.href}>
-              <strong>{action.label}</strong>
-              <p className={styles.muted}>{action.detail}</p>
-              <span>Open →</span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles.card}>
-        <h2>Global search</h2>
-        <p className={styles.muted}>
-          Find records available to your current admin role from one protected search.
-        </p>
-        <form className={styles.toolbar} onSubmit={runSearch}>
-          <TextField
-            id="admin-global-search"
-            label="Search AYIN administration"
-            aria-label="Search AYIN administration"
-            minLength={2}
-            placeholder="Email, creator, channel, video, payout reference…"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <ActionButton pending={searching} disabled={query.trim().length < 2} type="submit">
-            {searching ? "Searching…" : "Search"}
-          </ActionButton>
-        </form>
-        {searchResults.length ? (
-          <div className={styles.searchResults}>
-            {searchResults.map((result) => (
-              <Link
-                className={styles.searchResult}
-                href={result.href}
-                key={`${result.kind}-${result.id}`}
-              >
-                <span>
-                  <span className={styles.statusPill}>{result.kind}</span>{" "}
-                  <strong>{result.label}</strong>
-                  <br />
-                  <span className={styles.muted}>{result.detail}</span>
-                </span>
-                <span>Open →</span>
-              </Link>
+      <>
+        <section aria-label={copy.priorities} className={styles.panel}>
+          <PageHeader level={2} title={copy.priorities} />
+          <div className={styles.grid}>
+            {primary.map((group) => (
+              <article className={styles.workspace} key={group.id}>
+                <h3>{t(group.label)}</h3>
+                <div className={styles.links}>
+                  {group.items.map((item) => (
+                    <ActionLink tone="secondary" href={href(item.href)} key={item.href}>
+                      {t(item.label)}
+                    </ActionLink>
+                  ))}
+                </div>
+              </article>
             ))}
           </div>
-        ) : query.trim().length >= 2 && !searching ? (
-          <p className={styles.muted}>No search results loaded yet, or no matches were found.</p>
-        ) : null}
-      </section>
-
-      <MetricList
-        label="Platform counters"
-        items={metrics.map(([label, value]) => ({ label, value: value.toLocaleString() }))}
-      />
-
-      <section className={styles.commandGrid}>
-        <article className={styles.card}>
-          <h2>Revenue operations</h2>
-          {finance ? (
-            <>
-              <p>
-                <strong>{finance.pendingPayouts}</strong> pending payouts
-              </p>
-              <p>
-                <strong>{finance.processingPayouts}</strong> processing payouts
-              </p>
-              <p>
-                <strong>{finance.openDisputes}</strong> open revenue disputes
-              </p>
-              {finance.pendingValue.map((item) => (
-                <p key={item.currency}>
-                  {item.currency} {item.amount} pending/processing
-                </p>
+          <details className={styles.details}>
+            <summary>{copy.tools}</summary>
+            <div className={styles.grid}>
+              {groups.map((group) => (
+                <div key={group.id}>
+                  <h3>{t(group.label)}</h3>
+                  <div className={styles.links}>
+                    {group.items.map((item) => (
+                      <ActionLink tone="quiet" href={href(item.href)} key={item.href}>
+                        {t(item.label)}
+                      </ActionLink>
+                    ))}
+                  </div>
+                </div>
               ))}
-              <p className={styles.muted}>
-                Provider mode: audited manual payout. External providers are not represented as
-                connected.
-              </p>
-              <Link className={styles.button} href="/admin/revenue">
-                Open Revenue Control Center
-              </Link>
-            </>
-          ) : (
+            </div>
+          </details>
+        </section>
+        <section className={styles.panel} aria-label={copy.counters}>
+          <PageHeader level={2} title={copy.counters} />
+          {state(counters)}
+          {counters && (
+            <MetricList
+              label={copy.counters}
+              items={dashboardCounterKeys.map((key) => ({
+                label: copy[key],
+                value: formatNumber(counters[key]),
+              }))}
+            />
+          )}
+          {observed && (
             <p className={styles.muted}>
-              Finance metrics are intentionally hidden for this scoped staff role.
+              {copy.observed}: <time dateTime={observed}>{timestamp(observed)}</time>
             </p>
           )}
-        </article>
-
-        <article className={styles.card}>
-          <h2>System health</h2>
-          <p>
-            API <strong>{health.api.status}</strong>
-          </p>
-          <p>
-            Database <strong>{health.database.status}</strong>
-          </p>
-          <p>
-            Media storage <strong>{health.mediaStorage.status}</strong>
-          </p>
-          <p>
-            Storage mode <strong>{health.mediaStorage.mode.toUpperCase()}</strong>
-          </p>
-          <p>
-            Queues <strong>{health.backgroundProcessing.queues.status}</strong>
-          </p>
-          <p className={styles.muted}>{health.backgroundProcessing.queues.reason}</p>
-          <p>
-            Workers <strong>{health.backgroundProcessing.workers.status}</strong>
-          </p>
-          <p className={styles.muted}>{health.backgroundProcessing.workers.reason}</p>
-          <p className={styles.muted}>
-            Direct client-to-storage upload architecture remains enabled. This view observes
-            existing R2 readiness only.
-          </p>
-        </article>
-
-        <article className={styles.card}>
-          <h2>Priority queues</h2>
-          {visiblePriorityActions.map((action) => (
-            <p key={action.href}>
-              <Link href={action.href}>
-                <strong>{action.label}</strong>
-                {action.href === "/admin/trust"
-                  ? ` · ${data.openReports} reports / ${data.openCases} cases`
-                  : ""}
-                <br />
-                <span className={styles.muted}>{action.detail}</span>
-              </Link>
-            </p>
-          ))}
-          {visiblePriorityActions.length === 0 ? (
-            <p className={styles.muted}>No operational queues are assigned to this role.</p>
-          ) : null}
-        </article>
-      </section>
-
-      <section className={styles.card} style={{ marginTop: 18 }}>
-        <h2>Platform analytics</h2>
-        <p className={styles.muted}>{analytics.freshnessNote}</p>
-        <div className={styles.commandGrid}>
-          {analyticsMetrics.map(([label, value]) => (
-            <p key={label}>
-              {label}: <strong>{value}</strong>
-            </p>
-          ))}
+        </section>
+        <section className={styles.panel} aria-label={copy.search}>
+          <PageHeader level={2} title={copy.search} description={copy.searchHint} />
+          <form className={styles.search} onSubmit={runSearch}>
+            <TextField
+              id="admin-global-search"
+              label={copy.searchLabel}
+              minLength={2}
+              maxLength={200}
+              value={query}
+              onChange={(event) => changeQuery(event.target.value)}
+            />
+            <ActionButton
+              type="submit"
+              pending={search.status === "loading"}
+              disabled={query.trim().length < 2 || search.status === "loading"}
+            >
+              {search.status === "loading" ? copy.searching : copy.searchAction}
+            </ActionButton>
+          </form>
+          {search.status === "idle" && <p className={styles.muted}>{copy.searchIdle}</p>}
+          {search.status === "error" && (
+            <StatusNotice tone="warning" announce="polite">
+              {copy.searchError}
+            </StatusNotice>
+          )}
+          {search.status === "ready" &&
+            (search.items.length ? (
+              <ul className={styles.results} aria-label={copy.searchResults}>
+                {search.items.map((result) => (
+                  <li key={`${result.kind}:${result.id}`}>
+                    <DataBadge>{copy[result.kind]}</DataBadge>
+                    <ActionLink tone="quiet" href={href(result.href)}>
+                      <span dir="auto">{result.label}</span>
+                    </ActionLink>
+                    <p dir="auto" className={styles.muted}>
+                      {result.detail}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <StatusNotice announce="polite">{copy.searchEmpty}</StatusNotice>
+            ))}
+        </section>
+        <div className={styles.grid}>
+          <section className={styles.panel} aria-label={copy.finance}>
+            <PageHeader level={2} title={copy.finance} />
+            {!canReadFinance ? (
+              <p className={styles.muted}>{copy.financeHidden}</p>
+            ) : (
+              <>
+                {state(finance)}
+                {finance && (
+                  <>
+                    <MetricList
+                      label={copy.finance}
+                      items={[
+                        {
+                          label: copy.pendingPayouts,
+                          value: formatNumber(finance.pendingPayouts),
+                        },
+                        {
+                          label: copy.processingPayouts,
+                          value: formatNumber(finance.processingPayouts),
+                        },
+                        { label: copy.openDisputes, value: formatNumber(finance.openDisputes) },
+                      ]}
+                    />
+                    {finance.pendingValue.length > 0 && (
+                      <div>
+                        <h3>{copy.pendingValue}</h3>
+                        {finance.pendingValue.map((item) => (
+                          <p key={item.currency} dir="ltr">
+                            {item.currency} {item.amount}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    <p>
+                      {copy.payoutMode}:{" "}
+                      {finance.mode === "MANUAL_PAYOUT" ? copy.manual : copy.providerManual}
+                    </p>
+                    <p>
+                      {copy.providerConfigured}:{" "}
+                      {finance.externalProvider.connected ? copy.yes : copy.no}
+                    </p>
+                    <p>
+                      {copy.productionEnabled}:{" "}
+                      {finance.externalProvider.productionEnabled ? copy.yes : copy.no}
+                    </p>
+                    <ActionLink href={href("/admin/revenue")}>{t("navigation.revenue")}</ActionLink>
+                  </>
+                )}
+              </>
+            )}
+          </section>
+          <section className={styles.panel} aria-label={copy.health}>
+            <PageHeader level={2} title={copy.health} />
+            {state(health)}
+            {health && (
+              <>
+                <MetricList
+                  label={copy.health}
+                  items={[
+                    { label: copy.api, value: copy[health.api] },
+                    { label: copy.database, value: copy[health.database] },
+                    { label: copy.storage, value: copy[health.storage] },
+                  ]}
+                />
+                <p className={styles.muted}>
+                  {copy.checked}:{" "}
+                  <time dateTime={health.checkedAt}>{timestamp(health.checkedAt)}</time>
+                </p>
+                <details className={styles.details}>
+                  <summary>
+                    {copy.queues} / {copy.workers}
+                  </summary>
+                  <p>
+                    {copy.storageMode}: {health.storageMode}
+                  </p>
+                  <p>
+                    {copy.queues}: {copy[health.queues.status]}
+                  </p>
+                  <p dir="auto">{health.queues.reason}</p>
+                  <p>
+                    {copy.workers}: {copy[health.workers.status]}
+                  </p>
+                  <p dir="auto">{health.workers.reason}</p>
+                </details>
+              </>
+            )}
+          </section>
         </div>
-      </section>
-
-      <section className={styles.card} style={{ marginTop: 18 }}>
-        <h2>Platform cohorts</h2>
-        <p className={styles.muted}>{analytics.cohorts.privacyNote}</p>
-        <p className={styles.muted}>
-          Minimum exposed cohort: {analytics.cohorts.minimumCohortSize.toLocaleString()} profiles.
-        </p>
-        {analytics.cohorts.retention.length ? (
-          analytics.cohorts.retention.slice(-10).map((cohort) => (
-            <p key={cohort.cohortDate}>
-              <strong>{new Date(cohort.cohortDate).toLocaleDateString()}</strong> ·{" "}
-              {cohort.cohortSize.toLocaleString()} profiles · D1 {cohortRetentionLabel(cohort.d1)} ·
-              D7 {cohortRetentionLabel(cohort.d7)} · D30 {cohortRetentionLabel(cohort.d30)}
-            </p>
-          ))
-        ) : (
-          <p className={styles.muted}>No platform cohort currently meets the privacy threshold.</p>
-        )}
-        <h3>Recent new vs returning signed-in profiles</h3>
-        {analytics.cohorts.audienceDaily.length ? (
-          analytics.cohorts.audienceDaily.slice(-7).map((row) => (
-            <p key={row.date}>
-              <strong>{new Date(row.date).toLocaleDateString()}</strong> ·{" "}
-              {row.newProfiles.toLocaleString()} new · {row.returningProfiles.toLocaleString()}{" "}
-              returning · {row.sessionsPerActiveProfile.toFixed(2)} sessions/profile
-            </p>
-          ))
-        ) : (
-          <p className={styles.muted}>Daily cohort rows are privacy-suppressed.</p>
-        )}
-      </section>
+        <section className={styles.panel} aria-label={copy.analytics}>
+          <PageHeader level={2} title={copy.analytics} description={copy.rollup} />
+          {state(analytics)}
+          {analytics && (
+            <>
+              <MetricList
+                label={copy.analytics}
+                items={(
+                  ["dau", "mau", "watchHours", "uploads", "tvStarts", "adEvents", "errors"] as const
+                ).map((key, index) => ({
+                  label: copy[key],
+                  value: formatNumber(
+                    [
+                      analytics.dauApprox,
+                      analytics.mauApprox,
+                      analytics.watchHours,
+                      analytics.uploads,
+                      analytics.tvStarts,
+                      analytics.adEvents,
+                      analytics.errors,
+                    ][index]!,
+                    { maximumFractionDigits: key === "watchHours" ? 1 : 0 },
+                  ),
+                }))}
+              />
+              <p className={styles.muted}>
+                {copy.range}:{" "}
+                {formatDate(analytics.dateRange.from, { dateStyle: "medium", timeZone: "UTC" })} —{" "}
+                {formatDate(analytics.dateRange.to, { dateStyle: "medium", timeZone: "UTC" })}
+              </p>
+              <p className={styles.muted}>
+                {copy.lastRollup}:{" "}
+                {analytics.lastRollupCheck ? timestamp(analytics.lastRollupCheck) : copy.pending}
+              </p>
+              <details className={styles.details}>
+                <summary>{copy.cohorts}</summary>
+                <p>{copy.cohortPrivacy}</p>
+                <p>
+                  {copy.minimum}: {formatNumber(analytics.cohorts.minimumCohortSize)}
+                </p>
+                {analytics.cohorts.retention.length ? (
+                  <DataTable
+                    caption={copy.retention}
+                    rows={analytics.cohorts.retention.slice(-10)}
+                    rowKey={(row) => row.cohortDate}
+                    columns={[
+                      {
+                        key: "date",
+                        heading: copy.date,
+                        rowHeader: true,
+                        render: (row) =>
+                          formatDate(row.cohortDate, { dateStyle: "medium", timeZone: "UTC" }),
+                      },
+                      {
+                        key: "profiles",
+                        heading: copy.profiles,
+                        render: (row) => formatNumber(row.cohortSize),
+                      },
+                      ...(["d1", "d7", "d30"] as const).map((key) => ({
+                        key: key,
+                        heading: key.toUpperCase(),
+                        render: (
+                          row: ReturnType<
+                            typeof parseDashboardAnalytics
+                          >["cohorts"]["retention"][number],
+                        ) => rate(row[key]),
+                      })),
+                    ]}
+                  />
+                ) : (
+                  <p>{copy.cohortEmpty}</p>
+                )}
+                {analytics.cohorts.audienceDaily.length ? (
+                  <DataTable
+                    caption={copy.recentAudience}
+                    rows={analytics.cohorts.audienceDaily.slice(-7)}
+                    rowKey={(row) => row.date}
+                    columns={[
+                      {
+                        key: "date",
+                        heading: copy.date,
+                        rowHeader: true,
+                        render: (row) =>
+                          formatDate(row.date, { dateStyle: "medium", timeZone: "UTC" }),
+                      },
+                      {
+                        key: "new",
+                        heading: copy.newProfiles,
+                        render: (row) => formatNumber(row.newProfiles),
+                      },
+                      {
+                        key: "returning",
+                        heading: copy.returningProfiles,
+                        render: (row) => formatNumber(row.returningProfiles),
+                      },
+                      {
+                        key: "sessions",
+                        heading: copy.sessions,
+                        render: (row) =>
+                          formatNumber(row.sessionsPerActiveProfile, {
+                            maximumFractionDigits: 2,
+                          }),
+                      },
+                    ]}
+                  />
+                ) : (
+                  <p>{copy.audienceEmpty}</p>
+                )}
+              </details>
+            </>
+          )}
+        </section>
+      </>
     </>
   );
 }

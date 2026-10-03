@@ -396,7 +396,7 @@ export function updatePayoutStatus(
   });
 }
 
-export function getAdminFinanceSummary() {
+export function getAdminFinanceSummary(signal?: AbortSignal) {
   return revenueFetch<{
     pendingPayouts: number;
     processingPayouts: number;
@@ -409,7 +409,7 @@ export function getAdminFinanceSummary() {
       connected: boolean;
       productionEnabled: boolean;
     };
-  }>("/admin/revenue/finance-summary");
+  }>("/admin/revenue/finance-summary", { signal: signal ?? null });
 }
 
 export function getAdminRevenueDisputes(status?: string) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { parseAdminSession } from "@/lib/admin-dashboard";
 import { getAdminSession, type AdminSession } from "@/lib/admin-control";
 
 interface Access {
@@ -22,7 +23,8 @@ export function AdminAccessProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const controller = new AbortController();
     void getAdminSession(controller.signal)
-      .then((session) => {
+      .then((value) => {
+        const session = parseAdminSession(value);
         if (!controller.signal.aborted) setResult({ revision, session, error: "" });
       })
       .catch((cause: unknown) => {
