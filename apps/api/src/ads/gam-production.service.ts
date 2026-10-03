@@ -7,6 +7,7 @@ import { loadGamProductionConfig, type GamProductionConfig } from "./gam-product
 export const GAM_PRODUCTION_CONFIG = Symbol("GAM_PRODUCTION_CONFIG");
 
 export type GamConsentMode = "PERSONALIZED" | "NON_PERSONALIZED" | "LIMITED_ADS";
+export type GamAgeTreatment = "UNSPECIFIED" | "CHILD" | "TEEN";
 export type GamVideoSlot = "PRE_ROLL" | "MID_ROLL" | "POST_ROLL";
 
 export interface GamRequestContext {
@@ -16,6 +17,40 @@ export interface GamRequestContext {
   consentMode: GamConsentMode;
   childDirected?: boolean;
   underAgeOfConsent?: boolean;
+  ageTreatment?: GamAgeTreatment;
+}
+
+// Explicit restrictive legacy flags remain authoritative during migration.
+// Neither an unspecified value nor teen treatment can weaken child treatment.
+export function gamRequestPrivacy(context: GamRequestContext) {
+  const ageTreatment: GamAgeTreatment =
+    context.childDirected || context.underAgeOfConsent || context.ageTreatment === "CHILD"
+      ? "CHILD"
+      : context.ageTreatment === "TEEN"
+        ? "TEEN"
+        : "UNSPECIFIED";
+  const mode =
+    ageTreatment !== "UNSPECIFIED" && context.consentMode === "PERSONALIZED"
+      ? "NON_PERSONALIZED"
+      : context.consentMode;
+  return {
+    privacy: {
+      mode,
+      nonPersonalizedAds: mode !== "PERSONALIZED",
+      limitedAds: mode === "LIMITED_ADS",
+      childDirectedTreatment: context.childDirected ?? false,
+      underAgeOfConsent: context.underAgeOfConsent ?? false,
+      ageTreatment,
+    },
+    imaParameters: {
+      ...(mode === "NON_PERSONALIZED" ? { npa: "1" } : {}),
+      ...(mode === "LIMITED_ADS" ? { ltd: "1" } : {}),
+      ...(ageTreatment === "CHILD" ? { tfat: "1" } : {}),
+      ...(ageTreatment === "TEEN" ? { tfat: "2" } : {}),
+      ...(context.childDirected ? { tfcd: "1" } : {}),
+      ...(context.underAgeOfConsent ? { tfua: "1" } : {}),
+    },
+  };
 }
 
 type RuntimeHealth = "NO_DATA" | "HEALTHY" | "DEGRADED" | "INDETERMINATE";
@@ -122,18 +157,7 @@ export class GamProductionService {
       networkCode: this.config.networkCode,
       videoAdUnitPath: this.config.videoAdUnitPath,
       displayAdUnitPrefix: this.config.displayAdUnitPrefix,
-      privacy: {
-        mode: context.consentMode,
-        nonPersonalizedAds: context.consentMode !== "PERSONALIZED",
-        limitedAds: context.consentMode === "LIMITED_ADS",
-        childDirectedTreatment: context.childDirected ?? false,
-        underAgeOfConsent: context.underAgeOfConsent ?? false,
-      },
-      imaParameters: {
-        ...(context.consentMode === "NON_PERSONALIZED" ? { npa: "1" } : {}),
-        ...(context.consentMode === "LIMITED_ADS" ? { ltd: "1" } : {}),
-        ...(context.underAgeOfConsent ? { tfua: "1" } : {}),
-      },
+      ...gamRequestPrivacy(context),
       // User/session/account identifiers are intentionally excluded. Google can infer the
       // device class itself and AYIN does not require custom profile targeting for Task 68.
       targeting: {} as Record<string, string>,

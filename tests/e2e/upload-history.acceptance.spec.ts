@@ -73,18 +73,58 @@ for (const locale of ["en", "ar"] as const)
     await expect(history.locator("article")).toHaveCount(1);
     expect(reads).toBe(2);
     expect(writes).toBe(0);
-    await page.screenshot({
-      path: testInfo.outputPath(`design-upload-history-${locale}-390.png`),
-      fullPage: true,
-    });
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
-      true,
-    );
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.screenshot({
-      path: testInfo.outputPath(`design-upload-history-${locale}-1440.png`),
-      fullPage: true,
-    });
+    // Full-page captures at a retained scroll offset paint fixed/sticky chrome
+    // over unrelated document rows. Verify the actual visible controls instead.
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      const heading = history.getByRole("heading", { level: 2 });
+      await heading.evaluate((element) => {
+        window.scrollTo({ top: element.getBoundingClientRect().top + scrollY - 100 });
+      });
+      await expect
+        .poll(async () => {
+          const bounds = await heading.boundingBox();
+          return bounds !== null && bounds.y >= 80 && bounds.y + bounds.height < 300;
+        })
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`design-upload-history-${locale}-${width}.png`),
+      });
+      const previous = pages.getByRole("button", {
+        name: copy("Previous", "السابق"),
+        exact: true,
+      });
+      await previous.evaluate((element) => element.scrollIntoView({ block: "center" }));
+      await expect(previous).toBeEnabled();
+      await expect
+        .poll(async () =>
+          previous.evaluate((element) => {
+            const bounds = element.getBoundingClientRect();
+            const chrome = [...document.querySelectorAll("header, nav")]
+              .filter((node) => ["fixed", "sticky"].includes(getComputedStyle(node).position))
+              .map((node) => node.getBoundingClientRect())
+              .filter((rect) => rect.width > 0 && rect.height > 0);
+            return (
+              bounds.top >= 0 &&
+              bounds.bottom <= innerHeight &&
+              chrome.every(
+                (rect) =>
+                  bounds.bottom <= rect.top ||
+                  bounds.top >= rect.bottom ||
+                  bounds.right <= rect.left ||
+                  bounds.left >= rect.right,
+              )
+            );
+          }),
+        )
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`design-upload-history-${locale}-${width}-pager.png`),
+      });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      ).toBe(true);
+    }
     await history.getByLabel(copy("Video status", "حالة الفيديو")).selectOption("DRAFT");
     await history
       .getByRole("button", {

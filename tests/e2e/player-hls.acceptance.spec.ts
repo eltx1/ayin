@@ -420,7 +420,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await mockPreroll(
       page,
       fixture,
-      "https://securepubads.g.doubleclick.net/gampad/ads?iu=%2F123%2Fvideo&npa=1&tfua=1&tfcd=1&rdp=1",
+      "https://securepubads.g.doubleclick.net/gampad/ads?iu=%2F123%2Fvideo&npa=1&tfua=1&tfcd=1&rdp=1&tfat=2",
     );
     await page.goto(`/watch/${fixture.slug}`);
     await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
@@ -429,10 +429,34 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     const tag = new URL(state.imaTags[0]!);
     for (const key of ["ltd", "npa", "tfua", "tfcd", "rdp"])
       expect(tag.searchParams.get(key)).toBe("1");
+    expect(tag.searchParams.get("tfat")).toBe("1");
     expect(tag.searchParams.get("iu")).toBe("/123/video");
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
     await expect(page.locator("video:visible")).toHaveCount(1);
   });
+
+  for (const tfat of ["1", "2"] as const) {
+    test(`IMA preserves current TFAT=${tfat} and content playback under the limited default`, async ({
+      page,
+    }) => {
+      await installMediaHarness(page, { ima: true });
+      await mockPreroll(
+        page,
+        fixture,
+        `https://securepubads.g.doubleclick.net/gampad/ads?iu=%2F123%2Fvideo&tfat=${tfat}`,
+      );
+      await page.goto(`/watch/${fixture.slug}`);
+      await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
+      const state = await harnessState(page);
+      expect(state.imaTags).toHaveLength(1);
+      const tag = new URL(state.imaTags[0]!);
+      expect(tag.searchParams.get("tfat")).toBe(tfat);
+      expect(tag.searchParams.get("npa")).toBe("1");
+      expect(tag.searchParams.get("ltd")).toBe("1");
+      await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
+      await expect(page.locator("video:visible")).toHaveCount(1);
+    });
+  }
 
   test("mobile preroll preserves the user-gesture gate with HLS", async ({ browser }) => {
     const context = await browser.newContext({
