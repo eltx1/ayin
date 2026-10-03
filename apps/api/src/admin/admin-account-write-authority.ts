@@ -15,7 +15,7 @@ export async function lockAdminAccountWrite(
   actor: AccountWriteActor,
   accountId: string,
   expectedUpdatedAt?: string,
-  domainRoles: readonly ("OPERATIONS" | "CONTENT_MODERATOR")[] = ["OPERATIONS"],
+  domainRoles: readonly ("OPERATIONS" | "CONTENT_MODERATOR" | "AD_MANAGER")[] = ["OPERATIONS"],
 ) {
   await lockStaffRoleChanges(tx);
   const credentials = await tx.$queryRaw<Array<{ status: string; version: number }>>(
