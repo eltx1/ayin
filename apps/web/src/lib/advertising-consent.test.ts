@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   getAdvertisingConsentSnapshot,
+  normalizeAdvertisingConsent,
   registerAdvertisingConsentProvider,
   resetAdvertisingConsentProviderForTests,
 } from "./advertising-consent";
@@ -56,4 +57,38 @@ describe("advertising consent boundary", () => {
     });
     expect(getAdvertisingConsentSnapshot().mode).toBe("LIMITED_ADS");
   });
+});
+
+it("retains explicit age restrictions even when other consent fields fail, without inferring age", () => {
+  for (const ageTreatment of ["CHILD", "TEEN"] as const) {
+    expect(
+      normalizeAdvertisingConsent({
+        mode: "PERSONALIZED",
+        source: "CMP",
+        providerManaged: true,
+        ageTreatment,
+      }),
+    ).toMatchObject({ mode: "NON_PERSONALIZED", ageTreatment });
+    expect(normalizeAdvertisingConsent({ mode: "UNKNOWN", ageTreatment })).toMatchObject({
+      mode: "LIMITED_ADS",
+      ageTreatment,
+      providerManaged: false,
+    });
+    expect(
+      normalizeAdvertisingConsent({
+        mode: "LIMITED_ADS",
+        source: "APPLICATION",
+        providerManaged: false,
+        ageTreatment,
+      }),
+    ).toMatchObject({ mode: "LIMITED_ADS", ageTreatment });
+  }
+  const malformed = normalizeAdvertisingConsent({
+    mode: "PERSONALIZED",
+    source: "CMP",
+    providerManaged: true,
+    ageTreatment: "ADULT",
+  });
+  expect(malformed.mode).toBe("LIMITED_ADS");
+  expect(malformed.ageTreatment).toBeUndefined();
 });
