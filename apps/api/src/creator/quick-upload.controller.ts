@@ -11,6 +11,8 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { z } from "zod";
+import { Prisma } from "@ayin/db";
+import { DatabaseService } from "../database/database.service.js";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { MediaStorageUnavailableError } from "../media/media-storage.adapter.js";
@@ -51,6 +53,7 @@ const thumbnailCompleteSchema = z.object({ assetId: z.string().uuid() });
 @UseGuards(AuthGuard)
 export class QuickUploadController {
   constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(QuickUploadService) private readonly quickUpload: QuickUploadService,
     @Inject(VideoMetadataService) private readonly metadata: VideoMetadataService,
   ) {}
@@ -116,19 +119,26 @@ export class QuickUploadController {
       );
     }
     const videoId = this.videoId(videoIdRaw);
-    return this.run(async () => {
-      const video = await this.quickUpload.updateDetails(
-        request.ayinAuth.accountId,
-        videoId,
-        this.parseDetails(parsed.data),
-      );
-      const advanced = await this.metadata.applyForOwner(
-        request.ayinAuth.accountId,
-        videoId,
-        metadata.data,
-      );
-      return { ...video, metadata: advanced };
-    });
+    return this.run(() =>
+      this.database.client.$transaction(async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "Video" WHERE "id" = ${videoId}::uuid FOR UPDATE`,
+        );
+        const video = await this.quickUpload.updateDetails(
+          request.ayinAuth.accountId,
+          videoId,
+          this.parseDetails(parsed.data),
+          tx,
+        );
+        const advanced = await this.metadata.applyForOwner(
+          request.ayinAuth.accountId,
+          videoId,
+          metadata.data,
+          tx,
+        );
+        return { ...video, metadata: advanced };
+      }),
+    );
   }
 
   @Post(":videoId/publish")
@@ -157,19 +167,28 @@ export class QuickUploadController {
     }
     const videoId = this.videoId(videoIdRaw);
     const { rightsConfirmed, ...details } = parsed.data;
-    return this.run(async () => {
-      // Advanced metadata is intentionally independent of the required publish path.
-      // With an empty metadata payload this performs no companion-table write.
-      await this.metadata.applyForOwner(request.ayinAuth.accountId, videoId, metadata.data);
-      const result = await this.quickUpload.publish(
-        request.ayinAuth.accountId,
-        videoId,
-        rightsConfirmed,
-        this.parseDetails(details),
-      );
-      await this.metadata.updateRightsForOwner(request.ayinAuth.accountId, videoId, metadata.data);
-      return { ...result, metadata: await this.metadata.readOne(videoId) };
-    });
+    return this.run(() =>
+      this.database.client.$transaction(async (tx) => {
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "Video" WHERE "id" = ${videoId}::uuid FOR UPDATE`,
+        );
+        await this.metadata.applyForOwner(request.ayinAuth.accountId, videoId, metadata.data, tx);
+        const result = await this.quickUpload.publish(
+          request.ayinAuth.accountId,
+          videoId,
+          rightsConfirmed,
+          this.parseDetails(details),
+          tx,
+        );
+        await this.metadata.updateRightsForOwner(
+          request.ayinAuth.accountId,
+          videoId,
+          metadata.data,
+          tx,
+        );
+        return { ...result, metadata: await this.metadata.readOne(videoId, tx) };
+      }),
+    );
   }
 
   @Post(":videoId/thumbnail/authorize")
