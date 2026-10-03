@@ -1,4 +1,4 @@
-import { Prisma } from "@ayin/db";
+import { Prisma, type PrismaClient } from "@ayin/db";
 import {
   BadRequestException,
   ConflictException,
@@ -36,8 +36,8 @@ export class RevenueService {
     @Inject(AdminAuditLogService) private readonly audit: AdminAuditLogService,
   ) {}
 
-  async getSettings() {
-    const rows = await this.database.client.platformSetting.findMany({
+  async getSettings(client: Prisma.TransactionClient | PrismaClient = this.database.client) {
+    const rows = await client.platformSetting.findMany({
       where: {
         namespace: "MONETIZATION",
         key: { in: ["defaultCreatorRevenueShareBps", "payoutThresholdMicros"] },
@@ -57,6 +57,15 @@ export class RevenueService {
           ? rawThreshold
           : DEFAULT_PAYOUT_THRESHOLD_MICROS,
     };
+  }
+
+  async getPayoutSettings(tx: Prisma.TransactionClient) {
+    // A namespace advisory lock also protects default settings when no row exists.
+    // The writer takes the exclusive counterpart before inserting/updating rows.
+    await tx.$queryRaw(
+      Prisma.sql`/* ayin-payout-settings-lock */ SELECT pg_advisory_xact_lock_shared(hashtextextended('ayin:monetization:settings', 0))::text`,
+    );
+    return this.getSettings(tx);
   }
 
   async recentFinanceActions(actorAccountId: string) {
@@ -84,6 +93,10 @@ export class RevenueService {
   async updateSettings(actorAccountId: string, input: unknown) {
     const settings = revenueSettingsSchema.parse(input);
     await this.database.client.$transaction(async (tx) => {
+      await assertAdminFinanceAuthority(tx, actorAccountId);
+      await tx.$queryRaw(
+        Prisma.sql`/* ayin-settings-update-lock */ SELECT pg_advisory_xact_lock(hashtextextended('ayin:monetization:settings', 0))::text`,
+      );
       await tx.platformSetting.upsert({
         where: {
           namespace_key: {

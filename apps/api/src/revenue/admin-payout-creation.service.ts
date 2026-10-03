@@ -1,8 +1,9 @@
 import { Prisma } from "@ayin/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { ConflictException, Inject, Injectable } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
 import { CreatorComplianceService } from "./creator-compliance.service.js";
 import { assertCreatorFinanceAuthority, lockFinanceChannel } from "./creator-finance-authority.js";
 import {
@@ -59,15 +60,16 @@ export class AdminPayoutCreationService {
     requestSource: PayoutRequestSource;
     expectedProvider?: string | undefined;
   }) {
-    const settings = await this.revenue.getSettings();
-    const threshold = BigInt(settings.payoutThresholdMicros);
     // Resolve the asynchronous provider requirement boundary before holding locks.
     const compliance = await this.compliance.preparePayoutCompliance(input.channelId);
 
     return this.database.client.$transaction(async (tx) => {
       if (input.requestSource === "CREATOR")
         await assertCreatorFinanceAuthority(tx, input.channelId, input.actorAccountId);
-      else await lockFinanceChannel(tx, input.channelId);
+      else {
+        await lockFinanceChannel(tx, input.channelId);
+        await assertAdminFinanceAuthority(tx, input.actorAccountId);
+      }
 
       await tx.$queryRaw(
         Prisma.sql`/* ayin-payout-compliance-profile-lock */ SELECT "id" FROM "CreatorPayoutProfile" WHERE "channelId" = ${input.channelId}::uuid FOR SHARE`,
@@ -107,6 +109,9 @@ export class AdminPayoutCreationService {
         currency: input.currency ?? profile.preferredCurrency,
       });
 
+      const settings = await this.revenue.getPayoutSettings(tx);
+      const threshold = BigInt(settings.payoutThresholdMicros);
+
       const activePayout = await tx.payout.count({
         where: {
           channelId: data.channelId,
@@ -132,7 +137,7 @@ export class AdminPayoutCreationService {
         0n,
       );
       if (amountMicros <= 0n) throw new Error("NO_PAYABLE_BALANCE");
-      if (amountMicros < threshold) throw new Error("PAYOUT_THRESHOLD_NOT_MET");
+      if (amountMicros < threshold) throw new ConflictException("PAYOUT_THRESHOLD_NOT_MET");
 
       const payout = await tx.payout.create({
         data: {
