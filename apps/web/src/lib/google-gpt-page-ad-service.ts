@@ -1,4 +1,7 @@
-import type { AdvertisingConsentSnapshot } from "./advertising-consent";
+import {
+  normalizeAdvertisingConsent,
+  type AdvertisingConsentSnapshot,
+} from "./advertising-consent";
 import type { PageAdSize } from "./page-ads";
 
 interface GptSizeMappingBuilder {
@@ -69,16 +72,20 @@ function api(): GptApi {
 }
 
 export function gptScriptUrlForConsent(consent: AdvertisingConsentSnapshot) {
-  return consent.mode === "LIMITED_ADS" ? GPT_LIMITED_SRC : GPT_STANDARD_SRC;
+  return normalizeAdvertisingConsent(consent).mode === "LIMITED_ADS"
+    ? GPT_LIMITED_SRC
+    : GPT_STANDARD_SRC;
 }
 
 export function gptPrivacySettingsForConsent(consent: AdvertisingConsentSnapshot) {
-  if (consent.mode === "LIMITED_ADS") return { limitedAds: true } as const;
-  if (consent.mode === "NON_PERSONALIZED") return { nonPersonalizedAds: true } as const;
+  const resolved = normalizeAdvertisingConsent(consent);
+  if (resolved.mode === "LIMITED_ADS") return { limitedAds: true } as const;
+  if (resolved.mode === "NON_PERSONALIZED") return { nonPersonalizedAds: true } as const;
   return {};
 }
 
 export function loadGooglePublisherTag(consent: AdvertisingConsentSnapshot) {
+  consent = normalizeAdvertisingConsent(consent);
   const requestedSource = gptScriptUrlForConsent(consent);
   if (loader) {
     if (loadedScriptSource === GPT_STANDARD_SRC && requestedSource === GPT_LIMITED_SRC) {

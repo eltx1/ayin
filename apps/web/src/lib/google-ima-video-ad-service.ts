@@ -1,5 +1,6 @@
 import {
   getAdvertisingConsentSnapshot,
+  normalizeAdvertisingConsent,
   type AdvertisingConsentSnapshot,
 } from "./advertising-consent";
 import type {
@@ -94,15 +95,13 @@ export function applyGoogleImaConsent(tagUrl: string, consent: AdvertisingConsen
     return tagUrl;
   }
   if (!isGoogleAdTagHost(parsed.hostname)) return tagUrl;
-  if (consent.mode === "LIMITED_ADS") {
+  const resolved = normalizeAdvertisingConsent(consent);
+  // Tag restrictions can originate from server policy or the publisher. A
+  // client consent decision can add restrictions, never remove existing ones.
+  if (resolved.mode === "LIMITED_ADS") {
     parsed.searchParams.set("ltd", "1");
-    parsed.searchParams.delete("npa");
-  } else if (consent.mode === "NON_PERSONALIZED") {
+  } else if (resolved.mode === "NON_PERSONALIZED") {
     parsed.searchParams.set("npa", "1");
-    parsed.searchParams.delete("ltd");
-  } else {
-    parsed.searchParams.delete("npa");
-    parsed.searchParams.delete("ltd");
   }
   return parsed.toString();
 }

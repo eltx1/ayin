@@ -16,6 +16,25 @@ const nonPersonalized: AdvertisingConsentSnapshot = {
 };
 
 describe("Google advertising runtime hardening", () => {
+  it("never upgrades restrictions already present on a Google tag", () => {
+    const personalized: AdvertisingConsentSnapshot = {
+      mode: "PERSONALIZED",
+      source: "CMP",
+      providerManaged: true,
+    };
+    for (const consent of [personalized, nonPersonalized, limited]) {
+      const url = new URL(
+        applyGoogleImaConsent(
+          "https://securepubads.g.doubleclick.net/gampad/ads?ltd=1&npa=1&tfua=1&tfcd=1&rdp=1&iu=%2F123%2Fvideo",
+          consent,
+        ),
+      );
+      for (const key of ["ltd", "npa", "tfua", "tfcd", "rdp"])
+        expect(url.searchParams.get(key)).toBe("1");
+      expect(url.searchParams.get("iu")).toBe("/123/video");
+    }
+  });
+
   it("uses Google's limited-ads GPT loader for the safe default", () => {
     expect(gptScriptUrlForConsent(limited)).toBe(
       "https://pagead2.googlesyndication.com/tag/js/gpt.js",
