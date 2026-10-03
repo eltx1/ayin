@@ -153,7 +153,12 @@ for (const profile of profiles)
               lcpMs: null as number | null,
               shifts: [] as Array<{ time: number; value: number }>,
               longTasks: [] as Array<{ time: number; duration: number }>,
-              events: [] as Array<{ name: string; duration: number; interactionId: number }>,
+              events: [] as Array<{
+                time: number;
+                name: string;
+                duration: number;
+                interactionId: number;
+              }>,
             };
             (window as unknown as { __ayinLab: typeof state }).__ayinLab = state;
             const observe = (type: string, receive: (entries: PerformanceEntry[]) => void) => {
@@ -188,6 +193,7 @@ for (const profile of profiles)
                 const event = entry as PerformanceEntry & { interactionId: number };
                 if (event.interactionId && state.events.length < 1000)
                   state.events.push({
+                    time: event.startTime,
                     name: event.name,
                     duration: event.duration,
                     interactionId: event.interactionId,
@@ -231,7 +237,12 @@ for (const profile of profiles)
                   lcpMs: number | null;
                   shifts: Array<{ time: number; value: number }>;
                   longTasks: Array<{ time: number; duration: number }>;
-                  events: Array<{ name: string; duration: number; interactionId: number }>;
+                  events: Array<{
+                    time: number;
+                    name: string;
+                    duration: number;
+                    interactionId: number;
+                  }>;
                 };
               }
             ).__ayinLab;
@@ -309,11 +320,9 @@ for (const profile of profiles)
                 ),
               );
               const start = await target.evaluate(() => {
-                const lab = (window as unknown as { __ayinLab: { events: unknown[] } }).__ayinLab;
                 return {
                   time: performance.now(),
                   dom: document.querySelectorAll("*").length,
-                  events: lab.events.length,
                 };
               });
               const automationStart = clock.now();
@@ -341,15 +350,22 @@ for (const profile of profiles)
                     window as unknown as {
                       __ayinLab: {
                         longTasks: Array<{ time: number; duration: number }>;
-                        events: Array<{ name: string; duration: number; interactionId: number }>;
+                        events: Array<{
+                          time: number;
+                          name: string;
+                          duration: number;
+                          interactionId: number;
+                        }>;
                       };
                     }
                   ).__ayinLab;
                   return {
                     observedLongTasks: lab.longTasks.filter(
+                      (entry) => entry.time < end.time && entry.time + entry.duration > start.time,
+                    ),
+                    observedEventTimingEntries: lab.events.filter(
                       (entry) => entry.time >= start.time && entry.time < end.time,
                     ),
-                    observedEventTimingEntries: lab.events.slice(start.events),
                   };
                 },
                 { start, end },
