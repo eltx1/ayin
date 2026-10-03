@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   HttpException,
+  Headers,
   Inject,
   Param,
   Patch,
@@ -16,6 +17,7 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { CommentRateLimiter } from "./comment-rate-limiter.js";
 import { CommentsError } from "./comments.errors.js";
 import { CommentsService } from "./comments.service.js";
@@ -60,13 +62,21 @@ export class CommentsController {
   constructor(
     @Inject(CommentsService) private readonly comments: CommentsService,
     @Inject(CommentRateLimiter) private readonly rateLimiter: CommentRateLimiter,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
   ) {}
 
   @Get("videos/:videoId")
-  list(@Param("videoId") rawId: string, @Query() rawQuery: unknown) {
+  list(@Param("videoId") rawId: string, @Query() rawQuery: unknown, @Headers() headers: HeaderBag) {
     const videoId = parseUuid(rawId);
     const query = parse(page, rawQuery);
-    return run(() => this.comments.list(videoId, query.cursor, query.limit));
+    return run(() =>
+      this.comments.list(
+        videoId,
+        query.cursor,
+        query.limit,
+        this.trustedRegion.countryFromHeaders(headers),
+      ),
+    );
   }
 
   @Post("videos/:videoId")
@@ -75,6 +85,7 @@ export class CommentsController {
     @Req() request: AuthenticatedRequest,
     @Param("videoId") rawId: string,
     @Body() rawBody: unknown,
+    @Headers() headers: HeaderBag,
   ) {
     this.rateLimiter.consume(`create:${request.ayinAuth.accountId}`, 20);
     const body = parse(write, rawBody);
@@ -85,6 +96,7 @@ export class CommentsController {
         body.body,
         body.parentId,
         body.profileId,
+        this.trustedRegion.countryFromHeaders(headers),
       ),
     );
   }
@@ -105,7 +117,9 @@ export class CommentsController {
   @UseGuards(AuthGuard)
   remove(@Req() request: AuthenticatedRequest, @Param("commentId") rawId: string) {
     this.rateLimiter.consume(`remove:${request.ayinAuth.accountId}`, 30);
-    return run(() => this.comments.remove(request.ayinAuth.accountId, parseUuid(rawId)));
+    return run(() =>
+      this.comments.remove(request.ayinAuth.accountId, parseUuid(rawId), request.ayinAuth),
+    );
   }
 
   @Put(":commentId/like")
@@ -114,10 +128,17 @@ export class CommentsController {
     @Req() request: AuthenticatedRequest,
     @Param("commentId") rawId: string,
     @Body() rawBody: unknown,
+    @Headers() headers: HeaderBag,
   ) {
     const body = parse(profile, rawBody);
     return run(() =>
-      this.comments.setLike(request.ayinAuth.accountId, parseUuid(rawId), true, body.profileId),
+      this.comments.setLike(
+        request.ayinAuth.accountId,
+        parseUuid(rawId),
+        true,
+        body.profileId,
+        this.trustedRegion.countryFromHeaders(headers),
+      ),
     );
   }
 
@@ -127,10 +148,17 @@ export class CommentsController {
     @Req() request: AuthenticatedRequest,
     @Param("commentId") rawId: string,
     @Query() rawQuery: unknown,
+    @Headers() headers: HeaderBag,
   ) {
     const query = parse(profile, rawQuery);
     return run(() =>
-      this.comments.setLike(request.ayinAuth.accountId, parseUuid(rawId), false, query.profileId),
+      this.comments.setLike(
+        request.ayinAuth.accountId,
+        parseUuid(rawId),
+        false,
+        query.profileId,
+        this.trustedRegion.countryFromHeaders(headers),
+      ),
     );
   }
 
@@ -143,7 +171,13 @@ export class CommentsController {
   ) {
     const mark = parseMark(rawMark);
     return run(() =>
-      this.comments.creatorMark(request.ayinAuth.accountId, parseUuid(rawId), mark, true),
+      this.comments.creatorMark(
+        request.ayinAuth.accountId,
+        parseUuid(rawId),
+        mark,
+        true,
+        request.ayinAuth,
+      ),
     );
   }
 
@@ -156,7 +190,13 @@ export class CommentsController {
   ) {
     const mark = parseMark(rawMark);
     return run(() =>
-      this.comments.creatorMark(request.ayinAuth.accountId, parseUuid(rawId), mark, false),
+      this.comments.creatorMark(
+        request.ayinAuth.accountId,
+        parseUuid(rawId),
+        mark,
+        false,
+        request.ayinAuth,
+      ),
     );
   }
 
@@ -166,6 +206,7 @@ export class CommentsController {
     @Req() request: AuthenticatedRequest,
     @Param("commentId") rawId: string,
     @Body() rawBody: unknown,
+    @Headers() headers: HeaderBag,
   ) {
     this.rateLimiter.consume(`report:${request.ayinAuth.accountId}`, 10);
     const body = parse(report, rawBody);
@@ -176,6 +217,7 @@ export class CommentsController {
         body.reason,
         body.details,
         body.profileId,
+        this.trustedRegion.countryFromHeaders(headers),
       ),
     );
   }
@@ -189,7 +231,12 @@ export class CommentsController {
   ) {
     const body = parse(toggle, rawBody);
     return run(() =>
-      this.comments.setVideoComments(request.ayinAuth.accountId, parseUuid(rawId), body.enabled),
+      this.comments.setVideoComments(
+        request.ayinAuth.accountId,
+        parseUuid(rawId),
+        body.enabled,
+        request.ayinAuth,
+      ),
     );
   }
 
@@ -206,6 +253,7 @@ export class CommentsController {
         parseUuid(channel),
         parseUuid(profileId),
         true,
+        request.ayinAuth,
       ),
     );
   }
@@ -223,6 +271,7 @@ export class CommentsController {
         parseUuid(channel),
         parseUuid(profileId),
         false,
+        request.ayinAuth,
       ),
     );
   }
@@ -241,6 +290,7 @@ export class CommentsController {
         parseUuid(rawId),
         body.status,
         body.reason,
+        request.ayinAuth,
       ),
     );
   }

@@ -1,6 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+import { isPrivilegedAdminRole, type AdminRole } from "../admin/admin.roles.js";
+import type { AuthenticatedRequest } from "../auth/auth.guard.js";
+import { AuthHttpError } from "../auth/auth.errors.js";
+import { MfaService } from "../auth/mfa.service.js";
 import { DatabaseService } from "../database/database.service.js";
+import { VideoPolicyService } from "../video-policy/video-policy.service.js";
 import {
   canEditComment,
   defaultCommentPolicy,
@@ -15,16 +20,12 @@ export class CommentsService {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(CommentRateLimiter) private readonly rateLimiter: CommentRateLimiter,
+    @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
+    @Inject(MfaService) private readonly mfa: MfaService,
   ) {}
 
-  async list(videoId: string, cursor = 0, limit = 30) {
-    const video = await this.database.client.video.findUnique({
-      where: { id: videoId },
-      select: { id: true, commentsEnabled: true, status: true, visibility: true },
-    });
-    if (!video || video.status !== "PUBLISHED" || video.visibility !== "PUBLIC") {
-      throw new CommentsError("VIDEO_NOT_FOUND", "Video not found.", 404);
-    }
+  async list(videoId: string, cursor = 0, limit = 30, countryCode?: string) {
+    const video = await this.availableVideo(videoId, countryCode, true);
     if (!video.commentsEnabled) return { enabled: false, items: [], nextCursor: null };
     const rows = await this.database.client.comment.findMany({
       where: { videoId, parentId: null, status: "PUBLISHED" },
@@ -85,24 +86,15 @@ export class CommentsService {
     body: string,
     parentId?: string,
     requestedProfileId?: string,
+    countryCode?: string,
   ) {
     this.rateLimiter.consume(`write:${accountId}`);
     const [profile, video, policy] = await Promise.all([
       this.resolveProfile(accountId, requestedProfileId),
-      this.database.client.video.findUnique({
-        where: { id: videoId },
-        select: {
-          id: true,
-          channelId: true,
-          commentsEnabled: true,
-          status: true,
-          visibility: true,
-        },
-      }),
+      this.availableVideo(videoId, countryCode),
       this.policy(),
     ]);
-    if (!video || video.status !== "PUBLISHED" || video.visibility === "PRIVATE")
-      throw new CommentsError("VIDEO_NOT_FOUND", "Video not found.", 404);
+    this.assertAdultProfile(profile);
     if (!video.commentsEnabled)
       throw new CommentsError("COMMENTS_DISABLED", "Comments are disabled for this video.", 409);
     const hidden = await this.database.client.channelHiddenProfile.findUnique({
@@ -178,8 +170,8 @@ export class CommentsService {
     });
   }
 
-  async remove(accountId: string, commentId: string) {
-    const comment = await this.ownedOrModeratable(accountId, commentId);
+  async remove(accountId: string, commentId: string, auth?: AuthenticatedRequest["ayinAuth"]) {
+    const comment = await this.ownedOrModeratable(accountId, commentId, false, auth);
     return this.database.client.comment.update({
       where: { id: comment.id },
       data: { status: "REMOVED", removedAt: new Date(), body: "[removed]" },
@@ -192,10 +184,12 @@ export class CommentsService {
     commentId: string,
     enabled: boolean,
     requestedProfileId?: string,
+    countryCode?: string,
   ) {
     this.rateLimiter.consume(`reaction:${accountId}`, 90);
     const profile = await this.resolveProfile(accountId, requestedProfileId);
-    await this.assertPublishedComment(commentId);
+    this.assertAdultProfile(profile);
+    await this.assertPublishedComment(commentId, countryCode);
     if (enabled) {
       await this.database.client.reaction.upsert({
         where: { profileId_commentId: { profileId: profile.id, commentId } },
@@ -210,8 +204,14 @@ export class CommentsService {
     return { commentId, liked: enabled };
   }
 
-  async creatorMark(accountId: string, commentId: string, kind: "heart" | "pin", enabled: boolean) {
-    const comment = await this.ownedOrModeratable(accountId, commentId, true);
+  async creatorMark(
+    accountId: string,
+    commentId: string,
+    kind: "heart" | "pin",
+    enabled: boolean,
+    auth?: AuthenticatedRequest["ayinAuth"],
+  ) {
+    const comment = await this.ownedOrModeratable(accountId, commentId, true, auth);
     const now = enabled ? new Date() : null;
     await this.database.client.commentControl.upsert({
       where: { commentId },
@@ -239,10 +239,12 @@ export class CommentsService {
     reason: "SPAM" | "HARASSMENT" | "HATE" | "SEXUAL_CONTENT" | "VIOLENCE" | "MISLEADING" | "OTHER",
     details?: string,
     requestedProfileId?: string,
+    countryCode?: string,
   ) {
     this.rateLimiter.consume(`report:${accountId}`, 10);
     const profile = await this.resolveProfile(accountId, requestedProfileId);
-    await this.assertPublishedComment(commentId);
+    this.assertAdultProfile(profile);
+    await this.assertPublishedComment(commentId, countryCode);
     return this.database.client.report.create({
       data: {
         reporterProfileId: profile.id,
@@ -254,12 +256,17 @@ export class CommentsService {
     });
   }
 
-  async setVideoComments(accountId: string, videoId: string, enabled: boolean) {
+  async setVideoComments(
+    accountId: string,
+    videoId: string,
+    enabled: boolean,
+    auth?: AuthenticatedRequest["ayinAuth"],
+  ) {
     const video = await this.database.client.video.findUnique({
       where: { id: videoId },
       select: { id: true, channelId: true },
     });
-    if (!video || !(await this.canModerateChannel(accountId, video.channelId)))
+    if (!video || !(await this.canModerateChannel(accountId, video.channelId, auth)))
       throw new CommentsError("VIDEO_FORBIDDEN", "You cannot change comments for this video.", 403);
     await this.database.client.video.update({
       where: { id: videoId },
@@ -268,8 +275,14 @@ export class CommentsService {
     return { videoId, commentsEnabled: enabled };
   }
 
-  async hideProfile(accountId: string, channelId: string, profileId: string, hidden: boolean) {
-    if (!(await this.canModerateChannel(accountId, channelId)))
+  async hideProfile(
+    accountId: string,
+    channelId: string,
+    profileId: string,
+    hidden: boolean,
+    auth?: AuthenticatedRequest["ayinAuth"],
+  ) {
+    if (!(await this.canModerateChannel(accountId, channelId, auth)))
       throw new CommentsError("CHANNEL_FORBIDDEN", "You cannot moderate this channel.", 403);
     if (hidden) {
       await this.database.client.channelHiddenProfile.upsert({
@@ -294,8 +307,9 @@ export class CommentsService {
     commentId: string,
     status: "PUBLISHED" | "HIDDEN" | "REMOVED",
     reason?: string,
+    auth?: AuthenticatedRequest["ayinAuth"],
   ) {
-    const comment = await this.ownedOrModeratable(accountId, commentId, true);
+    const comment = await this.ownedOrModeratable(accountId, commentId, true, auth);
     await this.database.client.$transaction([
       this.database.client.comment.update({
         where: { id: commentId },
@@ -315,7 +329,12 @@ export class CommentsService {
     return { commentId, status };
   }
 
-  private async ownedOrModeratable(accountId: string, commentId: string, moderatorOnly = false) {
+  private async ownedOrModeratable(
+    accountId: string,
+    commentId: string,
+    moderatorOnly = false,
+    auth?: AuthenticatedRequest["ayinAuth"],
+  ) {
     const comment = await this.database.client.comment.findUnique({
       where: { id: commentId },
       select: {
@@ -326,45 +345,106 @@ export class CommentsService {
     });
     if (!comment) throw new CommentsError("COMMENT_NOT_FOUND", "Comment not found.", 404);
     const own = comment.authorProfile.accountId === accountId;
-    const moderator = await this.canModerateChannel(accountId, comment.video.channelId);
+    if (own && !moderatorOnly) return comment;
+    const moderator = await this.canModerateChannel(accountId, comment.video.channelId, auth);
     if ((moderatorOnly && !moderator) || (!moderatorOnly && !own && !moderator))
       throw new CommentsError("COMMENT_FORBIDDEN", "You cannot moderate this comment.", 403);
     return comment;
   }
 
-  private async canModerateChannel(accountId: string, channelId: string) {
-    const [member, admin] = await Promise.all([
-      this.database.client.channelMember.findFirst({
-        where: { accountId, channelId, role: { in: ["OWNER", "ADMIN"] } },
-        select: { id: true },
-      }),
-      this.database.client.adminRoleAssignment.findFirst({
-        where: { accountId },
-        select: { id: true },
-      }),
-    ]);
-    return Boolean(member || admin);
+  private async canModerateChannel(
+    accountId: string,
+    channelId: string,
+    auth?: AuthenticatedRequest["ayinAuth"],
+  ) {
+    const member = await this.database.client.channelMember.findFirst({
+      where: { accountId, channelId, role: { in: ["OWNER", "ADMIN"] } },
+      select: { id: true },
+    });
+    if (member) return true;
+    if (!auth || auth.accountId !== accountId) return false;
+    const assignments = await this.database.client.adminRoleAssignment.findMany({
+      where: { accountId },
+      select: { role: true },
+    });
+    const roles = assignments.map((item) => item.role);
+    if (
+      !roles.some((role) =>
+        ["SUPERADMIN", "ADMIN", "OPERATIONS", "CONTENT_MODERATOR"].includes(role),
+      )
+    )
+      return false;
+    if (roles.some((role) => isPrivilegedAdminRole(role as AdminRole)))
+      await this.mfa.assertAdminMfa(accountId, auth.mfaAt, auth.mfaVersion);
+    if (!auth.reauthAt || auth.reauthAt < Math.floor(Date.now() / 1000) - 300)
+      throw new AuthHttpError(
+        403,
+        "STEP_UP_REQUIRED",
+        "Verify your identity before this administrative comment action.",
+      );
+    return true;
   }
 
-  private async assertPublishedComment(commentId: string) {
+  private async availableVideo(videoId: string, countryCode?: string, publicOnly = false) {
+    const video = await this.database.client.video.findUnique({
+      where: { id: videoId },
+      select: {
+        id: true,
+        channelId: true,
+        commentsEnabled: true,
+        status: true,
+        visibility: true,
+        removedAt: true,
+        channel: { select: { status: true, removedAt: true } },
+      },
+    });
+    if (
+      !video ||
+      video.status !== "PUBLISHED" ||
+      video.visibility === "PRIVATE" ||
+      (publicOnly && video.visibility !== "PUBLIC") ||
+      video.removedAt ||
+      video.channel.status !== "ACTIVE" ||
+      video.channel.removedAt ||
+      !(await this.videoPolicy.decide(videoId, { countryCode })).allowed
+    )
+      throw new CommentsError("VIDEO_NOT_FOUND", "Video not found.", 404);
+    return video;
+  }
+
+  private async assertPublishedComment(commentId: string, countryCode?: string) {
     const comment = await this.database.client.comment.findUnique({
       where: { id: commentId },
-      select: { status: true },
+      select: { status: true, videoId: true, parent: { select: { status: true } } },
     });
-    if (!comment || comment.status !== "PUBLISHED")
+    if (
+      !comment ||
+      comment.status !== "PUBLISHED" ||
+      (comment.parent && comment.parent.status !== "PUBLISHED")
+    )
       throw new CommentsError("COMMENT_NOT_FOUND", "Comment not found.", 404);
+    await this.availableVideo(comment.videoId, countryCode);
+  }
+
+  private assertAdultProfile(profile: { isKids: boolean }) {
+    if (profile.isKids)
+      throw new CommentsError(
+        "KIDS_COMMENTS_DISABLED",
+        "Comments are unavailable for Kids profiles.",
+        403,
+      );
   }
 
   private async resolveProfile(accountId: string, requestedProfileId?: string) {
     const profile = requestedProfileId
       ? await this.database.client.viewerProfile.findFirst({
           where: { id: requestedProfileId, accountId, deletedAt: null },
-          select: { id: true },
+          select: { id: true, isKids: true },
         })
       : await this.database.client.viewerProfile.findFirst({
           where: { accountId, deletedAt: null },
           orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
-          select: { id: true },
+          select: { id: true, isKids: true },
         });
     if (!profile)
       throw new CommentsError("PROFILE_NOT_FOUND", "A viewer profile is required.", 403);
