@@ -24,7 +24,7 @@ export class E2eMediaStorageAdapter implements MediaStorageAdapter {
     expiresInSeconds: number;
   }): Promise<{ url: string; expiresAt: Date }> {
     return {
-      url: `http://e2e-upload.invalid/multipart/${encodeURIComponent(input.uploadId)}/${input.partNumber}?key=${encodeURIComponent(input.key)}`,
+      url: `https://e2e-upload.invalid/multipart/${encodeURIComponent(input.uploadId)}/${input.partNumber}?key=${encodeURIComponent(input.key)}`,
       expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000),
     };
   }
@@ -35,7 +35,7 @@ export class E2eMediaStorageAdapter implements MediaStorageAdapter {
     expiresInSeconds: number;
   }): Promise<{ url: string; expiresAt: Date }> {
     return {
-      url: `http://e2e-upload.invalid/object?key=${encodeURIComponent(input.key)}&type=${encodeURIComponent(input.contentType)}`,
+      url: `https://e2e-upload.invalid/object?key=${encodeURIComponent(input.key)}&type=${encodeURIComponent(input.contentType)}`,
       expiresAt: new Date(Date.now() + input.expiresInSeconds * 1000),
     };
   }

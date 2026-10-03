@@ -1,5 +1,13 @@
 import { apiBaseUrl, readApiError } from "@/lib/api";
 import { videoMimeTypeForUpload } from "@/lib/video-inspection";
+import {
+  parseUploadCompletion,
+  parseUploadPartUrl,
+  parseUploadSession,
+  parseResumedParts,
+  UploadProtocolError,
+  validateUploadUrl,
+} from "./upload-session";
 
 const MAX_PART_ATTEMPTS = 4;
 const STALL_TIMEOUT_MS = 45_000;
@@ -57,13 +65,15 @@ export async function uploadVideoDirectly(input: {
   file: File;
   onProgress: (percent: number) => void;
   onStatus?: (status: DirectUploadStatus) => void;
+  signal?: AbortSignal;
 }): Promise<DirectUploadResult> {
-  const session = await createSession(input.channelId, input.file);
+  const session = await createSession(input.channelId, input.file, input.signal);
   return uploadPreparedVideoDirectly({
     session,
     file: input.file,
     onProgress: input.onProgress,
     ...(input.onStatus ? { onStatus: input.onStatus } : {}),
+    ...(input.signal ? { signal: input.signal } : {}),
   });
 }
 
@@ -72,12 +82,16 @@ export async function uploadPreparedVideoDirectly(input: {
   file: File;
   onProgress: (percent: number) => void;
   onStatus?: (status: DirectUploadStatus) => void;
+  signal?: AbortSignal;
 }): Promise<DirectUploadResult> {
-  const { session, file, onProgress, onStatus } = input;
+  const { file, onProgress, onStatus, signal } = input;
+  signal?.throwIfAborted();
+  const session = parseUploadSession(input.session, file.size);
   let highestReportedPercent = 0;
   const reportProgress = (loadedBytes: number) => {
     const next = Math.min(99, Math.round((loadedBytes / file.size) * 100));
-    highestReportedPercent = Math.max(highestReportedPercent, next);
+    if (next <= highestReportedPercent) return;
+    highestReportedPercent = next;
     onProgress(highestReportedPercent);
   };
 
@@ -85,38 +99,57 @@ export async function uploadPreparedVideoDirectly(input: {
     onStatus?.({ phase: "uploading", message: "Uploading video…" });
     await retryPart(
       async () =>
-        uploadBlob(session.upload.url, file, session.upload.headers, (loaded) => {
-          reportProgress(loaded);
-        }),
+        uploadBlob(
+          session.upload.url,
+          file,
+          session.upload.headers,
+          (loaded) => {
+            reportProgress(loaded);
+          },
+          signal,
+        ),
       (attempt) =>
         onStatus?.({
           phase: "retrying",
           message: "Connection paused. Retrying the upload safely…",
           attempt,
         }),
+      signal,
     );
+    reportProgress(file.size);
     onStatus?.({ phase: "finalizing", message: "Finalizing upload…" });
-    const completed = await apiJson<DirectUploadResult>("/media/uploads/sessions/complete", {
-      sessionToken: session.sessionToken,
-      parts: [],
-    });
+    const completed = parseUploadCompletion(
+      await apiJson<unknown>(
+        "/media/uploads/sessions/complete",
+        {
+          sessionToken: session.sessionToken,
+          parts: [],
+        },
+        signal,
+      ),
+      session.assetId,
+    );
     onProgress(100);
     return completed;
   }
 
-  const resumed = await apiJson<{
-    parts: Array<{ partNumber: number; etag: string; sizeBytes: number }>;
-  }>("/media/uploads/sessions/resume", { sessionToken: session.sessionToken });
-  const completedParts = new Map(
-    resumed.parts.map((part) => [
-      part.partNumber,
-      { partNumber: part.partNumber, etag: part.etag },
-    ]),
+  const resumed = parseResumedParts(
+    await apiJson<unknown>(
+      "/media/uploads/sessions/resume",
+      { sessionToken: session.sessionToken },
+      signal,
+    ),
+    session,
+    file.size,
   );
-  let completedBytes = resumed.parts.reduce((total, part) => total + part.sizeBytes, 0);
+  const completedParts = new Map(
+    resumed.map((part) => [part.partNumber, { partNumber: part.partNumber, etag: part.etag }]),
+  );
+  let completedBytes = resumed.reduce((total, part) => total + part.sizeBytes, 0);
   reportProgress(completedBytes);
 
   for (let partNumber = 1; partNumber <= session.partCount; partNumber += 1) {
+    signal?.throwIfAborted();
     if (completedParts.has(partNumber)) continue;
 
     const start = (partNumber - 1) * session.partSizeBytes;
@@ -133,16 +166,23 @@ export async function uploadPreparedVideoDirectly(input: {
       async () => {
         // Refresh the presigned URL for every attempt. This avoids retrying with
         // an authorization that may have expired during a long network stall.
-        const authorization = await apiJson<{ url: string }>(
+        const authorization = await apiJson<unknown>(
           "/media/uploads/sessions/authorize-part",
           {
             sessionToken: session.sessionToken,
             partNumber,
           },
+          signal,
         );
-        return uploadBlob(authorization.url, blob, {}, (loaded) => {
-          reportProgress(completedBytes + loaded);
-        });
+        return uploadBlob(
+          parseUploadPartUrl(authorization),
+          blob,
+          {},
+          (loaded) => {
+            reportProgress(completedBytes + loaded);
+          },
+          signal,
+        );
       },
       (attempt) =>
         onStatus?.({
@@ -152,6 +192,7 @@ export async function uploadPreparedVideoDirectly(input: {
           partCount: session.partCount,
           attempt,
         }),
+      signal,
     );
 
     if (!etag) {
@@ -163,33 +204,74 @@ export async function uploadPreparedVideoDirectly(input: {
   }
 
   onStatus?.({ phase: "finalizing", message: "Finalizing upload…" });
-  const completed = await apiJson<DirectUploadResult>("/media/uploads/sessions/complete", {
-    sessionToken: session.sessionToken,
-    parts: [...completedParts.values()].sort((left, right) => left.partNumber - right.partNumber),
-  });
+  const completed = parseUploadCompletion(
+    await apiJson<unknown>(
+      "/media/uploads/sessions/complete",
+      {
+        sessionToken: session.sessionToken,
+        parts: [...completedParts.values()].sort(
+          (left, right) => left.partNumber - right.partNumber,
+        ),
+      },
+      signal,
+    ),
+    session.assetId,
+  );
   onProgress(100);
   return completed;
 }
 
-async function createSession(channelId: string, file: File): Promise<UploadSession> {
-  return apiJson<UploadSession>("/media/uploads/sessions", {
-    channelId,
-    sizeBytes: file.size,
-    mimeType: videoMimeTypeForUpload(file),
-  });
+async function createSession(
+  channelId: string,
+  file: File,
+  signal?: AbortSignal,
+): Promise<UploadSession> {
+  return parseUploadSession(
+    await apiJson<unknown>(
+      "/media/uploads/sessions",
+      {
+        channelId,
+        sizeBytes: file.size,
+        mimeType: videoMimeTypeForUpload(file),
+      },
+      signal,
+    ),
+    file.size,
+  );
 }
 
-async function apiJson<T>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error(await readApiError(response));
+async function apiJson<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
+  signal?.throwIfAborted();
+  const controller = new AbortController();
+  const cancel = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", cancel, { once: true });
+  const deadline = setTimeout(
+    () => controller.abort(new DOMException("Upload response timed out", "TimeoutError")),
+    30000,
+  );
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new UploadBlobError(await readApiError(response), {
+        retryable: [408, 425, 429].includes(response.status) || response.status >= 500,
+        status: response.status,
+      });
+    }
+    try {
+      return (await response.json()) as T;
+    } catch {
+      throw new UploadProtocolError();
+    }
+  } finally {
+    clearTimeout(deadline);
+    signal?.removeEventListener("abort", cancel);
   }
-  return (await response.json()) as T;
 }
 
 function uploadBlob(
@@ -197,7 +279,10 @@ function uploadBlob(
   blob: Blob,
   headers: Record<string, string>,
   onProgress: (loaded: number) => void,
+  signal?: AbortSignal,
 ): Promise<string | null> {
+  validateUploadUrl(url);
+  signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
     let settled = false;
@@ -208,6 +293,7 @@ function uploadBlob(
       if (settled) return;
       settled = true;
       clearInterval(stallTimer);
+      signal?.removeEventListener("abort", cancel);
       callback();
     };
 
@@ -217,10 +303,8 @@ function uploadBlob(
       request.abort();
     }, STALL_CHECK_INTERVAL_MS);
 
-    request.open("PUT", url);
-    for (const [name, value] of Object.entries(headers)) {
-      request.setRequestHeader(name, value);
-    }
+    const cancel = () => request.abort();
+    signal?.addEventListener("abort", cancel, { once: true });
     request.upload.onprogress = (event) => {
       lastProgressAt = Date.now();
       if (event.lengthComputable) onProgress(event.loaded);
@@ -228,18 +312,22 @@ function uploadBlob(
     request.onerror = () =>
       finish(() =>
         reject(
-          new UploadBlobError("The network interrupted this upload part.", { retryable: true }),
+          signal?.aborted
+            ? signal.reason
+            : new UploadBlobError("The network interrupted this upload part.", { retryable: true }),
         ),
       );
     request.onabort = () =>
       finish(() =>
         reject(
-          new UploadBlobError(
-            stalled
-              ? "This upload part stopped making progress. AYIN will retry it automatically."
-              : "The upload was interrupted.",
-            { retryable: true },
-          ),
+          signal?.aborted
+            ? signal.reason
+            : new UploadBlobError(
+                stalled
+                  ? "This upload part stopped making progress. AYIN will retry it automatically."
+                  : "The upload was interrupted.",
+                { retryable: true },
+              ),
         ),
       );
     request.onload = () => {
@@ -264,27 +352,55 @@ function uploadBlob(
         ),
       );
     };
-    request.send(blob);
+    try {
+      request.open("PUT", url);
+      request.withCredentials = false;
+      for (const [name, value] of Object.entries(headers)) request.setRequestHeader(name, value);
+      request.send(blob);
+    } catch {
+      finish(() =>
+        reject(
+          new UploadBlobError("This upload request could not be prepared.", { retryable: false }),
+        ),
+      );
+    }
   });
 }
 
 async function retryPart<T>(
   operation: (attempt: number) => Promise<T>,
   onRetry?: (nextAttempt: number, error: unknown) => void,
+  signal?: AbortSignal,
 ): Promise<T> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_PART_ATTEMPTS; attempt += 1) {
+    signal?.throwIfAborted();
     try {
       return await operation(attempt);
     } catch (error) {
       lastError = error;
-      const retryable = !(error instanceof UploadBlobError) || error.retryable;
+      signal?.throwIfAborted();
+      const retryable =
+        !(error instanceof UploadProtocolError) &&
+        (!(error instanceof UploadBlobError) || error.retryable);
       if (!retryable || attempt >= MAX_PART_ATTEMPTS) break;
       const nextAttempt = attempt + 1;
       onRetry?.(nextAttempt, error);
       const backoffMs = Math.min(4_000, 500 * 2 ** (attempt - 1));
       const jitterMs = Math.floor(Math.random() * 300);
-      await new Promise((resolve) => window.setTimeout(resolve, backoffMs + jitterMs));
+      await new Promise<void>((resolve, reject) => {
+        const cancel = () => {
+          window.clearTimeout(timer);
+          signal?.removeEventListener("abort", cancel);
+          reject(signal?.reason);
+        };
+        const timer = window.setTimeout(() => {
+          signal?.removeEventListener("abort", cancel);
+          resolve();
+        }, backoffMs + jitterMs);
+        signal?.addEventListener("abort", cancel, { once: true });
+        if (signal?.aborted) cancel();
+      });
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Upload part failed after retries.");
