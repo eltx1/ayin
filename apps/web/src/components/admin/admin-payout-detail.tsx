@@ -360,28 +360,30 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
               "تعكس السجلات آخر قراءة صريحة؛ وتظهر تأكيدات المزود بصورة مستقلة. التواريخ بالتوقيت العالمي UTC.",
             )}
           </p>
-          <MetricList
-            label={copy("Saved payout summary", "ملخص الصرف المحفوظ")}
-            items={[
-              {
-                label: copy("Amount", "المبلغ"),
-                value: (
-                  <span dir="ltr" className={styles.money}>
-                    {exactFinanceMoney(detail.currency, detail.amount)}
-                  </span>
-                ),
-              },
-              {
-                label: copy("Saved payout status", "حالة الصرف المحفوظة"),
-                value: names[detail.status],
-              },
-              { label: copy("Payout provider", "مزود الصرف"), value: detail.provider },
-              {
-                label: copy("Channel", "القناة"),
-                value: <span dir="auto">@{detail.channel.handle}</span>,
-              },
-            ]}
-          />
+          <div className={styles.summary}>
+            <MetricList
+              label={copy("Saved payout summary", "ملخص الصرف المحفوظ")}
+              items={[
+                {
+                  label: copy("Amount", "المبلغ"),
+                  value: (
+                    <span dir="ltr" className={styles.money} tabIndex={0}>
+                      {exactFinanceMoney(detail.currency, detail.amount)}
+                    </span>
+                  ),
+                },
+                {
+                  label: copy("Saved payout status", "حالة الصرف المحفوظة"),
+                  value: names[detail.status],
+                },
+                { label: copy("Payout provider", "مزود الصرف"), value: detail.provider },
+                {
+                  label: copy("Channel", "القناة"),
+                  value: <span dir="auto">@{detail.channel.handle}</span>,
+                },
+              ]}
+            />
+          </div>
           <Disclosure summary={copy("Payout context and beneficiary", "سياق الصرف والمستفيد")} open>
             <dl className={styles.facts}>
               {[

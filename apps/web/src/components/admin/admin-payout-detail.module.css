@@ -28,7 +28,18 @@
   flex-wrap: wrap;
   gap: var(--space-3);
 }
+.summary > dl dd {
+  font-size: 1.125rem;
+}
+.summary > dl > div {
+  min-inline-size: 0;
+}
 .money {
+  display: block;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .sensitive {

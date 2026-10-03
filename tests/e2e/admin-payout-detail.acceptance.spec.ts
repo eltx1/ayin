@@ -79,6 +79,14 @@ for (const locale of ["en", "ar"] as const)
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
       await page.evaluate(() => scrollTo(0, 0));
+      const amount = main.getByText("USD 210.123456", { exact: true });
+      expect(
+        await amount.evaluate((node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+        }),
+      ).toBe(1);
       await page.screenshot({
         path: info.outputPath(`design-admin-payout-detail-${locale}-${width}.png`),
         fullPage: true,
