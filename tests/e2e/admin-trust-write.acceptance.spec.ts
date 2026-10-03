@@ -31,6 +31,8 @@ async function operator(page: Page, email: string, role = "CONTENT_MODERATOR") {
 }
 async function fillAction(page: Page, accountId: string) {
   const main = page.getByRole("main");
+  await main.getByRole("tab", { name: "Decisions", exact: true }).click();
+  await main.getByText("Resource references", { exact: true }).click();
   await expect(
     main.getByRole("button", { name: "Record enforcement action", exact: true }),
   ).toBeEnabled();
@@ -131,8 +133,9 @@ test("a committed response loss retains enforcement draft and requires explicit 
   ).toBeEnabled();
   expect(writes).toBe(1);
   expect(reads).toBe(before + 1);
+  await main.getByRole("tab", { name: "Your actions", exact: true }).click();
   const ledger = main.getByRole("region", { name: "Your recent enforcement actions", exact: true });
-  await ledger.getByText("Review recorded actions", { exact: true }).click();
+  await ledger.locator("summary").first().click();
   await expect(ledger.locator("li")).toHaveCount(1);
   await expect(ledger).toContainText("Specific actual evidence requiring a warning.");
   await expect(ledger).toContainText(user.account.id);
