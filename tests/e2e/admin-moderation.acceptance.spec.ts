@@ -64,6 +64,7 @@ for (const locale of ["en", "ar"] as const)
       }),
     ).toBeVisible();
     await expect(main.locator("article")).toHaveCount(25);
+    await expect(main.locator("article").first().locator("time")).toContainText("UTC");
     await main.locator("summary").first().click();
     await expect(main.locator("article").first()).toContainText("FULL COMMENT END");
     const first = await main.locator("article").allTextContents();

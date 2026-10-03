@@ -151,7 +151,17 @@ function ReportPage({
                   <div>
                     <dt>{copy.created}</dt>
                     <dd>
-                      <time dateTime={report.createdAt}>{formatDate(report.createdAt)}</time>
+                      <time dateTime={report.createdAt}>
+                        {formatDate(report.createdAt, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          timeZone: "UTC",
+                        })}{" "}
+                        UTC
+                      </time>
                     </dd>
                   </div>
                   <div>
