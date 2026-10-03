@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { randomUUID } from "node:crypto";
 
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -294,5 +295,129 @@ databaseDescribe("creator quick upload and publish", () => {
       where: { videoId: draft.video.id },
     });
     expect(rights).toHaveLength(1);
+  });
+  it("reads all actual owned source uploads with DB pages, filters and private safe latest processing", async () => {
+    const creator = await register("History Owner", "history-owner@example.com");
+    const foreign = await register("Foreign History", "history-foreign@example.com");
+    const channelId = creator.user.channel.id;
+    const videos = Array.from({ length: 28 }, (_, i) => ({
+      id: randomUUID(),
+      channelId,
+      slug: `history-${randomUUID()}`,
+      title: `Saved source ${i}`,
+      status: i === 27 ? ("DRAFT" as const) : ("UPLOADING" as const),
+      createdAt: new Date("2026-10-03T12:00:00Z"),
+    }));
+    await prisma.video.createMany({ data: videos });
+    await prisma.mediaAsset.createMany({
+      data: videos.map((v) => ({
+        videoId: v.id,
+        channelId,
+        kind: "SOURCE_VIDEO" as const,
+        status: "PENDING" as const,
+        r2ObjectKey: `private/history/${v.id}`,
+        mimeType: "video/mp4",
+        sizeBytes: 42n,
+      })),
+    });
+    const outside = await prisma.video.create({
+      data: {
+        channelId: foreign.user.channel.id,
+        slug: `outside-${randomUUID()}`,
+        title: "PRIVATE FOREIGN UPLOAD",
+        mediaAssets: {
+          create: {
+            channelId: foreign.user.channel.id,
+            kind: "SOURCE_VIDEO",
+            r2ObjectKey: `outside/${randomUUID()}`,
+            mimeType: "video/mp4",
+            sizeBytes: 42n,
+          },
+        },
+      },
+    });
+    const latest = videos[0]!;
+    await prisma.mediaProcessingJob.createMany({
+      data: [1, 2].map((generation) => ({
+        videoId: latest.id,
+        generation,
+        sourceMimeType: "video/mp4",
+        sourceSizeBytes: 42n,
+        stagingKey: `PRIVATE-STAGING-${randomUUID()}`,
+        outputR2ObjectKey: `PRIVATE-OUTPUT-${randomUUID()}`,
+        status: "FAILED" as const,
+        progressPercent: 0,
+        errorCode: "SOURCE_REJECTED",
+        errorMessage: "PRIVATE PROVIDER DETAILS",
+      })),
+    });
+    const get = (suffix = "") =>
+      app.inject({
+        method: "GET",
+        url: `/creator/videos/uploads?channelId=${channelId}${suffix}`,
+        headers: { cookie: creator.cookie },
+      });
+    const first = await get();
+    expect(first.statusCode).toBe(200);
+    expect(first.headers["cache-control"]).toBe("private, no-store");
+    expect(first.json()).toMatchObject({
+      actorAccountId: creator.user.account.id,
+      channelId,
+      pagination: { page: 1, take: 25, total: 28, pages: 2 },
+    });
+    expect(first.json().items).toHaveLength(25);
+    const second = await get("&page=2");
+    expect(second.statusCode).toBe(200);
+    expect(second.json().items).toHaveLength(3);
+    const rows = [...first.json().items, ...second.json().items];
+    expect(new Set(rows.map((v: { id: string }) => v.id)).size).toBe(28);
+    expect(rows.some((v: { id: string }) => v.id === outside.id)).toBe(false);
+    expect(rows.find((v: { id: string }) => v.id === latest.id).processing).toEqual({
+      generation: 2,
+      status: "FAILED",
+      progressPercent: 0,
+      errorCode: "SOURCE_REJECTED",
+    });
+    const raw = first.body + second.body;
+    for (const forbidden of [
+      "r2ObjectKey",
+      "sessionToken",
+      "stagingKey",
+      "outputR2ObjectKey",
+      "PRIVATE PROVIDER",
+      "PRIVATE FOREIGN",
+    ])
+      expect(raw).not.toContain(forbidden);
+    const filtered = await get("&status=DRAFT");
+    expect(filtered.json().items).toHaveLength(1);
+    expect(filtered.json().pagination.total).toBe(1);
+    for (const suffix of [
+      "&page=0",
+      "&page=1001",
+      "&status=BAD",
+      "&actorAccountId=" + foreign.user.account.id,
+    ])
+      expect((await get(suffix)).statusCode).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/creator/videos/uploads?channelId=${foreign.user.channel.id}`,
+          headers: { cookie: creator.cookie },
+        })
+      ).statusCode,
+    ).toBe(403);
+    await prisma.channelMember.updateMany({
+      where: { accountId: creator.user.account.id, channelId },
+      data: { role: "EDITOR" },
+    });
+    expect((await get()).statusCode).toBe(403);
+    expect(
+      (await app.inject({ method: "GET", url: `/creator/videos/uploads?channelId=${channelId}` }))
+        .statusCode,
+    ).toBe(401);
+    expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+    expect(storage.listParts).not.toHaveBeenCalled();
+    expect(await prisma.video.count({ where: { id: { in: videos.map((v) => v.id) } } })).toBe(28);
   });
 });

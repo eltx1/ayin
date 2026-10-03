@@ -73,6 +73,70 @@ export class QuickUploadService {
     @Inject(MEDIA_STORAGE_CONFIG) private readonly storageConfig: MediaStorageConfig,
   ) {}
 
+  async uploadHistory(
+    accountId: string,
+    query: {
+      channelId: string;
+      page: number;
+      status?: "UPLOADING" | "VALIDATING" | "DRAFT" | "PUBLISHED" | "SCHEDULED" | undefined;
+    },
+  ) {
+    return this.database.client.$transaction(
+      async (tx) => {
+        await this.assertOwner(accountId, query.channelId, tx);
+        const where: Prisma.VideoWhereInput = {
+          channelId: query.channelId,
+          removedAt: null,
+          status: query.status ?? { not: "REMOVED" },
+          channel: {
+            status: { not: "REMOVED" },
+            members: { some: { accountId, role: "OWNER", account: { status: "ACTIVE" } } },
+          },
+          mediaAssets: { some: { kind: "SOURCE_VIDEO", removedAt: null } },
+        };
+        const [total, items] = await Promise.all([
+          tx.video.count({ where }),
+          tx.video.findMany({
+            where,
+            skip: (query.page - 1) * 25,
+            take: 25,
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: {
+              id: true,
+              channelId: true,
+              title: true,
+              status: true,
+              visibility: true,
+              videoForm: true,
+              createdAt: true,
+              updatedAt: true,
+              mediaProcessingJobs: {
+                take: 1,
+                orderBy: { generation: "desc" },
+                select: { generation: true, status: true, progressPercent: true, errorCode: true },
+              },
+            },
+          }),
+        ]);
+        return {
+          actorAccountId: accountId,
+          channelId: query.channelId,
+          pagination: {
+            page: query.page,
+            take: 25,
+            total,
+            pages: Math.max(1, Math.ceil(total / 25)),
+          },
+          items: items.map(({ mediaProcessingJobs, ...video }) => ({
+            ...video,
+            processing: mediaProcessingJobs[0] ?? null,
+          })),
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+
   async createDraft(accountId: string, input: CreateQuickDraftInput) {
     const title = normalizeTitle(input.title);
     if (!title) {
