@@ -172,4 +172,68 @@ databaseDescribe("Finance explicit recovery reads", () => {
       expect(response.headers["cache-control"], url).toBe("private, no-store");
     }
   });
+  it("looks up an actual imported source report by its exact retained reference with validation and Finance authorization", async () => {
+    const finance = await actor("FINANCE_MANAGER", "lookup"),
+      operations = await actor("OPERATIONS", "lookup-operations"),
+      source = `ACTUAL_LOOKUP_${randomUUID()}`;
+    const imported = await app.inject({
+      method: "POST",
+      url: "/admin/revenue/reconciliation/imports",
+      headers: { cookie: finance.cookie },
+      payload: {
+        source,
+        sourceReportId: "retained-source-report-01",
+        periodStart: "2026-10-01T00:00:00Z",
+        periodEnd: "2026-10-02T00:00:00Z",
+        currency: "USD",
+        state: "FINAL",
+        format: "STRUCTURED",
+        rows: [
+          {
+            externalRowId: "actual-row-01",
+            grossAmount: "1.123456",
+            channelId: finance.user.channel.id,
+          },
+        ],
+      },
+    });
+    expect(imported.statusCode).toBe(201);
+    const before = await prisma.adminAuditLog.count();
+    const url = `/admin/revenue/reconciliation/lookup?source=${encodeURIComponent(source)}&sourceReportId=retained-source-report-01`;
+    const found = await app.inject({ method: "GET", url, headers: { cookie: finance.cookie } });
+    expect(found.statusCode).toBe(200);
+    expect(found.headers["cache-control"]).toBe("private, no-store");
+    expect(found.json()).toEqual(
+      expect.objectContaining({
+        id: imported.json().id,
+        source,
+        sourceReportId: "retained-source-report-01",
+        totalRows: 1,
+        currency: "USD",
+      }),
+    );
+    expect(found.json().rows).toBeUndefined();
+    expect(await prisma.adminAuditLog.count()).toBe(before);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: url.replace("retained-source-report-01", "retained-source-report-0"),
+          headers: { cookie: finance.cookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/admin/revenue/reconciliation/lookup?source=x",
+          headers: { cookie: finance.cookie },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: "GET", url, headers: { cookie: operations.cookie } })).statusCode,
+    ).toBe(403);
+  });
 });

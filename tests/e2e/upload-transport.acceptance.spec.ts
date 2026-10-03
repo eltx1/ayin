@@ -68,6 +68,7 @@ for (const mismatched of [false, true]) {
       });
     await page.goto("/upload?lang=en");
     const picker = page.locator('input[type="file"][accept^="video/"]');
+    await expect(picker).toHaveCount(1);
     await expect(picker).toBeEnabled();
     await picker.setInputFiles({
       name: "transport.mp4",

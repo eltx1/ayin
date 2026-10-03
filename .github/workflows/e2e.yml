@@ -145,6 +145,14 @@ jobs:
           path: test-results/**/design-creator-tv-management-*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Preserve Admin finance visual evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-finance-visuals
+          path: test-results/**/design-admin-finance-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Preserve upload history visual evidence separately
         if: always()
         uses: actions/upload-artifact@v4
