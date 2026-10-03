@@ -1,0 +1,88 @@
+.workspace {
+  display: grid;
+  gap: 1.25rem;
+  min-inline-size: 0;
+  max-inline-size: 90rem;
+}
+.stack,
+.form {
+  display: grid;
+  gap: 1.1rem;
+  min-inline-size: 0;
+}
+.panel {
+  background: var(--surface-1, #0d0c16);
+  border: 1px solid var(--border-subtle, #272433);
+  border-radius: 0.85rem;
+  padding: 1.15rem;
+  min-inline-size: 0;
+}
+.panel h2 {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.list > li {
+  display: grid;
+  gap: 0.7rem;
+  padding-block: 1rem;
+  border-block-start: 1px solid var(--border-subtle, #272433);
+  min-inline-size: 0;
+}
+.list > li:first-child {
+  border-block-start: 0;
+}
+.references {
+  display: grid;
+  gap: 0.4rem;
+  margin-block: 0.75rem;
+}
+.references div {
+  display: grid;
+  gap: 0.2rem;
+}
+.references dt {
+  color: var(--text-muted, #a6a2b5);
+  font-size: 0.8rem;
+}
+.references dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+.prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-block-size: 2.75rem;
+}
+.check input {
+  inline-size: 1.1rem;
+  block-size: 1.1rem;
+  accent-color: #8b4dff;
+}
+.workspace button,
+.workspace input,
+.workspace select,
+.workspace textarea {
+  max-inline-size: 100%;
+}
+@media (max-width: 40rem) {
+  .workspace [role="tab"] {
+    flex: 1 1 8rem;
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+  .panel {
+    padding: 0.85rem;
+  }
+}

@@ -1,5 +1,9 @@
 import { z } from "zod";
 const uuid = z.string().uuid();
+export const trustRecordSchema = z.object({
+  kind: z.enum(["cases", "appeals", "takedowns", "channels"]),
+  id: uuid,
+});
 export const reportSchema = z
   .object({
     videoId: uuid.optional(),
