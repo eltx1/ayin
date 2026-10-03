@@ -1,8 +1,12 @@
-import type { Prisma } from "@ayin/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { Prisma } from "@ayin/db";
+import { Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { z } from "zod";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
+import {
+  lockAdminAccountWrite,
+  type AccountWriteActor,
+} from "../admin/admin-account-write-authority.js";
 import { DatabaseService } from "../database/database.service.js";
 import {
   VideoPolicyService,
@@ -93,10 +97,11 @@ export class VideoAdService {
     return parsed.success ? parsed.data : defaultVideoAdSettings;
   }
 
-  async updateSettings(actorAccountId: string, input: unknown): Promise<VideoAdSettings> {
+  async updateSettings(actor: AccountWriteActor, input: unknown): Promise<VideoAdSettings> {
     const settings = videoAdSettingsSchema.parse(input);
     const value = settings as unknown as Prisma.InputJsonValue;
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
       await tx.platformSetting.upsert({
         where: { namespace_key: { namespace: "ADVERTISING", key: "videoAdsV1" } },
         update: { value, valueType: "JSON", schemaVersion: 1 },
@@ -109,8 +114,9 @@ export class VideoAdService {
           description: "Task 19 typed in-player video advertising defaults.",
         },
       });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "VIDEO_AD_SETTINGS_UPDATED",
         entityType: "PlatformSetting",
         entityId: "ADVERTISING/videoAdsV1",
@@ -241,7 +247,7 @@ export class VideoAdService {
   }
 
   async upsertOverride(
-    actorAccountId: string,
+    actor: AccountWriteActor,
     target: { channelId?: string; videoId?: string },
     input: unknown,
   ) {
@@ -249,8 +255,11 @@ export class VideoAdService {
     if ((target.channelId ? 1 : 0) + (target.videoId ? 1 : 0) !== 1) {
       throw new Error("Exactly one video ad override target is required.");
     }
-    const writeData = this.overrideWriteData(data, actorAccountId);
+    const writeData = this.overrideWriteData(data, actor.accountId);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
+      await this.lockOverrideTarget(tx, target);
+      await this.writeAuthority(tx, actor);
       let row;
       let entityType: "Channel" | "Video";
       let entityId: string;
@@ -274,8 +283,9 @@ export class VideoAdService {
         entityType = "Video";
         entityId = targetVideoId;
       }
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "VIDEO_AD_OVERRIDE_UPDATED",
         entityType,
         entityId,
@@ -285,11 +295,14 @@ export class VideoAdService {
     });
   }
 
-  async deleteOverride(actorAccountId: string, target: { channelId?: string; videoId?: string }) {
+  async deleteOverride(actor: AccountWriteActor, target: { channelId?: string; videoId?: string }) {
     if ((target.channelId ? 1 : 0) + (target.videoId ? 1 : 0) !== 1) {
       throw new Error("Exactly one video ad override target is required.");
     }
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
+      await this.lockOverrideTarget(tx, target, false);
+      await this.writeAuthority(tx, actor);
       let result: { count: number };
       let entityType: "Channel" | "Video";
       let entityId: string;
@@ -303,8 +316,9 @@ export class VideoAdService {
         entityType = "Video";
         entityId = targetVideoId;
       }
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "VIDEO_AD_OVERRIDE_REMOVED",
         entityType,
         entityId,
@@ -312,6 +326,26 @@ export class VideoAdService {
       });
       return { deleted: result.count > 0 };
     });
+  }
+
+  private writeAuthority(tx: Prisma.TransactionClient, actor: AccountWriteActor) {
+    return lockAdminAccountWrite(tx, actor, actor.accountId, undefined, ["AD_MANAGER"]);
+  }
+
+  private async lockOverrideTarget(
+    tx: Prisma.TransactionClient,
+    target: { channelId?: string; videoId?: string },
+    requireTarget = true,
+  ) {
+    const rows = target.channelId
+      ? await tx.$queryRaw<Array<{ id: string }>>(
+          Prisma.sql`SELECT "id" FROM "Channel" WHERE "id" = ${target.channelId}::uuid FOR SHARE /* ayin-admin-video-ad-target-lock */`,
+        )
+      : await tx.$queryRaw<Array<{ id: string }>>(
+          Prisma.sql`SELECT "id" FROM "Video" WHERE "id" = ${target.videoId}::uuid FOR SHARE /* ayin-admin-video-ad-target-lock */`,
+        );
+    if (!rows.length && requireTarget)
+      throw new NotFoundException("Advertising target unavailable.");
   }
 
   async recordEvent(input: VideoAdEventInput) {

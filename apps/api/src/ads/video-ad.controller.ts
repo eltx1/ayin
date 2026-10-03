@@ -106,8 +106,9 @@ export class AdminVideoAdController {
   @RequireAdminStepUp()
   async updateSettings(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     try {
-      return await this.videoAds.updateSettings(request.ayinAuth.accountId, body);
-    } catch {
+      return await this.videoAds.updateSettings(request.ayinAuth, body);
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
       throw new HttpException(
         {
           error: {
@@ -134,11 +135,12 @@ export class AdminVideoAdController {
   ) {
     try {
       return await this.videoAds.upsertOverride(
-        request.ayinAuth.accountId,
+        request.ayinAuth,
         { channelId: this.id(channelIdRaw) },
         body,
       );
-    } catch {
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
       throw new HttpException(
         { error: { code: "INVALID_VIDEO_AD_OVERRIDE", message: "Check the channel ad override." } },
         400,
@@ -152,7 +154,7 @@ export class AdminVideoAdController {
     @Req() request: AdminAuthenticatedRequest,
     @Param("channelId") channelIdRaw: string,
   ) {
-    return this.videoAds.deleteOverride(request.ayinAuth.accountId, {
+    return this.videoAds.deleteOverride(request.ayinAuth, {
       channelId: this.id(channelIdRaw),
     });
   }
@@ -166,11 +168,12 @@ export class AdminVideoAdController {
   ) {
     try {
       return await this.videoAds.upsertOverride(
-        request.ayinAuth.accountId,
+        request.ayinAuth,
         { videoId: this.id(videoIdRaw) },
         body,
       );
-    } catch {
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
       throw new HttpException(
         { error: { code: "INVALID_VIDEO_AD_OVERRIDE", message: "Check the video ad override." } },
         400,
@@ -184,7 +187,7 @@ export class AdminVideoAdController {
     @Req() request: AdminAuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
   ) {
-    return this.videoAds.deleteOverride(request.ayinAuth.accountId, {
+    return this.videoAds.deleteOverride(request.ayinAuth, {
       videoId: this.id(videoIdRaw),
     });
   }
