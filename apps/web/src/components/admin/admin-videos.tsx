@@ -68,6 +68,7 @@ export function AdminVideos({ initialQuery = "" }: { initialQuery?: string }) {
     [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [selected, setSelected] = useState<string[]>([]),
     [bulkReason, setBulkReason] = useState("");
+  const [editing, setEditing] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<
@@ -94,6 +95,7 @@ export function AdminVideos({ initialQuery = "" }: { initialQuery?: string }) {
     setSnapshot(null);
     setDrafts({});
     setSelected([]);
+    setEditing({});
     setBulkReason("");
     setAck(null);
     setTargets([]);
@@ -585,42 +587,44 @@ export function AdminVideos({ initialQuery = "" }: { initialQuery?: string }) {
         </p>
         {snapshot && (
           <>
-            <FormSection id="video-bulk" legend={copy("Selected videos", "الفيديوهات المحددة")}>
-              <p>
-                {copy(
-                  "Select videos on this page. Batch decisions change status or comments; metadata drafts are retained.",
-                  "حدّد فيديوهات من هذه الصفحة. يغيّر القرار الجماعي الحالة أو التعليقات؛ وتظل مسودات البيانات محفوظة.",
-                )}{" "}
-                · {selected.length}
-              </p>
-              <TextAreaField
-                id="video-bulk-reason"
-                dir="auto"
-                label={copy(
-                  "Bulk decision reason (8–500 characters)",
-                  "سبب القرار الجماعي (٨–٥٠٠ حرف)",
-                )}
-                maxLength={500}
-                value={bulkReason}
-                disabled={disabled}
-                onChange={(event) => {
-                  dirty.current = true;
-                  setBulkReason(event.target.value);
-                }}
-              />
-              <div className={styles.actions}>
-                {videoBulkActions.map((action) => (
-                  <ActionButton
-                    key={action}
-                    tone="danger"
-                    disabled={disabled || !selected.length || !reasonValid(bulkReason)}
-                    onClick={() => void bulk(action)}
-                  >
-                    {bulkNames[action]}
-                  </ActionButton>
-                ))}
-              </div>
-            </FormSection>
+            {(selected.length > 0 || Boolean(bulkReason)) && (
+              <FormSection id="video-bulk" legend={copy("Selected videos", "الفيديوهات المحددة")}>
+                <p>
+                  {copy(
+                    "Select videos on this page. Batch decisions change status or comments; metadata drafts are retained.",
+                    "حدّد فيديوهات من هذه الصفحة. يغيّر القرار الجماعي الحالة أو التعليقات؛ وتظل مسودات البيانات محفوظة.",
+                  )}{" "}
+                  · {selected.length}
+                </p>
+                <TextAreaField
+                  id="video-bulk-reason"
+                  dir="auto"
+                  label={copy(
+                    "Bulk decision reason (8–500 characters)",
+                    "سبب القرار الجماعي (٨–٥٠٠ حرف)",
+                  )}
+                  maxLength={500}
+                  value={bulkReason}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    dirty.current = true;
+                    setBulkReason(event.target.value);
+                  }}
+                />
+                <div className={styles.actions}>
+                  {videoBulkActions.map((action) => (
+                    <ActionButton
+                      key={action}
+                      tone="danger"
+                      disabled={disabled || !selected.length || !reasonValid(bulkReason)}
+                      onClick={() => void bulk(action)}
+                    >
+                      {bulkNames[action]}
+                    </ActionButton>
+                  ))}
+                </div>
+              </FormSection>
+            )}
             <div className={styles.list}>
               {snapshot.directory.items.map((record) => {
                 const draft = drafts[record.id] ?? fresh(record),
@@ -674,138 +678,167 @@ export function AdminVideos({ initialQuery = "" }: { initialQuery?: string }) {
                         </p>
                       )}
                     </Disclosure>
-                    <TextField
-                      id={`video-title-${record.id}`}
-                      dir="auto"
-                      label={copy("Title", "العنوان")}
-                      value={values.title}
-                      maxLength={200}
-                      disabled={readOnly}
-                      onChange={(event) => edit(record, { title: event.target.value })}
-                    />
-                    <TextAreaField
-                      id={`video-description-${record.id}`}
-                      dir="auto"
-                      label={copy("Description", "الوصف")}
-                      value={values.description}
-                      maxLength={20000}
-                      rows={4}
-                      disabled={readOnly}
-                      onChange={(event) => edit(record, { description: event.target.value })}
-                    />
-                    <div className={styles.filters}>
-                      <SelectField
-                        id={`video-status-${record.id}`}
-                        label={copy("New status", "الحالة الجديدة")}
-                        value={values.status}
-                        disabled={readOnly}
-                        onChange={(event) =>
-                          edit(record, { status: event.target.value as AdminVideoRecord["status"] })
-                        }
-                      >
-                        {!videoEditableStates.includes(
-                          record.status as (typeof videoEditableStates)[number],
-                        ) && <option value={record.status}>{names[record.status]}</option>}
-                        {videoEditableStates.map((status) => (
-                          <option key={status} value={status}>
-                            {names[status]}
-                          </option>
-                        ))}
-                      </SelectField>
-                      <SelectField
-                        id={`video-visibility-${record.id}`}
-                        label={copy("New visibility", "الظهور الجديد")}
-                        value={values.visibility}
-                        disabled={readOnly}
-                        onChange={(event) =>
-                          edit(record, {
-                            visibility: event.target.value as AdminVideoRecord["visibility"],
-                          })
-                        }
-                      >
-                        {videoVisibilities.map((value) => (
-                          <option key={value} value={value}>
-                            {visibilities[value]}
-                          </option>
-                        ))}
-                      </SelectField>
-                    </div>
-                    <label className={styles.choice}>
-                      <input
-                        type="checkbox"
-                        checked={values.commentsEnabled}
-                        disabled={readOnly}
-                        onChange={(event) =>
-                          edit(record, { commentsEnabled: event.target.checked })
-                        }
-                      />
-                      {copy("Comments enabled", "التعليقات مفعّلة")}
-                    </label>
-                    {record.tvControl ? (
-                      <FormSection
-                        id={`video-tv-${record.id}`}
-                        legend={copy("TV inclusion preference", "تفضيل الإدراج في البث")}
-                      >
-                        <p>
-                          <bdi>{record.tvControl.name}</bdi> · <bdi>{record.tvControl.id}</bdi>
-                        </p>
-                        <p>
-                          {record.tvControl.origin === "DEFAULT"
-                            ? copy(
-                                "Default inclusion; no explicit preference is stored.",
-                                "إدراج افتراضي؛ لا يوجد تفضيل صريح محفوظ.",
-                              )
-                            : copy("Explicit preference last read", "آخر قراءة للتفضيل الصريح")}
-                          {record.tvControl.updatedAt && (
-                            <>
-                              {" "}
-                              · <bdi>{stamp(record.tvControl.updatedAt)} UTC</bdi>
-                            </>
-                          )}
-                        </p>
-                        <label className={styles.choice}>
-                          <input
-                            type="checkbox"
-                            checked={values.tvIncluded ?? record.tvControl.included}
-                            disabled={readOnly}
-                            onChange={(event) => edit(record, { tvIncluded: event.target.checked })}
-                          />
-                          {copy("Include in this TV channel", "إدراج في هذه القناة التلفزيونية")}
-                        </label>
-                      </FormSection>
-                    ) : (
-                      <p>
-                        {copy(
-                          "No TV channel is available for this video.",
-                          "لا توجد قناة تلفزيونية متاحة لهذا الفيديو.",
-                        )}
-                      </p>
-                    )}
-                    <TextAreaField
-                      id={`video-reason-${record.id}`}
-                      dir="auto"
-                      label={copy(
-                        "Video decision reason (8–500 characters)",
-                        "سبب قرار الفيديو (٨–٥٠٠ حرف)",
-                      )}
-                      maxLength={500}
-                      rows={3}
-                      value={values.reason}
-                      disabled={readOnly}
-                      onChange={(event) => edit(record, { reason: event.target.value })}
-                    />
-                    <ActionButton
-                      tone={values.status === "REMOVED" ? "danger" : "primary"}
-                      disabled={
-                        readOnly ||
-                        !draft.dirty ||
-                        !reasonValid(values.reason) ||
-                        !values.title.trim()
-                      }
-                      onClick={() => void save(record, values)}
+                    <Disclosure
+                      summary={copy("Review and edit video", "مراجعة الفيديو وتعديله")}
+                      open={Boolean(editing[record.id])}
+                      onToggle={(event) => {
+                        const open = event.currentTarget.open;
+                        setEditing((current) =>
+                          current[record.id] === open ? current : { ...current, [record.id]: open },
+                        );
+                      }}
                     >
-                      {copy("Save reviewed video changes", "حفظ تعديلات الفيديو بعد المراجعة")}
-                    </ActionButton>
+                      {editing[record.id] && (
+                        <div className={styles.list}>
+                          <TextField
+                            id={`video-title-${record.id}`}
+                            dir="auto"
+                            label={copy("Title", "العنوان")}
+                            value={values.title}
+                            maxLength={200}
+                            disabled={readOnly}
+                            onChange={(event) => edit(record, { title: event.target.value })}
+                          />
+                          <TextAreaField
+                            id={`video-description-${record.id}`}
+                            dir="auto"
+                            label={copy("Description", "الوصف")}
+                            value={values.description}
+                            maxLength={20000}
+                            rows={4}
+                            disabled={readOnly}
+                            onChange={(event) => edit(record, { description: event.target.value })}
+                          />
+                          <div className={styles.filters}>
+                            <SelectField
+                              id={`video-status-${record.id}`}
+                              label={copy("New status", "الحالة الجديدة")}
+                              value={values.status}
+                              disabled={readOnly}
+                              onChange={(event) =>
+                                edit(record, {
+                                  status: event.target.value as AdminVideoRecord["status"],
+                                })
+                              }
+                            >
+                              {!videoEditableStates.includes(
+                                record.status as (typeof videoEditableStates)[number],
+                              ) && <option value={record.status}>{names[record.status]}</option>}
+                              {videoEditableStates.map((status) => (
+                                <option key={status} value={status}>
+                                  {names[status]}
+                                </option>
+                              ))}
+                            </SelectField>
+                            <SelectField
+                              id={`video-visibility-${record.id}`}
+                              label={copy("New visibility", "الظهور الجديد")}
+                              value={values.visibility}
+                              disabled={readOnly}
+                              onChange={(event) =>
+                                edit(record, {
+                                  visibility: event.target.value as AdminVideoRecord["visibility"],
+                                })
+                              }
+                            >
+                              {videoVisibilities.map((value) => (
+                                <option key={value} value={value}>
+                                  {visibilities[value]}
+                                </option>
+                              ))}
+                            </SelectField>
+                          </div>
+                          <label className={styles.choice}>
+                            <input
+                              type="checkbox"
+                              checked={values.commentsEnabled}
+                              disabled={readOnly}
+                              onChange={(event) =>
+                                edit(record, { commentsEnabled: event.target.checked })
+                              }
+                            />
+                            {copy("Comments enabled", "التعليقات مفعّلة")}
+                          </label>
+                          {record.tvControl ? (
+                            <FormSection
+                              id={`video-tv-${record.id}`}
+                              legend={copy("TV inclusion preference", "تفضيل الإدراج في البث")}
+                            >
+                              <p>
+                                <bdi>{record.tvControl.name}</bdi> ·{" "}
+                                <bdi>{record.tvControl.id}</bdi>
+                              </p>
+                              <p>
+                                {record.tvControl.origin === "DEFAULT"
+                                  ? copy(
+                                      "Default inclusion; no explicit preference is stored.",
+                                      "إدراج افتراضي؛ لا يوجد تفضيل صريح محفوظ.",
+                                    )
+                                  : copy(
+                                      "Explicit preference last read",
+                                      "آخر قراءة للتفضيل الصريح",
+                                    )}
+                                {record.tvControl.updatedAt && (
+                                  <>
+                                    {" "}
+                                    · <bdi>{stamp(record.tvControl.updatedAt)} UTC</bdi>
+                                  </>
+                                )}
+                              </p>
+                              <label className={styles.choice}>
+                                <input
+                                  type="checkbox"
+                                  checked={values.tvIncluded ?? record.tvControl.included}
+                                  disabled={readOnly}
+                                  onChange={(event) =>
+                                    edit(record, { tvIncluded: event.target.checked })
+                                  }
+                                />
+                                {copy(
+                                  "Include in this TV channel",
+                                  "إدراج في هذه القناة التلفزيونية",
+                                )}
+                              </label>
+                            </FormSection>
+                          ) : (
+                            <p>
+                              {copy(
+                                "No TV channel is available for this video.",
+                                "لا توجد قناة تلفزيونية متاحة لهذا الفيديو.",
+                              )}
+                            </p>
+                          )}
+                          <TextAreaField
+                            id={`video-reason-${record.id}`}
+                            dir="auto"
+                            label={copy(
+                              "Video decision reason (8–500 characters)",
+                              "سبب قرار الفيديو (٨–٥٠٠ حرف)",
+                            )}
+                            maxLength={500}
+                            rows={3}
+                            value={values.reason}
+                            disabled={readOnly}
+                            onChange={(event) => edit(record, { reason: event.target.value })}
+                          />
+                          <ActionButton
+                            tone={values.status === "REMOVED" ? "danger" : "primary"}
+                            disabled={
+                              readOnly ||
+                              !draft.dirty ||
+                              !reasonValid(values.reason) ||
+                              !values.title.trim()
+                            }
+                            onClick={() => void save(record, values)}
+                          >
+                            {copy(
+                              "Save reviewed video changes",
+                              "حفظ تعديلات الفيديو بعد المراجعة",
+                            )}
+                          </ActionButton>
+                        </div>
+                      )}
+                    </Disclosure>
                   </article>
                 );
               })}

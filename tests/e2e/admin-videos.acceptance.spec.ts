@@ -67,6 +67,12 @@ const evidence = (data: Seed) => db<Evidence>("evidence", data);
 async function visit(page: Page, data: Seed, locale = "en") {
   await page.goto("/admin/videos?query=" + data.query + "&lang=" + locale);
   await expect(rowFor(page, data.targetId)).toBeVisible();
+  await expect(page.locator(`[id^="video-title-"]`)).toHaveCount(0);
+  await rowFor(page, data.targetId)
+    .locator("summary")
+    .filter({ hasText: locale === "ar" ? /^مراجعة الفيديو وتعديله$/ : /^Review and edit video$/ })
+    .click();
+  await expect(page.locator(`[id^="video-title-"]`)).toHaveCount(1);
 }
 async function unlock(page: Page, ar = false) {
   const main = page.getByRole("main"),
@@ -122,7 +128,10 @@ for (const locale of ["en", "ar"] as const)
         .click();
       await expect(title).toHaveValue(data.name + " reviewed");
       await expect(reason).toHaveValue("Retained paged video moderation");
-      await row.locator("summary").click();
+      await row
+        .locator("summary")
+        .filter({ hasText: copy("Channel, comments and reports", "القناة والتعليقات والبلاغات") })
+        .click();
       await expect(row.getByText(copy("Clip", "مقطع قصير"), { exact: true })).toBeVisible();
       await expect(row.getByText("Actual selected TV", { exact: true })).toBeVisible();
       await expect(
@@ -156,15 +165,17 @@ for (const locale of ["en", "ar"] as const)
         ).toBeGreaterThanOrEqual(44);
         const heading = main.getByRole("heading", { level: 1 });
         await heading.evaluate((node) =>
-          node.scrollIntoView({ block: "start", behavior: "instant" }),
+          node.scrollIntoView({ block: "center", behavior: "instant" }),
         );
         await expect(heading).toBeVisible();
-        expect(
-          await heading.evaluate((node) => {
-            const r = node.getBoundingClientRect();
-            return r.top >= 0 && r.bottom <= innerHeight;
-          }),
-        ).toBe(true);
+        await expect
+          .poll(() =>
+            heading.evaluate((node) => {
+              const r = node.getBoundingClientRect();
+              return r.top >= 0 && r.bottom <= innerHeight;
+            }),
+          )
+          .toBe(true);
         await page.screenshot({
           path: info.outputPath(`design-admin-videos-${locale}-${width}-heading.png`),
           style: "html { scroll-behavior: auto !important; }",
@@ -435,6 +446,7 @@ test("Native video hides private metadata, bulk reason and facts synchronously o
   await row
     .getByLabel("Video decision reason (8–500 characters)", { exact: true })
     .fill("Retained hidden video reason");
+  await row.getByLabel("Select video for batch decision", { exact: true }).check();
   await main
     .getByLabel("Bulk decision reason (8–500 characters)", { exact: true })
     .fill("Retained hidden bulk reason");
