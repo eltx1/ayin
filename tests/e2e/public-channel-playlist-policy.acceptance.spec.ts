@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 type Video = { id: string; title: string; slug: string };
 type Fixture = {
   handle: string;
@@ -16,11 +16,29 @@ function fixture(): Fixture {
     }),
   ) as Fixture;
 }
+async function expectReadableAboveNavigation(page: Page, card: Locator) {
+  await card.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  await expect
+    .poll(async () => {
+      const bounds = await card.boundingBox();
+      const navigation = await page.locator("nav[data-mobile-visible]").boundingBox();
+      return Boolean(
+        bounds && navigation && bounds.y >= 0 && bounds.y + bounds.height <= navigation.y,
+      );
+    })
+    .toBe(true);
+  await expect(card).toBeVisible();
+}
 for (const locale of ["en", "ar"] as const)
   test(`real channel and playlist preserve eligible Kids destinations and localized cards ${locale}`, async ({
     page,
   }, info) => {
     const f = fixture();
+    const socialReads: string[] = [];
+    page.on("request", (request) => {
+      if (/\/social\/channels\//.test(new URL(request.url()).pathname))
+        socialReads.push(request.url());
+    });
     await page.setExtraHTTPHeaders({ "cf-ipcountry": "DE" });
     const prefix = locale === "ar" ? "/ar" : "";
     const channel = `${prefix}/c/${f.handle}?kids=1&tab=videos&lang=${locale}`;
@@ -31,6 +49,10 @@ for (const locale of ["en", "ar"] as const)
       await expect(
         main.getByRole("heading", { name: "Actual eligible creator", exact: true }),
       ).toBeVisible();
+      await expect(main.locator('[data-tv-focus-id$="-subscription"]')).toHaveCount(0);
+      await expect(
+        main.getByRole("link", { name: /Manage TV|Edit channel|إدارة البث|تعديل القناة/ }),
+      ).toHaveCount(0);
       await expect(
         main.getByRole("link", { name: new RegExp(f.videos.general.title) }),
       ).toHaveAttribute("href", `${prefix}/watch/${f.videos.general.slug}?kids=1`);
@@ -50,6 +72,15 @@ for (const locale of ["en", "ar"] as const)
         path: info.outputPath(`design-policy-channel-${locale}-${width}.png`),
         fullPage: true,
       });
+      if (width === 390) {
+        await expectReadableAboveNavigation(
+          page,
+          main.getByRole("link", { name: new RegExp(f.videos.general.title) }),
+        );
+        await page.screenshot({
+          path: info.outputPath(`design-policy-channel-${locale}-${width}-card-viewport.png`),
+        });
+      }
       await page.goto(`${prefix}/c/${f.handle}?kids=1&tab=playlists&lang=${locale}`);
       const link = main.getByRole("link", { name: /Actual eligible collection/ });
       await expect(link).toHaveAttribute(
@@ -80,7 +111,17 @@ for (const locale of ["en", "ar"] as const)
         path: info.outputPath(`design-policy-playlist-${locale}-${width}.png`),
         fullPage: true,
       });
+      if (width === 390) {
+        await expectReadableAboveNavigation(
+          page,
+          main.getByRole("link", { name: new RegExp(f.videos.general.title) }),
+        );
+        await page.screenshot({
+          path: info.outputPath(`design-policy-playlist-${locale}-${width}-card-viewport.png`),
+        });
+      }
     }
+    expect(socialReads).toEqual([]);
     await page.goto(`${prefix}/c/${f.oldHandle}/playlists/${f.playlistSlug}?kids=1&lang=${locale}`);
     await expect(page).toHaveURL(new RegExp(`/c/${f.handle}/playlists/${f.playlistSlug}\\?kids=1`));
     await expect(
