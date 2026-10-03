@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
+import { Prisma } from "@ayin/db";
 
-import { Inject, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { CreatorComplianceService } from "./creator-compliance.service.js";
@@ -26,6 +33,7 @@ import {
   providerActionReasonSchema,
   verifyProviderDestinationSchema,
 } from "./payout-provider.schemas.js";
+import { assertAdminFinanceAuthority } from "./admin-finance-authority.js";
 import { RevenueService } from "./revenue.service.js";
 
 const PAYOUT_ELIGIBLE_STATES = new Set(["FINAL", "ADJUSTMENT"]);
@@ -57,10 +65,15 @@ export class PayoutProviderTransferService {
   }
 
   async getTransfer(payoutId: string) {
-    const payout = await this.database.client.payout.findUniqueOrThrow({
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payoutId)
+    )
+      throw new BadRequestException("Invalid payout ID");
+    const payout = await this.database.client.payout.findUnique({
       where: { id: payoutId },
       include: { providerTransfer: true },
     });
+    if (!payout) throw new NotFoundException("Payout not found");
     return {
       payout: {
         id: payout.id,
@@ -72,8 +85,16 @@ export class PayoutProviderTransferService {
       },
       transfer: payout.providerTransfer
         ? {
-            ...payout.providerTransfer,
-            idempotencyKey: this.maskIdempotencyKey(payout.providerTransfer.idempotencyKey),
+            id: payout.providerTransfer.id,
+            payoutId: payout.providerTransfer.payoutId,
+            provider: payout.providerTransfer.provider,
+            state: payout.providerTransfer.state,
+            externalTransferId: payout.providerTransfer.externalTransferId,
+            providerResponseState: payout.providerTransfer.providerResponseState,
+            submitAttempts: payout.providerTransfer.submitAttempts,
+            statusAttempts: payout.providerTransfer.statusAttempts,
+            cancelAttempts: payout.providerTransfer.cancelAttempts,
+            nextRetryAt: payout.providerTransfer.nextRetryAt,
           }
         : null,
       capabilities: this.capabilities(),
@@ -315,17 +336,33 @@ export class PayoutProviderTransferService {
     if (!payout.providerTransfer || payout.providerTransfer.state === "READY") {
       if (payout.status !== "PENDING") throw new Error("PAYOUT_PROVIDER_CANCEL_NOT_ALLOWED");
       return this.database.client.$transaction(async (tx) => {
-        if (payout.providerTransfer) {
-          await tx.payoutProviderTransfer.update({
-            where: { id: payout.providerTransfer.id },
-            data: { state: "CANCELLED", cancelledAt: new Date() },
-          });
-        }
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "Payout" WHERE "id" = ${payout.id}::uuid /* ayin-provider-cancel-lock */ FOR UPDATE`,
+        );
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "PayoutProviderTransfer" WHERE "payoutId" = ${payout.id}::uuid FOR UPDATE`,
+        );
+        await assertAdminFinanceAuthority(tx, actorAccountId);
+        const current = await tx.payout.findUniqueOrThrow({
+          where: { id: payout.id },
+          include: { providerTransfer: true },
+        });
+        if (
+          current.status !== "PENDING" ||
+          (current.providerTransfer && current.providerTransfer.state !== "READY")
+        )
+          throw new ConflictException("The payout changed before cancellation.");
+        const cancelledTransfer = current.providerTransfer
+          ? await tx.payoutProviderTransfer.update({
+              where: { id: current.providerTransfer.id },
+              data: { state: "CANCELLED", cancelledAt: new Date() },
+            })
+          : null;
         const cancelled = await tx.payout.update({
           where: { id: payout.id },
           data: {
             status: "CANCELLED",
-            processedAt: payout.processedAt ?? new Date(),
+            processedAt: current.processedAt ?? new Date(),
             failureReason: "Cancelled before external provider submission.",
           },
         });
@@ -340,10 +377,22 @@ export class PayoutProviderTransferService {
             entityType: "Payout",
             entityId: payout.id,
             reason: input.reason,
-            metadata: { provider: payout.provider, externalTransferCreated: false },
+            metadata: { provider: current.provider, externalTransferCreated: false },
           },
         });
-        return { payout: { ...cancelled, amount: String(cancelled.amount) }, transfer: null };
+        return {
+          payout: {
+            id: cancelled.id,
+            provider: cancelled.provider,
+            status: cancelled.status,
+            amount: String(cancelled.amount),
+            currency: cancelled.currency,
+            externalReference: cancelled.externalReference,
+          },
+          transfer: cancelledTransfer
+            ? this.safeResult(cancelled, cancelledTransfer).transfer
+            : null,
+        };
       });
     }
 

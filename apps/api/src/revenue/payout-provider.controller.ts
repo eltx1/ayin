@@ -14,12 +14,16 @@ export class AdminPayoutProviderController {
   ) {}
 
   @Get("capabilities")
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
   capabilities() {
     return this.transfers.capabilities();
   }
 
   @Post("destinations/:profileId/verify")
   @RequireAdminStepUp()
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
   verifyDestination(
     @Req() request: AuthenticatedRequest,
     @Param("profileId") profileId: string,
@@ -39,12 +43,16 @@ export class AdminPayoutProviderTransferController {
   ) {}
 
   @Get(":payoutId/provider")
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
   provider(@Param("payoutId") payoutId: string) {
     return this.transfers.getTransfer(payoutId);
   }
 
   @Post(":payoutId/provider/submit")
   @RequireAdminStepUp()
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
   submit(
     @Req() request: AuthenticatedRequest,
     @Param("payoutId") payoutId: string,
@@ -55,6 +63,8 @@ export class AdminPayoutProviderTransferController {
 
   @Post(":payoutId/provider/status")
   @RequireAdminStepUp()
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
   refresh(
     @Req() request: AuthenticatedRequest,
     @Param("payoutId") payoutId: string,
@@ -65,6 +75,8 @@ export class AdminPayoutProviderTransferController {
 
   @Post(":payoutId/provider/cancel")
   @RequireAdminStepUp()
+  @Header("Cache-Control", "no-store, private")
+  @Header("Pragma", "no-cache")
   cancel(
     @Req() request: AuthenticatedRequest,
     @Param("payoutId") payoutId: string,
