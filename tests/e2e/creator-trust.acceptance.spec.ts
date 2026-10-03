@@ -65,7 +65,9 @@ for (const locale of ["en", "ar"] as const)
     await main
       .getByRole("button", { name: ar ? "إرسال الاستئناف" : "Send appeal", exact: true })
       .click();
-    await expect(main.getByRole("status")).toContainText(ar ? "تم إرسال الاستئناف" : "Appeal sent");
+    await expect(
+      main.getByRole("status").filter({ hasText: ar ? "تم إرسال الاستئناف" : "Appeal sent" }),
+    ).toContainText(ar ? "تم إرسال الاستئناف" : "Appeal sent");
     expect(db("evidence", { accountId: user.account.id, actionId: seed.actionId }).appeals).toBe(1);
     await main
       .getByRole("button", { name: ar ? "تحديث السجل" : "Refresh history", exact: true })
