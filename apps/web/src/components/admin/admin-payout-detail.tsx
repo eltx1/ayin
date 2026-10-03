@@ -350,6 +350,7 @@ export function AdminPayoutDetail({ payoutId }: { payoutId: string }) {
       {snapshot && detail && provider && (
         <div
           ref={facts}
+          data-private-payout-facts="true"
           key={`${snapshot.actor.accountId}:${readSequence}`}
           className={styles.records}
         >

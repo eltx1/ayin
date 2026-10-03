@@ -128,9 +128,17 @@ for (const locale of ["en", "ar"] as const)
       payout: { status: "PROCESSING", amount: "210.123456", provider: "MANUAL" },
     });
     // Controlled lifecycle event verifies synchronous sensitive DOM erasure and explicit recovery.
-    await page.evaluate(() =>
-      window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })),
-    );
+    expect(
+      await page.evaluate(() => {
+        window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+        return (
+          document.querySelector("[data-private-payout-facts]")?.checkVisibility() === false &&
+          !document.body.textContent?.includes(
+            "controlled-e2e-immutable-destination-never-provider-approved",
+          )
+        );
+      }),
+    ).toBe(true);
     await expect(revealed).toHaveCount(0);
     await expect(main.getByText("Immutable E2E beneficiary", { exact: true })).toHaveCount(0);
     expect(await page.locator("body").textContent()).not.toContain(destination);

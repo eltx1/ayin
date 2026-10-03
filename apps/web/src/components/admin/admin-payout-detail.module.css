@@ -43,3 +43,7 @@
     flex: 1 1 100%;
   }
 }
+
+.records[hidden] {
+  display: none;
+}
