@@ -1,5 +1,6 @@
-import type { Prisma } from "@ayin/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { Prisma } from "@ayin/db";
+import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { z } from "zod";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
@@ -115,9 +116,15 @@ export class RevenueService {
   }
 
   async createChannelContract(actorAccountId: string, channelId: string, input: unknown) {
-    const data = contractOverrideSchema.parse(input);
-    await this.database.client.channel.findUniqueOrThrow({ where: { id: channelId } });
+    const parsed = contractOverrideSchema.safeParse(input);
+    if (!parsed.success || !z.string().uuid().safeParse(channelId).success)
+      throw new BadRequestException("Invalid channel contract.");
+    const data = parsed.data;
     return this.database.client.$transaction(async (tx) => {
+      const channels = await tx.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`/* ayin-contract-write-lock */ SELECT "id" FROM "Channel" WHERE "id" = ${channelId}::uuid FOR UPDATE`,
+      );
+      if (!channels[0]) throw new NotFoundException("Channel not found.");
       const contract = await tx.creatorContract.create({
         data: {
           channelId,
@@ -141,6 +148,11 @@ export class RevenueService {
           status: data.status,
         },
       });
+      // Contract writes affect the same aggregate observed by channel editors.
+      // Advance monotonically even if two commits share millisecond precision.
+      await tx.$executeRaw(
+        Prisma.sql`UPDATE "Channel" SET "updatedAt" = GREATEST(CURRENT_TIMESTAMP, "updatedAt" + INTERVAL '1 millisecond') WHERE "id" = ${channelId}::uuid`,
+      );
       return contract;
     });
   }
