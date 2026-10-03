@@ -1,255 +1,514 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
-
-import { apiBaseUrl, type AyinIdentity } from "@/lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { Disclosure, PageControls } from "@/components/ui/data-presentation";
 import {
-  getCreatorTvManagement,
-  type CreatorTvManagementResponse,
-  updateCreatorTvVideoPreference,
-} from "@/lib/creator-tv";
+  ActionButton,
+  ActionLink,
+  DataBadge,
+  MetricList,
+  PageHeader,
+  StatusNotice,
+  TextField,
+} from "@/components/ui/design-system";
+import {
+  getTvManagement,
+  saveTvPreference,
+  tvPreferenceInput,
+  TvManagementError,
+  type ManagedTvVideo,
+  type TvSnapshot,
+} from "@/lib/creator-tv-management";
+import styles from "./creator-tv-manager.module.css";
 
-import styles from "./creator-tv.module.css";
-import { CreatorTvStatus } from "./creator-tv-status";
-
-type DraftPreference = {
-  included: boolean;
-  priority: string;
-  sortOrder: string;
-};
-
+type Draft = { included: boolean; priority: string; sortOrder: string };
+const initial = (row: ManagedTvVideo): Draft => ({
+  included: row.included,
+  priority: String(row.priority),
+  sortOrder: row.sortOrder === null ? "" : String(row.sortOrder),
+});
 export function CreatorTvManager({ embedded = false }: { embedded?: boolean } = {}) {
-  // The Studio layout owns its main landmark; standalone creator routes retain theirs.
-  const Surface = embedded ? "div" : "main";
-  const [data, setData] = useState<CreatorTvManagementResponse | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, DraftPreference>>({});
-  const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        const identityResponse = await fetch(`${apiBaseUrl}/auth/me`, {
-          credentials: "include",
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (!identityResponse.ok) throw new Error("Sign in to manage Creator TV.");
-        const identity = (await identityResponse.json()) as AyinIdentity;
-        const management = await getCreatorTvManagement(identity.channel.id);
-        if (controller.signal.aborted) return;
-        setData(management);
-        setDrafts(
-          Object.fromEntries(
-            management.videos.map((video) => [
-              video.id,
-              {
-                included: video.included,
-                priority: String(video.priority),
-                sortOrder: video.sortOrder === null ? "" : String(video.sortOrder),
-              },
-            ]),
-          ),
-        );
-      } catch (caught) {
-        if (controller.signal.aborted) return;
-        setError(caught instanceof Error ? caught.message : "Creator TV could not be loaded.");
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    })();
-    return () => controller.abort();
+  const Surface = embedded ? "div" : "main",
+    { locale, href, formatNumber } = useI18n(),
+    ar = locale === "ar",
+    text = (en: string, arabic: string) => (ar ? arabic : en),
+    [snapshot, setSnapshot] = useState<TvSnapshot | null>(null),
+    [drafts, setDrafts] = useState<Record<string, Draft>>({}),
+    [loading, setLoading] = useState(true),
+    [saving, setSaving] = useState(false),
+    [locked, setLocked] = useState(false),
+    [reviewed, setReviewed] = useState(false),
+    [error, setError] = useState<"read" | "denied" | "input" | "uncertain" | null>(null),
+    [saved, setSaved] = useState<{ videoId: string; updatedAt: string } | null>(null),
+    [page, setPage] = useState(1),
+    context = useRef<TvSnapshot | null>(null),
+    read = useRef<AbortController | null>(null),
+    write = useRef<AbortController | null>(null),
+    guard = useRef(false),
+    decisionLocked = useRef(false);
+  const clear = useCallback(() => {
+    context.current = null;
+    setSnapshot(null);
+    setDrafts({});
+    setSaved(null);
+    setLocked(false);
+    decisionLocked.current = false;
+    setReviewed(false);
   }, []);
-
-  async function save(videoId: string) {
-    if (!data) return;
-    const draft = drafts[videoId];
-    if (!draft) return;
-
-    const priority = Number(draft.priority);
-    const sortOrder = draft.sortOrder.trim() === "" ? null : Number(draft.sortOrder);
-    if (!Number.isInteger(priority) || (sortOrder !== null && !Number.isInteger(sortOrder))) {
-      setError("Priority and order must be whole numbers.");
+  const load = useCallback(async () => {
+    if (guard.current) return;
+    read.current?.abort();
+    const controller = new AbortController();
+    read.current = controller;
+    setLoading(true);
+    setError(null);
+    setReviewed(false);
+    setSnapshot(null);
+    try {
+      const result = await getTvManagement(controller.signal, context.current ?? undefined);
+      if (controller.signal.aborted) return;
+      context.current = result;
+      setSnapshot(result);
+      setReviewed(true);
+    } catch (caught) {
+      if (controller.signal.aborted) return;
+      const denied = caught instanceof TvManagementError && [401, 403].includes(caught.status);
+      if (denied) clear();
+      setError(denied ? "denied" : "read");
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [clear]);
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) void load();
+    });
+    const hide = () => {
+      read.current?.abort();
+      write.current?.abort();
+    };
+    const restore = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        guard.current = false;
+        setSaving(false);
+        setSnapshot(null);
+        setLoading(false);
+        setReviewed(false);
+        setError("read");
+        decisionLocked.current = true;
+        setLocked(true);
+      }
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", restore);
+    return () => {
+      active = false;
+      hide();
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", restore);
+    };
+  }, [load]);
+  const dirty = Object.keys(drafts).length > 0 || (locked && !saved);
+  useEffect(() => {
+    if (!dirty) return;
+    const unload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const click = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (
+        link &&
+        !window.confirm(
+          ar ? "المغادرة وفقد المسودات غير المحفوظة؟" : "Leave and discard unsaved drafts?",
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", unload);
+    document.addEventListener("click", click, true);
+    return () => {
+      window.removeEventListener("beforeunload", unload);
+      document.removeEventListener("click", click, true);
+    };
+  }, [dirty, ar]);
+  async function save(row: ManagedTvVideo) {
+    if (!snapshot || loading || guard.current || decisionLocked.current) return;
+    const draft = drafts[row.id] ?? initial(row);
+    let input;
+    try {
+      input = tvPreferenceInput(draft.included, draft.priority, draft.sortOrder);
+    } catch {
+      setError("input");
       return;
     }
-
-    setSavingId(videoId);
+    guard.current = true;
+    setDrafts((current) => ({ ...current, [row.id]: draft }));
+    setSaving(true);
     setError(null);
-    setMessage(null);
+    setSaved(null);
+    setReviewed(false);
+    const controller = new AbortController();
+    write.current = controller;
     try {
-      await updateCreatorTvVideoPreference(data.tv.id, videoId, {
-        included: draft.included,
-        priority,
-        sortOrder,
+      const ack = await saveTvPreference(snapshot, row.id, input, controller.signal);
+      if (controller.signal.aborted) return;
+      setSaved({ videoId: ack.videoId, updatedAt: ack.updatedAt });
+      setSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              videos: current.videos.map((video) =>
+                video.id === ack.videoId
+                  ? {
+                      ...video,
+                      included: ack.included,
+                      priority: ack.priority,
+                      sortOrder: ack.sortOrder,
+                    }
+                  : video,
+              ),
+            }
+          : current,
+      );
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[row.id];
+        return next;
       });
-      const refreshed = await getCreatorTvManagement(data.channel.id);
-      setData(refreshed);
-      setMessage("Creator TV rotation updated.");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "The TV preference could not be saved.");
+      if (controller.signal.aborted) return;
+      if (
+        caught instanceof TvManagementError &&
+        !caught.writeStarted &&
+        [401, 403].includes(caught.status)
+      ) {
+        clear();
+        setError("denied");
+        return;
+      }
+      setDrafts((current) => ({ ...current, [row.id]: draft }));
+      setError("uncertain");
     } finally {
-      setSavingId(null);
+      guard.current = false;
+      if (!controller.signal.aborted) {
+        setSaving(false);
+        if (context.current) {
+          decisionLocked.current = true;
+          setLocked(true);
+        }
+      }
     }
   }
-
-  if (loading) {
-    return <Surface className={styles.manager}>Loading Creator TV…</Surface>;
-  }
-  if (error && !data) {
-    return (
-      <Surface className={styles.manager}>
-        <p className={styles.error}>{error}</p>
-        <Link className={styles.backLink} href="/">
-          Back to AYIN
-        </Link>
-      </Surface>
-    );
-  }
-  if (!data) return null;
-
+  const rows = snapshot?.videos ?? [],
+    currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / 20))),
+    start = (currentPage - 1) * 20,
+    output = snapshot?.output.output,
+    disabled = saving || loading || locked;
   return (
-    <Surface className={styles.manager}>
-      <header className={styles.managerHeader}>
-        <div>
-          <span className={styles.eyebrow}>Creator TV</span>
-          <h1>{data.tv.name}</h1>
-          <p className={styles.muted}>
-            Your eligible public videos can join your channel rotation automatically. Use these
-            controls only when you want to fine-tune what plays.
-          </p>
-        </div>
-        <Link className={styles.backLink} href={`/c/${encodeURIComponent(data.channel.handle)}/tv`}>
-          Watch TV
-        </Link>
-      </header>
-
-      <CreatorTvStatus key={data.tv.id} tvChannelId={data.tv.id} />
-
-      <section className={styles.managerCard}>
-        <h2>Automatic programming</h2>
-        <div className={styles.automationGrid}>
-          <div className={styles.automationItem}>
-            <strong>Creator TV</strong>
-            <span>{data.automation.platformEnabled ? "Available" : "Temporarily paused"}</span>
-          </div>
-          <div className={styles.automationItem}>
-            <strong>Your channel</strong>
-            <span>
-              {data.automation.channelScheduleEnabled ? "Rotation active" : "Rotation paused"}
-            </span>
-          </div>
-          <div className={styles.automationItem}>
-            <strong>Upcoming guide</strong>
-            <span>{data.automation.guideWindowMinutes} minutes</span>
-          </div>
-        </div>
-        <p className={styles.muted}>
-          Give important videos a higher priority. Use Order only when you want two videos with the
-          same priority to play in a specific sequence.
-        </p>
-      </section>
-
-      <section aria-labelledby="tv-library-heading">
-        <div className={styles.managerHeader}>
-          <div>
-            <h2 id="tv-library-heading">TV library</h2>
-            <p className={styles.muted}>{data.videos.length} eligible published videos</p>
-          </div>
-        </div>
-
-        {data.videos.length === 0 ? (
-          <div className={styles.managerCard}>
-            <p className={styles.muted}>
-              Publish a public video and it will appear here when it is ready for Creator TV.
-            </p>
-          </div>
-        ) : (
-          <div className={styles.videoList}>
-            {data.videos.map((video) => {
-              const draft = drafts[video.id] ?? {
-                included: video.included,
-                priority: String(video.priority),
-                sortOrder: video.sortOrder === null ? "" : String(video.sortOrder),
-              };
-              return (
-                <article className={styles.videoRow} key={video.id}>
-                  <div>
-                    <strong>{video.title}</strong>
-                    <p className={styles.videoMeta}>{formatDuration(video.effectiveDurationMs)}</p>
-                  </div>
-                  <label className={styles.includeControl}>
-                    <input
-                      checked={draft.included}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [video.id]: { ...draft, included: event.target.checked },
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    Include
-                  </label>
-                  <label>
-                    Priority
-                    <input
-                      max={100000}
-                      min={-100000}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [video.id]: { ...draft, priority: event.target.value },
-                        }))
-                      }
-                      type="number"
-                      value={draft.priority}
-                    />
-                  </label>
-                  <label>
-                    Order
-                    <input
-                      max={1000000}
-                      min={0}
-                      onChange={(event) =>
-                        setDrafts((current) => ({
-                          ...current,
-                          [video.id]: { ...draft, sortOrder: event.target.value },
-                        }))
-                      }
-                      placeholder="Auto"
-                      type="number"
-                      value={draft.sortOrder}
-                    />
-                  </label>
-                  <button
-                    className={styles.saveButton}
-                    disabled={savingId === video.id}
-                    onClick={() => void save(video.id)}
-                    type="button"
-                  >
-                    {savingId === video.id ? "Saving…" : "Save"}
-                  </button>
-                </article>
-              );
-            })}
-          </div>
+    <Surface className={styles.workspace}>
+      <PageHeader
+        title={text("Creator TV", "تلفزيون المنشئ")}
+        description={text(
+          "Manage the eligible videos in your channel rotation.",
+          "إدارة المقاطع المؤهلة لدورة العرض في قناتك.",
         )}
-      </section>
-
-      {message ? <p className={styles.notice}>{message}</p> : null}
-      {error ? <p className={`${styles.notice} ${styles.error}`}>{error}</p> : null}
+        actions={
+          <ActionButton tone="secondary" disabled={loading || saving} onClick={() => void load()}>
+            {text("Review current rotation", "مراجعة دورة العرض الحالية")}
+          </ActionButton>
+        }
+      />
+      {loading && (
+        <StatusNotice announce="polite">
+          {text("Loading current rotation…", "جارٍ تحميل دورة العرض الحالية…")}
+        </StatusNotice>
+      )}
+      {saved && (
+        <StatusNotice tone="success" announce="polite">
+          {text(
+            "Preference saved. Review the current rotation before another change.",
+            "تم حفظ التفضيل. راجع دورة العرض الحالية قبل تعديل آخر.",
+          )}{" "}
+          <time dateTime={saved.updatedAt} dir="ltr">
+            {saved.updatedAt}
+          </time>
+        </StatusNotice>
+      )}
+      {error && (
+        <StatusNotice tone="danger" announce="assertive">
+          {error === "denied"
+            ? text(
+                "Your account or channel changed, or access is unavailable. Sign in and reload.",
+                "تغير الحساب أو القناة، أو لا تتوفر صلاحية الوصول. سجل الدخول وأعد التحميل.",
+              )
+            : error === "input"
+              ? text(
+                  "Enter a whole priority from −100000 to 100000 and an optional order from 0 to 1000000.",
+                  "أدخل أولوية صحيحة من −١٠٠٠٠٠ إلى ١٠٠٠٠٠، وترتيبًا اختياريًا من ٠ إلى ١٠٠٠٠٠٠.",
+                )
+              : error === "uncertain"
+                ? text(
+                    "The save outcome could not be verified. Your draft is retained. Review current values before choosing another change.",
+                    "تعذر التحقق من نتيجة الحفظ. تم الاحتفاظ بالمسودة. راجع القيم الحالية قبل اختيار تعديل آخر.",
+                  )
+                : text(
+                    "Current rotation could not be verified. Retry the read.",
+                    "تعذر التحقق من دورة العرض الحالية. أعد القراءة.",
+                  )}
+        </StatusNotice>
+      )}
+      {locked && (
+        <StatusNotice tone="warning">
+          <p>
+            {text(
+              "Changes remain locked until you review current values.",
+              "تظل التعديلات مغلقة حتى مراجعة القيم الحالية.",
+            )}
+          </p>
+          <ActionButton
+            tone="secondary"
+            disabled={!reviewed || loading || saving || !snapshot}
+            onClick={() => {
+              decisionLocked.current = false;
+              setLocked(false);
+              setSaved(null);
+              setError(null);
+            }}
+          >
+            {text("Confirm review and enable changes", "تأكيد المراجعة وتفعيل التعديلات")}
+          </ActionButton>
+        </StatusNotice>
+      )}
+      {snapshot && (
+        <>
+          <PageHeader
+            level={2}
+            title={snapshot.tv.name}
+            description={snapshot.channel.name}
+            actions={
+              <ActionLink href={href(`/c/${encodeURIComponent(snapshot.channel.handle)}/tv`)}>
+                {text("Watch TV", "مشاهدة التلفزيون")}
+              </ActionLink>
+            }
+          />
+          <MetricList
+            label={text("Automatic programming", "البرمجة التلقائية")}
+            items={[
+              {
+                label: text("Eligible videos", "المقاطع المؤهلة"),
+                value: formatNumber(rows.length),
+              },
+              {
+                label: text("Platform rotation", "دورة عرض المنصة"),
+                value: snapshot.automation.platformEnabled
+                  ? text("Available", "متاحة")
+                  : text("Paused", "متوقفة"),
+              },
+              {
+                label: text("Your channel rotation", "دورة عرض القناة"),
+                value: snapshot.automation.channelScheduleEnabled
+                  ? text("Active", "نشطة")
+                  : text("Paused", "متوقفة"),
+              },
+              {
+                label: text(
+                  "Automatically add published videos",
+                  "إضافة المقاطع المنشورة تلقائيًا",
+                ),
+                value: snapshot.automation.channelAutoAddEnabled
+                  ? text("Enabled", "مفعّلة")
+                  : text("Disabled", "معطّلة"),
+              },
+              {
+                label: text("Guide window (minutes)", "نافذة الدليل بالدقائق"),
+                value: formatNumber(snapshot.automation.guideWindowMinutes),
+              },
+            ]}
+          />
+          <section className={styles.panel} aria-label={text("TV output", "خرج التلفزيون")}>
+            <h2>{text("TV output", "خرج التلفزيون")}</h2>
+            <DataBadge>
+              {output &&
+                (!output.configured
+                  ? text("Not configured", "غير مهيأ")
+                  : output.available
+                    ? text("Ready", "جاهز")
+                    : output.status === "ERROR"
+                      ? text("Error", "خطأ")
+                      : output.status === "STOPPED"
+                        ? text("Stopped", "متوقف")
+                        : text("Waiting", "قيد الانتظار"))}
+            </DataBadge>
+            <p>
+              {text("Programs in this schedule snapshot", "البرامج في هذه القراءة")}:{" "}
+              {formatNumber(snapshot.output.schedule.programCount)}
+            </p>
+            <p>
+              {text("Checked at", "وقت القراءة")}:{" "}
+              <time dir="ltr" dateTime={snapshot.output.checkedAt}>
+                {snapshot.output.checkedAt}
+              </time>
+            </p>
+            <p>
+              {text(
+                "This is a status snapshot, not a provider readiness guarantee.",
+                "هذه قراءة للحالة وليست ضمانًا لجاهزية مزود البث.",
+              )}
+            </p>
+          </section>
+          <section className={styles.panel} aria-label={text("TV library", "مكتبة التلفزيون")}>
+            <h2>{text("TV library", "مكتبة التلفزيون")}</h2>
+            <p>
+              {text(
+                "Higher priority plays first. For equal priorities, an explicit order comes before automatic order. Remaining ties use the configured publication order.",
+                "تُعرض الأولوية الأعلى أولًا. عند تساويها، يأتي الترتيب المحدد قبل الترتيب التلقائي. تُحسم بقية حالات التعادل بترتيب النشر المُعد.",
+              )}
+            </p>
+            <p>
+              {snapshot.automation.rotationMode === "PRIORITY_ORDER_OLDEST"
+                ? text("Publication tie-break: oldest first.", "حسم التعادل بالنشر: الأقدم أولًا.")
+                : text("Publication tie-break: newest first.", "حسم التعادل بالنشر: الأحدث أولًا.")}
+            </p>
+            {!rows.length ? (
+              <p>
+                {text(
+                  "No eligible published public MP4 videos were returned.",
+                  "لم تُرجع القراءة مقاطع MP4 عامة منشورة ومؤهلة.",
+                )}
+              </p>
+            ) : (
+              <ul className={styles.list}>
+                {rows.slice(start, start + 20).map((row) => {
+                  const draft = drafts[row.id] ?? initial(row);
+                  return (
+                    <li key={row.id}>
+                      <Disclosure summary={row.title}>
+                        <p dir="auto">{row.description}</p>
+                        <p>
+                          {text("Effective duration (seconds)", "مدة العرض الفعلية بالثواني")}:{" "}
+                          {formatNumber(row.effectiveDurationMs / 1000)}
+                        </p>
+                        <p>
+                          {text("Current saved values", "القيم المحفوظة الحالية")}:{" "}
+                          {row.included ? text("Included", "مضمن") : text("Excluded", "مستبعد")} /{" "}
+                          {formatNumber(row.priority)} /{" "}
+                          {row.sortOrder === null
+                            ? text("Automatic", "تلقائي")
+                            : formatNumber(row.sortOrder)}
+                        </p>
+                        <form
+                          className={styles.form}
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void save(row);
+                          }}
+                        >
+                          <label className={styles.check}>
+                            <input
+                              type="checkbox"
+                              disabled={disabled}
+                              checked={draft.included}
+                              onChange={(event) =>
+                                setDrafts((current) => ({
+                                  ...current,
+                                  [row.id]: { ...draft, included: event.target.checked },
+                                }))
+                              }
+                            />
+                            {text("Include in rotation", "التضمين في دورة العرض")}
+                          </label>
+                          <TextField
+                            id={`tv-priority-${row.id}`}
+                            label={text("Priority", "الأولوية")}
+                            type="number"
+                            required
+                            min={-100000}
+                            max={100000}
+                            step={1}
+                            disabled={disabled}
+                            value={draft.priority}
+                            onChange={(event) =>
+                              setDrafts((current) => ({
+                                ...current,
+                                [row.id]: { ...draft, priority: event.target.value },
+                              }))
+                            }
+                          />
+                          <TextField
+                            id={`tv-order-${row.id}`}
+                            label={text("Order", "الترتيب")}
+                            hint={text(
+                              "Leave blank for automatic order; zero is a valid explicit order.",
+                              "اتركه فارغًا للترتيب التلقائي؛ الصفر ترتيب محدد صالح.",
+                            )}
+                            type="number"
+                            min={0}
+                            max={1000000}
+                            step={1}
+                            disabled={disabled}
+                            value={draft.sortOrder}
+                            onChange={(event) =>
+                              setDrafts((current) => ({
+                                ...current,
+                                [row.id]: { ...draft, sortOrder: event.target.value },
+                              }))
+                            }
+                          />
+                          <ActionButton type="submit" disabled={disabled}>
+                            {text("Save preference", "حفظ التفضيل")}
+                          </ActionButton>
+                        </form>
+                      </Disclosure>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {rows.length > 20 && (
+              <PageControls
+                label={text("TV library", "مكتبة التلفزيون")}
+                summary={`${formatNumber(start + 1)}–${formatNumber(Math.min(start + 20, rows.length))} / ${formatNumber(rows.length)}`}
+                previousLabel={text("Previous", "السابق")}
+                nextLabel={text("Next", "التالي")}
+                hasPrevious={currentPage > 1}
+                hasNext={start + 20 < rows.length}
+                onPrevious={() => setPage(currentPage - 1)}
+                onNext={() => setPage(currentPage + 1)}
+              />
+            )}
+          </section>
+        </>
+      )}
+      {Object.entries(drafts).length > 0 && (
+        <Disclosure summary={text("Retained preference drafts", "مسودات التفضيلات المحفوظة")}>
+          <ul className={styles.list}>
+            {Object.entries(drafts).map(([videoId, draft]) => (
+              <li key={videoId}>
+                <code>{videoId}</code>
+                <p>
+                  {draft.included ? text("Included", "مضمن") : text("Excluded", "مستبعد")} /{" "}
+                  <bdi>{draft.priority}</bdi> /{" "}
+                  <bdi>{draft.sortOrder || text("Automatic", "تلقائي")}</bdi>
+                </p>
+              </li>
+            ))}
+          </ul>
+        </Disclosure>
+      )}
     </Surface>
   );
-}
-
-function formatDuration(milliseconds: number): string {
-  const minutes = Math.max(1, Math.round(milliseconds / 60_000));
-  if (minutes < 60) return `${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 }
