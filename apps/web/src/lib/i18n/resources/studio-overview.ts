@@ -1,5 +1,6 @@
 export const studioOverviewEn = {
   title: "Creator Studio",
+  overview: "Overview",
   description: "Manage your channel and share your next video.",
   upload: "Quick upload",
   loading: "Loading Studio…",
@@ -42,6 +43,7 @@ export const studioOverviewEn = {
 } as const;
 export const studioOverviewAr: Record<keyof typeof studioOverviewEn, string> = {
   title: "استوديو المنشئ",
+  overview: "نظرة عامة",
   description: "أدر قناتك وشارك فيديوك القادم.",
   upload: "رفع سريع",
   loading: "جارٍ تحميل الاستوديو…",

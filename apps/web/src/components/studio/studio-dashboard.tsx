@@ -46,8 +46,8 @@ export function StudioDashboard() {
   return (
     <>
       <PageHeader
-        title={data?.channel.name ?? copy.title}
-        eyebrow={data ? copy.title : undefined}
+        title={copy.overview}
+        eyebrow={data?.channel.name ?? copy.title}
         description={copy.description}
         actions={
           <>
