@@ -21,7 +21,9 @@ async function expectReadableAboveNavigation(page: Page, card: Locator) {
   await expect
     .poll(async () => {
       const bounds = await card.boundingBox();
-      const navigation = await page.locator("nav[data-mobile-visible]").boundingBox();
+      const navigation = await page
+        .getByRole("navigation", { name: /^(Mobile navigation|التنقل على الهاتف)$/ })
+        .boundingBox();
       return Boolean(
         bounds && navigation && bounds.y >= 0 && bounds.y + bounds.height <= navigation.y,
       );
