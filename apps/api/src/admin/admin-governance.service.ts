@@ -3,6 +3,11 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service.js";
 import { lockStaffRoleChanges } from "../database/staff-role-lock.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
+import {
+  lockAdminAccountWrite,
+  nextAccountVersion,
+  type AccountWriteActor,
+} from "./admin-account-write-authority.js";
 import { adminBadRequest } from "./admin.errors.js";
 import { assignableAdminRoles, type AdminRole } from "./admin.roles.js";
 
@@ -233,11 +238,17 @@ export class AdminGovernanceService {
     };
   }
 
-  async revokeSessions(actorAccountId: string, accountId: string, reason: string) {
+  async revokeSessions(
+    actor: AccountWriteActor,
+    accountId: string,
+    reason: string,
+    expectedUpdatedAt?: string,
+  ) {
     return this.database.client.$transaction(async (tx) => {
+      const current = await lockAdminAccountWrite(tx, actor, accountId, expectedUpdatedAt);
       const account = await tx.account.update({
         where: { id: accountId },
-        data: { authVersion: { increment: 1 } },
+        data: { authVersion: { increment: 1 }, updatedAt: nextAccountVersion(current.updatedAt) },
         select: { id: true, email: true, displayName: true, authVersion: true },
       });
       await tx.accountSession.updateMany({
@@ -245,7 +256,7 @@ export class AdminGovernanceService {
         data: { revokedAt: new Date(), revokeReason: "ADMIN_REVOKED" },
       });
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "account.sessions_revoked",
         entityType: "Account",
         entityId: accountId,

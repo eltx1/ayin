@@ -65,10 +65,11 @@ describe("Native account administration boundaries", () => {
     const record = parseAdminUser(row());
     expect(userCommand(record, { kind: "name", displayName: " New name " })).toEqual({
       displayName: "New name",
+      expectedUpdatedAt: stamp,
     });
     expect(
       userCommand(record, { kind: "status", status: "SUSPENDED", reason: " Reviewed suspension " }),
-    ).toEqual({ status: "SUSPENDED", reason: "Reviewed suspension" });
+    ).toEqual({ status: "SUSPENDED", reason: "Reviewed suspension", expectedUpdatedAt: stamp });
     for (const command of [
       { kind: "name", displayName: " " } as const,
       { kind: "sessions", reason: "short" } as const,
@@ -163,7 +164,7 @@ describe("Native account administration boundaries", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(fetcher.mock.calls[1]?.[1]).toMatchObject({
       method: "PATCH",
-      body: '{"displayName":"New name"}',
+      body: JSON.stringify({ displayName: "New name", expectedUpdatedAt: stamp }),
     });
     const changed = vi.fn().mockResolvedValue(response({ ...actor, roles: ["FINANCE_MANAGER"] }));
     vi.stubGlobal("fetch", changed);
