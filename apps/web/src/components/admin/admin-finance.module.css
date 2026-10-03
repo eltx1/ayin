@@ -73,3 +73,11 @@
 .workspace textarea {
   max-inline-size: 100%;
 }
+
+@media (max-width: 640px) {
+  .workspace [role="tablist"] [role="tab"] {
+    flex-basis: 8rem;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+}
