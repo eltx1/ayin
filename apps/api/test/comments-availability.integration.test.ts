@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test } from "@nestjs/testing";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppModule } from "../src/app.module.js";
 import { AuthTokenService } from "../src/auth/auth-token.service.js";
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -260,6 +260,113 @@ databaseDescribe("Comments public availability and Kids server boundary", () => 
       await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS ayin_test_profile_audit_failure()");
     }
   }
+  async function waitForProfileLock() {
+    await vi.waitFor(
+      async () => {
+        const rows = await prisma.$queryRaw<
+          Array<{ waiting: bigint }>
+        >`SELECT count(*)::bigint AS waiting FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%ViewerProfile%FOR UPDATE%'`;
+        expect(Number(rows[0]?.waiting ?? 0)).toBeGreaterThan(0);
+      },
+      { timeout: 3000, interval: 25 },
+    );
+  }
+  it("waits for a concurrent suppression commit before authorizing comment creation", async () => {
+    const f = await fixture();
+    let release!: () => void, locked!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "ViewerProfile" WHERE "id" = ${f.user.profile.id}::uuid FOR UPDATE`;
+        await tx.channelHiddenProfile.create({
+          data: {
+            channelId: f.video.channelId,
+            profileId: f.user.profile.id,
+            hiddenByAccountId: f.user.account.id,
+          },
+        });
+        locked();
+        await gate;
+      },
+      { timeout: 10000 },
+    );
+    let pending: ReturnType<typeof app.inject> | undefined;
+    try {
+      await ready;
+      pending = app.inject({
+        method: "POST",
+        url: `/comments/videos/${f.video.id}`,
+        headers: { cookie: f.cookie, origin: "http://localhost:3000" },
+        payload: { body: "Concurrent denied comment" },
+      });
+      // inject is thenable; start execution without waiting for the locked request.
+      const response = pending.then((value) => value);
+      await waitForProfileLock();
+      release();
+      await holder;
+      expect((await response).statusCode).toBe(403);
+      expect(await prisma.comment.count({ where: { videoId: f.video.id } })).toBe(1);
+    } finally {
+      release();
+      await holder;
+      if (pending) await pending;
+    }
+  });
+  it("waits for a concurrent comment commit and includes that comment in suppression", async () => {
+    const f = await fixture();
+    let release!: () => void, locked!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const ready = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "ViewerProfile" WHERE "id" = ${f.user.profile.id}::uuid FOR UPDATE`;
+        const comment = await tx.comment.create({
+          data: {
+            videoId: f.video.id,
+            authorProfileId: f.user.profile.id,
+            body: "Concurrent committed comment",
+          },
+        });
+        locked();
+        await gate;
+        return comment.id;
+      },
+      { timeout: 10000 },
+    );
+    let pending: ReturnType<typeof app.inject> | undefined;
+    try {
+      await ready;
+      pending = app.inject({
+        method: "PUT",
+        url: `/comments/channels/${f.video.channelId}/hidden-profiles/${f.user.profile.id}`,
+        headers: { cookie: f.cookie, origin: "http://localhost:3000" },
+      });
+      const response = pending.then((value) => value);
+      await waitForProfileLock();
+      release();
+      const commentId = await holder;
+      expect((await response).statusCode).toBe(200);
+      expect((await prisma.comment.findUniqueOrThrow({ where: { id: commentId } })).status).toBe(
+        "HIDDEN",
+      );
+      expect(
+        await prisma.comment.count({ where: { videoId: f.video.id, status: "PUBLISHED" } }),
+      ).toBe(0);
+    } finally {
+      release();
+      await holder;
+      if (pending) await pending;
+    }
+  });
   it("commits profile suppression, existing comment hiding and audit together; unhide never republishes old comments", async () => {
     const f = await fixture();
     const url = `/comments/channels/${f.video.channelId}/hidden-profiles/${f.user.profile.id}`;

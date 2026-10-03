@@ -97,35 +97,45 @@ export class CommentsService {
     this.assertAdultProfile(profile);
     if (!video.commentsEnabled)
       throw new CommentsError("COMMENTS_DISABLED", "Comments are disabled for this video.", 409);
-    const hidden = await this.database.client.channelHiddenProfile.findUnique({
-      where: { channelId_profileId: { channelId: video.channelId, profileId: profile.id } },
-      select: { id: true },
-    });
-    if (hidden)
-      throw new CommentsError("PROFILE_HIDDEN", "You cannot comment on this channel.", 403);
-    if (parentId) {
-      const parent = await this.database.client.comment.findUnique({
-        where: { id: parentId },
-        select: { videoId: true, parentId: true, status: true },
-      });
-      if (!parent || parent.videoId !== videoId || parent.status !== "PUBLISHED")
-        throw new CommentsError("PARENT_NOT_FOUND", "Reply target not found.", 404);
-      if (parent.parentId)
-        throw new CommentsError(
-          "THREAD_DEPTH_LIMIT",
-          "Replies are limited to one nested level.",
-          409,
-        );
-    }
     let normalized: string;
     try {
       normalized = normalizeCommentBody(body, policy);
     } catch (error) {
       throw this.policyError(error);
     }
-    return this.database.client.comment.create({
-      data: { videoId, authorProfileId: profile.id, parentId: parentId ?? null, body: normalized },
-      select: { id: true, body: true, parentId: true, createdAt: true },
+    return this.database.client.$transaction(async (tx) => {
+      // Both creation and profile suppression lock the existing profile before
+      // checking suppression/writing comments, including the first hide.
+      await tx.$queryRaw`SELECT "id" FROM "ViewerProfile" WHERE "id" = ${profile.id}::uuid FOR UPDATE`;
+      const hidden = await tx.channelHiddenProfile.findUnique({
+        where: { channelId_profileId: { channelId: video.channelId, profileId: profile.id } },
+        select: { id: true },
+      });
+      if (hidden)
+        throw new CommentsError("PROFILE_HIDDEN", "You cannot comment on this channel.", 403);
+      if (parentId) {
+        const parent = await tx.comment.findUnique({
+          where: { id: parentId },
+          select: { videoId: true, parentId: true, status: true },
+        });
+        if (!parent || parent.videoId !== videoId || parent.status !== "PUBLISHED")
+          throw new CommentsError("PARENT_NOT_FOUND", "Reply target not found.", 404);
+        if (parent.parentId)
+          throw new CommentsError(
+            "THREAD_DEPTH_LIMIT",
+            "Replies are limited to one nested level.",
+            409,
+          );
+      }
+      return tx.comment.create({
+        data: {
+          videoId,
+          authorProfileId: profile.id,
+          parentId: parentId ?? null,
+          body: normalized,
+        },
+        select: { id: true, body: true, parentId: true, createdAt: true },
+      });
     });
   }
 
@@ -302,6 +312,8 @@ export class CommentsService {
           }),
         ];
     await this.database.client.$transaction([
+      this.database.client
+        .$queryRaw`SELECT "id" FROM "ViewerProfile" WHERE "id" = ${profileId}::uuid FOR UPDATE`,
       ...changes,
       this.database.client.adminAuditLog.create({
         data: {
