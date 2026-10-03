@@ -219,14 +219,21 @@ export class AdminGovernanceController {
     @Param("accountId") accountIdRaw: string,
     @Body() body: unknown,
   ) {
-    const parsed = z.object({ reason: reasonSchema }).strict().safeParse(body);
+    const parsed = z
+      .object({
+        reason: reasonSchema,
+        expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
+      })
+      .strict()
+      .safeParse(body);
     if (!parsed.success) {
       throw adminBadRequest("INVALID_SESSION_REVOCATION", "A valid audit reason is required.");
     }
     return this.governance.revokeSessions(
-      request.ayinAuth.accountId,
+      request.ayinAuth,
       this.uuid(accountIdRaw),
       parsed.data.reason,
+      parsed.data.expectedUpdatedAt,
     );
   }
 
