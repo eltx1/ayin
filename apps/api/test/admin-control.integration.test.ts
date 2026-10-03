@@ -85,6 +85,9 @@ databaseDescribe("Task 17 Admin control plane", () => {
         authVersion: 17,
       })),
     });
+    const auditBeforeReads = await prisma.adminAuditLog.findMany({ orderBy: { id: "asc" } });
+    expect(auditBeforeReads).toHaveLength(4);
+    expect(auditBeforeReads.every((entry) => entry.entityType !== "Account")).toBe(true);
     const read = (url: string, cookie = operator.cookie) =>
       app.inject({ method: "GET", url, headers: { cookie } });
     const first = await read("/admin/control/users?query=directory-owned-&take=25&page=1");
@@ -123,7 +126,9 @@ databaseDescribe("Task 17 Admin control plane", () => {
     expect(
       (await app.inject({ method: "GET", url: "/admin/control/users/" + ids[0] })).statusCode,
     ).toBe(401);
-    expect(await prisma.adminAuditLog.count()).toBe(0);
+    expect(await prisma.adminAuditLog.findMany({ orderBy: { id: "asc" } })).toEqual(
+      auditBeforeReads,
+    );
     expect(await prisma.account.count({ where: { id: { in: ids }, authVersion: 17 } })).toBe(26);
   });
 
