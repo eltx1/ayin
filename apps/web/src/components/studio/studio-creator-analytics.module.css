@@ -32,3 +32,12 @@
   color: var(--muted);
   margin-block: 16px;
 }
+.report [role="tab"] {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.report table {
+  table-layout: auto;
+  min-inline-size: 48rem;
+}

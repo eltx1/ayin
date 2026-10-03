@@ -49,3 +49,30 @@ Baseline accepted/deployed main `d3484c6ec4d256effb9f440b882428a42ce0aea7`, exac
 | Home            |          50347 |         50482 |           14351 |          14351 |
 
 Content adds1018 compressed entry bytes for real decision UI/state; common routes add133–135 bytes from shared focus behavior. Route-local labels avoid a new global vocabulary dictionary. CSS increments are explicit. No performance improvement is claimed; full Phase10 measurements remain open. Preserve old results rather than treating small environment-dependent baseline differences as regressions or speedups across unrelated measurements.
+
+## Moderation queue entry cost — measured2026-10-03
+
+Baseline accepted #174 `022140c5027333b525c49c221382878377938e41`, tree `6987f874cf594f7e45817f890cc99f0403aab222`. After is the reviewed #173 UI applied to that baseline, tree `87d6db59431ea7ab9685d4a96236f7be927b6805`; it exactly matches accepted merge `8397cdcdf23b3a6a45226195f213e8c945cc8d15`, preserving #174. Both actual Web production builds passed on the same local Node24.19.0 / Next16.3.6 / pnpm11.24.0 dependency graph, with existing Edge instrumentation warnings. This same-source local measurement is separate from frozen CI and deployment evidence. No dependency/lockfile changed.
+
+Method: deduplicate entryJSFiles and entryCSSFiles from each actual Next client-reference manifest, gzip each selected file at level9 and sum. It measures selected entry files, not all dynamic imports, actual CDN/browser transfer, hydration, CPU, CWV, API/query latency or player/upload runtime. [Before details](performance/2026-10-03-moderation-entry-before.json) and [after details](performance/2026-10-03-moderation-entry-after.json) retain tool/build IDs and every selected file size/hash. The checked-in utility makes the calculation repeatable and rejects unsupported inlined CSS rather than miscounting it.
+
+| Route            | Before gzip JS | After gzip JS | Before gzip CSS | After gzip CSS |
+| ---------------- | -------------: | ------------: | --------------: | -------------: |
+| Admin moderation |          44534 |         48674 |            8321 |          27258 |
+| Admin overview   |          51388 |         51394 |           27108 |          27258 |
+| Studio overview  |          43294 |         43294 |           32466 |          32616 |
+| Upload           |          65259 |         65259 |           27425 |          27575 |
+| Browse           |          45126 |         45126 |           27425 |          27575 |
+| Home             |          53346 |         53346 |           27425 |          27575 |
+
+The queue adds4140 selected gzip JS bytes for validated bounded reads, role/query state, recovery, full text disclosure and scoped EN/AR. Admin overview adds6 JS bytes from the optional collection signal helper; the measured Viewer/Studio/Upload JS does not change. Moderation now imports existing shared UI primitives, so its selected CSS includes substantially more existing shared styling (+18937), not merely its new local rules. Other sampled routes add150 selected compressed CSS bytes due to the generated shared CSS grouping. This cost is explicit; no speedup or complete Phase10 acceptance is claimed. No existing style is removed to manufacture a favorable comparison.
+
+Reproduction after a Web build from the repository root:
+
+```bash
+node scripts/measure-next-entry-bytes.mjs apps/web/.next \
+  /admin/moderation/page /admin/page /studio/page \
+  '/(viewer)/upload/page' '/(viewer)/browse/page' '/(viewer)/page'
+```
+
+Current primary guidance rechecked2026-10-03: [Web Vitals](https://web.dev/articles/vitals) and [Chrome performance reference](https://developer.chrome.com/docs/devtools/performance/reference). LCP/INP/CLS are experience metrics evaluated against representative real visits; local entry-size sums are not them. Field assessment and controlled CPU/network/interaction lab measurements remain separate required work. Do not label a page compliant from these byte results or claim INP from a load without interaction.

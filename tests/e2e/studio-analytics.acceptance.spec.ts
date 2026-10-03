@@ -50,6 +50,10 @@ for (const locale of ["en", "ar"] as const)
       ar ? "التحليلات" : "Analytics",
     );
     await expect(tabs.getByRole("tab")).toHaveCount(5);
+    for (const button of await tabs.getByRole("tab").all()) {
+      const bounds = await button.boundingBox();
+      expect(bounds?.height).toBeLessThanOrEqual(50);
+    }
     const overview = tabs.getByRole("tab", { name: ar ? "نظرة عامة" : "Overview", exact: true });
     await overview.focus();
     await page.keyboard.press("End");
