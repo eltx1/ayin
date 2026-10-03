@@ -617,7 +617,9 @@ export class AdminControlService {
           status: video.status,
           visibility: video.visibility,
           commentsEnabled: video.commentsEnabled,
-          ...(patch.tvIncluded !== undefined ? { tvIncluded: patch.tvIncluded } : {}),
+          ...(patch.tvIncluded !== undefined && tvControl
+            ? { tvIncluded: tvControl.included }
+            : {}),
         },
       });
       return { ...video, ...(tvControl ? { tvControl } : {}) };

@@ -383,5 +383,9 @@ databaseDescribe("Admin video exact TV inclusion snapshots and preference author
       origin: "EXPLICIT",
       updatedAt: rows.find((r) => r.tvChannelId === f.tv.id)!.updatedAt.toISOString(),
     });
+    const audit = await prisma.adminAuditLog.findFirstOrThrow({
+      where: { actorAccountId: f.id, action: "video.admin_updated", entityId: f.video.id },
+    });
+    expect(audit.metadata).toMatchObject({ status: "REMOVED", tvIncluded: false });
   });
 });
