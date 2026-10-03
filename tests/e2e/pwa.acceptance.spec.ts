@@ -33,6 +33,16 @@ test("PWA stores only public assets and displays a neutral offline page", async 
         ["/offline.html", "/icons/ayin-192.svg", "/icons/ayin-512.svg"].includes(url),
     ),
   ).toBe(true);
+  for (const locale of ["ar", "en"]) {
+    await page.goto(`/browse?lang=${locale}`);
+    await expect(page.locator("html")).toHaveAttribute("dir", locale === "ar" ? "rtl" : "ltr");
+  }
+  // Route worker-owned fetches too: page-level network emulation alone can
+  // leave a Chromium service worker network request online.
+  await context.route("**/*", async (route) => {
+    if (route.request().serviceWorker()) return route.abort("internetdisconnected");
+    return route.continue();
+  });
   await context.setOffline(true);
   try {
     await page.goto("/creator/upload");
@@ -43,6 +53,7 @@ test("PWA stores only public assets and displays a neutral offline page", async 
     await expect(page.getByRole("link", { name: "Try again · إعادة المحاولة" })).toBeVisible();
   } finally {
     await context.setOffline(false);
+    await context.unroute("**/*");
   }
 });
 

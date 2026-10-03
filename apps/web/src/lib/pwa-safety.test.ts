@@ -33,6 +33,7 @@ function harness() {
   });
   const self = {
     location: { origin: "https://ayin.stream" },
+    registration: { navigationPreload: { enable: vi.fn(async () => undefined) } },
     addEventListener: (name: string, listener: (event: Record<string, unknown>) => void) =>
       listeners.set(name, listener),
     skipWaiting: vi.fn(async () => undefined),
@@ -88,6 +89,7 @@ describe("AYIN service worker behavior", () => {
       "ayin-pwa-v2-read",
     ]);
     expect(h.self.clients.claim).toHaveBeenCalledOnce();
+    expect(h.self.registration.navigationPreload.enable).toHaveBeenCalledOnce();
   });
   it.each([
     "/api/health",
@@ -122,6 +124,18 @@ describe("AYIN service worker behavior", () => {
         await h.dispatch("fetch", { request: h.request("/ar/watch/x", { mode: "navigate" }) })
       )?.text(),
     ).toBe("offline");
+    expect(h.cache.put).not.toHaveBeenCalled();
+  });
+  it("uses the browser navigation preload without replaying the document request", async () => {
+    const h = harness();
+    const preload = new Response("document", { status: 200 });
+    expect(
+      await h.dispatch("fetch", {
+        request: h.request("/browse?lang=en", { mode: "navigate" }),
+        preloadResponse: Promise.resolve(preload),
+      }),
+    ).toBe(preload);
+    expect(h.fetch).not.toHaveBeenCalled();
     expect(h.cache.put).not.toHaveBeenCalled();
   });
   it("caches a public build asset and serves it without a detached network request", async () => {

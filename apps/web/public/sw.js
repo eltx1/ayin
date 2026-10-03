@@ -16,7 +16,10 @@ self.addEventListener("activate", (event) => {
             .map((key) => caches.delete(key)),
         ),
       )
-      .then(() => self.clients.claim()),
+      .then(async () => {
+        if (self.registration.navigationPreload) await self.registration.navigationPreload.enable();
+        await self.clients.claim();
+      }),
   );
 });
 self.addEventListener("message", (event) => {
@@ -37,10 +40,14 @@ self.addEventListener("fetch", (event) => {
   // Documents and policy-sensitive API reads never enter the worker cache.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(STATIC_CACHE);
-        return (await cache.match(OFFLINE_PAGE)) ?? Response.error();
-      }),
+      (async () => {
+        try {
+          return (await event.preloadResponse) ?? (await fetch(request));
+        } catch {
+          const cache = await caches.open(STATIC_CACHE);
+          return (await cache.match(OFFLINE_PAGE)) ?? Response.error();
+        }
+      })(),
     );
     return;
   }
