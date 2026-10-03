@@ -124,6 +124,26 @@ export class TrustService {
       }),
     ]).then(([reports, cases, takedowns, appeals]) => ({ reports, cases, takedowns, appeals }));
   }
+  async listActorActions(actorAccountId: string) {
+    return {
+      actions: await this.db.client.moderationAction.findMany({
+        where: { actorAccountId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 100,
+        select: {
+          id: true,
+          actorAccountId: true,
+          kind: true,
+          reason: true,
+          createdAt: true,
+          targetAccountId: true,
+          channelId: true,
+          videoId: true,
+          caseId: true,
+        },
+      }),
+    };
+  }
   async updateCase(actor: string, id: string, input: unknown) {
     const d = caseSchema.parse(input);
     return this.db.client.$transaction(async (tx) => {

@@ -47,6 +47,9 @@ export class AdminTrustController {
   @Get("queue") queue() {
     return this.trust.listQueue();
   }
+  @Get("actions") recentActions(@Req() r: AuthenticatedRequest) {
+    return this.trust.listActorActions(r.ayinAuth.accountId);
+  }
   @Get("settings") settings() {
     return this.trust.settings();
   }
