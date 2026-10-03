@@ -1,5 +1,9 @@
 # Native Admin video workspace — prepared source and acceptance scope
 
+## Accepted final source and actual execution
+
+Exact a68d511ea3cd929f661d65f7fecd2d7d90837854 merged as d34e6d6c4f0af34af9727bce223afb77cf213e5a, tree ac3659cce255d2db97fe5ffe297459a04b5d6501, review5402891071/no unresolved threads. Exact-source quality37155076195 passed404API/490Web/791PG; browser37155076188/job111296694117 passed194ordinary15.1m+5PWA35.4s; security37155076187/inventory37155076201 passed. Artifact11285407505 SHA256af7efbbf89bf69ed0b1a236a148532bffab23b26bfb7fa1b473f063d7f9e53dc was independently hashed and all8original EN/AR390/1440 heading/record images individually viewed. Focused9-entry union and actual merged Git tree independently matched. Accepted d34 runtime proofs are recorded in the master checkpoint. Earlier prepared/failing statements below remain historical, not relabeled.
+
 This slice replaces the remaining prompt-based Admin video page with native English/Arabic forms. It depends on the separately reviewed video write authority and deterministic TV preference authority. It does not close any master phase or certify native devices, providers, advertising delivery, or production media.
 
 ## Read and command behavior

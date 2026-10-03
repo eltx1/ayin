@@ -206,3 +206,12 @@ jobs:
           path: test-results/**/design-admin-videos-*.png
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve native video advertising visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-video-ads-visuals
+          path: test-results/**/design-admin-video-ads-*.png
+          if-no-files-found: ignore
+          retention-days: 7

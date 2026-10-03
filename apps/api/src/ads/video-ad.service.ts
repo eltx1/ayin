@@ -250,6 +250,36 @@ export class VideoAdService {
     );
   }
 
+  async targetRecord(kind: "CHANNEL" | "VIDEO", targetId: string) {
+    return this.database.client.$transaction(
+      async (tx) => {
+        const target =
+          kind === "CHANNEL"
+            ? await tx.channel.findUnique({
+                where: { id: targetId },
+                select: { id: true, name: true, handle: true, status: true },
+              })
+            : await tx.video.findUnique({
+                where: { id: targetId },
+                select: {
+                  id: true,
+                  title: true,
+                  slug: true,
+                  status: true,
+                  channel: { select: { id: true, name: true, handle: true } },
+                },
+              });
+        if (!target) throw new NotFoundException("Advertising target unavailable.");
+        const row = await tx.videoAdOverride.findUnique({
+          where: kind === "CHANNEL" ? { channelId: targetId } : { videoId: targetId },
+          select: overrideReadSelection,
+        });
+        return { kind, target, override: row ?? null };
+      },
+      { isolationLevel: "RepeatableRead" },
+    );
+  }
+
   private async overrideFacts(
     client: Prisma.TransactionClient,
     rows: Array<Prisma.VideoAdOverrideGetPayload<{ select: typeof overrideReadSelection }>>,

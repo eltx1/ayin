@@ -188,6 +188,20 @@ export class AdminVideoAdController {
     }
   }
 
+  @Get("channels/:channelId/record")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  channelRecord(@Param("channelId") id: string) {
+    return this.videoAds.targetRecord("CHANNEL", this.id(id));
+  }
+
+  @Get("videos/:videoId/record")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  videoRecord(@Param("videoId") id: string) {
+    return this.videoAds.targetRecord("VIDEO", this.id(id));
+  }
+
   @Delete("channels/:channelId")
   @RequireAdminStepUp()
   deleteChannelOverride(

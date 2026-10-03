@@ -1,5 +1,9 @@
 # Video advertising command authority — prepared source
 
+## Accepted final authority source
+
+Exact3c8b073b54a728698457fb07d4b324f131d4c27c mergedba022196a7a6dd475bbaad58f7cbf68b5108a7a6/tree4dbbadcb06f46823cc7edac4ee59f96b9b55493d, review5402932556/no unresolved threads. Quality37155709026/job111298543625 actually passed404API/490Web/816PG includingall25new cases; browser37155709036/job111298543672 passed194ordinary15.6m+5PWA35.9s; security37155709064/inventory37155709023 passed. Exact focused union and actual merged Git tree matched independently. Initial81ab815/1 failure remains documented below; SQL cascade constraints were retained. UI/image source is unchanged from accepted224 and its originals retain224scope. Captured write versions are accepted separately under227; native Ads is still pending.
+
 Actual settings/override handlers previously passed only an account ID into their audit transactions. Guard checks could precede a credential/configuration/target lock wait; PATCH catch-all handlers also changed later authority or audit failures into400 validation errors.
 
 Settings PATCH and channel/video override PATCH/DELETE now carry the captured authenticated actor into the actual transaction. They explicitly allow AD_MANAGER/Admin/Superadmin, using the held credential, current ACTIVE account/authVersion, actual session/expiry, applicable privileged MFA and step-up checks already used by other Admin write domains. Accounts/TV retain their Operations default and Videos retain their separate Content Moderator scope; adding the explicit advertising role does not grant those domains to AD_MANAGER.
