@@ -79,6 +79,7 @@ for (const locale of ["en", "ar"] as const)
       exact: true,
     });
     await expect(cohort.locator("tbody tr")).toHaveCount(20);
+    await expect(cohort.locator("details dt")).toHaveCount(0);
     const pager = audience.getByRole("navigation", {
       name: ar ? "مجموعات عودة الجمهور" : "Audience return cohorts",
       exact: true,
@@ -99,8 +100,29 @@ for (const locale of ["en", "ar"] as const)
         })
         .locator("tbody tr"),
     ).toHaveCount(7);
-    await cohort.locator("summary").first().click();
+    await expect(cohort.locator("details dt")).toHaveCount(0);
+    const cohortDetails = cohort.locator("details").first();
+    const cohortSummary = cohortDetails.locator("summary");
+    await cohortSummary.focus();
+    await page.keyboard.press("Enter");
+    await expect(cohortDetails).toHaveAttribute("open", "");
     await expect(cohort.getByRole("heading", { name: "D1", exact: true }).first()).toBeVisible();
+    await expect(cohortDetails.locator("dt")).not.toHaveCount(0);
+    const mountedFacts = await cohortDetails.locator("dt").count();
+    await page.keyboard.press("Enter");
+    await expect(cohortDetails).not.toHaveAttribute("open", "");
+    await expect(cohortDetails.locator("dt")).toHaveCount(mountedFacts);
+    await page.keyboard.press("Enter");
+    await expect(cohortDetails).toHaveAttribute("open", "");
+    const daily = audience.getByRole("region", {
+      name: ar ? "الجمهور الجديد والعائد" : "New and returning audience",
+      exact: true,
+    });
+    await expect(daily.locator("details dt")).toHaveCount(0);
+    const dailyDetails = daily.locator("details").first();
+    await dailyDetails.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect(dailyDetails.locator("dt")).toHaveCount(4);
     await tabs.getByRole("tab", { name: ar ? "التفاعل" : "Engagement", exact: true }).click();
     const engagement = main.getByRole("tabpanel", {
       name: ar ? "التفاعل" : "Engagement",
@@ -131,6 +153,10 @@ for (const locale of ["en", "ar"] as const)
     await page.setViewportSize({ width: 1440, height: 1000 });
     await tabs.getByRole("tab", { name: ar ? "الجمهور" : "Audience", exact: true }).click();
     await expect(cohort.locator("tbody tr")).toHaveCount(7);
+    await expect(cohortDetails).toHaveAttribute("open", "");
+    await expect(cohortDetails.locator("dt")).toHaveCount(mountedFacts);
+    await expect(dailyDetails).toHaveAttribute("open", "");
+    await expect(dailyDetails.locator("dt")).toHaveCount(4);
     await page.screenshot({
       path: testInfo.outputPath(`design-studio-analytics-1440-${locale}.png`),
       fullPage: true,
