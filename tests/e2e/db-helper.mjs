@@ -816,6 +816,102 @@ try {
       };
       break;
     }
+    case "seed-creator-analytics": {
+      const url = new URL(databaseUrl);
+      if (!["localhost", "127.0.0.1"].includes(url.hostname) || url.pathname !== "/ayin_e2e")
+        throw new Error("Analytics fixture requires isolated local ayin_e2e");
+      const member = await prisma.channelMember.findFirstOrThrow({
+        where: { accountId: payload.accountId, role: "OWNER" },
+      });
+      const channelId = member.channelId;
+      const video = await prisma.video.create({
+        data: {
+          channelId,
+          slug: `analytics-${channelId}`,
+          title: "Measured analytics video",
+          status: "PUBLISHED",
+          visibility: "PUBLIC",
+          publishedAt: new Date(),
+          durationMs: 60_000,
+        },
+      });
+      const to = new Date();
+      to.setUTCHours(0, 0, 0, 0);
+      for (let index = 28; index > 0; index--) {
+        const bucketStart = new Date(to.getTime() - index * 86400000);
+        const size = index === 28 ? 19 : 20;
+        await prisma.analyticsChannelDailyRollup.create({
+          data: {
+            bucketStart,
+            channelId,
+            views: 10,
+            starts: 10,
+            watchTimeMs: 100_000n,
+            completions: 3,
+            startupSamples: 2,
+            startupDurationMs: 800n,
+            bufferEvents: 1,
+            bufferSamples: 1,
+            bufferDurationMs: 300n,
+            qualitySwitchEvents: 1,
+            adRequests: 2,
+            adFills: 1,
+          },
+        });
+        await prisma.analyticsVideoDailyRollup.create({
+          data: { bucketStart, channelId, videoId: video.id, views: 10 },
+        });
+        await prisma.analyticsChannelDailyDimensionRollup.createMany({
+          data: [
+            { bucketStart, channelId, dimension: "DEVICE", value: "DESKTOP", count: 10 },
+            { bucketStart, channelId, dimension: "PROTOCOL", value: "HLS", count: 10 },
+          ],
+        });
+        await prisma.analyticsChannelAudienceDailyRollup.create({
+          data: {
+            bucketStart,
+            channelId,
+            activeProfiles: size,
+            newProfiles: 5,
+            returningProfiles: size - 5,
+            sessions: 25,
+            watchTimeMs: 100_000n,
+            contentReturnProfiles: 8,
+          },
+        });
+        await prisma.analyticsChannelCohortRollup.create({
+          data: {
+            cohortDate: bucketStart,
+            channelId,
+            cohortSize: size,
+            ...(index > 1
+              ? {
+                  d1Retained: 10,
+                  d1Sessions: 15,
+                  d1WatchTimeMs: 60_000n,
+                  d1ContentReturnProfiles: 3,
+                }
+              : {}),
+          },
+        });
+        await prisma.analyticsSubscriberCohortRollup.create({
+          data: {
+            cohortDate: bucketStart,
+            channelId,
+            cohortSize: size,
+            ...(index > 1 ? { d1Retained: 10 } : {}),
+          },
+        });
+      }
+      result = {
+        views: 280,
+        exposedRows: 27,
+        firstVisible: new Date(to.getTime() - 27 * 86400000).toISOString(),
+        lastVisible: new Date(to.getTime() - 86400000).toISOString(),
+        videoId: video.id,
+      };
+      break;
+    }
     case "seed-moderation-queue": {
       const url = new URL(databaseUrl);
       if (!["localhost", "127.0.0.1"].includes(url.hostname) || !url.pathname.includes("ayin_e2e"))

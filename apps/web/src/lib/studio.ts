@@ -1,3 +1,4 @@
+import { parseStudioAnalytics, type CreatorAnalytics } from "./studio-analytics";
 import { apiBaseUrl, readApiError } from "./api";
 import type { QuickVideoMetadata } from "./quick-upload";
 
@@ -72,16 +73,7 @@ export type StudioOverview = {
   };
 };
 
-export type StudioAnalytics = {
-  periodDays: number;
-  refresh: "query-time";
-  views: number;
-  watchTimeMs: number;
-  averageViewDurationMs: number;
-  completionRate: number;
-  subscribers: number;
-  topVideos: Array<{ videoId: string; title: string; views: number }>;
-};
+export type StudioAnalytics = CreatorAnalytics;
 
 export type StudioComment = {
   id: string;
@@ -112,8 +104,15 @@ export function getStudioOverview(signal?: AbortSignal): Promise<StudioOverview>
   return studioFetch("/creator/studio/overview", signal ? { signal } : undefined);
 }
 
-export function getStudioAnalytics(days = 28): Promise<StudioAnalytics> {
-  return studioFetch(`/creator/studio/analytics?days=${encodeURIComponent(String(days))}`);
+export async function getStudioAnalytics(
+  days = 28,
+  signal?: AbortSignal,
+): Promise<StudioAnalytics> {
+  const response = await studioFetch<unknown>(
+    `/creator/studio/analytics?days=${encodeURIComponent(String(days))}`,
+    signal ? { signal } : undefined,
+  );
+  return parseStudioAnalytics(response, days);
 }
 
 export async function getStudioContent(
