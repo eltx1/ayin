@@ -59,3 +59,13 @@
     flex: 1 1 8rem;
   }
 }
+
+.workspace dl[aria-label] > div {
+  min-inline-size: 0;
+}
+.workspace dl[aria-label] dd {
+  font-size: clamp(1.2rem, 2vw, 1.5rem);
+  white-space: nowrap;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}

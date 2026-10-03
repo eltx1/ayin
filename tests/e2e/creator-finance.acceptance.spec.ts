@@ -156,6 +156,19 @@ for (const locale of ["en", "ar"] as const)
       await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
         .toBe(true);
+      // Preserve each exact amount and unavailable label on one readable line.
+      const metricValues = main.locator("dl[aria-label] dd:visible");
+      expect(await metricValues.count()).toBeGreaterThan(0);
+      for (const value of await metricValues.all()) {
+        expect(
+          await value.evaluate((node) => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const tops = [...range.getClientRects()].map((rect) => Math.round(rect.top));
+            return new Set(tops).size;
+          }),
+        ).toBe(1);
+      }
       await page.screenshot({
         path: testInfo.outputPath(`design-creator-finance-${width}-${locale}.png`),
         fullPage: true,
