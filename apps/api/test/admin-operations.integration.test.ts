@@ -436,6 +436,71 @@ databaseDescribe("Admin operations, support and monetization governance", () => 
     ).not.toBeNull();
   });
 
+  it("rolls back a creator dispute when its audit write fails", async () => {
+    const creator = await register("Atomic Dispute Creator", "atomic-dispute@example.com");
+    await prisma.$executeRawUnsafe(
+      "CREATE FUNCTION ayin_test_dispute_audit_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action = 'creator.revenue_dispute_created' THEN RAISE EXCEPTION 'test dispute audit failure'; END IF; RETURN NEW; END; $$",
+    );
+    try {
+      await prisma.$executeRawUnsafe(
+        'CREATE TRIGGER ayin_test_dispute_audit_failure BEFORE INSERT ON "AdminAuditLog" FOR EACH ROW EXECUTE FUNCTION ayin_test_dispute_audit_failure()',
+      );
+      const failed = await app.inject({
+        method: "POST",
+        url: "/creator/studio/revenue/disputes",
+        headers: { cookie: creator.cookie },
+        payload: {
+          category: "EARNINGS",
+          message: "Actual failed-audit dispute must not leave a committed row.",
+        },
+      });
+      expect(failed.statusCode).toBe(500);
+      expect(
+        await prisma.revenueDispute.count({ where: { channelId: creator.user.channel.id } }),
+      ).toBe(0);
+      expect(
+        await prisma.adminAuditLog.count({
+          where: {
+            actorAccountId: creator.user.account.id,
+            action: "creator.revenue_dispute_created",
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.notification.count({
+          where: { accountId: creator.user.account.id, title: "Revenue dispute opened" },
+        }),
+      ).toBe(0);
+    } finally {
+      await prisma.$executeRawUnsafe(
+        'DROP TRIGGER IF EXISTS ayin_test_dispute_audit_failure ON "AdminAuditLog"',
+      );
+      await prisma.$executeRawUnsafe("DROP FUNCTION IF EXISTS ayin_test_dispute_audit_failure()");
+    }
+    const created = await app.inject({
+      method: "POST",
+      url: "/creator/studio/revenue/disputes",
+      headers: { cookie: creator.cookie },
+      payload: {
+        category: "EARNINGS",
+        message: "Actual successful dispute after failed audit rollback.",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(
+      await prisma.revenueDispute.count({ where: { channelId: creator.user.channel.id } }),
+    ).toBe(1);
+    expect(
+      await prisma.adminAuditLog.count({
+        where: {
+          actorAccountId: creator.user.account.id,
+          action: "creator.revenue_dispute_created",
+          entityId: created.json().id,
+        },
+      }),
+    ).toBe(1);
+  });
+
   it("creates in-app monetization notifications when a revenue dispute changes", async () => {
     const creator = await register("Revenue Creator", "revenue-notify@example.com");
     const finance = await register("Finance Reviewer", "finance-reviewer@example.com");
