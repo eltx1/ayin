@@ -39,13 +39,15 @@ const userQuerySchema = pageSchema
 const channelQuerySchema = pageSchema.extend({
   status: z.enum(["ACTIVE", "HIDDEN", "SUSPENDED", "REMOVED"]).optional(),
 });
-const videoQuerySchema = pageSchema.extend({
-  status: z
-    .enum(["DRAFT", "UPLOADING", "VALIDATING", "SCHEDULED", "PUBLISHED", "REMOVED"])
-    .optional(),
-  visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
-  channelId: z.string().uuid().optional(),
-});
+const videoQuerySchema = pageSchema
+  .extend({
+    status: z
+      .enum(["DRAFT", "UPLOADING", "VALIDATING", "SCHEDULED", "PUBLISHED", "REMOVED"])
+      .optional(),
+    visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
+    channelId: z.string().uuid().optional(),
+  })
+  .strict();
 const tvQuerySchema = pageSchema
   .extend({
     status: z.enum(["ACTIVE", "OFF_AIR", "DISABLED"]).optional(),
@@ -77,6 +79,7 @@ const channelPatchSchema = z
   .strict();
 const videoPatchSchema = z
   .object({
+    expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
     title: z.string().trim().min(1).max(200).optional(),
     description: z.string().max(20_000).nullable().optional(),
     status: z.enum(["DRAFT", "SCHEDULED", "PUBLISHED", "REMOVED"]).optional(),
@@ -89,6 +92,15 @@ const videoPatchSchema = z
 const bulkVideoSchema = z
   .object({
     ids: z.array(z.string().uuid()).min(1).max(100),
+    expectedVideos: z
+      .array(
+        z
+          .object({ id: z.string().uuid(), updatedAt: z.string().datetime({ offset: true }) })
+          .strict(),
+      )
+      .min(1)
+      .max(100)
+      .optional(),
     action: z.enum(["UNPUBLISH", "DISABLE_COMMENTS", "ENABLE_COMMENTS"]),
     reason: z.string().trim().min(3).max(500),
   })
@@ -198,12 +210,24 @@ export class AdminControlController {
   }
 
   @Get("videos")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
   videos(@Query() query: unknown) {
     return this.control.videos(this.parse(videoQuerySchema, query, "INVALID_VIDEO_FILTER"));
   }
 
+  @Get("videos/:videoId")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
+  video(@Param("videoId") raw: string) {
+    return this.control.video(this.id(raw));
+  }
+
   @Patch("videos/:videoId")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
   @RequireAdminStepUp()
   updateVideo(
@@ -212,18 +236,20 @@ export class AdminControlController {
     @Body() body: unknown,
   ) {
     return this.control.updateVideo(
-      request.ayinAuth.accountId,
+      request.ayinAuth,
       this.id(videoIdRaw),
       this.parse(videoPatchSchema, body, "INVALID_VIDEO_UPDATE"),
     );
   }
 
   @Post("videos/bulk")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
   @RequireAdminStepUp()
   bulkVideos(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     return this.control.bulkVideos(
-      request.ayinAuth.accountId,
+      request.ayinAuth,
       this.parse(bulkVideoSchema, body, "INVALID_BULK_VIDEO_UPDATE"),
     );
   }

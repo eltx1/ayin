@@ -15,6 +15,7 @@ export async function lockAdminAccountWrite(
   actor: AccountWriteActor,
   accountId: string,
   expectedUpdatedAt?: string,
+  domainRoles: readonly ("OPERATIONS" | "CONTENT_MODERATOR")[] = ["OPERATIONS"],
 ) {
   await lockStaffRoleChanges(tx);
   const credentials = await tx.$queryRaw<Array<{ status: string; version: number }>>(
@@ -36,9 +37,9 @@ export async function lockAdminAccountWrite(
     throw unauthorized();
   const roles = await tx.$queryRaw<Array<{ role: string }>>(
     Prisma.sql`SELECT "role" FROM "AdminRoleAssignment" WHERE "accountId" = ${actor.accountId}::uuid
-      AND "role" IN ('SUPERADMIN', 'ADMIN', 'OPERATIONS') FOR SHARE`,
+      AND "role"::text IN (${Prisma.join(["SUPERADMIN", "ADMIN", ...domainRoles])}) FOR SHARE`,
   );
-  if (!roles.length) throw adminForbidden("Account administration authority changed.");
+  if (!roles.length) throw adminForbidden("Administration authority changed.");
   const sessions = await tx.$queryRaw<Array<{ id: string }>>(
     Prisma.sql`SELECT "id" FROM "AccountSession" WHERE "id" = ${actor.sessionId}::uuid
       AND "accountId" = ${actor.accountId}::uuid AND "authVersion" = ${actor.authVersion}
