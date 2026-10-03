@@ -825,4 +825,216 @@ databaseDescribe("Creator payout safety", () => {
       }),
     ).toBe(1);
   });
+  async function compliantFixture(suffix: string) {
+    const creator = await register(
+      "Actual compliant creator",
+      `compliance-race-${suffix}@example.com`,
+    );
+    const finance = await register(
+      "Actual compliance Finance",
+      `compliance-finance-${suffix}@example.com`,
+    );
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: finance.user.account.id, role: "FINANCE_MANAGER" },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/creator/studio/revenue/payment-profile",
+          headers: { cookie: creator.cookie },
+          payload: {
+            legalName: "Actual compliant creator",
+            preferredCurrency: "USD",
+            provider: "MANUAL",
+            destination: "isolated bank account ending 4455",
+            countryCode: "US",
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const profile = await prisma.creatorPayoutProfile.update({
+      where: { channelId: creator.user.channel.id },
+      data: { identityStatus: "VERIFIED" },
+    });
+    const entry = await prisma.earningsLedgerEntry.create({
+      data: {
+        channelId: creator.user.channel.id,
+        type: "AD_REVENUE",
+        state: "FINAL",
+        amount: "210.123456",
+        currency: "USD",
+      },
+    });
+    return { creator, finance, profile, entry, channelId: creator.user.channel.id };
+  }
+  function requiredIdentity() {
+    const adapter = moduleReference.get<CreatorComplianceAdapter>(CREATOR_COMPLIANCE_ADAPTER);
+    return vi.spyOn(adapter, "requirements").mockResolvedValue({
+      identityRequired: true,
+      taxRequired: false,
+      payoutDestinationVerificationRequired: false,
+      source: "PROVIDER",
+      version: "isolated-requirement-v1",
+    });
+  }
+  it("rechecks actual compliance after both Creator and Finance payout requests wait for the channel", async () => {
+    const { creator, finance, entry, profile, channelId } = await compliantFixture("state");
+    const requirements = requiredIdentity();
+    try {
+      const lock = await holdFinanceChannel(channelId, async (tx) => {
+        await tx.creatorPayoutProfile.update({
+          where: { id: profile.id },
+          data: { identityStatus: "REJECTED" },
+        });
+      });
+      const creatorRequest = Promise.resolve(
+        app.inject({
+          method: "POST",
+          url: "/creator/studio/revenue/payout-requests",
+          headers: { cookie: creator.cookie },
+          payload: { currency: "USD" },
+        }),
+      );
+      const financeRequest = Promise.resolve(
+        app.inject({
+          method: "POST",
+          url: "/admin/revenue/payouts",
+          headers: { cookie: finance.cookie },
+          payload: { channelId, currency: "USD" },
+        }),
+      );
+      try {
+        await financialWaiters(2);
+        expect(requirements).toHaveBeenCalledTimes(2);
+      } finally {
+        lock.release();
+      }
+      await lock.holder;
+      expect(
+        (await Promise.all([creatorRequest, financeRequest])).map((r) => r.statusCode),
+      ).toEqual([409, 409]);
+      expect(requirements).toHaveBeenCalledTimes(2);
+      expect(await prisma.payout.count({ where: { channelId } })).toBe(0);
+      expect(
+        (await prisma.earningsLedgerEntry.findUniqueOrThrow({ where: { id: entry.id } })).payoutId,
+      ).toBeNull();
+      expect(
+        await prisma.adminAuditLog.count({
+          where: {
+            entityType: "Payout",
+            actorAccountId: { in: [creator.user.account.id, finance.user.account.id] },
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.notification.count({
+          where: {
+            accountId: creator.user.account.id,
+            title: { in: ["Payout created", "Payout request received"] },
+          },
+        }),
+      ).toBe(0);
+    } finally {
+      requirements.mockRestore();
+    }
+  });
+  it("rejects a changed actual requirement context without another provider call while locks are held", async () => {
+    const { creator, entry, profile, channelId } = await compliantFixture("context");
+    const requirements = requiredIdentity();
+    try {
+      const lock = await holdFinanceChannel(channelId, async (tx) => {
+        await tx.creatorPayoutProfile.update({
+          where: { id: profile.id },
+          data: { countryCode: "GB" },
+        });
+      });
+      const request = Promise.resolve(
+        app.inject({
+          method: "POST",
+          url: "/creator/studio/revenue/payout-requests",
+          headers: { cookie: creator.cookie },
+          payload: { currency: "USD" },
+        }),
+      );
+      try {
+        await financialWaiters(1);
+        expect(requirements).toHaveBeenCalledTimes(1);
+      } finally {
+        lock.release();
+      }
+      await lock.holder;
+      const response = await request;
+      expect(response.statusCode).toBe(409);
+      expect(response.json().message).toBe("PAYOUT_COMPLIANCE_CONTEXT_CHANGED");
+      expect(requirements).toHaveBeenCalledTimes(1);
+      expect(await prisma.payout.count({ where: { channelId } })).toBe(0);
+      expect(
+        (await prisma.earningsLedgerEntry.findUniqueOrThrow({ where: { id: entry.id } })).payoutId,
+      ).toBeNull();
+    } finally {
+      requirements.mockRestore();
+    }
+  });
+  it("serializes actual compliance overrides and audits the real immediately preceding state", async () => {
+    const { finance, profile, channelId } = await compliantFixture("override");
+    const lock = await holdFinanceChannel(channelId, async () => {});
+    const requests = ["PENDING", "REJECTED"].map((status) =>
+      Promise.resolve(
+        app.inject({
+          method: "PATCH",
+          url: `/admin/revenue/channels/${channelId}/compliance`,
+          headers: { cookie: finance.cookie },
+          payload: {
+            field: "IDENTITY",
+            status,
+            reason: "Actual independently reviewed compliance override",
+          },
+        }),
+      ),
+    );
+    try {
+      await financialWaiters(2);
+    } finally {
+      lock.release();
+    }
+    await lock.holder;
+    expect((await Promise.all(requests)).map((r) => r.statusCode)).toEqual([200, 200]);
+    const logs = await prisma.adminAuditLog.findMany({
+      where: {
+        action: "creator.compliance_status_overridden",
+        entityId: profile.id,
+        actorAccountId: finance.user.account.id,
+      },
+    });
+    expect(logs).toHaveLength(2);
+    const steps = logs.map(
+      (l) =>
+        l.metadata as {
+          from: string;
+          to: string;
+          channelId: string;
+          rawIdentityDataAccessed: boolean;
+          taxIdentifierAccessed: boolean;
+          bankDataAccessed: boolean;
+        },
+    );
+    const first = steps.find((l) => l.from === "VERIFIED");
+    expect(first).toBeDefined();
+    const second = steps.find((l) => l.from === first?.to);
+    expect(second).toBeDefined();
+    expect(
+      (await prisma.creatorPayoutProfile.findUniqueOrThrow({ where: { id: profile.id } }))
+        .identityStatus,
+    ).toBe(second?.to);
+    expect(
+      steps.every(
+        (l) =>
+          l.channelId === channelId &&
+          !l.rawIdentityDataAccessed &&
+          !l.taxIdentifierAccessed &&
+          !l.bankDataAccessed,
+      ),
+    ).toBe(true);
+  });
 });

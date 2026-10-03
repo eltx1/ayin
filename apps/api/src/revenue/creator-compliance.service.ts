@@ -1,16 +1,30 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Prisma } from "@ayin/db";
+import { ConflictException, Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { decryptPayoutDestination, encryptPayoutDestination } from "./creator-finance.crypto.js";
+import { lockFinanceChannel } from "./creator-finance-authority.js";
 import {
   CREATOR_COMPLIANCE_ADAPTER,
   type CreatorComplianceAdapter,
   type CreatorComplianceStatus,
+  type CreatorComplianceCapabilities,
+  type CreatorComplianceContext,
+  type CreatorComplianceRequirements,
 } from "./creator-compliance.adapter.js";
 import {
   adminComplianceOverrideSchema,
   creatorComplianceStepSchema,
 } from "./creator-compliance.schemas.js";
+
+type ComplianceProfile = Awaited<
+  ReturnType<DatabaseService["client"]["creatorPayoutProfile"]["findUnique"]>
+>;
+export type PayoutCompliancePreparation = {
+  context: CreatorComplianceContext;
+  requirements: CreatorComplianceRequirements;
+  capabilities: CreatorComplianceCapabilities;
+};
 
 const STATUSES = new Set<CreatorComplianceStatus>([
   "NOT_STARTED",
@@ -50,6 +64,16 @@ export class CreatorComplianceService {
     const requirements = await this.adapter.requirements(context);
     const capabilities = this.adapter.capabilities();
 
+    return this.statusForProfile(profile, context, requirements, capabilities);
+  }
+
+  private statusForProfile(
+    profile: ComplianceProfile,
+    context: CreatorComplianceContext,
+    requirements: CreatorComplianceRequirements,
+    capabilities: CreatorComplianceCapabilities,
+  ) {
+    const channelId = context.channelId;
     const identityStatus = this.normalizeStatus(profile?.identityStatus);
     const taxStatus = this.normalizeStatus(profile?.taxStatus);
     const payoutDestinationStatus = this.normalizeStatus(profile?.payoutDestinationStatus);
@@ -106,6 +130,43 @@ export class CreatorComplianceService {
       actionsRequired,
       lastCheckedAt: profile?.complianceLastCheckedAt ?? null,
     };
+  }
+
+  async preparePayoutCompliance(channelId: string): Promise<PayoutCompliancePreparation> {
+    const profile = await this.database.client.creatorPayoutProfile.findUnique({
+      where: { channelId },
+    });
+    const context = {
+      channelId,
+      countryCode: profile?.countryCode ?? null,
+      payoutProvider: profile?.provider ?? null,
+    };
+    const preparation = {
+      context,
+      requirements: await this.adapter.requirements(context),
+      capabilities: this.adapter.capabilities(),
+    };
+    this.assertPreparedPayoutEligible(profile, preparation);
+    return preparation;
+  }
+
+  assertPreparedPayoutEligible(profile: ComplianceProfile, prepared: PayoutCompliancePreparation) {
+    if (
+      profile &&
+      (profile.channelId !== prepared.context.channelId ||
+        profile.countryCode !== prepared.context.countryCode ||
+        profile.provider !== prepared.context.payoutProvider)
+    )
+      throw new ConflictException("PAYOUT_COMPLIANCE_CONTEXT_CHANGED");
+    const status = this.statusForProfile(
+      profile,
+      prepared.context,
+      prepared.requirements,
+      prepared.capabilities,
+    );
+    if (!status.payoutComplianceEligible)
+      throw new ConflictException("PAYOUT_COMPLIANCE_NOT_ELIGIBLE");
+    return status;
   }
 
   async assertPayoutEligible(channelId: string) {
@@ -248,19 +309,23 @@ export class CreatorComplianceService {
 
   async adminOverride(actorAccountId: string, channelId: string, raw: unknown) {
     const input = adminComplianceOverrideSchema.parse(raw);
-    const profile = await this.database.client.creatorPayoutProfile.findUniqueOrThrow({
-      where: { channelId },
-    });
-
-    const field =
-      input.field === "IDENTITY"
-        ? "identityStatus"
-        : input.field === "TAX"
-          ? "taxStatus"
-          : "payoutDestinationStatus";
-    const previous = this.normalizeStatus(profile[field]);
-
     const updated = await this.database.client.$transaction(async (tx) => {
+      await lockFinanceChannel(tx, channelId);
+      await tx.$queryRaw(
+        Prisma.sql`/* ayin-admin-compliance-profile-lock */ SELECT "id" FROM "CreatorPayoutProfile" WHERE "channelId" = ${channelId}::uuid FOR UPDATE`,
+      );
+      const profile = await tx.creatorPayoutProfile.findUniqueOrThrow({
+        where: { channelId },
+      });
+
+      const field =
+        input.field === "IDENTITY"
+          ? "identityStatus"
+          : input.field === "TAX"
+            ? "taxStatus"
+            : "payoutDestinationStatus";
+      const previous = this.normalizeStatus(profile[field]);
+
       const row = await tx.creatorPayoutProfile.update({
         where: { id: profile.id },
         data:
