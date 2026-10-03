@@ -1,0 +1,771 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-03T05:56:05.225Z",
+  "source": {
+    "commit": "b78b22a7dc5dee5a7a1215025aeffa90bfdd9b03",
+    "tree": "defe5b5b8ce5190382831fae96f5afc7036956d3",
+    "node": "v24.19.0",
+    "chromium": "140.0.7339.186"
+  },
+  "environment": "isolated CI/local PostgreSQL and production Next output; local server warmed by suite; fresh browser context per sample",
+  "profile": {
+    "name": "desktop-unthrottled",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "cpuRate": 1,
+    "latencyMs": 0,
+    "downloadBytesPerSecond": -1,
+    "uploadBytesPerSecond": -1
+  },
+  "networkConditionCommand": "Network.emulateNetworkConditions (pinned-browser compatibility)",
+  "fixture": {
+    "analyticsViews": 280,
+    "exposedRows": 27,
+    "seededCompleteDays": 28
+  },
+  "limits": [
+    "Three samples per route; no field population or percentile certification",
+    "CPU slowdown is relative to the CI host, not a physical mobile device",
+    "Browser HTTP cache disabled and Service Worker blocked; PWA startup/cache not measured",
+    "Navigation/observer/CDP metrics are laboratory observations, not production CWV compliance",
+    "Raw Event Timing entries after actual tab/paging inputs are not aggregated or labelled as INP",
+    "Encoded network bytes are CDP request totals, not all later dynamic resources or a CDN model",
+    "API context reads are unthrottled and include client transfer/JSON body receipt; not server-only query timing",
+    "No headers/cookies/storage state/response bodies or account/profile/video IDs are persisted",
+    "Real fixture projections test reads; scheduled aggregation/provider/player/upload/concurrency remain separate"
+  ],
+  "apiMeasurements": [
+    {
+      "days": 7,
+      "sample": 1,
+      "durationMs": 18.426052000024356,
+      "jsonBodyBytes": 6921,
+      "views": 70,
+      "audienceRows": 7
+    },
+    {
+      "days": 7,
+      "sample": 2,
+      "durationMs": 12.24486400000751,
+      "jsonBodyBytes": 6921,
+      "views": 70,
+      "audienceRows": 7
+    },
+    {
+      "days": 7,
+      "sample": 3,
+      "durationMs": 11.621434999979101,
+      "jsonBodyBytes": 6921,
+      "views": 70,
+      "audienceRows": 7
+    },
+    {
+      "days": 28,
+      "sample": 1,
+      "durationMs": 12.260553000029176,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 28,
+      "sample": 2,
+      "durationMs": 13.094011000008322,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 28,
+      "sample": 3,
+      "durationMs": 10.984876000031363,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 90,
+      "sample": 1,
+      "durationMs": 11.910647000011522,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 90,
+      "sample": 2,
+      "durationMs": 12.498329999973066,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 90,
+      "sample": 3,
+      "durationMs": 11.928696000017226,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 365,
+      "sample": 1,
+      "durationMs": 11.839766999997664,
+      "jsonBodyBytes": 21972,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 365,
+      "sample": 2,
+      "durationMs": 12.633293000049889,
+      "jsonBodyBytes": 21972,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 365,
+      "sample": 3,
+      "durationMs": 10.324563000001945,
+      "jsonBodyBytes": 21972,
+      "views": 280,
+      "audienceRows": 27
+    }
+  ],
+  "queryPlans": {
+    "database": "PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit",
+    "rangeDays": 365,
+    "fixtureMinimum": 20,
+    "plans": [
+      {
+        "kind": "channel-aggregate",
+        "planningMs": 0.194,
+        "executionMs": 0.052,
+        "plan": {
+          "Node Type": "Aggregate",
+          "Plan Rows": 1,
+          "Actual Rows": 1,
+          "Actual Loops": 1,
+          "Actual Startup Time": 0.029,
+          "Actual Total Time": 0.03,
+          "Shared Hit Blocks": 2,
+          "Shared Read Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Index Scan",
+              "Relation Name": "AnalyticsChannelDailyRollup",
+              "Index Name": "AnalyticsChannelDailyRollup_channelId_bucketStart_idx",
+              "Scan Direction": "Forward",
+              "Plan Rows": 1,
+              "Actual Rows": 28,
+              "Actual Loops": 1,
+              "Actual Startup Time": 0.017,
+              "Actual Total Time": 0.02,
+              "Shared Hit Blocks": 2,
+              "Shared Read Blocks": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "threshold-qualified-audience",
+        "planningMs": 0.133,
+        "executionMs": 0.025,
+        "plan": {
+          "Node Type": "Index Scan",
+          "Relation Name": "AnalyticsChannelAudienceDailyRollup",
+          "Index Name": "AnalyticsChannelAudienceDailyRollup_channelId_bucketStart_idx",
+          "Scan Direction": "Forward",
+          "Plan Rows": 1,
+          "Actual Rows": 27,
+          "Actual Loops": 1,
+          "Actual Startup Time": 0.009,
+          "Actual Total Time": 0.013,
+          "Shared Hit Blocks": 2,
+          "Shared Read Blocks": 0,
+          "Rows Removed by Filter": 1
+        }
+      },
+      {
+        "kind": "threshold-qualified-subscriber-cohorts",
+        "planningMs": 0.138,
+        "executionMs": 0.023,
+        "plan": {
+          "Node Type": "Index Scan",
+          "Relation Name": "AnalyticsSubscriberCohortRollup",
+          "Index Name": "AnalyticsSubscriberCohortRollup_channelId_cohortDate_idx",
+          "Scan Direction": "Forward",
+          "Plan Rows": 1,
+          "Actual Rows": 27,
+          "Actual Loops": 1,
+          "Actual Startup Time": 0.007,
+          "Actual Total Time": 0.012,
+          "Shared Hit Blocks": 2,
+          "Shared Read Blocks": 0,
+          "Rows Removed by Filter": 1
+        }
+      }
+    ]
+  },
+  "samples": [
+    {
+      "route": "/browse",
+      "sample": 1,
+      "readyIncludingDefinedSettleMs": 1239.790907000017,
+      "beforeInteractionsMs": 1234.4000000000233,
+      "ttfbMs": 12.29999999993015,
+      "domContentLoadedMs": 87.20000000006985,
+      "fcpMs": 164,
+      "observedLcpMs": 164,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0.0007297731602044753,
+      "longTasks": [],
+      "observedEventTimingEntries": [],
+      "domElements": 137,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.049761,
+          "deltaMs": 49.761
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000069,
+          "afterSeconds": 0.221489,
+          "deltaMs": 221.42
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.017258,
+          "deltaMs": 17.258
+        }
+      },
+      "rendererJsHeapUsedBytes": 5487736,
+      "network": {
+        "document-or-other": {
+          "requests": 23,
+          "failed": 16,
+          "encodedBytes": 39805
+        },
+        "stylesheet": {
+          "requests": 4,
+          "failed": 0,
+          "encodedBytes": 34008
+        },
+        "script": {
+          "requests": 12,
+          "failed": 0,
+          "encodedBytes": 191625
+        },
+        "api": {
+          "requests": 3,
+          "failed": 0,
+          "encodedBytes": 3882
+        }
+      }
+    },
+    {
+      "route": "/browse",
+      "sample": 2,
+      "readyIncludingDefinedSettleMs": 1226.4386299999896,
+      "beforeInteractionsMs": 1225.5,
+      "ttfbMs": 8.300000000046566,
+      "domContentLoadedMs": 101,
+      "fcpMs": 120,
+      "observedLcpMs": 120,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0.0007297731602044753,
+      "longTasks": [],
+      "observedEventTimingEntries": [],
+      "domElements": 137,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.052645,
+          "deltaMs": 52.644999999999996
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000018,
+          "afterSeconds": 0.225888,
+          "deltaMs": 225.87
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.011003,
+          "deltaMs": 11.003
+        }
+      },
+      "rendererJsHeapUsedBytes": 5540816,
+      "network": {
+        "document-or-other": {
+          "requests": 23,
+          "failed": 17,
+          "encodedBytes": 38178
+        },
+        "stylesheet": {
+          "requests": 4,
+          "failed": 0,
+          "encodedBytes": 34008
+        },
+        "script": {
+          "requests": 12,
+          "failed": 0,
+          "encodedBytes": 191625
+        },
+        "api": {
+          "requests": 3,
+          "failed": 0,
+          "encodedBytes": 3882
+        }
+      }
+    },
+    {
+      "route": "/browse",
+      "sample": 3,
+      "readyIncludingDefinedSettleMs": 1226.8799930000096,
+      "beforeInteractionsMs": 1226.0999999999767,
+      "ttfbMs": 9.400000000023283,
+      "domContentLoadedMs": 76.90000000002328,
+      "fcpMs": 128,
+      "observedLcpMs": 128,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0.0008010654779128086,
+      "longTasks": [],
+      "observedEventTimingEntries": [],
+      "domElements": 137,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.050321,
+          "deltaMs": 50.321
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000045,
+          "afterSeconds": 0.219614,
+          "deltaMs": 219.56900000000002
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.019485,
+          "deltaMs": 19.485
+        }
+      },
+      "rendererJsHeapUsedBytes": 5700272,
+      "network": {
+        "document-or-other": {
+          "requests": 23,
+          "failed": 19,
+          "encodedBytes": 34941
+        },
+        "stylesheet": {
+          "requests": 4,
+          "failed": 0,
+          "encodedBytes": 34008
+        },
+        "script": {
+          "requests": 12,
+          "failed": 0,
+          "encodedBytes": 191625
+        },
+        "api": {
+          "requests": 3,
+          "failed": 0,
+          "encodedBytes": 3882
+        }
+      }
+    },
+    {
+      "route": "/studio/analytics",
+      "sample": 1,
+      "readyIncludingDefinedSettleMs": 1358.0807670000358,
+      "beforeInteractionsMs": 1359.4000000000233,
+      "ttfbMs": 10,
+      "domContentLoadedMs": 112,
+      "fcpMs": 156,
+      "observedLcpMs": 308,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [],
+      "observedEventTimingEntries": [
+        {
+          "name": "pointerdown",
+          "duration": 56,
+          "interactionId": 1540
+        },
+        {
+          "name": "pointerup",
+          "duration": 56,
+          "interactionId": 1540
+        },
+        {
+          "name": "click",
+          "duration": 56,
+          "interactionId": 1540
+        },
+        {
+          "name": "pointerdown",
+          "duration": 48,
+          "interactionId": 1547
+        },
+        {
+          "name": "pointerup",
+          "duration": 48,
+          "interactionId": 1547
+        },
+        {
+          "name": "click",
+          "duration": 48,
+          "interactionId": 1547
+        },
+        {
+          "name": "pointerdown",
+          "duration": 48,
+          "interactionId": 1554
+        },
+        {
+          "name": "pointerup",
+          "duration": 48,
+          "interactionId": 1554
+        },
+        {
+          "name": "click",
+          "duration": 48,
+          "interactionId": 1554
+        }
+      ],
+      "domElements": 854,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.116206,
+          "deltaMs": 116.206
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000018,
+          "afterSeconds": 0.474683,
+          "deltaMs": 474.665
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.043052,
+          "deltaMs": 43.052
+        }
+      },
+      "rendererJsHeapUsedBytes": 6861168,
+      "network": {
+        "document-or-other": {
+          "requests": 15,
+          "failed": 6,
+          "encodedBytes": 44751
+        },
+        "stylesheet": {
+          "requests": 5,
+          "failed": 0,
+          "encodedBytes": 40735
+        },
+        "script": {
+          "requests": 14,
+          "failed": 0,
+          "encodedBytes": 216522
+        },
+        "api": {
+          "requests": 2,
+          "failed": 0,
+          "encodedBytes": 22683
+        }
+      }
+    },
+    {
+      "route": "/studio/analytics",
+      "sample": 2,
+      "readyIncludingDefinedSettleMs": 1361.7310109999962,
+      "beforeInteractionsMs": 1362.6000000000931,
+      "ttfbMs": 7.5,
+      "domContentLoadedMs": 102.40000000002328,
+      "fcpMs": 152,
+      "observedLcpMs": 308,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [],
+      "observedEventTimingEntries": [
+        {
+          "name": "pointerdown",
+          "duration": 56,
+          "interactionId": 3141
+        },
+        {
+          "name": "pointerup",
+          "duration": 56,
+          "interactionId": 3141
+        },
+        {
+          "name": "click",
+          "duration": 56,
+          "interactionId": 3141
+        },
+        {
+          "name": "pointerdown",
+          "duration": 40,
+          "interactionId": 3148
+        },
+        {
+          "name": "pointerup",
+          "duration": 40,
+          "interactionId": 3148
+        },
+        {
+          "name": "click",
+          "duration": 40,
+          "interactionId": 3148
+        },
+        {
+          "name": "pointerdown",
+          "duration": 40,
+          "interactionId": 3155
+        },
+        {
+          "name": "pointerup",
+          "duration": 40,
+          "interactionId": 3155
+        },
+        {
+          "name": "click",
+          "duration": 40,
+          "interactionId": 3155
+        }
+      ],
+      "domElements": 854,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.11307,
+          "deltaMs": 113.07000000000001
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000034,
+          "afterSeconds": 0.482126,
+          "deltaMs": 482.09200000000004
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.041516,
+          "deltaMs": 41.516
+        }
+      },
+      "rendererJsHeapUsedBytes": 7853960,
+      "network": {
+        "document-or-other": {
+          "requests": 15,
+          "failed": 5,
+          "encodedBytes": 45424
+        },
+        "stylesheet": {
+          "requests": 5,
+          "failed": 0,
+          "encodedBytes": 40735
+        },
+        "script": {
+          "requests": 14,
+          "failed": 0,
+          "encodedBytes": 216522
+        },
+        "api": {
+          "requests": 2,
+          "failed": 0,
+          "encodedBytes": 22683
+        }
+      }
+    },
+    {
+      "route": "/studio/analytics",
+      "sample": 3,
+      "readyIncludingDefinedSettleMs": 1339.7574989999994,
+      "beforeInteractionsMs": 1340.7000000000698,
+      "ttfbMs": 6.400000000023283,
+      "domContentLoadedMs": 172.59999999997672,
+      "fcpMs": 164,
+      "observedLcpMs": 328,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [
+        {
+          "time": 63.90000000002328,
+          "duration": 59
+        }
+      ],
+      "observedEventTimingEntries": [
+        {
+          "name": "pointerdown",
+          "duration": 64,
+          "interactionId": 3827
+        },
+        {
+          "name": "pointerup",
+          "duration": 64,
+          "interactionId": 3827
+        },
+        {
+          "name": "click",
+          "duration": 64,
+          "interactionId": 3827
+        },
+        {
+          "name": "pointerdown",
+          "duration": 56,
+          "interactionId": 3834
+        },
+        {
+          "name": "pointerup",
+          "duration": 56,
+          "interactionId": 3834
+        },
+        {
+          "name": "click",
+          "duration": 56,
+          "interactionId": 3834
+        },
+        {
+          "name": "pointerdown",
+          "duration": 48,
+          "interactionId": 3841
+        },
+        {
+          "name": "pointerup",
+          "duration": 48,
+          "interactionId": 3841
+        },
+        {
+          "name": "click",
+          "duration": 48,
+          "interactionId": 3841
+        }
+      ],
+      "domElements": 854,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.109389,
+          "deltaMs": 109.389
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000017,
+          "afterSeconds": 0.503801,
+          "deltaMs": 503.784
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.065785,
+          "deltaMs": 65.785
+        }
+      },
+      "rendererJsHeapUsedBytes": 7746152,
+      "network": {
+        "document-or-other": {
+          "requests": 15,
+          "failed": 8,
+          "encodedBytes": 40807
+        },
+        "stylesheet": {
+          "requests": 5,
+          "failed": 0,
+          "encodedBytes": 40735
+        },
+        "script": {
+          "requests": 14,
+          "failed": 0,
+          "encodedBytes": 216522
+        },
+        "api": {
+          "requests": 2,
+          "failed": 0,
+          "encodedBytes": 22683
+        }
+      }
+    }
+  ]
+}
