@@ -244,6 +244,7 @@ databaseDescribe("Admin video current authority, original reads and atomic bulk 
         "updatedAt",
         "channel",
         "tvPreferences",
+        "tvControl",
         "_count",
       ].sort(),
     );
