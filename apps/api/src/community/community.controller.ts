@@ -65,9 +65,15 @@ export class CreatorCommunityController {
     const parsed = z
       .object({ take: z.coerce.number().int().min(1).max(50).default(30), cursor: uuid.optional() })
       .strict()
-      .parse(query);
+      .safeParse(query);
+    if (!parsed.success)
+      throw error(new CommunityError("INVALID_PAGE", "This community page request is invalid."));
     return run(() =>
-      this.service.creatorPostsPage(request.ayinAuth.accountId, parsed.take, parsed.cursor),
+      this.service.creatorPostsPage(
+        request.ayinAuth.accountId,
+        parsed.data.take,
+        parsed.data.cursor,
+      ),
     );
   }
   @Post("posts") create(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
