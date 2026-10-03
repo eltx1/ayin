@@ -89,7 +89,13 @@ test("notifications keep account ownership and uncertain mark-read writes recove
     await page.unroute(`${API}/social/notifications/${notificationId}/read`);
     await main.getByRole("button", { name: "Refresh notifications", exact: true }).click();
     await expect(main.getByRole("button", { name: "Mark read", exact: true })).toBeVisible();
+    const markReadResponse = page.waitForResponse(
+      (response) =>
+        response.url() === `${API}/social/notifications/${notificationId}/read` &&
+        response.request().method() === "PATCH",
+    );
     await main.getByRole("button", { name: "Mark read", exact: true }).click();
+    expect((await markReadResponse).ok()).toBe(true);
     await expect(main.getByRole("button", { name: "Mark read", exact: true })).toHaveCount(0);
 
     const stored = await page.request.get(`${API}/social/notifications`);

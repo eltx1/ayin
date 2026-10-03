@@ -17,7 +17,9 @@ function fixture(): Fixture {
   ) as Fixture;
 }
 async function expectReadableAboveNavigation(page: Page, card: Locator) {
-  await card.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  await card.evaluate((element) =>
+    element.scrollIntoView({ block: "center", behavior: "instant" }),
+  );
   await expect
     .poll(async () => {
       const bounds = await card.boundingBox();
@@ -89,9 +91,10 @@ for (const locale of ["en", "ar"] as const)
         );
         await page.screenshot({
           path: info.outputPath(`design-policy-channel-${locale}-${width}-card-viewport.png`),
+          style: "html { scroll-behavior: auto !important; }",
         });
       }
-      await page.evaluate(() => scrollTo(0, 0));
+      await page.evaluate(() => scrollTo({ top: 0, left: 0, behavior: "instant" }));
       await page.evaluate(
         () =>
           new Promise<void>((resolve) =>
@@ -101,6 +104,7 @@ for (const locale of ["en", "ar"] as const)
       await page.screenshot({
         path: info.outputPath(`design-policy-channel-${locale}-${width}.png`),
         fullPage: true,
+        style: "html { scroll-behavior: auto !important; }",
       });
       await page.goto(`${prefix}/c/${f.handle}?kids=1&tab=playlists&lang=${locale}`);
       const link = main.getByRole("link", { name: /Actual eligible collection/ });
@@ -135,9 +139,10 @@ for (const locale of ["en", "ar"] as const)
         );
         await page.screenshot({
           path: info.outputPath(`design-policy-playlist-${locale}-${width}-card-viewport.png`),
+          style: "html { scroll-behavior: auto !important; }",
         });
       }
-      await page.evaluate(() => scrollTo(0, 0));
+      await page.evaluate(() => scrollTo({ top: 0, left: 0, behavior: "instant" }));
       await page.evaluate(
         () =>
           new Promise<void>((resolve) =>
@@ -147,6 +152,7 @@ for (const locale of ["en", "ar"] as const)
       await page.screenshot({
         path: info.outputPath(`design-policy-playlist-${locale}-${width}.png`),
         fullPage: true,
+        style: "html { scroll-behavior: auto !important; }",
       });
     }
     expect(socialReads).toEqual([]);
