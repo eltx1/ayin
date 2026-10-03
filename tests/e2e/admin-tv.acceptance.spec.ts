@@ -81,6 +81,14 @@ for (const locale of ["en", "ar"] as const)
       await expect(row.getByText("Actual scheduled film", { exact: true })).toHaveCount(2);
       for (const width of [390, 1440]) {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await expect(page.locator("#tv-query")).toHaveAttribute("dir", "auto");
+        await expect(row.locator("textarea")).toHaveAttribute("dir", "auto");
+        expect(
+          await page.locator("#tv-query").evaluate((node) => getComputedStyle(node).direction),
+        ).toBe("ltr");
+        expect(
+          await row.locator("textarea").evaluate((node) => getComputedStyle(node).direction),
+        ).toBe("ltr");
         const heading = main.getByRole("heading", { level: 1 });
         await heading.scrollIntoViewIfNeeded();
         expect(
