@@ -197,20 +197,20 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
     for (const read of reads) expect(read).not.toHaveBeenCalled();
   });
 
-  it("reports actual orphan targets as null and deleted override records as 404", async () => {
+  it("reports actual cascaded targets and deleted override records as 404", async () => {
     const a = await actor(),
       f = await seed(1, a.id),
       id = f.rows[0]?.id;
     if (!id) throw Error("Expected override");
-    await prisma.video.deleteMany({ where: { channelId: f.owner.id } });
     const record = await get(a.cookie, "/admin/video-ads/overrides/records/" + id);
     expect(record.statusCode).toBe(200);
-    expect(record.json().video).toBeNull();
+    expect(record.json().video.id).toBe(f.videos[0]?.id);
     expect(Object.keys(record.json()).sort()).toEqual(keys);
+    await prisma.video.deleteMany({ where: { channelId: f.owner.id } });
+    expect(await prisma.videoAdOverride.findUnique({ where: { id } })).toBeNull();
     const list = await get(a.cookie, "/admin/video-ads/overrides/directory");
-    expect(list.json().pagination.total).toBe(1);
-    expect(list.json().items[0].video).toBeNull();
-    await prisma.videoAdOverride.delete({ where: { id } });
+    expect(list.json().pagination.total).toBe(0);
+    expect(list.json().items).toEqual([]);
     expect((await get(a.cookie, "/admin/video-ads/overrides/records/" + id)).statusCode).toBe(404);
   });
 
