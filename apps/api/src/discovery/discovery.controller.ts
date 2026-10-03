@@ -51,6 +51,8 @@ export class PublicDiscoveryController {
   }
 
   @Get("home")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   async home(
     @Headers("x-ayin-region-personalization") regionalPermission: string | undefined,
     @Headers() headers: HeaderBag,
@@ -72,6 +74,8 @@ export class PublicDiscoveryController {
   }
 
   @Get("kids")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   async kids(@Headers() headers: HeaderBag) {
     return runDiscovery(async () => {
       const context = {
@@ -88,6 +92,8 @@ export class PublicDiscoveryController {
   }
 
   @Get("kids/rows/:key")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   async kidsRow(@Param("key") key: string, @Query() query: unknown, @Headers() headers: HeaderBag) {
     const parsed = parseListQuery(query);
     return runDiscovery(async () => {
@@ -104,6 +110,8 @@ export class PublicDiscoveryController {
   }
 
   @Get("rows/:key")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   async row(
     @Param("key") key: string,
     @Query() query: unknown,
