@@ -51,6 +51,7 @@ async function bootstrap(): Promise<void> {
       "authorization",
       "content-type",
       "x-ayin-auth-transport",
+      "x-ayin-expected-account",
       "x-request-id",
       "x-correlation-id",
     ],

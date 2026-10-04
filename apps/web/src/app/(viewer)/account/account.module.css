@@ -312,3 +312,8 @@
     flex-direction: column;
   }
 }
+
+.sessionPrivate:not([hidden]) {
+  display: grid;
+  gap: 1.25rem;
+}
