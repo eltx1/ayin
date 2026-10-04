@@ -4,6 +4,8 @@ import {
   getSitemapCounts,
   getSitemapShard,
   getSitemapShardCount,
+  getSitemapShardSize,
+  parseSitemapShard,
   type SitemapKind,
   xmlResponse,
 } from "@/lib/sitemap";
@@ -20,8 +22,8 @@ export async function GET(
   if (!kinds.has(kindRaw as SitemapKind) || !shardRaw.endsWith(".xml")) notFound();
 
   const kind = kindRaw as SitemapKind;
-  const shard = Number.parseInt(shardRaw.slice(0, -4), 10);
-  if (!Number.isInteger(shard) || shard < 0) notFound();
+  const shard = parseSitemapShard(shardRaw);
+  if (shard === null || shard * getSitemapShardSize(kind) > 1_000_000_000) notFound();
 
   const counts = await getSitemapCounts();
   if (shard >= getSitemapShardCount(kind, counts[kind])) notFound();

@@ -78,6 +78,12 @@ try {
       data: { accountId: payload.accountId, role: "FINANCE_MANAGER" },
     });
     console.log(JSON.stringify({ accountId: payload.accountId }));
+  } else if (command === "change-role") {
+    await prisma.adminRoleAssignment.updateMany({
+      where: { accountId: payload.accountId, role: "OPERATIONS" },
+      data: { role: "FINANCE_MANAGER" },
+    });
+    console.log(JSON.stringify({ accountId: payload.accountId }));
   } else if (command === "evidence") {
     const target = await prisma.creatorTvChannel.findUniqueOrThrow({
       where: { id: payload.targetId },

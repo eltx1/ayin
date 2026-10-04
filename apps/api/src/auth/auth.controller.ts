@@ -323,11 +323,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   changePassword(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     this.rateLimiter.consume("password-change", request.ayinAuth.accountId);
-    return this.authService.changePassword(
-      request.ayinAuth.accountId,
-      request.ayinAuth.sessionId,
-      parseBody(changePasswordSchema, body),
-    );
+    return this.authService.changePassword(request.ayinAuth, parseBody(changePasswordSchema, body));
   }
 
   @Post("forgot-password")

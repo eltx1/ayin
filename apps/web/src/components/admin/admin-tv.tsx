@@ -58,7 +58,9 @@ export function AdminTv({ initialQuery = "" }: { initialQuery?: string }) {
     dirty = useRef(false),
     initial = useRef(filters);
   const clearActor = useCallback(() => {
+    if (body.current) body.current.hidden = true;
     actor.current = null;
+    setFilters({ query: "", status: "", page: 1 });
     setSnapshot(null);
     setDrafts({});
     setAck(null);

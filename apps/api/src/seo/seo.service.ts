@@ -10,24 +10,41 @@ import {
 
 export type SeoSitemapKind = "videos" | "channels" | "playlists";
 
-const playableVideoWhere = {
-  status: "PUBLISHED" as const,
-  visibility: "PUBLIC" as const,
-  removedAt: null,
-  channel: { status: "ACTIVE" as const, removedAt: null },
-  mediaAssets: {
-    some: {
-      kind: "SOURCE_VIDEO" as const,
-      status: "VALIDATED" as const,
-      removedAt: null,
-      mimeType: "video/mp4",
-    },
-  },
-};
-
-const publicPlaylistVideoWhere = {
-  video: playableVideoWhere,
-};
+function publicPlaylistEligibility(context: VideoPolicyContext) {
+  return Prisma.sql`p.visibility = 'PUBLIC' AND p."isPublic" = TRUE AND p."deletedAt" IS NULL
+    AND EXISTS (SELECT 1 FROM "Channel" c WHERE c.id = p."channelId" AND c.status = 'ACTIVE' AND c."removedAt" IS NULL)
+    AND EXISTS (SELECT 1 FROM "PlaylistItem" i JOIN "Video" v ON v.id = i."videoId"
+      WHERE i."playlistId" = p.id AND ${publicVideoEligibility(context)})`;
+}
+export interface SitemapVideoRow {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  durationMs: number | null;
+  publishedAt: Date | null;
+  updatedAt: Date;
+  channel: { handle: string; name: string };
+  thumbnailObjectKey: string | null;
+  sourceObjectKey: string | null;
+}
+export interface SitemapChannelRow {
+  id: string;
+  handle: string;
+  name: string;
+  description: string | null;
+  updatedAt: Date;
+  imageObjectKey: string | null;
+}
+export interface SitemapPlaylistRow {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  updatedAt: Date;
+  channel: { handle: string; name: string };
+  imageObjectKey: string | null;
+}
 
 const completedImageStatuses = ["UPLOADED", "VALIDATED"] as const;
 
@@ -286,171 +303,49 @@ export class SeoService {
     );
   }
 
+  async sitemapCounts() {
+    const context = { now: new Date() };
+    const [counts] = await this.database.client.$queryRaw<
+      Array<{ videos: number; channels: number; playlists: number }>
+    >(Prisma.sql`
+      SELECT (SELECT COUNT(*)::integer FROM "Video" v WHERE ${publicVideoEligibility(context)}) AS videos,
+      (SELECT COUNT(*)::integer FROM "Channel" c WHERE c.status = 'ACTIVE' AND c."removedAt" IS NULL) AS channels,
+      (SELECT COUNT(*)::integer FROM "Playlist" p WHERE ${publicPlaylistEligibility(context)}) AS playlists
+    `);
+    if (!counts) throw Error("Missing sitemap counts.");
+    return counts;
+  }
   async listSitemap(kind: SeoSitemapKind, offset: number, limit: number) {
-    if (kind === "videos") return this.listVideos(offset, limit);
-    if (kind === "channels") return this.listChannels(offset, limit);
-    return this.listPlaylists(offset, limit);
-  }
-
-  private async listVideos(offset: number, limit: number) {
-    const videos = await this.database.client.video.findMany({
-      where: playableVideoWhere,
-      orderBy: { id: "asc" },
-      skip: offset,
-      take: limit,
-      select: {
-        id: true,
-        slug: true,
-        title: true,
-        description: true,
-        durationMs: true,
-        publishedAt: true,
-        updatedAt: true,
-        channel: { select: { handle: true, name: true } },
-        mediaAssets: {
-          where: { removedAt: null, status: { in: [...completedImageStatuses] } },
-          orderBy: { createdAt: "desc" },
-          select: {
-            kind: true,
-            status: true,
-            mimeType: true,
-            r2ObjectKey: true,
-            durationMs: true,
-          },
-        },
-      },
-    });
-
-    const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
-      videos.map((video) => video.id),
-      {},
-    );
+    const context = { now: new Date() };
+    if (kind === "videos")
+      return {
+        items: await this.database.client.$queryRaw<SitemapVideoRow[]>(Prisma.sql`
+      SELECT v.id, v.slug, v.title, v.description, COALESCE(v."durationMs", source."durationMs") AS "durationMs", v."publishedAt", v."updatedAt",
+        json_build_object('handle', c.handle, 'name', c.name) AS channel,
+        thumbnail."r2ObjectKey" AS "thumbnailObjectKey", source."r2ObjectKey" AS "sourceObjectKey"
+      FROM "Video" v JOIN "Channel" c ON c.id = v."channelId"
+      JOIN LATERAL (SELECT m."r2ObjectKey", m."durationMs" FROM "MediaAsset" m WHERE m."videoId" = v.id AND m.kind = 'SOURCE_VIDEO' AND m.status = 'VALIDATED' AND m."removedAt" IS NULL AND m."mimeType" = 'video/mp4' ORDER BY m."updatedAt" DESC, m.id DESC LIMIT 1) source ON TRUE
+      LEFT JOIN LATERAL (SELECT m."r2ObjectKey" FROM "MediaAsset" m WHERE m."videoId" = v.id AND m.kind = 'THUMBNAIL' AND m.status IN ('UPLOADED','VALIDATED') AND m."removedAt" IS NULL ORDER BY m."updatedAt" DESC, m.id DESC LIMIT 1) thumbnail ON TRUE
+      WHERE ${publicVideoEligibility(context)} ORDER BY v.id ASC OFFSET ${offset} LIMIT ${limit}
+    `),
+      };
+    if (kind === "channels")
+      return {
+        items: await this.database.client.$queryRaw<SitemapChannelRow[]>(Prisma.sql`
+      SELECT c.id, c.handle, c.name, c.description, c."updatedAt", image."r2ObjectKey" AS "imageObjectKey"
+      FROM "Channel" c
+      LEFT JOIN LATERAL (SELECT m."r2ObjectKey" FROM "MediaAsset" m WHERE m."channelId" = c.id AND m.kind IN ('CHANNEL_BANNER','CHANNEL_AVATAR') AND m.status IN ('UPLOADED','VALIDATED') AND m."removedAt" IS NULL ORDER BY CASE WHEN m.kind = 'CHANNEL_BANNER' THEN 0 ELSE 1 END, m."updatedAt" DESC, m.id DESC LIMIT 1) image ON TRUE
+      WHERE c.status = 'ACTIVE' AND c."removedAt" IS NULL ORDER BY c.id ASC OFFSET ${offset} LIMIT ${limit}
+    `),
+      };
     return {
-      items: videos
-        .filter((video) => allowedVideoIds.has(video.id))
-        .map((video) => {
-          const source = video.mediaAssets.find(
-            (asset) =>
-              asset.kind === "SOURCE_VIDEO" &&
-              asset.status === "VALIDATED" &&
-              asset.mimeType === "video/mp4",
-          );
-          const thumbnail = video.mediaAssets.find((asset) => asset.kind === "THUMBNAIL");
-          return {
-            id: video.id,
-            slug: video.slug,
-            title: video.title,
-            description: video.description,
-            durationMs: video.durationMs ?? source?.durationMs ?? null,
-            publishedAt: video.publishedAt,
-            updatedAt: video.updatedAt,
-            channel: video.channel,
-            thumbnailObjectKey: thumbnail?.r2ObjectKey ?? null,
-            sourceObjectKey: source?.r2ObjectKey ?? null,
-          };
-        }),
-    };
-  }
-
-  private async listChannels(offset: number, limit: number) {
-    const channels = await this.database.client.channel.findMany({
-      where: { status: "ACTIVE", removedAt: null },
-      orderBy: { id: "asc" },
-      skip: offset,
-      take: limit,
-      select: {
-        id: true,
-        handle: true,
-        name: true,
-        description: true,
-        updatedAt: true,
-        mediaAssets: {
-          where: {
-            removedAt: null,
-            status: { in: [...completedImageStatuses] },
-            kind: { in: ["CHANNEL_AVATAR", "CHANNEL_BANNER"] },
-          },
-          orderBy: { createdAt: "desc" },
-          select: { kind: true, r2ObjectKey: true },
-        },
-      },
-    });
-
-    return {
-      items: channels.map((channel) => ({
-        id: channel.id,
-        handle: channel.handle,
-        name: channel.name,
-        description: channel.description,
-        updatedAt: channel.updatedAt,
-        imageObjectKey:
-          channel.mediaAssets.find((asset) => asset.kind === "CHANNEL_BANNER")?.r2ObjectKey ??
-          channel.mediaAssets.find((asset) => asset.kind === "CHANNEL_AVATAR")?.r2ObjectKey ??
-          null,
-      })),
-    };
-  }
-
-  private async listPlaylists(offset: number, limit: number) {
-    const playlists = await this.database.client.playlist.findMany({
-      where: {
-        visibility: "PUBLIC",
-        isPublic: true,
-        deletedAt: null,
-        channel: { status: "ACTIVE", removedAt: null },
-        items: { some: publicPlaylistVideoWhere },
-      },
-      orderBy: { id: "asc" },
-      skip: offset,
-      take: limit,
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        description: true,
-        updatedAt: true,
-        channel: { select: { handle: true, name: true } },
-        items: {
-          where: publicPlaylistVideoWhere,
-          orderBy: { position: "asc" },
-          take: 1,
-          select: {
-            video: {
-              select: {
-                id: true,
-                mediaAssets: {
-                  where: {
-                    kind: "THUMBNAIL",
-                    status: { in: [...completedImageStatuses] },
-                    removedAt: null,
-                  },
-                  orderBy: { createdAt: "desc" },
-                  take: 1,
-                  select: { r2ObjectKey: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-
-    const leadVideoIds = playlists.flatMap((playlist) =>
-      playlist.items.map((item) => item.video.id),
-    );
-    const allowedLeadVideoIds = await this.videoPolicy.filterAvailableVideoIds(leadVideoIds, {});
-    return {
-      items: playlists
-        .filter((playlist) => playlist.items.some((item) => allowedLeadVideoIds.has(item.video.id)))
-        .map((playlist) => ({
-          id: playlist.id,
-          slug: playlist.slug,
-          name: playlist.name,
-          description: playlist.description,
-          updatedAt: playlist.updatedAt,
-          channel: playlist.channel,
-          imageObjectKey: playlist.items[0]?.video.mediaAssets[0]?.r2ObjectKey ?? null,
-        })),
+      items: await this.database.client.$queryRaw<SitemapPlaylistRow[]>(Prisma.sql`
+      SELECT p.id, p.slug, p.name, p.description, p."updatedAt", json_build_object('handle',c.handle,'name',c.name) AS channel, thumbnail."r2ObjectKey" AS "imageObjectKey"
+      FROM "Playlist" p JOIN "Channel" c ON c.id = p."channelId"
+      JOIN LATERAL (SELECT v.id FROM "PlaylistItem" i JOIN "Video" v ON v.id = i."videoId" WHERE i."playlistId" = p.id AND ${publicVideoEligibility(context)} ORDER BY i.position ASC, i."videoId" ASC LIMIT 1) lead ON TRUE
+      LEFT JOIN LATERAL (SELECT m."r2ObjectKey" FROM "MediaAsset" m WHERE m."videoId" = lead.id AND m.kind = 'THUMBNAIL' AND m.status IN ('UPLOADED','VALIDATED') AND m."removedAt" IS NULL ORDER BY m."updatedAt" DESC, m.id DESC LIMIT 1) thumbnail ON TRUE
+      WHERE ${publicPlaylistEligibility(context)} ORDER BY p.id ASC OFFSET ${offset} LIMIT ${limit}
+    `),
     };
   }
 }
