@@ -81,12 +81,13 @@ describe("Creator finance boundaries", () => {
             status: "PENDING",
           },
         }),
-      );
+      )
+      .mockResolvedValueOnce(Response.json(identity));
     vi.stubGlobal("fetch", fetch);
     await expect(
       saveCreatorFinance(snapshot, { kind: "payout" }, new AbortController().signal),
     ).rejects.toMatchObject({ writeStarted: true });
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(fetch.mock.calls[1]?.[1]?.body).toBe('{"currency":"USD"}');
   });
   it("rejects an unowned statement before creating any downloadable content", async () => {
@@ -123,7 +124,7 @@ describe("Creator finance boundaries", () => {
     vi.stubGlobal("fetch", fetch);
     const observed = getCreatorFinance(new AbortController().signal).catch((error) => error);
     await vi.advanceTimersByTimeAsync(15000);
-    expect((await observed).name).toBe("AbortError");
+    expect(await observed).toMatchObject({ status: 0, writeStarted: false });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("allow-lists a valid owned profile without encrypted destination or provider token metadata", () => {
@@ -153,5 +154,112 @@ describe("Creator finance boundaries", () => {
     expect(profile).not.toHaveProperty("destinationEncrypted");
     expect(profile).not.toHaveProperty("providerDestinationTokenEncrypted");
     expect(() => parseFinanceCompliance({ channelId: foreignId }, channelId)).toThrow();
+  });
+  const payoutAck = {
+    requestSource: "CREATOR",
+    payout: { id: foreignId, channelId, currency: "USD", amount: "12.000000", status: "PENDING" },
+  };
+  it("binds the protected command and post-actor read to the actual captured account", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(identity))
+      .mockResolvedValueOnce(Response.json(payoutAck))
+      .mockResolvedValueOnce(Response.json(identity));
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await saveCreatorFinance(snapshot, { kind: "payout" }, new AbortController().signal),
+    ).toMatchObject({ kind: "payout", amount: "12.000000" });
+    expect(fetch).toHaveBeenCalledTimes(3);
+    for (const call of fetch.mock.calls)
+      expect(new Headers(call[1]?.headers).get("x-ayin-expected-account")).toBe(accountId);
+    expect(fetch.mock.calls[1]?.[1]?.body).toBe('{"currency":"USD"}');
+  });
+  it("identifies protected server scope rejection after pre-read without replay", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(identity))
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: { code: "ACCOUNT_CHANGED", message: "private untrusted detail" } },
+          { status: 409 },
+        ),
+      );
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      saveCreatorFinance(snapshot, { kind: "payout" }, new AbortController().signal),
+    ).rejects.toMatchObject({
+      status: 409,
+      scopeChanged: true,
+      writeStarted: true,
+      acknowledged: false,
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("retains known write acknowledgment when post-actor scope changes without returning old private facts", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(identity))
+      .mockResolvedValueOnce(Response.json(payoutAck))
+      .mockResolvedValueOnce(Response.json({ ...identity, account: { id: foreignId } }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      saveCreatorFinance(snapshot, { kind: "payout" }, new AbortController().signal),
+    ).rejects.toMatchObject({
+      status: 403,
+      scopeChanged: true,
+      writeStarted: true,
+      acknowledged: true,
+    });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+  it("does not relabel a decoded write as uncertain when a separate post-actor read is unavailable", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(identity))
+      .mockResolvedValueOnce(Response.json(payoutAck))
+      .mockResolvedValueOnce(Response.json({}, { status: 503 }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      saveCreatorFinance(snapshot, { kind: "payout" }, new AbortController().signal),
+    ).rejects.toMatchObject({
+      status: 503,
+      scopeChanged: false,
+      writeStarted: true,
+      acknowledged: true,
+    });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+  it("a lost actual command response remains unacknowledged and never replays", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(identity))
+      .mockRejectedValueOnce(new TypeError("controlled lost response"));
+    vi.stubGlobal("fetch", fetch);
+    await expect(
+      saveCreatorFinance(snapshot, { kind: "payout" }, new AbortController().signal),
+    ).rejects.toMatchObject({ status: 0, writeStarted: true, acknowledged: false });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("binds statement read/post-actor requests and drops data after cookie scope changes", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(identity))
+      .mockResolvedValueOnce(
+        Response.json({
+          format: "CSV",
+          channel: { id: channelId, name: "Actual", handle: "actual" },
+          filename: "actual.csv",
+          generatedAt: "2026-10-03T00:00:00Z",
+          content: "private",
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ ...identity, account: { id: foreignId } }));
+    vi.stubGlobal("fetch", fetch);
+    await expect(getFinanceStatement(snapshot, new AbortController().signal)).rejects.toMatchObject(
+      { scopeChanged: true },
+    );
+    expect(fetch).toHaveBeenCalledTimes(3);
+    for (const call of fetch.mock.calls)
+      expect(new Headers(call[1]?.headers).get("x-ayin-expected-account")).toBe(accountId);
   });
 });

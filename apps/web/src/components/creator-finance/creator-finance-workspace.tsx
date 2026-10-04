@@ -124,6 +124,7 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
     [payoutId, setPayoutId] = useState(""),
     [message, setMessage] = useState(""),
     [statementAt, setStatementAt] = useState<string | null>(null);
+  const [knownAwaitingReview, setKnownAwaitingReview] = useState(false);
   const privateBody = useRef<HTMLDivElement | null>(null);
   const [privateGeneration, setPrivateGeneration] = useState(0);
   const current = useRef<FinanceSnapshot | null>(null),
@@ -134,6 +135,8 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
     hydrated = useRef(false),
     dirty = useRef(false);
   const clearIdentity = useCallback(() => {
+    if (privateBody.current) privateBody.current.hidden = true;
+    privateBody.current?.querySelectorAll("form").forEach((form) => form.reset());
     current.current = null;
     hydrated.current = false;
     setSnapshot(null);
@@ -145,6 +148,8 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
     setStatementAt(null);
     setPages({});
     setAuthError(true);
+    setNotice(null);
+    setKnownAwaitingReview(false);
     decisionLocked.current = true;
     setLocked(true);
     setReviewed(false);
@@ -164,6 +169,7 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
       if (controller.signal.aborted) return;
       if (privateBody.current?.hidden) setPrivateGeneration((value) => value + 1);
       current.current = result;
+      setKnownAwaitingReview(false);
       setSnapshot(result);
       setReviewed(true);
       if (decisionLocked.current) setNotice("reviewed");
@@ -180,7 +186,10 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
       }
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (error instanceof CreatorFinanceError && [401, 403].includes(error.status))
+      if (
+        error instanceof CreatorFinanceError &&
+        (error.scopeChanged || [401, 403].includes(error.status))
+      )
         clearIdentity();
       else setReadError(true);
     } finally {
@@ -318,7 +327,28 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
       }
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (error instanceof CreatorFinanceError && !error.writeStarted) {
+      if (
+        error instanceof CreatorFinanceError &&
+        (error.scopeChanged || [401, 403].includes(error.status))
+      ) {
+        clearIdentity();
+      } else if (error instanceof CreatorFinanceError && error.acknowledged) {
+        if (privateBody.current) privateBody.current.hidden = true;
+        setSnapshot(null);
+        setAck(null);
+        setReviewed(false);
+        setReadError(true);
+        setNotice("saved");
+        setKnownAwaitingReview(true);
+        if (command.kind === "profile") {
+          setDraft((value) => ({ ...value, destination: "" }));
+          setProfileDirty(false);
+        }
+        if (command.kind === "dispute") {
+          setMessage("");
+          setPayoutId("");
+        }
+      } else if (error instanceof CreatorFinanceError && !error.writeStarted) {
         if ([401, 403].includes(error.status)) clearIdentity();
         else {
           decisionLocked.current = false;
@@ -362,7 +392,10 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
       setNotice("statement");
     } catch (error) {
       if (controller.signal.aborted) return;
-      if (error instanceof CreatorFinanceError && [401, 403].includes(error.status))
+      if (
+        error instanceof CreatorFinanceError &&
+        (error.scopeChanged || [401, 403].includes(error.status))
+      )
         clearIdentity();
       else setReadError(true);
     } finally {
@@ -439,6 +472,23 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
             </ActionButton>
           }
         />
+        {authError && (
+          <StatusNotice tone="danger" announce="assertive">
+            {copy(
+              "The account or channel changed. Reopen this workspace after signing in.",
+              "تغيّر الحساب أو القناة. افتح مساحة العمل مجددًا بعد تسجيل الدخول.",
+            )}{" "}
+            <Link href={href("/login")}>{copy("Sign in", "تسجيل الدخول")}</Link>
+          </StatusNotice>
+        )}
+        {knownAwaitingReview && (
+          <StatusNotice tone="warning" announce="assertive">
+            {copy(
+              "The server acknowledged this operation, but the current account could not be verified. Review current state; this command will not be replayed.",
+              "أكد الخادم هذه العملية، لكن تعذّر التحقق من الحساب الحالي. راجع الحالة الحالية؛ لن يُعاد إرسال الطلب.",
+            )}
+          </StatusNotice>
+        )}
         <div
           ref={privateBody}
           key={privateGeneration}
@@ -453,18 +503,9 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
           {readError && (
             <StatusNotice tone="danger" announce="assertive">
               {copy(
-                "The current state could not be verified. Review it again; a saved acknowledgment below remains valid.",
-                "تعذر التحقق من الحالة الحالية. أعد المراجعة؛ يظل تأكيد الحفظ الظاهر أدناه صالحًا.",
+                "The current state could not be verified. Review it again before another decision.",
+                "تعذر التحقق من الحالة الحالية. أعد المراجعة قبل قرار آخر.",
               )}
-            </StatusNotice>
-          )}
-          {authError && (
-            <StatusNotice tone="danger" announce="assertive">
-              {copy(
-                "The account or channel changed. Reopen this workspace after signing in.",
-                "تغيّر الحساب أو القناة. افتح مساحة العمل مجددًا بعد تسجيل الدخول.",
-              )}{" "}
-              <Link href={href("/login")}>{copy("Sign in", "تسجيل الدخول")}</Link>
             </StatusNotice>
           )}
           {notice && (

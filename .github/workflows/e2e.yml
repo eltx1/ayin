@@ -233,3 +233,12 @@ jobs:
           path: test-results/**/design-account-privacy-*.png
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve creator finance account-scope recovery visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: creator-finance-account-scope-visuals
+          path: test-results/**/design-creator-finance-scope-*.png
+          if-no-files-found: ignore
+          retention-days: 7
