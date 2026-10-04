@@ -24,7 +24,7 @@ type Flow =
   | { kind: "codes"; codes: string[] };
 
 export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => void }) {
-  const { t, href, formatDate } = useI18n();
+  const { t, href, formatDate, locale } = useI18n();
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<MfaStatus | null>(null);
   const [flow, setFlow] = useState<Flow | null>(null);
@@ -36,6 +36,7 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
   const [changedAccount, setChangedAccount] = useState(false);
   const scopeChanged = useRef(false);
   const account = useRef<string | null>(null);
+  const privateBody = useRef<HTMLDivElement>(null);
   const epoch = useRef(0);
   const pending = useRef(false);
   const readController = useRef<AbortController | null>(null);
@@ -48,6 +49,7 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
   }, [flow?.kind]);
 
   const clearSecrets = useCallback(() => {
+    if (privateBody.current) privateBody.current.hidden = true;
     epoch.current += 1;
     mutationController.current?.abort();
     pending.current = false;
@@ -116,16 +118,19 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
     const hide = () => {
       clearSecrets();
       readController.current?.abort();
+      scopeChanged.current = true;
       account.current = null;
       setSnapshot(null);
-      setError("");
-      setLoading(true);
+      setChangedAccount(true);
+      setError(
+        locale === "ar"
+          ? "أعد تحميل الحساب لقراءة حالة الأمان الحالية."
+          : "Reload account to read its current security state.",
+      );
+      setLoading(false);
     };
-    const show = (event: PageTransitionEvent) => {
-      if (event.persisted) {
-        // Refresh the whole account workspace, including its identity and sessions.
-        window.location.reload();
-      }
+    const visibility = () => {
+      if (document.visibilityState === "hidden") hide();
     };
     const focus = () => {
       if (!pending.current && !scopeChanged.current) {
@@ -134,17 +139,17 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
       }
     };
     window.addEventListener("pagehide", hide);
-    window.addEventListener("pageshow", show);
+    document.addEventListener("visibilitychange", visibility);
     window.addEventListener("focus", focus);
     return () => {
       epoch.current += 1;
       readController.current?.abort();
       mutationController.current?.abort();
       window.removeEventListener("pagehide", hide);
-      window.removeEventListener("pageshow", show);
+      document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("focus", focus);
     };
-  }, [clearSecrets, load]);
+  }, [clearSecrets, load, locale]);
 
   function begin(next: Flow) {
     if (pending.current) return;
@@ -292,162 +297,169 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
           ) : null}
         </div>
       ) : null}
-      {message ? (
-        <p role="status" className={styles.success}>
-          {message}
-        </p>
-      ) : null}
-      {snapshot ? (
-        <div className={mfaStyles.status}>
-          <strong>{t(snapshot.enabled ? "account.mfaEnabled" : "account.mfaDisabled")}</strong>
-          {snapshot.enabled ? (
-            <p>{t("account.mfaRemaining", { count: snapshot.recoveryCodesRemaining })}</p>
-          ) : null}
-          {snapshot.required ? <p>{t("account.mfaRequired")}</p> : null}
-        </div>
-      ) : null}
-      {!flow && snapshot ? (
-        <div className={mfaStyles.actions}>
-          {!snapshot.enabled ? (
-            <button
-              className={styles.primaryButton}
-              type="button"
-              disabled={busy || loading}
-              onClick={() => begin({ kind: "start" })}
-            >
-              {t("account.mfaEnable")}
-            </button>
-          ) : (
-            <>
+      <div
+        ref={privateBody}
+        className={styles.sessionPrivate}
+        hidden={changedAccount || signIn}
+        data-private-account-mfa="true"
+      >
+        {message ? (
+          <p role="status" className={styles.success}>
+            {message}
+          </p>
+        ) : null}
+        {snapshot ? (
+          <div className={mfaStyles.status}>
+            <strong>{t(snapshot.enabled ? "account.mfaEnabled" : "account.mfaDisabled")}</strong>
+            {snapshot.enabled ? (
+              <p>{t("account.mfaRemaining", { count: snapshot.recoveryCodesRemaining })}</p>
+            ) : null}
+            {snapshot.required ? <p>{t("account.mfaRequired")}</p> : null}
+          </div>
+        ) : null}
+        {!flow && snapshot ? (
+          <div className={mfaStyles.actions}>
+            {!snapshot.enabled ? (
               <button
-                className={styles.secondaryButton}
+                className={styles.primaryButton}
                 type="button"
                 disabled={busy || loading}
-                onClick={() => begin({ kind: "review", action: "regenerate" })}
+                onClick={() => begin({ kind: "start" })}
               >
-                {t("account.mfaRegenerate")}
+                {t("account.mfaEnable")}
               </button>
-              {!snapshot.required ? (
+            ) : (
+              <>
                 <button
-                  className={styles.dangerButton}
+                  className={styles.secondaryButton}
                   type="button"
                   disabled={busy || loading}
-                  onClick={() => begin({ kind: "review", action: "disable" })}
+                  onClick={() => begin({ kind: "review", action: "regenerate" })}
                 >
-                  {t("account.mfaDisable")}
+                  {t("account.mfaRegenerate")}
                 </button>
-              ) : null}
-            </>
-          )}
-        </div>
-      ) : null}
-      {flow?.kind === "codes" ? (
-        <MfaRecoveryCodes
-          codes={flow.codes}
-          onDone={() => {
-            setFlow(null);
-            title.current?.focus();
-          }}
-        />
-      ) : null}
-      {flow && flow.kind !== "codes" ? (
-        <form
-          ref={form}
-          className={mfaStyles.form}
-          onSubmit={submit}
-          aria-label={t("account.mfaTitle")}
-        >
-          <h3 ref={flowHeading} tabIndex={-1}>
-            {t(
-              flow.kind === "enrollment"
-                ? "account.mfaConfirmEnrollment"
-                : reviewing
-                  ? "account.mfaReviewTitle"
-                  : "account.mfaEnable",
+                {!snapshot.required ? (
+                  <button
+                    className={styles.dangerButton}
+                    type="button"
+                    disabled={busy || loading}
+                    onClick={() => begin({ kind: "review", action: "disable" })}
+                  >
+                    {t("account.mfaDisable")}
+                  </button>
+                ) : null}
+              </>
             )}
-          </h3>
-          <p>
-            {t(
-              flow.kind === "enrollment"
-                ? "auth.scanQr"
-                : disabling
-                  ? "account.mfaDisableReview"
-                  : reviewing
-                    ? "account.mfaRegenerateReview"
-                    : "account.mfaStartIntro",
-            )}
-          </p>
-          {flow.kind === "enrollment" ? (
-            <>
-              <MfaEnrollmentSecret enrollment={flow.data} label={t("account.mfaTitle")} />
-              <p>
-                {t("account.mfaExpires", {
-                  time: formatDate(flow.data.expiresAt, { timeStyle: "short" }),
-                })}
-              </p>
-            </>
-          ) : (
-            <label>
-              <span>{t("account.mfaPassword")}</span>
-              <input
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                maxLength={128}
-                disabled={busy}
-              />
-            </label>
-          )}
-          {flow.kind !== "start" ? (
-            <label>
-              <span>{t("auth.authenticationCode")}</span>
-              <input
-                name="code"
-                autoComplete="one-time-code"
-                inputMode="numeric"
-                dir="ltr"
-                pattern="[0-9]{6}"
-                minLength={6}
-                maxLength={6}
-                required
-                disabled={busy}
-              />
-            </label>
-          ) : null}
-          <div className={mfaStyles.actions}>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              disabled={busy}
-              onClick={() => {
-                setFlow(null);
-                setError("");
-                title.current?.focus();
-              }}
-            >
-              {t("account.mfaCancel")}
-            </button>
-            <button
-              type="submit"
-              className={disabling ? styles.dangerButton : styles.primaryButton}
-              disabled={busy || loading || !snapshot}
-            >
-              {t(
-                busy
-                  ? "account.mfaWorking"
-                  : flow.kind === "start"
-                    ? "account.mfaStart"
-                    : flow.kind === "enrollment"
-                      ? "auth.enableMfa"
-                      : disabling
-                        ? "account.mfaConfirmDisable"
-                        : "account.mfaConfirmRegenerate",
-              )}
-            </button>
           </div>
-        </form>
-      ) : null}
+        ) : null}
+        {flow?.kind === "codes" ? (
+          <MfaRecoveryCodes
+            codes={flow.codes}
+            onDone={() => {
+              setFlow(null);
+              title.current?.focus();
+            }}
+          />
+        ) : null}
+        {flow && flow.kind !== "codes" ? (
+          <form
+            ref={form}
+            className={mfaStyles.form}
+            onSubmit={submit}
+            aria-label={t("account.mfaTitle")}
+          >
+            <h3 ref={flowHeading} tabIndex={-1}>
+              {t(
+                flow.kind === "enrollment"
+                  ? "account.mfaConfirmEnrollment"
+                  : reviewing
+                    ? "account.mfaReviewTitle"
+                    : "account.mfaEnable",
+              )}
+            </h3>
+            <p>
+              {t(
+                flow.kind === "enrollment"
+                  ? "auth.scanQr"
+                  : disabling
+                    ? "account.mfaDisableReview"
+                    : reviewing
+                      ? "account.mfaRegenerateReview"
+                      : "account.mfaStartIntro",
+              )}
+            </p>
+            {flow.kind === "enrollment" ? (
+              <>
+                <MfaEnrollmentSecret enrollment={flow.data} label={t("account.mfaTitle")} />
+                <p>
+                  {t("account.mfaExpires", {
+                    time: formatDate(flow.data.expiresAt, { timeStyle: "short" }),
+                  })}
+                </p>
+              </>
+            ) : (
+              <label>
+                <span>{t("account.mfaPassword")}</span>
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  maxLength={128}
+                  disabled={busy}
+                />
+              </label>
+            )}
+            {flow.kind !== "start" ? (
+              <label>
+                <span>{t("auth.authenticationCode")}</span>
+                <input
+                  name="code"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  dir="ltr"
+                  pattern="[0-9]{6}"
+                  minLength={6}
+                  maxLength={6}
+                  required
+                  disabled={busy}
+                />
+              </label>
+            ) : null}
+            <div className={mfaStyles.actions}>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={busy}
+                onClick={() => {
+                  setFlow(null);
+                  setError("");
+                  title.current?.focus();
+                }}
+              >
+                {t("account.mfaCancel")}
+              </button>
+              <button
+                type="submit"
+                className={disabling ? styles.dangerButton : styles.primaryButton}
+                disabled={busy || loading || !snapshot}
+              >
+                {t(
+                  busy
+                    ? "account.mfaWorking"
+                    : flow.kind === "start"
+                      ? "account.mfaStart"
+                      : flow.kind === "enrollment"
+                        ? "auth.enableMfa"
+                        : disabling
+                          ? "account.mfaConfirmDisable"
+                          : "account.mfaConfirmRegenerate",
+                )}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </div>
     </section>
   );
 }

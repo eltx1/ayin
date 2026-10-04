@@ -237,3 +237,59 @@ test("account switches clear setup secrets and require a fresh account workspace
   ).toBeVisible();
   await expect(region.getByText("Two-step verification is off", { exact: true })).toBeVisible();
 });
+
+test("MFA setup is hidden synchronously on controlled pagehide and persisted pageshow never reloads or reads", async ({
+  page,
+}) => {
+  await register(page, "account-mfa-freeze");
+  await page.goto("/account");
+  const region = page.getByRole("region", { name: "Two-step verification", exact: true });
+  await region.getByRole("button", { name: "Set up two-step verification", exact: true }).click();
+  await region.getByLabel("Current password", { exact: true }).fill(password);
+  await region.getByRole("button", { name: "Continue to setup", exact: true }).click();
+  await expect(region.getByAltText("Two-step verification", { exact: true })).toBeVisible();
+  let reads = 0,
+    navigations = 0,
+    writes = 0;
+  page.on("request", (r) => {
+    if (r.url().includes("/auth/mfa/") && r.method() === "GET") reads++;
+    if (r.url().includes("/auth/mfa/") && r.method() === "POST") writes++;
+    if (r.isNavigationRequest() && r.frame() === page.mainFrame()) navigations++;
+  });
+  const firstHide = await page.evaluate(() => {
+    const body = document.querySelector<HTMLElement>("[data-private-account-mfa]");
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "hidden");
+    if (!body || !descriptor?.set || !descriptor.get)
+      throw Error("Missing native MFA private body");
+    let first: { qrPresent: boolean; visible: boolean } | undefined;
+    Object.defineProperty(body, "hidden", {
+      configurable: true,
+      get() {
+        return descriptor.get?.call(body);
+      },
+      set(value: boolean) {
+        descriptor.set?.call(body, value);
+        if (value && first === undefined)
+          first = {
+            qrPresent: body.querySelector("img") !== null,
+            visible: body.checkVisibility(),
+          };
+      },
+    });
+    window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+    return first;
+  });
+  expect(firstHide).toEqual({ qrPresent: true, visible: false });
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(region.getByRole("button", { name: "Reload account", exact: true })).toBeVisible();
+  await expect(region.getByAltText("Two-step verification", { exact: true })).toHaveCount(0);
+  expect(reads).toBe(0);
+  expect(writes).toBe(0);
+  expect(navigations).toBe(0);
+  await region.getByRole("button", { name: "Reload account", exact: true }).click();
+  await expect(region.getByText("Two-step verification is off", { exact: true })).toBeVisible();
+  expect(navigations).toBe(1);
+});
