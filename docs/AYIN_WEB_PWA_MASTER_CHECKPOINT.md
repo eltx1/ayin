@@ -297,7 +297,12 @@ Policy78b13058 quality37149257248/security37149257239/inventory37149257219/brows
 
 Only the final consolidated exact-source union may be accepted after its own tests, review threads and all20scoped images. Preceding separate candidate evidence stays scoped; no separate pending release is inferred. Once the combined source is accepted, the earlier candidates will be marked superseded by it. The latest independently verified runtime remainsa82fbfa1 through217; all17master phases retain unfinished work. New TV-inclusion preference authority/native video development is separate and not silently included in this candidate.
 
-
 ## Root draft239 and finance native cleanup continuation
 
 Draft239 initial259a250fe9db266ee3cc02468016aa16b58c4731/treeb7a62c532a90b1df6f790999f641836227510009 stores the separately prepared root coordinator. It is not accepted. Upstream finance3e3897df browser37220265128 passed86+66 but rejected the first-conceal observer because it searched only inputs for the actual textarea destination; later shards/PWA unrun. Finance replacement8a31a70768f211a8514325fc11ff9999afb31fb0/treeaa9c01f249fd51c2ac2c39f3a9fa9c57eee12859 retains native-first concealment, explicitly clears native destination value/defaultValue and asserts the original captured textarea is empty after detachment. Root observer now includes actual textareas in its first-conceal and cleared-values assertions. Own final full gates/original images remain required; initial239 runs cannot certify this replacement.
+
+## Verified237 runtime and superseded formatting failure
+
+Actual maincf077 quality37220466207/security37220466224/inventory37220466186 passed, deployment37221017067 and Cloudflare37221181447 succeeded. Independently hashed deploymentZIP11310352930 SHA256cf31f5118f504595bbddbbb89beb275f7f75c55f3ccd0cfc2b497f48a9699ee6 parsed releasecf077/validation37220466207/deploy37221017067/attempt1/accountayin. Independently hashed CloudflareZIP11310242450 SHA256b1e234924ed6dbfed6bfaf6230324e5ad7105f6a4855c64fa64ef36dd9ae06b9 parsed same release/deploy/sync37221181447/media.ayin.stream/ayin-production-media. This supersedes the earlier pending237runtime paragraph only.
+
+Finance8a31 quality37221430885/job111492401734 and Rootaabe quality37221463808/job111492496916 failed checkpoint formatting before source tests/integration/build ran. Replacement formats only the checkpoint and retains exact source behavior, fixtures and rejected history. These failed quality runs are not functional acceptance. All five raw performance reports remain untouched.
