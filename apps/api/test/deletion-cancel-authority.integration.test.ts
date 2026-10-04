@@ -412,5 +412,68 @@ databaseDescribe(
           ).toHaveLength(winner === "CANCEL" ? 0 : 1);
         },
       );
+    it("recovery rereads deactivated state after the actual worker wins instead of leaving a cancelled closed account", async () => {
+      const target = await fixture();
+      const actor = await fixture();
+      // Only target is due; actor's real request remains outside this worker batch.
+      await prisma.accountDeletionRequest.update({
+        where: { id: actor.requestId },
+        data: { state: "CANCELLED", cancelledAt: new Date() },
+      });
+      await prisma.accountDeletionRequest.update({
+        where: { id: target.requestId },
+        data: { state: "GRACE_PERIOD", graceEndsAt: new Date(Date.now() - 1000) },
+      });
+      let release!: () => void, locked!: () => void;
+      const held = new Promise<void>((r) => {
+          locked = r;
+        }),
+        gate = new Promise<void>((r) => {
+          release = r;
+        });
+      const blocker = prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${target.id}::uuid FOR UPDATE`;
+          locked();
+          await gate;
+        },
+        { timeout: 15000 },
+      );
+      async function waitFor(marker: string) {
+        const deadline = Date.now() + 8000;
+        while (Date.now() < deadline) {
+          const rows = await prisma.$queryRaw<
+            Array<{ waiting: boolean }>
+          >`SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND query LIKE ${"%" + marker + "%"}) AS waiting`;
+          if (rows[0]?.waiting) return;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        throw Error("Expected actual lifecycle account-row wait: " + marker);
+      }
+      await held;
+      const worker = lifecycle.advanceDue(new Date(), 1);
+      let recovery: ReturnType<PrivacyLifecycleService["adminRecover"]> | undefined;
+      try {
+        await waitFor("ayin-deletion-deactivate-account-lock");
+        recovery = lifecycle.adminRecover(actor.id, target.id, "Actual recovery state race review");
+        await waitFor("ayin-deletion-recovery-account-lock");
+      } finally {
+        release();
+        await blocker;
+      }
+      expect(await worker).toBe(1);
+      expect(await recovery).toEqual({ recovered: true, previousState: "DEACTIVATED" });
+      const state = await evidence(target.id);
+      expect(state.account.status).toBe("ACTIVE");
+      expect(state.requests.find((r) => r.id === target.requestId)?.state).toBe("CANCELLED");
+      const audit = state.audits.find(
+        (a) => a.action === "privacy.deletion_admin_recovered" && a.entityId === target.id,
+      );
+      expect(audit?.metadata).toMatchObject({
+        requestId: target.requestId,
+        previousState: "DEACTIVATED",
+      });
+      // This service-level state-race case does not certify the administrative HTTP guard or actor authority.
+    });
   },
 );

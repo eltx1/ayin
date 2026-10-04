@@ -257,26 +257,36 @@ export class PrivacyLifecycleService {
   }
 
   async adminRecover(actorAccountId: string, targetAccountId: string, reason: string) {
-    const request = await this.database.client.accountDeletionRequest.findFirst({
-      where: {
-        accountId: targetAccountId,
-        state: { in: ["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"] },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, state: true },
-    });
-    if (!request) {
-      throw conflict(
-        "ACCOUNT_DELETION_NOT_RECOVERABLE",
-        "No recoverable deletion request exists. Anonymization is intentionally irreversible.",
-      );
-    }
-    const now = new Date();
-    await this.database.client.$transaction(async (tx) => {
+    const previousState = await this.database.client.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${targetAccountId}::uuid FOR UPDATE /* ayin-deletion-recovery-account-lock */`;
+      const candidate = await tx.accountDeletionRequest.findFirst({
+        where: {
+          accountId: targetAccountId,
+          state: { in: ["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"] },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (!candidate)
+        throw conflict(
+          "ACCOUNT_DELETION_NOT_RECOVERABLE",
+          "No recoverable deletion request exists. Anonymization is intentionally irreversible.",
+        );
+      await tx.$queryRaw`SELECT id FROM "AccountDeletionRequest" WHERE id=${candidate.id}::uuid FOR UPDATE /* ayin-deletion-recovery-request-lock */`;
+      const request = await tx.accountDeletionRequest.findUnique({
+        where: { id: candidate.id },
+        select: { accountId: true, state: true },
+      });
+      if (
+        !request ||
+        request.accountId !== targetAccountId ||
+        !["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"].includes(request.state)
+      )
+        throw conflict("ACCOUNT_DELETION_CHANGED", "The deletion request changed before recovery.");
+      const now = new Date();
       const changed = await tx.accountDeletionRequest.updateMany({
         where: {
-          id: request.id,
+          id: candidate.id,
           accountId: targetAccountId,
           state: { in: ["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"] },
         },
@@ -302,10 +312,11 @@ export class PrivacyLifecycleService {
         entityType: "Account",
         entityId: targetAccountId,
         reason,
-        metadata: { requestId: request.id, previousState: request.state },
+        metadata: { requestId: candidate.id, previousState: request.state },
       });
+      return request.state;
     });
-    return { recovered: true, previousState: request.state };
+    return { recovered: true, previousState };
   }
 
   async advanceDue(now = new Date(), limit = 10): Promise<number> {
