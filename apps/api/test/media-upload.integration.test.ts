@@ -192,7 +192,7 @@ databaseDescribe("direct creator media upload", () => {
     expect(tooLarge.json().error.code).toBe("VIDEO_TOO_LARGE");
   });
 
-  it("marks a multipart MediaAsset uploaded only after complete succeeds", async () => {
+  it("marks a multipart MediaAsset uploaded only after completion and matching object metadata", async () => {
     const owner = await register("Multipart Owner", "multipart-owner@example.com");
     const created = await app.inject({
       method: "POST",
@@ -212,6 +212,11 @@ databaseDescribe("direct creator media upload", () => {
       partNumber: index + 1,
       etag: `etag-${index + 1}`,
     }));
+    vi.mocked(storage.headObject).mockResolvedValueOnce({
+      sizeBytes: 70 * 1024 * 1024,
+      contentType: "video/mp4",
+      etag: '"verified"',
+    });
     const completed = await app.inject({
       method: "POST",
       url: "/media/uploads/sessions/complete",
@@ -238,8 +243,17 @@ databaseDescribe("direct creator media upload", () => {
     });
     expect(created.statusCode).toBe(201);
     const session = created.json();
+    const video = await prisma.video.create({
+      data: {
+        channelId: owner.user.channel.id,
+        slug: "token-boundary-" + session.assetId,
+        title: "Actual pending source fixture",
+        status: "UPLOADING",
+      },
+    });
+    await prisma.mediaAsset.update({ where: { id: session.assetId }, data: { videoId: video.id } });
     vi.clearAllMocks();
-    return { owner, session };
+    return { owner, session, videoId: video.id };
   }
   for (const invalid of ["TRAILING", "OVERSIZED", "SIGNED_UNSAFE"] as const)
     it(
@@ -316,5 +330,91 @@ databaseDescribe("direct creator media upload", () => {
     expect(storage.authorizeMultipartPart).toHaveBeenCalledOnce();
     expect(storage.listParts).toHaveBeenCalledOnce();
     expect(await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+  });
+  for (const mismatch of ["SIZE", "TYPE", "MISSING"] as const)
+    it(
+      "actual multipart completion with " +
+        mismatch +
+        " metadata never marks uploaded or enqueues processing",
+      async () => {
+        const { owner, session } = await tokenFixture();
+        const before = await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } });
+        const jobs = await prisma.mediaProcessingJob.findMany({ orderBy: { id: "asc" } });
+        if (mismatch === "MISSING")
+          vi.mocked(storage.headObject).mockRejectedValueOnce(
+            new Error("Controlled absent final object"),
+          );
+        else
+          vi.mocked(storage.headObject).mockResolvedValueOnce({
+            sizeBytes: mismatch === "SIZE" ? 1024 : 70 * 1024 * 1024,
+            contentType: mismatch === "TYPE" ? "text/html" : "video/mp4",
+            etag: '"controlled"',
+          });
+        const response = await app.inject({
+          method: "POST",
+          url: "/media/uploads/sessions/complete",
+          headers: { cookie: owner.cookie },
+          payload: {
+            sessionToken: session.sessionToken,
+            parts: Array.from({ length: session.partCount }, (_, i) => ({
+              partNumber: i + 1,
+              etag: "actual-" + i,
+            })),
+          },
+        });
+        expect(response.statusCode).toBe(400);
+        expect(response.json().error.code).toBe("UPLOAD_SIZE_OR_TYPE_MISMATCH");
+        expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
+        expect(storage.headObject).toHaveBeenCalledOnce();
+        expect(await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+        expect(await prisma.mediaProcessingJob.findMany({ orderBy: { id: "asc" } })).toEqual(jobs);
+      },
+    );
+  it("uncertain actual multipart completion recovers only from matching final metadata and repeats no processing job", async () => {
+    const { owner, session } = await tokenFixture();
+    vi.mocked(storage.completeMultipartUpload).mockRejectedValueOnce(
+      new Error("Controlled lost provider completion response"),
+    );
+    vi.mocked(storage.headObject).mockResolvedValueOnce({
+      sizeBytes: 70 * 1024 * 1024,
+      contentType: "video/mp4",
+      etag: '"actual-final"',
+    });
+    const payload = {
+      sessionToken: session.sessionToken,
+      parts: Array.from({ length: session.partCount }, (_, i) => ({
+        partNumber: i + 1,
+        etag: "actual-" + i,
+      })),
+    };
+    const first = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/complete",
+      headers: { cookie: owner.cookie },
+      payload,
+    });
+    expect(first.statusCode).toBe(201);
+    expect(first.json().status).toBe("UPLOADED");
+    const jobs = await prisma.mediaProcessingJob.findMany({
+      where: { inputR2ObjectKey: session.objectKey },
+      orderBy: { id: "asc" },
+    });
+    expect(jobs).toHaveLength(1);
+    const retry = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/complete",
+      headers: { cookie: owner.cookie },
+      payload,
+    });
+    expect(retry.statusCode).toBe(201);
+    expect(retry.json()).toEqual(first.json());
+    expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
+    expect(storage.headObject).toHaveBeenCalledOnce();
+    expect(
+      await prisma.mediaProcessingJob.findMany({
+        where: { inputR2ObjectKey: session.objectKey },
+        orderBy: { id: "asc" },
+      }),
+    ).toEqual(jobs);
   });
 });

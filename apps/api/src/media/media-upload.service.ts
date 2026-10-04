@@ -289,6 +289,7 @@ export class MediaUploadService {
       }
       const expectedPartCount = Math.ceil(session.sizeBytes / session.partSizeBytes);
       this.validateCompletedParts(parts, expectedPartCount);
+      let verifiedAfterUncertainCompletion = false;
       try {
         await this.storage.completeMultipartUpload({
           key: session.objectKey,
@@ -300,6 +301,13 @@ export class MediaUploadService {
         if (!recovered) {
           throw error;
         }
+        verifiedAfterUncertainCompletion = true;
+      }
+      if (!verifiedAfterUncertainCompletion && !(await this.objectMatchesSession(session))) {
+        throw new MediaUploadError(
+          "UPLOAD_SIZE_OR_TYPE_MISMATCH",
+          "The completed video does not match the selected source file. Review the upload before trying again.",
+        );
       }
     } else if (!(await this.objectMatchesSession(session))) {
       throw new MediaUploadError(
