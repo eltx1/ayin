@@ -140,6 +140,18 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
   const clearIdentity = useCallback(() => {
     if (privateBody.current) privateBody.current.hidden = true;
     privateBody.current?.querySelectorAll("form").forEach((form) => form.reset());
+    privateBody.current
+      ?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+        "input, textarea, select",
+      )
+      .forEach((field) => {
+        if (field instanceof HTMLSelectElement) field.selectedIndex = -1;
+        else {
+          field.value = "";
+          field.defaultValue = "";
+          if (field instanceof HTMLInputElement) field.removeAttribute("value");
+        }
+      });
     current.current = null;
     hydrated.current = false;
     setSnapshot(null);

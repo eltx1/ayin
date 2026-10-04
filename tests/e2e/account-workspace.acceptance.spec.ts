@@ -132,9 +132,11 @@ for (const locale of ["en", "ar"] as const)
             descriptor.set?.call(body, value);
             if (value && first === undefined)
               first = {
-                draftPresent: [...body.querySelectorAll<HTMLInputElement>("input")].some(
-                  (i) => i.value === "old-private-destination-112233",
-                ),
+                draftPresent: [
+                  ...body.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+                    "input, textarea",
+                  ),
+                ].some((i) => i.value === "old-private-destination-112233"),
                 qrPresent: Boolean(body.querySelector("[data-private-account-mfa] img")),
                 visible: body.checkVisibility(),
               };
@@ -144,8 +146,8 @@ for (const locale of ["en", "ar"] as const)
         return {
           first,
           values: [
-            ...body.querySelectorAll<HTMLInputElement>(
-              "input:not([type=checkbox]):not([type=radio])",
+            ...body.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
+              "input:not([type=checkbox]):not([type=radio]), textarea",
             ),
           ].map((i) => i.value),
           qrSrc: body.querySelector("[data-private-account-mfa] img")?.getAttribute("src"),

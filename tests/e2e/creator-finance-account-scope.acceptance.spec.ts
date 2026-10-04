@@ -110,6 +110,10 @@ test("Actual acknowledged profile then cookie switch conceals old facts and clea
   const a = await register(page, "after-a");
   db("seed", a);
   await prepare(page);
+  const capturedDestination = await page
+    .getByLabel("New payout destination · optional", { exact: true })
+    .elementHandle();
+  if (!capturedDestination) throw Error("Missing actual payout destination textarea");
   await page.evaluate(() => {
     const body = document.querySelector<HTMLElement>('[data-private-finance-body="creator"]');
     const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "hidden");
@@ -127,9 +131,9 @@ test("Actual acknowledged profile then cookie switch conceals old facts and clea
         descriptor.set?.call(body, value);
         if (value && state.__ayinFinanceFirstHide === undefined)
           state.__ayinFinanceFirstHide = {
-            draftPresent: [...body.querySelectorAll<HTMLInputElement>("input")].some(
-              (input) => input.value === "Actual captured destination 1133557799",
-            ),
+            draftPresent: [
+              ...body.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea"),
+            ].some((input) => input.value === "Actual captured destination 1133557799"),
             visible: body.checkVisibility(),
           };
       },
@@ -160,6 +164,12 @@ test("Actual acknowledged profile then cookie switch conceals old facts and clea
         ).__ayinFinanceFirstHide,
     ),
   ).toEqual({ draftPresent: true, visible: false });
+  expect(
+    await capturedDestination.evaluate((node) => {
+      if (!(node instanceof HTMLTextAreaElement)) throw Error("Expected a textarea");
+      return { value: node.value, defaultValue: node.defaultValue };
+    }),
+  ).toEqual({ value: "", defaultValue: "" });
   expect(writes).toBe(1);
   expect(db("evidence", a)).toMatchObject({
     profile: { legalName: "Actual scoped saved beneficiary" },
