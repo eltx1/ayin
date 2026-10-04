@@ -1,3 +1,4 @@
+import { simulatedMultipartParts } from "./multipart-fixture.js";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { expect, request, test, type Page } from "@playwright/test";
@@ -54,10 +55,11 @@ async function seed(page: Page, publishFirst = false) {
         headers,
         data: {
           sessionToken: draft.uploadSession.sessionToken,
-          parts: Array.from({ length: draft.uploadSession.partCount }, (_, index) => ({
-            partNumber: index + 1,
-            etag: `content-editor-part-${index + 1}`,
-          })),
+          parts: simulatedMultipartParts(
+            70 * 1024 * 1024,
+            draft.uploadSession.partSizeBytes,
+            draft.uploadSession.partCount,
+          ),
         },
       });
       expect(complete.ok()).toBe(true);

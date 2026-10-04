@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
 import { MediaStorageUnavailableError } from "./media-storage.adapter.js";
 import { MediaUploadError, MediaUploadService } from "./media-upload.service.js";
+import { MAX_UPLOAD_SESSION_TOKEN_LENGTH } from "./upload-session-token.service.js";
 import { UploadRateLimiter } from "./upload-rate-limiter.js";
 
 const createSessionSchema = z.object({
@@ -12,7 +13,9 @@ const createSessionSchema = z.object({
   mimeType: z.string().trim().min(1).max(255),
 });
 
-const sessionSchema = z.object({ sessionToken: z.string().min(20) });
+const sessionSchema = z.object({
+  sessionToken: z.string().min(20).max(MAX_UPLOAD_SESSION_TOKEN_LENGTH),
+});
 const partSchema = sessionSchema.extend({ partNumber: z.number().int().positive() });
 const completeSchema = sessionSchema.extend({
   parts: z

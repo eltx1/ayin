@@ -1,3 +1,4 @@
+import { simulatedMultipartParts } from "./multipart-fixture.js";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
@@ -66,12 +67,13 @@ async function publishThroughDirectUpload(
   expect(draftResponse.ok()).toBeTruthy();
   const draft = (await draftResponse.json()) as {
     video: { id: string };
-    uploadSession: { partCount: number; sessionToken: string };
+    uploadSession: { partCount: number; partSizeBytes: number; sessionToken: string };
   };
-  const parts = Array.from({ length: draft.uploadSession.partCount }, (_, index) => ({
-    partNumber: index + 1,
-    etag: `e2e-etag-${index + 1}`,
-  }));
+  const parts = simulatedMultipartParts(
+    70 * 1024 * 1024,
+    draft.uploadSession.partSizeBytes,
+    draft.uploadSession.partCount,
+  );
   expect(
     (
       await api.post("/media/uploads/sessions/complete", {

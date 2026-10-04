@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { createHmac } from "node:crypto";
 
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -191,7 +192,7 @@ databaseDescribe("direct creator media upload", () => {
     expect(tooLarge.json().error.code).toBe("VIDEO_TOO_LARGE");
   });
 
-  it("marks a multipart MediaAsset uploaded only after complete succeeds", async () => {
+  it("marks a multipart MediaAsset uploaded only after completion and matching object metadata", async () => {
     const owner = await register("Multipart Owner", "multipart-owner@example.com");
     const created = await app.inject({
       method: "POST",
@@ -211,6 +212,11 @@ databaseDescribe("direct creator media upload", () => {
       partNumber: index + 1,
       etag: `etag-${index + 1}`,
     }));
+    vi.mocked(storage.headObject).mockResolvedValueOnce({
+      sizeBytes: 70 * 1024 * 1024,
+      contentType: "video/mp4",
+      etag: '"verified"',
+    });
     const completed = await app.inject({
       method: "POST",
       url: "/media/uploads/sessions/complete",
@@ -222,5 +228,193 @@ databaseDescribe("direct creator media upload", () => {
     expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
     const after = await prisma.mediaAsset.findUnique({ where: { id: session.assetId } });
     expect(after?.status).toBe("UPLOADED");
+  });
+  async function tokenFixture() {
+    const owner = await register("Token boundary owner", "token-boundary@example.com");
+    const created = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions",
+      headers: { cookie: owner.cookie },
+      payload: {
+        channelId: owner.user.channel.id,
+        sizeBytes: 70 * 1024 * 1024,
+        mimeType: "video/mp4",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const session = created.json();
+    const video = await prisma.video.create({
+      data: {
+        channelId: owner.user.channel.id,
+        slug: "token-boundary-" + session.assetId,
+        title: "Actual pending source fixture",
+        status: "UPLOADING",
+      },
+    });
+    await prisma.mediaAsset.update({ where: { id: session.assetId }, data: { videoId: video.id } });
+    vi.clearAllMocks();
+    return { owner, session, videoId: video.id };
+  }
+  for (const invalid of ["TRAILING", "OVERSIZED", "SIGNED_UNSAFE"] as const)
+    it(
+      "rejects actual upload token " +
+        invalid +
+        " across all continuation endpoints before provider/database effects",
+      async () => {
+        const { owner, session } = await tokenFixture();
+        let token: string = session.sessionToken;
+        if (invalid === "TRAILING") token += ".ignored";
+        if (invalid === "OVERSIZED") token = "x".repeat(16 * 1024 + 1);
+        if (invalid === "SIGNED_UNSAFE") {
+          const payload = JSON.parse(
+            Buffer.from(token.split(".")[0]!, "base64url").toString("utf8"),
+          );
+          payload.sizeBytes = Number.MAX_SAFE_INTEGER + 1;
+          const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+          token =
+            encoded +
+            "." +
+            createHmac("sha256", "task-06-upload-session-secret-with-more-than-32-characters")
+              .update(encoded)
+              .digest("base64url");
+        }
+        const before = await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } });
+        for (const path of ["authorize-part", "resume", "complete", "abort"]) {
+          const response = await app.inject({
+            method: "POST",
+            url: "/media/uploads/sessions/" + path,
+            headers: { cookie: owner.cookie },
+            payload: {
+              sessionToken: token,
+              ...(path === "authorize-part" ? { partNumber: 1 } : {}),
+              ...(path === "complete"
+                ? { parts: [{ partNumber: 1, etag: "actual-fixture-etag" }] }
+                : {}),
+            },
+          });
+          expect(response.statusCode).toBe(invalid === "OVERSIZED" ? 400 : 401);
+        }
+        expect(await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+        for (const method of [
+          storage.authorizeMultipartPart,
+          storage.listParts,
+          storage.completeMultipartUpload,
+          storage.abortMultipartUpload,
+          storage.headObject,
+          storage.deleteObject,
+        ])
+          expect(method).not.toHaveBeenCalled();
+      },
+    );
+  it("preserves an actual valid V1 multipart token for explicit part authorization and resume", async () => {
+    const { owner, session } = await tokenFixture();
+    const before = await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/media/uploads/sessions/authorize-part",
+          headers: { cookie: owner.cookie },
+          payload: { sessionToken: session.sessionToken, partNumber: 1 },
+        })
+      ).statusCode,
+    ).toBe(201);
+    const resume = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/resume",
+      headers: { cookie: owner.cookie },
+      payload: { sessionToken: session.sessionToken },
+    });
+    expect(resume.statusCode).toBe(201);
+    expect(resume.json()).toEqual({ parts: [] });
+    expect(storage.authorizeMultipartPart).toHaveBeenCalledOnce();
+    expect(storage.listParts).toHaveBeenCalledOnce();
+    expect(await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+  });
+  for (const mismatch of ["SIZE", "TYPE", "MISSING"] as const)
+    it(
+      "actual multipart completion with " +
+        mismatch +
+        " metadata never marks uploaded or enqueues processing",
+      async () => {
+        const { owner, session } = await tokenFixture();
+        const before = await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } });
+        const jobs = await prisma.mediaProcessingJob.findMany({ orderBy: { id: "asc" } });
+        if (mismatch === "MISSING")
+          vi.mocked(storage.headObject).mockRejectedValueOnce(
+            new Error("Controlled absent final object"),
+          );
+        else
+          vi.mocked(storage.headObject).mockResolvedValueOnce({
+            sizeBytes: mismatch === "SIZE" ? 1024 : 70 * 1024 * 1024,
+            contentType: mismatch === "TYPE" ? "text/html" : "video/mp4",
+            etag: '"controlled"',
+          });
+        const response = await app.inject({
+          method: "POST",
+          url: "/media/uploads/sessions/complete",
+          headers: { cookie: owner.cookie },
+          payload: {
+            sessionToken: session.sessionToken,
+            parts: Array.from({ length: session.partCount }, (_, i) => ({
+              partNumber: i + 1,
+              etag: "actual-" + i,
+            })),
+          },
+        });
+        expect(response.statusCode).toBe(400);
+        expect(response.json().error.code).toBe("UPLOAD_SIZE_OR_TYPE_MISMATCH");
+        expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
+        expect(storage.headObject).toHaveBeenCalledOnce();
+        expect(await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+        expect(await prisma.mediaProcessingJob.findMany({ orderBy: { id: "asc" } })).toEqual(jobs);
+      },
+    );
+  it("uncertain actual multipart completion recovers only from matching final metadata and repeats no processing job", async () => {
+    const { owner, session } = await tokenFixture();
+    vi.mocked(storage.completeMultipartUpload).mockRejectedValueOnce(
+      new Error("Controlled lost provider completion response"),
+    );
+    vi.mocked(storage.headObject).mockResolvedValueOnce({
+      sizeBytes: 70 * 1024 * 1024,
+      contentType: "video/mp4",
+      etag: '"actual-final"',
+    });
+    const payload = {
+      sessionToken: session.sessionToken,
+      parts: Array.from({ length: session.partCount }, (_, i) => ({
+        partNumber: i + 1,
+        etag: "actual-" + i,
+      })),
+    };
+    const first = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/complete",
+      headers: { cookie: owner.cookie },
+      payload,
+    });
+    expect(first.statusCode).toBe(201);
+    expect(first.json().status).toBe("UPLOADED");
+    const jobs = await prisma.mediaProcessingJob.findMany({
+      where: { inputR2ObjectKey: session.objectKey },
+      orderBy: { id: "asc" },
+    });
+    expect(jobs).toHaveLength(1);
+    const retry = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/complete",
+      headers: { cookie: owner.cookie },
+      payload,
+    });
+    expect(retry.statusCode).toBe(201);
+    expect(retry.json()).toEqual(first.json());
+    expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
+    expect(storage.headObject).toHaveBeenCalledOnce();
+    expect(
+      await prisma.mediaProcessingJob.findMany({
+        where: { inputR2ObjectKey: session.objectKey },
+        orderBy: { id: "asc" },
+      }),
+    ).toEqual(jobs);
   });
 });
