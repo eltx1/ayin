@@ -84,7 +84,21 @@ for (const locale of ["en", "ar"] as const)
       ).toBe(401);
       for (const width of [390, 1440]) {
         await page.setViewportSize({ width, height: 844 });
-        await workspace.scrollIntoViewIfNeeded();
+        const measured = await workspace.boundingBox();
+        expect(measured).not.toBeNull();
+        if (!measured) throw Error("Missing actual account workspace");
+        // Width-specific component evidence, not an 844px-height device claim.
+        const height = Math.max(844, Math.ceil(measured.height) + 240);
+        await page.setViewportSize({ width, height });
+        await workspace.evaluate((node) =>
+          node.scrollIntoView({ behavior: "instant", block: "center" }),
+        );
+        await expect
+          .poll(async () => {
+            const bounds = await workspace.boundingBox();
+            return Boolean(bounds && bounds.y >= 80 && bounds.y + bounds.height <= height - 80);
+          })
+          .toBe(true);
         await info.attach(`account-session-recovery-${locale}-${width}`, {
           body: await workspace.screenshot({
             path: info.outputPath(`design-account-session-recovery-${locale}-${width}.png`),
