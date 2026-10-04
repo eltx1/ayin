@@ -14,6 +14,7 @@ export interface AccountScopeOptions {
   expectedAccountId?: string | undefined;
   signal?: AbortSignal | undefined;
   allowCurrentLogout?: boolean | undefined;
+  maxResponseBytes?: number | undefined;
 }
 export interface AccountScopeResult<T> {
   accountId: string;
@@ -24,7 +25,47 @@ function object(value: unknown): Record<string, unknown> {
     throw new AccountScopeError(0, "INVALID_RESPONSE");
   return value as Record<string, unknown>;
 }
-async function json(response: Response): Promise<unknown> {
+export async function readBoundedAccountJson(
+  response: Response,
+  signal: AbortSignal,
+  maxBytes: number,
+): Promise<unknown> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 128 || maxBytes > 10 * 1024 * 1024)
+    throw new AccountScopeError(400, "INVALID_REQUEST");
+  signal.throwIfAborted();
+  const length = response.headers.get("content-length");
+  if (length && /^\d+$/.test(length) && Number(length) > maxBytes) {
+    void response.body?.cancel().catch(() => undefined);
+    throw new AccountScopeError(0, "RESPONSE_TOO_LARGE");
+  }
+  if (!response.body) throw new AccountScopeError(0, "INVALID_RESPONSE");
+  const reader = response.body.getReader();
+  const abort = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const parts: string[] = [];
+  let size = 0;
+  try {
+    while (true) {
+      signal.throwIfAborted();
+      const next = await reader.read();
+      signal.throwIfAborted();
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > maxBytes) throw new AccountScopeError(0, "RESPONSE_TOO_LARGE");
+      parts.push(decoder.decode(next.value, { stream: true }));
+    }
+    parts.push(decoder.decode());
+    return JSON.parse(parts.join(""));
+  } finally {
+    signal.removeEventListener("abort", abort);
+    void reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+async function json(response: Response, signal?: AbortSignal, maxBytes?: number): Promise<unknown> {
   if (!response.ok) {
     const error: unknown = await response.json().catch(() => null);
     let code: unknown;
@@ -38,7 +79,9 @@ async function json(response: Response): Promise<unknown> {
       typeof code === "string" && /^[A-Z_]{1,64}$/.test(code) ? code : "REQUEST_REJECTED",
     );
   }
-  return response.json();
+  return signal && maxBytes !== undefined
+    ? readBoundedAccountJson(response, signal, maxBytes)
+    : response.json();
 }
 async function actor(signal: AbortSignal, expected?: string): Promise<string> {
   signal.throwIfAborted();
@@ -68,6 +111,13 @@ export async function requestAccountScope<T>(
     !/^\/(auth|privacy|creator)\/[a-zA-Z0-9/_?=&%.-]+$/.test(path) ||
     (method === "GET" && body !== undefined) ||
     (options.expectedAccountId !== undefined && !uuid.test(options.expectedAccountId))
+  )
+    throw new AccountScopeError(400, "INVALID_REQUEST");
+  if (
+    options.maxResponseBytes !== undefined &&
+    (!Number.isSafeInteger(options.maxResponseBytes) ||
+      options.maxResponseBytes < 128 ||
+      options.maxResponseBytes > 10 * 1024 * 1024)
   )
     throw new AccountScopeError(400, "INVALID_REQUEST");
   if (
@@ -102,6 +152,8 @@ export async function requestAccountScope<T>(
           },
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         }),
+        controller.signal,
+        options.maxResponseBytes,
       ),
     );
     controller.signal.throwIfAborted();

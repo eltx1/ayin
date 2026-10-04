@@ -224,3 +224,12 @@ jobs:
           path: test-results/**/design-account-session-recovery-*.png
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve account privacy recovery visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-privacy-recovery-visuals
+          path: test-results/**/design-account-privacy-*.png
+          if-no-files-found: ignore
+          retention-days: 7

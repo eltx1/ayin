@@ -40,10 +40,10 @@ test("Account privacy can download data and control a deletion request", async (
   await expect(
     page.getByText("Account deletion requested. You can cancel during the grace period."),
   ).toBeVisible();
-  await expect(page.getByText("REQUESTED", { exact: true })).toBeVisible();
+  await expect(page.getByText("Deletion requested", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel deletion" })).toBeVisible();
 
   await page.getByRole("button", { name: "Cancel deletion" }).click();
   await expect(page.getByText("Deletion request cancelled.")).toBeVisible();
-  await expect(page.getByText("CANCELLED", { exact: true })).toBeVisible();
+  await expect(page.getByText("Deletion cancelled", { exact: true })).toBeVisible();
 });
