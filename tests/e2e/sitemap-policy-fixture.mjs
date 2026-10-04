@@ -9,6 +9,12 @@ const [command, raw = "{}"] = process.argv.slice(2),
   prisma = createPrismaClient(databaseUrl);
 try {
   if (command === "seed") {
+    // Account reset preserves ownerless channels from earlier real browser fixtures.
+    // Isolate this sitemap scenario without deleting their related records.
+    await prisma.channel.updateMany({
+      where: { status: "ACTIVE" },
+      data: { status: "SUSPENDED" },
+    });
     const group = randomUUID().slice(0, 8),
       channel = await prisma.channel.create({
         data: { name: "Actual sitemap creator", handle: "sitemap-creator-" + group },
