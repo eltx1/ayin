@@ -151,7 +151,12 @@ test("Controlled pagehide hides synchronously before resetting secrets and pages
       ),
     };
   });
-  expect(immediate).toEqual({ hidden: true, visible: false, secrets: ["", "", ""] });
+  expect(immediate).toEqual({
+    firstHide: { draftPresent: true, visible: false },
+    hidden: true,
+    visible: false,
+    secrets: ["", "", ""],
+  });
   await page.evaluate(() =>
     window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
   );

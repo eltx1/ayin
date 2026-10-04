@@ -81,11 +81,7 @@ export class PrivacyController {
   @HttpCode(HttpStatus.ACCEPTED)
   requestDeletion(@Req() request: AuthenticatedRequest, @Body() body: unknown) {
     this.rateLimiter.consume("privacy-deletion-request", request.ayinAuth.accountId);
-    return this.lifecycle.requestDeletion(
-      request.ayinAuth.accountId,
-      request.ayinAuth.sessionId,
-      parseBody(deletionRequestSchema, body),
-    );
+    return this.lifecycle.requestDeletion(request.ayinAuth, parseBody(deletionRequestSchema, body));
   }
 
   @Post("deletion/cancel")

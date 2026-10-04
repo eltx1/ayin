@@ -11,6 +11,7 @@ import {
   isUniqueConstraintError,
   unauthorized,
 } from "../auth/auth.errors.js";
+import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { PasswordService } from "../auth/password.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { MEDIA_STORAGE_ADAPTER, type MediaStorageAdapter } from "../media/media-storage.adapter.js";
@@ -97,10 +98,10 @@ export class PrivacyLifecycleService {
   }
 
   async requestDeletion(
-    accountId: string,
-    sessionId: string,
+    auth: AuthenticatedRequest["ayinAuth"],
     input: { password: string; confirmation: string },
   ) {
+    const { accountId, sessionId } = auth;
     if (input.confirmation !== ACCOUNT_DELETION_CONFIRMATION) {
       throw badRequest(
         "DELETION_CONFIRMATION_REQUIRED",
@@ -109,12 +110,13 @@ export class PrivacyLifecycleService {
     }
     const account = await this.database.client.account.findUnique({
       where: { id: accountId },
-      select: { passwordHash: true, status: true },
+      select: { passwordHash: true, status: true, authVersion: true },
     });
     if (
       !account ||
       account.status !== "ACTIVE" ||
       !account.passwordHash ||
+      account.authVersion !== auth.authVersion ||
       !(await this.passwords.verify(input.password, account.passwordHash))
     ) {
       throw unauthorized("The current password is incorrect.");
@@ -122,6 +124,32 @@ export class PrivacyLifecycleService {
 
     try {
       const request = await this.database.client.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${accountId}::uuid FOR UPDATE /* ayin-deletion-account-lock */`;
+        await tx.$queryRaw`SELECT id FROM "AccountSession" WHERE id=${sessionId}::uuid FOR SHARE /* ayin-deletion-session-lock */`;
+        const current = await tx.account.findUnique({
+          where: { id: accountId },
+          select: { passwordHash: true, status: true, authVersion: true },
+        });
+        const session = await tx.accountSession.findUnique({
+          where: { id: sessionId },
+          select: { accountId: true, authVersion: true, revokedAt: true, expiresAt: true },
+        });
+        if (
+          !current ||
+          current.status !== "ACTIVE" ||
+          current.authVersion !== auth.authVersion ||
+          !session ||
+          session.accountId !== accountId ||
+          session.authVersion !== auth.authVersion ||
+          session.revokedAt !== null ||
+          session.expiresAt.getTime() <= Date.now()
+        )
+          throw unauthorized("The current session is no longer active.");
+        if (current.passwordHash !== account.passwordHash)
+          throw conflict(
+            "PASSWORD_CHANGED",
+            "The password changed while this request was pending. Review your current credentials before another operation.",
+          );
         const created = await tx.accountDeletionRequest.create({
           data: { accountId, requestedFromSessionId: sessionId },
           select: {
