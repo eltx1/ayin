@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import styles from "@/app/(viewer)/account/account.module.css";
 import { useI18n } from "@/components/i18n/i18n-provider";
-import { apiBaseUrl, readApiError } from "@/lib/api";
+import { AccountScopeError, requestAccountScope } from "@/lib/account-scope";
 
 import {
   parseAccountSessions,
@@ -15,21 +15,17 @@ import {
   type AccountSession,
 } from "@/lib/account-session-response";
 
-async function getSessions() {
-  const response = await fetch(`${apiBaseUrl}/auth/sessions`, {
-    credentials: "include",
-    cache: "no-store",
-    signal: AbortSignal.timeout(15000),
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return parseAccountSessions(await response.json());
-}
-
 export function AccountSecuritySessions() {
   const router = useRouter();
   const { formatDate, href, t, locale } = useI18n();
   const copy = (en: string, ar: string) => (locale === "ar" ? ar : en);
   const pending = useRef(false);
+  const account = useRef<string | undefined>(undefined);
+  const generation = useRef(0);
+  const controller = useRef<AbortController | null>(null);
+  const privateBody = useRef<HTMLDivElement>(null);
+  const passwordForm = useRef<HTMLFormElement>(null);
+  const [concealed, setConcealed] = useState(false);
   const [needsReview, setNeedsReview] = useState(false);
   const [sessions, setSessions] = useState<AccountSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,186 +34,222 @@ export function AccountSecuritySessions() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let active = true;
-    void getSessions()
-      .then((next) => {
-        if (active) {
-          setSessions(next);
-          setVerified(true);
-        }
-      })
-      .catch(() => {
-        if (active) setError(t("account.sessionsLoadError"));
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [t]);
-
-  async function refreshSessions() {
-    setSessions(await getSessions());
-    setVerified(true);
+  function conceal(clearAccount = false) {
+    if (privateBody.current) privateBody.current.hidden = true;
+    passwordForm.current?.reset();
+    controller.current?.abort();
+    generation.current += 1;
+    pending.current = false;
+    if (clearAccount) account.current = undefined;
+    setConcealed(true);
+    setSessions([]);
+    setVerified(false);
+    setNeedsReview(true);
+    setMessage("");
+    setBusy("");
+    setLoading(false);
   }
-  async function refreshAfterAcknowledgment() {
-    try {
-      await refreshSessions();
-    } catch {
-      setSessions([]);
-      setVerified(false);
-      setNeedsReview(true);
-      setError(
-        copy(
-          "The operation was confirmed. The session list could not be refreshed. Read the current sessions before another operation.",
-          "تم تأكيد العملية، لكن تعذّر تحديث قائمة الجلسات. اقرأ الجلسات الحالية قبل عملية أخرى.",
-        ),
-      );
-    }
+  function scopeLost(error: unknown) {
+    return (
+      error instanceof AccountScopeError &&
+      (error.code === "ACCOUNT_CHANGED" || error.status === 401)
+    );
+  }
+  async function refreshSessions(signal: AbortSignal, epoch: number) {
+    const result = await requestAccountScope("/auth/sessions", "GET", parseAccountSessions, {
+      expectedAccountId: account.current,
+      signal,
+    });
+    if (epoch !== generation.current || signal.aborted) return;
+    account.current = result.accountId;
+    setSessions(result.value);
+    setVerified(true);
+    setConcealed(false);
   }
   async function reviewSessions() {
     if (pending.current) return;
     pending.current = true;
+    const epoch = generation.current;
+    const active = new AbortController();
+    controller.current = active;
     setBusy("read");
     setLoading(true);
     try {
-      await refreshSessions();
+      await refreshSessions(active.signal, epoch);
+      if (epoch !== generation.current || active.signal.aborted) return;
       setNeedsReview(false);
       setError("");
-    } catch {
-      setSessions([]);
-      setVerified(false);
-      setNeedsReview(true);
+    } catch (error) {
+      if (epoch !== generation.current || active.signal.aborted) return;
+      if (scopeLost(error)) conceal(true);
+      else {
+        setSessions([]);
+        setVerified(false);
+        setNeedsReview(true);
+      }
       setError(t("account.sessionsLoadError"));
     } finally {
-      pending.current = false;
-      setBusy("");
-      setLoading(false);
+      if (epoch === generation.current) {
+        pending.current = false;
+        setBusy("");
+        setLoading(false);
+      }
     }
   }
-
-  async function revoke(session: AccountSession) {
-    if (pending.current || loading || needsReview) return;
+  useEffect(() => {
+    let mounted = true;
+    const initialGeneration = generation.current;
+    void Promise.resolve().then(() => {
+      if (mounted && initialGeneration === generation.current) void reviewSessions();
+    });
+    const hide = () => {
+      conceal();
+      setError(copy("Read the current sessions to continue.", "اقرأ الجلسات الحالية للمتابعة."));
+    };
+    const visibility = () => {
+      if (document.visibilityState === "hidden") hide();
+    };
+    window.addEventListener("pagehide", hide);
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      mounted = false;
+      window.removeEventListener("pagehide", hide);
+      document.removeEventListener("visibilitychange", visibility);
+      controller.current?.abort();
+      generation.current += 1;
+      pending.current = false;
+    };
+    // Mount reads once; lifecycle recovery requires an explicit action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  async function command<T>(
+    key: string,
+    path: string,
+    method: "POST" | "DELETE",
+    decode: (value: unknown) => T,
+    success: (value: T) => string,
+    body?: Record<string, unknown>,
+    currentLogout = false,
+  ) {
+    if (pending.current || loading || needsReview || !verified || !account.current) return;
     pending.current = true;
-    setBusy(session.id);
+    const epoch = generation.current,
+      active = new AbortController();
+    controller.current = active;
+    setBusy(key);
     setError("");
     setMessage("");
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/auth/sessions/${encodeURIComponent(session.id)}`,
+      const result = await requestAccountScope(
+        path,
+        method,
+        decode,
         {
-          method: "DELETE",
-          credentials: "include",
-          cache: "no-store",
-          signal: AbortSignal.timeout(30000),
+          expectedAccountId: account.current,
+          signal: active.signal,
+          allowCurrentLogout: currentLogout,
         },
+        body,
       );
-      if (!response.ok) throw new Error("The operation was not acknowledged.");
-      parseSessionRevoked(await response.json(), session.current);
-      if (session.current) {
+      if (epoch !== generation.current || active.signal.aborted) return;
+      if (currentLogout) {
+        conceal(true);
         router.push(href("/login"));
         router.refresh();
         return;
       }
-      setMessage(t("account.sessionRevoked"));
-      await refreshAfterAcknowledgment();
-    } catch {
-      setNeedsReview(true);
-      setError(
-        copy(
-          "The operation response was not confirmed. Read the current sessions before another operation; the request will not be replayed.",
-          "لم يتم تأكيد رد العملية. اقرأ الجلسات الحالية قبل عملية أخرى؛ لن يُعاد إرسال الطلب.",
-        ),
-      );
+      if (key === "password") passwordForm.current?.reset();
+      setMessage(success(result.value));
+      try {
+        await refreshSessions(active.signal, epoch);
+      } catch (error) {
+        if (epoch !== generation.current || active.signal.aborted) return;
+        if (scopeLost(error)) conceal(true);
+        else {
+          setSessions([]);
+          setVerified(false);
+          setNeedsReview(true);
+        }
+        setError(
+          copy(
+            "The operation was confirmed. The session list could not be refreshed. Read the current sessions before another operation.",
+            "تم تأكيد العملية، لكن تعذّر تحديث قائمة الجلسات. اقرأ الجلسات الحالية قبل عملية أخرى.",
+          ),
+        );
+      }
+    } catch (error) {
+      if (epoch !== generation.current || active.signal.aborted) return;
+      if (scopeLost(error)) {
+        conceal(true);
+        setError(
+          copy(
+            "The account changed. Read the current sessions before proceeding.",
+            "تغيّر الحساب. اقرأ الجلسات الحالية قبل المتابعة.",
+          ),
+        );
+      } else {
+        if (key === "password") passwordForm.current?.reset();
+        setNeedsReview(true);
+        setError(
+          copy(
+            "The operation response was not confirmed. Read the current sessions before another operation; the request will not be replayed.",
+            "لم يتم تأكيد رد العملية. اقرأ الجلسات الحالية قبل عملية أخرى؛ لن يُعاد إرسال الطلب.",
+          ),
+        );
+      }
     } finally {
-      pending.current = false;
-      setBusy("");
+      if (epoch === generation.current) {
+        pending.current = false;
+        setBusy("");
+      }
     }
   }
-
+  async function revoke(session: AccountSession) {
+    await command(
+      session.id,
+      `/auth/sessions/${encodeURIComponent(session.id)}`,
+      "DELETE",
+      (value) => {
+        parseSessionRevoked(value, session.current);
+        return { currentSessionRevoked: session.current };
+      },
+      () => t("account.sessionRevoked"),
+      undefined,
+      session.current,
+    );
+  }
   async function revokeOthers() {
-    if (pending.current || loading || needsReview) return;
-    pending.current = true;
-    setBusy("others");
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch(`${apiBaseUrl}/auth/sessions/revoke-others`, {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        signal: AbortSignal.timeout(30000),
-      });
-      if (!response.ok) throw new Error("The operation was not acknowledged.");
-      const revoked = parseSessionsRevoked(await response.json());
-      setMessage(
+    await command(
+      "others",
+      "/auth/sessions/revoke-others",
+      "POST",
+      parseSessionsRevoked,
+      (revoked) =>
         revoked === 0
           ? t("account.sessionsNoneFound")
           : t("account.sessionsRevoked", { count: revoked }),
-      );
-      await refreshAfterAcknowledgment();
-    } catch {
-      setNeedsReview(true);
-      setError(
-        copy(
-          "The operation response was not confirmed. Read the current sessions before another operation; the request will not be replayed.",
-          "لم يتم تأكيد رد العملية. اقرأ الجلسات الحالية قبل عملية أخرى؛ لن يُعاد إرسال الطلب.",
-        ),
-      );
-    } finally {
-      pending.current = false;
-      setBusy("");
-    }
+    );
   }
-
   async function changePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending.current || loading || needsReview) return;
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const currentPassword = String(data.get("currentPassword") ?? "");
-    const newPassword = String(data.get("newPassword") ?? "");
-    const confirmation = String(data.get("confirmation") ?? "");
-    if (newPassword !== confirmation) {
+    const data = new FormData(event.currentTarget),
+      newPassword = String(data.get("newPassword") ?? "");
+    if (newPassword !== String(data.get("confirmation") ?? "")) {
       setError(t("account.passwordMismatch"));
       return;
     }
-    pending.current = true;
-    setBusy("password");
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch(`${apiBaseUrl}/auth/password/change`, {
-        method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        signal: AbortSignal.timeout(30000),
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-          revokeOtherSessions: data.get("revokeOtherSessions") === "on",
-        }),
-      });
-      if (!response.ok) throw new Error("The operation was not acknowledged.");
-      parsePasswordChanged(await response.json());
-      form.reset();
-      setMessage(t("account.passwordUpdated"));
-      await refreshAfterAcknowledgment();
-    } catch {
-      setNeedsReview(true);
-      setError(
-        copy(
-          "The password change response was not confirmed. Read the current sessions before proceeding; the password change will not be replayed.",
-          "لم يتم تأكيد رد تغيير كلمة المرور. اقرأ الجلسات الحالية قبل المتابعة؛ لن يُعاد إرسال تغيير كلمة المرور.",
-        ),
-      );
-    } finally {
-      pending.current = false;
-      setBusy("");
-    }
+    await command(
+      "password",
+      "/auth/password/change",
+      "POST",
+      parsePasswordChanged,
+      () => t("account.passwordUpdated"),
+      {
+        currentPassword: String(data.get("currentPassword") ?? ""),
+        newPassword,
+        revokeOtherSessions: data.get("revokeOtherSessions") === "on",
+      },
+    );
   }
 
   const current = sessions.find((session) => session.current);
@@ -235,7 +267,7 @@ export function AccountSecuritySessions() {
         </div>
         <button
           className={styles.secondaryButton}
-          disabled={loading || busy !== "" || needsReview || others.length === 0}
+          disabled={loading || busy !== "" || needsReview || !verified || others.length === 0}
           onClick={() => void revokeOthers()}
           type="button"
         >
@@ -256,100 +288,111 @@ export function AccountSecuritySessions() {
           {error}
         </p>
       ) : null}
-      {message ? (
-        <p className={styles.success} role="status">
-          {message}
-        </p>
-      ) : null}
-      {loading ? <p className={styles.loading}>{t("account.sessionsLoading")}</p> : null}
+      <div
+        ref={privateBody}
+        className={styles.sessionPrivate}
+        hidden={concealed}
+        data-private-account-sessions="true"
+      >
+        {message ? (
+          <p className={styles.success} role="status">
+            {message}
+          </p>
+        ) : null}
+        {loading ? <p className={styles.loading}>{t("account.sessionsLoading")}</p> : null}
 
-      {!loading && verified && current ? (
-        <div className={styles.sessionGroup}>
-          <h3>{t("account.currentSession")}</h3>
-          <SessionRow
-            dateLabel={dateLabel}
-            session={current}
-            busy={needsReview || loading ? "review" : busy}
-            onRevoke={revoke}
-          />
-        </div>
-      ) : null}
+        {!loading && verified && current ? (
+          <div className={styles.sessionGroup}>
+            <h3>{t("account.currentSession")}</h3>
+            <SessionRow
+              dateLabel={dateLabel}
+              session={current}
+              busy={needsReview || loading ? "review" : busy}
+              onRevoke={revoke}
+            />
+          </div>
+        ) : null}
 
-      {!loading && verified ? (
-        <div className={styles.sessionGroup}>
-          <h3>{t("account.otherSessions")}</h3>
-          {others.length ? (
-            <div className={styles.sessionList}>
-              {others.map((session) => (
-                <SessionRow
-                  dateLabel={dateLabel}
-                  key={session.id}
-                  session={session}
-                  busy={needsReview || loading ? "review" : busy}
-                  onRevoke={revoke}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className={styles.muted}>{t("account.noOtherSessions")}</p>
-          )}
-        </div>
-      ) : null}
+        {!loading && verified ? (
+          <div className={styles.sessionGroup}>
+            <h3>{t("account.otherSessions")}</h3>
+            {others.length ? (
+              <div className={styles.sessionList}>
+                {others.map((session) => (
+                  <SessionRow
+                    dateLabel={dateLabel}
+                    key={session.id}
+                    session={session}
+                    busy={needsReview || loading ? "review" : busy}
+                    onRevoke={revoke}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className={styles.muted}>{t("account.noOtherSessions")}</p>
+            )}
+          </div>
+        ) : null}
 
-      <form className={styles.passwordForm} onSubmit={(event) => void changePassword(event)}>
-        <h3>{t("account.changePassword")}</h3>
-        <label>
-          <span>{t("account.currentPassword")}</span>
-          <input
-            disabled={loading || busy !== "" || needsReview}
-            autoComplete="current-password"
-            dir="ltr"
-            name="currentPassword"
-            required
-            type="password"
-          />
-        </label>
-        <label>
-          <span>{t("account.newPassword")}</span>
-          <input
-            disabled={loading || busy !== "" || needsReview}
-            autoComplete="new-password"
-            dir="ltr"
-            minLength={10}
-            name="newPassword"
-            required
-            type="password"
-          />
-        </label>
-        <label>
-          <span>{t("account.confirmPassword")}</span>
-          <input
-            disabled={loading || busy !== "" || needsReview}
-            autoComplete="new-password"
-            dir="ltr"
-            minLength={10}
-            name="confirmation"
-            required
-            type="password"
-          />
-        </label>
-        <label className={styles.checkLabel}>
-          <input
-            disabled={loading || busy !== "" || needsReview}
-            defaultChecked
-            name="revokeOtherSessions"
-            type="checkbox"
-          />
-          <span>{t("account.revokeAfterPassword")}</span>
-        </label>
-        <button
-          className={styles.primaryButton}
-          disabled={busy !== "" || needsReview}
-          type="submit"
+        <form
+          ref={passwordForm}
+          className={styles.passwordForm}
+          onSubmit={(event) => void changePassword(event)}
         >
-          {busy === "password" ? t("account.updating") : t("account.updatePassword")}
-        </button>
-      </form>
+          <h3>{t("account.changePassword")}</h3>
+          <label>
+            <span>{t("account.currentPassword")}</span>
+            <input
+              disabled={loading || busy !== "" || needsReview || !verified}
+              autoComplete="current-password"
+              dir="ltr"
+              name="currentPassword"
+              required
+              type="password"
+            />
+          </label>
+          <label>
+            <span>{t("account.newPassword")}</span>
+            <input
+              disabled={loading || busy !== "" || needsReview || !verified}
+              autoComplete="new-password"
+              dir="ltr"
+              minLength={10}
+              name="newPassword"
+              required
+              type="password"
+            />
+          </label>
+          <label>
+            <span>{t("account.confirmPassword")}</span>
+            <input
+              disabled={loading || busy !== "" || needsReview || !verified}
+              autoComplete="new-password"
+              dir="ltr"
+              minLength={10}
+              name="confirmation"
+              required
+              type="password"
+            />
+          </label>
+          <label className={styles.checkLabel}>
+            <input
+              disabled={loading || busy !== "" || needsReview || !verified}
+              defaultChecked
+              name="revokeOtherSessions"
+              type="checkbox"
+            />
+            <span>{t("account.revokeAfterPassword")}</span>
+          </label>
+          <button
+            className={styles.primaryButton}
+            disabled={loading || busy !== "" || needsReview || !verified}
+            type="submit"
+          >
+            {busy === "password" ? t("account.updating") : t("account.updatePassword")}
+          </button>
+        </form>
+      </div>
     </section>
   );
 }

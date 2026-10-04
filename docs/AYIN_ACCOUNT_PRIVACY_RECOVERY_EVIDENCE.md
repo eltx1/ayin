@@ -1,0 +1,25 @@
+# Account privacy recovery and bounded export
+
+## Resulting behavior
+
+Privacy status, deletion requests, cancellation and data export use freshly verified account identity before and after the protected request. The server expected-account header rejects a cookie switch before controller execution. A late old-account private response never becomes current facts or a downloaded file. The panel hides its private DOM synchronously before resetting secrets on pagehide/hidden visibility, aborts outstanding work and invalidates late results; pageshow does not restart it. Restoring facts requires an explicit verified Read privacy status action.
+
+Deletion and cancellation require validated acknowledgments. Known success remains visible if the separate status refresh fails, with a truthful recovery message and commands disabled until an explicit successful status read. Lost or malformed acknowledgments never become known failures or success, never automatically replay, and clear password inputs. Cancellation acknowledgment does not invent a date or request state. Policy and lifecycle records are parsed from actual responses; unavailable status has no fabricated default grace period or empty-request display.
+
+Successful private response bodies have a streaming byte bound: 256 KiB for status/acknowledgments and 10 MiB for export. Missing or misleading content-length does not bypass counted bytes. Strict UTF-8 decoding rejects malformed input and whole-operation abort cancels a stalled reader. Export additionally validates version, account UUID, canonical generated timestamp and serialized UTF-8 size. Its filename comes from the validated timestamp, not a response-header filename. A post-read identity change produces no download; no partial file is emitted on rejection. HTTP error bodies and identity responses still use the existing parser, so this is not a bound for every transport response.
+
+## Validation at preparation
+
+Local Web source suite: 93 files, 541 tests passed. This includes ten privacy contract tests, six bounded-reader tests and the existing thirteen account-scope transport tests. Web types, strict browser-spec types and focused lint are required before publication. Browser cases below are authored and not execution proof until this exact candidate's owning CI finishes.
+
+Eight browser cases use actual isolated local account registration and PostgreSQL-backed API commands: EN/AR acknowledged deletion and cancellation with separately unavailable reads; a committed deletion whose response is lost; an actual cancellation with malformed client acknowledgment; same-password cookie-account switch with zero wrong-account deletion commands; actual export whose cookie switches before response delivery with zero old-account downloads and a later correct-account file; controlled oversized export with zero downloads; and native first-hidden observation before secret reset with zero pageshow traffic and explicit review only. Duplicate native form submissions must produce exactly one deletion POST. No production identity, data export or privacy deletion is invoked.
+
+Eight scoped original captures are required: EN/AR at widths 390/1440, each showing failed-refresh recovery and explicitly recovered cancellation facts. Captures measure actual component height, fit it with navigation clearance and preserve ordinary navigation. They are width/layout evidence, not certification of a physical device or an 844-pixel-height screen. An always-run scoped artifact preserves originals for individual inspection before acceptance.
+
+## Open boundaries
+
+This work does not certify legal deletion, retention/media cleanup, field performance or device/store behavior. Cancellation's server-side current-session revalidation under lock remains a separate open task. Export's multiple database queries are not certified as one repeatable-read snapshot. The independent account overview, MFA, security and finance panels still require a coordinated whole-account scope/lifecycle review. All 17 master phases remain open. The five existing raw performance reports must remain byte-for-byte unchanged.
+
+## Initial original-image rejection
+
+Candidate0cfba44064f7593e595b68eb62d940b02939ac95 passed browser37214976174 with225 ordinary cases and five PWA cases, but its eight originals in artifact11309000737 were independently downloaded, hashed SHA256 `d582cb3ab591c65f326263f9c2e78adc46e884491bce6cb96a5e5716f80a8191` and individually viewed. The four record captures exposed a default grey browser confirmation field and an awkward three-column desktop form with explanatory text alongside inputs. They are rejected visual acceptance evidence despite functional gates passing. The correction styles the text field with the existing password field design, gives this privacy form two desktop input columns with explanation spanning the row, and retains one mobile column. It does not hide navigation or weaken capture bounds. Replacement own full gates and all eight original images remain required; initial recovery images cannot substitute for final source acceptance.

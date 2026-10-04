@@ -11,6 +11,7 @@ import {
   isUniqueConstraintError,
   unauthorized,
 } from "../auth/auth.errors.js";
+import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { PasswordService } from "../auth/password.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { MEDIA_STORAGE_ADAPTER, type MediaStorageAdapter } from "../media/media-storage.adapter.js";
@@ -97,10 +98,10 @@ export class PrivacyLifecycleService {
   }
 
   async requestDeletion(
-    accountId: string,
-    sessionId: string,
+    auth: AuthenticatedRequest["ayinAuth"],
     input: { password: string; confirmation: string },
   ) {
+    const { accountId, sessionId } = auth;
     if (input.confirmation !== ACCOUNT_DELETION_CONFIRMATION) {
       throw badRequest(
         "DELETION_CONFIRMATION_REQUIRED",
@@ -109,12 +110,13 @@ export class PrivacyLifecycleService {
     }
     const account = await this.database.client.account.findUnique({
       where: { id: accountId },
-      select: { passwordHash: true, status: true },
+      select: { passwordHash: true, status: true, authVersion: true },
     });
     if (
       !account ||
       account.status !== "ACTIVE" ||
       !account.passwordHash ||
+      account.authVersion !== auth.authVersion ||
       !(await this.passwords.verify(input.password, account.passwordHash))
     ) {
       throw unauthorized("The current password is incorrect.");
@@ -122,6 +124,32 @@ export class PrivacyLifecycleService {
 
     try {
       const request = await this.database.client.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${accountId}::uuid FOR UPDATE /* ayin-deletion-account-lock */`;
+        await tx.$queryRaw`SELECT id FROM "AccountSession" WHERE id=${sessionId}::uuid FOR SHARE /* ayin-deletion-session-lock */`;
+        const current = await tx.account.findUnique({
+          where: { id: accountId },
+          select: { passwordHash: true, status: true, authVersion: true },
+        });
+        const session = await tx.accountSession.findUnique({
+          where: { id: sessionId },
+          select: { accountId: true, authVersion: true, revokedAt: true, expiresAt: true },
+        });
+        if (
+          !current ||
+          current.status !== "ACTIVE" ||
+          current.authVersion !== auth.authVersion ||
+          !session ||
+          session.accountId !== accountId ||
+          session.authVersion !== auth.authVersion ||
+          session.revokedAt !== null ||
+          session.expiresAt.getTime() <= Date.now()
+        )
+          throw unauthorized("The current session is no longer active.");
+        if (current.passwordHash !== account.passwordHash)
+          throw conflict(
+            "PASSWORD_CHANGED",
+            "The password changed while this request was pending. Review your current credentials before another operation.",
+          );
         const created = await tx.accountDeletionRequest.create({
           data: { accountId, requestedFromSessionId: sessionId },
           select: {
@@ -157,70 +185,108 @@ export class PrivacyLifecycleService {
     }
   }
 
-  async cancelDeletion(accountId: string) {
-    const request = await this.database.client.accountDeletionRequest.findFirst({
-      where: { accountId, state: { in: ["REQUESTED", "GRACE_PERIOD"] } },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, state: true },
-    });
-    if (!request) {
-      throw conflict(
-        "ACCOUNT_DELETION_NOT_CANCELLABLE",
-        "There is no deletion request that can be cancelled by this account.",
-      );
-    }
-    const now = new Date();
+  async cancelDeletion(auth: AuthenticatedRequest["ayinAuth"]) {
+    const { accountId, sessionId } = auth;
     await this.database.client.$transaction(async (tx) => {
-      const changed = await tx.accountDeletionRequest.updateMany({
-        where: {
-          id: request.id,
-          accountId,
-          state: { in: ["REQUESTED", "GRACE_PERIOD"] },
-        },
-        data: {
-          state: "CANCELLED",
-          cancelledAt: now,
-          lifecycleLeaseOwner: null,
-          lifecycleLeaseUntil: null,
-        },
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${accountId}::uuid FOR UPDATE /* ayin-deletion-cancel-account-lock */`;
+      await tx.$queryRaw`SELECT id FROM "AccountSession" WHERE id=${sessionId}::uuid FOR SHARE /* ayin-deletion-cancel-session-lock */`;
+      const account = await tx.account.findUnique({
+        where: { id: accountId },
+        select: { status: true, authVersion: true },
       });
-      if (changed.count !== 1) {
+      const session = await tx.accountSession.findUnique({
+        where: { id: sessionId },
+        select: { accountId: true, authVersion: true, revokedAt: true, expiresAt: true },
+      });
+      if (
+        !account ||
+        account.status !== "ACTIVE" ||
+        account.authVersion !== auth.authVersion ||
+        !session ||
+        session.accountId !== accountId ||
+        session.authVersion !== auth.authVersion ||
+        session.revokedAt !== null ||
+        session.expiresAt.getTime() <= Date.now()
+      )
+        throw unauthorized("The current session is no longer active.");
+      const candidate = await tx.accountDeletionRequest.findFirst({
+        where: { accountId, state: { in: ["REQUESTED", "GRACE_PERIOD"] } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (!candidate)
+        throw conflict(
+          "ACCOUNT_DELETION_NOT_CANCELLABLE",
+          "There is no deletion request that can be cancelled by this account.",
+        );
+      await tx.$queryRaw`SELECT id FROM "AccountDeletionRequest" WHERE id=${candidate.id}::uuid FOR UPDATE /* ayin-deletion-cancel-request-lock */`;
+      const request = await tx.accountDeletionRequest.findUnique({
+        where: { id: candidate.id },
+        select: { accountId: true, state: true },
+      });
+      if (
+        !request ||
+        request.accountId !== accountId ||
+        (request.state !== "REQUESTED" && request.state !== "GRACE_PERIOD")
+      )
         throw conflict(
           "ACCOUNT_DELETION_CHANGED",
           "The deletion request changed before cancellation.",
         );
-      }
+      // The request lock may wait behind grace transition; expiry is checked again after that wait.
+      if (session.expiresAt.getTime() <= Date.now())
+        throw unauthorized("The current session is no longer active.");
+      await tx.accountDeletionRequest.update({
+        where: { id: candidate.id },
+        data: {
+          state: "CANCELLED",
+          cancelledAt: new Date(),
+          lifecycleLeaseOwner: null,
+          lifecycleLeaseUntil: null,
+        },
+      });
       await this.audit.recordInTransaction(tx, {
         actorAccountId: accountId,
         action: "privacy.deletion_cancelled",
         entityType: "Account",
         entityId: accountId,
-        metadata: { requestId: request.id, previousState: request.state },
+        metadata: { requestId: candidate.id, previousState: request.state },
       });
     });
     return { cancelled: true };
   }
 
   async adminRecover(actorAccountId: string, targetAccountId: string, reason: string) {
-    const request = await this.database.client.accountDeletionRequest.findFirst({
-      where: {
-        accountId: targetAccountId,
-        state: { in: ["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"] },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, state: true },
-    });
-    if (!request) {
-      throw conflict(
-        "ACCOUNT_DELETION_NOT_RECOVERABLE",
-        "No recoverable deletion request exists. Anonymization is intentionally irreversible.",
-      );
-    }
-    const now = new Date();
-    await this.database.client.$transaction(async (tx) => {
+    const previousState = await this.database.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${targetAccountId}::uuid FOR UPDATE /* ayin-deletion-recovery-account-lock */`;
+      const candidate = await tx.accountDeletionRequest.findFirst({
+        where: {
+          accountId: targetAccountId,
+          state: { in: ["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"] },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (!candidate)
+        throw conflict(
+          "ACCOUNT_DELETION_NOT_RECOVERABLE",
+          "No recoverable deletion request exists. Anonymization is intentionally irreversible.",
+        );
+      await tx.$queryRaw`SELECT id FROM "AccountDeletionRequest" WHERE id=${candidate.id}::uuid FOR UPDATE /* ayin-deletion-recovery-request-lock */`;
+      const request = await tx.accountDeletionRequest.findUnique({
+        where: { id: candidate.id },
+        select: { accountId: true, state: true },
+      });
+      if (
+        !request ||
+        request.accountId !== targetAccountId ||
+        !["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"].includes(request.state)
+      )
+        throw conflict("ACCOUNT_DELETION_CHANGED", "The deletion request changed before recovery.");
+      const now = new Date();
       const changed = await tx.accountDeletionRequest.updateMany({
         where: {
-          id: request.id,
+          id: candidate.id,
           accountId: targetAccountId,
           state: { in: ["REQUESTED", "GRACE_PERIOD", "DEACTIVATED"] },
         },
@@ -246,10 +312,11 @@ export class PrivacyLifecycleService {
         entityType: "Account",
         entityId: targetAccountId,
         reason,
-        metadata: { requestId: request.id, previousState: request.state },
+        metadata: { requestId: candidate.id, previousState: request.state },
       });
+      return request.state;
     });
-    return { recovered: true, previousState: request.state };
+    return { recovered: true, previousState };
   }
 
   async advanceDue(now = new Date(), limit = 10): Promise<number> {
@@ -363,6 +430,7 @@ export class PrivacyLifecycleService {
 
   private async deactivate(request: LifecycleClaim, now: Date) {
     await this.database.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${request.accountId}::uuid FOR UPDATE /* ayin-deletion-deactivate-account-lock */`;
       const changed = await tx.accountDeletionRequest.updateMany({
         where: {
           id: request.id,
@@ -398,6 +466,7 @@ export class PrivacyLifecycleService {
 
   private async anonymize(requestId: string, accountId: string, now: Date) {
     await this.database.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${accountId}::uuid FOR UPDATE /* ayin-deletion-anonymize-account-lock */`;
       const changed = await tx.accountDeletionRequest.updateMany({
         where: {
           id: requestId,
