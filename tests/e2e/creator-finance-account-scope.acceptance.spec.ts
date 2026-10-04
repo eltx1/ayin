@@ -89,7 +89,9 @@ test("Actual cookie switch between finance pre-actor and protected PUT changes n
   });
   await save(page);
   await expect(page.locator('[data-private-finance-body="creator"]')).toBeHidden();
-  await expect(page.getByRole("alert")).toContainText("account or channel changed");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "account or channel changed",
+  );
   expect(writes).toBe(1);
   expect(b).toBeDefined();
   for (const id of [a, b!])
@@ -145,7 +147,9 @@ test("Actual acknowledged profile then cookie switch conceals old facts and clea
   });
   await save(page);
   await expect(page.locator('[data-private-finance-body="creator"]')).toBeHidden();
-  await expect(page.getByRole("alert")).toContainText("account or channel changed");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "account or channel changed",
+  );
   expect(
     await page.evaluate(
       () =>
@@ -203,7 +207,7 @@ for (const locale of ["en", "ar"] as const)
         })
         .click();
       await expect(page.locator('[data-private-finance-body="creator"]')).toBeHidden();
-      await expect(page.getByRole("alert")).toContainText(
+      await expect(page.getByRole("main").getByRole("alert")).toContainText(
         copy("server acknowledged this operation", "أكد الخادم هذه العملية"),
       );
       await expect(
