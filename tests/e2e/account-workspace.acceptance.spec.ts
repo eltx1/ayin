@@ -59,7 +59,11 @@ for (const locale of ["en", "ar"] as const)
           protectedHeaders.push(req.headers()["x-ayin-expected-account"] ?? "");
       });
       await page.goto("/account?lang=" + locale);
-      await expect(page.getByText("workspace-owner-a-" + locale, { exact: true })).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: copy("Account identity", "هوية الحساب"), exact: true })
+          .getByText("workspace-owner-a-" + locale, { exact: true }),
+      ).toBeVisible();
       await expect(
         sessions(page).getByRole("heading", {
           name: copy("Current session", "الجلسة الحالية"),
@@ -109,6 +113,10 @@ for (const locale of ["en", "ar"] as const)
       expect(protectedHeaders.length).toBeGreaterThanOrEqual(4);
       expect(protectedHeaders.every((header) => header === a)).toBe(true);
       const b = await register(page, "workspace-owner-b-" + locale);
+      await page.locator("[data-private-viewer-identity]").getByRole("button").click();
+      await expect(
+        page.getByRole("dialog", { name: "workspace-owner-a-" + locale, exact: true }),
+      ).toBeVisible();
       let privateReads = 0,
         writes = 0;
       page.on("request", (req) => {
@@ -119,6 +127,9 @@ for (const locale of ["en", "ar"] as const)
       });
       const observed = await page.evaluate(() => {
         const body = document.querySelector<HTMLElement>("[data-private-account-workspace]");
+        const menu = document.querySelector<HTMLDialogElement>(
+          "[data-private-viewer-identity] dialog",
+        );
         const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "hidden");
         if (!body || !descriptor?.get || !descriptor.set)
           throw Error("Missing native account root");
@@ -145,6 +156,8 @@ for (const locale of ["en", "ar"] as const)
         window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
         return {
           first,
+          menuOpen: menu?.open,
+          menuHidden: menu?.hidden,
           values: [
             ...body.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>(
               "input:not([type=checkbox]):not([type=radio]), textarea",
@@ -157,6 +170,8 @@ for (const locale of ["en", "ar"] as const)
         };
       });
       expect(observed.first).toEqual({ draftPresent: true, qrPresent: true, visible: false });
+      expect(observed.menuOpen).toBe(false);
+      expect(observed.menuHidden).toBe(true);
       expect(observed.values.every((value) => value === "")).toBe(true);
       expect(observed.qrSrc).toBeNull();
       expect(observed.secretText.every((value) => value === "")).toBe(true);
@@ -198,7 +213,11 @@ for (const locale of ["en", "ar"] as const)
           exact: true,
         })
         .click();
-      await expect(page.getByText("workspace-owner-b-" + locale, { exact: true })).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: copy("Account identity", "هوية الحساب"), exact: true })
+          .getByText("workspace-owner-b-" + locale, { exact: true }),
+      ).toBeVisible();
       await expect(
         sessions(page).getByRole("heading", {
           name: copy("Current session", "الجلسة الحالية"),
@@ -258,7 +277,11 @@ test("Actual account switch during root bootstrap never mounts stale identity or
   expect(b).toBeDefined();
   await page.unroute(API + "/auth/me");
   await page.getByRole("button", { name: "Read current account", exact: true }).click();
-  await expect(page.getByText("workspace-bootstrap-b", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Account identity", exact: true })
+      .getByText("workspace-bootstrap-b", { exact: true }),
+  ).toBeVisible();
   await expect(
     sessions(page).getByRole("heading", { name: "Current session", exact: true }),
   ).toBeVisible();

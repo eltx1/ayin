@@ -12,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { useI18n } from "@/components/i18n/i18n-provider";
+import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { AccountScopeError, requestAccountScope } from "@/lib/account-scope";
 import { parseAccountIdentity } from "@/lib/account-identity-response";
 import type { AyinIdentity } from "@/lib/api";
@@ -33,6 +34,8 @@ export function useAccountFreeze(binding: Binding | null, freeze: () => void) {
   useEffect(() => binding?.register(() => latest.current()), [binding]);
 }
 export function AccountWorkspace({ children }: { children: ReactNode }) {
+  const { claimAccountIdentity } = useViewerProduct();
+  const chrome = useRef<ReturnType<typeof claimAccountIdentity> | null>(null);
   const { locale, href } = useI18n(),
     ar = locale === "ar";
   const body = useRef<HTMLDivElement>(null),
@@ -48,6 +51,7 @@ export function AccountWorkspace({ children }: { children: ReactNode }) {
     // Conceal the whole account before any native form/secret reset or React update.
     if (body.current) body.current.hidden = true;
     actor.current = null;
+    chrome.current?.publish(null);
     epoch.current++;
     pending.current?.abort();
     pending.current = null;
@@ -110,6 +114,7 @@ export function AccountWorkspace({ children }: { children: ReactNode }) {
       if (next.value.account.id !== next.accountId)
         throw new AccountScopeError(409, "ACCOUNT_CHANGED");
       actor.current = next.accountId;
+      chrome.current?.publish(next.value);
       setGeneration((value) => value + 1);
       setIdentity(next.value);
       setClosed(false);
@@ -127,6 +132,8 @@ export function AccountWorkspace({ children }: { children: ReactNode }) {
     pending.current?.abort();
   }, []);
   useEffect(() => {
+    const ownedChrome = claimAccountIdentity();
+    chrome.current = ownedChrome;
     let active = true;
     const initial = epoch.current;
     void Promise.resolve().then(() => {
@@ -140,10 +147,12 @@ export function AccountWorkspace({ children }: { children: ReactNode }) {
     return () => {
       active = false;
       invalidate();
+      ownedChrome.release();
+      if (chrome.current === ownedChrome) chrome.current = null;
       window.removeEventListener("pagehide", freeze, true);
       document.removeEventListener("visibilitychange", visibility, true);
     };
-  }, [freeze, review, invalidate]);
+  }, [freeze, review, invalidate, claimAccountIdentity]);
   const binding = useMemo(
     () => (identity ? { identity, expectedAccount, freeze, register } : null),
     [identity, expectedAccount, freeze, register],
