@@ -53,7 +53,9 @@ async function prepare(page: Page, locale: "en" | "ar" = "en") {
     .getByLabel(ar ? "الاسم القانوني" : "Legal name", { exact: true })
     .fill("Actual scoped saved beneficiary");
   await page
-    .getByLabel("New payout destination · optional", { exact: true })
+    .getByLabel(ar ? "وجهة دفع جديدة · اختيارية" : "New payout destination · optional", {
+      exact: true,
+    })
     .fill("Actual captured destination 1133557799");
 }
 const save = (page: Page) =>
