@@ -89,7 +89,7 @@ export class PrivacyController {
   @HttpCode(HttpStatus.OK)
   cancelDeletion(@Req() request: AuthenticatedRequest) {
     this.rateLimiter.consume("privacy-deletion-cancel", request.ayinAuth.accountId);
-    return this.lifecycle.cancelDeletion(request.ayinAuth.accountId);
+    return this.lifecycle.cancelDeletion(request.ayinAuth);
   }
 }
 

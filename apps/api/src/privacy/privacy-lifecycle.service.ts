@@ -185,45 +185,72 @@ export class PrivacyLifecycleService {
     }
   }
 
-  async cancelDeletion(accountId: string) {
-    const request = await this.database.client.accountDeletionRequest.findFirst({
-      where: { accountId, state: { in: ["REQUESTED", "GRACE_PERIOD"] } },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, state: true },
-    });
-    if (!request) {
-      throw conflict(
-        "ACCOUNT_DELETION_NOT_CANCELLABLE",
-        "There is no deletion request that can be cancelled by this account.",
-      );
-    }
-    const now = new Date();
+  async cancelDeletion(auth: AuthenticatedRequest["ayinAuth"]) {
+    const { accountId, sessionId } = auth;
     await this.database.client.$transaction(async (tx) => {
-      const changed = await tx.accountDeletionRequest.updateMany({
-        where: {
-          id: request.id,
-          accountId,
-          state: { in: ["REQUESTED", "GRACE_PERIOD"] },
-        },
-        data: {
-          state: "CANCELLED",
-          cancelledAt: now,
-          lifecycleLeaseOwner: null,
-          lifecycleLeaseUntil: null,
-        },
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${accountId}::uuid FOR UPDATE /* ayin-deletion-cancel-account-lock */`;
+      await tx.$queryRaw`SELECT id FROM "AccountSession" WHERE id=${sessionId}::uuid FOR SHARE /* ayin-deletion-cancel-session-lock */`;
+      const account = await tx.account.findUnique({
+        where: { id: accountId },
+        select: { status: true, authVersion: true },
       });
-      if (changed.count !== 1) {
+      const session = await tx.accountSession.findUnique({
+        where: { id: sessionId },
+        select: { accountId: true, authVersion: true, revokedAt: true, expiresAt: true },
+      });
+      if (
+        !account ||
+        account.status !== "ACTIVE" ||
+        account.authVersion !== auth.authVersion ||
+        !session ||
+        session.accountId !== accountId ||
+        session.authVersion !== auth.authVersion ||
+        session.revokedAt !== null ||
+        session.expiresAt.getTime() <= Date.now()
+      )
+        throw unauthorized("The current session is no longer active.");
+      const candidate = await tx.accountDeletionRequest.findFirst({
+        where: { accountId, state: { in: ["REQUESTED", "GRACE_PERIOD"] } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (!candidate)
+        throw conflict(
+          "ACCOUNT_DELETION_NOT_CANCELLABLE",
+          "There is no deletion request that can be cancelled by this account.",
+        );
+      await tx.$queryRaw`SELECT id FROM "AccountDeletionRequest" WHERE id=${candidate.id}::uuid FOR UPDATE /* ayin-deletion-cancel-request-lock */`;
+      const request = await tx.accountDeletionRequest.findUnique({
+        where: { id: candidate.id },
+        select: { accountId: true, state: true },
+      });
+      if (
+        !request ||
+        request.accountId !== accountId ||
+        (request.state !== "REQUESTED" && request.state !== "GRACE_PERIOD")
+      )
         throw conflict(
           "ACCOUNT_DELETION_CHANGED",
           "The deletion request changed before cancellation.",
         );
-      }
+      // The request lock may wait behind grace transition; expiry is checked again after that wait.
+      if (session.expiresAt.getTime() <= Date.now())
+        throw unauthorized("The current session is no longer active.");
+      await tx.accountDeletionRequest.update({
+        where: { id: candidate.id },
+        data: {
+          state: "CANCELLED",
+          cancelledAt: new Date(),
+          lifecycleLeaseOwner: null,
+          lifecycleLeaseUntil: null,
+        },
+      });
       await this.audit.recordInTransaction(tx, {
         actorAccountId: accountId,
         action: "privacy.deletion_cancelled",
         entityType: "Account",
         entityId: accountId,
-        metadata: { requestId: request.id, previousState: request.state },
+        metadata: { requestId: candidate.id, previousState: request.state },
       });
     });
     return { cancelled: true };
@@ -246,6 +273,7 @@ export class PrivacyLifecycleService {
     }
     const now = new Date();
     await this.database.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${targetAccountId}::uuid FOR UPDATE /* ayin-deletion-recovery-account-lock */`;
       const changed = await tx.accountDeletionRequest.updateMany({
         where: {
           id: request.id,
@@ -391,6 +419,7 @@ export class PrivacyLifecycleService {
 
   private async deactivate(request: LifecycleClaim, now: Date) {
     await this.database.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${request.accountId}::uuid FOR UPDATE /* ayin-deletion-deactivate-account-lock */`;
       const changed = await tx.accountDeletionRequest.updateMany({
         where: {
           id: request.id,
@@ -426,6 +455,7 @@ export class PrivacyLifecycleService {
 
   private async anonymize(requestId: string, accountId: string, now: Date) {
     await this.database.client.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Account" WHERE id=${accountId}::uuid FOR UPDATE /* ayin-deletion-anonymize-account-lock */`;
       const changed = await tx.accountDeletionRequest.updateMany({
         where: {
           id: requestId,
