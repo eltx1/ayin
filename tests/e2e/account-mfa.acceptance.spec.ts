@@ -226,10 +226,10 @@ test("account switches clear setup secrets and require a fresh account workspace
   await expect(region.getByAltText("Two-step verification", { exact: true })).toBeVisible();
   await register(page, "account-mfa-after-switch");
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(region.getByRole("button", { name: "Reload account", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Account review", exact: true })).toBeVisible();
   await expect(region.getByAltText("Two-step verification", { exact: true })).toHaveCount(0);
   await expect(region.getByRole("button", { name: "Enable MFA", exact: true })).toHaveCount(0);
-  await region.getByRole("button", { name: "Reload account", exact: true }).click();
+  await page.getByRole("button", { name: "Read current account", exact: true }).click();
   await expect(
     page
       .getByRole("region", { name: "Account identity" })
@@ -284,12 +284,12 @@ test("MFA setup is hidden synchronously on controlled pagehide and persisted pag
     window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
     window.dispatchEvent(new Event("focus"));
   });
-  await expect(region.getByRole("button", { name: "Reload account", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Account review", exact: true })).toBeVisible();
   await expect(region.getByAltText("Two-step verification", { exact: true })).toHaveCount(0);
   expect(reads).toBe(0);
   expect(writes).toBe(0);
   expect(navigations).toBe(0);
-  await region.getByRole("button", { name: "Reload account", exact: true }).click();
+  await page.getByRole("button", { name: "Read current account", exact: true }).click();
   await expect(region.getByText("Two-step verification is off", { exact: true })).toBeVisible();
-  expect(navigations).toBe(1);
+  expect(navigations).toBe(0);
 });

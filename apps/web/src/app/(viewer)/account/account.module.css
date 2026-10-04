@@ -333,3 +333,17 @@
     grid-template-columns: 1fr;
   }
 }
+
+.accountRecovery {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.accountRecovery p {
+  margin: 0;
+}

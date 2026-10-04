@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { AccountWorkspace } from "@/components/account/account-workspace";
 import { AccountOverview } from "@/components/account/account-overview";
 import { AccountPrivacyControls } from "@/components/account/account-privacy-controls";
 import { AccountRevenue } from "@/components/account/account-revenue";
@@ -25,11 +26,13 @@ export default async function AccountPage() {
         <p>{t("account.intro")}</p>
       </header>
 
-      <AccountOverview />
-      <AccountSecurityWorkspace />
-      <AccountPrivacyControls />
+      <AccountWorkspace>
+        <AccountOverview />
+        <AccountSecurityWorkspace />
+        <AccountPrivacyControls />
 
-      <AccountRevenue />
+        <AccountRevenue />
+      </AccountWorkspace>
     </main>
   );
 }

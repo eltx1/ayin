@@ -108,15 +108,22 @@ export async function requestMfa(
   path: string,
   signal: AbortSignal,
   body?: Record<string, unknown>,
+  expectedAccountId?: string,
 ): Promise<unknown> {
   const response = await fetch(`${apiBaseUrl}/auth/mfa/${path}`, {
     method: body ? "POST" : "GET",
     credentials: "include",
     cache: "no-store",
     signal,
-    ...(body
-      ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+    ...(body || expectedAccountId
+      ? {
+          headers: {
+            ...(body ? { "content-type": "application/json" } : {}),
+            ...(expectedAccountId ? { "x-ayin-expected-account": expectedAccountId } : {}),
+          },
+        }
       : {}),
+    ...(body ? { body: JSON.stringify(body) } : {}),
   });
   if (!response.ok) {
     const error = (await response

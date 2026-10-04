@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
 import styles from "@/app/(viewer)/account/account.module.css";
 import { useI18n } from "@/components/i18n/i18n-provider";
-import { apiBaseUrl, type AyinIdentity, readApiError } from "@/lib/api";
+import { useAccountWorkspace } from "./account-workspace";
 import type { TranslationKey } from "@/lib/i18n/translator";
 
 const quickLinks = [
@@ -19,40 +18,9 @@ const quickLinks = [
 
 export function AccountOverview() {
   const { href, t } = useI18n();
-  const [identity, setIdentity] = useState<AyinIdentity | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void fetch(`${apiBaseUrl}/auth/me`, {
-      credentials: "include",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await readApiError(response));
-        setIdentity((await response.json()) as AyinIdentity);
-      })
-      .catch((caught) => {
-        if (!controller.signal.aborted) {
-          setError(caught instanceof Error ? caught.message : t("account.loadError"));
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [t]);
-
-  if (loading) return <p className={styles.loading}>{t("account.loading")}</p>;
-  if (!identity) {
-    return (
-      <p className={styles.error}>
-        {error || t("account.signInRequired")} <Link href={href("/login")}>{t("auth.signIn")}</Link>
-      </p>
-    );
-  }
+  const binding = useAccountWorkspace();
+  if (!binding) return null;
+  const identity = binding.identity;
 
   return (
     <>

@@ -420,9 +420,10 @@ function match(actor: { accountId: string; channelId: string }, snapshot: Financ
 export async function getCreatorFinance(
   signal: AbortSignal,
   expected?: FinanceSnapshot,
+  expectedAccountId?: string,
 ): Promise<FinanceSnapshot> {
   return bounded(signal, 15000, async (signal) => {
-    const actor = await identity(signal);
+    const actor = await identity(signal, expectedAccountId);
     if (expected) match(actor, expected);
     const [overview, analytics, disputes] = await Promise.all([
       request("/creator/studio/revenue", signal, {}, actor.accountId),

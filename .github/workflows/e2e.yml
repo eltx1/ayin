@@ -247,3 +247,12 @@ jobs:
           path: test-results/**/design-creator-finance-scope-*.png
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve whole-account scope recovery visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-workspace-scope-visuals
+          path: test-results/**/design-account-workspace-*.png
+          if-no-files-found: ignore
+          retention-days: 7
