@@ -361,7 +361,7 @@ export function AccountPrivacyControls() {
         {status && (!active || active.state === "CANCELLED") ? (
           <form
             ref={formRef}
-            className={styles.passwordForm}
+            className={`${styles.passwordForm} ${styles.privacyDeletionForm}`}
             onSubmit={(event) => void requestDeletion(event)}
           >
             <h3>{t("account.requestDeletion")}</h3>

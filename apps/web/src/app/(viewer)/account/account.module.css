@@ -253,7 +253,8 @@
   font-weight: 750;
 }
 
-.passwordForm input[type="password"] {
+.passwordForm input[type="password"],
+.passwordForm input[type="text"] {
   background: rgb(255 255 255 / 5%);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -316,4 +317,19 @@
 .sessionPrivate:not([hidden]) {
   display: grid;
   gap: 1.25rem;
+}
+
+.privacyDeletionForm {
+  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.privacyDeletionForm > p {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .privacyDeletionForm {
+    grid-template-columns: 1fr;
+  }
 }
