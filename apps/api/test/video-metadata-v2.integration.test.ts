@@ -116,6 +116,11 @@ databaseDescribe("video metadata v2", () => {
       partNumber: index + 1,
       etag: `etag-${index + 1}`,
     }));
+    vi.mocked(storage.headObject).mockResolvedValueOnce({
+      sizeBytes: uploadSize,
+      contentType: "video/mp4",
+      etag: '"actual-completed-source"',
+    });
     const completed = await app.inject({
       method: "POST",
       url: "/media/uploads/sessions/complete",
