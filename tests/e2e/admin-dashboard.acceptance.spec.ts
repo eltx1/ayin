@@ -23,7 +23,7 @@ test.beforeEach(() => {
 });
 async function register(page: Page, email: string) {
   const response = await page.request.post(`${API}/auth/register`, {
-    data: { name: "Scoped dashboard operator", email, password: "strong-pass-123" },
+    data: { name: "Dashboard search acceptance operator", email, password: "strong-pass-123" },
     headers: { origin: WEB },
   });
   expect(response.ok()).toBe(true);
@@ -84,7 +84,7 @@ test("scoped dashboard keeps available data through a failed summary and renders
   await expect(
     main.getByText("No permitted records match this search.", { exact: true }),
   ).toBeVisible();
-  await search.fill("Scoped");
+  await search.fill("Dashboard search acceptance");
   await expect(
     main.getByText("No permitted records match this search.", { exact: true }),
   ).toHaveCount(0);
