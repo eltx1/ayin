@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { createHmac } from "node:crypto";
 
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -222,5 +223,98 @@ databaseDescribe("direct creator media upload", () => {
     expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
     const after = await prisma.mediaAsset.findUnique({ where: { id: session.assetId } });
     expect(after?.status).toBe("UPLOADED");
+  });
+  async function tokenFixture() {
+    const owner = await register("Token boundary owner", "token-boundary@example.com");
+    const created = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions",
+      headers: { cookie: owner.cookie },
+      payload: {
+        channelId: owner.user.channel.id,
+        sizeBytes: 70 * 1024 * 1024,
+        mimeType: "video/mp4",
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const session = created.json();
+    vi.clearAllMocks();
+    return { owner, session };
+  }
+  for (const invalid of ["TRAILING", "OVERSIZED", "SIGNED_UNSAFE"] as const)
+    it(
+      "rejects actual upload token " +
+        invalid +
+        " across all continuation endpoints before provider/database effects",
+      async () => {
+        const { owner, session } = await tokenFixture();
+        let token: string = session.sessionToken;
+        if (invalid === "TRAILING") token += ".ignored";
+        if (invalid === "OVERSIZED") token = "x".repeat(16 * 1024 + 1);
+        if (invalid === "SIGNED_UNSAFE") {
+          const payload = JSON.parse(
+            Buffer.from(token.split(".")[0]!, "base64url").toString("utf8"),
+          );
+          payload.sizeBytes = Number.MAX_SAFE_INTEGER + 1;
+          const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+          token =
+            encoded +
+            "." +
+            createHmac("sha256", "task-06-upload-session-secret-with-more-than-32-characters")
+              .update(encoded)
+              .digest("base64url");
+        }
+        const before = await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } });
+        for (const path of ["authorize-part", "resume", "complete", "abort"]) {
+          const response = await app.inject({
+            method: "POST",
+            url: "/media/uploads/sessions/" + path,
+            headers: { cookie: owner.cookie },
+            payload: {
+              sessionToken: token,
+              ...(path === "authorize-part" ? { partNumber: 1 } : {}),
+              ...(path === "complete"
+                ? { parts: [{ partNumber: 1, etag: "actual-fixture-etag" }] }
+                : {}),
+            },
+          });
+          expect(response.statusCode).toBe(invalid === "OVERSIZED" ? 400 : 401);
+        }
+        expect(await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } })).toEqual(before);
+        for (const method of [
+          storage.authorizeMultipartPart,
+          storage.listParts,
+          storage.completeMultipartUpload,
+          storage.abortMultipartUpload,
+          storage.headObject,
+          storage.deleteObject,
+        ])
+          expect(method).not.toHaveBeenCalled();
+      },
+    );
+  it("preserves an actual valid V1 multipart token for explicit part authorization and resume", async () => {
+    const { owner, session } = await tokenFixture();
+    const before = await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/media/uploads/sessions/authorize-part",
+          headers: { cookie: owner.cookie },
+          payload: { sessionToken: session.sessionToken, partNumber: 1 },
+        })
+      ).statusCode,
+    ).toBe(201);
+    const resume = await app.inject({
+      method: "POST",
+      url: "/media/uploads/sessions/resume",
+      headers: { cookie: owner.cookie },
+      payload: { sessionToken: session.sessionToken },
+    });
+    expect(resume.statusCode).toBe(201);
+    expect(resume.json()).toEqual({ parts: [] });
+    expect(storage.authorizeMultipartPart).toHaveBeenCalledOnce();
+    expect(storage.listParts).toHaveBeenCalledOnce();
+    expect(await prisma.mediaAsset.findMany({ orderBy: { id: "asc" } })).toEqual(before);
   });
 });
