@@ -66,11 +66,7 @@ export class AdminVideoPolicyController {
         "Kids-eligible content must be GENERAL with no age restriction.",
       );
     }
-    return this.policies.setClassification(
-      request.ayinAuth.accountId,
-      parseVideoId(videoIdRaw),
-      parsed.data,
-    );
+    return this.policies.setClassification(request.ayinAuth, parseVideoId(videoIdRaw), parsed.data);
   }
 
   @Put(":videoId/override")
@@ -93,7 +89,7 @@ export class AdminVideoPolicyController {
         "Override expiry must be in the future.",
       );
     }
-    return this.policies.setOverride(request.ayinAuth.accountId, parseVideoId(videoIdRaw), {
+    return this.policies.setOverride(request.ayinAuth, parseVideoId(videoIdRaw), {
       disposition: parsed.data.disposition,
       reason: parsed.data.reason,
       expiresAt,
@@ -114,7 +110,7 @@ export class AdminVideoPolicyController {
         "An audit reason is required to clear an override.",
       );
     return this.policies.clearOverride(
-      request.ayinAuth.accountId,
+      request.ayinAuth,
       parseVideoId(videoIdRaw),
       parsed.data.reason,
     );

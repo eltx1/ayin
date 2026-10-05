@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AdminVideoPolicyService } from "./admin-video-policy.service.js";
 
+vi.mock("./admin-account-write-authority.js", () => ({
+  lockAdminAccountWrite: vi.fn().mockResolvedValue(undefined),
+}));
+const actor = {
+  accountId: "admin",
+  authVersion: 0,
+  sessionId: "session",
+  reauthAt: Math.floor(Date.now() / 1000),
+};
+
 describe("AdminVideoPolicyService Kids classification", () => {
   it("writes Kids classification and audit metadata in one transaction", async () => {
     const upsert = vi.fn().mockResolvedValue({
@@ -11,11 +21,13 @@ describe("AdminVideoPolicyService Kids classification", () => {
       kidsEligible: true,
     });
     const audit = { recordInTransaction: vi.fn().mockResolvedValue(undefined) };
-    const tx = { videoPolicy: { upsert } };
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([{ id: "video", status: "PUBLISHED" }]),
+      videoPolicy: { upsert, findUnique: vi.fn().mockResolvedValue(null) },
+    };
     const database = {
       client: {
         video: { findUnique: vi.fn().mockResolvedValue({ id: "video" }) },
-        videoPolicy: { findUnique: vi.fn().mockResolvedValue(null) },
         $transaction: vi.fn(async (callback: (value: typeof tx) => unknown) => callback(tx)),
       },
     };
@@ -25,7 +37,7 @@ describe("AdminVideoPolicyService Kids classification", () => {
       audit as never,
     );
 
-    await service.setClassification("admin", "video", {
+    await service.setClassification(actor, "video", {
       maturityLevel: "GENERAL",
       ageRestriction: "NONE",
       kidsEligible: true,
@@ -62,7 +74,7 @@ describe("AdminVideoPolicyService Kids classification", () => {
     );
 
     await expect(
-      service.setClassification("admin", "video", {
+      service.setClassification(actor, "video", {
         maturityLevel: "MATURE",
         ageRestriction: "NONE",
         kidsEligible: true,
