@@ -87,7 +87,7 @@ export class QuickUploadController {
       );
     }
     return this.run(() =>
-      this.quickUpload.createDraft(request.ayinAuth.accountId, {
+      this.quickUpload.createDraft(request.ayinAuth, {
         ...parsed.data,
         durationMs: parsed.data.durationMs ?? null,
       }),

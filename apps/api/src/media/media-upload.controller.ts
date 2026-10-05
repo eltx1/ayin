@@ -61,7 +61,7 @@ export class MediaUploadController {
     }
     return this.run(() =>
       this.uploads.authorizePart(
-        request.ayinAuth.accountId,
+        request.ayinAuth,
         parsed.data.sessionToken,
         parsed.data.partNumber,
       ),
@@ -76,9 +76,7 @@ export class MediaUploadController {
         new MediaUploadError("INVALID_RESUME", "This upload session could not be resumed."),
       );
     }
-    return this.run(() =>
-      this.uploads.resumeParts(request.ayinAuth.accountId, parsed.data.sessionToken),
-    );
+    return this.run(() => this.uploads.resumeParts(request.ayinAuth, parsed.data.sessionToken));
   }
 
   @Post("sessions/complete")
@@ -90,11 +88,7 @@ export class MediaUploadController {
       );
     }
     return this.run(() =>
-      this.uploads.complete(
-        request.ayinAuth.accountId,
-        parsed.data.sessionToken,
-        parsed.data.parts,
-      ),
+      this.uploads.complete(request.ayinAuth, parsed.data.sessionToken, parsed.data.parts),
     );
   }
 
@@ -106,7 +100,7 @@ export class MediaUploadController {
         new MediaUploadError("INVALID_ABORT", "This upload could not be stopped."),
       );
     }
-    return this.run(() => this.uploads.abort(request.ayinAuth.accountId, parsed.data.sessionToken));
+    return this.run(() => this.uploads.abort(request.ayinAuth, parsed.data.sessionToken));
   }
 
   private async run<T>(operation: () => Promise<T>): Promise<T> {

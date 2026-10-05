@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@ayin/db";
+import type { AuthenticatedRequest } from "../auth/auth.guard.js";
+import { lockAdminAccountWrite } from "../admin/admin-account-write-authority.js";
+import { lockMediaGeneration } from "./media-generation-safety.js";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -16,6 +20,8 @@ import {
   type UploadSessionPayload,
   UploadSessionTokenService,
 } from "./upload-session-token.service.js";
+
+type UploadActor = AuthenticatedRequest["ayinAuth"];
 
 const SUPPORTED_VIDEO_MIME_TYPES = new Set([
   "video/mp4",
@@ -241,8 +247,13 @@ export class MediaUploadService {
     };
   }
 
-  async authorizePart(accountId: string, sessionToken: string, partNumber: number) {
-    const session = await this.assertSession(accountId, sessionToken, ["PENDING"]);
+  async authorizePart(actor: UploadActor, sessionToken: string, partNumber: number) {
+    const session = await this.withSession(
+      actor,
+      sessionToken,
+      ["PENDING"],
+      async (_tx, session) => session,
+    );
     if (session.mode !== "multipart" || !session.uploadId) {
       throw new MediaUploadError("NOT_MULTIPART", "This upload does not use multipart mode.");
     }
@@ -250,82 +261,101 @@ export class MediaUploadService {
     if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > partCount) {
       throw new MediaUploadError("INVALID_PART", "That upload part is outside the expected range.");
     }
-    return this.storage.authorizeMultipartPart({
+    const authorization = await this.storage.authorizeMultipartPart({
       key: session.objectKey,
       uploadId: session.uploadId,
       partNumber,
       expiresInSeconds: this.remainingAuthorizationSeconds(session),
     });
+    return this.withSession(actor, sessionToken, ["PENDING"], async () => authorization);
   }
 
-  async resumeParts(accountId: string, sessionToken: string) {
-    const session = await this.assertSession(accountId, sessionToken, ["PENDING"]);
-    if (session.mode !== "multipart" || !session.uploadId) {
-      return { parts: [] };
-    }
-    return {
-      parts: await this.storage.listParts({ key: session.objectKey, uploadId: session.uploadId }),
-    };
+  async resumeParts(actor: UploadActor, sessionToken: string) {
+    const session = await this.withSession(
+      actor,
+      sessionToken,
+      ["PENDING"],
+      async (_tx, session) => session,
+    );
+    const parts =
+      session.mode === "multipart" && session.uploadId
+        ? await this.storage.listParts({ key: session.objectKey, uploadId: session.uploadId })
+        : [];
+    return this.withSession(actor, sessionToken, ["PENDING"], async () => ({ parts }));
   }
 
   async complete(
-    accountId: string,
+    actor: UploadActor,
     sessionToken: string,
     parts: CompletedUploadPart[],
   ): Promise<{ assetId: string; status: "UPLOADED" }> {
-    const session = await this.assertSession(accountId, sessionToken, ["PENDING", "UPLOADED"]);
-    const existing = await this.database.client.mediaAsset.findUnique({
-      where: { id: session.assetId },
-      select: { status: true },
-    });
-    if (existing?.status === "UPLOADED") {
-      await this.processingLifecycle.enqueueUploadedAsset(session.assetId);
-      return { assetId: session.assetId, status: "UPLOADED" };
-    }
-
-    if (session.mode === "multipart") {
-      if (!session.uploadId) {
-        throw new MediaUploadError("INVALID_UPLOAD_SESSION", "This upload session is incomplete.");
-      }
-      const expectedPartCount = Math.ceil(session.sizeBytes / session.partSizeBytes);
-      this.validateCompletedParts(parts, expectedPartCount);
-      let verifiedAfterUncertainCompletion = false;
-      try {
-        await this.storage.completeMultipartUpload({
-          key: session.objectKey,
-          uploadId: session.uploadId,
-          parts,
-        });
-      } catch (error) {
-        const recovered = await this.objectMatchesSession(session);
-        if (!recovered) {
-          throw error;
+    const { session, status } = await this.withSession(
+      actor,
+      sessionToken,
+      ["PENDING", "UPLOADED"],
+      async (_tx, session, status) => ({ session, status }),
+    );
+    if (status !== "UPLOADED") {
+      if (session.mode === "multipart") {
+        if (!session.uploadId) {
+          throw new MediaUploadError(
+            "INVALID_UPLOAD_SESSION",
+            "This upload session is incomplete.",
+          );
         }
-        verifiedAfterUncertainCompletion = true;
-      }
-      if (!verifiedAfterUncertainCompletion && !(await this.objectMatchesSession(session))) {
+        const expectedPartCount = Math.ceil(session.sizeBytes / session.partSizeBytes);
+        this.validateCompletedParts(parts, expectedPartCount);
+        let verifiedAfterUncertainCompletion = false;
+        try {
+          await this.storage.completeMultipartUpload({
+            key: session.objectKey,
+            uploadId: session.uploadId,
+            parts,
+          });
+        } catch (error) {
+          const recovered = await this.objectMatchesSession(session);
+          if (!recovered) throw error;
+          verifiedAfterUncertainCompletion = true;
+        }
+        if (!verifiedAfterUncertainCompletion && !(await this.objectMatchesSession(session))) {
+          throw new MediaUploadError(
+            "UPLOAD_SIZE_OR_TYPE_MISMATCH",
+            "The completed video does not match the selected source file. Review the upload before trying again.",
+          );
+        }
+      } else if (!(await this.objectMatchesSession(session))) {
         throw new MediaUploadError(
           "UPLOAD_SIZE_OR_TYPE_MISMATCH",
-          "The completed video does not match the selected source file. Review the upload before trying again.",
+          "The uploaded video does not match the selected source file. Please retry the upload.",
         );
       }
-    } else if (!(await this.objectMatchesSession(session))) {
-      throw new MediaUploadError(
-        "UPLOAD_SIZE_OR_TYPE_MISMATCH",
-        "The uploaded video does not match the selected source file. Please retry the upload.",
-      );
     }
 
-    await this.database.client.mediaAsset.update({
-      where: { id: session.assetId },
-      data: { status: "UPLOADED" },
-    });
-    await this.processingLifecycle.enqueueUploadedAsset(session.assetId);
-    return { assetId: session.assetId, status: "UPLOADED" };
+    // Provider work cannot be rolled back. Recheck current authority/lifecycle before
+    // committing source state and processing together; never hold staff locks during R2 I/O.
+    return this.withSession(
+      actor,
+      sessionToken,
+      ["PENDING", "UPLOADED"],
+      async (tx, current, status) => {
+        if (status === "PENDING")
+          await tx.mediaAsset.update({
+            where: { id: current.assetId },
+            data: { status: "UPLOADED" },
+          });
+        await this.processingLifecycle.enqueueUploadedAssetInTransaction(tx, current.assetId);
+        return { assetId: current.assetId, status: "UPLOADED" as const };
+      },
+    );
   }
 
-  async abort(accountId: string, sessionToken: string): Promise<{ status: "ABORTED" }> {
-    const session = await this.assertSession(accountId, sessionToken, ["PENDING"]);
+  async abort(actor: UploadActor, sessionToken: string): Promise<{ status: "ABORTED" }> {
+    const session = await this.withSession(
+      actor,
+      sessionToken,
+      ["PENDING"],
+      async (_tx, session) => session,
+    );
     if (session.mode === "multipart" && session.uploadId) {
       await this.storage.abortMultipartUpload({
         key: session.objectKey,
@@ -334,8 +364,13 @@ export class MediaUploadService {
     } else {
       await this.storage.deleteObject(session.objectKey).catch(() => undefined);
     }
-    await this.rejectAsset(session.assetId);
-    return { status: "ABORTED" };
+    return this.withSession(actor, sessionToken, ["PENDING"], async (tx, current) => {
+      await tx.mediaAsset.update({
+        where: { id: current.assetId },
+        data: { status: "REJECTED", removedAt: new Date() },
+      });
+      return { status: "ABORTED" as const };
+    });
   }
 
   async cleanupAbandonedUploads(
@@ -390,14 +425,98 @@ export class MediaUploadService {
     }
   }
 
-  private async assertSession(
-    accountId: string,
+  private async withSession<T>(
+    actor: UploadActor,
     sessionToken: string,
     allowedStatuses: Array<"PENDING" | "UPLOADED">,
-  ): Promise<UploadSessionPayload> {
-    let session: UploadSessionPayload;
+    operation: (
+      tx: Prisma.TransactionClient,
+      session: UploadSessionPayload,
+      status: string,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const session = this.verifySession(sessionToken);
+    if (session.accountId !== actor.accountId) {
+      throw new MediaUploadError(
+        "UPLOAD_NOT_OWNED",
+        "This upload belongs to another account.",
+        403,
+      );
+    }
+    return this.database.client.$transaction(async (tx) => {
+      // adminOverride is signed provenance, not a grant of present authority.
+      const assertAuthority = async () => {
+        if (session.adminOverride) {
+          await lockAdminAccountWrite(tx, actor, actor.accountId, undefined, [
+            "OPERATIONS",
+            "CONTENT_MODERATOR",
+          ]);
+        } else await this.assertChannelOwner(actor.accountId, session.channelId, tx);
+      };
+      await assertAuthority();
+      const observed = await tx.mediaAsset.findUnique({
+        where: { id: session.assetId },
+        select: { videoId: true },
+      });
+      const [channel] = await tx.$queryRaw<Array<{ status: string; removedAt: Date | null }>>(
+        Prisma.sql`SELECT "status", "removedAt" FROM "Channel" WHERE "id" = ${session.channelId}::uuid FOR SHARE /* ayin-upload-channel-lock */`,
+      );
+      if (!channel || channel.status === "REMOVED" || channel.removedAt) this.changedSession();
+      // Generation before source before video matches queue creation and source
+      // finalization. NO KEY UPDATE permits unrelated foreign-key key-share reads.
+      if (observed?.videoId) await lockMediaGeneration(tx, observed.videoId);
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "MediaAsset" WHERE "id" = ${session.assetId}::uuid FOR UPDATE /* ayin-upload-source-lock */`,
+      );
+      const asset = await tx.mediaAsset.findUnique({
+        where: { id: session.assetId },
+        select: {
+          channelId: true,
+          videoId: true,
+          kind: true,
+          removedAt: true,
+          r2ObjectKey: true,
+          sizeBytes: true,
+          mimeType: true,
+          status: true,
+        },
+      });
+      if (
+        !asset ||
+        asset.channelId !== session.channelId ||
+        asset.videoId !== observed?.videoId ||
+        asset.kind !== "SOURCE_VIDEO" ||
+        asset.removedAt ||
+        asset.r2ObjectKey !== session.objectKey ||
+        asset.sizeBytes !== BigInt(session.sizeBytes) ||
+        asset.mimeType !== session.mimeType ||
+        !allowedStatuses.includes(asset.status as "PENDING" | "UPLOADED")
+      )
+        this.changedSession();
+      if (asset.videoId) {
+        const [video] = await tx.$queryRaw<
+          Array<{ channelId: string; status: string; removedAt: Date | null }>
+        >(
+          Prisma.sql`SELECT "channelId", "status", "removedAt" FROM "Video" WHERE "id" = ${asset.videoId}::uuid FOR NO KEY UPDATE /* ayin-upload-video-lock */`,
+        );
+        if (
+          !video ||
+          video.channelId !== session.channelId ||
+          video.status === "REMOVED" ||
+          video.removedAt
+        )
+          this.changedSession();
+      }
+      // Both upload expiry and step-up can elapse during a database lock wait.
+      this.verifySession(sessionToken);
+      await assertAuthority();
+      return operation(tx, session, asset.status);
+    });
+  }
+
+  private verifySession(sessionToken: string): UploadSessionPayload {
     try {
-      session = this.tokens.verify(sessionToken);
+      return this.tokens.verify(sessionToken);
     } catch {
       throw new MediaUploadError(
         "INVALID_UPLOAD_SESSION",
@@ -405,43 +524,22 @@ export class MediaUploadService {
         401,
       );
     }
-    if (session.accountId !== accountId) {
-      throw new MediaUploadError(
-        "UPLOAD_NOT_OWNED",
-        "This upload belongs to another account.",
-        403,
-      );
-    }
-    if (!session.adminOverride) await this.assertChannelOwner(accountId, session.channelId);
-    const asset = await this.database.client.mediaAsset.findUnique({
-      where: { id: session.assetId },
-      select: {
-        channelId: true,
-        r2ObjectKey: true,
-        sizeBytes: true,
-        mimeType: true,
-        status: true,
-      },
-    });
-    if (
-      !asset ||
-      asset.channelId !== session.channelId ||
-      asset.r2ObjectKey !== session.objectKey ||
-      asset.sizeBytes !== BigInt(session.sizeBytes) ||
-      asset.mimeType !== session.mimeType ||
-      !allowedStatuses.includes(asset.status as "PENDING" | "UPLOADED")
-    ) {
-      throw new MediaUploadError(
-        "UPLOAD_STATE_CHANGED",
-        "This upload is no longer available. Start a new upload if needed.",
-        409,
-      );
-    }
-    return session;
   }
 
-  private async assertChannelOwner(accountId: string, channelId: string): Promise<void> {
-    const membership = await this.database.client.channelMember.findFirst({
+  private changedSession(): never {
+    throw new MediaUploadError(
+      "UPLOAD_STATE_CHANGED",
+      "This upload is no longer available. Start a new upload if needed.",
+      409,
+    );
+  }
+
+  private async assertChannelOwner(
+    accountId: string,
+    channelId: string,
+    client: Pick<Prisma.TransactionClient, "channelMember"> = this.database.client,
+  ): Promise<void> {
+    const membership = await client.channelMember.findFirst({
       where: { accountId, channelId, role: "OWNER" },
       select: { id: true },
     });
