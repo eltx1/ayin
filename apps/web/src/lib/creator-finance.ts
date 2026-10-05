@@ -11,6 +11,8 @@ export class CreatorFinanceError extends Error {
   constructor(
     readonly status: number,
     readonly writeStarted = false,
+    readonly scopeChanged = false,
+    readonly acknowledged = false,
   ) {
     super("Creator finance request could not be verified");
   }
@@ -343,19 +345,55 @@ export type FinanceSnapshot = {
   analytics: CreatorMonetizationAnalytics;
   disputes: RevenueDispute[];
 };
-async function request(path: string, signal: AbortSignal, init: RequestInit = {}) {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    signal,
-    credentials: "include",
-    cache: "no-store",
-  });
-  if (!response.ok) throw new CreatorFinanceError(response.status, Boolean(init.method));
-  return (await response.json()) as unknown;
+async function request(
+  path: string,
+  signal: AbortSignal,
+  init: RequestInit = {},
+  expectedAccountId?: string,
+) {
+  const headers = new Headers(init.headers);
+  if (expectedAccountId) headers.set("x-ayin-expected-account", expectedAccountId);
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      ...init,
+      headers,
+      signal,
+      credentials: "include",
+      cache: "no-store",
+    });
+  } catch {
+    throw new CreatorFinanceError(0, Boolean(init.method));
+  }
+  if (!response.ok) {
+    const value: unknown = await response.json().catch(() => null);
+    const code =
+      value && typeof value === "object" && !Array.isArray(value)
+        ? (value as Record<string, unknown>).error
+        : null;
+    const changed =
+      code &&
+      typeof code === "object" &&
+      !Array.isArray(code) &&
+      (code as Record<string, unknown>).code === "ACCOUNT_CHANGED";
+    throw new CreatorFinanceError(
+      response.status,
+      Boolean(init.method),
+      Boolean(changed) || response.status === 401,
+    );
+  }
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    throw new CreatorFinanceError(0, Boolean(init.method));
+  }
 }
-async function identity(signal: AbortSignal) {
-  const r = object(await request("/auth/me", signal));
-  return { accountId: id(object(r.account).id), channelId: id(object(r.channel).id) };
+async function identity(signal: AbortSignal, expectedAccountId?: string) {
+  const r = object(await request("/auth/me", signal, {}, expectedAccountId));
+  const actor = { accountId: id(object(r.account).id), channelId: id(object(r.channel).id) };
+  if (expectedAccountId && actor.accountId !== expectedAccountId)
+    throw new CreatorFinanceError(403, false, true);
+  return actor;
 }
 async function bounded<T>(
   signal: AbortSignal,
@@ -377,7 +415,7 @@ async function bounded<T>(
 }
 function match(actor: { accountId: string; channelId: string }, snapshot: FinanceSnapshot) {
   if (actor.accountId !== snapshot.accountId || actor.channelId !== snapshot.overview.channel.id)
-    throw new CreatorFinanceError(403);
+    throw new CreatorFinanceError(403, false, true);
 }
 export async function getCreatorFinance(
   signal: AbortSignal,
@@ -387,9 +425,9 @@ export async function getCreatorFinance(
     const actor = await identity(signal);
     if (expected) match(actor, expected);
     const [overview, analytics, disputes] = await Promise.all([
-      request("/creator/studio/revenue", signal),
-      request("/creator/studio/revenue/analytics", signal),
-      request("/creator/studio/revenue/disputes", signal),
+      request("/creator/studio/revenue", signal, {}, actor.accountId),
+      request("/creator/studio/revenue/analytics", signal, {}, actor.accountId),
+      request("/creator/studio/revenue/disputes", signal, {}, actor.accountId),
     ]);
     const result = {
       accountId: actor.accountId,
@@ -401,7 +439,7 @@ export async function getCreatorFinance(
       ),
     };
     if (result.overview.currency !== result.analytics.currency) throw invalid();
-    match(await identity(signal), result);
+    match(await identity(signal, actor.accountId), result);
     return result;
   });
 }
@@ -449,7 +487,7 @@ export async function saveCreatorFinance(
   signal: AbortSignal,
 ): Promise<FinanceAck> {
   return bounded(signal, 30000, async (signal) => {
-    match(await identity(signal), snapshot);
+    match(await identity(signal, snapshot.accountId), snapshot);
     const channelId = snapshot.overview.channel.id;
     let path = "",
       method = "POST",
@@ -473,73 +511,92 @@ export async function saveCreatorFinance(
       path = "compliance/start";
       body = { step: choice(write.step, ["IDENTITY", "TAX"]) };
     } else path = "compliance/refresh";
-    const raw = await request(`/creator/studio/revenue/${path}`, signal, {
-      method,
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    // Any response that cannot be correlated after a mutation stays uncertain; do not replay.
+    const raw = await request(
+      `/creator/studio/revenue/${path}`,
+      signal,
+      {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      snapshot.accountId,
+    );
+    // Decode the acknowledgment before a separate actor check; known writes are not failed reads.
+    let ack: FinanceAck | undefined;
     try {
-      if (write.kind === "profile") {
-        const profile = parseFinanceProfile(raw, channelId),
-          input = financeProfileInput(write.input);
-        if (
-          profile.legalName !== input.legalName ||
-          profile.preferredCurrency !== input.preferredCurrency ||
-          profile.provider !== input.provider ||
-          profile.countryCode !== input.countryCode ||
-          (input.destination !== undefined && !profile.hasDestination)
-        )
-          throw invalid();
-        return { kind: "profile", profile };
-      }
-      if (write.kind === "dispute") {
-        const dispute = parseFinanceDispute(raw, channelId);
-        if (
-          dispute.category !== write.input.category ||
-          dispute.message !== write.input.message.trim() ||
-          dispute.payoutId !== write.input.payoutId
-        )
-          throw invalid();
-        return { kind: "dispute", dispute };
-      }
-      if (write.kind === "payout") {
+      ack = ((): FinanceAck => {
+        if (write.kind === "profile") {
+          const profile = parseFinanceProfile(raw, channelId),
+            input = financeProfileInput(write.input);
+          if (
+            profile.legalName !== input.legalName ||
+            profile.preferredCurrency !== input.preferredCurrency ||
+            profile.provider !== input.provider ||
+            profile.countryCode !== input.countryCode ||
+            (input.destination !== undefined && !profile.hasDestination)
+          )
+            throw invalid();
+          return { kind: "profile", profile };
+        }
+        if (write.kind === "dispute") {
+          const dispute = parseFinanceDispute(raw, channelId);
+          if (
+            dispute.category !== write.input.category ||
+            dispute.message !== write.input.message.trim() ||
+            dispute.payoutId !== write.input.payoutId
+          )
+            throw invalid();
+          return { kind: "dispute", dispute };
+        }
+        if (write.kind === "payout") {
+          const r = object(raw),
+            p = object(r.payout);
+          if (
+            id(p.channelId) !== channelId ||
+            currency(p.currency) !== snapshot.overview.currency ||
+            r.requestSource !== "CREATOR"
+          )
+            throw invalid();
+          return {
+            kind: "payout",
+            id: id(p.id),
+            status: choice(p.status, ["PENDING", "PROCESSING", "PAID", "FAILED", "CANCELLED"]),
+            amount: financeAmount(p.amount),
+            currency: currency(p.currency),
+          };
+        }
+        if (write.kind === "refresh")
+          return { kind: "refresh", compliance: parseFinanceCompliance(raw, channelId) };
         const r = object(raw),
-          p = object(r.payout);
-        if (
-          id(p.channelId) !== channelId ||
-          currency(p.currency) !== snapshot.overview.currency ||
-          r.requestSource !== "CREATOR"
-        )
-          throw invalid();
-        return {
-          kind: "payout",
-          id: id(p.id),
-          status: choice(p.status, ["PENDING", "PROCESSING", "PAID", "FAILED", "CANCELLED"]),
-          amount: financeAmount(p.amount),
-          currency: currency(p.currency),
-        };
-      }
-      if (write.kind === "refresh")
-        return { kind: "refresh", compliance: parseFinanceCompliance(raw, channelId) };
-      const r = object(raw),
-        step = choice(r.step, ["IDENTITY", "TAX"]);
-      if (write.kind !== "start" || step !== write.step) throw invalid();
-      const actionUrl = nullable(r.actionUrl, (v) => {
-        const url = new URL(text(v, 2048, 1));
-        if (url.protocol !== "https:" || url.username || url.password) throw invalid();
-        return url.href;
-      });
-      return { kind: "start", step, status: choice(r.status, statuses), actionUrl };
+          step = choice(r.step, ["IDENTITY", "TAX"]);
+        if (write.kind !== "start" || step !== write.step) throw invalid();
+        const actionUrl = nullable(r.actionUrl, (v) => {
+          const url = new URL(text(v, 2048, 1));
+          if (url.protocol !== "https:" || url.username || url.password) throw invalid();
+          return url.href;
+        });
+        return { kind: "start", step, status: choice(r.status, statuses), actionUrl };
+      })();
     } catch {
-      throw new CreatorFinanceError(0, true);
+      /* A malformed response remains unacknowledged; never replay. */
     }
+    try {
+      match(await identity(signal, snapshot.accountId), snapshot);
+    } catch (cause) {
+      if (cause instanceof CreatorFinanceError)
+        throw new CreatorFinanceError(cause.status, true, cause.scopeChanged, ack !== undefined);
+      throw new CreatorFinanceError(0, true, false, ack !== undefined);
+    }
+    if (!ack) throw new CreatorFinanceError(0, true);
+    return ack;
   });
 }
 export async function getFinanceStatement(snapshot: FinanceSnapshot, signal: AbortSignal) {
   return bounded(signal, 15000, async (signal) => {
-    match(await identity(signal), snapshot);
-    const r = object(await request("/creator/studio/revenue/statement", signal)),
+    match(await identity(signal, snapshot.accountId), snapshot);
+    const r = object(
+        await request("/creator/studio/revenue/statement", signal, {}, snapshot.accountId),
+      ),
       c = channel(r.channel);
     if (c.id !== snapshot.overview.channel.id || r.format !== "CSV") throw invalid();
     const filename = text(r.filename, 160, 1);
@@ -550,7 +607,7 @@ export async function getFinanceStatement(snapshot: FinanceSnapshot, signal: Abo
       content: text(r.content, 10000000),
       channel: c,
     };
-    match(await identity(signal), snapshot);
+    match(await identity(signal, snapshot.accountId), snapshot);
     return result;
   });
 }
