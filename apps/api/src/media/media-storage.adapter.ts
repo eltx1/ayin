@@ -19,6 +19,26 @@ export interface AbandonedMultipartUpload {
   initiatedAt: Date;
 }
 
+export type MediaStorageObservationCode =
+  | "NO_SUCH_UPLOAD"
+  | "PROVIDER_ERROR"
+  | "INVALID_RESPONSE"
+  | "OBSERVATION_LIMIT_EXCEEDED"
+  | "OBSERVATION_TIMEOUT";
+
+// A failed/limited observation is never an empty or partially complete inventory.
+// Provider diagnostics, private keys and signed URLs must not enter this error.
+export class MediaStorageObservationError extends Error {
+  constructor(
+    readonly code: MediaStorageObservationCode,
+    readonly operation: "listParts" | "listMultipartUploads",
+    readonly providerStatus?: number,
+  ) {
+    super(`The media storage observation could not be verified (${code}).`);
+    this.name = "MediaStorageObservationError";
+  }
+}
+
 export interface MediaStorageAdapter {
   readonly kind: "r2" | "development";
   readonly available: boolean;
@@ -35,6 +55,8 @@ export interface MediaStorageAdapter {
     contentType: string;
     expiresInSeconds: number;
   }): Promise<{ url: string; expiresAt: Date }>;
+  // Resolve only after observing every page within provider/time/size bounds.
+  // This is not a transactional snapshot; concurrent storage changes remain possible.
   listParts(input: { key: string; uploadId: string }): Promise<ExistingUploadPart[]>;
   completeMultipartUpload(input: {
     key: string;
@@ -46,6 +68,7 @@ export interface MediaStorageAdapter {
   readObject?(key: string, maxBytes: number): Promise<Uint8Array>;
   deleteObject(key: string): Promise<void>;
   deletePrefix(prefix: string): Promise<void>;
+  // Never return a partial inventory as complete when a bound or provider read fails.
   listMultipartUploads(prefix: string): Promise<AbandonedMultipartUpload[]>;
 }
 

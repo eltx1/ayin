@@ -1,12 +1,66 @@
 import type { MediaStorageConfig } from "./media-storage.config.js";
-import type {
-  AbandonedMultipartUpload,
-  CompletedUploadPart,
-  ExistingUploadPart,
-  MediaStorageAdapter,
-  StoredObjectMetadata,
+import {
+  MediaStorageObservationError,
+  type MediaStorageObservationCode,
+  type AbandonedMultipartUpload,
+  type CompletedUploadPart,
+  type ExistingUploadPart,
+  type MediaStorageAdapter,
+  type StoredObjectMetadata,
 } from "./media-storage.adapter.js";
-import { R2SigV4 } from "./r2-sigv4.js";
+import { R2HttpError, R2SigV4 } from "./r2-sigv4.js";
+import {
+  parseR2Xml,
+  readR2XmlText,
+  R2XmlError,
+  xmlField,
+  xmlFields,
+  type R2XmlNode,
+} from "./r2-xml.js";
+
+const LIST_PAGE_SIZE = 1000;
+const MAX_LIST_ITEMS = 10000;
+const MAX_LIST_PAGES = 100;
+const MAX_LIST_PAGE_BYTES = 2 * 1024 * 1024;
+const MAX_LIST_TOTAL_BYTES = 32 * 1024 * 1024;
+const LIST_DEADLINE_MS = 30000;
+
+function integerField(node: R2XmlNode, name: string, min: number, max: number): number {
+  const raw = xmlField(node, name)?.trim() ?? "";
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < min || value > max)
+    throw new R2XmlError();
+  return value;
+}
+
+function boundedText(value: string | null, maxBytes: number, allowEmpty = false): string {
+  if (value === null || (!allowEmpty && !value.trim()) || Buffer.byteLength(value) > maxBytes)
+    throw new R2XmlError();
+  return value;
+}
+
+function truncated(node: R2XmlNode): boolean {
+  const value = xmlField(node, "IsTruncated")?.trim();
+  if (value !== "true" && value !== "false") throw new R2XmlError();
+  return value === "true";
+}
+
+function decodedKey(value: string | null, allowEmpty = false): string {
+  try {
+    return boundedText(decodeURIComponent(boundedText(value, 3072, allowEmpty)), 1024, allowEmpty);
+  } catch {
+    throw new R2XmlError();
+  }
+}
+
+function initiatedDate(value: string | null): Date {
+  if (!value || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?Z$/.test(value))
+    throw new R2XmlError();
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 19) !== value.slice(0, 19))
+    throw new R2XmlError();
+  return date;
+}
 
 function xmlValue(xml: string, tag: string): string | null {
   const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(xml);
@@ -23,7 +77,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   readonly available = true;
   private readonly signer: R2SigV4;
 
-  constructor(config: MediaStorageConfig) {
+  constructor(private readonly config: MediaStorageConfig) {
     this.signer = new R2SigV4(config);
   }
 
@@ -76,23 +130,78 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   }
 
   async listParts(input: { key: string; uploadId: string }): Promise<ExistingUploadPart[]> {
-    const response = await this.signer.request({
-      method: "GET",
-      key: input.key,
-      query: [["uploadId", input.uploadId]],
-    });
-    const xml = await response.text();
-    const parts: ExistingUploadPart[] = [];
-    for (const match of xml.matchAll(/<Part>([\s\S]*?)<\/Part>/g)) {
-      const block = match[1] ?? "";
-      const partNumber = Number(xmlValue(block, "PartNumber"));
-      const etag = xmlValue(block, "ETag");
-      const sizeBytes = Number(xmlValue(block, "Size"));
-      if (Number.isInteger(partNumber) && partNumber > 0 && etag && Number.isFinite(sizeBytes)) {
-        parts.push({ partNumber, etag, sizeBytes });
+    return this.observe("listParts", async (page) => {
+      boundedText(input.key, 1024);
+      boundedText(input.uploadId, 1024);
+      const parts: ExistingUploadPart[] = [];
+      let marker = 0;
+      for (let index = 0; index < MAX_LIST_PAGES; index++) {
+        const query: Array<[string, string]> = [
+          ["uploadId", input.uploadId],
+          ["max-parts", String(LIST_PAGE_SIZE)],
+        ];
+        if (marker) query.push(["part-number-marker", String(marker)]);
+        const root = await page({ key: input.key, query });
+        if (root.name !== "ListPartsResult") throw new R2XmlError();
+        xmlFields(root, [
+          "Bucket",
+          "Key",
+          "UploadId",
+          "PartNumberMarker",
+          "NextPartNumberMarker",
+          "MaxParts",
+          "IsTruncated",
+          "Part",
+          "Initiator",
+          "Owner",
+          "StorageClass",
+          "ChecksumAlgorithm",
+          "ChecksumType",
+        ]);
+        if (
+          xmlField(root, "Bucket") !== this.config.bucket ||
+          xmlField(root, "Key") !== input.key ||
+          xmlField(root, "UploadId") !== input.uploadId ||
+          integerField(root, "PartNumberMarker", 0, MAX_LIST_ITEMS) !== marker
+        )
+          throw new R2XmlError();
+        const limit = integerField(root, "MaxParts", 1, LIST_PAGE_SIZE);
+        const rows = root.children.filter((child) => child.name === "Part");
+        if (rows.length > limit) throw new R2XmlError();
+        let last = marker;
+        for (const row of rows) {
+          xmlFields(row, [
+            "PartNumber",
+            "ETag",
+            "Size",
+            "LastModified",
+            "ChecksumCRC32",
+            "ChecksumCRC32C",
+            "ChecksumCRC64NVME",
+            "ChecksumMD5",
+            "ChecksumSHA1",
+            "ChecksumSHA256",
+          ]);
+          const partNumber = integerField(row, "PartNumber", 1, MAX_LIST_ITEMS);
+          if (partNumber <= last) throw new R2XmlError();
+          last = partNumber;
+          parts.push({
+            partNumber,
+            etag: boundedText(xmlField(row, "ETag"), 256),
+            sizeBytes: integerField(row, "Size", 0, 5 * 1024 ** 3),
+          });
+        }
+        const more = truncated(root);
+        const next = xmlField(root, "NextPartNumberMarker", false);
+        if (next !== null) integerField(root, "NextPartNumberMarker", 0, MAX_LIST_ITEMS);
+        if (!more) return parts;
+        if (!rows.length || next === null || Number(next) !== last || last <= marker)
+          throw new R2XmlError();
+        if (parts.length >= MAX_LIST_ITEMS || last >= MAX_LIST_ITEMS) throw new R2XmlError(true);
+        marker = last;
       }
-    }
-    return parts.sort((left, right) => left.partNumber - right.partNumber);
+      throw new R2XmlError(true);
+    });
   }
 
   async completeMultipartUpload(input: {
@@ -187,24 +296,141 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   }
 
   async listMultipartUploads(prefix: string): Promise<AbandonedMultipartUpload[]> {
-    const response = await this.signer.request({
-      method: "GET",
-      query: [
-        ["prefix", prefix],
-        ["uploads", ""],
-      ],
-    });
-    const xml = await response.text();
-    const uploads: AbandonedMultipartUpload[] = [];
-    for (const match of xml.matchAll(/<Upload>([\s\S]*?)<\/Upload>/g)) {
-      const block = match[1] ?? "";
-      const key = xmlValue(block, "Key");
-      const uploadId = xmlValue(block, "UploadId");
-      const initiated = xmlValue(block, "Initiated");
-      if (key && uploadId && initiated) {
-        uploads.push({ key, uploadId, initiatedAt: new Date(initiated) });
+    return this.observe("listMultipartUploads", async (page) => {
+      boundedText(prefix, 1024, true);
+      const uploads: AbandonedMultipartUpload[] = [];
+      const identities = new Set<string>();
+      const cursors = new Set<string>([JSON.stringify(["", ""])]);
+      let keyMarker = "",
+        uploadMarker = "";
+      for (let index = 0; index < MAX_LIST_PAGES; index++) {
+        const query: Array<[string, string]> = [
+          ["prefix", prefix],
+          ["uploads", ""],
+          ["max-uploads", String(LIST_PAGE_SIZE)],
+          ["encoding-type", "url"],
+        ];
+        if (keyMarker) query.push(["key-marker", keyMarker], ["upload-id-marker", uploadMarker]);
+        const root = await page({ query });
+        if (root.name !== "ListMultipartUploadsResult") throw new R2XmlError();
+        xmlFields(root, [
+          "Bucket",
+          "EncodingType",
+          "Prefix",
+          "KeyMarker",
+          "UploadIdMarker",
+          "NextKeyMarker",
+          "NextUploadIdMarker",
+          "MaxUploads",
+          "IsTruncated",
+          "Upload",
+        ]);
+        if (
+          xmlField(root, "Bucket") !== this.config.bucket ||
+          xmlField(root, "EncodingType") !== "url" ||
+          decodedKey(xmlField(root, "Prefix"), true) !== prefix ||
+          decodedKey(xmlField(root, "KeyMarker"), true) !== keyMarker ||
+          xmlField(root, "UploadIdMarker") !== uploadMarker
+        )
+          throw new R2XmlError();
+        const limit = integerField(root, "MaxUploads", 1, LIST_PAGE_SIZE);
+        const rows = root.children.filter((child) => child.name === "Upload");
+        if (rows.length > limit) throw new R2XmlError();
+        for (const row of rows) {
+          xmlFields(row, [
+            "Key",
+            "UploadId",
+            "Initiated",
+            "Initiator",
+            "Owner",
+            "StorageClass",
+            "ChecksumAlgorithm",
+            "ChecksumType",
+          ]);
+          const key = decodedKey(xmlField(row, "Key"));
+          const uploadId = boundedText(xmlField(row, "UploadId"), 1024);
+          const identity = JSON.stringify([key, uploadId]);
+          if (!key.startsWith(prefix) || identities.has(identity)) throw new R2XmlError();
+          identities.add(identity);
+          uploads.push({ key, uploadId, initiatedAt: initiatedDate(xmlField(row, "Initiated")) });
+          if (uploads.length > MAX_LIST_ITEMS) throw new R2XmlError(true);
+        }
+        const more = truncated(root);
+        const nextKey = xmlField(root, "NextKeyMarker", false);
+        const nextUpload = xmlField(root, "NextUploadIdMarker", false);
+        if (!more) return uploads;
+        keyMarker = decodedKey(nextKey);
+        uploadMarker = boundedText(nextUpload, 1024);
+        const cursor = JSON.stringify([keyMarker, uploadMarker]);
+        // Upload IDs are opaque. Do not infer ordering from their lexical form.
+        if (!rows.length || !keyMarker.startsWith(prefix) || cursors.has(cursor))
+          throw new R2XmlError();
+        cursors.add(cursor);
+        if (uploads.length >= MAX_LIST_ITEMS) throw new R2XmlError(true);
       }
+      throw new R2XmlError(true);
+    });
+  }
+
+  private async observe<T>(
+    operation: "listParts" | "listMultipartUploads",
+    work: (
+      page: (input: { key?: string; query: Array<[string, string]> }) => Promise<R2XmlNode>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let remainingBytes = MAX_LIST_TOTAL_BYTES;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new MediaStorageObservationError("OBSERVATION_TIMEOUT", operation));
+      }, LIST_DEADLINE_MS);
+      timer.unref();
+    });
+    try {
+      return await Promise.race([
+        deadline,
+        work(async (input) => {
+          controller.signal.throwIfAborted();
+          if (remainingBytes <= 0) throw new R2XmlError(true);
+          const response = await this.signer.request({
+            ...input,
+            method: "GET",
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) void response.body?.cancel().catch(() => undefined);
+          controller.signal.throwIfAborted();
+          const xml = await readR2XmlText(
+            response,
+            Math.min(MAX_LIST_PAGE_BYTES, remainingBytes),
+            controller.signal,
+          );
+          remainingBytes -= Buffer.byteLength(xml);
+          return parseR2Xml(xml);
+        }),
+      ]);
+    } catch (error) {
+      if (error instanceof MediaStorageObservationError) throw error;
+      let code: MediaStorageObservationCode = "PROVIDER_ERROR";
+      if (controller.signal.aborted) code = "OBSERVATION_TIMEOUT";
+      else if (error instanceof R2XmlError)
+        code = error.limitExceeded ? "OBSERVATION_LIMIT_EXCEEDED" : "INVALID_RESPONSE";
+      else if (
+        error instanceof R2HttpError &&
+        error.status === 404 &&
+        error.providerCode === "NoSuchUpload" &&
+        operation === "listParts"
+      )
+        code = "NO_SUCH_UPLOAD";
+      throw new MediaStorageObservationError(
+        code,
+        operation,
+        error instanceof R2HttpError ? error.status : undefined,
+      );
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
     }
-    return uploads;
   }
 }
