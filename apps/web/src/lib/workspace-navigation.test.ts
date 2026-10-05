@@ -16,7 +16,7 @@ const destinations = (groups: typeof adminNavigation) =>
 describe("workspace information architecture", () => {
   it("keeps all existing Admin and Studio destinations exactly once", () => {
     const inventories = [
-      { groups: adminNavigation, count: 19 },
+      { groups: adminNavigation, count: 18 },
       { groups: studioNavigation, count: 12 },
     ];
     for (const { groups, count } of inventories) {
@@ -29,13 +29,13 @@ describe("workspace information architecture", () => {
       }
     }
     expect(destinations(studioNavigation)).toContain("/studio/content");
-    expect(destinations(adminNavigation)).toContain("/admin/video-ads");
+    expect(destinations(adminNavigation)).not.toContain("/admin/video-ads");
   });
 
   it("preserves role visibility and excludes empty groups without mutating the source", () => {
     expect(visibleAdminNavigation([])).toEqual([]);
-    expect(destinations(visibleAdminNavigation(["SUPERADMIN"]))).toHaveLength(19);
-    expect(destinations(visibleAdminNavigation(["ADMIN"]))).toHaveLength(19);
+    expect(destinations(visibleAdminNavigation(["SUPERADMIN"]))).toHaveLength(18);
+    expect(destinations(visibleAdminNavigation(["ADMIN"]))).toHaveLength(18);
     expect(destinations(visibleAdminNavigation(["FINANCE_MANAGER"]))).toEqual([
       "/admin",
       "/admin/revenue",
@@ -44,7 +44,6 @@ describe("workspace information architecture", () => {
     expect(destinations(visibleAdminNavigation(["AD_MANAGER"]))).toEqual([
       "/admin",
       "/admin/advertising",
-      "/admin/video-ads",
       "/admin/operations",
     ]);
     const moderator = destinations(visibleAdminNavigation(["CONTENT_MODERATOR"]));
@@ -55,7 +54,7 @@ describe("workspace information architecture", () => {
     expect(operations).toContain("/admin/users");
     expect(operations).not.toContain("/admin/advertising");
     expect(operations).not.toContain("/admin/revenue");
-    expect(destinations(adminNavigation)).toHaveLength(19);
+    expect(destinations(adminNavigation)).toHaveLength(18);
   });
 
   it("matches locale and nested paths without prefix collisions or active-root noise", () => {
@@ -71,6 +70,17 @@ describe("workspace information architecture", () => {
     expect(location?.item.href).toBe("/admin/revenue");
     expect(location?.detail).toBe(true);
     expect(workspaceLocation("/admin/users", visibleAdminNavigation(["AD_MANAGER"]))).toBeNull();
+  });
+
+  it("keeps existing player routes in the Advertising workspace without prefix collisions", () => {
+    expect(isNavigationCurrent("/ar/admin/video-ads?query=kept", "/admin/advertising")).toBe(true);
+    expect(isNavigationCurrent("/admin/video-ads-other", "/admin/advertising")).toBe(false);
+    expect(
+      workspaceLocation("/ar/admin/video-ads", visibleAdminNavigation(["AD_MANAGER"]))?.item.href,
+    ).toBe("/admin/advertising");
+    expect(
+      workspaceLocation("/admin/video-ads", visibleAdminNavigation(["FINANCE_MANAGER"])),
+    ).toBeNull();
   });
 
   it("has complete English and Arabic navigation resources", () => {

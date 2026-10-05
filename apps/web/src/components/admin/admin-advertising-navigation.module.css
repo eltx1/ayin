@@ -1,0 +1,25 @@
+.navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 16px 24px;
+  min-inline-size: 0;
+}
+.navigation a {
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.navigation a[aria-current="page"] {
+  border-color: var(--text-primary);
+  background: var(--surface-hover);
+}
+@media (max-width: 640px) {
+  .navigation a {
+    flex: 1 1 8rem;
+  }
+  .sections [role="tab"] {
+    flex-basis: 9rem;
+    overflow-wrap: normal;
+  }
+}
