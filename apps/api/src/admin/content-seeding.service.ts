@@ -4,7 +4,7 @@ import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { MEDIA_STORAGE_ADAPTER, type MediaStorageAdapter } from "../media/media-storage.adapter.js";
-import { MediaUploadService } from "../media/media-upload.service.js";
+import { MediaUploadService, type UploadActor } from "../media/media-upload.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { adminBadRequest } from "./admin.errors.js";
 
@@ -137,7 +137,7 @@ export class ContentSeedingService {
   }
 
   async createUploadSession(
-    actorAccountId: string,
+    actor: UploadActor,
     itemId: string,
     input: {
       sizeBytes: number;
@@ -152,29 +152,44 @@ export class ContentSeedingService {
         "This seed item cannot accept a new upload.",
       );
     }
-    const uploadSession = await this.uploads.createSession(
-      actorAccountId,
+    return this.uploads.createSession(
+      actor,
       { channelId: item.batch.channelId, sizeBytes: input.sizeBytes, mimeType: input.mimeType },
-      { adminOverride: true },
-    );
-    await this.database.client.$transaction([
-      this.database.client.mediaAsset.update({
-        where: { id: uploadSession.assetId },
-        data: { videoId: item.videoId },
-      }),
-      this.database.client.video.update({
-        where: { id: item.videoId },
-        data: {
-          status: "UPLOADING",
-          ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
+      {
+        adminOverride: true,
+        videoId: item.videoId,
+        validateTarget: async (tx) => {
+          const current = await tx.contentSeedItem.findUnique({
+            where: { id: itemId },
+            include: { batch: { select: { channelId: true, status: true } } },
+          });
+          if (
+            !current ||
+            current.videoId !== item.videoId ||
+            current.batch.channelId !== item.batch.channelId ||
+            current.batch.status === "ROLLED_BACK" ||
+            current.status === "PUBLISHED"
+          )
+            throw adminBadRequest(
+              "SEED_ITEM_NOT_UPLOADABLE",
+              "This seed item cannot accept a new upload.",
+            );
         },
-      }),
-      this.database.client.contentSeedItem.update({
-        where: { id: itemId },
-        data: { status: "UPLOADING", error: null },
-      }),
-    ]);
-    return uploadSession;
+        onCreated: async (tx) => {
+          await tx.video.update({
+            where: { id: item.videoId },
+            data: {
+              status: "UPLOADING",
+              ...(input.durationMs !== undefined ? { durationMs: input.durationMs } : {}),
+            },
+          });
+          await tx.contentSeedItem.update({
+            where: { id: itemId },
+            data: { status: "UPLOADING", error: null },
+          });
+        },
+      },
+    );
   }
 
   async confirmUpload(itemId: string) {

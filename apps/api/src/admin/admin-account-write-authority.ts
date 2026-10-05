@@ -16,13 +16,18 @@ export async function lockAdminAccountWrite(
   accountId: string,
   expectedUpdatedAt?: string,
   domainRoles: readonly ("OPERATIONS" | "CONTENT_MODERATOR" | "AD_MANAGER")[] = ["OPERATIONS"],
+  additionalAccountIds: readonly string[] = [],
 ) {
   await lockStaffRoleChanges(tx);
   const credentials = await tx.$queryRaw<Array<{ status: string; version: number }>>(
     Prisma.sql`SELECT "status", "version" FROM "AccountMfaCredential"
       WHERE "accountId" = ${actor.accountId}::uuid FOR SHARE /* ayin-admin-account-write-lock */`,
   );
-  const ids = [...new Set([actor.accountId, accountId])].sort();
+  // Additional IDs come only from server-side ownership observations. Keep them
+  // in this same ordered acquisition, after the unchanged staff/MFA prefix.
+  const ids = [
+    ...new Set([actor.accountId, accountId, ...additionalAccountIds].map((id) => id.toLowerCase())),
+  ].sort();
   const accounts = await tx.$queryRaw<
     Array<{ id: string; status: string; authVersion: number; updatedAt: Date }>
   >(Prisma.sql`SELECT "id", "status", "authVersion", "updatedAt" FROM "Account"

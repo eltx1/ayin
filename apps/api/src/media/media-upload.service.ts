@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@ayin/db";
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
+import { unauthorized } from "../auth/auth.errors.js";
+import {
+  observeChannelMediaOwners,
+  lockChannelMediaAccounts,
+  assertChannelMediaOwners,
+} from "./media-privacy-account-fence.js";
 import { lockAdminAccountWrite } from "../admin/admin-account-write-authority.js";
 import { lockMediaGeneration } from "./media-generation-safety.js";
 import { Inject, Injectable } from "@nestjs/common";
@@ -21,7 +27,7 @@ import {
   UploadSessionTokenService,
 } from "./upload-session-token.service.js";
 
-type UploadActor = AuthenticatedRequest["ayinAuth"];
+export type UploadActor = AuthenticatedRequest["ayinAuth"];
 
 const SUPPORTED_VIDEO_MIME_TYPES = new Set([
   "video/mp4",
@@ -98,6 +104,14 @@ export interface CreateUploadSessionInput {
   mimeType: string;
 }
 
+export interface CreateUploadSessionOptions {
+  adminOverride?: boolean;
+  videoId?: string;
+  // Internal caller hooks run only inside the short fenced DB phase, never R2.
+  validateTarget?: (tx: Prisma.TransactionClient) => Promise<void>;
+  onCreated?: (tx: Prisma.TransactionClient, assetId: string) => Promise<void>;
+}
+
 @Injectable()
 export class MediaUploadService {
   constructor(
@@ -111,10 +125,18 @@ export class MediaUploadService {
   ) {}
 
   async createSession(
-    accountId: string,
+    actor: UploadActor,
     input: CreateUploadSessionInput,
-    options: { adminOverride?: boolean } = {},
+    options: CreateUploadSessionOptions = {},
   ) {
+    const { accountId } = actor;
+    // PostgreSQL UUID identity is case-insensitive; object keys are not. Use a
+    // canonical identity before comparisons, new keys and signed payloads.
+    const channelId = input.channelId.toLowerCase();
+    const creationOptions: CreateUploadSessionOptions = {
+      ...options,
+      ...(options.videoId === undefined ? {} : { videoId: options.videoId.toLowerCase() }),
+    };
     this.ensureStorageAvailable();
     const mimeType = normalizeVideoMimeType(input.mimeType);
     if (!mimeType) {
@@ -127,7 +149,7 @@ export class MediaUploadService {
       throw new MediaUploadError("INVALID_FILE_SIZE", "This video file size could not be read.");
     }
 
-    if (!options.adminOverride) await this.assertChannelOwner(accountId, input.channelId);
+    await this.withCreationAuthority(actor, channelId, creationOptions, async () => undefined);
     const [maxSizeRaw, quotaRaw] = await Promise.all([
       this.settings.get("uploadMaxSizeBytes"),
       this.settings.get("uploadChannelQuotaBytes"),
@@ -144,7 +166,7 @@ export class MediaUploadService {
 
     const aggregate = await this.database.client.mediaAsset.aggregate({
       where: {
-        channelId: input.channelId,
+        channelId,
         kind: "SOURCE_VIDEO",
         status: { in: ["PENDING", "UPLOADED", "VALIDATED"] },
         removedAt: null,
@@ -161,43 +183,31 @@ export class MediaUploadService {
     }
 
     const assetId = randomUUID();
-    const objectKey = `channels/${input.channelId}/media/${assetId}/source.${sourceExtension(mimeType)}`;
+    const objectKey = `channels/${channelId}/media/${assetId}/source.${sourceExtension(mimeType)}`;
     const mode = input.sizeBytes >= this.config.multipartThresholdBytes ? "multipart" : "single";
     const expiresAtMs = Date.now() + this.config.uploadUrlTtlSeconds * 1000;
     let uploadId: string | null = null;
 
+    // Both provider allocations happen outside the database fence. No URL or
+    // token is returned until current authority and privacy scope commit again.
+    let authorization: Awaited<ReturnType<MediaStorageAdapter["authorizeSinglePut"]>> | null = null;
     if (mode === "multipart") {
       uploadId = (
         await this.storage.createMultipartUpload({ key: objectKey, contentType: mimeType })
       ).uploadId;
-    }
-
-    try {
-      await this.database.client.mediaAsset.create({
-        data: {
-          id: assetId,
-          channelId: input.channelId,
-          kind: "SOURCE_VIDEO",
-          status: "PENDING",
-          r2ObjectKey: objectKey,
-          mimeType,
-          sizeBytes: BigInt(input.sizeBytes),
-        },
+    } else {
+      authorization = await this.storage.authorizeSinglePut({
+        key: objectKey,
+        contentType: mimeType,
+        expiresInSeconds: this.config.uploadUrlTtlSeconds,
       });
-    } catch (error) {
-      if (uploadId) {
-        await this.storage
-          .abortMultipartUpload({ key: objectKey, uploadId })
-          .catch(() => undefined);
-      }
-      throw error;
     }
 
     const payload: UploadSessionPayload = {
       version: 1,
       accountId,
-      ...(options.adminOverride ? { adminOverride: true } : {}),
-      channelId: input.channelId,
+      ...(creationOptions.adminOverride ? { adminOverride: true } : {}),
+      channelId,
       assetId,
       objectKey,
       uploadId,
@@ -209,36 +219,50 @@ export class MediaUploadService {
     };
     const sessionToken = this.tokens.sign(payload);
 
-    if (mode === "single") {
-      try {
-        const authorization = await this.storage.authorizeSinglePut({
-          key: objectKey,
-          contentType: mimeType,
-          expiresInSeconds: this.config.uploadUrlTtlSeconds,
-        });
-        return {
-          assetId,
-          objectKey,
-          mode,
-          sizeBytes: input.sizeBytes,
-          sessionToken,
-          expiresAt: new Date(expiresAtMs).toISOString(),
-          upload: {
-            url: authorization.url,
-            method: "PUT" as const,
-            headers: { "content-type": mimeType },
+    try {
+      await this.withCreationAuthority(actor, channelId, creationOptions, async (tx) => {
+        this.verifySession(sessionToken);
+        await tx.mediaAsset.create({
+          data: {
+            id: assetId,
+            channelId,
+            videoId: creationOptions.videoId ?? null,
+            kind: "SOURCE_VIDEO",
+            status: "PENDING",
+            r2ObjectKey: objectKey,
+            mimeType,
+            sizeBytes: BigInt(input.sizeBytes),
           },
-        };
-      } catch (error) {
-        await this.rejectAsset(assetId);
-        throw error;
-      }
+        });
+        await creationOptions.onCreated?.(tx, assetId);
+      });
+    } catch (error) {
+      if (uploadId)
+        await this.storage
+          .abortMultipartUpload({ key: objectKey, uploadId })
+          .catch(() => undefined);
+      throw error;
     }
+
+    if (authorization)
+      return {
+        assetId,
+        objectKey,
+        mode: "single" as const,
+        sizeBytes: input.sizeBytes,
+        sessionToken,
+        expiresAt: new Date(expiresAtMs).toISOString(),
+        upload: {
+          url: authorization.url,
+          method: "PUT" as const,
+          headers: { "content-type": mimeType },
+        },
+      };
 
     return {
       assetId,
       objectKey,
-      mode,
+      mode: "multipart" as const,
       sizeBytes: input.sizeBytes,
       partSizeBytes: this.config.partSizeBytes,
       partCount: Math.ceil(input.sizeBytes / this.config.partSizeBytes),
@@ -425,6 +449,72 @@ export class MediaUploadService {
     }
   }
 
+  private async withCreationAuthority<T>(
+    actor: UploadActor,
+    channelId: string,
+    options: CreateUploadSessionOptions,
+    operation: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    return this.database.client.$transaction(async (tx) => {
+      const owners = await observeChannelMediaOwners(tx, channelId);
+      const assertActor = async () => {
+        if (options.adminOverride) {
+          await lockAdminAccountWrite(
+            tx,
+            actor,
+            actor.accountId,
+            undefined,
+            ["OPERATIONS", "CONTENT_MODERATOR"],
+            owners,
+          );
+        } else {
+          const account = await tx.account.findUnique({
+            where: { id: actor.accountId },
+            select: { status: true, authVersion: true },
+          });
+          const sessions = await tx.$queryRaw<Array<{ id: string }>>(
+            Prisma.sql`SELECT id FROM "AccountSession" WHERE id = ${actor.sessionId}::uuid
+              AND "accountId" = ${actor.accountId}::uuid AND "authVersion" = ${actor.authVersion}
+              AND "revokedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC') FOR SHARE`,
+          );
+          if (
+            !account ||
+            account.status !== "ACTIVE" ||
+            account.authVersion !== actor.authVersion ||
+            !sessions.length
+          )
+            throw unauthorized();
+        }
+      };
+      if (!options.adminOverride) await lockChannelMediaAccounts(tx, actor.accountId, owners);
+      await assertActor();
+      await assertChannelMediaOwners(tx, channelId, owners);
+      if (!options.adminOverride) await this.assertChannelOwner(actor.accountId, channelId, tx);
+      if (options.videoId) {
+        await lockMediaGeneration(tx, options.videoId);
+        const [video] = await tx.$queryRaw<
+          Array<{ channelId: string; status: string; removedAt: Date | null }>
+        >(
+          Prisma.sql`SELECT "channelId", status, "removedAt" FROM "Video" WHERE id = ${options.videoId}::uuid FOR NO KEY UPDATE /* ayin-upload-create-video-lock */`,
+        );
+        if (
+          !video ||
+          video.channelId !== channelId ||
+          video.status === "REMOVED" ||
+          video.removedAt
+        )
+          this.changedSession();
+      }
+      const [channel] = await tx.$queryRaw<Array<{ status: string; removedAt: Date | null }>>(
+        Prisma.sql`SELECT status, "removedAt" FROM "Channel" WHERE id = ${channelId}::uuid FOR SHARE /* ayin-upload-create-channel-lock */`,
+      );
+      if (!channel || channel.status === "REMOVED" || channel.removedAt) this.changedSession();
+      await options.validateTarget?.(tx);
+      await assertActor();
+      return operation(tx);
+    });
+  }
+
   private async withSession<T>(
     actor: UploadActor,
     sessionToken: string,
@@ -519,7 +609,15 @@ export class MediaUploadService {
 
   private verifySession(sessionToken: string): UploadSessionPayload {
     try {
-      return this.tokens.verify(sessionToken);
+      const session = this.tokens.verify(sessionToken);
+      // Verify the original signed bytes first. Legacy V1 UUID spellings may
+      // differ in case; their provider objectKey/uploadId must remain exact.
+      return {
+        ...session,
+        accountId: session.accountId.toLowerCase(),
+        channelId: session.channelId.toLowerCase(),
+        assetId: session.assetId.toLowerCase(),
+      };
     } catch {
       throw new MediaUploadError(
         "INVALID_UPLOAD_SESSION",

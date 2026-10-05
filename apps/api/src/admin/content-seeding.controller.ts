@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  Inject,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
@@ -11,6 +22,7 @@ import {
   RequireAdminStepUp,
 } from "./admin.guard.js";
 import { ContentSeedingService } from "./content-seeding.service.js";
+import { MediaUploadError } from "../media/media-upload.service.js";
 
 const uuidSchema = z.string().uuid();
 const seedItemSchema = z.object({
@@ -80,11 +92,20 @@ export class ContentSeedingController {
     @Param("itemId") itemIdRaw: string,
     @Body() body: unknown,
   ) {
-    return this.seeding.createUploadSession(
-      request.ayinAuth.accountId,
-      this.id(itemIdRaw),
-      this.parse(uploadSchema, body, "INVALID_SEED_UPLOAD"),
-    );
+    return this.seeding
+      .createUploadSession(
+        request.ayinAuth,
+        this.id(itemIdRaw),
+        this.parse(uploadSchema, body, "INVALID_SEED_UPLOAD"),
+      )
+      .catch((error: unknown) => {
+        if (error instanceof MediaUploadError)
+          throw new HttpException(
+            { error: { code: error.code, message: error.message } },
+            error.statusCode,
+          );
+        throw error;
+      });
   }
 
   @Post("items/:itemId/confirm-upload")
