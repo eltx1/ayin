@@ -91,6 +91,8 @@ describe("request security", () => {
   });
   it("never shares public territory/personalization responses or their errors across contexts", () => {
     for (const url of [
+      "/product-controls",
+      "/product-controls?kids=1",
       "/public/seo/channels/actual-handle",
       "/public/seo/playlists/actual-handle/actual-slug?kids=1",
       "/public/channels/actual-handle",
@@ -104,6 +106,7 @@ describe("request security", () => {
       for (const method of ["GET", "HEAD", "POST"])
         expect(cacheControlForRequest({ method, url })).toBe("private, no-store");
     for (const url of [
+      "/product-controls-other",
       "/public/discovery-other",
       "/public/videos-other",
       "/public/channels-other",

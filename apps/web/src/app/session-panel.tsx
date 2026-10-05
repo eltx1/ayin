@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { apiBaseUrl, type AyinIdentity } from "@/lib/api";
 
@@ -10,6 +11,7 @@ import styles from "./page.module.css";
 
 export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
   const { href, t } = useI18n();
+  const { retryNavigation } = useViewerProduct();
   const [identity, setIdentity] = useState<AyinIdentity | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -40,6 +42,9 @@ export function SessionPanel({ showWelcome }: { showWelcome: boolean }) {
       () => undefined,
     );
     setIdentity(null);
+    // A same-Home sign-out changes the audience without changing the route.
+    // Re-read current server truth even when the logout response was lost.
+    retryNavigation();
   }
 
   if (loading) {

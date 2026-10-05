@@ -146,3 +146,14 @@
     grid-column: auto;
   }
 }
+
+.details,
+.episode > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+:global([dir="rtl"]) .details h1 {
+  line-height: 1.25;
+  letter-spacing: normal;
+}

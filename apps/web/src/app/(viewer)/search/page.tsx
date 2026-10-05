@@ -5,6 +5,8 @@ import { SearchAnalytics, SearchResultLinkAnalytics } from "@/components/search/
 import { SearchBox } from "@/components/search/search-box";
 import { MediaCard } from "@/components/viewer/media-card";
 import { EmptyState } from "@/components/viewer/view-states";
+import { mediaAssetUrl } from "@/lib/channel";
+import { translatePublicDiscovery } from "@/lib/i18n/public-discovery";
 import { apiBaseUrl } from "@/lib/api";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { localizePath } from "@/lib/i18n/routing";
@@ -38,12 +40,16 @@ export default async function SearchPage({
     const endpoint = new URL(`${apiBaseUrl}/public/search`);
     endpoint.searchParams.set("q", query);
     if (params.cursor) endpoint.searchParams.set("cursor", params.cursor);
-    const response = await fetch(endpoint, {
-      cache: "no-store",
-      headers: { "x-ayin-locale": locale },
-    });
-    if (response.ok) results = (await response.json()) as SearchResponse;
-    else error = t("search.unavailableDescription");
+    try {
+      const response = await fetch(endpoint, {
+        cache: "no-store",
+        headers: { "x-ayin-locale": locale },
+      });
+      if (response.ok) results = (await response.json()) as SearchResponse;
+      else error = t("search.unavailableDescription");
+    } catch {
+      error = t("search.unavailableDescription");
+    }
   }
 
   return (
@@ -69,18 +75,22 @@ export default async function SearchPage({
         <section aria-label={t("search.resultsAria", { query: results.query })}>
           <h2 dir="auto">{t("search.resultsFor", { query: results.query })}</h2>
           <div className={styles.grid}>
-            {results.items.map((item, index) => (
-              <SearchResultLinkAnalytics key={`${item.type}-${item.id}`}>
-                <MediaCard
-                  href={localizePath(item.href, locale)}
-                  kicker={item.kicker}
-                  {...(item.meta ? { meta: item.meta } : {})}
-                  title={item.title}
-                  tone={((index % 5) + 1) as 1 | 2 | 3 | 4 | 5}
-                  variant="landscape"
-                />
-              </SearchResultLinkAnalytics>
-            ))}
+            {results.items.map((item, index) => {
+              const artworkUrl = mediaAssetUrl(item.artworkObjectKey);
+              return (
+                <SearchResultLinkAnalytics key={`${item.type}-${item.id}`}>
+                  <MediaCard
+                    href={localizePath(item.href, locale)}
+                    {...(artworkUrl ? { artworkUrl } : {})}
+                    kicker={translatePublicDiscovery(locale, `type.${item.type}`)}
+                    {...(item.meta ? { meta: item.meta } : {})}
+                    title={item.title}
+                    tone={((index % 5) + 1) as 1 | 2 | 3 | 4 | 5}
+                    variant="landscape"
+                  />
+                </SearchResultLinkAnalytics>
+              );
+            })}
           </div>
           {results.nextCursor ? (
             <Link
