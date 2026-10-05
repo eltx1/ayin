@@ -337,6 +337,7 @@ model Account {
   revenueDisputesResolved RevenueDispute[] @relation("RevenueDisputeResolver")
   mfaCredential           AccountMfaCredential?
   sessions                AccountSession[]
+  uploadSessions          MediaUploadSession[]
 
   @@index([status, createdAt])
 }
@@ -520,6 +521,7 @@ model MediaAsset {
   creatives     Creative[]
   communityPost CommunityPost? @relation("CommunityImageAsset")
   processingJob MediaProcessingJob? @relation("MediaProcessingFinalAsset")
+  uploadSession MediaUploadSession?
 
   @@index([videoId, kind, status])
   @@index([channelId, kind])
