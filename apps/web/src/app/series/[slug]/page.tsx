@@ -4,6 +4,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { mediaAssetUrl } from "@/lib/channel";
+import { translateCatalogDetail } from "@/lib/i18n/catalog-detail";
+import { formatNumber } from "@/lib/i18n/format";
 import { localizePath } from "@/lib/i18n/routing";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { buildSeriesJsonLd, buildSeriesMetadata, getPublicSeries } from "@/lib/series-catalog";
@@ -32,11 +34,18 @@ function normalizeSlug(value: string) {
 export async function generateMetadata({ params }: SeriesPageProps): Promise<Metadata> {
   const [{ slug: requested }, locale] = await Promise.all([params, getRequestLocale()]);
   const slug = normalizeSlug(requested);
-  if (!slug) return { title: "Series not found | AYIN", robots: { index: false, follow: false } };
+  if (!slug)
+    return {
+      title: translateCatalogDetail(locale, "series.notFound"),
+      robots: { index: false, follow: false },
+    };
   const series = await getPublicSeries(slug, locale, await trustedApiRegionHeaders());
   return series
     ? buildSeriesMetadata(series, locale)
-    : { title: "Series not found | AYIN", robots: { index: false, follow: false } };
+    : {
+        title: translateCatalogDetail(locale, "series.notFound"),
+        robots: { index: false, follow: false },
+      };
 }
 
 export default async function SeriesPage({ params, searchParams }: SeriesPageProps) {
@@ -45,6 +54,10 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
     searchParams,
     getRequestLocale(),
   ]);
+  const t = (
+    key: Parameters<typeof translateCatalogDetail>[1],
+    values?: Parameters<typeof translateCatalogDetail>[2],
+  ) => translateCatalogDetail(locale, key, values);
   const canonicalSlug = normalizeSlug(requested);
   if (!canonicalSlug) notFound();
   if (requested !== canonicalSlug) redirect(localizePath(`/series/${canonicalSlug}`, locale));
@@ -73,7 +86,7 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
         <div className={styles.posterWrap}>
           {posterUrl ? (
             <Image
-              alt={poster?.altText ?? `${series.title} poster`}
+              alt={poster?.altText ?? t("catalog.poster", { title: series.title })}
               className={styles.poster}
               fill
               priority
@@ -85,49 +98,71 @@ export default async function SeriesPage({ params, searchParams }: SeriesPagePro
           )}
         </div>
         <div className={styles.details}>
-          <span className={styles.eyebrow}>Series</span>
-          <h1>{series.title}</h1>
+          <span className={styles.eyebrow}>{t("series.eyebrow")}</span>
+          <h1 dir="auto">{series.title}</h1>
           <p className={styles.meta}>
-            {series.releaseYear ?? "AYIN Original"} · {series.maturityRating} ·{" "}
-            {series.episodeCount} episodes · {series.originalLanguage.toUpperCase()}
+            {series.releaseYear
+              ? formatNumber(series.releaseYear, locale, { useGrouping: false })
+              : t("series.original")}{" "}
+            · {series.maturityRating} ·{" "}
+            {t(series.episodeCount === 1 ? "series.oneEpisode" : "series.episodeCount", {
+              count: formatNumber(series.episodeCount, locale),
+            })}{" "}
+            · {series.originalLanguage.toUpperCase()}
           </p>
-          <p className={styles.genres}>{series.genres.join(" · ")}</p>
-          <p className={styles.synopsis}>{series.synopsis}</p>
+          <p className={styles.genres} dir="auto">
+            {series.genres.join(" · ")}
+          </p>
+          <p className={styles.synopsis} dir="auto">
+            {series.synopsis}
+          </p>
           {series.firstEpisode ? (
             <Link
+              data-tv-focusable="true"
               className={styles.primaryAction}
               href={localizePath(series.firstEpisode.video.href, locale)}
             >
-              Start watching
+              {t("series.start")}
             </Link>
           ) : null}
         </div>
       </section>
 
       <section className={styles.catalog}>
-        <nav className={styles.seasonSelector} aria-label="Season selector">
+        <nav className={styles.seasonSelector} aria-label={t("series.seasonSelector")}>
           {series.seasons.map((season) => (
             <Link
+              data-tv-focusable="true"
               aria-current={season.id === selectedSeason.id ? "page" : undefined}
               className={season.id === selectedSeason.id ? styles.seasonActive : styles.seasonLink}
               href={`${localizePath(`/series/${series.slug}`, locale)}?season=${season.seasonNumber}`}
               key={season.id}
             >
-              {season.title ?? `Season ${season.seasonNumber}`}
+              {season.title ??
+                t("series.season", { count: formatNumber(season.seasonNumber, locale) })}
             </Link>
           ))}
         </nav>
-        <h2>{selectedSeason.title ?? `Season ${selectedSeason.seasonNumber}`}</h2>
+        <h2 dir="auto">
+          {selectedSeason.title ??
+            t("series.season", { count: formatNumber(selectedSeason.seasonNumber, locale) })}
+        </h2>
         <div className={styles.episodes}>
           {selectedSeason.episodes.map((episode) => (
             <article className={styles.episode} key={episode.id}>
               <div>
-                <span className={styles.episodeNumber}>Episode {episode.episodeNumber}</span>
-                <h3>{episode.title}</h3>
-                <p>{episode.synopsis}</p>
+                <span className={styles.episodeNumber}>
+                  {t("series.episode", { count: formatNumber(episode.episodeNumber, locale) })}
+                </span>
+                <h3 dir="auto">{episode.title}</h3>
+                <p dir="auto">{episode.synopsis}</p>
               </div>
-              <Link className={styles.watchLink} href={localizePath(episode.video.href, locale)}>
-                Watch
+              <Link
+                data-tv-focusable="true"
+                className={styles.watchLink}
+                href={localizePath(episode.video.href, locale)}
+              >
+                {t("series.watch")}
               </Link>
             </article>
           ))}

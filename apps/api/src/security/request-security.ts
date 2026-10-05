@@ -4,6 +4,7 @@ const unsafeMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const sessionCookiePrefix = "ayin_session=";
 const cacheablePublicPrefixes = ["/public/playlists"];
 const contextualPublicPrefixes = [
+  "/product-controls",
   "/public/discovery",
   "/public/videos",
   "/public/channels",

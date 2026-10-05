@@ -1,6 +1,9 @@
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
+import { publicVideoEligibility } from "../creator/public-video-read.js";
+import { kidsSafeHref } from "../kids/kids-policy.js";
+import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import {
@@ -52,11 +55,29 @@ export class AdminProductService {
     return parsed.success ? parsed.data : defaultProductControls;
   }
 
-  async getPublicSnapshot() {
+  async getPublicSnapshot(context: VideoPolicyContext & { accountId?: string | undefined } = {}) {
     const controls = await this.getPublicControls();
+    // Match authenticated Home's current default profile, never a client-provided
+    // Kids/adult assertion. A missing/deleted default profile must fail closed.
+    const profile = context.accountId
+      ? await this.database.client.viewerProfile.findFirst({
+          where: { accountId: context.accountId, isDefault: true, deletedAt: null },
+          orderBy: { createdAt: "asc" },
+          select: { isKids: true },
+        })
+      : null;
+    const resolvedHero =
+      context.accountId && !profile
+        ? null
+        : await this.resolveHero(controls, {
+            ...context,
+            isKidsProfile: context.isKidsProfile === true || profile?.isKids === true,
+          });
     return {
       ...controls,
-      resolvedHero: await this.resolveHero(controls),
+      // The configured private/unavailable entity ID is an Admin editing detail.
+      hero: resolvedHero ? controls.hero : { entityType: null, entityId: null },
+      resolvedHero,
     };
   }
 
@@ -206,29 +227,37 @@ export class AdminProductService {
     });
   }
 
-  private async resolveHero(controls: ProductControls) {
+  private async resolveHero(controls: ProductControls, context: VideoPolicyContext) {
     const { entityType, entityId } = controls.hero;
     if (!entityType || !entityId) return null;
+    // Kids discovery only advertises individually classified videos. Container
+    // pages and Creator TV do not promise the same Kids-only destination.
+    if (context.isKidsProfile && entityType !== "VIDEO") return null;
 
     if (entityType === "VIDEO") {
-      const video = await this.database.client.video.findFirst({
-        where: { id: entityId, status: "PUBLISHED", visibility: { in: ["PUBLIC", "UNLISTED"] } },
-        select: { slug: true, title: true, description: true },
-      });
+      const [video] = await this.database.client.$queryRaw<
+        Array<{ slug: string; title: string; description: string | null }>
+      >(Prisma.sql`
+        SELECT v.slug, v.title, v.description FROM "Video" v
+        WHERE v.id = ${entityId}::uuid AND ${publicVideoEligibility(context)}
+        LIMIT 1
+      `);
       return video
         ? {
             entityType,
             entityId,
             title: video.title,
-            description: video.description ?? "Featured on AYIN.",
-            href: `/watch/${video.slug}`,
+            description: video.description,
+            href: context.isKidsProfile
+              ? kidsSafeHref(`/watch/${encodeURIComponent(video.slug)}`)
+              : `/watch/${encodeURIComponent(video.slug)}`,
           }
         : null;
     }
 
     if (entityType === "CHANNEL") {
       const channel = await this.database.client.channel.findFirst({
-        where: { id: entityId, status: "ACTIVE" },
+        where: { id: entityId, status: "ACTIVE", removedAt: null },
         select: { handle: true, name: true, description: true },
       });
       return channel
@@ -236,39 +265,49 @@ export class AdminProductService {
             entityType,
             entityId,
             title: channel.name,
-            description: channel.description ?? "Featured creator on AYIN.",
-            href: `/c/${channel.handle}`,
+            description: channel.description,
+            href: `/c/${encodeURIComponent(channel.handle)}`,
           }
         : null;
     }
 
     if (entityType === "CREATOR_TV") {
       const tv = await this.database.client.creatorTvChannel.findFirst({
-        where: { id: entityId, status: "ACTIVE" },
-        select: { slug: true, name: true },
+        where: {
+          id: entityId,
+          status: "ACTIVE",
+          disabledAt: null,
+          channel: { status: "ACTIVE", removedAt: null, primaryTvChannelId: entityId },
+        },
+        select: { name: true, channel: { select: { handle: true } } },
       });
       return tv
         ? {
             entityType,
             entityId,
             title: tv.name,
-            description: "Featured Creator TV on AYIN.",
-            href: `/tv/${tv.slug}`,
+            description: null,
+            href: `/c/${encodeURIComponent(tv.channel.handle)}/tv`,
           }
         : null;
     }
 
     const playlist = await this.database.client.playlist.findFirst({
-      where: { id: entityId, deletedAt: null, visibility: "PUBLIC" },
-      select: { slug: true, name: true, description: true },
+      where: {
+        id: entityId,
+        deletedAt: null,
+        visibility: "PUBLIC",
+        channel: { status: "ACTIVE", removedAt: null },
+      },
+      select: { slug: true, name: true, description: true, channel: { select: { handle: true } } },
     });
     return playlist
       ? {
           entityType,
           entityId,
           title: playlist.name,
-          description: playlist.description ?? "Featured playlist on AYIN.",
-          href: `/playlist/${playlist.slug}`,
+          description: playlist.description,
+          href: `/c/${encodeURIComponent(playlist.channel.handle)}/playlists/${encodeURIComponent(playlist.slug)}`,
         }
       : null;
   }

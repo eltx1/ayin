@@ -41,3 +41,9 @@ The replacement local evidence bundle is `ayin-ad-controls-repair-evidence.zip`,
 The next concrete legacy UX slice is the direct-campaign editor: a native, labeled, searchable, route-localized advertiser/campaign flow that preserves the existing field meanings and protected mutation contracts. Inventory details, creatives and seller editors also still need native/localization adoption. Legacy cross-route draft-loss/recovery behavior is not certified by in-page tab retention. Whole-workspace identity/lifecycle, large-data behavior and full master acceptance remain open.
 
 This increment does not certify Google demand eligibility, provider response/fill, CMP or age treatment, native SDK/WebView monetization compliance, app-ads.txt ownership, store approval, physical devices or production advertising delivery.
+
+## Final UI release-stack integration
+
+The accepted Ads/current-main union was applied over PR250's corrected migration head `6369d31d85adcba8053875c9b0de297675d7d90d` (tree `b11f84e25bd38ab270bfb25c16229662172da1f3`). That prerequisite already contains the accepted caption and bounded Studio pagination source. No application conflict or new application edit was needed: every Ads and shared-card implementation/test blob retains its accepted union bytes, and the prerequisite's other application/schema/migration files remain unchanged. The workflow retains dedicated caption acceptance and all caption, Studio pagination, Advertising and long-card artifact blocks.
+
+The local counts above describe their actual tested unions; they are not relabeled as a local full-stack run. The publication's owning remote checks must validate this exact combined tree before merge. This dependency arrangement preserves separate feature review history while preventing the final UI checks from testing an obsolete base.

@@ -45,7 +45,7 @@ interface HomeProperties {
 }
 
 export default async function Home({ searchParams }: HomeProperties) {
-  const params = await searchParams;
+  const [params, locale] = await Promise.all([searchParams, getRequestLocale()]);
 
   return (
     <main>
@@ -53,7 +53,7 @@ export default async function Home({ searchParams }: HomeProperties) {
       <PageAdSlot placementKey="home_top" />
 
       <div className={styles.homeBody}>
-        <section aria-label="AYIN account" className={styles.accountStrip}>
+        <section aria-label={translate(locale, "shell.account")} className={styles.accountStrip}>
           <SessionPanel showWelcome={params.welcome === "1"} />
         </section>
 
