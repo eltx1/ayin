@@ -1,3 +1,4 @@
+import type { FocusEventHandler, ReactNode } from "react";
 import Link from "next/link";
 
 import styles from "./hero.module.css";
@@ -8,6 +9,8 @@ interface HeroAction {
 }
 
 interface HeroProperties {
+  children?: ReactNode;
+  onFocusCapture?: FocusEventHandler<HTMLElement>;
   description: string;
   eyebrow?: string;
   primaryAction?: HeroAction;
@@ -16,6 +19,8 @@ interface HeroProperties {
 }
 
 export function Hero({
+  children,
+  onFocusCapture,
   description,
   eyebrow,
   primaryAction,
@@ -23,7 +28,11 @@ export function Hero({
   title,
 }: HeroProperties) {
   return (
-    <section aria-labelledby="ayin-hero-title" className={styles.hero}>
+    <section
+      aria-labelledby="ayin-hero-title"
+      className={styles.hero}
+      onFocusCapture={onFocusCapture}
+    >
       <div aria-hidden="true" className={styles.visual}>
         <div className={styles.orbit} />
         <div className={styles.core} />
@@ -31,8 +40,16 @@ export function Hero({
       </div>
       <div className={styles.copy}>
         {eyebrow ? <p className={styles.eyebrow}>{eyebrow}</p> : null}
-        <h1 id="ayin-hero-title">{title}</h1>
-        <p className={styles.description}>{description}</p>
+        <h1
+          data-long-title={title.length > 60 ? "true" : undefined}
+          dir="auto"
+          id="ayin-hero-title"
+        >
+          {title}
+        </h1>
+        <p className={styles.description} dir="auto">
+          {description}
+        </p>
         {primaryAction || secondaryAction ? (
           <div className={styles.actions}>
             {primaryAction ? (
@@ -57,6 +74,7 @@ export function Hero({
             ) : null}
           </div>
         ) : null}
+        {children ? <div className={styles.status}>{children}</div> : null}
       </div>
     </section>
   );

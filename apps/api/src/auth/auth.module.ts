@@ -4,6 +4,7 @@ import { PlatformConfigModule } from "../platform-config/platform-config.module.
 import { AuthConfig } from "./auth.config.js";
 import { AuthController } from "./auth.controller.js";
 import { AuthGuard } from "./auth.guard.js";
+import { OptionalAuthGuard } from "./optional-auth.guard.js";
 import { AuthRateLimiter } from "./auth-rate-limiter.js";
 import { AuthService } from "./auth.service.js";
 import { AuthTokenService } from "./auth-token.service.js";
@@ -20,6 +21,7 @@ import { SessionService } from "./session.service.js";
   providers: [
     AuthConfig,
     AuthGuard,
+    OptionalAuthGuard,
     AuthRateLimiter,
     AuthService,
     AuthTokenService,
@@ -33,6 +35,7 @@ import { SessionService } from "./session.service.js";
   ],
   exports: [
     AuthGuard,
+    OptionalAuthGuard,
     AuthRateLimiter,
     AuthService,
     CreatorProvisioningService,

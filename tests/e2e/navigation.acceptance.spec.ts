@@ -48,7 +48,11 @@ async function navigationFixture(page: Page) {
     },
     reads: { flags: 0, controls: 0 },
   };
-  const headers = { "access-control-allow-origin": WEB };
+  // The shared controls read carries the current session; match the API's credentialed CORS.
+  const headers = {
+    "access-control-allow-origin": WEB,
+    "access-control-allow-credentials": "true",
+  };
   await page.route(`${API}/platform/navigation`, async (route) => {
     state.reads.flags += 1;
     await route.fulfill({

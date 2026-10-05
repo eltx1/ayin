@@ -48,7 +48,7 @@ export class MediaUploadController {
         ),
       );
     }
-    return this.run(() => this.uploads.createSession(request.ayinAuth.accountId, parsed.data));
+    return this.run(() => this.uploads.createSession(request.ayinAuth, parsed.data));
   }
 
   @Post("sessions/authorize-part")

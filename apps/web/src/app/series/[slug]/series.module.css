@@ -33,7 +33,7 @@
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(180px, 280px) 1fr;
+  grid-template-columns: minmax(180px, 280px) minmax(0, 1fr);
   gap: clamp(28px, 5vw, 64px);
   align-items: end;
   min-height: 430px;
@@ -94,14 +94,17 @@
   align-items: center;
   justify-content: center;
   border-radius: 999px;
+  min-height: var(--control-height);
+  overflow-wrap: anywhere;
+  text-align: center;
   text-decoration: none;
 }
 
 .primaryAction {
   margin-top: 12px;
   padding: 12px 22px;
-  background: currentColor;
-  color: Canvas;
+  background: var(--action-fill);
+  color: var(--action-text);
   font-weight: 700;
 }
 
@@ -165,7 +168,7 @@
   }
 
   .hero {
-    grid-template-columns: 120px 1fr;
+    grid-template-columns: 120px minmax(0, 1fr);
     align-items: center;
     min-height: 300px;
   }
@@ -182,5 +185,26 @@
   .episode {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+.details,
+.episode > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+:global([dir="rtl"]) .details h1 {
+  line-height: 1.25;
+  letter-spacing: normal;
+}
+
+@media (max-width: 520px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .posterWrap {
+    width: min(62vw, 260px);
   }
 }

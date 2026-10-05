@@ -3,16 +3,20 @@ import {
   Controller,
   Get,
   Header,
+  Headers,
   Inject,
   Param,
   Patch,
   Put,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
 import { z } from "zod";
 
-import { AuthGuard } from "../auth/auth.guard.js";
+import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { OptionalAuthGuard } from "../auth/optional-auth.guard.js";
+import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import {
   homeRowPatchSchema,
   manualItemsSchema,
@@ -123,11 +127,25 @@ export class AdminProductController {
 }
 
 @Controller("product-controls")
+@UseGuards(OptionalAuthGuard)
 export class PublicProductController {
-  constructor(@Inject(AdminProductService) private readonly product: AdminProductService) {}
+  constructor(
+    @Inject(AdminProductService) private readonly product: AdminProductService,
+    @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+  ) {}
 
   @Get()
-  getPublicControls() {
-    return this.product.getPublicSnapshot();
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  getPublicControls(
+    @Req() request: { ayinAuth?: AuthenticatedRequest["ayinAuth"] },
+    @Headers() headers: HeaderBag,
+    @Query("kids") kids: string | undefined,
+  ) {
+    return this.product.getPublicSnapshot({
+      countryCode: this.trustedRegion.countryFromHeaders(headers),
+      isKidsProfile: kids === "1",
+      accountId: request.ayinAuth?.accountId,
+    });
   }
 }

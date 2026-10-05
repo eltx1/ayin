@@ -202,21 +202,20 @@ export class QuickUploadService {
 
     let uploadSession: Awaited<ReturnType<MediaUploadService["createSession"]>> | null = null;
     try {
-      uploadSession = await this.mediaUploads.createSession(accountId, {
-        channelId: input.channelId,
-        sizeBytes: input.sizeBytes,
-        mimeType: input.mimeType,
-      });
-      await this.database.client.$transaction([
-        this.database.client.mediaAsset.update({
-          where: { id: uploadSession.assetId },
-          data: { videoId },
-        }),
-        this.database.client.video.update({
-          where: { id: videoId },
-          data: { status: "UPLOADING" },
-        }),
-      ]);
+      uploadSession = await this.mediaUploads.createSession(
+        actor,
+        {
+          channelId: input.channelId,
+          sizeBytes: input.sizeBytes,
+          mimeType: input.mimeType,
+        },
+        {
+          videoId,
+          onCreated: async (tx) => {
+            await tx.video.update({ where: { id: videoId }, data: { status: "UPLOADING" } });
+          },
+        },
+      );
     } catch (error) {
       if (uploadSession?.sessionToken) {
         await this.mediaUploads.abort(actor, uploadSession.sessionToken).catch(() => undefined);
