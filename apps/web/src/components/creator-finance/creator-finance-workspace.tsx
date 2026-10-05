@@ -101,7 +101,10 @@ function FinanceRows<Row>({
     </section>
   );
 }
+import { useAccountFreeze, useAccountWorkspace } from "@/components/account/account-workspace";
+
 export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
+  const binding = useAccountWorkspace();
   const { locale, direction, href, formatDate, formatNumber } = useI18n(),
     ar = locale === "ar",
     copy = (en: string, arabic: string) => (ar ? arabic : en);
@@ -156,6 +159,8 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
     setDraft(emptyDraft);
     setProfileDirty(false);
     setMessage("");
+    setCategory("EARNINGS");
+    dirty.current = false;
     setPayoutId("");
     setStatementAt(null);
     setPages({});
@@ -166,6 +171,16 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
     setLocked(true);
     setReviewed(false);
   }, []);
+  useAccountFreeze(binding, () => {
+    clearIdentity();
+    read.current?.abort();
+    write.current?.abort();
+    read.current = null;
+    write.current = null;
+    operation.current = false;
+    setBusy(false);
+    setLoading(false);
+  });
   const load = useCallback(async () => {
     if (operation.current) return;
     read.current?.abort();
@@ -177,7 +192,11 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
     setSnapshot(null);
     setReviewed(false);
     try {
-      const result = await getCreatorFinance(controller.signal, current.current ?? undefined);
+      const result = await getCreatorFinance(
+        controller.signal,
+        current.current ?? undefined,
+        binding?.expectedAccount(),
+      );
       if (controller.signal.aborted) return;
       if (privateBody.current?.hidden) setPrivateGeneration((value) => value + 1);
       current.current = result;
@@ -201,16 +220,17 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
       if (
         error instanceof CreatorFinanceError &&
         (error.scopeChanged || [401, 403].includes(error.status))
-      )
-        clearIdentity();
-      else setReadError(true);
+      ) {
+        if (binding) binding.freeze();
+        else clearIdentity();
+      } else setReadError(true);
     } finally {
       if (read.current === controller) {
         read.current = null;
         setLoading(false);
       }
     }
-  }, [clearIdentity]);
+  }, [clearIdentity, binding]);
   useEffect(() => {
     let active = true;
     void Promise.resolve().then(() => {
@@ -343,7 +363,8 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
         error instanceof CreatorFinanceError &&
         (error.scopeChanged || [401, 403].includes(error.status))
       ) {
-        clearIdentity();
+        if (binding) binding.freeze();
+        else clearIdentity();
       } else if (error instanceof CreatorFinanceError && error.acknowledged) {
         if (privateBody.current) privateBody.current.hidden = true;
         setSnapshot(null);
@@ -407,9 +428,10 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
       if (
         error instanceof CreatorFinanceError &&
         (error.scopeChanged || [401, 403].includes(error.status))
-      )
-        clearIdentity();
-      else setReadError(true);
+      ) {
+        if (binding) binding.freeze();
+        else clearIdentity();
+      } else setReadError(true);
     } finally {
       if (read.current === controller) {
         read.current = null;

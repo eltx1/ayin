@@ -15,10 +15,13 @@ import {
   type AccountSession,
 } from "@/lib/account-session-response";
 
+import { useAccountFreeze, useAccountWorkspace } from "./account-workspace";
+
 export function AccountSecuritySessions() {
   const router = useRouter();
   const { formatDate, href, t, locale } = useI18n();
   const copy = (en: string, ar: string) => (locale === "ar" ? ar : en);
+  const binding = useAccountWorkspace();
   const pending = useRef(false);
   const account = useRef<string | undefined>(undefined);
   const generation = useRef(0);
@@ -34,7 +37,12 @@ export function AccountSecuritySessions() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  useAccountFreeze(binding, () => conceal());
   function conceal(clearAccount = false) {
+    if (clearAccount && binding) {
+      binding.freeze();
+      return;
+    }
     if (privateBody.current) privateBody.current.hidden = true;
     passwordForm.current?.reset();
     controller.current?.abort();
@@ -57,7 +65,7 @@ export function AccountSecuritySessions() {
   }
   async function refreshSessions(signal: AbortSignal, epoch: number) {
     const result = await requestAccountScope("/auth/sessions", "GET", parseAccountSessions, {
-      expectedAccountId: account.current,
+      expectedAccountId: binding?.expectedAccount() ?? account.current,
       signal,
     });
     if (epoch !== generation.current || signal.aborted) return;
@@ -145,7 +153,7 @@ export function AccountSecuritySessions() {
         method,
         decode,
         {
-          expectedAccountId: account.current,
+          expectedAccountId: binding?.expectedAccount() ?? account.current,
           signal: active.signal,
           allowCurrentLogout: currentLogout,
         },

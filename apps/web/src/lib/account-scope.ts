@@ -120,10 +120,9 @@ export async function requestAccountScope<T>(
       options.maxResponseBytes > 10 * 1024 * 1024)
   )
     throw new AccountScopeError(400, "INVALID_REQUEST");
-  if (
-    options.allowCurrentLogout &&
-    !(method === "DELETE" && /^\/auth\/sessions\/[0-9a-f-]{36}$/i.test(path))
-  )
+  const sessionLogout = method === "DELETE" && /^\/auth\/sessions\/[0-9a-f-]{36}$/i.test(path);
+  const mfaLogout = method === "POST" && path === "/auth/mfa/disable";
+  if (options.allowCurrentLogout && !(sessionLogout || mfaLogout))
     throw new AccountScopeError(400, "INVALID_REQUEST");
   options.signal?.throwIfAborted();
   const controller = new AbortController(),
@@ -159,7 +158,9 @@ export async function requestAccountScope<T>(
     controller.signal.throwIfAborted();
     acknowledged = started;
     const intentionalLogout =
-      options.allowCurrentLogout && object(value).currentSessionRevoked === true;
+      options.allowCurrentLogout &&
+      ((sessionLogout && object(value).currentSessionRevoked === true) ||
+        (mfaLogout && object(value).disabled === true));
     if (!intentionalLogout) await actor(controller.signal, accountId);
     controller.signal.throwIfAborted();
     return { accountId, value };

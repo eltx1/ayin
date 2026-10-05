@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MfaRequestError,
   parseMfaCodes,
+  parseMfaDisabled,
   parseMfaEnrollment,
   parseMfaStatus,
   requestMfa,
@@ -14,6 +15,14 @@ const codes = Array.from(
 );
 afterEach(() => vi.unstubAllGlobals());
 describe("account MFA transport and data boundaries", () => {
+  it("accepts only an explicit successful disable acknowledgment", () => {
+    expect(parseMfaDisabled({ disabled: true })).toEqual({ disabled: true });
+    expect(parseMfaDisabled({ disabled: true, privateDetail: "discarded" })).toEqual({
+      disabled: true,
+    });
+    for (const invalid of [undefined, null, [], {}, { disabled: false }, { disabled: "true" }])
+      expect(() => parseMfaDisabled(invalid)).toThrow();
+  });
   it("requires truthful status fields instead of inventing empty state", () => {
     const status = {
       accountId,

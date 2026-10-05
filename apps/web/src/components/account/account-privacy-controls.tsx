@@ -17,8 +17,11 @@ import {
 
 const CONFIRMATION = "DELETE MY AYIN ACCOUNT";
 
+import { useAccountFreeze, useAccountWorkspace } from "./account-workspace";
+
 export function AccountPrivacyControls() {
   const { formatDate, locale, t } = useI18n();
+  const binding = useAccountWorkspace();
   const pending = useRef(false);
   const account = useRef<string | undefined>(undefined);
   const epoch = useRef(0);
@@ -37,7 +40,12 @@ export function AccountPrivacyControls() {
   const dateLabel = (value: string | null) =>
     value ? formatDate(value, { dateStyle: "medium", timeStyle: "short" }) : "—";
 
+  useAccountFreeze(binding, () => conceal());
   function conceal(clearAccount = false) {
+    if (clearAccount && binding) {
+      binding.freeze();
+      return;
+    }
     if (privateBody.current) privateBody.current.hidden = true;
     formRef.current?.reset();
     controller.current?.abort();
@@ -56,7 +64,7 @@ export function AccountPrivacyControls() {
     (cause.code === "ACCOUNT_CHANGED" || cause.status === 401);
   async function refresh(signal: AbortSignal, revision: number) {
     const next = await requestAccountScope("/privacy/deletion", "GET", parsePrivacyStatus, {
-      expectedAccountId: account.current,
+      expectedAccountId: binding?.expectedAccount() ?? account.current,
       signal,
       maxResponseBytes: 256 * 1024,
     });
@@ -140,7 +148,11 @@ export function AccountPrivacyControls() {
         path,
         "POST",
         decode,
-        { expectedAccountId: account.current, signal: active.signal, maxResponseBytes: 256 * 1024 },
+        {
+          expectedAccountId: binding?.expectedAccount() ?? account.current,
+          signal: active.signal,
+          maxResponseBytes: 256 * 1024,
+        },
         body,
       );
       if (revision !== epoch.current || active.signal.aborted) return;

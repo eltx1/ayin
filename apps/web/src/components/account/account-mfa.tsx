@@ -8,6 +8,7 @@ import { MfaEnrollmentSecret, MfaRecoveryCodes } from "@/components/auth/mfa-sec
 import {
   MfaRequestError,
   parseMfaCodes,
+  parseMfaDisabled,
   parseMfaEnrollment,
   parseMfaStatus,
   requestMfa,
@@ -17,6 +18,10 @@ import {
 import styles from "@/app/(viewer)/account/account.module.css";
 import mfaStyles from "./account-mfa.module.css";
 
+import { useAccountFreeze, useAccountWorkspace } from "./account-workspace";
+import { AccountScopeError, requestAccountScope } from "@/lib/account-scope";
+import { parseAccountIdentity } from "@/lib/account-identity-response";
+
 type Flow =
   | { kind: "start" }
   | { kind: "review"; action: "regenerate" | "disable" }
@@ -24,6 +29,7 @@ type Flow =
   | { kind: "codes"; codes: string[] };
 
 export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => void }) {
+  const binding = useAccountWorkspace();
   const { t, href, formatDate, locale } = useI18n();
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<MfaStatus | null>(null);
@@ -58,17 +64,37 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
     setMessage("");
     form.current?.reset();
   }, []);
+  useAccountFreeze(binding, () => {
+    clearSecrets();
+    readController.current?.abort();
+    scopeChanged.current = true;
+    account.current = null;
+    setSnapshot(null);
+    setLoading(false);
+    setChangedAccount(true);
+  });
   const load = useCallback(
     (preserveError = false) => {
       if (scopeChanged.current) return Promise.resolve();
       readController.current?.abort();
       const controller = new AbortController();
       readController.current = controller;
-      return requestMfa("status", controller.signal)
-        .then(parseMfaStatus)
+      const status = binding
+        ? requestAccountScope("/auth/mfa/status", "GET", parseMfaStatus, {
+            signal: controller.signal,
+            expectedAccountId: binding.expectedAccount(),
+            maxResponseBytes: 64 * 1024,
+          }).then((result) => {
+            if (result.value.accountId !== result.accountId)
+              throw new AccountScopeError(409, "ACCOUNT_CHANGED");
+            return result.value;
+          })
+        : requestMfa("status", controller.signal).then(parseMfaStatus);
+      return status
         .then((next) => {
           if (controller.signal.aborted || scopeChanged.current) return;
           if (account.current && account.current !== next.accountId) {
+            binding?.freeze();
             clearSecrets();
             scopeChanged.current = true;
             setChangedAccount(true);
@@ -91,14 +117,39 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
           });
           if (!next.enabled) setMessage("");
         })
-        .catch((cause: unknown) => {
+        .catch(async (cause: unknown) => {
           if (controller.signal.aborted || scopeChanged.current) return;
           setSnapshot(null);
-          if (cause instanceof MfaRequestError && cause.status === 401) {
+          if (
+            (cause instanceof AccountScopeError &&
+              (cause.code === "ACCOUNT_CHANGED" || cause.status === 401)) ||
+            (cause instanceof MfaRequestError && cause.code === "ACCOUNT_CHANGED")
+          ) {
+            binding?.freeze();
+            clearSecrets();
+            scopeChanged.current = true;
+            setChangedAccount(true);
+            setError(t("account.mfaAccountChanged"));
+          } else if (cause instanceof MfaRequestError && cause.status === 401) {
             clearSecrets();
             setSignIn(true);
             setError(t("account.mfaSessionExpired"));
-          } else setError(t("account.mfaLoadError"));
+          } else {
+            if (binding) {
+              try {
+                await requestAccountScope("/auth/me", "GET", parseAccountIdentity, {
+                  signal: controller.signal,
+                  expectedAccountId: binding.expectedAccount(),
+                  maxResponseBytes: 64 * 1024,
+                });
+                if (controller.signal.aborted || scopeChanged.current) return;
+              } catch {
+                if (!controller.signal.aborted) binding.freeze();
+                return;
+              }
+            }
+            setError(t("account.mfaLoadError"));
+          }
         })
         .finally(() => {
           if (!controller.signal.aborted) {
@@ -110,7 +161,7 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
           }
         });
     },
-    [clearSecrets, t],
+    [clearSecrets, t, binding],
   );
 
   useEffect(() => {
@@ -181,18 +232,43 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
             : flow.action === "regenerate"
               ? "recovery-codes/regenerate"
               : "disable";
-      const result = await requestMfa(path, controller.signal, {
+      const payload = {
         expectedAccountId,
         ...(flow.kind === "enrollment"
           ? { enrollmentToken: flow.data.enrollmentToken, code }
           : flow.kind === "start"
             ? { password }
             : { password, code }),
-      });
+      };
+      const result = binding
+        ? (
+            await requestAccountScope(
+              "/auth/mfa/" + path,
+              "POST",
+              (value) => {
+                if (path === "disable") return parseMfaDisabled(value);
+                if (flow.kind === "start") parseMfaEnrollment(value, expectedAccountId);
+                else parseMfaCodes(value, expectedAccountId);
+                return value;
+              },
+              {
+                signal: controller.signal,
+                expectedAccountId: binding.expectedAccount(),
+                // Successful disable revokes every session, including this cookie.
+                // Only its strictly decoded acknowledgment permits skipping a post-read.
+                allowCurrentLogout: path === "disable",
+                maxResponseBytes: 256 * 1024,
+              },
+              payload,
+            )
+          ).value
+        : await requestMfa(path, controller.signal, payload, expectedAccountId);
       if (revision !== epoch.current || controller.signal.aborted) return;
       if (flow.kind === "start") {
         setFlow({ kind: "enrollment", data: parseMfaEnrollment(result, expectedAccountId) });
       } else if (flow.kind === "review" && flow.action === "disable") {
+        parseMfaDisabled(result);
+        binding?.freeze();
         clearSecrets();
         setSnapshot(null);
         router.push(href("/login"));
@@ -207,14 +283,60 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
       }
     } catch (cause) {
       if (revision !== epoch.current || controller.signal.aborted) return;
-      if (cause instanceof MfaRequestError && cause.code === "ACCOUNT_CHANGED") {
+      if (
+        binding &&
+        cause instanceof AccountScopeError &&
+        cause.status === 401 &&
+        cause.code === "UNAUTHORIZED" &&
+        !cause.acknowledged
+      ) {
+        // A rejected factor is not proof that the cookie account/session changed.
+        // Preserve setup only after another protected current-account status read.
+        try {
+          const status = await requestAccountScope("/auth/mfa/status", "GET", parseMfaStatus, {
+            signal: controller.signal,
+            expectedAccountId: binding.expectedAccount(),
+            maxResponseBytes: 64 * 1024,
+          });
+          if (status.value.accountId !== expectedAccountId)
+            throw new AccountScopeError(409, "ACCOUNT_CHANGED");
+          if (revision !== epoch.current || controller.signal.aborted) return;
+          setError(t("account.mfaCheckDetails"));
+          await load(true);
+          return;
+        } catch {
+          binding.freeze();
+          return;
+        }
+      }
+      if (
+        binding &&
+        ((cause instanceof AccountScopeError &&
+          (cause.acknowledged ||
+            cause.status === 0 ||
+            cause.status >= 500 ||
+            cause.status === 401 ||
+            cause.code === "ACCOUNT_CHANGED")) ||
+          !(cause instanceof MfaRequestError || cause instanceof AccountScopeError))
+      ) {
+        binding.freeze();
+        return;
+      }
+      if (
+        (cause instanceof MfaRequestError || cause instanceof AccountScopeError) &&
+        cause.code === "ACCOUNT_CHANGED"
+      ) {
+        binding?.freeze();
         clearSecrets();
         scopeChanged.current = true;
         setChangedAccount(true);
         setSnapshot(null);
         setError(t("account.mfaAccountChanged"));
       } else {
-        const code = cause instanceof MfaRequestError ? cause.code : undefined;
+        const code =
+          cause instanceof MfaRequestError || cause instanceof AccountScopeError
+            ? cause.code
+            : undefined;
         const errorKey =
           code === "UNAUTHORIZED"
             ? "account.mfaCheckDetails"
@@ -234,7 +356,10 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
         );
         // Re-read on rejected credentials/policy. Never replay a mutation.
         // A mistyped factor does not discard an otherwise valid enrollment.
-        if (cause instanceof MfaRequestError && (cause.status === 401 || cause.status === 409))
+        if (
+          (cause instanceof MfaRequestError || cause instanceof AccountScopeError) &&
+          (cause.status === 401 || cause.status === 409)
+        )
           await load(true);
       }
     } finally {

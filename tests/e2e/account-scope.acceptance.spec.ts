@@ -56,18 +56,19 @@ test("Actual same-password cookie account switch sends no private password comma
   await register(page, "before-a");
   await ready(page);
   await fill(page);
+  const oldSecret = await section(page).locator('[name="currentPassword"]').elementHandle();
   const b = await register(page, "before-b");
   let writes = 0;
   page.on("request", (r) => {
     if (r.url() === API + "/auth/password/change" && r.method() === "POST") writes++;
   });
   await section(page).getByRole("button", { name: "Update password", exact: true }).click();
-  await expect(section(page).getByRole("alert")).toContainText("account changed");
+  await expect(page.getByRole("region", { name: "Account review", exact: true })).toBeVisible();
   await expect(section(page).locator("[data-private-account-sessions]")).toBeHidden();
-  expect(await section(page).locator('[name="currentPassword"]').inputValue()).toBe("");
+  expect(await oldSecret?.evaluate((input) => (input as HTMLInputElement).value)).toBe("");
   expect(writes).toBe(0);
   await unchanged(request, b.email);
-  await section(page).getByRole("button", { name: "Read current sessions", exact: true }).click();
+  await page.getByRole("button", { name: "Read current account", exact: true }).click();
   await expect(
     section(page).getByRole("heading", { name: "Current session", exact: true }),
   ).toBeVisible();
@@ -160,10 +161,10 @@ test("Controlled pagehide hides synchronously before resetting secrets and pages
   await page.evaluate(() =>
     window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
   );
-  await expect(section(page).getByRole("alert")).toContainText("Read the current sessions");
+  await expect(page.getByRole("region", { name: "Account review", exact: true })).toBeVisible();
   expect(reads).toBe(0);
   expect(writes).toBe(0);
-  await section(page).getByRole("button", { name: "Read current sessions", exact: true }).click();
+  await page.getByRole("button", { name: "Read current account", exact: true }).click();
   await expect(
     section(page).getByRole("heading", { name: "Current session", exact: true }),
   ).toBeVisible();
@@ -188,10 +189,10 @@ test("Actual account switch after private read drops the old result before any s
     await route.fulfill({ response });
   });
   await page.goto("/account");
-  await expect(section(page).getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Account review", exact: true })).toBeVisible();
   await expect(section(page).locator("[data-private-account-sessions]")).toBeHidden();
   await expect(section(page).locator("article")).toHaveCount(0);
-  await section(page).getByRole("button", { name: "Read current sessions", exact: true }).click();
+  await page.getByRole("button", { name: "Read current account", exact: true }).click();
   await expect(
     section(page).getByRole("heading", { name: "Current session", exact: true }),
   ).toBeVisible();

@@ -75,7 +75,7 @@ function ProductLinks({
 
 function ViewerChrome({ children }: { children: ReactNode }) {
   const { href, t } = useI18n();
-  const { flags, identity, controls } = useViewerProduct();
+  const { flags, identity, controls, identityRevision } = useViewerProduct();
   const navigation = controls?.navigation;
   const model = useMemo(() => buildViewerNavigation(flags, navigation), [flags, navigation]);
   const announcement = controls?.announcement;
@@ -108,7 +108,7 @@ function ViewerChrome({ children }: { children: ReactNode }) {
         >
           <ProductLinks items={model.primary} browse={model.browse} surface="desktop" />
         </nav>
-        <div className={styles.accountActions}>
+        <div className={styles.accountActions} key={identityRevision} data-private-viewer-identity>
           <Link
             className={styles.joinAction}
             data-tv-focus-id={identity ? "create-upload" : "join-ayin"}

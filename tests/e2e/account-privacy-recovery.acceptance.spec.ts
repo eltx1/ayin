@@ -277,11 +277,11 @@ test("Same-password account switch creates zero wrong-account deletion requests"
   await section(page)
     .getByRole("button", { name: "Request account deletion", exact: true })
     .click();
-  await expect(section(page).getByRole("alert")).toContainText("account changed");
+  await expect(page.getByRole("region", { name: "Account review", exact: true })).toBeVisible();
   await expect(section(page).locator("[data-private-account-privacy]")).toBeHidden();
   expect(writes).toBe(0);
   expect((await (await page.request.get(API + "/privacy/deletion")).json()).request).toBeNull();
-  await section(page).getByRole("button", { name: "Read privacy status", exact: true }).click();
+  await page.getByRole("button", { name: "Read current account", exact: true }).click();
   await expect(section(page).locator('[name="password"]')).toHaveValue("");
   expect(writes).toBe(0);
 });
@@ -309,10 +309,10 @@ test("Actual export read followed by account switch never downloads the old acco
     await route.fulfill({ response });
   });
   await section(page).getByRole("button", { name: "Download my data", exact: true }).click();
-  await expect(section(page).getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Account review", exact: true })).toBeVisible();
   await expect(section(page).locator("[data-private-account-privacy]")).toBeHidden();
   expect(downloads).toBe(0);
-  await section(page).getByRole("button", { name: "Read privacy status", exact: true }).click();
+  await page.getByRole("button", { name: "Read current account", exact: true }).click();
   const downloadPromise = page.waitForEvent("download");
   await section(page).getByRole("button", { name: "Download my data", exact: true }).click();
   const download = await downloadPromise,
@@ -390,7 +390,7 @@ test("Controlled privacy pagehide hides before secret reset and pageshow require
   await expect(section(page).locator("[data-private-account-privacy]")).toBeHidden();
   expect(reads).toBe(0);
   expect(writes).toBe(0);
-  await section(page).getByRole("button", { name: "Read privacy status", exact: true }).click();
+  await page.getByRole("button", { name: "Read current account", exact: true }).click();
   await expect(section(page).locator('[name="password"]')).toHaveValue("");
   await expect(section(page).locator('[name="confirmation"]')).toHaveValue("");
   expect(reads).toBe(1);

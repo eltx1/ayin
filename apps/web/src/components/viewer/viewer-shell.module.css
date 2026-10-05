@@ -112,6 +112,10 @@
   gap: 10px;
 }
 
+.accountActions[hidden] {
+  display: none !important;
+}
+
 .joinAction {
   align-items: center;
   background: var(--brand-gradient);

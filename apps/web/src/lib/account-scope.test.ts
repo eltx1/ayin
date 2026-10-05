@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccountScopeError, requestAccountScope } from "./account-scope";
+import { parseMfaDisabled } from "./account-mfa";
 const a = "a0000000-0000-4000-8000-000000000001",
   b = "b0000000-0000-4000-8000-000000000002";
 const actor = (id = a) => new Response(JSON.stringify({ account: { id } }));
@@ -132,6 +133,90 @@ describe("actual account scope transport", () => {
     });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+  it("strictly acknowledged MFA disable binds the command and permits its intentional logout", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(actor())
+      .mockResolvedValueOnce(json({ disabled: true }));
+    vi.stubGlobal("fetch", fetcher);
+    const payload = { expectedAccountId: a, password: "fixture", code: "123456" };
+    expect(
+      await requestAccountScope(
+        "/auth/mfa/disable",
+        "POST",
+        parseMfaDisabled,
+        { expectedAccountId: a, allowCurrentLogout: true, maxResponseBytes: 256 * 1024 },
+        payload,
+      ),
+    ).toEqual({ accountId: a, value: { disabled: true } });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({
+      method: "POST",
+      headers: { "x-ayin-expected-account": a, "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  });
+  for (const response of [{}, { disabled: false }, { disabled: "true" }])
+    it(
+      "malformed successful MFA disable remains unacknowledged: " + JSON.stringify(response),
+      async () => {
+        const fetcher = vi
+          .fn()
+          .mockResolvedValueOnce(actor())
+          .mockResolvedValueOnce(json(response));
+        vi.stubGlobal("fetch", fetcher);
+        await expect(
+          requestAccountScope("/auth/mfa/disable", "POST", parseMfaDisabled, {
+            expectedAccountId: a,
+            allowCurrentLogout: true,
+          }),
+        ).rejects.toMatchObject({
+          code: "RESPONSE_UNCONFIRMED",
+          writeStarted: true,
+          acknowledged: false,
+        });
+        expect(fetcher).toHaveBeenCalledTimes(2);
+      },
+    );
+  for (const failedResponse of [false, true])
+    it(
+      "lost MFA disable outcome is never replayed: server response " + failedResponse,
+      async () => {
+        const fetcher = vi.fn().mockResolvedValueOnce(actor());
+        if (failedResponse)
+          fetcher.mockResolvedValueOnce(json({ error: { code: "UNAVAILABLE" } }, 500));
+        else fetcher.mockRejectedValueOnce(new TypeError("Lost response"));
+        vi.stubGlobal("fetch", fetcher);
+        await expect(
+          requestAccountScope("/auth/mfa/disable", "POST", parseMfaDisabled, {
+            expectedAccountId: a,
+            allowCurrentLogout: true,
+          }),
+        ).rejects.toMatchObject({
+          status: failedResponse ? 500 : 0,
+          writeStarted: true,
+          acknowledged: false,
+        });
+        expect(fetcher).toHaveBeenCalledTimes(2);
+      },
+    );
+  it("logout acknowledgment fields cannot cross the exact endpoint boundary", async () => {
+    for (const [path, method, response] of [
+      ["/auth/mfa/disable", "POST", { currentSessionRevoked: true }],
+      ["/auth/sessions/" + a, "DELETE", { disabled: true }],
+    ] as const) {
+      const fetcher = vi
+        .fn()
+        .mockResolvedValueOnce(actor())
+        .mockResolvedValueOnce(json(response))
+        .mockResolvedValueOnce(json({ error: { code: "UNAUTHORIZED" } }, 401));
+      vi.stubGlobal("fetch", fetcher);
+      await expect(
+        requestAccountScope(path, method, (value) => value, { allowCurrentLogout: true }),
+      ).rejects.toMatchObject({ status: 401, acknowledged: true });
+      expect(fetcher).toHaveBeenCalledTimes(3);
+    }
+  });
   it("whole read deadline includes actor work", async () => {
     vi.useFakeTimers();
     vi.stubGlobal(
@@ -163,6 +248,14 @@ describe("actual account scope transport", () => {
     await expect(
       requestAccountScope("/auth/password/change", "POST", decode, { allowCurrentLogout: true }),
     ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    for (const [path, method] of [
+      ["/auth/mfa/disable", "GET"],
+      ["/auth/mfa/disable", "DELETE"],
+      ["/auth/mfa/disable/other", "POST"],
+    ] as const)
+      await expect(
+        requestAccountScope(path, method, parseMfaDisabled, { allowCurrentLogout: true }),
+      ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
     await expect(
       requestAccountScope("/auth/sessions", "GET", (value) => value, {
         expectedAccountId: "invalid",
