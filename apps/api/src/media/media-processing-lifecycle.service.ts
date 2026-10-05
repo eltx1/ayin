@@ -23,67 +23,71 @@ export class MediaProcessingLifecycleService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async enqueueUploadedAsset(assetId: string) {
-    return this.database.client.$transaction(async (tx) => {
-      const asset = await tx.mediaAsset.findUnique({
-        where: { id: assetId },
-        select: {
-          id: true,
-          videoId: true,
-          channelId: true,
-          kind: true,
-          status: true,
-          mimeType: true,
-          sizeBytes: true,
-          r2ObjectKey: true,
-          removedAt: true,
-          video: { select: { id: true, channelId: true, status: true } },
-        },
-      });
-      if (
-        !asset ||
-        !asset.videoId ||
-        !asset.video ||
-        asset.kind !== "SOURCE_VIDEO" ||
-        asset.status !== "UPLOADED" ||
-        asset.removedAt
-      ) {
-        return null;
-      }
+    return this.database.client.$transaction((tx) =>
+      this.enqueueUploadedAssetInTransaction(tx, assetId),
+    );
+  }
 
-      await lockMediaGeneration(tx, asset.videoId);
-      const existing = await tx.mediaProcessingJob.findFirst({
-        where: { videoId: asset.videoId },
-        orderBy: { generation: "desc" },
-      });
-      if (existing) return existing;
-
-      const latestPlayback = await tx.mediaPlaybackGeneration.findFirst({
-        where: { videoId: asset.videoId },
-        orderBy: { generation: "desc" },
-        select: { generation: true },
-      });
-      const generation = (latestPlayback?.generation ?? 0) + 1;
-      const channelId = asset.video.channelId;
-      const job = await tx.mediaProcessingJob.create({
-        data: {
-          videoId: asset.videoId,
-          generation,
-          status: "QUEUED",
-          sourceMimeType: asset.mimeType,
-          sourceSizeBytes: asset.sizeBytes,
-          stagingKey: asset.r2ObjectKey,
-          inputR2ObjectKey: asset.r2ObjectKey,
-          outputR2ObjectKey: `channels/${channelId}/videos/${asset.videoId}/playback/g${generation}.mp4`,
-          queuedAt: new Date(),
-          stage: "QUEUED",
-        },
-      });
-      await tx.video.updateMany({
-        where: { id: asset.videoId, status: { in: ["UPLOADING", "DRAFT"] } },
-        data: { status: "VALIDATING" },
-      });
-      return job;
+  async enqueueUploadedAssetInTransaction(tx: Prisma.TransactionClient, assetId: string) {
+    const asset = await tx.mediaAsset.findUnique({
+      where: { id: assetId },
+      select: {
+        id: true,
+        videoId: true,
+        channelId: true,
+        kind: true,
+        status: true,
+        mimeType: true,
+        sizeBytes: true,
+        r2ObjectKey: true,
+        removedAt: true,
+        video: { select: { id: true, channelId: true, status: true } },
+      },
     });
+    if (
+      !asset ||
+      !asset.videoId ||
+      !asset.video ||
+      asset.kind !== "SOURCE_VIDEO" ||
+      asset.status !== "UPLOADED" ||
+      asset.removedAt
+    ) {
+      return null;
+    }
+
+    await lockMediaGeneration(tx, asset.videoId);
+    const existing = await tx.mediaProcessingJob.findFirst({
+      where: { videoId: asset.videoId },
+      orderBy: { generation: "desc" },
+    });
+    if (existing) return existing;
+
+    const latestPlayback = await tx.mediaPlaybackGeneration.findFirst({
+      where: { videoId: asset.videoId },
+      orderBy: { generation: "desc" },
+      select: { generation: true },
+    });
+    const generation = (latestPlayback?.generation ?? 0) + 1;
+    const channelId = asset.video.channelId;
+    const job = await tx.mediaProcessingJob.create({
+      data: {
+        videoId: asset.videoId,
+        generation,
+        status: "QUEUED",
+        sourceMimeType: asset.mimeType,
+        sourceSizeBytes: asset.sizeBytes,
+        stagingKey: asset.r2ObjectKey,
+        inputR2ObjectKey: asset.r2ObjectKey,
+        outputR2ObjectKey: `channels/${channelId}/videos/${asset.videoId}/playback/g${generation}.mp4`,
+        queuedAt: new Date(),
+        stage: "QUEUED",
+      },
+    });
+    await tx.video.updateMany({
+      where: { id: asset.videoId, status: { in: ["UPLOADING", "DRAFT"] } },
+      data: { status: "VALIDATING" },
+    });
+    return job;
   }
 
   async setOwnedStage(input: {

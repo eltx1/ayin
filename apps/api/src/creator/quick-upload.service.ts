@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { Prisma } from "@ayin/db";
 
 import { Inject, Injectable } from "@nestjs/common";
@@ -137,7 +138,8 @@ export class QuickUploadService {
     );
   }
 
-  async createDraft(accountId: string, input: CreateQuickDraftInput) {
+  async createDraft(actor: AuthenticatedRequest["ayinAuth"], input: CreateQuickDraftInput) {
+    const { accountId } = actor;
     const title = normalizeTitle(input.title);
     if (!title) {
       throw new QuickUploadError("TITLE_REQUIRED", "Add a title before starting this upload.");
@@ -217,7 +219,7 @@ export class QuickUploadService {
       ]);
     } catch (error) {
       if (uploadSession?.sessionToken) {
-        await this.mediaUploads.abort(accountId, uploadSession.sessionToken).catch(() => undefined);
+        await this.mediaUploads.abort(actor, uploadSession.sessionToken).catch(() => undefined);
       }
       await this.database.client.video.deleteMany({ where: { id: videoId, status: "DRAFT" } });
       throw error;

@@ -40,10 +40,12 @@ export async function lockAdminAccountWrite(
       AND "role"::text IN (${Prisma.join(["SUPERADMIN", "ADMIN", ...domainRoles])}) FOR SHARE`,
   );
   if (!roles.length) throw adminForbidden("Administration authority changed.");
+  // Prisma stores expiresAt as a UTC-naive TIMESTAMP(3). Keep the comparison
+  // on the database wall clock without interpreting it in the session timezone.
   const sessions = await tx.$queryRaw<Array<{ id: string }>>(
     Prisma.sql`SELECT "id" FROM "AccountSession" WHERE "id" = ${actor.sessionId}::uuid
       AND "accountId" = ${actor.accountId}::uuid AND "authVersion" = ${actor.authVersion}
-      AND "revokedAt" IS NULL AND "expiresAt" > clock_timestamp() FOR SHARE`,
+      AND "revokedAt" IS NULL AND "expiresAt" > (clock_timestamp() AT TIME ZONE 'UTC') FOR SHARE`,
   );
   if (!sessions.length) throw unauthorized();
   if (roles.some((row) => row.role === "SUPERADMIN" || row.role === "ADMIN")) {
