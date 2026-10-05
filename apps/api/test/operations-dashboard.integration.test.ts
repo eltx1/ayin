@@ -43,7 +43,7 @@ databaseDescribe("Task 87 operations dashboard", () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE "Account", "AnalyticsPlatformDailyRollup", "AnalyticsPlatformSessionDailyRollup", "AnalyticsChannelDailyRollup", "AdPlacement", "EarningsLedgerEntry", "MediaProcessingWorker", "PlatformSetting" CASCADE',
+      'TRUNCATE TABLE "Account", "Channel", "AnalyticsPlatformDailyRollup", "AnalyticsPlatformSessionDailyRollup", "AnalyticsChannelDailyRollup", "AdPlacement", "EarningsLedgerEntry", "MediaProcessingWorker", "PlatformSetting" CASCADE',
     );
   });
 

@@ -205,6 +205,10 @@ export class VideoMetadataService {
     )
       return this.readOne(videoId, transaction);
     const write = async (tx: Prisma.TransactionClient) => {
+      // Share the admin/QuickUpload Video -> policy order, including first policy
+      // creation. NO KEY UPDATE preserves unrelated FK key-share reads.
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Video" WHERE "id" = ${videoId}::uuid
+        FOR NO KEY UPDATE /* ayin-creator-metadata-policy-target-lock */`);
       if (input.contentType !== undefined)
         await tx.video.update({ where: { id: videoId }, data: { contentType: input.contentType } });
       if (hasCompanionMetadata(input)) {

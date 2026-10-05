@@ -256,3 +256,17 @@ jobs:
           path: test-results/**/design-account-workspace-*.png
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve product continuation visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-continuation-visuals
+          path: |
+            test-results/**/kids-*.png
+            test-results/**/hero-*.png
+            test-results/**/search-*.png
+            test-results/**/movie-*.png
+            test-results/**/series-*.png
+          if-no-files-found: ignore
+          retention-days: 7
