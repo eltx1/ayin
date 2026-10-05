@@ -531,7 +531,8 @@ test("unpublish and caption removal send valid JSON while origin checks stay enf
     }
     await route.continue();
   });
-  await captions.getByRole("button", { name: "Remove", exact: true }).click();
+  await captions.getByRole("button", { name: "Remove track", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove track", exact: true }).click();
   await expect(captions.getByText("No caption tracks yet.")).toBeVisible();
   expect(removals).toBe(1);
 });

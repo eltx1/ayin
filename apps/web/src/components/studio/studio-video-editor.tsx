@@ -56,6 +56,55 @@ export function StudioVideoEditor({
   const [captionBusy, setCaptionBusy] = useState(false);
   const captionPending = useRef(false);
   const [captionDraft, setCaptionDraft] = useState(false);
+  const [captionConcealed, setCaptionConcealed] = useState(false);
+  const captionScopeClosed = useRef(false);
+  const captionReview = useRef(false);
+  const [captionReviewRequired, setCaptionReviewRequired] = useState(false);
+  const [privateGeneration, setPrivateGeneration] = useState(0);
+  const captionRecovery = useCallback((required: boolean) => {
+    captionReview.current = required;
+    setCaptionReviewRequired(required);
+  }, []);
+  const editor = useRef<HTMLElement>(null);
+  const captionPrivacy = useCallback((closed: boolean) => {
+    const wasClosed = captionScopeClosed.current;
+    captionScopeClosed.current = closed;
+    if (closed) {
+      editor.current
+        ?.querySelectorAll<HTMLElement>("[data-caption-parent-private]")
+        .forEach((node) => {
+          node.hidden = true;
+          node
+            .querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+              "input, textarea, select",
+            )
+            .forEach((field) => {
+              if (field instanceof HTMLSelectElement) field.selectedIndex = -1;
+              else if (
+                field instanceof HTMLInputElement &&
+                ["checkbox", "radio"].includes(field.type)
+              ) {
+                field.checked = false;
+                field.defaultChecked = false;
+                field.removeAttribute("checked");
+              } else {
+                field.value = "";
+                field.defaultValue = "";
+                field.removeAttribute("value");
+              }
+            });
+        });
+      editor.current?.querySelectorAll("dialog").forEach((dialog) => {
+        dialog.hidden = true;
+        dialog.close();
+      });
+      confirmationIntent.current = null;
+      setConfirmation(null);
+      setTab("captions");
+    }
+    if (!closed && wasClosed) setPrivateGeneration((value) => value + 1);
+    setCaptionConcealed(closed);
+  }, []);
   const [uncertain, setUncertain] = useState(false);
   const [error, setError] = useState<ContentTranslationKey | null>(null);
   const mounted = useRef(true);
@@ -111,7 +160,14 @@ export function StudioVideoEditor({
       if (!pending.current && !captionPending.current && !dirty && !captionDraft) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      if (pending.current || captionPending.current || confirmationIntent.current) return;
+      if (
+        pending.current ||
+        captionPending.current ||
+        captionReview.current ||
+        captionScopeClosed.current ||
+        confirmationIntent.current
+      )
+        return;
       const intent = { href: destination.href };
       confirmationIntent.current = intent;
       setConfirmation(intent);
@@ -125,7 +181,14 @@ export function StudioVideoEditor({
   }, [dirty, captionDraft, t]);
 
   function ask(intent: ConfirmationIntent) {
-    if (pending.current || captionPending.current || confirmationIntent.current) return;
+    if (
+      pending.current ||
+      captionPending.current ||
+      captionReview.current ||
+      captionScopeClosed.current ||
+      confirmationIntent.current
+    )
+      return;
     confirmationIntent.current = intent;
     setConfirmation(intent);
   }
@@ -137,7 +200,14 @@ export function StudioVideoEditor({
 
   function acceptConfirmation() {
     const intent = confirmationIntent.current;
-    if (!intent || pending.current || captionPending.current) return;
+    if (
+      !intent ||
+      pending.current ||
+      captionPending.current ||
+      captionReview.current ||
+      captionScopeClosed.current
+    )
+      return;
     confirmationIntent.current = null;
     setConfirmation(null);
     if (intent === "close") onClose();
@@ -150,7 +220,13 @@ export function StudioVideoEditor({
   }
 
   function close() {
-    if (pending.current || captionPending.current) return;
+    if (
+      pending.current ||
+      captionPending.current ||
+      captionReview.current ||
+      captionScopeClosed.current
+    )
+      return;
     if (dirty || captionDraft) ask("close");
     else onClose();
   }
@@ -161,7 +237,14 @@ export function StudioVideoEditor({
   }
 
   async function commit(kind: "save" | "unpublish" | "remove") {
-    if (pending.current || captionPending.current || uncertain || video.status === "REMOVED")
+    if (
+      pending.current ||
+      captionPending.current ||
+      captionReview.current ||
+      captionScopeClosed.current ||
+      uncertain ||
+      video.status === "REMOVED"
+    )
       return;
     let payload: ReturnType<typeof contentPayload> | undefined;
     if (kind === "save") {
@@ -183,7 +266,7 @@ export function StudioVideoEditor({
       if (kind === "save") await updateStudioVideo(video.id, payload!);
       else if (kind === "unpublish") await unpublishStudioVideo(video.id);
       else await removeStudioVideo(video.id);
-      if (!mounted.current) return;
+      if (!mounted.current || captionScopeClosed.current || captionReview.current) return;
       // An acknowledged mutation is not undone by a subsequent failed library GET.
       onCommitted(
         kind === "save"
@@ -203,13 +286,23 @@ export function StudioVideoEditor({
   }
 
   return (
-    <section aria-label={t("content.editor")} className={styles.editor}>
-      <div ref={heading} tabIndex={-1} className={styles.editorHeading}>
+    <section ref={editor} aria-label={t("content.editor")} className={styles.editor}>
+      <div
+        ref={heading}
+        tabIndex={-1}
+        className={styles.editorHeading}
+        data-caption-parent-private
+        hidden={captionConcealed}
+      >
         <PageHeader
           title={video.title}
           eyebrow={t("content.editor")}
           actions={
-            <ActionButton tone="secondary" disabled={busy || captionBusy} onClick={close}>
+            <ActionButton
+              tone="secondary"
+              disabled={busy || captionBusy || captionReviewRequired || captionConcealed}
+              onClick={close}
+            >
               {t("content.back")}
             </ActionButton>
           }
@@ -230,14 +323,23 @@ export function StudioVideoEditor({
       <EditorTabs
         label={t("content.editor")}
         value={tab}
-        onChange={setTab}
+        onChange={(next) => {
+          if (!captionConcealed) setTab(next);
+        }}
         direction={direction}
         tabs={[
           {
             id: "details",
             label: t("content.details"),
-            content: (
-              <FormSection id="content-basic" legend={t("content.details")} disabled={disabled}>
+            content: captionConcealed ? null : (
+              <FormSection
+                key={`basic-${privateGeneration}`}
+                id="content-basic"
+                legend={t("content.details")}
+                disabled={disabled || captionConcealed}
+                data-caption-parent-private
+                hidden={captionConcealed}
+              >
                 <TextField
                   id="content-title"
                   label={t("content.title")}
@@ -292,9 +394,12 @@ export function StudioVideoEditor({
           {
             id: "advanced",
             label: t("content.advanced"),
-            content: (
+            content: captionConcealed ? null : (
               <FormSection
+                key={`advanced-${privateGeneration}`}
                 id="content-advanced"
+                data-caption-parent-private
+                hidden={captionConcealed}
                 legend={t("content.advanced")}
                 description={t("content.advancedHint")}
                 disabled={disabled}
@@ -314,15 +419,18 @@ export function StudioVideoEditor({
             content: (
               <StudioCaptionManager
                 videoId={video.id}
+                videoTitle={video.title}
                 disabled={disabled}
                 onBusyChange={captionActivity}
                 onDraftChange={setCaptionDraft}
+                onPrivacyChange={captionPrivacy}
+                onRecoveryChange={captionRecovery}
               />
             ),
           },
         ]}
       />
-      <div className={styles.actions}>
+      <div className={styles.actions} data-caption-parent-private hidden={captionConcealed}>
         <ActionButton
           disabled={disabled || !dirty || captionDraft}
           pending={busy}
