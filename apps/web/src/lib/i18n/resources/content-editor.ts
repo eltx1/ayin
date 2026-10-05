@@ -28,6 +28,15 @@ export const contentEditorEn = {
   "content.loading": "Loading your videos…",
   "content.loadError": "Your videos could not be loaded. Try again.",
   "content.empty": "No videos match these filters.",
+  "content.historyBoundary":
+    "Earlier page links are no longer kept in this session. Return to the first page to revisit them.",
+  "content.pages": "Content pages",
+  "content.pageNumber": "Page {page}",
+  "content.previousPage": "Previous page",
+  "content.nextPage": "Next page",
+  "content.firstPage": "Return to first page",
+  "content.pagingHint":
+    "25 videos per page, most recently updated first. Edited videos may move between pages; return to the first page to review recent changes.",
   "content.limit":
     "Up to 50 most recently updated matching videos. Refine your search to find older videos.",
   "content.count": "{count} videos in this result",
@@ -96,6 +105,15 @@ export const contentEditorAr: Record<keyof typeof contentEditorEn, string> = {
   "content.loading": "جارٍ تحميل فيديوهاتك…",
   "content.loadError": "تعذر تحميل فيديوهاتك. أعد المحاولة.",
   "content.empty": "لا توجد فيديوهات تطابق هذه التصفية.",
+  "content.historyBoundary":
+    "روابط الصفحات الأقدم لم تعد محفوظة في هذه الجلسة. ارجع إلى الصفحة الأولى لمراجعتها.",
+  "content.pages": "صفحات المحتوى",
+  "content.pageNumber": "الصفحة {page}",
+  "content.previousPage": "الصفحة السابقة",
+  "content.nextPage": "الصفحة التالية",
+  "content.firstPage": "العودة إلى الصفحة الأولى",
+  "content.pagingHint":
+    "25 فيديو في كل صفحة، والأحدث تعديلًا أولًا. قد تنتقل الفيديوهات المعدّلة بين الصفحات؛ ارجع إلى الصفحة الأولى لمراجعة التغييرات الأخيرة.",
   "content.limit": "حتى 50 فيديو مطابقًا حسب آخر تعديل. خصص البحث للعثور على فيديوهات أقدم.",
   "content.count": "{count} فيديو في هذه النتائج",
   "content.retry": "إعادة تحميل الفيديوهات",

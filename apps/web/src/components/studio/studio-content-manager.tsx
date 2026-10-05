@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { useContentI18n } from "@/lib/i18n/content-copy";
-import { DataTable, type TableColumn } from "@/components/ui/data-presentation";
+import { DataTable, PageControls, type TableColumn } from "@/components/ui/data-presentation";
 import {
   ActionButton,
   ActionLink,
@@ -15,26 +15,50 @@ import {
   TextField,
 } from "@/components/ui/design-system";
 import { contentStatuses, contentVisibility } from "@/lib/content-editor";
-import { getStudioContent, type StudioVideo } from "@/lib/studio";
+import type { StudioVideo } from "@/lib/studio";
+import {
+  firstStudioContentPage,
+  nextStudioContentPage,
+  previousStudioContentPage,
+  readStudioContentPage,
+} from "@/lib/studio-content-page";
 import { useRemoteResource } from "@/lib/use-remote-resource";
 import type { ContentTranslationKey } from "@/lib/i18n/content-copy";
 
 import { StudioVideoEditor } from "./studio-video-editor";
 import styles from "./studio-content.module.css";
+import pageStyles from "./studio-content-pagination.module.css";
 
 export function StudioContentManager() {
-  const { t, href, formatDate } = useContentI18n();
+  const { t, href, formatDate, formatNumber } = useContentI18n();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [visibility, setVisibility] = useState("");
-  const [filters, setFilters] = useState({ query: "", status: "", visibility: "" });
-  const load = useCallback((signal: AbortSignal) => getStudioContent(filters, signal), [filters]);
+  const [location, setLocation] = useState(() =>
+    firstStudioContentPage({ query: "", status: "", visibility: "" }),
+  );
+  const actor = useRef<{ accountId: string; channelId: string } | undefined>(undefined);
+  const load = useCallback(
+    async (signal: AbortSignal) => {
+      const page = await readStudioContentPage(
+        location.filters,
+        location.cursors.at(-1) ?? null,
+        signal,
+        actor.current,
+      );
+      signal.throwIfAborted();
+      actor.current = { accountId: page.actorAccountId, channelId: page.channel.id };
+      return page;
+    },
+    [location],
+  );
   const { state, reload } = useRemoteResource(load);
   const [selected, setSelected] = useState<StudioVideo | null>(null);
   const [notice, setNotice] = useState<ContentTranslationKey | null>(null);
 
-  function close() {
+  function close(committed = false) {
     setSelected(null);
+    if (committed) setLocation(firstStudioContentPage(location.filters));
     reload();
     window.requestAnimationFrame(() => document.getElementById("content-search")?.focus());
   }
@@ -50,9 +74,11 @@ export function StudioContentManager() {
       key: "status",
       heading: t("content.status"),
       render: (video) => (
-        <DataBadge tone={video.status === "PUBLISHED" ? "success" : "neutral"}>
-          {t(contentStatuses[video.status] ?? "content.other")}
-        </DataBadge>
+        <span className={pageStyles.status}>
+          <DataBadge tone={video.status === "PUBLISHED" ? "success" : "neutral"}>
+            {t(contentStatuses[video.status] ?? "content.other")}
+          </DataBadge>
+        </span>
       ),
     },
     {
@@ -95,10 +121,10 @@ export function StudioContentManager() {
         <StudioVideoEditor
           key={selected.id}
           video={selected}
-          onClose={close}
+          onClose={() => close()}
           onCommitted={(message) => {
             setNotice(message);
-            close();
+            close(true);
           }}
         />
       ) : (
@@ -107,7 +133,14 @@ export function StudioContentManager() {
             onSubmit={(event) => {
               event.preventDefault();
               setNotice(null);
-              setFilters({ query: query.trim(), status, visibility });
+              const filters = { query: query.trim(), status, visibility };
+              if (
+                Object.entries(filters).some(
+                  ([key, value]) => location.filters[key as keyof typeof filters] !== value,
+                )
+              ) {
+                setLocation(firstStudioContentPage(filters));
+              } else reload();
             }}
           >
             <FormSection id="content-filters" legend={t("content.filters")} layout="inline">
@@ -173,15 +206,46 @@ export function StudioContentManager() {
           ) : null}
           {state.status === "ready" && state.data.videos.length > 0 ? (
             <>
-              <p className={styles.hint}>{t("content.limit")}</p>
+              <p className={styles.hint}>{t("content.pagingHint")}</p>
               <DataTable
-                caption={t("content.count", { count: state.data.videos.length })}
+                caption={t("content.count", { count: formatNumber(state.data.videos.length) })}
                 scrollLabel={t("content.library")}
                 rows={state.data.videos}
                 columns={columns}
                 rowKey={(video) => video.id}
               />
             </>
+          ) : null}
+          <PageControls
+            label={t("content.pages")}
+            summary={t("content.pageNumber", { page: formatNumber(location.page) })}
+            previousLabel={t("content.previousPage")}
+            nextLabel={t("content.nextPage")}
+            hasPrevious={location.cursors.length > 1}
+            hasNext={state.status === "ready" && state.data.nextCursor !== null}
+            onPrevious={() => setLocation(previousStudioContentPage(location))}
+            onNext={() => {
+              if (state.status === "ready" && state.data.nextCursor)
+                setLocation(nextStudioContentPage(location, state.data.nextCursor));
+            }}
+          />
+          {location.page > 1 && location.cursors.length === 1 ? (
+            <p className={styles.hint}>{t("content.historyBoundary")}</p>
+          ) : null}
+          {location.page > 1 || state.status === "error" ? (
+            <div>
+              <ActionButton
+                tone="secondary"
+                onClick={() => {
+                  // Explicit recovery may review a new account; an ordinary page
+                  // reload or editor commit always stays pinned to its actor.
+                  if (state.status === "error") actor.current = undefined;
+                  setLocation(firstStudioContentPage(location.filters));
+                }}
+              >
+                {t("content.firstPage")}
+              </ActionButton>
+            </div>
           ) : null}
         </div>
       )}

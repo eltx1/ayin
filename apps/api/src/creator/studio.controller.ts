@@ -27,6 +27,12 @@ const contentQuerySchema = z.object({
     .optional(),
   visibility: z.enum(["PUBLIC", "UNLISTED", "PRIVATE"]).optional(),
   take: z.coerce.number().int().min(1).max(100).optional(),
+  cursor: z
+    .string()
+    .min(1)
+    .max(2048)
+    .regex(/^[A-Za-z0-9_-]+$/)
+    .optional(),
 });
 const videoPatchSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
