@@ -117,6 +117,8 @@
 
 .copy {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-inline-size: 0;
   gap: 0.26rem;
   padding: 0.82rem 0.12rem 0;
 }
@@ -132,6 +134,8 @@
 
 .kicker,
 .meta {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: var(--text-xs);
 }

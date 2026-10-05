@@ -1,9 +1,26 @@
 "use client";
 
-import Link from "next/link";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
+import { useI18n } from "@/components/i18n/i18n-provider";
+import {
+  ActionButton,
+  DataBadge,
+  PageHeader,
+  MetricList,
+  StatusNotice,
+  TextAreaField,
+} from "@/components/ui/design-system";
+import { EditorTabs } from "@/components/ui/editor-tabs";
+import { Disclosure } from "@/components/ui/data-presentation";
+import { adminAdvertisingAr, adminAdvertisingEn } from "@/lib/i18n/resources/admin-advertising";
+import { AdminAdvertisingNavigation } from "./admin-advertising-navigation";
+import advertisingStyles from "./admin-advertising-navigation.module.css";
+import {
+  reconcileAdvertisingRead,
+  type AdvertisingEditableRecords,
+} from "@/lib/admin-advertising-drafts";
 import {
   createAdPlacement,
   createAdvertiser,
@@ -185,6 +202,11 @@ function campaignInput(draft: CampaignDraft): CampaignInput {
 }
 
 export function AdminAdvertisingControl() {
+  const { locale, direction } = useI18n();
+  const copy = locale === "ar" ? adminAdvertisingAr : adminAdvertisingEn;
+  const [section, setSection] = useState("overview");
+  const [reading, setReading] = useState(true);
+  const [readError, setReadError] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -197,8 +219,26 @@ export function AdminAdvertisingControl() {
   const [killReason, setKillReason] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const editable = useRef<{
+    original: AdvertisingEditableRecords;
+    draft: AdvertisingEditableRecords;
+  }>({
+    original: { page: null, ads: "", appAds: "" },
+    draft: { page: null, ads: "", appAds: "" },
+  });
+  function editPage(value: PageAdSettings) {
+    editable.current.draft = { ...editable.current.draft, page: value };
+    setPageAds(value);
+  }
+  function editSeller(kind: "ads" | "appAds", value: string) {
+    editable.current.draft = { ...editable.current.draft, [kind]: value };
+    if (kind === "ads") setAdsText(value);
+    else setAppAdsText(value);
+  }
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (preserveDrafts = false) => {
+    setReading(true);
+    setReadError(false);
     try {
       const [
         nextOverview,
@@ -222,14 +262,23 @@ export function AdminAdvertisingControl() {
       setCampaigns(nextCampaigns);
       setCreatives(nextCreatives);
       setGam(nextGam);
-      setPageAds(nextPageAds);
+      const incoming = {
+        page: nextPageAds,
+        ads: nextSellerFiles.ads.manualText,
+        appAds: nextSellerFiles.appAds.manualText,
+      };
+      const nextDraft = preserveDrafts
+        ? reconcileAdvertisingRead(editable.current.original, editable.current.draft, incoming)
+        : incoming;
+      editable.current = { original: incoming, draft: nextDraft };
+      setPageAds(nextDraft.page);
       setSellerFiles(nextSellerFiles);
-      setAdsText(nextSellerFiles.ads.manualText);
-      setAppAdsText(nextSellerFiles.appAds.manualText);
-    } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Advertising control center could not be loaded.",
-      );
+      setAdsText(nextDraft.ads);
+      setAppAdsText(nextDraft.appAds);
+    } catch {
+      setReadError(true);
+    } finally {
+      setReading(false);
     }
   }, []);
 
@@ -257,260 +306,366 @@ export function AdminAdvertisingControl() {
 
   return (
     <>
-      <header className={styles.header}>
-        <div>
-          <span className={styles.eyebrow}>AYIN Advertising</span>
-          <h1>Advertising Control Center</h1>
-          <p className={styles.muted}>
-            Operate demand, inventory, GAM readiness, page ads, direct campaigns, creatives, seller
-            declarations and emergency controls without relying on raw API calls.
-          </p>
-        </div>
-        <Link className={styles.button} href="/admin/video-ads">
-          In-player video ads →
-        </Link>
-      </header>
-
-      {message ? <p className={styles.notice}>{message}</p> : null}
-
-      <section className={styles.metrics} aria-label="Advertising summary">
-        <article className={styles.metric}>
-          <span className={styles.muted}>Master advertising</span>
-          <strong>{overview?.emergencyKillSwitch ? "KILLED" : "READY"}</strong>
-        </article>
-        <article className={styles.metric}>
-          <span className={styles.muted}>GAM production</span>
-          <strong>
-            {gam?.readyForLiveRequests ? "LIVE READY" : gam?.testMode ? "TEST" : "NOT READY"}
-          </strong>
-        </article>
-        <article className={styles.metric}>
-          <span className={styles.muted}>Active campaigns</span>
-          <strong>{activeCampaigns}</strong>
-        </article>
-        <article className={styles.metric}>
-          <span className={styles.muted}>Active creatives</span>
-          <strong>{activeCreatives}</strong>
-        </article>
-        <article className={styles.metric}>
-          <span className={styles.muted}>Placements</span>
-          <strong>{overview?.placements.length ?? 0}</strong>
-        </article>
-      </section>
-
-      <section className={styles.commandGrid}>
-        <article className={styles.card}>
-          <h2>Emergency control</h2>
-          <p className={styles.muted}>
-            One audited switch stops or restores all advertising decisions across AYIN.
-          </p>
-          <textarea
-            minLength={3}
-            placeholder="Operator reason"
-            value={killReason}
-            onChange={(event) => setKillReason(event.target.value)}
-          />
-          <button
-            className={overview?.emergencyKillSwitch ? styles.button : styles.danger}
-            disabled={busy || killReason.trim().length < 3}
-            type="button"
-            onClick={() =>
-              void act(
-                () => setAdvertisingKillSwitch(!overview?.emergencyKillSwitch, killReason.trim()),
-                overview?.emergencyKillSwitch
-                  ? "Advertising restored."
-                  : "Advertising emergency stop enabled.",
-              ).then(() => setKillReason(""))
-            }
-          >
-            {overview?.emergencyKillSwitch ? "Restore all advertising" : "Kill all advertising"}
-          </button>
-        </article>
-
-        <article className={styles.card}>
-          <h2>Google Ad Manager diagnostics</h2>
-          {gam ? (
-            <>
-              <p>
-                Configured: <strong>{gam.configured ? "Yes" : "No"}</strong>
-              </p>
-              <p>
-                Production enabled: <strong>{gam.productionEnabled ? "Yes" : "No"}</strong>
-              </p>
-              <p>
-                Test mode: <strong>{gam.testMode ? "Yes" : "No"}</strong>
-              </p>
-              <p>
-                Network: <strong>{gam.networkCode ?? "Not configured"}</strong>
-              </p>
-              <p>
-                Publisher: <strong>{gam.publisherId ?? "Not configured"}</strong>
-              </p>
-              <p>
-                Video ad unit:{" "}
-                <strong>{gam.videoAdUnitConfigured ? "Configured" : "Missing"}</strong>
-              </p>
-              <p>
-                Display prefix:{" "}
-                <strong>{gam.displayAdUnitPrefixConfigured ? "Configured" : "Missing"}</strong>
-              </p>
-              <p>
-                ads.txt seller row:{" "}
-                <strong>{gam.adsTxtConfigured ? "Configured" : "Missing"}</strong>
-              </p>
-              {gam.missing.length ? (
-                <p className={styles.muted}>
-                  Missing production environment values: {gam.missing.join(", ")}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p className={styles.muted}>Loading GAM diagnostics…</p>
-          )}
-        </article>
-
-        <article className={styles.card}>
-          <h2>Ad event counters</h2>
-          {Object.entries(overview?.eventCounters ?? {}).length ? (
-            Object.entries(overview?.eventCounters ?? {}).map(([event, count]) => (
-              <p key={event}>
-                {event}: <strong>{count.toLocaleString()}</strong>
-              </p>
-            ))
-          ) : (
-            <p className={styles.muted}>No recorded ad events yet.</p>
-          )}
-        </article>
-      </section>
-
-      {pageAds ? (
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <h2>Outside-player page ads</h2>
-              <p className={styles.muted}>
-                Control GPT/house delivery globally. Individual page placements are managed in the
-                Inventory section below.
-              </p>
-            </div>
-          </div>
-          <div className={styles.formGrid}>
-            <label className={styles.check}>
-              <input
-                checked={pageAds.masterEnabled}
-                type="checkbox"
-                onChange={(event) =>
-                  setPageAds({ ...pageAds, masterEnabled: event.target.checked })
-                }
-              />
-              Page ads enabled
-            </label>
-            <label className={styles.check}>
-              <input
-                checked={pageAds.googleGptEnabled}
-                type="checkbox"
-                onChange={(event) =>
-                  setPageAds({ ...pageAds, googleGptEnabled: event.target.checked })
-                }
-              />
-              Google GPT enabled
-            </label>
-            <label>
-              House image URL
-              <input
-                value={pageAds.house.imageUrl ?? ""}
-                onChange={(event) =>
-                  setPageAds({
-                    ...pageAds,
-                    house: { ...pageAds.house, imageUrl: event.target.value || null },
-                  })
-                }
-              />
-            </label>
-            <label>
-              House click URL
-              <input
-                value={pageAds.house.clickUrl ?? ""}
-                onChange={(event) =>
-                  setPageAds({
-                    ...pageAds,
-                    house: { ...pageAds.house, clickUrl: event.target.value || null },
-                  })
-                }
-              />
-            </label>
-            <label className={styles.fullField}>
-              House creative alt text
-              <input
-                value={pageAds.house.altText ?? ""}
-                onChange={(event) =>
-                  setPageAds({
-                    ...pageAds,
-                    house: { ...pageAds.house, altText: event.target.value || null },
-                  })
-                }
-              />
-            </label>
-          </div>
-          <button
-            className={styles.button}
-            disabled={busy}
-            type="button"
-            onClick={() =>
-              void act(() => updatePageAdSettings(pageAds), "Page advertising defaults updated.")
-            }
-          >
-            Save page ad settings
-          </button>
-        </section>
-      ) : null}
-
-      <section className={styles.card}>
-        <h2>Authorized sellers · ads.txt / app-ads.txt</h2>
-        <p className={styles.muted}>
-          Manual SSP/exchange relationships are validated before publication. GAM rows are generated
-          only from real configured seller information.
-        </p>
-        <div className={styles.commandGrid}>
-          <SellerEditor
-            automaticRows={sellerFiles?.ads.automaticRows ?? []}
-            finalText={sellerFiles?.ads.finalText ?? ""}
-            label="Web ads.txt"
-            onChange={setAdsText}
-            onSave={() =>
-              void act(() => saveSellerFile("ads", adsText), "ads.txt validated and published.")
-            }
-            value={adsText}
-          />
-          <SellerEditor
-            automaticRows={sellerFiles?.appAds.automaticRows ?? []}
-            finalText={sellerFiles?.appAds.finalText ?? ""}
-            label="Apps / CTV app-ads.txt"
-            onChange={setAppAdsText}
-            onSave={() =>
-              void act(
-                () => saveSellerFile("app-ads", appAdsText),
-                "app-ads.txt validated and published.",
-              )
-            }
-            value={appAdsText}
-          />
-        </div>
-      </section>
-
-      <InventoryManager busy={busy} placements={overview?.placements ?? []} onAct={act} />
-
-      <AdvertiserManager advertisers={advertisers} busy={busy} onAct={act} />
-
-      <CampaignManager
-        advertisers={advertisers}
-        busy={busy}
-        campaigns={campaigns}
-        placements={overview?.placements ?? []}
-        onAct={act}
+      <PageHeader
+        title={copy.title}
+        description={copy.description}
+        actions={
+          <ActionButton disabled={reading || busy} onClick={() => void load(true)}>
+            {copy.refresh}
+          </ActionButton>
+        }
       />
+      <AdminAdvertisingNavigation current="page" />
+      {message ? <StatusNotice>{message}</StatusNotice> : null}
+      {readError ? <StatusNotice tone="danger">{copy.readError}</StatusNotice> : null}
+      {reading ? <StatusNotice announce="polite">{copy.loading}</StatusNotice> : null}
+      <div className={advertisingStyles.sections}>
+        <EditorTabs
+          label={copy.sections}
+          value={section}
+          onChange={setSection}
+          direction={direction}
+          tabs={[
+            {
+              id: "overview",
+              label: copy.overview,
+              content: (
+                <>
+                  <MetricList
+                    label={copy.summary}
+                    items={[
+                      {
+                        label: copy.master,
+                        value: (
+                          <DataBadge>
+                            {!overview || readError
+                              ? copy.unavailable
+                              : overview.emergencyKillSwitch
+                                ? copy.stopped
+                                : copy.notStopped}
+                          </DataBadge>
+                        ),
+                      },
+                      {
+                        label: copy.gam,
+                        value: (
+                          <DataBadge>
+                            {!gam || readError
+                              ? copy.unavailable
+                              : gam.readyForLiveRequests
+                                ? copy.configured
+                                : gam.testMode
+                                  ? copy.test
+                                  : copy.notReady}
+                          </DataBadge>
+                        ),
+                      },
+                      {
+                        label: copy.activeCampaigns,
+                        value:
+                          !overview || readError ? (
+                            <DataBadge>{copy.unavailable}</DataBadge>
+                          ) : (
+                            activeCampaigns.toLocaleString(locale)
+                          ),
+                      },
+                      {
+                        label: copy.activeCreatives,
+                        value:
+                          !overview || readError ? (
+                            <DataBadge>{copy.unavailable}</DataBadge>
+                          ) : (
+                            activeCreatives.toLocaleString(locale)
+                          ),
+                      },
+                      {
+                        label: copy.placements,
+                        value:
+                          !overview || readError ? (
+                            <DataBadge>{copy.unavailable}</DataBadge>
+                          ) : (
+                            overview.placements.length.toLocaleString(locale)
+                          ),
+                      },
+                    ]}
+                  />
+                  <p className={styles.muted}>{copy.configurationOnly}</p>
+                  <div>
+                    <Disclosure summary={copy.emergency}>
+                      <p className={styles.muted}>{copy.emergencyDescription}</p>
+                      <TextAreaField
+                        id="advertising-emergency-reason"
+                        label={copy.reason}
+                        minLength={3}
+                        value={killReason}
+                        onChange={(event) => setKillReason(event.target.value)}
+                      />
+                      <ActionButton
+                        tone={overview?.emergencyKillSwitch ? "secondary" : "danger"}
+                        disabled={
+                          busy || reading || readError || !overview || killReason.trim().length < 3
+                        }
+                        type="button"
+                        onClick={() =>
+                          void act(
+                            () =>
+                              setAdvertisingKillSwitch(
+                                !overview?.emergencyKillSwitch,
+                                killReason.trim(),
+                              ),
+                            overview?.emergencyKillSwitch ? copy.restored : copy.stoppedMessage,
+                          ).then(() => setKillReason(""))
+                        }
+                      >
+                        {overview?.emergencyKillSwitch ? copy.restore : copy.stop}
+                      </ActionButton>
+                    </Disclosure>
 
-      <CreativeManager busy={busy} campaigns={campaigns} creatives={creatives} onAct={act} />
+                    <Disclosure summary={copy.diagnostics}>
+                      {gam && !readError ? (
+                        <>
+                          <p>
+                            {copy.configured}:{" "}
+                            <strong>{gam.configured ? copy.yes : copy.no}</strong>
+                          </p>
+                          <p>
+                            {copy.production}:{" "}
+                            <strong>{gam.productionEnabled ? copy.yes : copy.no}</strong>
+                          </p>
+                          <p>
+                            {copy.test}: <strong>{gam.testMode ? copy.yes : copy.no}</strong>
+                          </p>
+                          <p>
+                            {copy.network}: <strong>{gam.networkCode ?? copy.unconfigured}</strong>
+                          </p>
+                          <p>
+                            {copy.publisher}:{" "}
+                            <strong>{gam.publisherId ?? copy.unconfigured}</strong>
+                          </p>
+                          <p>
+                            {copy.videoUnit}:{" "}
+                            <strong>
+                              {gam.videoAdUnitConfigured ? copy.configured : copy.missing}
+                            </strong>
+                          </p>
+                          <p>
+                            {copy.displayPrefix}:{" "}
+                            <strong>
+                              {gam.displayAdUnitPrefixConfigured ? copy.configured : copy.missing}
+                            </strong>
+                          </p>
+                          <p>
+                            {copy.sellerRow}:{" "}
+                            <strong>{gam.adsTxtConfigured ? copy.configured : copy.missing}</strong>
+                          </p>
+                          {gam.missing.length ? (
+                            <p className={styles.muted}>
+                              {copy.missingValues}: {gam.missing.join(", ")}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className={styles.muted}>
+                          {readError ? copy.unavailable : copy.loading}
+                        </p>
+                      )}
+                    </Disclosure>
+
+                    <Disclosure summary={copy.counters}>
+                      {!overview || readError ? (
+                        <p className={styles.muted}>{copy.unavailable}</p>
+                      ) : Object.entries(overview.eventCounters).length ? (
+                        Object.entries(overview?.eventCounters ?? {}).map(([event, count]) => (
+                          <p key={event}>
+                            {event}: <strong>{count.toLocaleString()}</strong>
+                          </p>
+                        ))
+                      ) : (
+                        <p className={styles.muted}>{copy.noEvents}</p>
+                      )}
+                    </Disclosure>
+                  </div>
+                </>
+              ),
+            },
+            {
+              id: "inventory",
+              label: copy.inventory,
+              content: (
+                <>
+                  {pageAds ? (
+                    <section className={styles.card}>
+                      <div className={styles.cardHeader}>
+                        <div>
+                          <h2>{copy.pageAds}</h2>
+                          <p className={styles.muted}>{copy.pageDescription}</p>
+                        </div>
+                      </div>
+                      <div className={styles.formGrid}>
+                        <label className={styles.check}>
+                          <input
+                            checked={pageAds.masterEnabled}
+                            type="checkbox"
+                            onChange={(event) =>
+                              editPage({ ...pageAds, masterEnabled: event.target.checked })
+                            }
+                          />
+                          {copy.pageEnabled}
+                        </label>
+                        <label className={styles.check}>
+                          <input
+                            checked={pageAds.googleGptEnabled}
+                            type="checkbox"
+                            onChange={(event) =>
+                              editPage({ ...pageAds, googleGptEnabled: event.target.checked })
+                            }
+                          />
+                          {copy.gptEnabled}
+                        </label>
+                        <label>
+                          {copy.image}
+                          <input
+                            value={pageAds.house.imageUrl ?? ""}
+                            onChange={(event) =>
+                              editPage({
+                                ...pageAds,
+                                house: { ...pageAds.house, imageUrl: event.target.value || null },
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          {copy.click}
+                          <input
+                            value={pageAds.house.clickUrl ?? ""}
+                            onChange={(event) =>
+                              editPage({
+                                ...pageAds,
+                                house: { ...pageAds.house, clickUrl: event.target.value || null },
+                              })
+                            }
+                          />
+                        </label>
+                        <label className={styles.fullField}>
+                          {copy.alt}
+                          <input
+                            value={pageAds.house.altText ?? ""}
+                            onChange={(event) =>
+                              editPage({
+                                ...pageAds,
+                                house: { ...pageAds.house, altText: event.target.value || null },
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <button
+                        className={styles.button}
+                        disabled={busy}
+                        type="button"
+                        onClick={() =>
+                          void act(() => updatePageAdSettings(pageAds), copy.pageSaved)
+                        }
+                      >
+                        {copy.savePage}
+                      </button>
+                    </section>
+                  ) : null}
+
+                  {locale === "ar" ? <p className={styles.muted}>{copy.legacyEditor}</p> : null}
+                  <InventoryManager
+                    busy={busy}
+                    placements={overview?.placements ?? []}
+                    onAct={act}
+                  />
+                </>
+              ),
+            },
+            {
+              id: "advertisers",
+              label: copy.advertisers,
+              content: (
+                <>
+                  {locale === "ar" ? <p className={styles.muted}>{copy.legacyEditor}</p> : null}
+                  <AdvertiserManager advertisers={advertisers} busy={busy} onAct={act} />
+                </>
+              ),
+            },
+            {
+              id: "campaigns",
+              label: copy.campaigns,
+              content: (
+                <>
+                  {locale === "ar" ? <p className={styles.muted}>{copy.legacyEditor}</p> : null}
+                  <CampaignManager
+                    advertisers={advertisers}
+                    busy={busy}
+                    campaigns={campaigns}
+                    placements={overview?.placements ?? []}
+                    onAct={act}
+                  />
+                </>
+              ),
+            },
+            {
+              id: "creatives",
+              label: copy.creatives,
+              content: (
+                <>
+                  {locale === "ar" ? <p className={styles.muted}>{copy.legacyEditor}</p> : null}
+                  <CreativeManager
+                    busy={busy}
+                    campaigns={campaigns}
+                    creatives={creatives}
+                    onAct={act}
+                  />
+                </>
+              ),
+            },
+            {
+              id: "sellers",
+              label: copy.sellers,
+              content: (
+                <>
+                  <section className={styles.card}>
+                    <h2>{copy.sellersTitle}</h2>
+                    {locale === "ar" ? <p className={styles.muted}>{copy.legacyEditor}</p> : null}
+                    <p className={styles.muted}>{copy.sellersDescription}</p>
+                    <div className={styles.commandGrid}>
+                      <SellerEditor
+                        automaticRows={sellerFiles?.ads.automaticRows ?? []}
+                        finalText={sellerFiles?.ads.finalText ?? ""}
+                        label="Web ads.txt"
+                        onChange={(value) => editSeller("ads", value)}
+                        onSave={() =>
+                          void act(
+                            () => saveSellerFile("ads", adsText),
+                            "ads.txt validated and published.",
+                          )
+                        }
+                        value={adsText}
+                      />
+                      <SellerEditor
+                        automaticRows={sellerFiles?.appAds.automaticRows ?? []}
+                        finalText={sellerFiles?.appAds.finalText ?? ""}
+                        label="Apps / CTV app-ads.txt"
+                        onChange={(value) => editSeller("appAds", value)}
+                        onSave={() =>
+                          void act(
+                            () => saveSellerFile("app-ads", appAdsText),
+                            "app-ads.txt validated and published.",
+                          )
+                        }
+                        value={appAdsText}
+                      />
+                    </div>
+                  </section>
+                </>
+              ),
+            },
+          ]}
+        />
+      </div>
     </>
   );
 }

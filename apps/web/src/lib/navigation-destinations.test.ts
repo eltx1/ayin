@@ -34,7 +34,7 @@ const workspaceCases = [
     sourcePath: "../components/admin/admin-sidebar.tsx",
     sourceSymbol: "visibleAdminNavigation",
     groups: adminNavigation,
-    count: 19,
+    count: 18,
   },
   {
     name: "Studio",
@@ -49,7 +49,7 @@ describe("declared Viewer, Studio and Admin destinations", () => {
   it.each(workspaceCases)("$name uses implemented grouped destinations", (workspace) => {
     const source = readFileSync(new URL(workspace.sourcePath, import.meta.url), "utf8");
     // The declarations moved, so test the actual model and its mounted consumer.
-    // Keep every old destination checked rather than lowering the old totals.
+    // Advertising combines sidebar entries; retain the player URL as a direct destination.
     expect(source).toContain('from "@/lib/workspace-navigation"');
     expect(source).toContain(workspace.sourceSymbol);
     expect(source).toContain("<WorkspaceSidebar");
@@ -58,6 +58,7 @@ describe("declared Viewer, Studio and Admin destinations", () => {
     expect(new Set(targets).size).toBe(workspace.count);
     expect(pagePatterns.length).toBeGreaterThan(40);
     for (const target of targets) expect(hasProductDestination(target), target).toBe(true);
+    expect(hasProductDestination("/admin/video-ads")).toBe(true);
     expect(hasProductDestination("/not-an-implemented-section")).toBe(false);
   });
 
