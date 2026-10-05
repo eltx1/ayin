@@ -114,17 +114,30 @@ describe("focused content editing boundaries", () => {
     [
       "remove captions",
       "DELETE",
-      "/creator/studio/videos/owned-id/captions/track",
-      () => removeStudioCaption(video.id, "track"),
+      "/creator/studio/videos/owned-id/captions/20000000-0000-4000-8000-000000000001",
+      () => removeStudioCaption(video.id, "20000000-0000-4000-8000-000000000001"),
     ],
   ] as const)(
     "sends valid JSON without weakening request headers for %s",
     async (_name, method, pathname, execute) => {
-      const fetcher = vi.fn().mockResolvedValue(new Response("{}"));
+      const captions = _name === "remove captions";
+      const fetcher = captions
+        ? vi
+            .fn()
+            .mockResolvedValueOnce(
+              Response.json({ account: { id: "30000000-0000-4000-8000-000000000001" } }),
+            )
+            .mockResolvedValueOnce(
+              Response.json({ removed: true, trackId: "20000000-0000-4000-8000-000000000001" }),
+            )
+            .mockResolvedValueOnce(
+              Response.json({ account: { id: "30000000-0000-4000-8000-000000000001" } }),
+            )
+        : vi.fn().mockResolvedValue(new Response("{}"));
       vi.stubGlobal("fetch", fetcher);
       await execute();
-      expect(fetcher).toHaveBeenCalledTimes(1);
-      const [url, init] = fetcher.mock.calls[0]!;
+      expect(fetcher).toHaveBeenCalledTimes(captions ? 3 : 1);
+      const [url, init] = fetcher.mock.calls[captions ? 1 : 0]!;
       expect(new URL(url).pathname).toBe(pathname);
       expect(init).toMatchObject({ method, body: "{}", credentials: "include", cache: "no-store" });
       expect(new Headers(init.headers).get("content-type")).toBe("application/json");
