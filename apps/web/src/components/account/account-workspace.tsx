@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -39,6 +40,7 @@ export function AccountWorkspace({ children }: { children: ReactNode }) {
   const { locale, href } = useI18n(),
     ar = locale === "ar";
   const body = useRef<HTMLDivElement>(null),
+    recovery = useRef<HTMLElement>(null),
     actor = useRef<string | null>(null),
     epoch = useRef(0),
     pending = useRef<AbortController | null>(null),
@@ -48,6 +50,9 @@ export function AccountWorkspace({ children }: { children: ReactNode }) {
     [generation, setGeneration] = useState(0),
     [closed, setClosed] = useState(false);
   const freeze = useCallback(() => {
+    // Stop an interrupted focus/navigation scroll before the document shrinks.
+    // A later scrollIntoView alone can leave the old compositor scroll running.
+    window.scrollTo({ top: window.scrollY, left: window.scrollX, behavior: "instant" });
     // Conceal the whole account before any native form/secret reset or React update.
     if (body.current) body.current.hidden = true;
     actor.current = null;
@@ -89,6 +94,33 @@ export function AccountWorkspace({ children }: { children: ReactNode }) {
     setLoading(false);
     setClosed(true);
   }, []);
+  useLayoutEffect(() => {
+    if (!closed) return;
+    let frame = 0;
+    const positionRecovery = () => {
+      window.cancelAnimationFrame(frame);
+      if (document.visibilityState !== "visible") return;
+      // Let the concealed document's new layout reach the compositor before
+      // positioning; an interrupted smooth scroll can deliver one last update.
+      frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(() => {
+          const node = recovery.current;
+          if (!node || document.visibilityState !== "visible") return;
+          window.scrollTo({ top: window.scrollY, left: window.scrollX, behavior: "instant" });
+          if (!node.contains(document.activeElement)) node.focus({ preventScroll: true });
+          node.scrollIntoView({ behavior: "instant", block: "center" });
+        });
+      });
+    };
+    positionRecovery();
+    window.addEventListener("pageshow", positionRecovery);
+    document.addEventListener("visibilitychange", positionRecovery);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("pageshow", positionRecovery);
+      document.removeEventListener("visibilitychange", positionRecovery);
+    };
+  }, [closed]);
   const register = useCallback((clear: () => void) => {
     freezers.current.add(clear);
     return () => {
@@ -166,8 +198,10 @@ export function AccountWorkspace({ children }: { children: ReactNode }) {
       )}
       {closed && (
         <section
+          ref={recovery}
           className={styles.accountRecovery}
           aria-label={ar ? "مراجعة الحساب" : "Account review"}
+          tabIndex={-1}
         >
           <p role="alert">
             {ar

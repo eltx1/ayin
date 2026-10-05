@@ -104,6 +104,10 @@ export function parseMfaCodes(value: unknown, expectedAccountId: string): string
     throw new Error("Invalid recovery-code response.");
   return data.recoveryCodes;
 }
+export function parseMfaDisabled(value: unknown): { disabled: true } {
+  if (record(value).disabled !== true) throw new Error("Invalid MFA disable acknowledgment.");
+  return { disabled: true };
+}
 export async function requestMfa(
   path: string,
   signal: AbortSignal,

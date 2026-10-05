@@ -153,6 +153,8 @@ for (const locale of ["en", "ar"] as const)
               };
           },
         });
+        // Interrupt a real default-motion navigation scroll as private content collapses.
+        window.scrollTo({ top: 0, behavior: "smooth" });
         window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
         return {
           first,
@@ -184,6 +186,19 @@ for (const locale of ["en", "ar"] as const)
         exact: true,
       });
       await expect(recovery).toBeVisible();
+      // Recovery must position itself before any screenshot helper scrolls it.
+      await expect
+        .poll(() =>
+          recovery.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            return (
+              box.top >= 80 &&
+              box.bottom <= window.innerHeight - 80 &&
+              node.contains(document.activeElement)
+            );
+          }),
+        )
+        .toBe(true);
       await expect(page.locator("[data-private-account-workspace]")).toBeHidden();
       await expect(page.getByText("workspace-owner-a-" + locale, { exact: true })).toHaveCount(0);
       expect(privateReads).toBe(0);
@@ -205,6 +220,9 @@ for (const locale of ["en", "ar"] as const)
           .toBe(true);
         await recovery.screenshot({
           path: info.outputPath(`design-account-workspace-${locale}-${width}.png`),
+        });
+        await page.screenshot({
+          path: info.outputPath(`design-account-workspace-context-${locale}-${width}.png`),
         });
       }
       await recovery

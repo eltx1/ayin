@@ -221,8 +221,8 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
         error instanceof CreatorFinanceError &&
         (error.scopeChanged || [401, 403].includes(error.status))
       ) {
-        clearIdentity();
-        binding?.freeze();
+        if (binding) binding.freeze();
+        else clearIdentity();
       } else setReadError(true);
     } finally {
       if (read.current === controller) {
@@ -363,10 +363,8 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
         error instanceof CreatorFinanceError &&
         (error.scopeChanged || [401, 403].includes(error.status))
       ) {
-        {
-          clearIdentity();
-          binding?.freeze();
-        }
+        if (binding) binding.freeze();
+        else clearIdentity();
       } else if (error instanceof CreatorFinanceError && error.acknowledged) {
         if (privateBody.current) privateBody.current.hidden = true;
         setSnapshot(null);
@@ -431,8 +429,8 @@ export function CreatorFinanceWorkspace({ level = 1 }: { level?: 1 | 2 }) {
         error instanceof CreatorFinanceError &&
         (error.scopeChanged || [401, 403].includes(error.status))
       ) {
-        clearIdentity();
-        binding?.freeze();
+        if (binding) binding.freeze();
+        else clearIdentity();
       } else setReadError(true);
     } finally {
       if (read.current === controller) {

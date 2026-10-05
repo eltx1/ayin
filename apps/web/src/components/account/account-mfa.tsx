@@ -8,6 +8,7 @@ import { MfaEnrollmentSecret, MfaRecoveryCodes } from "@/components/auth/mfa-sec
 import {
   MfaRequestError,
   parseMfaCodes,
+  parseMfaDisabled,
   parseMfaEnrollment,
   parseMfaStatus,
   requestMfa,
@@ -239,30 +240,34 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
             ? { password }
             : { password, code }),
       };
-      const result =
-        binding && path !== "disable"
-          ? (
-              await requestAccountScope(
-                "/auth/mfa/" + path,
-                "POST",
-                (value) => {
-                  if (flow.kind === "start") parseMfaEnrollment(value, expectedAccountId);
-                  else parseMfaCodes(value, expectedAccountId);
-                  return value;
-                },
-                {
-                  signal: controller.signal,
-                  expectedAccountId: binding.expectedAccount(),
-                  maxResponseBytes: 256 * 1024,
-                },
-                payload,
-              )
-            ).value
-          : await requestMfa(path, controller.signal, payload, binding?.expectedAccount());
+      const result = binding
+        ? (
+            await requestAccountScope(
+              "/auth/mfa/" + path,
+              "POST",
+              (value) => {
+                if (path === "disable") return parseMfaDisabled(value);
+                if (flow.kind === "start") parseMfaEnrollment(value, expectedAccountId);
+                else parseMfaCodes(value, expectedAccountId);
+                return value;
+              },
+              {
+                signal: controller.signal,
+                expectedAccountId: binding.expectedAccount(),
+                // Successful disable revokes every session, including this cookie.
+                // Only its strictly decoded acknowledgment permits skipping a post-read.
+                allowCurrentLogout: path === "disable",
+                maxResponseBytes: 256 * 1024,
+              },
+              payload,
+            )
+          ).value
+        : await requestMfa(path, controller.signal, payload, expectedAccountId);
       if (revision !== epoch.current || controller.signal.aborted) return;
       if (flow.kind === "start") {
         setFlow({ kind: "enrollment", data: parseMfaEnrollment(result, expectedAccountId) });
       } else if (flow.kind === "review" && flow.action === "disable") {
+        parseMfaDisabled(result);
         binding?.freeze();
         clearSecrets();
         setSnapshot(null);
@@ -351,7 +356,10 @@ export function AccountMfa({ onSessionsChanged }: { onSessionsChanged: () => voi
         );
         // Re-read on rejected credentials/policy. Never replay a mutation.
         // A mistyped factor does not discard an otherwise valid enrollment.
-        if (cause instanceof MfaRequestError && (cause.status === 401 || cause.status === 409))
+        if (
+          (cause instanceof MfaRequestError || cause instanceof AccountScopeError) &&
+          (cause.status === 401 || cause.status === 409)
+        )
           await load(true);
       }
     } finally {
