@@ -1,6 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 
 import type { MediaStorageConfig } from "./media-storage.config.js";
+import { parseR2Xml, readR2XmlText, xmlField, xmlFields } from "./r2-xml.js";
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -42,6 +43,7 @@ function canonicalPath(bucket: string, key?: string): string {
 }
 
 export class R2HttpError extends Error {
+  readonly providerCode: string | null;
   constructor(
     readonly status: number,
     readonly method: string,
@@ -49,6 +51,24 @@ export class R2HttpError extends Error {
   ) {
     super(`R2 ${method} request failed (${status}). ${detail}`.trim());
     this.name = "R2HttpError";
+    this.providerCode = null;
+    try {
+      const root = parseR2Xml(detail);
+      xmlFields(root, [
+        "Code",
+        "Message",
+        "Resource",
+        "RequestId",
+        "HostId",
+        "BucketName",
+        "Key",
+        "UploadId",
+      ]);
+      const code = root.name === "Error" ? xmlField(root, "Code") : null;
+      if (code && /^[A-Za-z][A-Za-z0-9]{0,63}$/.test(code)) this.providerCode = code;
+    } catch {
+      // An HTTP status alone does not establish NoSuchUpload.
+    }
   }
 }
 
@@ -174,7 +194,8 @@ export class R2SigV4 {
     }
     const response = await fetch(url, request);
     if (!response.ok) {
-      const detail = input.method === "HEAD" ? "" : await response.text();
+      const detail =
+        input.method === "HEAD" ? "" : await readR2XmlText(response, 64 * 1024, input.signal);
       throw new R2HttpError(response.status, input.method, detail);
     }
     return response;
