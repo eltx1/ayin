@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
@@ -672,6 +672,17 @@ export class PrivacyLifecycleService {
       await tx.privacyMediaDeletionJob.createMany({ data: jobs, skipDuplicates: true });
     }
 
+    // Bulk UPDATE does not guarantee row-lock order. Match multi-asset editors
+    // by locking the exact cleanup set in UUID order before changing any asset.
+    // NO KEY UPDATE matches the non-key status change and permits FK readers.
+    // Keep these locks ahead of the later video/channel tombstones as well.
+    if (assets.length > 0) {
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "MediaAsset"
+          WHERE "id" IN (${Prisma.join(assets.map(({ id }) => Prisma.sql`${id}::uuid`))})
+          ORDER BY "id" FOR NO KEY UPDATE /* ayin-privacy-media-asset-lock */`,
+      );
+    }
     await tx.mediaAsset.updateMany({
       where: { id: { in: assets.map(({ id }) => id) } },
       data: { status: "REMOVED", removedAt: now },

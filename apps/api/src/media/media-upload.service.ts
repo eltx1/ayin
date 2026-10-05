@@ -458,10 +458,6 @@ export class MediaUploadService {
         where: { id: session.assetId },
         select: { videoId: true },
       });
-      const [channel] = await tx.$queryRaw<Array<{ status: string; removedAt: Date | null }>>(
-        Prisma.sql`SELECT "status", "removedAt" FROM "Channel" WHERE "id" = ${session.channelId}::uuid FOR SHARE /* ayin-upload-channel-lock */`,
-      );
-      if (!channel || channel.status === "REMOVED" || channel.removedAt) this.changedSession();
       // Generation before source before video matches queue creation and source
       // finalization. NO KEY UPDATE permits unrelated foreign-key key-share reads.
       if (observed?.videoId) await lockMediaGeneration(tx, observed.videoId);
@@ -507,6 +503,13 @@ export class MediaUploadService {
         )
           this.changedSession();
       }
+      // Privacy anonymization removes all channel assets, then videos, then the
+      // channel. Do not hold the channel while waiting for a source/video lock:
+      // an administrator can continue an upload owned by a different account.
+      const [channel] = await tx.$queryRaw<Array<{ status: string; removedAt: Date | null }>>(
+        Prisma.sql`SELECT "status", "removedAt" FROM "Channel" WHERE "id" = ${session.channelId}::uuid FOR SHARE /* ayin-upload-channel-lock */`,
+      );
+      if (!channel || channel.status === "REMOVED" || channel.removedAt) this.changedSession();
       // Both upload expiry and step-up can elapse during a database lock wait.
       this.verifySession(sessionToken);
       await assertAuthority();
