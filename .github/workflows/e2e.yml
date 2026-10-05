@@ -235,6 +235,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Preserve Studio Content pagination visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-content-pagination-visuals
+          path: |
+            test-results/**/design-studio-content-page2-*.png
+            test-results/**/design-studio-content-controls-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Preserve native video advertising visuals
         if: always()
         uses: actions/upload-artifact@v4

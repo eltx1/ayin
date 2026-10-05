@@ -1,5 +1,6 @@
 import { Inject, Injectable } from "@nestjs/common";
 
+import { decodeStudioContentCursor, encodeStudioContentCursor } from "./studio-content-cursor.js";
 import { DatabaseService } from "../database/database.service.js";
 
 export class StudioError extends Error {
@@ -26,6 +27,7 @@ interface StudioContentQuery {
   status?: string | undefined;
   visibility?: string | undefined;
   take?: number | undefined;
+  cursor?: string | undefined;
 }
 
 @Injectable()
@@ -96,24 +98,60 @@ export class StudioService {
   async content(accountId: string, input: StudioContentQuery) {
     const channel = await this.channelForAccount(accountId);
     const take = Math.min(Math.max(input.take ?? 50, 1), 100);
-    const query = input.query?.trim();
+    const query = input.query?.trim() ?? "";
+    const page = {
+      take,
+      query,
+      status: input.status ?? "",
+      visibility: input.visibility ?? "",
+      cursor: input.cursor ?? null,
+    };
+    const scope = { accountId, channelId: channel.id, ...page };
+    let boundary: { updatedAt: Date; id: string } | null = null;
+    if (input.cursor) {
+      try {
+        boundary = decodeStudioContentCursor(input.cursor, scope);
+      } catch {
+        throw new StudioError(
+          "INVALID_CONTENT_CURSOR",
+          "This content page is invalid. Return to the first page.",
+        );
+      }
+    }
 
     const videos = await this.database.client.video.findMany({
       where: {
         channelId: channel.id,
         ...(input.status ? { status: input.status as never } : { status: { not: "REMOVED" } }),
         ...(input.visibility ? { visibility: input.visibility as never } : {}),
-        ...(query
-          ? {
-              OR: [
-                { title: { contains: query, mode: "insensitive" } },
-                { description: { contains: query, mode: "insensitive" } },
-              ],
-            }
-          : {}),
+        AND: [
+          ...(query
+            ? [
+                {
+                  OR: [
+                    { title: { contains: query, mode: "insensitive" as const } },
+                    { description: { contains: query, mode: "insensitive" as const } },
+                  ],
+                },
+              ]
+            : []),
+          ...(boundary
+            ? [
+                {
+                  // Give PostgreSQL a channel-local timestamp range in addition
+                  // to the exact lexicographic tie-break predicate.
+                  updatedAt: { lte: boundary.updatedAt },
+                  OR: [
+                    { updatedAt: { lt: boundary.updatedAt } },
+                    { updatedAt: boundary.updatedAt, id: { lt: boundary.id } },
+                  ],
+                },
+              ]
+            : []),
+        ],
       },
-      orderBy: { updatedAt: "desc" },
-      take,
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      take: take + 1,
       select: {
         id: true,
         title: true,
@@ -133,9 +171,16 @@ export class StudioService {
       },
     });
 
+    // The lookahead never receives advanced metadata or leaves the service. The cursor contains the issued
+    // boundary values, not a mutable anchor row that must still exist later.
+    const rows = videos.slice(0, take);
+    const last = rows.at(-1);
     return {
       channel,
-      videos: videos.map((video) => ({
+      actorAccountId: accountId,
+      page,
+      nextCursor: videos.length > take && last ? encodeStudioContentCursor(last, scope) : null,
+      videos: rows.map((video) => ({
         ...video,
         tvIncluded: video.tvPreferences[0]?.included ?? true,
         tvPreferences: undefined,

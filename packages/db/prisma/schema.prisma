@@ -492,6 +492,7 @@ model Video {
   recommendationFeedback RecommendationFeedback[]
 
   @@index([channelId, status, publishedAt])
+  @@index([channelId, updatedAt, id], map: "video_studio_content_cursor_idx")
   @@index([status, visibility, publishedAt])
   @@index([videoForm, status, visibility, publishedAt])
   @@index([scheduledPublishAt, status])

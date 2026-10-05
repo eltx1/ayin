@@ -18,3 +18,6 @@ docs/pwa/2026-10-03-lifecycle-54f-ar.json
 docs/pwa/2026-10-03-lifecycle-54f-late.json
 docs/pwa/2026-10-03-lifecycle-54f-migration.json
 docs/pwa/2026-10-03-lifecycle-54f-offline.json
+
+# Exact local PostgreSQL EXPLAIN measurement; preserve original recorded bytes.
+docs/evidence/studio-content-query.json
