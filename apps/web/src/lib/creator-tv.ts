@@ -1,5 +1,5 @@
 import { apiBaseUrl, readApiError } from "@/lib/api";
-import type { AdvertisingConsentMode } from "@/lib/advertising-consent";
+import type { AdvertisingAgeTreatment, AdvertisingConsentMode } from "@/lib/advertising-consent";
 import type { ChannelAppearance } from "@/lib/channel";
 
 export interface CreatorTvVideo {
@@ -20,6 +20,26 @@ export interface CreatorTvProgram {
   startsAt: string;
   endsAt: string;
   playbackOffsetMs: number;
+}
+
+export function creatorTvProgressiveFallbackOffset(
+  current: CreatorTvProgram | null,
+  generatedAt: string,
+  now = Date.now(),
+) {
+  if (!current) return 0;
+  const duration = Date.parse(current.endsAt) - Date.parse(current.startsAt);
+  const elapsed = now - Date.parse(generatedAt);
+  if (
+    !Number.isFinite(duration) ||
+    !Number.isFinite(elapsed) ||
+    !Number.isFinite(current.playbackOffsetMs)
+  )
+    return 0;
+  return Math.min(
+    Math.max(0, duration - 250),
+    Math.max(0, current.playbackOffsetMs + Math.max(0, elapsed)),
+  );
 }
 
 export interface PublicCreatorTvResponse {
@@ -149,6 +169,7 @@ export function selectCreatorTvMonetizedPlayback(
   capability: CreatorTvLinearCapability | null,
   ssaiFailed: boolean,
   consentMode: AdvertisingConsentMode = "PERSONALIZED",
+  ageTreatment?: AdvertisingAgeTreatment,
 ):
   | {
       mode: "GOOGLE_DAI_SSB";
@@ -163,6 +184,9 @@ export function selectCreatorTvMonetizedPlayback(
   if (
     !ssaiFailed &&
     consentMode !== "LIMITED_ADS" &&
+    // The current SSB adapter cannot represent trusted age restrictions. Use
+    // the existing IMA fallback, whose age-tag boundary is implemented.
+    !ageTreatment &&
     capability?.monetization.signaling.enabled &&
     dai?.available &&
     dai.playbackUrl &&

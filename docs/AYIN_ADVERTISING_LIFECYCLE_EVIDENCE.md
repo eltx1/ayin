@@ -2,6 +2,8 @@
 
 Bounded audit of the existing Web/PWA adapters on baseline `be799b902f859884a06de174da2ef55a9fceb5a4`. No ad account, provider configuration, production demand, consent classification, revenue rule or database schema is enabled or changed.
 
+This records the first lifecycle slice. The later [trusted consent transition evidence](AYIN_ADVERTISING_CONSENT_TRANSITION_EVIDENCE.md) supersedes its snapshot-only source-contract gap. A production CMP/bridge and upstream delivery certification remain unconfigured/unverified.
+
 ## Demonstrated defects and correction
 
 Six initial synthetic runtime assertions failed against the unmodified services:

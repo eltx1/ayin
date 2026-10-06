@@ -35,6 +35,8 @@ Until a real consent platform or application consent provider is registered, AYI
 
 A real CMP remains responsible for collecting and signaling any legally required consent. The provider interface is the integration boundary for that future work.
 
+The existing provider may optionally expose `subscribe(listener)` and return its cleanup function. A trusted integration must update its snapshot before notifying. Browser consumers use stable normalized snapshots and synchronously revoke old SDK authority before redeciding; content identity/progress is preserved. No production provider is registered by this contract. See [consent transition evidence](AYIN_ADVERTISING_CONSENT_TRANSITION_EVIDENCE.md) for tested boundaries and the remaining external/CSP limitations.
+
 AYIN does not add session IDs, account IDs, profile IDs, watch history, raw IP data, or similar private viewer data to Google ad targeting. First-party request/session IDs remain inside AYIN advertising telemetry for operational diagnostics and frequency caps.
 
 ## Video delivery

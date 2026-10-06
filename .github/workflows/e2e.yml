@@ -7,10 +7,12 @@ on:
       - "packages/**"
       - "tests/e2e/**"
       - "tests/recovery/**"
+      - "tests/player-localization/**"
       - "tests/pwa/**"
       - "tests/captions/**"
       - "playwright.config.ts"
       - "playwright.recovery.config.ts"
+      - "playwright.player-localization.config.ts"
       - "playwright.pwa.config.ts"
       - "playwright.captions.config.ts"
       - "package.json"
@@ -108,6 +110,31 @@ jobs:
             test-results-captions/**/test-failed-*.png
             test-results-captions/**/trace.zip
             playwright-report-captions
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Prepare native player media tooling
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version
+      - name: Run localized native player acceptance
+        env:
+          NEXT_PUBLIC_MEDIA_BASE_URL: http://127.0.0.1:3000
+        run: |
+          pnpm --filter @ayin/web build
+          pnpm exec playwright test --config playwright.player-localization.config.ts
+      - name: Preserve localized player evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-localization-evidence
+          path: |
+            test-results-player-localization/**/player-*.png
+            test-results-player-localization/**/player-*.json
+            test-results-player-localization/**/test-failed-*.png
+            test-results-player-localization/**/error-context.md
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload Playwright report

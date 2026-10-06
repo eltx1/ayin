@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { AdEnabledAyinPlayer } from "@/components/player/ad-enabled-ayin-player";
 import { LiveAyinPlayer } from "@/components/player/live-ayin-player";
@@ -9,7 +9,8 @@ import { ActionButton, StatusNotice } from "@/components/ui/design-system";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { apiBaseUrl } from "@/lib/api";
-import { getAdvertisingConsentSnapshot } from "@/lib/advertising-consent";
+import { ADVERTISING_CONSENT_CHANGED } from "@/lib/advertising-consent";
+import { useAdvertisingConsent, useAdvertisingConsentSignal } from "@/lib/use-advertising-consent";
 import { mediaAssetUrl } from "@/lib/channel";
 import { formatDate, formatNumber } from "@/lib/i18n/format";
 import {
@@ -19,6 +20,7 @@ import {
 import type { TranslationValues } from "@/lib/i18n/translator";
 import {
   fetchPublicCreatorTvLinear,
+  creatorTvProgressiveFallbackOffset,
   selectCreatorTvMonetizedPlayback,
   type CreatorTvLinearCapability,
   type CreatorTvProgram,
@@ -46,7 +48,8 @@ export function CreatorTvPlayer({
     occurrenceKey: string | null;
     offsetMs: number;
   } | null>(null);
-  const [advertisingConsent] = useState(() => getAdvertisingConsentSnapshot());
+  const advertisingConsent = useAdvertisingConsent();
+  const consentSignal = useAdvertisingConsentSignal(advertisingConsent);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const selectedSsaiRef = useRef<string | null>(null);
@@ -65,16 +68,48 @@ export function CreatorTvPlayer({
   const mediaUrl = mediaAssetUrl(current?.video.source.objectKey);
   const ssaiFailed = ssaiFallback !== null;
   const monetizedPlayback = useMemo(
-    () => selectCreatorTvMonetizedPlayback(linear, ssaiFailed, advertisingConsent.mode),
-    [advertisingConsent.mode, linear, ssaiFailed],
+    () =>
+      selectCreatorTvMonetizedPlayback(
+        linear,
+        ssaiFailed,
+        advertisingConsent.mode,
+        advertisingConsent.ageTreatment,
+      ),
+    [advertisingConsent, linear, ssaiFailed],
   );
   const progressiveOffsetMs =
     ssaiFallback && ssaiFallback.occurrenceKey === currentOccurrenceKey
       ? ssaiFallback.offsetMs
       : (current?.playbackOffsetMs ?? 0);
 
+  useLayoutEffect(() => {
+    const onConsentChange = () => {
+      if (consentSignal.reason !== ADVERTISING_CONSENT_CHANGED) return;
+      if (monetizedPlayback.mode === "GOOGLE_DAI_SSB") {
+        setSsaiFallback({
+          occurrenceKey: currentOccurrenceKey ?? null,
+          offsetMs: creatorTvProgressiveFallbackOffset(current, data.schedule.generatedAt),
+        });
+      } else {
+        // Consent alone must not replace current MP4 content with an SSAI
+        // stream. Retain this TV session's existing progressive fallback.
+        setSsaiFallback((previous) => previous ?? { occurrenceKey: null, offsetMs: 0 });
+      }
+    };
+    // An already-stale hydration snapshot has not started an authorized
+    // stream. Let the current snapshot select its initial playback path.
+    if (!consentSignal.aborted) consentSignal.addEventListener("abort", onConsentChange);
+    return () => consentSignal.removeEventListener("abort", onConsentChange);
+  }, [
+    consentSignal,
+    current,
+    currentOccurrenceKey,
+    data.schedule.generatedAt,
+    monetizedPlayback.mode,
+  ]);
+
   useEffect(() => {
-    if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
+    if (consentSignal.aborted || monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
     const identity = monetizedPlayback.providerResourceId + ":" + monetizedPlayback.assetKey;
     if (selectedSsaiRef.current === identity) return;
     selectedSsaiRef.current = identity;
@@ -89,10 +124,10 @@ export function CreatorTvPlayer({
         providerResourceId: monetizedPlayback.providerResourceId,
       },
     });
-  }, [currentVideoId, data.channel.id, monetizedPlayback]);
+  }, [consentSignal, currentVideoId, data.channel.id, monetizedPlayback]);
 
   useEffect(() => {
-    if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB" || !linear) return;
+    if (consentSignal.aborted || monetizedPlayback.mode !== "GOOGLE_DAI_SSB" || !linear) return;
     const timers: number[] = [];
     const now = Date.now();
 
@@ -100,6 +135,7 @@ export function CreatorTvPlayer({
       kind: "OPEN" | "CLOSE",
       opportunity: CreatorTvLinearCapability["monetization"]["opportunities"][number],
     ) => {
+      if (consentSignal.aborted) return;
       const key = opportunity.opportunityId + ":" + kind;
       if (opportunityEventsRef.current.has(key)) return;
       opportunityEventsRef.current.add(key);
@@ -144,11 +180,11 @@ export function CreatorTvPlayer({
     return () => {
       for (const timer of timers) window.clearTimeout(timer);
     };
-  }, [data.channel.id, linear, monetizedPlayback]);
+  }, [consentSignal, data.channel.id, linear, monetizedPlayback]);
 
   const handleDaiFatal = useCallback(
     (reason: string) => {
-      if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
+      if (consentSignal.aborted || monetizedPlayback.mode !== "GOOGLE_DAI_SSB") return;
       trackAnalyticsEvent("TV_SSAI_FALLBACK", {
         channelId: data.channel.id,
         ...(currentVideoId ? { videoId: currentVideoId } : {}),
@@ -160,19 +196,14 @@ export function CreatorTvPlayer({
           fallback: "CLIENT_IMA_MP4",
         },
       });
-      const fallbackOffsetMs = current
-        ? Math.min(
-            Math.max(0, Date.parse(current.endsAt) - Date.parse(current.startsAt) - 250),
-            Math.max(
-              0,
-              current.playbackOffsetMs +
-                Math.max(0, Date.now() - Date.parse(data.schedule.generatedAt)),
-            ),
-          )
-        : 0;
+      const fallbackOffsetMs = creatorTvProgressiveFallbackOffset(
+        current,
+        data.schedule.generatedAt,
+      );
       setSsaiFallback({ occurrenceKey: currentOccurrenceKey ?? null, offsetMs: fallbackOffsetMs });
     },
     [
+      consentSignal,
       current,
       currentOccurrenceKey,
       currentVideoId,
@@ -212,8 +243,12 @@ export function CreatorTvPlayer({
       if (
         monetizedPlayback.mode === "GOOGLE_DAI_SSB" &&
         nextLinear &&
-        selectCreatorTvMonetizedPlayback(nextLinear, false, advertisingConsent.mode).mode !==
-          "GOOGLE_DAI_SSB"
+        selectCreatorTvMonetizedPlayback(
+          nextLinear,
+          false,
+          advertisingConsent.mode,
+          advertisingConsent.ageTreatment,
+        ).mode !== "GOOGLE_DAI_SSB"
       ) {
         const reason =
           nextLinear.monetization.dai.reason ??
@@ -229,7 +264,7 @@ export function CreatorTvPlayer({
       setRefreshing(false);
     }
   }, [
-    advertisingConsent.mode,
+    advertisingConsent,
     data.canonicalHandle,
     handleDaiFatal,
     monetizedPlayback.mode,
@@ -242,11 +277,15 @@ export function CreatorTvPlayer({
     let cancelled = false;
     const poll = async () => {
       const nextLinear = await fetchPublicCreatorTvLinear(data.canonicalHandle);
-      if (cancelled || !nextLinear) return;
+      if (cancelled || consentSignal.aborted || !nextLinear) return;
       if (
         monetizedPlayback.mode === "GOOGLE_DAI_SSB" &&
-        selectCreatorTvMonetizedPlayback(nextLinear, false, advertisingConsent.mode).mode !==
-          "GOOGLE_DAI_SSB"
+        selectCreatorTvMonetizedPlayback(
+          nextLinear,
+          false,
+          advertisingConsent.mode,
+          advertisingConsent.ageTreatment,
+        ).mode !== "GOOGLE_DAI_SSB"
       ) {
         const reason =
           nextLinear.monetization.dai.reason ??
@@ -262,7 +301,13 @@ export function CreatorTvPlayer({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [advertisingConsent.mode, data.canonicalHandle, handleDaiFatal, monetizedPlayback.mode]);
+  }, [
+    advertisingConsent,
+    consentSignal,
+    data.canonicalHandle,
+    handleDaiFatal,
+    monetizedPlayback.mode,
+  ]);
 
   useEffect(() => {
     if (monetizedPlayback.mode !== "GOOGLE_DAI_SSB" || !current?.endsAt) return;
@@ -270,10 +315,17 @@ export function CreatorTvPlayer({
     if (!Number.isFinite(endsAt)) return;
     const delayMs = Math.min(Math.max(500, endsAt - Date.now() + 250), 2_147_000_000);
     const timer = window.setTimeout(() => {
+      if (consentSignal.aborted) return;
       void refreshSchedule();
     }, delayMs);
     return () => window.clearTimeout(timer);
-  }, [current?.endsAt, currentOccurrenceKey, monetizedPlayback.mode, refreshSchedule]);
+  }, [
+    consentSignal,
+    current?.endsAt,
+    currentOccurrenceKey,
+    monetizedPlayback.mode,
+    refreshSchedule,
+  ]);
 
   if (data.tv.state === "OFF_AIR" || !current) {
     return (
@@ -322,6 +374,7 @@ export function CreatorTvPlayer({
               muted
               onFatal={handleDaiFatal}
               playbackUrl={monetizedPlayback.playbackUrl}
+              playbackSignal={consentSignal}
               status="LIVE"
               streamId={data.tv.id}
               title={current.video.title}

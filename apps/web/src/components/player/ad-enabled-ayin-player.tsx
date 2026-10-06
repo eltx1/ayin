@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
 import { GoogleImaVideoAdService } from "@/lib/google-ima-video-ad-service";
+import { translatePlayer } from "@/lib/i18n/player";
+import {
+  createAdvertisingConsentScope,
+  ADVERTISING_CONSENT_CHANGED,
+  type AdvertisingConsentSnapshot,
+} from "@/lib/advertising-consent";
+import { useAdvertisingConsent } from "@/lib/use-advertising-consent";
 import {
   canServeSessionAd,
   fetchVideoAdDecision,
@@ -33,16 +41,24 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
 }
 
 function AdEnabledPlayerSession(props: AyinPlayerProps) {
-  const [decision, setDecision] = useState<VideoAdDecision | null>(null);
-  const [decisionLoaded, setDecisionLoaded] = useState(false);
+  const { locale } = useI18n();
+  const consent = useAdvertisingConsent();
+  const [decisionState, setDecisionState] = useState<{
+    consent: AdvertisingConsentSnapshot;
+    decision: VideoAdDecision | null;
+  } | null>(null);
+  const decisionLoaded = decisionState?.consent === consent;
+  const decision = decisionLoaded ? decisionState.decision : null;
   const [targetsReady, setTargetsReady] = useState(false);
   const [playbackReadyFor, setPlaybackReadyFor] = useState<string | null>(null);
   const [activated, setActivated] = useState(false);
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+  const [mediaFailed, setMediaFailed] = useState(false);
   const [imaGestureRequired, setImaGestureRequired] = useState(false);
   const [adActive, setAdActive] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<"player.advertisement" | null>(null);
   const serviceRef = useRef<GoogleImaVideoAdService | null>(null);
+  const adScopeRef = useRef<ReturnType<typeof createAdvertisingConsentScope> | null>(null);
   const adContainerRef = useRef<HTMLDivElement | null>(null);
   const contentVideoRef = useRef<HTMLVideoElement | null>(null);
   const midRollPlayedRef = useRef(false);
@@ -58,19 +74,29 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
     lifecycleRef.current = lifecycle;
     return () => {
       lifecycle.active = false;
+      adScopeRef.current?.release();
       serviceRef.current?.destroy();
       serviceRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    void fetchVideoAdDecision(props.videoId, controller.signal)
+    const scope = createAdvertisingConsentScope(consent);
+    if (!scope.isCurrent()) return () => scope.release();
+    const revoke = () => {
+      if (scope.signal.reason !== ADVERTISING_CONSENT_CHANGED) return;
+      if (adContainerRef.current) adContainerRef.current.hidden = true;
+      adScopeRef.current?.release();
+      serviceRef.current?.destroy();
+      serviceRef.current = null;
+      adContainerRef.current?.querySelectorAll("iframe").forEach((frame) => frame.remove());
+    };
+    scope.signal.addEventListener("abort", revoke, { once: true });
+    void fetchVideoAdDecision(props.videoId, scope.signal)
       .then((result) => {
-        if (controller.signal.aborted) return;
+        if (!scope.isCurrent()) return;
         const enabledDecision = result.enabled ? result : null;
-        setDecision(enabledDecision);
-        setDecisionLoaded(true);
+        setDecisionState({ consent, decision: enabledDecision });
         setImaGestureRequired(
           Boolean(enabledDecision?.preRollEnabled && mobileImaRequiresGesture()),
         );
@@ -84,16 +110,34 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
         }
       })
       .catch(() => {
-        if (!controller.signal.aborted) setDecisionLoaded(true);
+        if (scope.isCurrent()) setDecisionState({ consent, decision: null });
       });
-    return () => controller.abort();
-  }, [props.videoId]);
+    return () => scope.release();
+  }, [consent, props.videoId]);
 
   const handleAdContainerReady = useCallback((element: HTMLDivElement | null) => {
     adContainerRef.current = element;
     contentVideoRef.current = element?.parentElement?.querySelector("video") ?? null;
     setTargetsReady(Boolean(adContainerRef.current && contentVideoRef.current));
   }, []);
+
+  useEffect(() => {
+    const video = contentVideoRef.current;
+    if (!video) return;
+    // A rejected play() also happens for failed sources, not just gesture policy.
+    // Let the player's error banner explain those failures without a covering CTA.
+    // Reading the current error preserves HLS-to-MP4 recovery, whose load() clears it.
+    const syncMediaFailure = () => setMediaFailed(Boolean(video.error));
+    syncMediaFailure();
+    video.addEventListener("error", syncMediaFailure);
+    video.addEventListener("loadstart", syncMediaFailure);
+    video.addEventListener("canplay", syncMediaFailure);
+    return () => {
+      video.removeEventListener("error", syncMediaFailure);
+      video.removeEventListener("loadstart", syncMediaFailure);
+      video.removeEventListener("canplay", syncMediaFailure);
+    };
+  }, [playbackIdentity, targetsReady]);
 
   const handlePlaybackReady = useCallback(() => {
     setPlaybackReadyFor(playbackIdentity);
@@ -151,48 +195,75 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
       if (!lifecycle.active || lifecycle.busy || !decision || !adContainer || !contentVideo)
         return false;
       if (!canServeSessionAd(decision.frequencyCapPerSession)) return false;
+      const scope = createAdvertisingConsentScope(consent);
+      if (!scope.isCurrent()) {
+        scope.release();
+        return false;
+      }
+      adScopeRef.current = scope;
       lifecycle.busy = true;
       const service = serviceRef.current ?? new GoogleImaVideoAdService();
       serviceRef.current = service;
+      let contentPausedForAd = false;
+      const cancelAd = () => {
+        adContainer.hidden = true;
+        service.destroy();
+        adContainer.querySelectorAll("iframe").forEach((frame) => frame.remove());
+        if (serviceRef.current === service) serviceRef.current = null;
+        if (!lifecycle.active) return;
+        setAdActive(false);
+        setStatus(null);
+        if (contentPausedForAd && slot !== "POST_ROLL") void attemptContentPlayback();
+      };
+      scope.signal.addEventListener("abort", cancelAd, { once: true });
       try {
-        await service.initialize(adContainer, contentVideo);
-        if (!lifecycle.active) return false;
+        adContainer.hidden = false;
+        await service.initialize(adContainer, contentVideo, scope.signal);
+        if (!lifecycle.active || !scope.isCurrent()) return false;
         setAdActive(true);
-        setStatus("Advertisement");
+        setStatus("player.advertisement");
         contentVideo.pause();
+        contentPausedForAd = true;
         await service.play(
           slot,
           decision.tagUrl,
           {
             onEvent: (type, errorCode) => {
-              if (lifecycle.active) emit(slot, type, errorCode);
+              if (lifecycle.active && scope.isCurrent()) emit(slot, type, errorCode);
             },
             onContentPause: () => {
-              if (!lifecycle.active) return;
+              if (!lifecycle.active || !scope.isCurrent()) return;
               contentVideo.pause();
               setAdActive(true);
             },
             onContentResume: () => {
-              if (!lifecycle.active) return;
+              if (!lifecycle.active || !scope.isCurrent()) return;
               setAdActive(false);
               setStatus(null);
               if (slot !== "POST_ROLL") void attemptContentPlayback();
             },
           },
           playbackIntent,
+          scope.snapshot,
+          scope.signal,
         );
         return true;
       } catch {
-        if (!lifecycle.active) return false;
+        if (!lifecycle.active || !scope.isCurrent()) return false;
         emit(slot, "ERROR", "IMA_PLAYBACK_EXCEPTION");
         setAdActive(false);
         setStatus(null);
         return false;
       } finally {
-        lifecycle.busy = false;
+        scope.signal.removeEventListener("abort", cancelAd);
+        scope.release();
+        if (adScopeRef.current === scope) {
+          adScopeRef.current = null;
+          lifecycle.busy = false;
+        }
       }
     },
-    [attemptContentPlayback, decision, emit],
+    [attemptContentPlayback, consent, decision, emit],
   );
 
   const activatePlayback = useCallback(
@@ -280,20 +351,25 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
   );
   const gestureGate = Boolean(decision?.preRollEnabled && imaGestureRequired);
   const showStart =
-    autoplayBlocked || (adEligible && !activated && (props.autoPlay !== true || gestureGate));
+    !mediaFailed &&
+    (autoplayBlocked || (adEligible && !activated && (props.autoPlay !== true || gestureGate)));
 
   return (
     <div className={styles.wrap}>
       <AyinPlayer
         {...props}
         autoPlay={false}
-        adMode={{ active: adActive, controlsLocked: adActive, label: status ?? "Advertisement" }}
+        adMode={{
+          active: adActive,
+          controlsLocked: adActive,
+          label: translatePlayer(locale, status ?? "player.advertisement"),
+        }}
         onAdContainerReady={handleAdContainerReady}
         onPlaybackReady={handlePlaybackReady}
       />
       {showStart ? (
         <button
-          aria-label="Play video"
+          aria-label={translatePlayer(locale, "player.playVideo")}
           className={styles.start}
           data-tv-focusable="true"
           disabled={!playbackReady}
@@ -304,7 +380,14 @@ function AdEnabledPlayerSession(props: AyinPlayerProps) {
             <path d="M8 5.5v13l10-6.5z" />
           </svg>
           <span>
-            {!playbackReady ? "Preparing video…" : autoplayBlocked ? "Tap to play" : "Play video"}
+            {translatePlayer(
+              locale,
+              !playbackReady
+                ? "player.preparingVideo"
+                : autoplayBlocked
+                  ? "player.tapToPlay"
+                  : "player.playVideo",
+            )}
           </span>
         </button>
       ) : null}

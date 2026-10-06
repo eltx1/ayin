@@ -111,8 +111,14 @@ export function loadGooglePublisherTag(consent: AdvertisingConsentSnapshot) {
   consent = normalizeAdvertisingConsent(consent);
   const requestedSource = gptScriptUrlForConsent(consent);
   if (loader) {
-    if (loadedScriptSource === GPT_STANDARD_SRC && requestedSource === GPT_LIMITED_SRC) {
-      return Promise.reject(new GptRuntimeError("GPT_LIMITED_ADS_REQUIRES_LIMITED_SCRIPT"));
+    if (requestedSource === GPT_LIMITED_SRC && loadedScriptSource !== GPT_LIMITED_SRC) {
+      return Promise.reject(
+        new GptRuntimeError(
+          loadedScriptSource === GPT_STANDARD_SRC
+            ? "GPT_LIMITED_ADS_REQUIRES_LIMITED_SCRIPT"
+            : "GPT_LIMITED_ADS_SCRIPT_UNKNOWN",
+        ),
+      );
     }
     return loader;
   }

@@ -3,7 +3,12 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
-import { getAdvertisingConsentSnapshot } from "@/lib/advertising-consent";
+import {
+  createAdvertisingConsentScope,
+  getAdvertisingConsentSnapshot,
+  type AdvertisingConsentSnapshot,
+} from "@/lib/advertising-consent";
+import { useAdvertisingConsent } from "@/lib/use-advertising-consent";
 import { GptRuntimeError, mountGooglePublisherTagSlot } from "@/lib/google-gpt-page-ad-service";
 import {
   detectPageAdDevice,
@@ -19,14 +24,16 @@ import styles from "./page-ad-slot.module.css";
 
 export function PageAdSlot({ placementKey }: { placementKey: string }) {
   const pathname = usePathname();
+  const consent = useAdvertisingConsent();
   const device = useSyncExternalStore(subscribePageAdDevice, detectPageAdDevice, () => null);
   if (!device || !pathname) return <div className={styles.probe} aria-hidden="true" />;
   return (
     <PageAdSlotSession
-      key={JSON.stringify([placementKey, pathname, device])}
+      key={JSON.stringify([placementKey, pathname, device, consent])}
       placementKey={placementKey}
       route={pathname}
       device={device}
+      consent={consent}
     />
   );
 }
@@ -35,27 +42,40 @@ function PageAdSlotSession({
   placementKey,
   route,
   device,
+  consent,
 }: {
   placementKey: string;
   route: string;
   device: PageAdDevice;
+  consent: AdvertisingConsentSnapshot;
 }) {
   const reactId = useId();
   const divId = `ayin-ad-${reactId.replaceAll(":", "")}`;
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const gptRef = useRef<HTMLDivElement | null>(null);
   const [house, setHouse] = useState<HousePageAdDemand | null>(null);
   const [showGpt, setShowGpt] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    const consentScope = createAdvertisingConsentScope(consent);
+    const conceal = () => {
+      if (hostRef.current) hostRef.current.hidden = true;
+      controller.abort();
+      gptRef.current?.replaceChildren();
+    };
+    consentScope.signal.addEventListener("abort", conceal, { once: true });
+    if (consentScope.signal.aborted) controller.abort();
+    else if (hostRef.current) hostRef.current.hidden = false;
     let cleanupGpt: (() => void) | null = null;
     let started = false;
     let active = true;
+    const isActive = () => active && consentScope.isCurrent();
     const requestId = crypto.randomUUID();
     const sessionId = getPageAdSessionId();
 
     const showHouseFallback = async (fallback: HousePageAdDemand | null) => {
-      if (!fallback || !active) return;
+      if (!fallback || !isActive()) return;
       setHouse(fallback);
       await recordPageAdEvent({
         key: placementKey,
@@ -67,10 +87,10 @@ function PageAdSlotSession({
     };
 
     const start = async () => {
-      if (started) return;
+      if (started || !isActive()) return;
       started = true;
       const decision = await fetchPageAdDecision(placementKey, route, device, controller.signal);
-      if (!active || !decision.enabled) return;
+      if (!isActive() || !decision.enabled) return;
 
       await recordPageAdEvent({
         key: placementKey,
@@ -79,7 +99,7 @@ function PageAdSlotSession({
         sessionId,
         provider: decision.demand.provider,
       });
-      if (!active) return;
+      if (!isActive()) return;
 
       if (decision.demand.provider === "HOUSE") {
         setHouse(decision.demand);
@@ -100,10 +120,10 @@ function PageAdSlotSession({
           adUnitPath: decision.demand.adUnitPath,
           sizes: decision.sizes,
           responsive: decision.responsive,
-          consent: getAdvertisingConsentSnapshot(),
+          consent,
           signal: controller.signal,
           onRender: (filled) => {
-            if (!active) return;
+            if (!isActive()) return;
             if (filled) {
               void recordPageAdEvent({
                 key: placementKey,
@@ -136,9 +156,9 @@ function PageAdSlotSession({
             void showHouseFallback(decision.fallback);
           },
         });
-        if (!active) cleanupGpt();
+        if (!isActive()) cleanupGpt();
       } catch (error) {
-        if (!active) return;
+        if (!isActive()) return;
         setShowGpt(false);
         const errorCode =
           error instanceof GptRuntimeError ? error.diagnosticCode : "GPT_RUNTIME_FAILURE";
@@ -170,6 +190,7 @@ function PageAdSlotSession({
       observer.observe(host);
       return () => {
         active = false;
+        consentScope.release();
         controller.abort();
         observer.disconnect();
         cleanupGpt?.();
@@ -178,10 +199,11 @@ function PageAdSlotSession({
 
     return () => {
       active = false;
+      consentScope.release();
       controller.abort();
       cleanupGpt?.();
     };
-  }, [device, divId, placementKey, route]);
+  }, [consent, device, divId, placementKey, route]);
 
   const visible = Boolean(house || showGpt);
   return (
@@ -199,7 +221,11 @@ function PageAdSlotSession({
             href={house.clickUrl}
             rel="noopener noreferrer sponsored"
             target="_blank"
-            onClick={() => {
+            onClick={(event) => {
+              if (getAdvertisingConsentSnapshot() !== consent) {
+                event.preventDefault();
+                return;
+              }
               void recordPageAdEvent({
                 key: placementKey,
                 eventType: "CLICK",
@@ -225,7 +251,7 @@ function PageAdSlotSession({
           />
         )
       ) : null}
-      <div className={showGpt ? styles.gpt : styles.hidden} id={divId} />
+      <div className={showGpt ? styles.gpt : styles.hidden} id={divId} ref={gptRef} />
     </aside>
   );
 }

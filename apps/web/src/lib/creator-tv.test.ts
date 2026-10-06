@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { selectCreatorTvMonetizedPlayback, type CreatorTvLinearCapability } from "./creator-tv";
+import {
+  creatorTvProgressiveFallbackOffset,
+  selectCreatorTvMonetizedPlayback,
+  type CreatorTvLinearCapability,
+  type CreatorTvProgram,
+} from "./creator-tv";
 
 const playerSource = readFileSync(
   new URL("../components/creator-tv/creator-tv-player.tsx", import.meta.url),
@@ -59,6 +64,34 @@ describe("Creator TV playback contract", () => {
     expect(selectCreatorTvMonetizedPlayback(capability, false, "LIMITED_ADS")).toEqual({
       mode: "CLIENT_IMA_MP4",
     });
+  });
+
+  it("keeps explicit child and teen treatment on the existing age-aware IMA fallback", () => {
+    for (const age of ["CHILD", "TEEN"] as const) {
+      expect(
+        selectCreatorTvMonetizedPlayback(linearCapability(), false, "NON_PERSONALIZED", age),
+      ).toEqual({ mode: "CLIENT_IMA_MP4" });
+    }
+  });
+
+  it("preserves the existing conceptual program offset when revoking an SSAI stream", () => {
+    const current = {
+      startsAt: "2026-10-06T06:00:00Z",
+      endsAt: "2026-10-06T06:02:00Z",
+      playbackOffsetMs: 15_000,
+    } as CreatorTvProgram;
+    const generated = "2026-10-06T06:00:15Z";
+    expect(
+      creatorTvProgressiveFallbackOffset(current, generated, Date.parse("2026-10-06T06:00:45Z")),
+    ).toBe(45_000);
+    expect(
+      creatorTvProgressiveFallbackOffset(current, generated, Date.parse("2026-10-06T06:04:00Z")),
+    ).toBe(119_750);
+    expect(
+      creatorTvProgressiveFallbackOffset(current, generated, Date.parse("2026-10-06T06:00:05Z")),
+    ).toBe(15_000);
+    expect(creatorTvProgressiveFallbackOffset(null, generated)).toBe(0);
+    expect(creatorTvProgressiveFallbackOffset(current, "invalid")).toBe(0);
   });
 
   it("keeps DAI TV playback on the live player and falls back on fatal failure", () => {

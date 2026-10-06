@@ -3,6 +3,10 @@
   position: relative;
 }
 
+.wrap [data-ayin-ad-container][hidden] {
+  display: none;
+}
+
 .start {
   align-items: center;
   backdrop-filter: blur(18px) saturate(150%);
@@ -45,7 +49,10 @@
   white-space: nowrap;
 }
 
-.start:focus-visible {
+.wrap .start:focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 4px;
+  /* The shared TV focus rule uses relative positioning; this is an overlay. */
+  position: absolute;
+  z-index: 20;
 }

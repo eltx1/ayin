@@ -47,13 +47,18 @@ export interface VideoAdPlaybackIntent {
 }
 
 export interface VideoAdService {
-  initialize(container: HTMLDivElement, contentVideo: HTMLVideoElement): Promise<void>;
+  initialize(
+    container: HTMLDivElement,
+    contentVideo: HTMLVideoElement,
+    signal?: AbortSignal,
+  ): Promise<void>;
   play(
     slot: VideoAdSlot,
     tagUrl: string,
     callbacks: VideoAdCallbacks,
     playbackIntent?: VideoAdPlaybackIntent,
     consent?: AdvertisingConsentSnapshot,
+    signal?: AbortSignal,
   ): Promise<void>;
   contentComplete(): void;
   destroy(): void;
