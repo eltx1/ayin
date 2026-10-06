@@ -3,13 +3,20 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 
-import { ActionButton } from "@/components/ui/design-system";
+import { ActionButton, TextField } from "@/components/ui/design-system";
+import { AdminProductFields } from "./admin-product-fields";
+import fields from "./admin-product-fields.module.css";
+import {
+  productControlsIssueMessage,
+  validateProductControlsDraft,
+} from "@/lib/admin-product-drafts";
 import pickerStyles from "./merchandising-target-picker.module.css";
 import { useAdminAccess } from "./admin-access";
 import { MerchandisingTargetPicker } from "./merchandising-target-picker";
@@ -119,6 +126,8 @@ function ProductControlsEditor({
 }) {
   const { t, locale } = useI18n();
   const copy = (en: string, ar: string) => (locale === "ar" ? ar : en);
+  const editorId = useId();
+  const globalForm = useRef<HTMLFormElement>(null);
   const mounted = useRef(true);
   const pending = useRef(false);
   const [revision, setRevision] = useState(0);
@@ -135,6 +144,8 @@ function ProductControlsEditor({
   );
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [reviewedGlobal, setReviewedGlobal] = useState(false);
 
   useEffect(() => {
     mounted.current = true;
@@ -186,10 +197,12 @@ function ProductControlsEditor({
     operation: (signal: AbortSignal) => Promise<T>,
     success: string,
     apply: (result: T) => void,
+    action = "row",
   ) {
-    if (pending.current || !isCurrent()) return;
+    if (pending.current || !isCurrent() || reason.trim().length < 3) return;
     pending.current = true;
     setBusy(true);
+    setPendingAction(action);
     setMessage(null);
     setError(null);
     const controller = new AbortController();
@@ -214,31 +227,38 @@ function ProductControlsEditor({
         return;
       }
       setError(
-        cause instanceof AdminWorkspaceError
-          ? t("merch.saveError")
-          : cause instanceof Error
-            ? cause.message
-            : t("merch.saveError"),
+        cause instanceof AdminWorkspaceError && cause.verificationRequired
+          ? copy(
+              "Verify your identity, then review and save again. Your draft is preserved.",
+              "أكد هويتك، ثم راجع التغيير واحفظه مرة أخرى. تم الاحتفاظ بمسودتك.",
+            )
+          : `${t("merch.saveError")} ${copy(
+              "Review the saved settings before trying again; the request may have reached the server.",
+              "راجع الإعدادات المحفوظة قبل المحاولة مرة أخرى؛ ربما وصل الطلب إلى الخادم.",
+            )}`,
       );
     } finally {
       pending.current = false;
       activeWrite.current = null;
-      if (mounted.current && isCurrent()) setBusy(false);
+      if (mounted.current && isCurrent()) {
+        setBusy(false);
+        setPendingAction(null);
+      }
     }
   }
 
   function saveRegions(row: AdminHomeRow) {
+    let targetRegions: string[];
+    try {
+      targetRegions = parseRegionTargets(regionDrafts[row.id] ?? "");
+    } catch {
+      setMessage(null);
+      setError(t("merch.invalidRegions"));
+      return;
+    }
     void mutate(
-      (signal) => {
-        let targetRegions: string[];
-        try {
-          targetRegions = parseRegionTargets(regionDrafts[row.id] ?? "");
-        } catch {
-          throw new Error(t("merch.invalidRegions"));
-        }
-        return patchAdminHomeRow(row.id, { targetRegions, reason }, signal, lease.session);
-      },
-      t("merch.savedRegions"),
+      (signal) => patchAdminHomeRow(row.id, { targetRegions, reason }, signal, lease.session),
+      `${t("merch.savedRegions")} (${row.key})`,
       (result) => {
         setRows((current) => mergeHomeRowFields(current, row.id, result, ["targetRegions"]));
         setRegionDrafts((current) => ({ ...current, [row.id]: result.targetRegions.join(", ") }));
@@ -247,7 +267,36 @@ function ProductControlsEditor({
   }
 
   function updateRowDraft(rowId: string, patch: Partial<AdminHomeRow>) {
+    setMessage(null);
     setRows((current) => current.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
+  }
+
+  function updateControlsDraft(next: ProductControls) {
+    setMessage(null);
+    setError(null);
+    setControls(next);
+  }
+
+  function saveGlobalControls() {
+    if (!controls) return;
+    setReviewedGlobal(true);
+    const issue = validateProductControlsDraft(controls);
+    if (issue) {
+      setMessage(null);
+      setError(productControlsIssueMessage(issue, locale));
+      requestAnimationFrame(() =>
+        globalForm.current
+          ?.querySelector<HTMLElement>('[aria-invalid="true"], [data-product-error]')
+          ?.focus(),
+      );
+      return;
+    }
+    void mutate(
+      (signal) => updateAdminProductControls(controls, reason, signal, lease.session),
+      copy("Global product controls updated.", "تم تحديث إعدادات المنتج العامة."),
+      setControls,
+      "global",
+    );
   }
 
   function moveRow(index: number, delta: number) {
@@ -320,10 +369,23 @@ function ProductControlsEditor({
 
       {error ? <p role="alert">{error}</p> : null}
       {message ? <p role="status">{message}</p> : null}
-      <label className={styles.field}>
-        <span>{t("merch.reason")}</span>
-        <input maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
-      </label>
+      <TextField
+        id={`${editorId}-audit-reason`}
+        label={t("merch.reason")}
+        hint={copy(
+          "Explain the change in 3 to 500 characters. Each save records this reason.",
+          "اشرح التغيير باستخدام 3 إلى 500 حرف. يُسجّل هذا السبب عند كل عملية حفظ.",
+        )}
+        required
+        minLength={3}
+        maxLength={500}
+        dir="auto"
+        value={reason}
+        onChange={(event) => {
+          setMessage(null);
+          setReason(event.target.value);
+        }}
+      />
 
       <section className={styles.card}>
         <h2>{copy("Home Builder", "إعداد الصفحة الرئيسية")}</h2>
@@ -553,187 +615,118 @@ function ProductControlsEditor({
       <AdminRegionalMerchandising
         rows={rows}
         drafts={regionDrafts}
-        onDraftChange={(id, value) => setRegionDrafts((current) => ({ ...current, [id]: value }))}
+        onDraftChange={(id, value) => {
+          setMessage(null);
+          setError(null);
+          setRegionDrafts((current) => ({ ...current, [id]: value }));
+        }}
         onSave={saveRegions}
         disabled={busy || reason.trim().length < 3}
       />
 
-      <section className={styles.card}>
-        <h2>{copy("Main navigation", "التنقل الرئيسي")}</h2>
-        <p className={styles.muted}>
-          {copy(
-            "Toggle feature-ready destinations without redeploying the public shell.",
-            "فعّل وجهات التنقل الجاهزة دون إعادة نشر الواجهة العامة.",
-          )}
-        </p>
-        {controls.navigation.map((item, index) => (
-          <label className={styles.checkboxRow} key={item.key}>
-            <input
-              type="checkbox"
-              checked={item.enabled}
-              onChange={(event) => {
-                const navigation = controls.navigation.map((entry, itemIndex) =>
-                  itemIndex === index ? { ...entry, enabled: event.target.checked } : entry,
-                );
-                setControls({ ...controls, navigation });
-              }}
-            />
-            <span>
-              {item.label} <small className={styles.muted}>{item.href}</small>
-            </span>
-          </label>
-        ))}
-      </section>
-
-      <section className={styles.card}>
-        <MerchandisingTargetPicker
-          label={copy("Hero selector", "اختيار المحتوى الرئيسي")}
-          emptyMessage={
-            Boolean(controls.hero.entityType) !== Boolean(controls.hero.entityId)
-              ? copy(
-                  "The saved Hero choice is incomplete. Select a target or use automatic selection.",
-                  "اختيار المحتوى الرئيسي المحفوظ غير مكتمل. اختر محتوى أو استخدم الاختيار التلقائي.",
-                )
-              : undefined
-          }
-          single
-          value={
-            controls.hero.entityType && controls.hero.entityId
-              ? [{ entityType: controls.hero.entityType, entityId: controls.hero.entityId }]
-              : []
-          }
-          targets={targets}
-          actor={lease.session}
-          isCurrent={isCurrent}
-          onDenied={onDenied}
-          disabled={busy}
-          onChange={(items, target) => {
-            const item = items[0];
-            setControls({
-              ...controls,
-              hero: item
-                ? { entityType: item.entityType, entityId: item.entityId }
-                : { entityType: null, entityId: null },
-            });
-            if (target) setTargets((current) => ({ ...current, [targetKey(target)]: target }));
-          }}
-        />
-        {Boolean(controls.hero.entityType) !== Boolean(controls.hero.entityId) && (
-          <button
-            type="button"
-            onClick={() => setControls({ ...controls, hero: { entityType: null, entityId: null } })}
-          >
-            {copy("Use automatic selection", "استخدام الاختيار التلقائي")}
-          </button>
-        )}
-      </section>
-
-      <section className={styles.card}>
-        <h2>{copy("Announcement", "الإعلان")}</h2>
-        <label className={styles.checkboxRow}>
-          <input
-            type="checkbox"
-            checked={controls.announcement.enabled}
-            onChange={(event) =>
-              setControls({
-                ...controls,
-                announcement: { ...controls.announcement, enabled: event.target.checked },
-              })
-            }
-          />{" "}
-          {copy("Enabled", "مفعّل")}
-        </label>
-        <input
-          value={controls.announcement.text}
-          maxLength={240}
-          placeholder={copy("Platform announcement", "إعلان المنصة")}
-          onChange={(event) =>
-            setControls({
-              ...controls,
-              announcement: { ...controls.announcement, text: event.target.value },
-            })
-          }
-        />
-        <input
-          value={controls.announcement.href ?? ""}
-          placeholder={copy("Optional internal path, e.g. /tv", "مسار داخلي اختياري، مثل /tv")}
-          onChange={(event) =>
-            setControls({
-              ...controls,
-              announcement: { ...controls.announcement, href: event.target.value || null },
-            })
-          }
-        />
-      </section>
-
-      <section className={styles.card}>
-        <h2>{copy("Taxonomy", "التصنيفات")}</h2>
-        <p className={styles.muted}>
-          {copy(
-            "Comma-separated category labels create normalized, admin-managed taxonomy keys.",
-            "أدخل أسماء التصنيفات مفصولة بفواصل لإنشاء تصنيفات تديرها الإدارة.",
-          )}
-        </p>
-        <textarea
-          value={controls.taxonomy.map((item) => item.label).join(", ")}
-          onChange={(event) => {
-            const taxonomy = event.target.value
-              .split(",")
-              .map((label) => label.trim())
-              .filter(Boolean)
-              .slice(0, 100)
-              .map((label) => ({
-                key: label
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, "-")
-                  .replace(/^-|-$/g, "")
-                  .slice(0, 60),
-                label,
-                enabled: true,
-              }))
-              .filter((item) => item.key.length > 0);
-            setControls({ ...controls, taxonomy });
-          }}
-        />
-      </section>
-
-      <section className={styles.card}>
-        <h2>{copy("Device visibility", "العرض حسب الجهاز")}</h2>
-        {(["web", "mobile", "tv"] as const).map((device) => (
-          <label className={styles.checkboxRow} key={device}>
-            <input
-              type="checkbox"
-              checked={controls.deviceVisibility[device]}
-              onChange={(event) =>
-                setControls({
-                  ...controls,
-                  deviceVisibility: {
-                    ...controls.deviceVisibility,
-                    [device]: event.target.checked,
-                  },
-                })
-              }
-            />{" "}
-            {device.toUpperCase()}
-          </label>
-        ))}
-      </section>
-
-      <ActionButton
-        type="button"
-        disabled={busy || reason.trim().length < 3}
-        onClick={() =>
-          void mutate(
-            (signal) => updateAdminProductControls(controls, reason, signal, lease.session),
-            copy("Global product controls updated.", "تم تحديث إعدادات المنتج العامة."),
-            setControls,
-          )
-        }
+      <form
+        ref={globalForm}
+        className={fields.globalForm}
+        aria-label={copy("Global product controls", "إعدادات المنتج العامة")}
+        onSubmit={(event) => {
+          event.preventDefault();
+          saveGlobalControls();
+        }}
       >
-        {busy
-          ? copy("Saving…", "جارٍ الحفظ…")
-          : copy("Save global controls", "حفظ الإعدادات العامة")}
-      </ActionButton>
+        <p className={styles.muted}>
+          {copy(
+            "Navigation, Hero, announcement, taxonomy and device visibility are saved together with Save global controls.",
+            "يتم حفظ التنقل والمحتوى الرئيسي والإعلان والتصنيفات والعرض حسب الجهاز معًا باستخدام حفظ الإعدادات العامة.",
+          )}
+        </p>
+        <section className={styles.card}>
+          <h2>{copy("Main navigation", "التنقل الرئيسي")}</h2>
+          <p className={styles.muted}>
+            {copy(
+              "Toggle feature-ready destinations without redeploying the public shell.",
+              "فعّل وجهات التنقل الجاهزة دون إعادة نشر الواجهة العامة.",
+            )}
+          </p>
+          {controls.navigation.map((item, index) => (
+            <label className={styles.checkboxRow} key={item.key}>
+              <input
+                type="checkbox"
+                checked={item.enabled}
+                onChange={(event) => {
+                  const navigation = controls.navigation.map((entry, itemIndex) =>
+                    itemIndex === index ? { ...entry, enabled: event.target.checked } : entry,
+                  );
+                  updateControlsDraft({ ...controls, navigation });
+                }}
+              />
+              <span>
+                {item.label} <small className={styles.muted}>{item.href}</small>
+              </span>
+            </label>
+          ))}
+        </section>
+
+        <section className={styles.card}>
+          <MerchandisingTargetPicker
+            label={copy("Hero selector", "اختيار المحتوى الرئيسي")}
+            emptyMessage={
+              Boolean(controls.hero.entityType) !== Boolean(controls.hero.entityId)
+                ? copy(
+                    "The saved Hero choice is incomplete. Select a target or use automatic selection.",
+                    "اختيار المحتوى الرئيسي المحفوظ غير مكتمل. اختر محتوى أو استخدم الاختيار التلقائي.",
+                  )
+                : undefined
+            }
+            single
+            value={
+              controls.hero.entityType && controls.hero.entityId
+                ? [{ entityType: controls.hero.entityType, entityId: controls.hero.entityId }]
+                : []
+            }
+            targets={targets}
+            actor={lease.session}
+            isCurrent={isCurrent}
+            onDenied={onDenied}
+            disabled={busy}
+            onChange={(items, target) => {
+              const item = items[0];
+              updateControlsDraft({
+                ...controls,
+                hero: item
+                  ? { entityType: item.entityType, entityId: item.entityId }
+                  : { entityType: null, entityId: null },
+              });
+              if (target) setTargets((current) => ({ ...current, [targetKey(target)]: target }));
+            }}
+          />
+          {Boolean(controls.hero.entityType) !== Boolean(controls.hero.entityId) && (
+            <button
+              type="button"
+              onClick={() =>
+                updateControlsDraft({ ...controls, hero: { entityType: null, entityId: null } })
+              }
+            >
+              {copy("Use automatic selection", "استخدام الاختيار التلقائي")}
+            </button>
+          )}
+        </section>
+
+        <AdminProductFields
+          controls={controls}
+          onChange={updateControlsDraft}
+          issue={reviewedGlobal ? validateProductControlsDraft(controls) : null}
+        />
+
+        <ActionButton
+          type="submit"
+          disabled={busy || reason.trim().length < 3}
+          pending={pendingAction === "global"}
+        >
+          {pendingAction === "global"
+            ? copy("Saving…", "جارٍ الحفظ…")
+            : copy("Save global controls", "حفظ الإعدادات العامة")}
+        </ActionButton>
+      </form>
     </fieldset>
   );
 }

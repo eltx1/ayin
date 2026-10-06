@@ -413,3 +413,16 @@ jobs:
             test-results/**/series-*.png
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Preserve Product Controls original mobile visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-controls-mobile-visuals
+          path: |
+            test-results/**/taxonomy-en-mobile.png
+            test-results/**/taxonomy-ar-mobile.png
+            test-results/**/regions-en-mobile.png
+            test-results/**/regions-ar-mobile.png
+          if-no-files-found: error
+          retention-days: 7
