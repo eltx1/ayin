@@ -1,4 +1,13 @@
-import { Controller, Get, Headers, HttpException, Inject, Query, Req } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Header,
+  Headers,
+  HttpException,
+  Inject,
+  Query,
+  Req,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
@@ -33,6 +42,7 @@ export class SearchController {
   ) {}
 
   @Get()
+  @Header("Cache-Control", "private, no-store")
   async search(
     @Req() request: { ip?: string },
     @Query() query: unknown,
@@ -52,6 +62,7 @@ export class SearchController {
   }
 
   @Get("kids")
+  @Header("Cache-Control", "private, no-store")
   async kidsSearch(
     @Req() request: { ip?: string },
     @Query() query: unknown,
@@ -72,6 +83,7 @@ export class SearchController {
   }
 
   @Get("kids/suggestions")
+  @Header("Cache-Control", "private, no-store")
   async kidsSuggestions(
     @Req() request: { ip?: string },
     @Query() query: unknown,
@@ -92,6 +104,7 @@ export class SearchController {
   }
 
   @Get("lens")
+  @Header("Cache-Control", "private, no-store")
   async lens(
     @Req() request: { ip?: string },
     @Query() query: unknown,
@@ -111,6 +124,7 @@ export class SearchController {
   }
 
   @Get("suggestions")
+  @Header("Cache-Control", "private, no-store")
   async suggestions(
     @Req() request: { ip?: string },
     @Query() query: unknown,

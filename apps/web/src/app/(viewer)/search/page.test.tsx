@@ -2,6 +2,12 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/lib/trusted-region", () => ({
+  trustedApiRegionHeaders: async () => ({
+    "x-ayin-edge-country": "JP",
+    "x-ayin-edge-token": "fixture-only",
+  }),
+}));
 vi.mock("@/lib/i18n/server", () => ({ getRequestLocale: async () => "ar" }));
 vi.mock("@/lib/channel", () => ({
   mediaAssetUrl: (key: string | null) => (key ? `https://media.example.test/${key}` : null),
@@ -46,6 +52,17 @@ describe("search public result presentation", () => {
     expect(html).toContain('src="https://media.example.test/posters/original.jpg"');
     expect(html).toContain('href="/ar/movies/original"');
     expect(html).toContain("Original authored title");
+    expect(fetch).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        headers: {
+          "x-ayin-locale": "ar",
+          "x-ayin-edge-country": "JP",
+          "x-ayin-edge-token": "fixture-only",
+        },
+        cache: "no-store",
+      }),
+    );
     expect(html).toContain("فيلم");
     expect(html).not.toContain(">Movie<");
   });

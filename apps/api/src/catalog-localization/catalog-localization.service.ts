@@ -73,20 +73,44 @@ export class CatalogLocalizationService {
   ) {}
 
   async localizeMovies<T extends LocalizableMovie>(items: T[], requestedLocale?: string | null) {
-    if (!items.length) return items;
-    const rows = await this.database.client.movieLocalization.findMany({
-      where: { movieId: { in: items.map((item) => item.id) } },
-      orderBy: [{ movieId: "asc" }, { locale: "asc" }],
-    });
-    const byMovie = new Map<string, typeof rows>();
-    for (const row of rows) {
-      const current = byMovie.get(row.movieId) ?? [];
-      current.push(row);
-      byMovie.set(row.movieId, current);
-    }
+    return this.localizeCatalogCards("MOVIE", items, requestedLocale);
+  }
+
+  async localizeCatalogCards<T extends LocalizableMovie>(
+    kind: "MOVIE" | "SERIES",
+    items: T[],
+    requestedLocale?: string | null,
+  ) {
+    if (!items.length) return [];
+    const ids = items.map((item) => item.id);
+    const rows =
+      kind === "MOVIE"
+        ? await this.database.client.movieLocalization.findMany({
+            where: { movieId: { in: ids } },
+            orderBy: [{ movieId: "asc" }, { locale: "asc" }],
+          })
+        : await this.database.client.seriesLocalization.findMany({
+            where: { seriesId: { in: ids } },
+            orderBy: [{ seriesId: "asc" }, { locale: "asc" }],
+          });
+    const byId = groupBy<(typeof rows)[number], string>(rows, (row) =>
+      "movieId" in row ? row.movieId : row.seriesId,
+    );
+    const locale = normalizeCatalogLocale(requestedLocale);
+    const assets = await this.readyAssets(
+      rows
+        .filter((row) =>
+          [locale, CATALOG_GLOBAL_FALLBACK_LOCALE].includes(normalizeCatalogLocale(row.locale)),
+        )
+        .flatMap((row) =>
+          [row.posterMediaAssetId, row.backdropMediaAssetId].filter((id): id is string =>
+            Boolean(id),
+          ),
+        ),
+    );
     return Promise.all(
       items.map((item) =>
-        this.localizeMovieFromRows(item, byMovie.get(item.id) ?? [], requestedLocale),
+        this.localizeMovieFromRows(item, byId.get(item.id) ?? [], locale, assets),
       ),
     );
   }
@@ -412,6 +436,7 @@ export class CatalogLocalizationService {
       }
     >,
     requestedLocale?: string | null,
+    preparedAssets?: Map<string, ReadyAsset>,
   ) {
     const resolved = resolveCatalogCopy(
       requestedLocale,
@@ -424,14 +449,16 @@ export class CatalogLocalizationService {
     );
     const requestedRow = findLocale(rows, resolved.locale);
     const englishRow = findLocale(rows, CATALOG_GLOBAL_FALLBACK_LOCALE);
-    const readyAssets = await this.readyAssets(
-      [
-        requestedRow?.posterMediaAssetId,
-        requestedRow?.backdropMediaAssetId,
-        englishRow?.posterMediaAssetId,
-        englishRow?.backdropMediaAssetId,
-      ].filter((value): value is string => Boolean(value)),
-    );
+    const readyAssets =
+      preparedAssets ??
+      (await this.readyAssets(
+        [
+          requestedRow?.posterMediaAssetId,
+          requestedRow?.backdropMediaAssetId,
+          englishRow?.posterMediaAssetId,
+          englishRow?.backdropMediaAssetId,
+        ].filter((value): value is string => Boolean(value)),
+      ));
     return {
       ...item,
       title: resolved.title ?? item.title,

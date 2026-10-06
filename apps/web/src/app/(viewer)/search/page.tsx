@@ -12,6 +12,7 @@ import { getRequestLocale } from "@/lib/i18n/server";
 import { localizePath } from "@/lib/i18n/routing";
 import { translate } from "@/lib/i18n/translator";
 import { normalizeSearchTerm, type SearchResponse } from "@/lib/search";
+import { trustedApiRegionHeaders } from "@/lib/trusted-region";
 import { metadataRobots } from "@/lib/seo";
 
 import styles from "./search-page.module.css";
@@ -43,7 +44,7 @@ export default async function SearchPage({
     try {
       const response = await fetch(endpoint, {
         cache: "no-store",
-        headers: { "x-ayin-locale": locale },
+        headers: { ...(await trustedApiRegionHeaders()), "x-ayin-locale": locale },
       });
       if (response.ok) results = (await response.json()) as SearchResponse;
       else error = t("search.unavailableDescription");

@@ -15,6 +15,9 @@ type Fixture = {
   snapshots?: unknown[];
   series?: unknown[];
   movies?: unknown[];
+  locale?: string;
+  localizeMovie?: (item: never, locale: string) => unknown;
+  localizeSeries?: (item: never, locale: string) => unknown;
 };
 
 function serviceWith(fixture: Fixture = {}) {
@@ -31,18 +34,27 @@ function serviceWith(fixture: Fixture = {}) {
     trendingScoreSnapshot: { findMany: vi.fn(async () => fixture.snapshots ?? []) },
   };
   const postgres = {
-    searchCandidates: vi.fn(async () => fixture.candidates ?? []),
+    searchCandidates: vi.fn<
+      (query: string, limit: number, context: unknown) => Promise<SearchCandidate[]>
+    >(async () => fixture.candidates ?? []),
     suggestCandidates: vi.fn(async () => fixture.suggestions ?? fixture.candidates ?? []),
   };
   const seriesCatalog = {
-    getPublicBySlug: vi.fn(async (slug: string) =>
-      (fixture.series ?? []).find((item) => (item as { slug?: string }).slug === slug),
+    getPublicSearchCards: vi.fn(async (ids: string[]) =>
+      (fixture.series ?? []).filter((item) => ids.includes((item as { id: string }).id)),
     ),
   };
   const movieCatalog = {
-    getPublicBySlug: vi.fn(
-      async (slug: string) =>
-        (fixture.movies ?? []).find((item) => (item as { slug?: string }).slug === slug) ?? null,
+    getPublicSearchCards: vi.fn(async (ids: string[]) =>
+      (fixture.movies ?? []).filter((item) => ids.includes((item as { id: string }).id)),
+    ),
+  };
+  const localization = {
+    localizeMovies: vi.fn(async (items: never[], locale: string) =>
+      items.map((item) => fixture.localizeMovie?.(item, locale) ?? item),
+    ),
+    localizeCatalogCards: vi.fn(async (_kind: string, items: never[], locale: string) =>
+      items.map((item) => fixture.localizeSeries?.(item, locale) ?? item),
     ),
   };
   const videoPolicy = {
@@ -55,9 +67,14 @@ function serviceWith(fixture: Fixture = {}) {
       seriesCatalog as never,
       movieCatalog as never,
       videoPolicy as never,
+      localization as never,
+      { currentUiLocale: () => fixture.locale } as never,
     ),
     videoFindMany,
     postgres,
+    seriesCatalog,
+    movieCatalog,
+    localization,
   };
 }
 
@@ -222,9 +239,104 @@ describe("SearchService", () => {
       ],
     });
     const result = await service.suggest("nov", 1);
-    expect(postgres.suggestCandidates).toHaveBeenCalledWith("nov", 1);
+    expect(postgres.suggestCandidates).toHaveBeenCalledWith("nov", 1, {});
     expect(result.suggestions).toEqual([
       { id: "channel-1", type: "CHANNEL", label: "Nova", href: "/c/nova" },
     ]);
+  });
+  it("localizes catalog copy and artwork consistently with the current request locale", async () => {
+    const movie = {
+      id: "movie",
+      slug: "film",
+      title: "Original",
+      releaseYear: 2026,
+      genres: [],
+      poster: null,
+      backdrop: null,
+      primaryVideo: null,
+    };
+    const fixture = serviceWith({
+      candidates: [{ id: "movie", type: "MOVIE", slug: "film", score: 100 }],
+      movies: [movie],
+      locale: "ar",
+      localizeMovie: (item, locale) => ({
+        ...(item as typeof movie),
+        title: locale === "ar" ? "الرحلة" : "Original",
+        poster: { objectKey: "localized-poster.jpg" },
+      }),
+    });
+    const result = await fixture.service.search("الرحلة", undefined, 12, { countryCode: "JP" });
+    expect(result.items[0]).toMatchObject({
+      title: "الرحلة",
+      artworkObjectKey: "localized-poster.jpg",
+      href: "/movies/film",
+    });
+    expect(fixture.localization.localizeMovies).toHaveBeenCalledWith([movie], "ar");
+    expect(fixture.postgres.searchCandidates).toHaveBeenCalledWith("الرحلة", expect.any(Number), {
+      countryCode: "JP",
+    });
+    expect((await fixture.service.suggest("الرحلة")).suggestions[0]?.label).toBe("الرحلة");
+  });
+  it("paginates past 24 catalog candidates using fixed windows and batched hydration", async () => {
+    const candidates = Array.from({ length: 110 }, (_, index) => ({
+      id: `movie-${index}`,
+      type: "MOVIE" as const,
+      slug: `movie-${index}`,
+      score: 200 - index,
+    }));
+    const fixture = serviceWith({
+      candidates,
+      movies: candidates.map((candidate) => ({
+        id: candidate.id,
+        slug: candidate.slug,
+        title: candidate.slug,
+        releaseYear: 2026,
+        genres: [],
+        poster: null,
+        backdrop: null,
+        primaryVideo: null,
+      })),
+    });
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await fixture.service.search("journey", cursor, 24);
+      seen.push(...page.items.map((item) => item.id));
+      cursor = page.nextCursor ?? undefined;
+      expect(seen.length).toBeLessThanOrEqual(110);
+    } while (cursor);
+    expect(seen).toEqual(candidates.map((item) => item.id));
+    expect(fixture.movieCatalog.getPublicSearchCards).toHaveBeenCalledTimes(5);
+    expect(fixture.localization.localizeMovies).toHaveBeenCalledTimes(5);
+    for (const call of fixture.postgres.searchCandidates.mock.calls) expect(call[1]).toBe(64);
+  });
+  it("omits a newly unavailable series but reports an operational failure instead of false empty results", async () => {
+    const fixture = serviceWith({
+      candidates: [{ id: "series", type: "SERIES", slug: "show", score: 100 }],
+    });
+    fixture.seriesCatalog.getPublicSearchCards.mockResolvedValueOnce([]);
+    expect((await fixture.service.search("show")).items).toEqual([]);
+    fixture.seriesCatalog.getPublicSearchCards.mockRejectedValueOnce(new Error("database down"));
+    await expect(fixture.service.search("show")).rejects.toThrow("database down");
+  });
+  it("does not advertise a next cursor outside the supported offset range", async () => {
+    const candidates = Array.from({ length: 550 }, (_, index) => ({
+      id: `creator-${index}`,
+      type: "CHANNEL" as const,
+      slug: `creator-${index}`,
+      score: 600 - index,
+    }));
+    const fixture = serviceWith({
+      candidates,
+      channel: candidates.map((candidate) => ({
+        id: candidate.id,
+        handle: candidate.slug,
+        name: candidate.slug,
+      })),
+    });
+    const cursor = Buffer.from(JSON.stringify({ offset: 480 })).toString("base64url");
+    const page = await fixture.service.search("creator", cursor, 24);
+    expect(page.items).toHaveLength(24);
+    expect(page.nextCursor).toBeNull();
   });
 });

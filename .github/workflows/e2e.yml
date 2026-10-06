@@ -128,6 +128,18 @@ jobs:
             test-results/**/auth-recovery.acceptance-*/error-context.md
           if-no-files-found: ignore
           retention-days: 7
+      - name: Preserve Catalog discovery visual evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-discovery-visuals
+          path: |
+            test-results/**/catalog-*.png
+            test-results/**/catalog-*.json
+            test-results/**/global-search-*.png
+            test-results/**/catalog-*.acceptance-*/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload PWA lifecycle failure report
         if: failure()
         uses: actions/upload-artifact@v4

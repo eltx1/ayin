@@ -2,6 +2,8 @@ import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
+import { catalogSearchEligibilitySql } from "./catalog-search-policy.js";
 import {
   PostgresSearchService,
   escapeLikePrefix,
@@ -46,16 +48,18 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
   override async searchCandidates(
     query: string,
     requestedPerType = 32,
+    context: VideoPolicyContext = {},
   ): Promise<SearchCandidate[]> {
     const selection = resolveSearchLanguage(query, this.languageContext.currentUiLocale());
     const [base, languageAware] = await Promise.all([
-      super.searchCandidates(query, requestedPerType),
+      super.searchCandidates(query, requestedPerType, context),
       this.languageCandidates(
         query,
         selection.matchQuery,
         selection.preferredLanguage,
         selection.uiLanguage,
         requestedPerType,
+        context,
       ),
     ]);
     const merged = mergeCandidates(base, languageAware);
@@ -124,6 +128,7 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
     preferredLanguage: "ar" | "en" | "und",
     uiLanguage: "ar" | "en" | "und",
     requestedPerType: number,
+    context: VideoPolicyContext,
   ): Promise<SearchCandidate[]> {
     const rawPrefix = escapeLikePrefix(query);
     const matchPrefix = escapeLikePrefix(matchQuery);
@@ -304,6 +309,7 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
           )::double precision
         FROM "Series" s
         WHERE s."status" = 'PUBLISHED'
+          AND ${catalogSearchEligibilitySql("SERIES", Prisma.sql`s.id`, context)}
           AND (
             lower(s."title") = lower(${query})
             OR lower(s."title") LIKE ${rawPrefix} ESCAPE '\\'
@@ -353,7 +359,7 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
         FROM "SeriesLocalization" sl
         JOIN "Series" s ON s."id" = sl."seriesId"
         WHERE s."status" = 'PUBLISHED'
-          AND sl."title" IS NOT NULL
+          AND ${catalogSearchEligibilitySql("SERIES", Prisma.sql`s.id`, context)}
           AND (
             lower(sl."title") = lower(${query})
             OR lower(sl."title") LIKE ${rawPrefix} ESCAPE '\\'
@@ -398,6 +404,7 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
           )::double precision
         FROM "Movie" m
         WHERE m."status" = 'PUBLISHED'
+          AND ${catalogSearchEligibilitySql("MOVIE", Prisma.sql`m.id`, context)}
           AND m."primaryVideoId" IS NOT NULL
           AND (
             lower(m."title") = lower(${query})
@@ -448,8 +455,8 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
         FROM "MovieLocalization" ml
         JOIN "Movie" m ON m."id" = ml."movieId"
         WHERE m."status" = 'PUBLISHED'
+          AND ${catalogSearchEligibilitySql("MOVIE", Prisma.sql`m.id`, context)}
           AND m."primaryVideoId" IS NOT NULL
-          AND ml."title" IS NOT NULL
           AND (
             lower(ml."title") = lower(${query})
             OR lower(ml."title") LIKE ${rawPrefix} ESCAPE '\\'
@@ -463,9 +470,10 @@ export class LanguageAwarePostgresSearchService extends PostgresSearchService {
               ) @@ plainto_tsquery('simple', ${matchQuery}))
           )
       )
-      SELECT "id", "type", "slug", "score"
+      SELECT "id", "type", "slug", MAX("score")::double precision AS "score"
       FROM candidates
       WHERE "score" > 0
+      GROUP BY "id", "type", "slug"
       ORDER BY "score" DESC, "type" ASC, "id" ASC
       LIMIT ${limit}
     `);
