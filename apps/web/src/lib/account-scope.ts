@@ -13,6 +13,7 @@ export class AccountScopeError extends Error {
 }
 export interface AccountScopeOptions {
   expectedAccountId?: string | undefined;
+  expectedProfileId?: string | undefined;
   signal?: AbortSignal | undefined;
   allowCurrentLogout?: boolean | undefined;
   maxResponseBytes?: number | undefined;
@@ -84,7 +85,11 @@ async function json(response: Response, signal?: AbortSignal, maxBytes?: number)
     ? readBoundedAccountJson(response, signal, maxBytes)
     : response.json();
 }
-async function actor(signal: AbortSignal, expected?: string): Promise<string> {
+async function actor(
+  signal: AbortSignal,
+  expected?: string,
+  expectedProfileId?: string,
+): Promise<string> {
   signal.throwIfAborted();
   const value = await json(
     await fetch(apiBaseUrl + "/auth/me", {
@@ -99,19 +104,42 @@ async function actor(signal: AbortSignal, expected?: string): Promise<string> {
   if (typeof id !== "string" || !uuid.test(id)) throw new AccountScopeError(0, "INVALID_RESPONSE");
   if (expected && id.toLowerCase() !== expected.toLowerCase())
     throw new AccountScopeError(409, "ACCOUNT_CHANGED");
+  if (expectedProfileId) {
+    const profileId = object(object(value).profile).id;
+    if (typeof profileId !== "string" || !uuid.test(profileId))
+      throw new AccountScopeError(0, "INVALID_RESPONSE");
+    if (profileId.toLowerCase() !== expectedProfileId.toLowerCase())
+      throw new AccountScopeError(409, "PROFILE_CHANGED");
+  }
   return id.toLowerCase();
 }
 export async function requestAccountScope<T>(
   path: string,
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   decode: (value: unknown) => T,
   options: AccountScopeOptions = {},
   body?: Record<string, unknown>,
 ): Promise<AccountScopeResult<T>> {
+  // Add only the existing Clips social routes/methods to this transport. The
+  // server still authenticates the cookie and owns all authorization decisions.
+  const social = path.match(
+    /^\/social\/(videos|channels)\/([0-9a-f-]{36})(?:\/(reaction|subscription))?(?:\?profileId=([0-9a-f-]{36}))?$/i,
+  );
+  const socialPath = Boolean(
+    social &&
+    uuid.test(social[2]!) &&
+    (social[4] === undefined || uuid.test(social[4])) &&
+    ((method === "GET" && !social[3]) ||
+      ((method === "PUT" || method === "DELETE") &&
+        social[3] === (social[1] === "videos" ? "reaction" : "subscription") &&
+        (method !== "PUT" || !social[4]))),
+  );
   if (
-    !/^\/(auth|privacy|creator)\/[a-zA-Z0-9/_?=&%.-]+$/.test(path) ||
+    (!socialPath &&
+      (method === "PUT" || !/^\/(auth|privacy|creator)\/[a-zA-Z0-9/_?=&%.-]+$/.test(path))) ||
     (method === "GET" && body !== undefined) ||
-    (options.expectedAccountId !== undefined && !uuid.test(options.expectedAccountId))
+    (options.expectedAccountId !== undefined && !uuid.test(options.expectedAccountId)) ||
+    (options.expectedProfileId !== undefined && !uuid.test(options.expectedProfileId))
   )
     throw new AccountScopeError(400, "INVALID_REQUEST");
   if (
@@ -139,7 +167,11 @@ export async function requestAccountScope<T>(
   // and explicit /auth/me requests. A failed check is not a write-ACK signal.
   let verifyingIdentity = true;
   try {
-    const accountId = await actor(controller.signal, options.expectedAccountId);
+    const accountId = await actor(
+      controller.signal,
+      options.expectedAccountId,
+      options.expectedProfileId,
+    );
     controller.signal.throwIfAborted();
     started = method !== "GET";
     verifyingIdentity = method === "GET" && path === "/auth/me";
@@ -168,7 +200,7 @@ export async function requestAccountScope<T>(
         (mfaLogout && object(value).disabled === true));
     if (!intentionalLogout) {
       verifyingIdentity = true;
-      await actor(controller.signal, accountId);
+      await actor(controller.signal, accountId, options.expectedProfileId);
     }
     controller.signal.throwIfAborted();
     return { accountId, value };

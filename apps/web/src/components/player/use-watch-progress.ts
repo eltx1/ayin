@@ -51,6 +51,7 @@ export function useWatchProgress({
   analytics,
   onPosition,
   onIdentityInvalid,
+  canPersist,
 }: {
   videoId: string;
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -63,9 +64,16 @@ export function useWatchProgress({
   analytics: AyinPlayerAnalytics;
   onPosition: (positionMs: number) => void;
   onIdentityInvalid?: (() => void) | undefined;
+  canPersist?: (() => boolean) | undefined;
 }) {
   const current = useRef<ProgressRun | null>(null);
-  const playback = useRef({ videoId, owner: "", touched: false, initialPositionMs });
+  const playback = useRef({
+    videoId,
+    owner: "",
+    touched: false,
+    initialPositionMs,
+    nativeSeekTargetMs: null as number | null,
+  });
   const accountId = identity?.accountId;
   const profileId = identity?.profileId;
   const revision = identity?.revision;
@@ -93,6 +101,7 @@ export function useWatchProgress({
     );
     try {
       if (safePositionMs > 0 || run.resetPosition) {
+        playback.current.nativeSeekTargetMs = safePositionMs;
         video.currentTime = safePositionMs / 1000;
         onPosition(safePositionMs);
       }
@@ -100,14 +109,33 @@ export function useWatchProgress({
       playback.current.touched = true;
       run.resume = null;
     } catch {
+      playback.current.nativeSeekTargetMs = null;
       // Some media engines cannot seek until canplay; that event may retry.
     }
   }, [adActiveRef, durationMs, onPosition, videoRef]);
 
   const markUserSeek = useCallback(() => {
+    playback.current.nativeSeekTargetMs = null;
     playback.current.touched = true;
     if (current.current) current.current.resume = null;
   }, []);
+
+  // Native controls also emit seeking for our own resume/reset assignments.
+  // Keep those events separate from deliberate native input, just as Watch's
+  // custom controls already call markUserSeek only for an explicit seek.
+  const markNativeSeek = useCallback(() => {
+    const target = playback.current.nativeSeekTargetMs;
+    const position = (videoRef.current?.currentTime ?? 0) * 1000;
+    if (target !== null && Math.abs(position - target) < 250) return false;
+    markUserSeek();
+    return true;
+  }, [markUserSeek, videoRef]);
+  const finishNativeSeek = useCallback(() => {
+    // A prior seek's queued seeked event can arrive after a newer internal
+    // reset has started. Keep that newer target until its seek actually ends.
+    if (videoRef.current?.seeking) return;
+    playback.current.nativeSeekTargetMs = null;
+  }, [videoRef]);
 
   const invalidate = useCallback(
     (run: ProgressRun, error: unknown) => {
@@ -133,6 +161,7 @@ export function useWatchProgress({
         !run?.scope ||
         run.controller.signal.aborted ||
         !run.isCurrent() ||
+        (canPersist && !canPersist()) ||
         !video ||
         adActiveRef.current
       )
@@ -211,7 +240,17 @@ export function useWatchProgress({
           await checkpoint(true, pending.keepalive);
       }
     },
-    [adActiveRef, analytics, durationMs, enabled, intervalMs, invalidate, videoId, videoRef],
+    [
+      adActiveRef,
+      analytics,
+      canPersist,
+      durationMs,
+      enabled,
+      intervalMs,
+      invalidate,
+      videoId,
+      videoRef,
+    ],
   );
 
   useLayoutEffect(() => {
@@ -222,7 +261,13 @@ export function useWatchProgress({
     const ownerChanged = Boolean(owner && prior.owner && owner !== prior.owner);
     const initialChanged = prior.initialPositionMs !== initialPositionMs;
     if (videoChanged || ownerChanged || initialChanged) {
-      playback.current = { videoId, owner, touched: false, initialPositionMs };
+      playback.current = {
+        videoId,
+        owner,
+        touched: false,
+        initialPositionMs,
+        nativeSeekTargetMs: null,
+      };
     } else if (owner) {
       // Preserve deliberate seek/current playback across same-account focus
       // revalidation. A new verified account/profile starts a separate timeline.
@@ -255,9 +300,11 @@ export function useWatchProgress({
       const video = videoRef.current;
       if (video) {
         try {
+          playback.current.nativeSeekTargetMs = 0;
           video.currentTime = 0;
           run.resetPosition = false;
         } catch {
+          playback.current.nativeSeekTargetMs = null;
           /* Readiness can lag behind identity. */
         }
       }
@@ -320,5 +367,5 @@ export function useWatchProgress({
     videoRef,
   ]);
 
-  return { applyResume, markUserSeek, persist };
+  return { applyResume, markUserSeek, markNativeSeek, finishNativeSeek, persist };
 }

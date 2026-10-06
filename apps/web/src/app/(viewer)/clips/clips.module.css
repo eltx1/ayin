@@ -38,6 +38,8 @@
 .clip {
   background: #000;
   block-size: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) fit-content(45%);
   min-block-size: 100%;
   outline-offset: -3px;
   overflow: hidden;
@@ -54,7 +56,7 @@
   background: #000;
   block-size: 100%;
   inline-size: 100%;
-  min-block-size: 100%;
+  min-block-size: 0;
   object-fit: contain;
 }
 
@@ -68,17 +70,15 @@
 }
 
 .overlay {
-  align-items: end;
-  background: linear-gradient(transparent 0%, rgb(0 0 0 / 18%) 28%, rgb(0 0 0 / 90%) 100%);
+  align-items: start;
+  background: #08070c;
   color: white;
   display: flex;
   gap: var(--space-4);
-  inset-block-end: 0;
-  inset-inline: 0;
   justify-content: space-between;
-  padding: 5rem var(--space-4) max(var(--space-4), var(--ayin-safe-bottom));
-  pointer-events: none;
-  position: absolute;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
 }
 
 .copy {
@@ -96,6 +96,7 @@
   color: var(--text-primary);
   font-size: var(--text-sm);
   font-weight: 700;
+  overflow-wrap: anywhere;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
@@ -122,6 +123,10 @@
   justify-items: end;
   max-inline-size: min(19rem, 55%);
   pointer-events: auto;
+}
+
+.actionWorkspace[hidden] {
+  display: none;
 }
 
 .actions {

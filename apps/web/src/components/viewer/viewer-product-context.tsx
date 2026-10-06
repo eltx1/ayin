@@ -69,13 +69,15 @@ interface PublishedIdentity {
 function concealViewerIdentity() {
   // Preserve the AccountWorkspace coordinator's native conceal-before-clear
   // boundary, including an already-open dialog in the browser's top layer.
-  document.querySelectorAll<HTMLElement>("[data-private-viewer-identity]").forEach((node) => {
-    node.hidden = true;
-    node.querySelectorAll<HTMLDialogElement>("dialog").forEach((dialog) => {
-      dialog.hidden = true;
-      dialog.close();
+  document
+    .querySelectorAll<HTMLElement>("[data-private-viewer-identity], [data-private-viewer-state]")
+    .forEach((node) => {
+      node.hidden = true;
+      node.querySelectorAll<HTMLDialogElement>("dialog").forEach((dialog) => {
+        dialog.hidden = true;
+        dialog.close();
+      });
     });
-  });
 }
 
 const ViewerProductContext = createContext<ViewerProductContextValue | null>(null);

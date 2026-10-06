@@ -1,0 +1,42 @@
+.shell {
+  text-align: start;
+}
+
+.shell .brand {
+  left: auto;
+  inset-inline-start: max(1.25rem, calc(var(--ayin-safe-left) + 1rem));
+}
+
+.shell:dir(rtl) .brand {
+  inset-inline-start: max(1.25rem, calc(var(--ayin-safe-right) + 1rem));
+}
+
+.card h1 {
+  overflow-wrap: anywhere;
+}
+
+.card:dir(rtl) h1 {
+  letter-spacing: normal;
+  line-height: 1.25;
+}
+
+.card:dir(rtl) .eyebrow {
+  letter-spacing: normal;
+}
+
+.primary {
+  height: auto;
+  line-height: 1.5;
+  padding-block: 0.7rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.feedback {
+  margin-block-start: 1rem;
+}
