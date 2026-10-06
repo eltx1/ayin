@@ -183,54 +183,80 @@ export async function mountGooglePublisherTagSlot(input: {
   responsive: Array<{ minWidth: number; sizes: PageAdSize[] }>;
   consent: AdvertisingConsentSnapshot;
   onRender: (filled: boolean) => void;
+  signal?: AbortSignal;
 }) {
+  const noop = () => {};
+  if (input.signal?.aborted) return noop;
   await loadGooglePublisherTag(input.consent);
+  if (input.signal?.aborted) return noop;
   const googleTag = api();
   const privacySettings = gptPrivacySettingsForConsent(
     input.consent,
     googleTag.enums?.TagForAgeTreatment,
   );
   let slot: GptSlot | null = null;
+  let disposed = false;
+  let cancelPending: (() => void) | null = null;
   const removers: Array<() => void> = [];
+  const cleanup = () => {
+    if (disposed) return;
+    disposed = true;
+    cancelPending?.();
+    input.signal?.removeEventListener("abort", cleanup);
+    for (const remove of removers.splice(0)) remove();
+    if (slot) googleTag.destroySlots([slot]);
+    slot = null;
+  };
+  input.signal?.addEventListener("abort", cleanup, { once: true });
 
   await new Promise<void>((resolve, reject) => {
+    cancelPending = resolve;
     googleTag.cmd.push(() => {
-      const pubads = googleTag.pubads();
-      pubads.setPrivacySettings(privacySettings);
-      slot = googleTag.defineSlot(input.adUnitPath, input.sizes, input.divId);
-      if (!slot) {
-        reject(new GptRuntimeError("GPT_SLOT_DEFINITION_FAILED"));
+      if (disposed || input.signal?.aborted) {
+        resolve();
         return;
       }
-
-      if (input.responsive.length > 0) {
-        const builder = googleTag.sizeMapping();
-        for (const entry of [...input.responsive].sort((a, b) => b.minWidth - a.minWidth)) {
-          builder.addSize([entry.minWidth, 0], entry.sizes);
+      try {
+        const pubads = googleTag.pubads();
+        pubads.setPrivacySettings(privacySettings);
+        slot = googleTag.defineSlot(input.adUnitPath, input.sizes, input.divId);
+        if (!slot) {
+          throw new GptRuntimeError("GPT_SLOT_DEFINITION_FAILED");
         }
-        slot.defineSizeMapping(builder.build());
-      }
 
-      const renderListener = (event: GptSlotEvent | GptSlotRenderEvent) => {
-        if (event.slot === slot && "isEmpty" in event) input.onRender(!event.isEmpty);
-      };
-      pubads.addEventListener("slotRenderEnded", renderListener);
-      removers.push(() => pubads.removeEventListener("slotRenderEnded", renderListener));
+        if (input.responsive.length > 0) {
+          const builder = googleTag.sizeMapping();
+          for (const entry of [...input.responsive].sort((a, b) => b.minWidth - a.minWidth)) {
+            builder.addSize([entry.minWidth, 0], entry.sizes);
+          }
+          slot.defineSizeMapping(builder.build());
+        }
 
-      slot.setConfig({ collapseDiv: "BEFORE_FETCH" }).addService(pubads);
-      if (!servicesEnabled) {
-        googleTag.enableServices();
-        servicesEnabled = true;
+        const renderListener = (event: GptSlotEvent | GptSlotRenderEvent) => {
+          if (!disposed && event.slot === slot && "isEmpty" in event)
+            input.onRender(!event.isEmpty);
+        };
+        pubads.addEventListener("slotRenderEnded", renderListener);
+        removers.push(() => pubads.removeEventListener("slotRenderEnded", renderListener));
+
+        slot.setConfig({ collapseDiv: "BEFORE_FETCH" }).addService(pubads);
+        if (!servicesEnabled) {
+          googleTag.enableServices();
+          servicesEnabled = true;
+        }
+        googleTag.display(input.divId);
+        resolve();
+      } catch (error) {
+        reject(error);
       }
-      googleTag.display(input.divId);
-      resolve();
     });
+  }).catch((error: unknown) => {
+    cleanup();
+    throw error;
   });
+  cancelPending = null;
 
-  return () => {
-    for (const remove of removers) remove();
-    if (slot) api().destroySlots([slot]);
-  };
+  return cleanup;
 }
 
 function findGptScript() {

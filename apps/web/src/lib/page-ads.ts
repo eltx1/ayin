@@ -35,6 +35,16 @@ export function detectPageAdDevice(): PageAdDevice {
   return window.innerWidth < 768 ? "MOBILE" : "DESKTOP";
 }
 
+export function subscribePageAdDevice(listener: () => void) {
+  const tvQuery = window.matchMedia("(pointer: coarse) and (min-width: 1200px)");
+  window.addEventListener("resize", listener);
+  tvQuery.addEventListener("change", listener);
+  return () => {
+    window.removeEventListener("resize", listener);
+    tvQuery.removeEventListener("change", listener);
+  };
+}
+
 export async function fetchPageAdDecision(
   key: string,
   route: string,
