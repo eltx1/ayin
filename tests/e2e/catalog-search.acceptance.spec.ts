@@ -32,6 +32,7 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
       const query = ar ? "رحلة" : "Journey";
       const movieIds = new Set<string>();
       const allIds = new Set<string>();
+      const pages: { hrefs: string[]; nextCursor: string | null }[] = [];
       let cursor: string | undefined;
       let lastCursor: string | undefined;
       do {
@@ -47,6 +48,10 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
         expect(response.ok()).toBe(true);
         expect(response.headers()["cache-control"]).toBe("private, no-store");
         const result = await response.json();
+        pages.push({
+          hrefs: result.items.map((item: { href: string }) => `${prefix}${item.href}`),
+          nextCursor: result.nextCursor,
+        });
         for (const item of result.items) {
           const key = `${item.type}:${item.id}`;
           expect(allIds.has(key)).toBe(false);
@@ -60,17 +65,50 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
         expect(allIds.size).toBeLessThanOrEqual(111);
       } while (cursor);
       expect(movieIds.size).toBe(110);
+      expect(allIds.size).toBe(111);
       expect(lastCursor).toBeTruthy();
       await page.setViewportSize(layout);
+      const suggestionsResponse = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          response.request().method() === "GET" &&
+          url.pathname === "/public/search/suggestions" &&
+          url.searchParams.get("q") === query
+        );
+      });
       await page.goto(`${prefix}/search?q=${encodeURIComponent(query)}&lang=${layout.locale}`);
       const main = page.locator("main:visible");
-      const cards = main.locator('a[href*="/movies/catalog-journey-"]');
+      const results = main.getByRole("region", {
+        name: ar ? `نتائج البحث عن ${query}` : `Search results for ${query}`,
+        exact: true,
+      });
+      // Autocomplete links are independent of the paginated result cards.
+      const cards = results.locator(
+        'a[href*="/movies/catalog-journey-"], a[href*="/series/catalog-series-"]',
+      );
+      const cardHrefs = () =>
+        cards.evaluateAll((links) => links.map((link) => link.getAttribute("href")));
       await expect(cards.first()).toContainText(ar ? "رحلة" : "Journey");
+      await expect.poll(cardHrefs).toEqual(pages[0].hrefs);
       await expect(main.getByRole("searchbox")).toHaveValue(query);
-      for (const href of await cards.evaluateAll((links) =>
-        links.map((link) => link.getAttribute("href")),
-      ))
-        expect(href).toMatch(new RegExp(`^${prefix}/movies/`));
+      const suggestionResponse = await suggestionsResponse;
+      expect(suggestionResponse.ok()).toBe(true);
+      const suggestionData = await suggestionResponse.json();
+      const suggestions = main.getByRole("list", {
+        name: ar ? "اقتراحات البحث" : "Search suggestions",
+        exact: true,
+      });
+      await expect(suggestions).toBeVisible();
+      await expect
+        .poll(() =>
+          suggestions
+            .getByRole("link")
+            .evaluateAll((links) => links.map((link) => link.getAttribute("href"))),
+        )
+        .toEqual(
+          suggestionData.suggestions.map((item: { href: string }) => `${prefix}${item.href}`),
+        );
+      await expect.poll(cardHrefs).toEqual(pages[0].hrefs);
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
@@ -79,19 +117,27 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
       await page.screenshot({
         path: testInfo.outputPath(`global-search-${layout.width}-${layout.locale}.png`),
       });
-      const previousFirst = await cards.first().getAttribute("href");
-      const more = main.locator('a[href*="cursor="]');
+      const firstPageUrl = page.url();
+      const more = results.getByRole("link", {
+        name: ar ? "مزيد من النتائج" : "More results",
+        exact: true,
+      });
+      const secondPageUrl = new URL((await more.getAttribute("href"))!, firstPageUrl).href;
+      expect(new URL(secondPageUrl).searchParams.get("cursor")).toBe(pages[0].nextCursor);
       await more.focus();
+      await expect(more).toBeFocused();
       await page.keyboard.press("Enter");
-      await expect(cards.first()).not.toHaveAttribute("href", previousFirst!);
-      await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe(query);
+      await expect(page).toHaveURL(secondPageUrl);
+      await expect.poll(cardHrefs).toEqual(pages[1].hrefs);
       await page.goBack();
-      await expect(cards.first()).toHaveAttribute("href", previousFirst!);
+      await expect(page).toHaveURL(firstPageUrl);
+      await expect.poll(cardHrefs).toEqual(pages[0].hrefs);
       await page.goForward();
-      await expect(cards.first()).not.toHaveAttribute("href", previousFirst!);
+      await expect(page).toHaveURL(secondPageUrl);
+      await expect.poll(cardHrefs).toEqual(pages[1].hrefs);
       await page.goto(`${prefix}/search?${new URLSearchParams({ q: query, cursor: lastCursor! })}`);
-      await expect(cards.first()).toBeVisible();
-      await expect(main.locator('a[href*="cursor="]')).toHaveCount(0);
+      await expect.poll(cardHrefs).toEqual(pages.at(-1)!.hrefs);
+      await expect(more).toHaveCount(0);
     }
   } finally {
     fixture("cleanup", data);
