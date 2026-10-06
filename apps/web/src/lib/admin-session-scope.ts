@@ -42,15 +42,20 @@ export interface AdminScopeLease {
   readonly epoch: number;
 }
 export type AdminScopeInvalidation = "review" | "invalidated";
-// This shelf is deliberately limited to the one migrated workspace. It is not a
-// general cross-route persistence framework and never serializes private drafts.
-export type AdminDraftKey = "direct-campaign";
+// Fixed, memory-only slots. No arbitrary key growth and no browser storage.
+export type AdminDraftKey = "direct-campaign" | "catalog-movie" | "catalog-series";
+export const adminDraftLimits: Record<AdminDraftKey, number> = {
+  "direct-campaign": 4 * 1024 * 1024,
+  "catalog-movie": 1024 * 1024,
+  "catalog-series": 1024 * 1024,
+};
 
 export function createAdminSessionScope() {
   let epoch = 0;
   let lease: AdminScopeLease | null = null;
   let previous: DirectAdminSession | null = null;
-  let draft: unknown = null;
+  const drafts = new Map<AdminDraftKey, string>();
+  const retentionFailures = new Set<AdminDraftKey>();
   const listeners = new Set<(reason: AdminScopeInvalidation) => void>();
   const notify = (reason: AdminScopeInvalidation) => {
     for (const listener of [...listeners]) {
@@ -69,7 +74,8 @@ export function createAdminSessionScope() {
     previous = null;
     // Consumers conceal native DOM first, before clearing their React state.
     notify("invalidated");
-    draft = null;
+    drafts.clear();
+    retentionFailures.clear();
   };
   return {
     beginRead() {
@@ -89,7 +95,8 @@ export function createAdminSessionScope() {
       }
       if (previous && !sameAdminSessionScope(previous, session)) {
         notify("invalidated");
-        draft = null;
+        drafts.clear();
+        retentionFailures.clear();
       }
       if (readEpoch !== epoch) return null;
       // Keep the identity used to bind the shelf independent of mutable API data.
@@ -110,13 +117,37 @@ export function createAdminSessionScope() {
         listeners.delete(listener);
       };
     },
-    getScopedDraft<T>(_key: AdminDraftKey, expected: AdminScopeLease): T | null {
-      return lease === expected ? (draft as T | null) : null;
+    getScopedDraftFailure(key: AdminDraftKey, expected: AdminScopeLease): boolean {
+      return lease === expected && retentionFailures.has(key);
     },
-    setScopedDraft<T>(_key: AdminDraftKey, value: T | null, expected: AdminScopeLease): boolean {
-      if (lease !== expected) return false;
-      draft = value;
-      return true;
+    getScopedDraft<T>(key: AdminDraftKey, expected: AdminScopeLease): T | null {
+      if (lease !== expected) return null;
+      const value = drafts.get(key);
+      return value === undefined ? null : (JSON.parse(value) as T);
+    },
+    setScopedDraft<T>(key: AdminDraftKey, value: T | null, expected: AdminScopeLease): boolean {
+      if (lease !== expected || !Object.hasOwn(adminDraftLimits, key)) return false;
+      if (value === null) {
+        drafts.delete(key);
+        retentionFailures.delete(key);
+        return true;
+      }
+      try {
+        const serialized = JSON.stringify(value);
+        // JS strings are bounded in UTF-16 code units (at most twice this byte size).
+        if (!serialized || serialized.length > adminDraftLimits[key]) {
+          drafts.delete(key);
+          retentionFailures.add(key);
+          return false;
+        }
+        drafts.set(key, serialized);
+        retentionFailures.delete(key);
+        return true;
+      } catch {
+        drafts.delete(key);
+        retentionFailures.add(key);
+        return false;
+      }
     },
   };
 }

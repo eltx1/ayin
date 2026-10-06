@@ -1,0 +1,54 @@
+.workspace {
+  min-width: 0;
+  display: grid;
+  gap: 1.25rem;
+}
+.workspace[hidden],
+.privateRoot[hidden] {
+  display: none;
+}
+.workspace fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+  display: grid;
+  gap: 1.25rem;
+}
+.workspace input,
+.workspace textarea,
+.workspace select {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+.workspace :is(h1, h2, strong, p, small) {
+  overflow-wrap: anywhere;
+}
+.dialog {
+  max-inline-size: min(36rem, calc(100vw - 2rem));
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  background: var(--surface, #111827);
+  color: var(--text, #fff);
+}
+.dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+.actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.selectionCopy {
+  display: grid;
+  gap: 0.35rem;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.recovery {
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  padding: 1.25rem;
+}

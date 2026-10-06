@@ -1,4 +1,4 @@
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 
@@ -8,6 +8,19 @@ import {
   ADAPTIVE_BACKFILL_MARKER,
   ADAPTIVE_BACKFILL_HARD_BATCH_MAX,
 } from "./media-adaptive-rollout.js";
+import { outputAttemptAddresses } from "./media-output-attempt.js";
+import {
+  hlsMasterObjectKey,
+  hlsRenditionPlaylistObjectKey,
+  hlsRenditionSegmentPrefix,
+  type MediaRenditionIdentity,
+  type MediaGenerationNamespace,
+} from "./media-architecture-v2.js";
+import { publicMediaProcessingCounts } from "./media-processing-status.js";
+import {
+  declareCompatibleIntegrityWorker,
+  lockQueuedIntegrityJob,
+} from "./media-processing-integrity-fence.js";
 import { hasNewerMediaGeneration } from "./media-generation-safety.js";
 
 const ACTIVE_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
@@ -127,70 +140,188 @@ export class MediaProcessingQueueService {
     const stableWorkerId = workerId.trim();
     this.assertWorkerId(stableWorkerId);
     const leaseToken = `${stableWorkerId}:${randomUUID()}`;
-
-    return this.database.client.$transaction(async (tx) => {
+    // Commit recovery's job-row locks before a required claim takes its ordered
+    // Account/generation prefix. Holding a recovered row while waiting on its
+    // privacy owner would invert privacy's Account -> job ordering.
+    const enabled = await this.database.client.$transaction(async (tx) => {
       await this.lockQueue(tx);
       const values = await this.settings.getManyResolvedInTransaction(tx, [
         "mediaProcessingEnabled",
-        "mediaProcessingConcurrentJobs",
         "mediaProcessingRetryLimit",
         "mediaProcessingLeaseSeconds",
-        "mediaHlsEnabled",
-        "mediaHlsBackfillEnabled",
-        "mediaHlsBackfillPaused",
       ]);
-      const capacity: MediaProcessingCapacity = {
-        enabled: values.get("mediaProcessingEnabled") as boolean,
-        concurrentJobs: values.get("mediaProcessingConcurrentJobs") as number,
-        retryLimit: values.get("mediaProcessingRetryLimit") as number,
-        leaseSeconds: values.get("mediaProcessingLeaseSeconds") as number,
-      };
-      const canClaimBackfill =
-        (values.get("mediaHlsEnabled") as boolean) &&
-        (values.get("mediaHlsBackfillEnabled") as boolean) &&
-        !(values.get("mediaHlsBackfillPaused") as boolean);
-      if (!capacity.enabled) return null;
-
+      if (!(values.get("mediaProcessingEnabled") as boolean)) return false;
       const now = new Date();
-      await this.recoverStaleInTransaction(tx, now, capacity.retryLimit);
-      await this.markStaleWorkersInTransaction(tx, now, capacity.leaseSeconds);
-
-      const activeCount = await tx.mediaProcessingJob.count({
-        where: { status: { in: [...ACTIVE_STATUSES] } },
-      });
-      if (activeCount >= capacity.concurrentJobs) return null;
-
-      const candidate = await tx.mediaProcessingJob.findFirst({
-        where: {
-          status: "QUEUED",
-          queuedAt: { lte: now },
-          ...(canClaimBackfill
-            ? {}
-            : { NOT: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER } } }),
-        },
-        orderBy: [{ priority: "desc" }, { queuedAt: "asc" }, { createdAt: "asc" }],
-      });
-      if (!candidate) return null;
-
-      const leaseExpiresAt = new Date(now.getTime() + capacity.leaseSeconds * 1000);
-      const changed = await tx.mediaProcessingJob.updateMany({
-        where: { id: candidate.id, status: "QUEUED", leaseOwner: null },
-        data: {
-          status: "PROCESSING",
-          stage: "CLAIMED",
-          attempt: { increment: 1 },
-          leaseOwner: leaseToken,
-          leaseWorkerId: stableWorkerId,
-          leaseExpiresAt,
-          heartbeatAt: now,
-          startedAt: candidate.startedAt ?? now,
-          errorCode: null,
-          errorMessage: null,
-        },
-      });
-      if (changed.count !== 1) return null;
-      return tx.mediaProcessingJob.findUnique({ where: { id: candidate.id } });
+      await this.recoverStaleInTransaction(
+        tx,
+        now,
+        values.get("mediaProcessingRetryLimit") as number,
+      );
+      await this.markStaleWorkersInTransaction(
+        tx,
+        now,
+        values.get("mediaProcessingLeaseSeconds") as number,
+      );
+      return true;
     });
+    if (!enabled) return null;
+
+    return this.database.client
+      .$transaction(async (tx) => {
+        await this.lockQueue(tx);
+        const values = await this.settings.getManyResolvedInTransaction(tx, [
+          "mediaProcessingEnabled",
+          "mediaProcessingConcurrentJobs",
+          "mediaProcessingRetryLimit",
+          "mediaProcessingLeaseSeconds",
+          "mediaHlsEnabled",
+          "mediaHlsBackfillEnabled",
+          "mediaHlsBackfillPaused",
+        ]);
+        const capacity: MediaProcessingCapacity = {
+          enabled: values.get("mediaProcessingEnabled") as boolean,
+          concurrentJobs: values.get("mediaProcessingConcurrentJobs") as number,
+          retryLimit: values.get("mediaProcessingRetryLimit") as number,
+          leaseSeconds: values.get("mediaProcessingLeaseSeconds") as number,
+        };
+        const canClaimBackfill =
+          (values.get("mediaHlsEnabled") as boolean) &&
+          (values.get("mediaHlsBackfillEnabled") as boolean) &&
+          !(values.get("mediaHlsBackfillPaused") as boolean);
+        if (!capacity.enabled) return null;
+
+        const now = new Date();
+        const activeCount = await tx.mediaProcessingJob.count({
+          where: { status: { in: [...ACTIVE_STATUSES] } },
+        });
+        if (activeCount >= capacity.concurrentJobs) return null;
+
+        // Eligibility is a read-only prefilter, followed by the same ordered
+        // custody/source revalidation as owned callbacks. A closed/detached
+        // required row cannot starve otherwise eligible legacy or required work.
+        const candidates = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT j.id FROM "MediaProcessingJob" j
+          WHERE ((j.status = 'QUEUED' AND j."inputIntegrityVersion" = 0)
+            OR (j.status = 'INTEGRITY_QUEUED' AND j."inputIntegrityVersion" = 1 AND ayin_required_media_job_eligible(j)))
+            AND j."queuedAt" <= ${now}
+            AND (${canClaimBackfill} OR j."stagingKey" NOT LIKE ${`%${ADAPTIVE_BACKFILL_MARKER}%`})
+          ORDER BY j.priority DESC, j."queuedAt" ASC, j."createdAt" ASC LIMIT 1
+        `);
+        const candidate = candidates[0]
+          ? await tx.mediaProcessingJob.findUnique({ where: { id: candidates[0].id } })
+          : null;
+        if (!candidate) return null;
+
+        await declareCompatibleIntegrityWorker(tx);
+        let outputAttempt: { id: string; canonicalR2ObjectKey: string } | null = null;
+        let attemptNamespace: MediaGenerationNamespace | null = null;
+        if (candidate.inputIntegrityVersion === 1) {
+          if (!(await lockQueuedIntegrityJob(tx, candidate.id, candidate.attempt))) return null;
+          const video = await tx.video.findUniqueOrThrow({
+            where: { id: candidate.videoId },
+            select: { channelId: true },
+          });
+          const id = randomUUID();
+          const namespace = {
+            channelId: video.channelId,
+            videoId: candidate.videoId,
+            generation: candidate.generation,
+            outputAttemptId: id,
+          };
+          attemptNamespace = namespace;
+          outputAttempt = await tx.mediaProcessingOutputAttempt.create({
+            data: {
+              id,
+              processingJobId: candidate.id,
+              channelId: video.channelId,
+              videoId: candidate.videoId,
+              generation: candidate.generation,
+              claimToken: leaseToken,
+              attempt: candidate.attempt + 1,
+              ...outputAttemptAddresses(namespace),
+            },
+          });
+        }
+        const claimedAt = new Date();
+        const leaseExpiresAt = new Date(claimedAt.getTime() + capacity.leaseSeconds * 1000);
+        const changed = await tx.mediaProcessingJob.updateMany({
+          where: { id: candidate.id, status: candidate.status, leaseOwner: null },
+          data: {
+            status: "PROCESSING",
+            ...(outputAttempt
+              ? {
+                  currentOutputAttemptId: outputAttempt.id,
+                  outputR2ObjectKey: outputAttempt.canonicalR2ObjectKey,
+                }
+              : {}),
+            stage: "CLAIMED",
+            inputVerifiedAt: null,
+            inputVerifiedLeaseOwner: null,
+            inputVerifiedAttempt: null,
+            outputIntegrityDigest: null,
+            outputIntegritySizeBytes: null,
+            outputVerifiedAt: null,
+            attempt: { increment: 1 },
+            leaseOwner: leaseToken,
+            leaseWorkerId: stableWorkerId,
+            leaseExpiresAt,
+            heartbeatAt: claimedAt,
+            startedAt: candidate.startedAt ?? claimedAt,
+            errorCode: null,
+            errorMessage: null,
+          },
+        });
+        if (changed.count !== 1) {
+          if (outputAttempt) throw new OutputAttemptClaimConflict();
+          return null;
+        }
+        if (attemptNamespace) {
+          // Invalidate/repoint metadata atomically before any write can occur.
+          // Losing keys remain in the append-only ledger; old in-flight PUTs can
+          // complete only at those old addresses, never at the new winner's keys.
+          const generation = await tx.mediaPlaybackGeneration.findUnique({
+            where: {
+              videoId_generation: { videoId: candidate.videoId, generation: candidate.generation },
+            },
+            include: { renditions: true },
+          });
+          if (generation) {
+            await tx.mediaPlaybackGeneration.update({
+              where: { id: generation.id },
+              data: {
+                status: "BUILDING",
+                readyAt: null,
+                fallbackStatus: "PLANNED",
+                hlsMasterStatus: "PLANNED",
+                outputAttemptId: outputAttempt!.id,
+                fallbackR2ObjectKey: outputAttempt!.canonicalR2ObjectKey,
+                hlsMasterR2ObjectKey: hlsMasterObjectKey(attemptNamespace),
+              },
+            });
+            for (const rendition of generation.renditions)
+              await tx.mediaPlaybackRendition.update({
+                where: { id: rendition.id },
+                data: {
+                  status: "PLANNED",
+                  readyAt: null,
+                  playlistR2ObjectKey: hlsRenditionPlaylistObjectKey(
+                    attemptNamespace,
+                    rendition.identity as MediaRenditionIdentity,
+                  ),
+                  segmentR2Prefix: hlsRenditionSegmentPrefix(
+                    attemptNamespace,
+                    rendition.identity as MediaRenditionIdentity,
+                  ),
+                },
+              });
+          }
+        }
+        return tx.mediaProcessingJob.findUnique({ where: { id: candidate.id } });
+      })
+      .catch((error) => {
+        if (error instanceof OutputAttemptClaimConflict) return null;
+        throw error;
+      });
   }
 
   async heartbeat(jobId: string, leaseToken: string): Promise<boolean> {
@@ -256,8 +387,8 @@ export class MediaProcessingQueueService {
               errorMessage: input.errorMessage,
             }
           : {
-              status: "QUEUED",
-              stage: "RETRY_WAIT",
+              status: job.inputIntegrityVersion === 1 ? "INTEGRITY_QUEUED" : "QUEUED",
+              stage: job.inputIntegrityVersion === 1 ? "INTEGRITY_QUEUED" : "RETRY_WAIT",
               queuedAt: new Date(now.getTime() + backoffSeconds * 1000),
               leaseOwner: null,
               leaseWorkerId: null,
@@ -306,7 +437,9 @@ export class MediaProcessingQueueService {
         },
       }),
     ]);
-    const counts = Object.fromEntries(grouped.map((row) => [row.status, row._count._all]));
+    const counts = publicMediaProcessingCounts(
+      Object.fromEntries(grouped.map((row) => [row.status, row._count._all])),
+    );
     const active = ACTIVE_STATUSES.reduce((total, status) => total + (counts[status] ?? 0), 0);
     return { capacity, active, counts, workers };
   }
@@ -381,7 +514,7 @@ export class MediaProcessingQueueService {
       where: { status: { in: [...ACTIVE_STATUSES] }, leaseExpiresAt: { lt: now } },
       orderBy: [{ leaseExpiresAt: "asc" }, { id: "asc" }],
       ...(batchSize === undefined ? {} : { take: batchSize }),
-      select: { id: true, attempt: true, updatedAt: true },
+      select: { id: true, attempt: true, updatedAt: true, inputIntegrityVersion: true },
     });
     let requeued = 0;
     let failed = 0;
@@ -406,8 +539,8 @@ export class MediaProcessingQueueService {
               errorMessage: "The media worker stopped heartbeating and exhausted its retry limit.",
             }
           : {
-              status: "QUEUED",
-              stage: "STALE_LEASE_RECOVERED",
+              status: job.inputIntegrityVersion === 1 ? "INTEGRITY_QUEUED" : "QUEUED",
+              stage: job.inputIntegrityVersion === 1 ? "INTEGRITY_QUEUED" : "STALE_LEASE_RECOVERED",
               queuedAt: now,
               leaseOwner: null,
               leaseWorkerId: null,
@@ -423,3 +556,5 @@ export class MediaProcessingQueueService {
     return { recovered: requeued + failed, requeued, failed };
   }
 }
+
+class OutputAttemptClaimConflict extends Error {}

@@ -134,3 +134,7 @@ Production playback remains the validated canonical MP4 served from `media.ayin.
 Merging Task 40 does not enable adaptive generation automatically. Operators can immediately stop new HLS work by setting `mediaHlsEnabled=false`; the MP4 processing/playback path remains intact.
 
 See `docs/MEDIA_ARCHITECTURE_V2.md`, `docs/TASK40_HLS_TRANSCODING.md` and ADR-015 in `docs/DECISIONS.md` for the adaptive architecture, implementation and rollout semantics.
+
+### Required-integrity worker outputs
+
+Required processing uses ADR-016 output-key protocol v2: every queue claim reserves a fresh immutable attempt prefix `channels/{channelId}/videos/{videoId}/playback/g{generation}/attempts/{attemptId}/` before issuing any canonical/HLS/generated-thumbnail PUT. Lost claims cannot overwrite a later winner's address, even if an already-issued PUT settles after READY. Existing legacy generation/SEO keys are unchanged. All attempt addresses remain in an append-only ledger and required privacy stays pending without independent output-write settlement proof. This is a dormant prerequisite; it does not enable upload recovery or configure R2.

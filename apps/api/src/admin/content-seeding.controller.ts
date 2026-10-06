@@ -13,7 +13,6 @@ import {
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
-import { AdminControlService } from "./admin-control.service.js";
 import { adminBadRequest } from "./admin.errors.js";
 import {
   AdminGuard,
@@ -49,31 +48,22 @@ const listSchema = z.object({ take: z.coerce.number().int().min(1).max(100).defa
 @UseGuards(AuthGuard, AdminGuard)
 @RequireAdminRoles("OPERATIONS", "CONTENT_MODERATOR")
 export class ContentSeedingController {
-  constructor(
-    @Inject(ContentSeedingService) private readonly seeding: ContentSeedingService,
-    @Inject(AdminControlService) private readonly control: AdminControlService,
-  ) {}
+  constructor(@Inject(ContentSeedingService) private readonly seeding: ContentSeedingService) {}
 
   @Get("channels")
   async channels() {
-    const result = await this.control.channels({ page: 1, take: 100 });
-    return {
-      items: result.items
-        .filter((channel) => channel.isPlatformOwned && channel.status !== "REMOVED")
-        .map((channel) => ({
-          id: channel.id,
-          handle: channel.handle,
-          name: channel.name,
-          status: channel.status,
-          isPlatformOwned: channel.isPlatformOwned,
-        })),
-    };
+    return { items: await this.seeding.listChannels() };
   }
 
   @Get("batches")
   list(@Query() query: unknown) {
     const parsed = this.parse(listSchema, query, "INVALID_SEED_LIST");
     return this.seeding.listBatches(parsed.take);
+  }
+
+  @Get("batches/:batchId")
+  getBatch(@Param("batchId") batchIdRaw: string) {
+    return this.seeding.getBatch(this.id(batchIdRaw));
   }
 
   @Post("batches")

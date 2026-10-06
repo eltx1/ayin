@@ -1016,9 +1016,12 @@ test("freshness: conflict reads once without logout or replay and a fresh explic
   const video = seedVideo();
   const a = await register(page, "freshness-conflict-rewind");
   let identityReads = 0;
+  let progressReads = 0;
   const writes: { expectedRevision: string | null; status: number }[] = [];
   page.on("request", (request) => {
     if (request.url().endsWith("/auth/me")) identityReads++;
+    if (request.method() === "GET" && request.url().includes(`/watch/progress/${video.id}`))
+      progressReads++;
   });
   await page.route(`${API}/watch/progress/${video.id}*`, async (route) => {
     if (route.request().method() !== "PUT") return route.continue();
@@ -1033,6 +1036,7 @@ test("freshness: conflict reads once without logout or replay and a fresh explic
   await settle(page);
   await ready(page);
   const beforeIdentityReads = identityReads;
+  const beforeProgressReads = progressReads;
   const newer = await page.request.put(`${API}/watch/progress/${video.id}`, {
     headers: { origin: WEB, "x-ayin-expected-account": a.account.id },
     data: { profileId: a.profile.id, positionMs: 53_000 },
@@ -1045,8 +1049,11 @@ test("freshness: conflict reads once without logout or replay and a fresh explic
       response.request().method() === "GET",
   );
   await position(page, 37, "pause");
-  expect((await (await reconciled).json()).revision).toBe(newerRevision);
+  // The later real PUT proves the browser consumed this revision. Reading the
+  // transient GET body through DevTools can fail after Chromium releases it.
+  expect((await reconciled).status()).toBe(200);
   await settle(page);
+  expect(progressReads).toBe(beforeProgressReads + 1);
   expect(writes).toEqual([{ expectedRevision: null, status: 409 }]);
   expect(identityReads).toBe(beforeIdentityReads);
   await expect(page.locator("[data-private-viewer-identity]:visible")).toContainText(
@@ -1070,6 +1077,7 @@ test("freshness: conflict reads once without logout or replay and a fresh explic
   expect(fixture<Rows>("rows", { videoId: video.id }).progress[0]?.positionMs).toBe(37_000);
   expect(fixture<Rows>("rows", { videoId: video.id }).history[0]?.viewCount).toBe(1);
   expect(identityReads).toBe(beforeIdentityReads);
+  expect(progressReads).toBe(beforeProgressReads + 1);
 });
 
 test("freshness: real cross-document unload delivers the scoped final checkpoint", async ({

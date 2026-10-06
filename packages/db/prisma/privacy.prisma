@@ -9,6 +9,15 @@ enum AccountDeletionState {
 enum PrivacyMediaDeletionKind {
   OBJECT
   PREFIX
+  MULTIPART
+  ALLOCATION
+  OUTPUT_SETTLEMENT
+}
+
+enum PrivacyMediaDeletionScope {
+  PRIVACY
+  UPLOAD_SESSION
+  PROCESSING_SOURCE
 }
 
 enum PrivacyMediaDeletionStatus {
@@ -46,10 +55,26 @@ model AccountDeletionRequest {
 
 model PrivacyMediaDeletionJob {
   id          String                     @id @default(uuid()) @db.Uuid
-  requestId   String                     @db.Uuid
-  accountId   String                     @db.Uuid
+  requestId   String?                    @db.Uuid
+  accountId   String?                    @db.Uuid
   kind        PrivacyMediaDeletionKind
-  target      String                     @db.VarChar(1024)
+  target      String?                    @db.VarChar(1024)
+  operationKey String                    @unique @default(dbgenerated("(gen_random_uuid())::text")) @db.VarChar(240)
+  scope       PrivacyMediaDeletionScope  @default(PRIVACY)
+  channelId String?                      @db.Uuid
+  uploadSessionId String?                @db.Uuid
+  sessionRevision Int?
+  sourceAssetId String?                  @db.Uuid
+  processingJobId String?                @db.Uuid
+  providerUploadId String?               @db.VarChar(1024)
+  leaseToken String?                     @db.Uuid
+  leaseExpiresAt DateTime?
+  lastObservation String?                @db.VarChar(64)
+  outputAddresses Json?
+  settlementProofReference String?       @db.VarChar(200)
+  settlementVerifiedAt DateTime?
+  settlementLeaseToken String?           @db.Uuid
+  retainUntil DateTime?
   status      PrivacyMediaDeletionStatus @default(PENDING)
   attempts    Int                        @default(0)
   availableAt DateTime                   @default(now())
@@ -59,10 +84,13 @@ model PrivacyMediaDeletionJob {
   createdAt   DateTime                   @default(now())
   updatedAt   DateTime                   @updatedAt
 
-  request AccountDeletionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request AccountDeletionRequest? @relation(fields: [requestId], references: [id], onDelete: Restrict)
 
-  @@unique([requestId, kind, target])
+  // SQL partial unique index preserves legacy PRIVACY target deduplication.
+  // Global operationKey also deduplicates standalone jobs with requestId=null.
   @@index([status, availableAt, createdAt])
   @@index([requestId, status])
+  @@index([uploadSessionId, status])
+  @@index([status, retainUntil])
   @@index([accountId, createdAt])
 }

@@ -28,6 +28,7 @@ interface Access {
   getScopeLease: () => AdminScopeLease | null;
   invalidateScope: () => void;
   subscribeScopeInvalidation: (listener: (reason: AdminScopeInvalidation) => void) => () => void;
+  getScopedDraftFailure: (key: AdminDraftKey, lease: AdminScopeLease) => boolean;
   getScopedDraft: <T>(key: AdminDraftKey, lease: AdminScopeLease) => T | null;
   setScopedDraft: <T>(key: AdminDraftKey, value: T | null, lease: AdminScopeLease) => boolean;
 }
@@ -176,6 +177,8 @@ export function AdminAccessProvider({ children }: { children: ReactNode }) {
 
   const getScopeLease = useCallback(() => {
     if (
+      typeof window === "undefined" ||
+      typeof document === "undefined" ||
       document.visibilityState === "hidden" ||
       !isAdminScopePath(window.location.pathname) ||
       verifiedPath.current !== window.location.pathname
@@ -183,6 +186,11 @@ export function AdminAccessProvider({ children }: { children: ReactNode }) {
       return null;
     return scope.getScopeLease();
   }, [scope]);
+  const getScopedDraftFailure = useCallback(
+    (key: AdminDraftKey, lease: AdminScopeLease) =>
+      getScopeLease() === lease && scope.getScopedDraftFailure(key, lease),
+    [getScopeLease, scope],
+  );
   const getScopedDraft = useCallback(
     <T,>(key: AdminDraftKey, lease: AdminScopeLease): T | null =>
       getScopeLease() === lease ? scope.getScopedDraft<T>(key, lease) : null,
@@ -205,6 +213,7 @@ export function AdminAccessProvider({ children }: { children: ReactNode }) {
         invalidateScope,
         subscribeScopeInvalidation: scope.subscribeScopeInvalidation,
         getScopedDraft,
+        getScopedDraftFailure,
         setScopedDraft,
       }}
     >

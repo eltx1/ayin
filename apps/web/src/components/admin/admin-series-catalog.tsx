@@ -1,10 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import { apiBaseUrl } from "@/lib/api";
-import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
+import {
+  catalogRecord,
+  catalogList,
+  catalogChildAcknowledged,
+} from "@/lib/catalog-editor-contract";
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { ActionButton } from "@/components/ui/design-system";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import {
+  CatalogEditorWorkspace,
+  useCatalogRequest,
+  useCatalogDrafts,
+  useCatalogDirty,
+  useCatalogTarget,
+  draftChanged,
+  changedCatalogFields,
+  catalogOutcomeUncertain,
+} from "./catalog-editor-workspace";
+import { CatalogValidationIssues } from "./catalog-validation";
+import { catalogValidationReason } from "@/lib/catalog-validation-copy";
+import { catalogFormFingerprint } from "@/lib/catalog-draft-retention";
+import { useCatalogCopy } from "./catalog-editor-copy";
 import { CatalogResourcePicker } from "./catalog-resource-picker";
 
 type CatalogStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
@@ -87,7 +107,7 @@ type AvailabilityDraft = {
   note: string;
 };
 
-type ResourceSelection = { id: string | null; label: string | null };
+type ResourceSelection = { id: string | null; label: string | null; altText?: string | null };
 type ArtworkSelections = Record<ArtworkType, ResourceSelection>;
 
 type SeriesDraft = {
@@ -117,7 +137,18 @@ type EpisodeDraft = {
   video: ResourceSelection;
 };
 
-type Mutate = (key: string, url: string, init: RequestInit, success: string) => Promise<boolean>;
+type MutationResult = {
+  series?: SeriesRow;
+  season?: SeasonRow;
+  episode?: EpisodeRow;
+  authoritative?: SeriesRow;
+};
+type Mutate = (
+  key: string,
+  url: string,
+  init: RequestInit,
+  success: string,
+) => Promise<MutationResult | null>;
 
 const emptyArtwork = (): ArtworkSelections => ({
   POSTER: { id: null, label: null },
@@ -153,108 +184,230 @@ const emptyEpisodeDraft = (): EpisodeDraft => ({
 });
 
 export function AdminSeriesCatalog() {
+  return (
+    <CatalogEditorWorkspace kind="series">
+      <SeriesCatalogContent />
+    </CatalogEditorWorkspace>
+  );
+}
+
+function SeriesCatalogContent() {
+  const t = useCatalogCopy();
+  const { direction } = useI18n();
+  const { request, current } = useCatalogRequest();
+  const {
+    navigate,
+    dirty,
+    restoredForm,
+    restoredRecord,
+    restoredBlocked,
+    markPending,
+    acknowledgeRecord,
+    clearRestoration,
+  } = useCatalogDrafts();
+  const recovered = restoredForm<SeriesDraft>("series");
+  const initialRecord = restoredRecord<SeriesRow>();
   const [items, setItems] = useState<SeriesRow[]>([]);
-  const [draft, setDraft] = useState<SeriesDraft>(emptySeriesDraft);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<SeriesDraft>(
+    () => recovered?.draft ?? (initialRecord ? fromSeries(initialRecord) : emptySeriesDraft()),
+  );
+  const [baseline, setBaseline] = useState<SeriesDraft>(
+    () => recovered?.baseline ?? (initialRecord ? fromSeries(initialRecord) : emptySeriesDraft()),
+  );
+  const [sourceFingerprint, setSourceFingerprint] = useState(
+    () => recovered?.sourceFingerprint ?? catalogFormFingerprint("series", initialRecord),
+  );
+  const [editing, setEditing] = useState<SeriesRow | null>(initialRecord);
+  const editingId = editing?.id ?? null;
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"" | CatalogStatus>("");
   const [busy, setBusy] = useState<string | null>(null);
+  const lock = useRef(false);
+  const [writeBlocked, setWriteBlocked] = useState(restoredBlocked);
+  const [editorRevision, setEditorRevision] = useState(0);
+  const reads = useRef(0);
+  const cancelBrowseReads = useCallback(() => {
+    reads.current++;
+  }, []);
+  const browseKey = `${query}\0${status}`;
+  const latestBrowseKey = useRef(browseKey);
+  useLayoutEffect(() => {
+    latestBrowseKey.current = browseKey;
+  }, [browseKey]);
+  const targetRead = useRef(0);
+  const form = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<"publish" | "unpublish" | "archive" | null>(null);
 
   const load = useCallback(async () => {
+    if (latestBrowseKey.current !== browseKey) return;
+    const read = ++reads.current;
     const params = new URLSearchParams({ limit: "100" });
     if (query.trim()) params.set("q", query.trim());
     if (status) params.set("status", status);
-    const response = await fetch(`${apiBaseUrl}/admin/catalog/series?${params.toString()}`, {
-      credentials: "include",
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error(await readApiError(response));
-    const body = (await response.json()) as { items: SeriesRow[] };
-    setItems(body.items);
-    if (editingId) {
-      const current = body.items.find((item) => item.id === editingId);
-      if (current) setDraft(fromSeries(current));
-    }
-  }, [editingId, query, status]);
-
+    const body = await request<{ items: SeriesRow[] }>(`/admin/catalog/series?${params}`);
+    if (read === reads.current && latestBrowseKey.current === browseKey && current())
+      setItems(catalogList<SeriesRow>(body, "series"));
+  }, [query, status, request, current, browseKey]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load().catch((caught) =>
-        setError(caught instanceof Error ? caught.message : "Series catalog could not be loaded."),
-      );
+      void load().catch((caught: unknown) => {
+        if (current())
+          setError(
+            caught instanceof Error ? caught.message : t("Series catalog could not be loaded."),
+          );
+      });
     }, 200);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+    return () => {
+      cancelBrowseReads();
+      window.clearTimeout(timer);
+    };
+  }, [load, current, t, cancelBrowseReads]);
 
-  const editing = useMemo(
-    () => (editingId ? (items.find((item) => item.id === editingId) ?? null) : null),
-    [editingId, items],
-  );
-
-  const mutate: Mutate = useCallback(
-    async (key, url, init, success) => {
-      setBusy(key);
-      setError(null);
-      setMessage(null);
-      try {
-        const requestInit: RequestInit = { ...init, credentials: "include" };
-        if (init.body) {
-          const headers = new Headers(init.headers);
-          headers.set("content-type", "application/json");
-          requestInit.headers = headers;
-        }
-        const response = await fetch(`${apiBaseUrl}${url}`, requestInit);
-        if (!response.ok) throw new Error(await readApiError(response));
-        await load();
-        setMessage(success);
-        return true;
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Series catalog action failed.");
-        return false;
-      } finally {
-        setBusy(null);
+  const refreshSelected = useCallback(
+    async (id: string) => {
+      const body = await request<{ series: SeriesRow }>(`/admin/catalog/series/${id}`);
+      body.series = catalogRecord<SeriesRow>(body, "series", id);
+      if (current()) {
+        acknowledgeRecord(body.series);
+        setEditing(body.series);
       }
+      return body.series;
     },
-    [load],
+    [current, request, acknowledgeRecord],
   );
 
-  async function saveSeries(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const payload = toSeriesPayload(draft);
-    const ok = await mutate(
+  const mutate: Mutate = async (key, url, init, success) => {
+    if (lock.current || writeBlocked || !current()) return null;
+    lock.current = true;
+    markPending(true);
+    setBusy(key);
+    setError(null);
+    setMessage(null);
+    let result: MutationResult;
+    try {
+      result = await request<MutationResult>(url, init);
+      if (
+        key === "save-series" ||
+        (!key.includes("episode") && !key.includes("create-season") && !key.includes("save-season"))
+      ) {
+        result.series = catalogRecord<SeriesRow>(result, "series", editingId ?? undefined);
+      } else {
+        const [operation, id] = key.split(":");
+        const kind =
+          operation?.includes("episode") && operation !== "reorder-episodes" ? "episode" : "season";
+        const parentId =
+          kind === "season"
+            ? editingId
+            : operation === "create-episode"
+              ? id
+              : editing?.seasons.find((item) => item.episodes.some((episode) => episode.id === id))
+                  ?.id;
+        if (
+          !parentId ||
+          !catalogChildAcknowledged(
+            result,
+            kind,
+            operation?.startsWith("create-") ? null : (id ?? null),
+            { key: kind === "season" ? "seriesId" : "seasonId", id: parentId },
+          )
+        )
+          throw new Error(t("The save result could not be verified. Refresh before trying again."));
+      }
+      clearRestoration();
+      if (result.series) acknowledgeRecord(result.series);
+      else markPending(false);
+      setMessage(success);
+    } catch (caught) {
+      if (current() && catalogOutcomeUncertain(caught)) {
+        setWriteBlocked(true);
+        markPending(false, true);
+      }
+      if (current())
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : t("The outcome is uncertain. Refresh the record before trying again."),
+        );
+      lock.current = false;
+      markPending(false);
+      if (current()) setBusy(null);
+      return null;
+    }
+    // A successful write is acknowledged independently of later read failures.
+    try {
+      if (result.series) {
+        setEditing(result.series);
+        result.authoritative = result.series;
+      } else if (editingId) result.authoritative = await refreshSelected(editingId);
+      await load();
+    } catch {
+      if (current())
+        setError(
+          t(
+            "Changes were saved, but the catalog could not refresh. Use Refresh record; do not submit again.",
+          ),
+        );
+    } finally {
+      lock.current = false;
+      markPending(false);
+      if (current()) setBusy(null);
+    }
+    return current() ? result : null;
+  };
+
+  async function saveDraft() {
+    if (!form.current?.reportValidity()) return false;
+    const body = await mutate(
       "save-series",
       `/admin/catalog/series${editingId ? `/${editingId}` : ""}`,
       {
         method: editingId ? "PATCH" : "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(
+          editingId
+            ? changedCatalogFields(toSeriesPayload(baseline), toSeriesPayload(draft))
+            : toSeriesPayload(draft),
+        ),
       },
-      editingId ? "Series changes saved." : "Series draft created.",
+      t(editingId ? "Series changes saved." : "Series draft created."),
     );
-    if (!ok || editingId) return;
-    const params = new URLSearchParams({ limit: "100", q: draft.title.trim() });
-    const response = await fetch(`${apiBaseUrl}/admin/catalog/series?${params.toString()}`, {
-      credentials: "include",
-      cache: "no-store",
-    });
-    if (!response.ok) return;
-    const body = (await response.json()) as { items: SeriesRow[] };
-    const created = body.items[0];
-    if (created) {
-      setEditingId(created.id);
-      setDraft(fromSeries(created));
-    }
+    if (!body?.series || (editingId && body.series.id !== editingId)) return false;
+    // The returned stable identity is authoritative even with duplicate titles.
+    setEditing(body.series);
+    setSourceFingerprint(catalogFormFingerprint("series", body.series));
+    const saved = fromSeries(body.series);
+    setDraft(saved);
+    setBaseline(saved);
+    return true;
+  }
+  useCatalogDirty("series", draftChanged(draft, baseline), saveDraft, {
+    draft,
+    baseline,
+    sourceFingerprint,
+  });
+  useCatalogTarget(editing, writeBlocked);
+  async function saveSeries(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveDraft();
   }
 
   async function lifecycle(series: SeriesRow, action: "publish" | "unpublish" | "archive") {
-    if (action === "archive" && !window.confirm(`Archive “${series.title}”?`)) return;
-    await mutate(
+    if (dirty || lock.current) return;
+    setConfirm(null);
+    const ack = await mutate(
       `${action}:${series.id}`,
       `/admin/catalog/series/${series.id}/${action}`,
       { method: "POST" },
-      `Series ${action === "publish" ? "published" : action === "unpublish" ? "unpublished" : "archived"}.`,
+      t(
+        action === "publish"
+          ? "Series published."
+          : action === "unpublish"
+            ? "Series unpublished."
+            : "Series archived.",
+      ),
     );
+    if (ack?.series) setSourceFingerprint(catalogFormFingerprint("series", ack.series));
   }
 
   async function moveSeason(series: SeriesRow, index: number, delta: -1 | 1) {
@@ -266,430 +419,513 @@ export function AdminSeriesCatalog() {
       `reorder-seasons:${series.id}`,
       `/admin/catalog/series/${series.id}/seasons/reorder`,
       { method: "POST", body: JSON.stringify({ orderedIds: ordered }) },
-      "Season ordering updated.",
+      t("Season ordering updated."),
     );
   }
 
+  async function openSeries(series: SeriesRow) {
+    if (lock.current) return;
+    const read = ++targetRead.current;
+    setBusy("open");
+    setError(null);
+    setMessage(null);
+    try {
+      const body = await request<{ series: SeriesRow }>(`/admin/catalog/series/${series.id}`);
+      if (read !== targetRead.current || !current()) return;
+      body.series = catalogRecord<SeriesRow>(body, "series", series.id);
+      clearRestoration();
+      setEditing(body.series);
+      setSourceFingerprint(catalogFormFingerprint("series", body.series));
+      setWriteBlocked(false);
+      setEditorRevision((value) => value + 1);
+      setDraft(fromSeries(body.series));
+      setBaseline(fromSeries(body.series));
+    } catch (caught) {
+      if (read === targetRead.current && current())
+        setError(
+          caught instanceof Error ? caught.message : t("Series catalog could not be loaded."),
+        );
+    } finally {
+      if (read === targetRead.current && current()) setBusy(null);
+    }
+  }
   function beginEdit(series: SeriesRow) {
-    setEditingId(series.id);
-    setDraft(fromSeries(series));
-    setError(null);
-    setMessage(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!lock.current)
+      navigate(() => {
+        void openSeries(series);
+      });
   }
-
   function beginCreate() {
-    setEditingId(null);
-    setDraft(emptySeriesDraft());
-    setError(null);
-    setMessage(null);
+    if (lock.current) return;
+    navigate(() => {
+      ++targetRead.current;
+      clearRestoration();
+      setBusy(null);
+      setEditing(null);
+      setSourceFingerprint(null);
+      setWriteBlocked(false);
+      setEditorRevision((value) => value + 1);
+      const next = emptySeriesDraft();
+      setDraft(next);
+      setBaseline(next);
+      setError(null);
+      setMessage(null);
+    });
   }
-
   return (
     <>
       <section className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>Catalog operations</span>
-          <h1>Series</h1>
+          <span className={styles.eyebrow}>{t("Catalog operations")}</span>
+          <h1>{t("Series")}</h1>
           <p className={styles.muted}>
-            Manage Series, Seasons and Episodes as deliberate catalog records. Playable media is
-            selected by title and channel context, while internal database identifiers stay hidden.
+            {t(
+              "Manage Series, Seasons and Episodes as deliberate catalog records. Playable media is selected by title and channel context, while internal database identifiers stay hidden.",
+            )}
           </p>
         </div>
-        <button className={styles.button} onClick={beginCreate} type="button">
-          New series draft
-        </button>
+        <ActionButton className={styles.button} onClick={beginCreate} type="button">
+          {t("New series draft")}
+        </ActionButton>
       </section>
 
-      {error ? <div className={styles.error}>{error}</div> : null}
-      {message ? <div className={styles.notice}>{message}</div> : null}
-
-      <section className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div>
-            <span className={styles.eyebrow}>{editing ? "Edit series" : "Create draft"}</span>
-            <h2>{editing?.title ?? "New series"}</h2>
-          </div>
-          {editing ? (
-            <ValidationBadge validation={editing.validation} />
-          ) : (
-            <span className={styles.statusPill}>DRAFT</span>
+      {error ? (
+        <div className={styles.error} role="alert">
+          {error}
+        </div>
+      ) : null}
+      {writeBlocked ? (
+        <div className={styles.error} role="alert">
+          {t(
+            "The outcome is uncertain. Reopen a saved record to review it before making another change. No request was repeated.",
           )}
         </div>
-
-        {editing?.validation.issues.length ? (
-          <div className={styles.error}>Validation: {editing.validation.issues.join(" · ")}</div>
-        ) : null}
-
-        <form className={styles.formGrid} onSubmit={saveSeries}>
-          <label>
-            Title
-            <input
-              disabled={editing?.status === "ARCHIVED"}
-              maxLength={200}
-              required
-              value={draft.title}
-              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-            />
-          </label>
-          <label>
-            Slug
-            <input
-              disabled={editing?.status === "ARCHIVED"}
-              maxLength={160}
-              placeholder="generated from title when blank"
-              value={draft.slug}
-              onChange={(event) => setDraft({ ...draft, slug: event.target.value })}
-            />
-          </label>
-          <label className={styles.fullField}>
-            Synopsis
-            <textarea
-              disabled={editing?.status === "ARCHIVED"}
-              required
-              value={draft.synopsis}
-              onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
-            />
-          </label>
-          <label>
-            Release year
-            <input
-              disabled={editing?.status === "ARCHIVED"}
-              max="2200"
-              min="1888"
-              placeholder="Optional"
-              type="number"
-              value={draft.releaseYear}
-              onChange={(event) => setDraft({ ...draft, releaseYear: event.target.value })}
-            />
-          </label>
-          <label>
-            Maturity
-            <input
-              disabled={editing?.status === "ARCHIVED"}
-              maxLength={32}
-              placeholder="TV-14"
-              required
-              value={draft.maturityRating}
-              onChange={(event) => setDraft({ ...draft, maturityRating: event.target.value })}
-            />
-          </label>
-          <label>
-            Original language
-            <input
-              disabled={editing?.status === "ARCHIVED"}
-              maxLength={16}
-              placeholder="en"
-              required
-              value={draft.originalLanguage}
-              onChange={(event) => setDraft({ ...draft, originalLanguage: event.target.value })}
-            />
-          </label>
-          <label>
-            Genres / categories
-            <input
-              disabled={editing?.status === "ARCHIVED"}
-              placeholder="Drama, Mystery"
-              required
-              value={draft.genres}
-              onChange={(event) => setDraft({ ...draft, genres: event.target.value })}
-            />
-          </label>
-          <div className={styles.fullField}>
-            <CatalogResourcePicker
-              disabled={editing?.status === "ARCHIVED"}
-              kind="video"
-              label="Series trailer"
-              selectedLabel={draft.trailer.label}
-              value={draft.trailer.id}
-              onChange={(id, label) => setDraft({ ...draft, trailer: { id, label } })}
-            />
-          </div>
-
-          {(["POSTER", "BACKDROP", "LOGO"] as const).map((type) => (
-            <div className={styles.fullField} key={type}>
-              <CatalogResourcePicker
-                disabled={editing?.status === "ARCHIVED"}
-                kind="artwork"
-                label={`${titleCase(type)} artwork`}
-                required={type === "POSTER"}
-                selectedLabel={draft.artwork[type].label}
-                value={draft.artwork[type].id}
-                onChange={(id, label) =>
-                  setDraft({
-                    ...draft,
-                    artwork: { ...draft.artwork, [type]: { id, label } },
-                  })
-                }
-              />
-            </div>
-          ))}
-
-          <div className={`${styles.cardInset} ${styles.fullField}`}>
-            <div className={styles.cardHeader}>
-              <div>
-                <strong>Availability</strong>
-                <p className={styles.muted}>
-                  Leave empty for unrestricted Series availability, or add explicit global/territory
-                  rules with optional windows.
-                </p>
-              </div>
-              <button
-                className={styles.button}
-                disabled={editing?.status === "ARCHIVED"}
-                type="button"
-                onClick={() =>
-                  setDraft({
-                    ...draft,
-                    availability: [
-                      ...draft.availability,
-                      { territoryCode: "*", rule: "ALLOW", startsAt: "", endsAt: "", note: "" },
-                    ],
-                  })
-                }
-              >
-                Add rule
-              </button>
-            </div>
-            {draft.availability.map((rule, index) => (
-              <div className={styles.formGrid} key={`${index}-${rule.territoryCode}`}>
-                <label>
-                  Territory
-                  <input
-                    disabled={editing?.status === "ARCHIVED"}
-                    maxLength={2}
-                    value={rule.territoryCode}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, {
-                        territoryCode: event.target.value.toUpperCase(),
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  Rule
-                  <select
-                    disabled={editing?.status === "ARCHIVED"}
-                    value={rule.rule}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, {
-                        rule: event.target.value as AvailabilityRule,
-                      })
-                    }
-                  >
-                    <option value="ALLOW">Allow</option>
-                    <option value="BLOCK">Block</option>
-                  </select>
-                </label>
-                <label>
-                  Starts
-                  <input
-                    disabled={editing?.status === "ARCHIVED"}
-                    type="datetime-local"
-                    value={rule.startsAt}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, { startsAt: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  Ends
-                  <input
-                    disabled={editing?.status === "ARCHIVED"}
-                    type="datetime-local"
-                    value={rule.endsAt}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, { endsAt: event.target.value })
-                    }
-                  />
-                </label>
-                <label className={styles.fullField}>
-                  Note
-                  <input
-                    disabled={editing?.status === "ARCHIVED"}
-                    maxLength={240}
-                    value={rule.note}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, { note: event.target.value })
-                    }
-                  />
-                </label>
-                <div className={`${styles.actions} ${styles.fullField}`}>
-                  <button
-                    className={styles.danger}
-                    disabled={editing?.status === "ARCHIVED"}
-                    type="button"
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        availability: draft.availability.filter(
-                          (_, itemIndex) => itemIndex !== index,
-                        ),
-                      })
-                    }
-                  >
-                    Remove rule
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className={`${styles.actions} ${styles.fullField}`}>
-            <button
-              className={styles.button}
-              disabled={busy === "save-series" || editing?.status === "ARCHIVED"}
-              type="submit"
-            >
-              {busy === "save-series" ? "Saving…" : editingId ? "Save series" : "Create draft"}
-            </button>
-            {editing?.status === "DRAFT" ? (
-              <>
-                <button
-                  className={styles.button}
-                  disabled={Boolean(busy) || !editing.validation.publishable}
-                  type="button"
-                  onClick={() => void lifecycle(editing, "publish")}
-                >
-                  Publish series
-                </button>
-                <button
-                  className={styles.danger}
-                  disabled={Boolean(busy)}
-                  type="button"
-                  onClick={() => void lifecycle(editing, "archive")}
-                >
-                  Archive
-                </button>
-              </>
-            ) : null}
-            {editing?.status === "PUBLISHED" ? (
-              <button
-                className={styles.danger}
-                disabled={Boolean(busy)}
-                type="button"
-                onClick={() => void lifecycle(editing, "unpublish")}
-              >
-                Unpublish series
-              </button>
-            ) : null}
-          </div>
-        </form>
-      </section>
-
-      {editing && editing.status !== "ARCHIVED" ? (
-        <section className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <span className={styles.eyebrow}>Season & episode management</span>
-              <h2>{editing.title}</h2>
-              <p className={styles.muted}>
-                Ordering is conflict-safe. Episodes must reference an accessible playable Video
-                before publication.
-              </p>
-            </div>
-            <span className={styles.statusPill}>{editing.seasons.length} seasons</span>
-          </div>
-
-          <NewSeasonForm busy={busy} mutate={mutate} series={editing} />
-
-          <div className={styles.grid}>
-            {editing.seasons.map((season, seasonIndex) => (
-              <section className={styles.cardInset} key={season.id}>
-                <div className={styles.cardHeader}>
-                  <div>
-                    <strong>{season.title || `Season ${season.seasonNumber}`}</strong>
-                    <p className={styles.muted}>
-                      Season {season.seasonNumber} · catalog position {seasonIndex + 1} ·{" "}
-                      {season.episodes.length} episodes
-                    </p>
-                  </div>
-                  <div className={styles.actions}>
-                    <button
-                      aria-label={`Move season ${season.seasonNumber} up`}
-                      className={styles.button}
-                      disabled={seasonIndex === 0 || busy === `reorder-seasons:${editing.id}`}
-                      type="button"
-                      onClick={() => void moveSeason(editing, seasonIndex, -1)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      aria-label={`Move season ${season.seasonNumber} down`}
-                      className={styles.button}
-                      disabled={
-                        seasonIndex === editing.seasons.length - 1 ||
-                        busy === `reorder-seasons:${editing.id}`
-                      }
-                      type="button"
-                      onClick={() => void moveSeason(editing, seasonIndex, 1)}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </div>
-
-                <SeasonEditor busy={busy} mutate={mutate} season={season} />
-                <NewEpisodeForm busy={busy} mutate={mutate} season={season} />
-
-                <div className={styles.grid}>
-                  {season.episodes.map((episode, episodeIndex) => (
-                    <EpisodeEditor
-                      busy={busy}
-                      episode={episode}
-                      episodeIndex={episodeIndex}
-                      key={episode.id}
-                      mutate={mutate}
-                      season={season}
-                    />
-                  ))}
-                  {!season.episodes.length ? (
-                    <p className={styles.muted}>No episodes in this season yet.</p>
-                  ) : null}
-                </div>
-              </section>
-            ))}
-            {!editing.seasons.length ? (
-              <p className={styles.muted}>Add the first season to start episode management.</p>
-            ) : null}
-          </div>
-        </section>
+      ) : null}
+      {message ? (
+        <div className={styles.notice} role="status">
+          {message}
+        </div>
       ) : null}
 
       <section className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <span className={styles.eyebrow}>Catalog browser</span>
-            <h2>Series</h2>
+            <span className={styles.eyebrow}>{editing ? t("Edit series") : t("Create draft")}</span>
+            <h2>{editing?.title ?? t("New series")}</h2>
           </div>
-          <span className={styles.statusPill}>{items.length} results</span>
+          {editing ? (
+            <ValidationBadge validation={editing.validation} />
+          ) : (
+            <span className={styles.statusPill}>{t("DRAFT")}</span>
+          )}
+        </div>
+
+        {editing?.validation.issues.length ? (
+          <CatalogValidationIssues issues={editing.validation.issues} />
+        ) : null}
+
+        <fieldset disabled={Boolean(busy) || writeBlocked}>
+          <form
+            ref={form}
+            aria-label={t("Series details")}
+            className={styles.formGrid}
+            onSubmit={saveSeries}
+          >
+            <label>
+              {t("Title")}
+              <input
+                disabled={editing?.status === "ARCHIVED"}
+                maxLength={200}
+                required
+                value={draft.title}
+                onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Slug")}
+              <input
+                disabled={editing?.status === "ARCHIVED"}
+                maxLength={160}
+                placeholder={t("generated from title when blank")}
+                value={draft.slug}
+                onChange={(event) => setDraft({ ...draft, slug: event.target.value })}
+              />
+            </label>
+            <label className={styles.fullField}>
+              {t("Synopsis")}
+              <textarea
+                disabled={editing?.status === "ARCHIVED"}
+                required
+                value={draft.synopsis}
+                onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Release year")}
+              <input
+                disabled={editing?.status === "ARCHIVED"}
+                max="2200"
+                min="1888"
+                placeholder={t("Optional")}
+                type="number"
+                value={draft.releaseYear}
+                onChange={(event) => setDraft({ ...draft, releaseYear: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Maturity")}
+              <input
+                disabled={editing?.status === "ARCHIVED"}
+                maxLength={32}
+                placeholder={t("TV-14")}
+                required
+                value={draft.maturityRating}
+                onChange={(event) => setDraft({ ...draft, maturityRating: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Original language")}
+              <input
+                disabled={editing?.status === "ARCHIVED"}
+                maxLength={16}
+                placeholder={t("en")}
+                required
+                value={draft.originalLanguage}
+                onChange={(event) => setDraft({ ...draft, originalLanguage: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Genres / categories")}
+              <input
+                disabled={editing?.status === "ARCHIVED"}
+                placeholder={t("Drama, Mystery")}
+                required
+                value={draft.genres}
+                onChange={(event) => setDraft({ ...draft, genres: event.target.value })}
+              />
+            </label>
+            <div className={styles.fullField}>
+              <CatalogResourcePicker
+                disabled={editing?.status === "ARCHIVED"}
+                kind="video"
+                label={t("Series trailer")}
+                selectedLabel={draft.trailer.label}
+                value={draft.trailer.id}
+                onChange={(id, label) => setDraft({ ...draft, trailer: { id, label } })}
+              />
+            </div>
+
+            {(["POSTER", "BACKDROP", "LOGO"] as const).map((type) => (
+              <div className={styles.fullField} key={type}>
+                <CatalogResourcePicker
+                  disabled={editing?.status === "ARCHIVED"}
+                  kind="artwork"
+                  label={t(`${titleCase(type)} artwork`)}
+                  required={type === "POSTER"}
+                  selectedLabel={draft.artwork[type].label}
+                  value={draft.artwork[type].id}
+                  onChange={(id, label) =>
+                    setDraft({
+                      ...draft,
+                      artwork: { ...draft.artwork, [type]: { id, label } },
+                    })
+                  }
+                />
+              </div>
+            ))}
+
+            <div className={`${styles.cardInset} ${styles.fullField}`}>
+              <div className={styles.cardHeader}>
+                <div>
+                  <strong>{t("Availability")}</strong>
+                  <p className={styles.muted}>
+                    {t(
+                      "Leave empty for unrestricted Series availability, or add explicit global/territory rules with optional windows.",
+                    )}
+                  </p>
+                </div>
+                <ActionButton
+                  className={styles.button}
+                  disabled={editing?.status === "ARCHIVED"}
+                  type="button"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      availability: [
+                        ...draft.availability,
+                        { territoryCode: "*", rule: "ALLOW", startsAt: "", endsAt: "", note: "" },
+                      ],
+                    })
+                  }
+                >
+                  {t("Add rule")}
+                </ActionButton>
+              </div>
+              {draft.availability.map((rule, index) => (
+                <div className={styles.formGrid} key={index}>
+                  <label>
+                    {t("Territory")}
+                    <input
+                      disabled={editing?.status === "ARCHIVED"}
+                      maxLength={2}
+                      value={rule.territoryCode}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, {
+                          territoryCode: event.target.value.toUpperCase(),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    {t("Rule")}
+                    <select
+                      disabled={editing?.status === "ARCHIVED"}
+                      value={rule.rule}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, {
+                          rule: event.target.value as AvailabilityRule,
+                        })
+                      }
+                    >
+                      <option value="ALLOW">{t("Allow")}</option>
+                      <option value="BLOCK">{t("Block")}</option>
+                    </select>
+                  </label>
+                  <label>
+                    {t("Starts")}
+                    <input
+                      disabled={editing?.status === "ARCHIVED"}
+                      type="datetime-local"
+                      value={rule.startsAt}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, { startsAt: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    {t("Ends")}
+                    <input
+                      disabled={editing?.status === "ARCHIVED"}
+                      type="datetime-local"
+                      value={rule.endsAt}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, { endsAt: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className={styles.fullField}>
+                    {t("Note")}
+                    <input
+                      disabled={editing?.status === "ARCHIVED"}
+                      maxLength={240}
+                      value={rule.note}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, { note: event.target.value })
+                      }
+                    />
+                  </label>
+                  <div className={`${styles.actions} ${styles.fullField}`}>
+                    <ActionButton
+                      className={styles.danger}
+                      disabled={editing?.status === "ARCHIVED"}
+                      type="button"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          availability: draft.availability.filter(
+                            (_, itemIndex) => itemIndex !== index,
+                          ),
+                        })
+                      }
+                    >
+                      {t("Remove rule")}
+                    </ActionButton>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className={`${styles.actions} ${styles.fullField}`}>
+              <ActionButton
+                className={styles.button}
+                disabled={busy === "save-series" || editing?.status === "ARCHIVED"}
+                type="submit"
+              >
+                {busy === "save-series"
+                  ? t("Saving…")
+                  : editingId
+                    ? t("Save series")
+                    : t("Create draft")}
+              </ActionButton>
+              {editing?.status === "DRAFT" ? (
+                <>
+                  <ActionButton
+                    className={styles.button}
+                    disabled={Boolean(busy) || dirty || !editing.validation.publishable}
+                    type="button"
+                    onClick={() => setConfirm("publish")}
+                  >
+                    {t("Publish series")}
+                  </ActionButton>
+                  <ActionButton
+                    className={styles.danger}
+                    disabled={Boolean(busy) || dirty}
+                    type="button"
+                    onClick={() => setConfirm("archive")}
+                  >
+                    {t("Archive")}
+                  </ActionButton>
+                </>
+              ) : null}
+              {editing?.status === "PUBLISHED" ? (
+                <ActionButton
+                  className={styles.danger}
+                  disabled={Boolean(busy) || dirty}
+                  type="button"
+                  onClick={() => setConfirm("unpublish")}
+                >
+                  {t("Unpublish series")}
+                </ActionButton>
+              ) : null}
+            </div>
+          </form>
+        </fieldset>
+      </section>
+
+      {editing && editing.status !== "ARCHIVED" ? (
+        <fieldset disabled={Boolean(busy) || writeBlocked} key={`${editing.id}:${editorRevision}`}>
+          <section className={styles.card}>
+            <div className={styles.cardHeader}>
+              <div>
+                <span className={styles.eyebrow}>{t("Season & episode management")}</span>
+                <h2>{editing.title}</h2>
+                <p className={styles.muted}>
+                  {t(
+                    "Ordering is conflict-safe. Episodes must reference an accessible playable Video before publication.",
+                  )}
+                </p>
+              </div>
+              <span className={styles.statusPill}>
+                {editing.seasons.length} {t("seasons")}
+              </span>
+            </div>
+
+            <NewSeasonForm key={editing.id} busy={busy} mutate={mutate} series={editing} />
+
+            <div className={styles.grid}>
+              {editing.seasons.map((season, seasonIndex) => (
+                <section className={styles.cardInset} key={season.id}>
+                  <div className={styles.cardHeader}>
+                    <div>
+                      <strong>{season.title || `${t("Season")} ${season.seasonNumber}`}</strong>
+                      <p className={styles.muted}>
+                        {t("Season")}
+                        {season.seasonNumber} {t("· catalog position")}
+                        {seasonIndex + 1} · {season.episodes.length} {t("episodes")}
+                      </p>
+                    </div>
+                    <div className={styles.actions}>
+                      <ActionButton
+                        aria-label={`${t("Move up")}: ${t("Season")} ${season.seasonNumber}`}
+                        className={styles.button}
+                        disabled={seasonIndex === 0 || busy === `reorder-seasons:${editing.id}`}
+                        type="button"
+                        onClick={() => void moveSeason(editing, seasonIndex, -1)}
+                      >
+                        ↑
+                      </ActionButton>
+                      <ActionButton
+                        aria-label={`${t("Move down")}: ${t("Season")} ${season.seasonNumber}`}
+                        className={styles.button}
+                        disabled={
+                          seasonIndex === editing.seasons.length - 1 ||
+                          busy === `reorder-seasons:${editing.id}`
+                        }
+                        type="button"
+                        onClick={() => void moveSeason(editing, seasonIndex, 1)}
+                      >
+                        ↓
+                      </ActionButton>
+                    </div>
+                  </div>
+
+                  <SeasonEditor busy={busy} mutate={mutate} season={season} />
+                  <NewEpisodeForm busy={busy} mutate={mutate} season={season} />
+
+                  <div className={styles.grid}>
+                    {season.episodes.map((episode, episodeIndex) => (
+                      <EpisodeEditor
+                        busy={busy}
+                        episode={episode}
+                        episodeIndex={episodeIndex}
+                        key={episode.id}
+                        mutate={mutate}
+                        season={season}
+                      />
+                    ))}
+                    {!season.episodes.length ? (
+                      <p className={styles.muted}>{t("No episodes in this season yet.")}</p>
+                    ) : null}
+                  </div>
+                </section>
+              ))}
+              {!editing.seasons.length ? (
+                <p className={styles.muted}>
+                  {t("Add the first season to start episode management.")}
+                </p>
+              ) : null}
+            </div>
+          </section>
+        </fieldset>
+      ) : null}
+
+      <section className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <span className={styles.eyebrow}>{t("Catalog browser")}</span>
+            <h2>{t("Series")}</h2>
+          </div>
+          <span className={styles.statusPill}>
+            {items.length} {t("results")}
+          </span>
         </div>
         <div className={styles.toolbar}>
+          <ActionButton
+            disabled={Boolean(busy)}
+            onClick={() => {
+              if (editing) beginEdit(editing);
+              else void load().catch(() => setError(t("Series catalog could not be loaded.")));
+            }}
+          >
+            {t(editingId ? "Refresh record" : "Refresh list")}
+          </ActionButton>
           <input
-            placeholder="Search title, slug, synopsis or genre…"
+            aria-label={t("Search series")}
+            placeholder={t("Search title, slug, synopsis or genre…")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
           <select
+            aria-label={t("Filter by status")}
             value={status}
             onChange={(event) => setStatus(event.target.value as typeof status)}
           >
-            <option value="">All statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="PUBLISHED">Published</option>
-            <option value="ARCHIVED">Archived</option>
+            <option value="">{t("All statuses")}</option>
+            <option value="DRAFT">{t("Draft")}</option>
+            <option value="PUBLISHED">{t("Published")}</option>
+            <option value="ARCHIVED">{t("Archived")}</option>
           </select>
         </div>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Series</th>
-                <th>Status</th>
-                <th>Validation</th>
-                <th>Seasons</th>
-                <th>Episodes</th>
-                <th>Action</th>
+                <th>{t("Series")}</th>
+                <th>{t("Status")}</th>
+                <th>{t("Validation")}</th>
+                <th>{t("Seasons")}</th>
+                <th>{t("Episodes")}</th>
+                <th>{t("Action")}</th>
               </tr>
             </thead>
             <tbody>
@@ -698,12 +934,12 @@ export function AdminSeriesCatalog() {
                   <td>
                     <strong>{series.title}</strong>
                     <div className={styles.muted}>
-                      /{series.slug} · {series.releaseYear ?? "year unset"} ·{" "}
+                      /{series.slug} · {series.releaseYear ?? t("year unset")} ·{" "}
                       {series.originalLanguage.toUpperCase()}
                     </div>
                   </td>
                   <td>
-                    <span className={styles.statusPill}>{series.status}</span>
+                    <span className={styles.statusPill}>{t(series.status)}</span>
                   </td>
                   <td>
                     <ValidationBadge validation={series.validation} />
@@ -713,20 +949,20 @@ export function AdminSeriesCatalog() {
                     {series.seasons.reduce((total, season) => total + season.episodes.length, 0)}
                   </td>
                   <td>
-                    <button
+                    <ActionButton
                       className={styles.button}
                       type="button"
                       onClick={() => beginEdit(series)}
                     >
-                      Manage
-                    </button>
+                      {t("Manage")}
+                    </ActionButton>
                   </td>
                 </tr>
               ))}
               {!items.length ? (
                 <tr>
                   <td colSpan={6} className={styles.muted}>
-                    No series match these filters.
+                    {t("No series match these filters.")}
                   </td>
                 </tr>
               ) : null}
@@ -734,6 +970,19 @@ export function AdminSeriesCatalog() {
           </table>
         </div>
       </section>
+      <ConfirmationDialog
+        open={confirm !== null}
+        direction={direction}
+        title={t("Change series status?")}
+        description={t("This changes the saved record’s public availability.")}
+        confirmLabel={t("Confirm")}
+        cancelLabel={t("Cancel")}
+        busy={Boolean(busy)}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm && editing) void lifecycle(editing, confirm);
+        }}
+      />
     </>
   );
 }
@@ -747,10 +996,20 @@ function NewSeasonForm({
   mutate: Mutate;
   busy: string | null;
 }) {
-  const [draft, setDraft] = useState<SeasonDraft>(emptySeasonDraft);
+  const t = useCatalogCopy();
+  const { restoredForm } = useCatalogDrafts();
+  const recovered = restoredForm<SeasonDraft>(`new-season:${series.id}`);
+  const [sourceFingerprint, setSourceFingerprint] = useState(
+    () => recovered?.sourceFingerprint ?? catalogFormFingerprint(`new-season:${series.id}`, series),
+  );
+  const form = useRef<HTMLFormElement>(null);
+  const [draft, setDraft] = useState<SeasonDraft>(() => recovered?.draft ?? emptySeasonDraft());
+  const [baseline, setBaseline] = useState<SeasonDraft>(
+    () => recovered?.baseline ?? emptySeasonDraft(),
+  );
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveDraft() {
+    if (!form.current?.reportValidity()) return false;
     const ok = await mutate(
       `create-season:${series.id}`,
       `/admin/catalog/series/${series.id}/seasons`,
@@ -762,61 +1021,80 @@ function NewSeasonForm({
           artwork: artworkPayload(draft.artwork, `Season ${draft.seasonNumber}`),
         }),
       },
-      `Season ${draft.seasonNumber} created.`,
+      t("Season created."),
     );
-    if (ok) setDraft(emptySeasonDraft());
+    if (!ok) return false;
+    setSourceFingerprint(catalogFormFingerprint(`new-season:${series.id}`, ok.authoritative));
+    const next = emptySeasonDraft();
+    setDraft(next);
+    setBaseline(next);
+    return true;
+  }
+
+  useCatalogDirty(`new-season:${series.id}`, draftChanged(draft, baseline), saveDraft, {
+    draft,
+    baseline,
+    sourceFingerprint,
+  });
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveDraft();
   }
 
   return (
-    <form className={styles.cardInset} onSubmit={submit}>
-      <div className={styles.cardHeader}>
-        <div>
-          <strong>Add season</strong>
-          <p className={styles.muted}>Create the season as a catalog child; artwork is optional.</p>
+    <fieldset disabled={Boolean(busy)}>
+      <form ref={form} aria-label={t("New season")} className={styles.cardInset} onSubmit={submit}>
+        <div className={styles.cardHeader}>
+          <div>
+            <strong>{t("Add season")}</strong>
+            <p className={styles.muted}>
+              {t("Create the season as a catalog child; artwork is optional.")}
+            </p>
+          </div>
         </div>
-      </div>
-      <div className={styles.formGrid}>
-        <label>
-          Season number
-          <input
-            min="0"
-            required
-            type="number"
-            value={draft.seasonNumber}
-            onChange={(event) => setDraft({ ...draft, seasonNumber: event.target.value })}
-          />
-        </label>
-        <label>
-          Title
-          <input
-            maxLength={200}
-            placeholder="Optional"
-            value={draft.title}
-            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-          />
-        </label>
-        <div className={styles.fullField}>
-          <CatalogResourcePicker
-            kind="artwork"
-            label="Season poster"
-            selectedLabel={draft.artwork.POSTER.label}
-            value={draft.artwork.POSTER.id}
-            onChange={(id, label) =>
-              setDraft({ ...draft, artwork: { ...draft.artwork, POSTER: { id, label } } })
-            }
-          />
+        <div className={styles.formGrid}>
+          <label>
+            {t("Season number")}
+            <input
+              min="0"
+              required
+              type="number"
+              value={draft.seasonNumber}
+              onChange={(event) => setDraft({ ...draft, seasonNumber: event.target.value })}
+            />
+          </label>
+          <label>
+            {t("Title")}
+            <input
+              maxLength={200}
+              placeholder={t("Optional")}
+              value={draft.title}
+              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+            />
+          </label>
+          <div className={styles.fullField}>
+            <CatalogResourcePicker
+              kind="artwork"
+              label={t("Season poster")}
+              selectedLabel={draft.artwork.POSTER.label}
+              value={draft.artwork.POSTER.id}
+              onChange={(id, label) =>
+                setDraft({ ...draft, artwork: { ...draft.artwork, POSTER: { id, label } } })
+              }
+            />
+          </div>
+          <div className={`${styles.actions} ${styles.fullField}`}>
+            <ActionButton
+              className={styles.button}
+              disabled={busy === `create-season:${series.id}`}
+              type="submit"
+            >
+              {t("Add season")}
+            </ActionButton>
+          </div>
         </div>
-        <div className={`${styles.actions} ${styles.fullField}`}>
-          <button
-            className={styles.button}
-            disabled={busy === `create-season:${series.id}`}
-            type="submit"
-          >
-            Add season
-          </button>
-        </div>
-      </div>
-    </form>
+      </form>
+    </fieldset>
   );
 }
 
@@ -829,73 +1107,99 @@ function SeasonEditor({
   mutate: Mutate;
   busy: string | null;
 }) {
-  const [draft, setDraft] = useState<SeasonDraft>(() => fromSeason(season));
+  const t = useCatalogCopy();
+  const { restoredForm } = useCatalogDrafts();
+  const recovered = restoredForm<SeasonDraft>(`season:${season.id}`);
+  const [sourceFingerprint, setSourceFingerprint] = useState(
+    () => recovered?.sourceFingerprint ?? catalogFormFingerprint(`season:${season.id}`, season),
+  );
+  const form = useRef<HTMLFormElement>(null);
+  const [draft, setDraft] = useState<SeasonDraft>(() => recovered?.draft ?? fromSeason(season));
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDraft(fromSeason(season)), 0);
-    return () => window.clearTimeout(timer);
-  }, [season]);
+  const [baseline, setBaseline] = useState(() => recovered?.baseline ?? fromSeason(season));
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await mutate(
+  async function saveDraft() {
+    if (!form.current?.reportValidity()) return false;
+    const ok = await mutate(
       `save-season:${season.id}`,
       `/admin/catalog/series/seasons/${season.id}`,
       {
         method: "PATCH",
-        body: JSON.stringify({
-          seasonNumber: Number(draft.seasonNumber),
-          title: draft.title.trim() || null,
-          artwork: artworkPayload(draft.artwork, `Season ${draft.seasonNumber}`),
-        }),
+        body: JSON.stringify(changedCatalogFields(seasonPayload(baseline), seasonPayload(draft))),
       },
-      `Season ${draft.seasonNumber} saved.`,
+      t("Season saved."),
     );
+    if (!ok) return false;
+    setSourceFingerprint(
+      catalogFormFingerprint(
+        `season:${season.id}`,
+        ok.authoritative?.seasons.find((item) => item.id === season.id) ?? ok.season,
+      ),
+    );
+    setBaseline(draft);
+    return true;
+  }
+
+  useCatalogDirty(`season:${season.id}`, draftChanged(draft, baseline), saveDraft, {
+    draft,
+    baseline,
+    sourceFingerprint,
+  });
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveDraft();
   }
 
   return (
-    <form className={styles.formGrid} onSubmit={submit}>
-      <label>
-        Season number
-        <input
-          min="0"
-          required
-          type="number"
-          value={draft.seasonNumber}
-          onChange={(event) => setDraft({ ...draft, seasonNumber: event.target.value })}
-        />
-      </label>
-      <label>
-        Season title
-        <input
-          maxLength={200}
-          value={draft.title}
-          onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-        />
-      </label>
-      {(["POSTER", "BACKDROP", "LOGO"] as const).map((type) => (
-        <div className={styles.fullField} key={type}>
-          <CatalogResourcePicker
-            kind="artwork"
-            label={`Season ${titleCase(type)}`}
-            selectedLabel={draft.artwork[type].label}
-            value={draft.artwork[type].id}
-            onChange={(id, label) =>
-              setDraft({ ...draft, artwork: { ...draft.artwork, [type]: { id, label } } })
-            }
+    <fieldset disabled={Boolean(busy)}>
+      <form
+        ref={form}
+        aria-label={t("Season details")}
+        className={styles.formGrid}
+        onSubmit={submit}
+      >
+        <label>
+          {t("Season number")}
+          <input
+            min="0"
+            required
+            type="number"
+            value={draft.seasonNumber}
+            onChange={(event) => setDraft({ ...draft, seasonNumber: event.target.value })}
           />
+        </label>
+        <label>
+          {t("Season title")}
+          <input
+            maxLength={200}
+            value={draft.title}
+            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+          />
+        </label>
+        {(["POSTER", "BACKDROP", "LOGO"] as const).map((type) => (
+          <div className={styles.fullField} key={type}>
+            <CatalogResourcePicker
+              kind="artwork"
+              label={t(`Season ${titleCase(type)}`)}
+              selectedLabel={draft.artwork[type].label}
+              value={draft.artwork[type].id}
+              onChange={(id, label) =>
+                setDraft({ ...draft, artwork: { ...draft.artwork, [type]: { id, label } } })
+              }
+            />
+          </div>
+        ))}
+        <div className={`${styles.actions} ${styles.fullField}`}>
+          <ActionButton
+            className={styles.button}
+            disabled={busy === `save-season:${season.id}`}
+            type="submit"
+          >
+            {t("Save season metadata")}
+          </ActionButton>
         </div>
-      ))}
-      <div className={`${styles.actions} ${styles.fullField}`}>
-        <button
-          className={styles.button}
-          disabled={busy === `save-season:${season.id}`}
-          type="submit"
-        >
-          Save season metadata
-        </button>
-      </div>
-    </form>
+      </form>
+    </fieldset>
   );
 }
 
@@ -908,10 +1212,21 @@ function NewEpisodeForm({
   mutate: Mutate;
   busy: string | null;
 }) {
-  const [draft, setDraft] = useState<EpisodeDraft>(emptyEpisodeDraft);
+  const t = useCatalogCopy();
+  const { restoredForm } = useCatalogDrafts();
+  const recovered = restoredForm<EpisodeDraft>(`new-episode:${season.id}`);
+  const [sourceFingerprint, setSourceFingerprint] = useState(
+    () =>
+      recovered?.sourceFingerprint ?? catalogFormFingerprint(`new-episode:${season.id}`, season),
+  );
+  const form = useRef<HTMLFormElement>(null);
+  const [draft, setDraft] = useState<EpisodeDraft>(() => recovered?.draft ?? emptyEpisodeDraft());
+  const [baseline, setBaseline] = useState<EpisodeDraft>(
+    () => recovered?.baseline ?? emptyEpisodeDraft(),
+  );
 
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveDraft() {
+    if (!form.current?.reportValidity()) return false;
     const ok = await mutate(
       `create-episode:${season.id}`,
       `/admin/catalog/series/seasons/${season.id}/episodes`,
@@ -925,77 +1240,99 @@ function NewEpisodeForm({
           videoId: draft.video.id,
         }),
       },
-      `Episode ${draft.episodeNumber} created.`,
+      t("Episode created."),
     );
-    if (ok) setDraft(emptyEpisodeDraft());
+    if (!ok) return false;
+    setSourceFingerprint(
+      catalogFormFingerprint(
+        `new-episode:${season.id}`,
+        ok.authoritative?.seasons.find((item) => item.id === season.id),
+      ),
+    );
+    const next = emptyEpisodeDraft();
+    setDraft(next);
+    setBaseline(next);
+    return true;
+  }
+
+  useCatalogDirty(`new-episode:${season.id}`, draftChanged(draft, baseline), saveDraft, {
+    draft,
+    baseline,
+    sourceFingerprint,
+  });
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveDraft();
   }
 
   return (
-    <form className={styles.cardInset} onSubmit={submit}>
-      <div className={styles.cardHeader}>
-        <div>
-          <strong>Add episode</strong>
-          <p className={styles.muted}>
-            Draft episodes may omit playback; publication requires a playable Video.
-          </p>
+    <fieldset disabled={Boolean(busy)}>
+      <form ref={form} aria-label={t("New episode")} className={styles.cardInset} onSubmit={submit}>
+        <div className={styles.cardHeader}>
+          <div>
+            <strong>{t("Add episode")}</strong>
+            <p className={styles.muted}>
+              {t("Draft episodes may omit playback; publication requires a playable Video.")}
+            </p>
+          </div>
         </div>
-      </div>
-      <div className={styles.formGrid}>
-        <label>
-          Episode number
-          <input
-            min="0"
-            required
-            type="number"
-            value={draft.episodeNumber}
-            onChange={(event) => setDraft({ ...draft, episodeNumber: event.target.value })}
-          />
-        </label>
-        <label>
-          Title
-          <input
-            maxLength={200}
-            required
-            value={draft.title}
-            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-          />
-        </label>
-        <label>
-          Release date
-          <input
-            type="datetime-local"
-            value={draft.releaseDate}
-            onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
-          />
-        </label>
-        <label className={styles.fullField}>
-          Synopsis
-          <textarea
-            required
-            value={draft.synopsis}
-            onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
-          />
-        </label>
-        <div className={styles.fullField}>
-          <CatalogResourcePicker
-            kind="video"
-            label="Episode playback"
-            selectedLabel={draft.video.label}
-            value={draft.video.id}
-            onChange={(id, label) => setDraft({ ...draft, video: { id, label } })}
-          />
+        <div className={styles.formGrid}>
+          <label>
+            {t("Episode number")}
+            <input
+              min="0"
+              required
+              type="number"
+              value={draft.episodeNumber}
+              onChange={(event) => setDraft({ ...draft, episodeNumber: event.target.value })}
+            />
+          </label>
+          <label>
+            {t("Title")}
+            <input
+              maxLength={200}
+              required
+              value={draft.title}
+              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+            />
+          </label>
+          <label>
+            {t("Release date")}
+            <input
+              type="datetime-local"
+              value={draft.releaseDate}
+              onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
+            />
+          </label>
+          <label className={styles.fullField}>
+            {t("Synopsis")}
+            <textarea
+              required
+              value={draft.synopsis}
+              onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
+            />
+          </label>
+          <div className={styles.fullField}>
+            <CatalogResourcePicker
+              kind="video"
+              label={t("Episode playback")}
+              selectedLabel={draft.video.label}
+              value={draft.video.id}
+              onChange={(id, label) => setDraft({ ...draft, video: { id, label } })}
+            />
+          </div>
+          <div className={`${styles.actions} ${styles.fullField}`}>
+            <ActionButton
+              className={styles.button}
+              disabled={busy === `create-episode:${season.id}`}
+              type="submit"
+            >
+              {t("Add episode draft")}
+            </ActionButton>
+          </div>
         </div>
-        <div className={`${styles.actions} ${styles.fullField}`}>
-          <button
-            className={styles.button}
-            disabled={busy === `create-episode:${season.id}`}
-            type="submit"
-          >
-            Add episode draft
-          </button>
-        </div>
-      </div>
-    </form>
+      </form>
+    </fieldset>
   );
 }
 
@@ -1012,39 +1349,68 @@ function EpisodeEditor({
   mutate: Mutate;
   busy: string | null;
 }) {
-  const [draft, setDraft] = useState<EpisodeDraft>(() => fromEpisode(episode));
+  const t = useCatalogCopy();
+  const { restoredForm } = useCatalogDrafts();
+  const recovered = restoredForm<EpisodeDraft>(`episode:${episode.id}`);
+  const [sourceFingerprint, setSourceFingerprint] = useState(
+    () => recovered?.sourceFingerprint ?? catalogFormFingerprint(`episode:${episode.id}`, episode),
+  );
+  const form = useRef<HTMLFormElement>(null);
+  const [draft, setDraft] = useState<EpisodeDraft>(() => recovered?.draft ?? fromEpisode(episode));
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDraft(fromEpisode(episode)), 0);
-    return () => window.clearTimeout(timer);
-  }, [episode]);
+  const [baseline, setBaseline] = useState(() => recovered?.baseline ?? fromEpisode(episode));
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    await mutate(
+  async function saveDraft() {
+    if (!form.current?.reportValidity()) return false;
+    const ok = await mutate(
       `save-episode:${episode.id}`,
       `/admin/catalog/series/episodes/${episode.id}`,
       {
         method: "PATCH",
-        body: JSON.stringify({
-          episodeNumber: Number(draft.episodeNumber),
-          title: draft.title.trim(),
-          synopsis: draft.synopsis.trim(),
-          releaseDate: draft.releaseDate ? new Date(draft.releaseDate).toISOString() : null,
-          videoId: draft.video.id,
-        }),
+        body: JSON.stringify(changedCatalogFields(episodePayload(baseline), episodePayload(draft))),
       },
-      `${draft.title || `Episode ${draft.episodeNumber}`} saved.`,
+      t("Episode saved."),
     );
+    if (!ok) return false;
+    setSourceFingerprint(
+      catalogFormFingerprint(
+        `episode:${episode.id}`,
+        ok.authoritative?.seasons
+          .flatMap((item) => item.episodes)
+          .find((item) => item.id === episode.id) ?? ok.episode,
+      ),
+    );
+    setBaseline(draft);
+    return true;
+  }
+
+  useCatalogDirty(`episode:${episode.id}`, draftChanged(draft, baseline), saveDraft, {
+    draft,
+    baseline,
+    sourceFingerprint,
+  });
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveDraft();
   }
 
   async function lifecycle(action: "publish" | "unpublish") {
-    await mutate(
+    if (draftChanged(draft, baseline)) return;
+    const ok = await mutate(
       `${action}-episode:${episode.id}`,
       `/admin/catalog/series/episodes/${episode.id}/${action}`,
       { method: "POST" },
-      `${episode.title} ${action === "publish" ? "published" : "unpublished"}.`,
+      t(action === "publish" ? "Episode published." : "Episode unpublished."),
     );
+    if (ok)
+      setSourceFingerprint(
+        catalogFormFingerprint(
+          `episode:${episode.id}`,
+          ok.authoritative?.seasons
+            .flatMap((item) => item.episodes)
+            .find((item) => item.id === episode.id) ?? ok.episode,
+        ),
+      );
   }
 
   async function move(delta: -1 | 1) {
@@ -1056,7 +1422,7 @@ function EpisodeEditor({
       `reorder-episodes:${season.id}`,
       `/admin/catalog/series/seasons/${season.id}/episodes/reorder`,
       { method: "POST", body: JSON.stringify({ orderedIds: ordered }) },
-      "Episode ordering updated.",
+      t("Episode ordering updated."),
     );
   }
 
@@ -1065,123 +1431,143 @@ function EpisodeEditor({
       <div className={styles.cardHeader}>
         <div>
           <strong>
-            E{episode.episodeNumber} · {episode.title}
+            {t("E")}
+            {episode.episodeNumber} · {episode.title}
           </strong>
           <p className={styles.muted}>
-            {episode.status} · catalog position {episodeIndex + 1} ·{" "}
-            {episode.video?.title ?? "playback not assigned"}
+            {t(episode.status)} {t("· catalog position")}
+            {episodeIndex + 1} · {episode.video?.title ?? t("playback not assigned")}
           </p>
         </div>
         <ValidationBadge validation={episode.validation} />
       </div>
       {episode.validation.issues.length ? (
-        <div className={styles.error}>Validation: {episode.validation.issues.join(" · ")}</div>
+        <CatalogValidationIssues issues={episode.validation.issues} />
       ) : null}
-      <form className={styles.formGrid} onSubmit={save}>
-        <label>
-          Episode number
-          <input
-            min="0"
-            required
-            type="number"
-            value={draft.episodeNumber}
-            onChange={(event) => setDraft({ ...draft, episodeNumber: event.target.value })}
-          />
-        </label>
-        <label>
-          Title
-          <input
-            maxLength={200}
-            required
-            value={draft.title}
-            onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-          />
-        </label>
-        <label>
-          Release date
-          <input
-            type="datetime-local"
-            value={draft.releaseDate}
-            onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
-          />
-        </label>
-        <label className={styles.fullField}>
-          Synopsis
-          <textarea
-            required
-            value={draft.synopsis}
-            onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
-          />
-        </label>
-        <div className={styles.fullField}>
-          <CatalogResourcePicker
-            kind="video"
-            label="Episode playback"
-            required={episode.status === "PUBLISHED"}
-            selectedLabel={draft.video.label}
-            value={draft.video.id}
-            onChange={(id, label) => setDraft({ ...draft, video: { id, label } })}
-          />
-        </div>
-        <div className={`${styles.actions} ${styles.fullField}`}>
-          <button
-            className={styles.button}
-            disabled={busy === `save-episode:${episode.id}`}
-            type="submit"
-          >
-            Save episode
-          </button>
-          <button
-            aria-label={`Move ${episode.title} up`}
-            className={styles.button}
-            disabled={episodeIndex === 0 || busy === `reorder-episodes:${season.id}`}
-            type="button"
-            onClick={() => void move(-1)}
-          >
-            ↑
-          </button>
-          <button
-            aria-label={`Move ${episode.title} down`}
-            className={styles.button}
-            disabled={
-              episodeIndex === season.episodes.length - 1 ||
-              busy === `reorder-episodes:${season.id}`
-            }
-            type="button"
-            onClick={() => void move(1)}
-          >
-            ↓
-          </button>
-          {episode.status === "DRAFT" ? (
-            <button
+      <fieldset disabled={Boolean(busy)}>
+        <form
+          ref={form}
+          aria-label={t("Episode details")}
+          className={styles.formGrid}
+          onSubmit={save}
+        >
+          <label>
+            {t("Episode number")}
+            <input
+              min="0"
+              required
+              type="number"
+              value={draft.episodeNumber}
+              onChange={(event) => setDraft({ ...draft, episodeNumber: event.target.value })}
+            />
+          </label>
+          <label>
+            {t("Title")}
+            <input
+              maxLength={200}
+              required
+              value={draft.title}
+              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+            />
+          </label>
+          <label>
+            {t("Release date")}
+            <input
+              type="datetime-local"
+              value={draft.releaseDate}
+              onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
+            />
+          </label>
+          <label className={styles.fullField}>
+            {t("Synopsis")}
+            <textarea
+              required
+              value={draft.synopsis}
+              onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
+            />
+          </label>
+          <div className={styles.fullField}>
+            <CatalogResourcePicker
+              kind="video"
+              label={t("Episode playback")}
+              required={episode.status === "PUBLISHED"}
+              selectedLabel={draft.video.label}
+              value={draft.video.id}
+              onChange={(id, label) => setDraft({ ...draft, video: { id, label } })}
+            />
+          </div>
+          <div className={`${styles.actions} ${styles.fullField}`}>
+            <ActionButton
               className={styles.button}
-              disabled={Boolean(busy) || !episode.validation.publishable}
-              type="button"
-              onClick={() => void lifecycle("publish")}
+              disabled={busy === `save-episode:${episode.id}`}
+              type="submit"
             >
-              Publish episode
-            </button>
-          ) : null}
-          {episode.status === "PUBLISHED" ? (
-            <button
-              className={styles.danger}
-              disabled={Boolean(busy)}
+              {t("Save episode")}
+            </ActionButton>
+            <ActionButton
+              aria-label={`${t("Move up")}: ${episode.title}`}
+              className={styles.button}
+              disabled={episodeIndex === 0 || busy === `reorder-episodes:${season.id}`}
               type="button"
-              onClick={() => void lifecycle("unpublish")}
+              onClick={() => void move(-1)}
             >
-              Unpublish episode
-            </button>
-          ) : null}
-        </div>
-      </form>
+              ↑
+            </ActionButton>
+            <ActionButton
+              aria-label={`${t("Move down")}: ${episode.title}`}
+              className={styles.button}
+              disabled={
+                episodeIndex === season.episodes.length - 1 ||
+                busy === `reorder-episodes:${season.id}`
+              }
+              type="button"
+              onClick={() => void move(1)}
+            >
+              ↓
+            </ActionButton>
+            {episode.status === "DRAFT" ? (
+              <ActionButton
+                className={styles.button}
+                disabled={
+                  Boolean(busy) || draftChanged(draft, baseline) || !episode.validation.publishable
+                }
+                type="button"
+                onClick={() => void lifecycle("publish")}
+              >
+                {t("Publish episode")}
+              </ActionButton>
+            ) : null}
+            {episode.status === "PUBLISHED" ? (
+              <ActionButton
+                className={styles.danger}
+                disabled={Boolean(busy) || draftChanged(draft, baseline)}
+                type="button"
+                onClick={() => void lifecycle("unpublish")}
+              >
+                {t("Unpublish episode")}
+              </ActionButton>
+            ) : null}
+          </div>
+        </form>
+      </fieldset>
     </article>
   );
 }
 
 function ValidationBadge({ validation }: { validation: Validation }) {
+  const t = useCatalogCopy();
+  const { locale } = useI18n();
   return (
-    <span className={styles.statusPill} title={validation.issues.join(", ") || "Ready to publish"}>
-      {validation.status === "READY" ? "READY" : `${validation.issues.length} BLOCKERS`}
+    <span
+      className={styles.statusPill}
+      title={
+        validation.issues.map((issue) => catalogValidationReason(issue, locale)).join(" ") ||
+        t("Ready to publish")
+      }
+    >
+      {validation.status === "READY"
+        ? t("READY")
+        : `${validation.issues.length} ${t("validation issues")}`}
     </span>
   );
 }
@@ -1258,7 +1644,16 @@ function artworkPayload(artwork: ArtworkSelections, label: string) {
   return (Object.keys(artwork) as ArtworkType[]).flatMap((type) => {
     const selection = artwork[type];
     return selection.id
-      ? [{ type, mediaAssetId: selection.id, altText: `${label} ${type.toLowerCase()}` }]
+      ? [
+          {
+            type,
+            mediaAssetId: selection.id,
+            altText:
+              selection.altText !== undefined
+                ? selection.altText
+                : `${label} ${type.toLowerCase()}`,
+          },
+        ]
       : [];
   });
 }
@@ -1268,6 +1663,7 @@ function artworkSelections(rows: ArtworkRow[]): ArtworkSelections {
   for (const row of rows) {
     next[row.type] = {
       id: row.mediaAssetId,
+      altText: row.altText,
       label: artworkLabel(row),
     };
   }
@@ -1316,4 +1712,21 @@ function toLocalInput(value: string | null) {
   if (Number.isNaN(date.getTime())) return "";
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function seasonPayload(draft: SeasonDraft) {
+  return {
+    seasonNumber: Number(draft.seasonNumber),
+    title: draft.title.trim() || null,
+    artwork: artworkPayload(draft.artwork, `Season ${draft.seasonNumber}`),
+  };
+}
+function episodePayload(draft: EpisodeDraft) {
+  return {
+    episodeNumber: Number(draft.episodeNumber),
+    title: draft.title.trim(),
+    synopsis: draft.synopsis.trim(),
+    releaseDate: draft.releaseDate ? new Date(draft.releaseDate).toISOString() : null,
+    videoId: draft.video.id,
+  };
 }

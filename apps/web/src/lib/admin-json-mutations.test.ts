@@ -8,6 +8,7 @@ import {
   deleteCreative,
   getAdvertisers,
 } from "./admin-advertising";
+import { seedPost, seedRequest } from "./admin-content-import";
 import { registerAdminVerification } from "./admin-reauthentication";
 import { parseVideoAdTarget, saveVideoAdCommand, videoAdValues } from "./admin-video-ad-workspace";
 
@@ -69,43 +70,72 @@ describe("Admin JSON mutation transport", () => {
     expect(fetcher.mock.calls[0]![1]).not.toHaveProperty("body");
   });
 
-  // The remaining legacy panel keeps its private JSON client; validate its
-  // real call sites. Native advertising is exercised through its actual transport below.
-  it.each([["../components/admin/admin-content-library.tsx", "adminApi", 6]] as const)(
-    "%s never submits a bodyless JSON action",
-    (path, client, count) => {
-      const content = readFileSync(new URL(path, import.meta.url), "utf8");
-      const source = ts.createSourceFile(
-        path,
-        content,
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TSX,
-      );
-      let actions = 0;
-      function visit(node: ts.Node) {
-        if (ts.isCallExpression(node) && node.expression.getText(source) === client) {
-          const init = node.arguments[1];
-          if (init && ts.isObjectLiteralExpression(init)) {
-            const properties = init.properties.filter(ts.isPropertyAssignment);
-            const method = properties.find((p) => p.name.getText(source) === "method");
-            if (
-              method &&
-              ts.isStringLiteral(method.initializer) &&
-              ["POST", "PATCH", "DELETE"].includes(method.initializer.text)
-            ) {
-              actions += 1;
-              const body = properties.find((p) => p.name.getText(source) === "body");
-              expect(body, node.getText(source)).toBeDefined();
-            }
-          }
+  it("native import mutations use the JSON helper at every scoped write call site", () => {
+    const path = "../components/admin/admin-content-library.tsx";
+    const content = readFileSync(new URL(path, import.meta.url), "utf8");
+    const source = ts.createSourceFile(
+      path,
+      content,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    let writes = 0;
+    function visit(node: ts.Node) {
+      if (ts.isCallExpression(node) && node.expression.getText(source) === "seedRequest") {
+        const init = node.arguments[4];
+        if (init) {
+          writes++;
+          expect(ts.isCallExpression(init), node.getText(source)).toBe(true);
+          if (ts.isCallExpression(init)) expect(init.expression.getText(source)).toBe("post");
         }
-        ts.forEachChild(node, visit);
       }
-      visit(source);
-      expect(actions).toBe(count);
-    },
-  );
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+    expect(writes).toBe(5);
+  });
+
+  it.each([
+    ["/admin/content-seeding/batches", { channelId: "original", items: [{ title: "Original" }] }],
+    [
+      "/admin/content-seeding/items/original/upload-session",
+      { sizeBytes: 1024, mimeType: "video/mp4" },
+    ],
+    ["/media/uploads/sessions/complete", { sessionToken: "fixture-only", parts: [] }],
+    ["/admin/content-seeding/items/original/publish", undefined],
+    ["/admin/content-seeding/batches/original/rollback", undefined],
+  ])("sends JSON for %s without bodies on either authority read", async (path, body) => {
+    const actor = {
+      accountId: "00000000-0000-4000-8000-000000000001",
+      sessionId: "00000000-0000-4000-8000-000000000002",
+      authVersion: 1,
+      roles: ["OPERATIONS" as const],
+    };
+    const fetcher = vi.fn(
+      async (input: string) =>
+        new Response(JSON.stringify(input.endsWith("/admin/session") ? actor : { saved: true })),
+    );
+    vi.stubGlobal("fetch", fetcher);
+    await seedRequest(
+      path as string,
+      (value) => value,
+      actor,
+      new AbortController().signal,
+      seedPost(body),
+    );
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    const calls = fetcher.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[1]![1]).toMatchObject({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+      credentials: "include",
+      cache: "no-store",
+    });
+    expect(calls[0]![1]).not.toHaveProperty("body");
+    expect(calls[2]![1]).not.toHaveProperty("body");
+  });
 
   it("native advertising settings, override and deletion send real versioned JSON without bodies on actor reads", async () => {
     const actor = {

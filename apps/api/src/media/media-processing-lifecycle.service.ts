@@ -1,13 +1,15 @@
+import type { MediaClaimIdentity } from "./media-output-attempt.js";
 import type { MediaProcessingJobStatus, Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
+import { UPLOAD_FILE_IDENTITY_ALGORITHM, type UploadFileIdentity } from "@ayin/types";
+import { assertJobInputIntegrity } from "./media-processing-integrity.js";
+import { lockOwnedMediaJob } from "./media-processing-integrity-fence.js";
+import { registerProcessingSourceCleanup } from "./media-upload-cleanup.js";
+
 import { DatabaseService } from "../database/database.service.js";
 import { ADAPTIVE_BACKFILL_MARKER } from "./media-adaptive-rollout.js";
-import {
-  hasActiveMediaJob,
-  hasNewerMediaGeneration,
-  lockMediaGeneration,
-} from "./media-generation-safety.js";
+import { hasActiveMediaJob, lockMediaGeneration } from "./media-generation-safety.js";
 
 const OWNED_ACTIVE_STATUSES: MediaProcessingJobStatus[] = ["PROCESSING", "UPLOADING", "VERIFYING"];
 
@@ -41,6 +43,7 @@ export class MediaProcessingLifecycleService {
         sizeBytes: true,
         r2ObjectKey: true,
         removedAt: true,
+        uploadIntegrityRequired: true,
         video: { select: { id: true, channelId: true, status: true } },
       },
     });
@@ -60,8 +63,36 @@ export class MediaProcessingLifecycleService {
       where: { videoId: asset.videoId },
       orderBy: { generation: "desc" },
     });
-    if (existing) return existing;
+    if (existing) {
+      if (
+        asset.uploadIntegrityRequired &&
+        (existing.inputIntegrityVersion !== 1 ||
+          existing.inputIntegritySourceAssetId !== asset.id ||
+          existing.inputR2ObjectKey !== asset.r2ObjectKey)
+      )
+        throw new Error("The required source cannot reuse a different processing identity.");
+      return existing;
+    }
 
+    const session = await tx.mediaUploadSession.findUnique({ where: { sourceAssetId: asset.id } });
+    if (asset.uploadIntegrityRequired && !session)
+      throw new Error("The required upload integrity session is missing or detached.");
+    if (
+      session &&
+      (session.state !== "COMPLETED" ||
+        session.videoId !== asset.videoId ||
+        session.channelId !== asset.video.channelId ||
+        session.objectKey !== asset.r2ObjectKey ||
+        session.sizeBytes !== asset.sizeBytes ||
+        session.mimeType !== asset.mimeType ||
+        !session.initiatingAccountId ||
+        session.contentIdentityAlgorithm !== UPLOAD_FILE_IDENTITY_ALGORITHM ||
+        !session.contentIdentityDigest)
+    ) {
+      throw new Error(
+        "The source session has no valid immutable processing integrity declaration.",
+      );
+    }
     const latestPlayback = await tx.mediaPlaybackGeneration.findFirst({
       where: { videoId: asset.videoId },
       orderBy: { generation: "desc" },
@@ -73,14 +104,24 @@ export class MediaProcessingLifecycleService {
       data: {
         videoId: asset.videoId,
         generation,
-        status: "QUEUED",
+        status: session ? "INTEGRITY_QUEUED" : "QUEUED",
         sourceMimeType: asset.mimeType,
         sourceSizeBytes: asset.sizeBytes,
+        ...(session
+          ? {
+              inputIntegrityVersion: 1,
+              inputIntegritySessionId: session.id,
+              inputIntegritySourceAssetId: asset.id,
+              inputIntegrityAccountId: session.initiatingAccountId!,
+              inputIntegrityAlgorithm: session.contentIdentityAlgorithm,
+              inputIntegrityDigest: session.contentIdentityDigest!,
+            }
+          : {}),
         stagingKey: asset.r2ObjectKey,
         inputR2ObjectKey: asset.r2ObjectKey,
         outputR2ObjectKey: `channels/${channelId}/videos/${asset.videoId}/playback/g${generation}.mp4`,
         queuedAt: new Date(),
-        stage: "QUEUED",
+        stage: session ? "INTEGRITY_QUEUED" : "QUEUED",
       },
     });
     await tx.video.updateMany({
@@ -90,62 +131,125 @@ export class MediaProcessingLifecycleService {
     return job;
   }
 
-  async setOwnedStage(input: {
-    jobId: string;
-    workerId: string;
-    status: "PROCESSING" | "UPLOADING" | "VERIFYING";
-    stage: string;
-    progressPercent?: number;
-  }): Promise<boolean> {
-    const now = new Date();
-    const job = await this.database.client.mediaProcessingJob.findFirst({
-      where: {
-        id: input.jobId,
-        leaseOwner: input.workerId,
-        status: { in: OWNED_ACTIVE_STATUSES },
-        leaseExpiresAt: { gt: now },
-      },
-      select: { videoId: true, generation: true },
+  async setOwnedStage(
+    input: MediaClaimIdentity & {
+      jobId: string;
+      workerId: string;
+      status: "PROCESSING" | "UPLOADING" | "VERIFYING";
+      stage: string;
+      progressPercent?: number;
+    },
+  ): Promise<boolean> {
+    return this.database.client.$transaction(async (tx) => {
+      const job = await lockOwnedMediaJob(tx, input.jobId, input.workerId, input);
+      if (!job) return false;
+      const changed = await tx.mediaProcessingJob.updateMany({
+        where: {
+          id: input.jobId,
+          leaseOwner: input.workerId,
+          status: { in: OWNED_ACTIVE_STATUSES },
+          leaseExpiresAt: { gt: new Date() },
+        },
+        data: {
+          status: input.status,
+          stage: input.stage.slice(0, 64),
+          ...(input.progressPercent === undefined
+            ? {}
+            : { progressPercent: Math.max(0, Math.min(99, Math.floor(input.progressPercent))) }),
+        },
+      });
+      return changed.count === 1;
     });
-    if (!job || (await hasNewerMediaGeneration(this.database.client, job))) return false;
-    const changed = await this.database.client.mediaProcessingJob.updateMany({
-      where: {
-        id: input.jobId,
-        leaseOwner: input.workerId,
-        status: { in: OWNED_ACTIVE_STATUSES },
-        leaseExpiresAt: { gt: new Date() },
-      },
-      data: {
-        status: input.status,
-        stage: input.stage.slice(0, 64),
-        ...(input.progressPercent === undefined
-          ? {}
-          : { progressPercent: Math.max(0, Math.min(99, Math.floor(input.progressPercent))) }),
-      },
-    });
-    return changed.count === 1;
   }
 
-  async finalizeReady(input: {
-    jobId: string;
-    workerId: string;
-    metadata: CanonicalMediaMetadata;
-  }) {
+  async recordInputVerification(
+    input: MediaClaimIdentity & {
+      jobId: string;
+      workerId: string;
+      identity: UploadFileIdentity;
+    },
+  ): Promise<boolean> {
+    return this.database.client.$transaction(async (tx) => {
+      const job = await lockOwnedMediaJob(tx, input.jobId, input.workerId, input);
+      if (!job) return false;
+      const expected = assertJobInputIntegrity(job);
+      if (
+        !expected ||
+        input.identity.version !== expected.version ||
+        input.identity.algorithm !== expected.algorithm ||
+        input.identity.sizeBytes !== expected.sizeBytes ||
+        input.identity.rootSha256 !== expected.rootSha256
+      )
+        return false;
+      const updated = await tx.mediaProcessingJob.updateMany({
+        where: { id: job.id, leaseOwner: input.workerId, leaseExpiresAt: { gt: new Date() } },
+        data: {
+          inputVerifiedAt: new Date(),
+          inputVerifiedLeaseOwner: input.workerId,
+          inputVerifiedAttempt: job.attempt,
+          outputIntegrityDigest: null,
+          outputIntegritySizeBytes: null,
+          outputVerifiedAt: null,
+        },
+      });
+      return updated.count === 1;
+    });
+  }
+
+  async recordCanonicalVerification(
+    input: MediaClaimIdentity & {
+      jobId: string;
+      workerId: string;
+      identity: UploadFileIdentity;
+    },
+  ): Promise<boolean> {
+    return this.database.client.$transaction(async (tx) => {
+      const job = await lockOwnedMediaJob(tx, input.jobId, input.workerId, {
+        ...input,
+        requireInput: true,
+      });
+      if (
+        !job ||
+        !assertJobInputIntegrity(job) ||
+        input.identity.version !== 1 ||
+        input.identity.algorithm !== UPLOAD_FILE_IDENTITY_ALGORITHM ||
+        !/^[0-9a-f]{64}$/.test(input.identity.rootSha256) ||
+        !Number.isSafeInteger(input.identity.sizeBytes) ||
+        input.identity.sizeBytes < 1
+      )
+        return false;
+      const updated = await tx.mediaProcessingJob.updateMany({
+        where: { id: job.id, leaseOwner: input.workerId, leaseExpiresAt: { gt: new Date() } },
+        data: {
+          outputIntegrityDigest: input.identity.rootSha256,
+          outputIntegritySizeBytes: BigInt(input.identity.sizeBytes),
+          outputVerifiedAt: new Date(),
+        },
+      });
+      return updated.count === 1;
+    });
+  }
+
+  async finalizeReady(
+    input: MediaClaimIdentity & {
+      jobId: string;
+      workerId: string;
+      metadata: CanonicalMediaMetadata;
+    },
+  ) {
     try {
       return await this.database.client.$transaction(async (tx) => {
-        const now = new Date();
-        const job = await tx.mediaProcessingJob.findFirst({
-          where: {
-            id: input.jobId,
-            leaseOwner: input.workerId,
-            status: { in: OWNED_ACTIVE_STATUSES },
-            leaseExpiresAt: { gt: now },
-          },
-          include: {
-            video: { select: { id: true, channelId: true, status: true } },
-          },
+        const job = await lockOwnedMediaJob(tx, input.jobId, input.workerId, {
+          ...input,
+          requireInput: true,
+          requireOutput: true,
         });
-        if (!job || (await hasNewerMediaGeneration(tx, job))) return null;
+        if (
+          !job ||
+          (job.inputIntegrityVersion === 1 &&
+            job.outputIntegritySizeBytes !== BigInt(input.metadata.sizeBytes))
+        )
+          return null;
 
         const canonicalAsset = await tx.mediaAsset.upsert({
           where: { r2ObjectKey: job.outputR2ObjectKey },
@@ -153,6 +257,7 @@ export class MediaProcessingLifecycleService {
             videoId: job.videoId,
             channelId: job.video.channelId,
             kind: "SOURCE_VIDEO",
+            ...(job.inputIntegrityVersion === 1 ? { uploadIntegrityRequired: true } : {}),
             status: "VALIDATED",
             r2ObjectKey: job.outputR2ObjectKey,
             mimeType: "video/mp4",
@@ -165,6 +270,7 @@ export class MediaProcessingLifecycleService {
             videoId: job.videoId,
             channelId: job.video.channelId,
             kind: "SOURCE_VIDEO",
+            ...(job.inputIntegrityVersion === 1 ? { uploadIntegrityRequired: true } : {}),
             status: "VALIDATED",
             mimeType: "video/mp4",
             sizeBytes: BigInt(input.metadata.sizeBytes),
@@ -210,6 +316,20 @@ export class MediaProcessingLifecycleService {
         });
         if (readyChanged.count !== 1) throw new MediaProcessingLeaseLostError();
         const ready = await tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
+        if (
+          job.inputIntegrityVersion === 1 &&
+          job.inputR2ObjectKey === job.stagingKey &&
+          job.inputR2ObjectKey !== job.outputR2ObjectKey
+        ) {
+          await registerProcessingSourceCleanup(tx, {
+            jobId: job.id,
+            accountId: job.inputIntegrityAccountId!,
+            sessionId: job.inputIntegritySessionId!,
+            sourceAssetId: job.inputIntegritySourceAssetId!,
+            stagingKey: job.inputR2ObjectKey!,
+            now: completedAt,
+          });
+        }
         await tx.video.update({
           where: { id: job.videoId },
           data: {
@@ -291,7 +411,9 @@ export class MediaProcessingLifecycleService {
       tx.mediaProcessingJob.findFirst({
         where: {
           videoId,
-          status: { in: ["INGESTING", "QUEUED", "PROCESSING", "UPLOADING", "VERIFYING"] },
+          status: {
+            in: ["INGESTING", "QUEUED", "INTEGRITY_QUEUED", "PROCESSING", "UPLOADING", "VERIFYING"],
+          },
         },
         select: { id: true },
       }),
@@ -305,18 +427,20 @@ export class MediaProcessingLifecycleService {
 
     const generation =
       Math.max(video.mediaProcessingJobs[0]?.generation ?? 0, latestAdaptive?.generation ?? 0) + 1;
+    const integrity = await this.transformedInputIntegrity(tx, source);
     return tx.mediaProcessingJob.create({
       data: {
+        ...integrity,
         videoId,
         generation,
-        status: "QUEUED",
+        status: integrity.inputIntegrityVersion ? "INTEGRITY_QUEUED" : "QUEUED",
         sourceMimeType: source.mimeType,
         sourceSizeBytes: source.sizeBytes,
         stagingKey: `${source.r2ObjectKey}${ADAPTIVE_BACKFILL_MARKER}${generation}`,
         inputR2ObjectKey: source.r2ObjectKey,
         outputR2ObjectKey: `channels/${video.channelId}/videos/${video.id}/playback/g${generation}.mp4`,
         queuedAt: new Date(),
-        stage: "ADAPTIVE_BACKFILL_QUEUED",
+        stage: integrity.inputIntegrityVersion ? "INTEGRITY_QUEUED" : "ADAPTIVE_BACKFILL_QUEUED",
         priority: -10,
       },
     });
@@ -347,20 +471,66 @@ export class MediaProcessingLifecycleService {
     });
     const generation =
       Math.max(video.mediaProcessingJobs[0]?.generation ?? 0, latestPlayback?.generation ?? 0) + 1;
+    const integrity = await this.transformedInputIntegrity(tx, source);
     return tx.mediaProcessingJob.create({
       data: {
+        ...integrity,
         videoId,
         generation,
-        status: "QUEUED",
+        status: integrity.inputIntegrityVersion ? "INTEGRITY_QUEUED" : "QUEUED",
         sourceMimeType: source.mimeType,
         sourceSizeBytes: source.sizeBytes,
         stagingKey: `${source.r2ObjectKey}#reprocess-g${generation}`,
         inputR2ObjectKey: source.r2ObjectKey,
         outputR2ObjectKey: `channels/${video.channelId}/videos/${video.id}/playback/g${generation}.mp4`,
         queuedAt: new Date(),
-        stage: "REPROCESS_QUEUED",
+        stage: integrity.inputIntegrityVersion ? "INTEGRITY_QUEUED" : "REPROCESS_QUEUED",
       },
     });
+  }
+  private async transformedInputIntegrity(
+    tx: Prisma.TransactionClient,
+    source: {
+      id: string;
+      videoId: string | null;
+      r2ObjectKey: string;
+      sizeBytes: bigint;
+      uploadIntegrityRequired: boolean;
+    },
+  ) {
+    const producer = await tx.mediaProcessingJob.findFirst({
+      where: { videoId: source.videoId!, outputR2ObjectKey: source.r2ObjectKey },
+    });
+    if (!producer || producer.inputIntegrityVersion === 0) {
+      // A durable video may never fall back to a different, unproven legacy asset.
+      if (
+        source.uploadIntegrityRequired ||
+        (await tx.mediaProcessingJob.findFirst({
+          where: { videoId: source.videoId!, inputIntegrityVersion: { not: 0 } },
+          select: { id: true },
+        }))
+      )
+        throw new Error("Trusted canonical input lineage is unavailable.");
+      return {};
+    }
+    assertJobInputIntegrity(producer);
+    if (
+      producer.status !== "READY" ||
+      producer.finalAssetId !== source.id ||
+      !producer.outputVerifiedAt ||
+      !producer.outputIntegrityDigest ||
+      producer.outputIntegritySizeBytes !== source.sizeBytes
+    )
+      throw new Error("Trusted canonical input lineage is unavailable.");
+    return {
+      inputIntegrityVersion: 1,
+      inputIntegritySessionId: producer.inputIntegritySessionId,
+      inputIntegrityAccountId: producer.inputIntegrityAccountId,
+      inputIntegritySourceAssetId: source.id,
+      inputIntegrityParentJobId: producer.id,
+      inputIntegrityAlgorithm: UPLOAD_FILE_IDENTITY_ALGORITHM,
+      inputIntegrityDigest: producer.outputIntegrityDigest,
+    };
   }
 }
 

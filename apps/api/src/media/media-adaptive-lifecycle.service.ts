@@ -1,7 +1,13 @@
+import {
+  capturedMediaClaim,
+  outputAttemptNamespace,
+  type MediaClaimIdentity,
+} from "./media-output-attempt.js";
 import type { MediaProcessingJob, Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import { lockOwnedMediaJob } from "./media-processing-integrity-fence.js";
 import { hasNewerMediaGeneration } from "./media-generation-safety.js";
 import {
   canMarkAdaptiveGenerationReady,
@@ -19,9 +25,7 @@ import {
   type PlannedMediaRendition,
 } from "./media-architecture-v2.js";
 
-const ACTIVE_PROCESSING_STATUSES = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
-
-type OwnedGenerationInput = {
+type OwnedGenerationInput = MediaClaimIdentity & {
   generationId: string;
   jobId: string;
   workerId: string;
@@ -39,6 +43,7 @@ export interface AdaptiveGenerationState {
   videoId: string;
   channelId: string;
   generation: number;
+  outputAttemptId?: string | null;
   status: MediaPlaybackGenerationStatus;
   fallbackR2ObjectKey: string;
   fallbackStatus: MediaPlaybackOutputStatus;
@@ -56,6 +61,16 @@ export class MediaAdaptiveLifecycleService {
     plannedRenditions: readonly PlannedMediaRendition[],
   ): Promise<AdaptiveGenerationState> {
     return this.database.client.$transaction(async (tx) => {
+      if (
+        job.inputIntegrityVersion &&
+        (!job.leaseOwner ||
+          !(await lockOwnedMediaJob(tx, job.id, job.leaseOwner, {
+            ...capturedMediaClaim(job),
+            requireInput: true,
+            requireOutput: true,
+          })))
+      )
+        throw new Error("The required adaptive input lacks current owned byte verification.");
       if (await hasNewerMediaGeneration(tx, job)) {
         throw new Error("This adaptive processing generation has been superseded.");
       }
@@ -64,11 +79,7 @@ export class MediaAdaptiveLifecycleService {
         select: { id: true, channelId: true },
       });
       if (!video) throw new Error("Adaptive processing video no longer exists.");
-      const namespace = {
-        channelId: video.channelId,
-        videoId: video.id,
-        generation: job.generation,
-      };
+      const namespace = outputAttemptNamespace(job, video.channelId);
       const expectedMasterKey = hlsMasterObjectKey(namespace);
       const sourceAsset = job.inputR2ObjectKey
         ? await tx.mediaAsset.findUnique({
@@ -89,6 +100,7 @@ export class MediaAdaptiveLifecycleService {
             sourceMediaAssetId: sourceAsset?.id ?? null,
             processingJobId: job.id,
             generation: job.generation,
+            outputAttemptId: namespace.outputAttemptId ?? null,
             processingVersion: MEDIA_ARCHITECTURE_VERSION,
             fallbackR2ObjectKey: job.outputR2ObjectKey,
             hlsMasterR2ObjectKey: expectedMasterKey,
@@ -120,7 +132,8 @@ export class MediaAdaptiveLifecycleService {
         }
         if (
           generation.fallbackR2ObjectKey !== job.outputR2ObjectKey ||
-          generation.hlsMasterR2ObjectKey !== expectedMasterKey
+          generation.hlsMasterR2ObjectKey !== expectedMasterKey ||
+          generation.outputAttemptId !== (namespace.outputAttemptId ?? null)
         ) {
           throw new Error("Adaptive generation deterministic object keys do not match the job.");
         }
@@ -303,24 +316,26 @@ export class MediaAdaptiveLifecycleService {
     operation: (tx: Prisma.TransactionClient, now: Date) => Promise<T>,
   ): Promise<{ owned: true; value: T } | { owned: false }> {
     return this.database.client.$transaction(async (tx) => {
-      const now = new Date();
-      // The conditional write both validates ownership and row-locks the processing job
-      // until this transaction commits, preventing a stale worker from racing a reclaim.
-      const ownership = await tx.mediaProcessingJob.updateMany({
-        where: {
-          id: input.jobId,
-          leaseOwner: input.workerId,
-          status: { in: [...ACTIVE_PROCESSING_STATUSES] },
-          leaseExpiresAt: { gt: now },
-        },
-        data: { heartbeatAt: now },
+      const job = await lockOwnedMediaJob(tx, input.jobId, input.workerId, {
+        ...input,
+        requireInput: true,
+        requireOutput: true,
       });
-      if (ownership.count !== 1) return { owned: false as const };
-      const job = await tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: input.jobId } });
-      if (await hasNewerMediaGeneration(tx, job)) return { owned: false as const };
+      if (!job) return { owned: false as const };
+      const now = new Date();
 
       const generation = await tx.mediaPlaybackGeneration.findFirst({
-        where: { id: input.generationId, processingJobId: input.jobId },
+        where: {
+          id: input.generationId,
+          processingJobId: input.jobId,
+          videoId: job.videoId,
+          generation: job.generation,
+          fallbackR2ObjectKey: job.outputR2ObjectKey,
+          outputAttemptId: job.inputIntegrityVersion === 1 ? job.currentOutputAttemptId : null,
+          hlsMasterR2ObjectKey: hlsMasterObjectKey(
+            outputAttemptNamespace(job, job.video.channelId),
+          ),
+        },
         select: { id: true },
       });
       if (!generation) return { owned: false as const };
@@ -335,6 +350,7 @@ function toGenerationState(
     id: string;
     videoId: string;
     generation: number;
+    outputAttemptId?: string | null;
     status: MediaPlaybackGenerationStatus;
     fallbackR2ObjectKey: string;
     fallbackStatus: MediaPlaybackOutputStatus;
@@ -377,6 +393,7 @@ function toGenerationState(
     videoId: generation.videoId,
     channelId,
     generation: generation.generation,
+    outputAttemptId: generation.outputAttemptId ?? null,
     status: generation.status,
     fallbackR2ObjectKey: generation.fallbackR2ObjectKey,
     fallbackStatus: generation.fallbackStatus,

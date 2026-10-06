@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
+import workspaceStyles from "./catalog-editor-workspace.module.css";
 import { apiBaseUrl } from "@/lib/api";
 import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
+import { catalogIdentityFailure, catalogResourceItems } from "@/lib/catalog-editor-contract";
+import { useAdminAccess } from "./admin-access";
+import { concealCatalogDom } from "./catalog-editor-workspace";
+import { useCatalogCopy } from "./catalog-editor-copy";
+import { ActionButton } from "@/components/ui/design-system";
 
 type VideoItem = {
   id: string;
@@ -50,10 +56,24 @@ export function CatalogResourcePicker({
   allowClear = true,
   onChange,
 }: ResourcePickerProps) {
+  const t = useCatalogCopy();
+  const { getScopeLease, subscribeScopeInvalidation, invalidateScope } = useAdminAccess();
+  const lease = typeof document === "undefined" ? null : getScopeLease();
+  const root = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<PickerItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useLayoutEffect(
+    () =>
+      subscribeScopeInvalidation(() => {
+        if (root.current) concealCatalogDom(root.current);
+        setItems([]);
+        setQuery("");
+        setError(null);
+      }),
+    [subscribeScopeInvalidation],
+  );
   const endpoint = useMemo(
     () =>
       kind === "video"
@@ -63,8 +83,9 @@ export function CatalogResourcePicker({
   );
 
   useEffect(() => {
-    if (disabled) return;
+    if (disabled || !lease) return;
     let active = true;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true);
       setError(null);
@@ -72,97 +93,136 @@ export function CatalogResourcePicker({
       if (query.trim()) params.set("query", query.trim());
       void fetch(`${apiBaseUrl}${endpoint}${params.size ? `?${params.toString()}` : ""}`, {
         credentials: "include",
+        headers: {
+          "x-ayin-expected-account": lease.session.accountId,
+          "x-ayin-expected-session": lease.session.sessionId,
+        },
+        signal: controller.signal,
         cache: "no-store",
       })
         .then(async (response) => {
-          if (!response.ok) throw new Error(await readApiError(response));
-          return response.json() as Promise<{ items: PickerItem[] }>;
+          if (!response.ok) {
+            const body: unknown = await response
+              .clone()
+              .json()
+              .catch(() => null);
+            if (getScopeLease() === lease && catalogIdentityFailure(response.status, body))
+              invalidateScope();
+            throw new Error(await readApiError(response));
+          }
+          return response.json() as Promise<unknown>;
         })
         .then((body) => {
-          if (active) setItems(body.items);
+          if (active && getScopeLease() === lease)
+            setItems(catalogResourceItems<PickerItem>(body, kind));
         })
         .catch((caught) => {
-          if (active) setError(caught instanceof Error ? caught.message : "Search failed.");
+          if (active && getScopeLease() === lease) {
+            setItems([]);
+            setError(caught instanceof Error ? t(caught.message) : t("Search failed."));
+          }
         })
         .finally(() => {
-          if (active) setLoading(false);
+          if (active && getScopeLease() === lease) setLoading(false);
         });
     }, 250);
     return () => {
       active = false;
+      controller.abort();
       window.clearTimeout(timer);
     };
-  }, [disabled, endpoint, query]);
+  }, [disabled, endpoint, query, t, lease, getScopeLease, invalidateScope, kind]);
 
   return (
-    <div className={styles.cardInset}>
+    <div
+      ref={root}
+      hidden={!lease}
+      inert={!lease}
+      className={`${styles.cardInset} ${workspaceStyles.privateRoot}`}
+    >
       <div className={styles.cardHeader}>
         <div>
           <strong>{label}</strong>
           <p className={styles.muted}>
             {kind === "video"
-              ? "Only accessible published videos with validated playback are selectable."
-              : "Only validated, non-removed image assets are selectable."}
+              ? t("Only accessible published videos with validated playback are selectable.")
+              : t("Only validated, non-removed image assets are selectable.")}
           </p>
         </div>
-        {required ? <span className={styles.statusPill}>Required to publish</span> : null}
+        {required ? <span className={styles.statusPill}>{t("Required to publish")}</span> : null}
       </div>
 
       {value ? (
         <div className={styles.searchResult}>
-          <div>
-            <strong>{selectedLabel || "Selected catalog resource"}</strong>
+          <div className={workspaceStyles.selectionCopy}>
+            <strong>{selectedLabel || t("Selected catalog resource")}</strong>
             <small className={styles.muted}>
-              Selection is stored internally; database IDs are hidden.
+              {t("Selection is stored internally; database IDs are hidden.")}
             </small>
           </div>
           {allowClear ? (
-            <button
+            <ActionButton
               className={styles.danger}
               disabled={disabled}
-              onClick={() => onChange(null, null)}
+              onClick={() => {
+                if (lease && getScopeLease() === lease) onChange(null, null);
+              }}
               type="button"
             >
-              Clear
-            </button>
+              {t("Clear")}
+            </ActionButton>
           ) : (
-            <span className={styles.statusPill}>Required while published</span>
+            <span className={styles.statusPill}>{t("Required while published")}</span>
           )}
         </div>
       ) : null}
 
       <input
-        aria-label={`Search ${label}`}
+        aria-label={`${t("Search")} ${label}`}
         disabled={disabled}
         onChange={(event) => setQuery(event.target.value)}
         placeholder={
-          kind === "video" ? "Search title, slug or channel…" : "Search asset, video or channel…"
+          kind === "video"
+            ? t("Search title, slug or channel…")
+            : t("Search asset, video or channel…")
         }
         value={query}
       />
-      {loading ? <span className={styles.muted}>Searching…</span> : null}
-      {error ? <div className={styles.error}>{error}</div> : null}
+      {loading ? (
+        <span role="status" className={styles.muted}>
+          {t("Searching…")}
+        </span>
+      ) : null}
+      {error ? (
+        <div className={styles.error} role="alert">
+          {error}
+        </div>
+      ) : null}
+      {!loading && !error && query.trim() && !items.length ? (
+        <p role="status">{t("No matching resources.")}</p>
+      ) : null}
       <div className={styles.searchResults}>
         {items.slice(0, 8).map((item) => (
-          <button
+          <ActionButton
             className={styles.searchResult}
             disabled={disabled}
             key={item.id}
             onClick={() => {
+              if (!lease || getScopeLease() !== lease) return;
               onChange(item.id, item.label);
               setQuery("");
               setItems([]);
             }}
             type="button"
           >
-            <span>
+            <span className={workspaceStyles.selectionCopy}>
               <strong>{item.label}</strong>
               {"channel" in item && item.channel ? (
                 <small className={styles.muted}>@{item.channel.handle}</small>
               ) : null}
             </span>
-            <span className={styles.statusPill}>Select</span>
-          </button>
+            <span className={styles.statusPill}>{t("Select")}</span>
+          </ActionButton>
         ))}
       </div>
     </div>

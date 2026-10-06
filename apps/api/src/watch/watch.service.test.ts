@@ -166,6 +166,27 @@ describe("WatchService adaptive playback", () => {
   });
 });
 
+it("returns recorded winning attempt keys for HLS and MP4 without reconstructing a generation path", async () => {
+  const prefix = `channels/${video.channel.id}/videos/${video.id}/playback/g2/attempts/44444444-4444-4444-8444-444444444444/`;
+  const generation = {
+    ...readyGeneration,
+    fallbackR2ObjectKey: `${prefix}canonical.mp4`,
+    hlsMasterR2ObjectKey: `${prefix}hls/master.m3u8`,
+  };
+  const enabled = harness({ hlsEnabled: true, generation });
+  const response = await enabled.service.getPublicPlayback(video.slug);
+  expect(response.video.source.objectKey).toBe(generation.fallbackR2ObjectKey);
+  expect(response.video.adaptiveSource?.objectKey).toBe(generation.hlsMasterR2ObjectKey);
+  const disabled = harness({ hlsEnabled: false });
+  disabled.database.client.video.findUnique.mockResolvedValue({
+    ...video,
+    mediaAssets: [{ ...video.mediaAssets[0]!, r2ObjectKey: generation.fallbackR2ObjectKey }],
+  });
+  expect((await disabled.service.getPublicPlayback(video.slug)).video.source.objectKey).toBe(
+    generation.fallbackR2ObjectKey,
+  );
+});
+
 function progressHarness(
   rows: Array<{ positionMs: number; completedAt: Date | null; lastWatchedAt: Date }>,
 ) {

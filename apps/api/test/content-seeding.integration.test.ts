@@ -134,6 +134,21 @@ databaseDescribe("Task 30 controlled content seeding", () => {
     expect(waiting.statusCode).toBe(400);
     expect(waiting.json().error.code).toBe("SEED_VIDEO_PROCESSING");
 
+    const pendingRead = await app.inject({
+      method: "GET",
+      url: `/admin/content-seeding/batches/${created.json().batch.id}`,
+      headers: { cookie: admin.cookie },
+    });
+    expect(pendingRead.statusCode).toBe(200);
+    expect(pendingRead.json().items[0].id).toBe(item.id);
+    expect(pendingRead.json().items[0].video.mediaProcessingJobs[0].status).toBe("QUEUED");
+    const deniedRead = await app.inject({
+      method: "GET",
+      url: `/admin/content-seeding/batches/${created.json().batch.id}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(deniedRead.statusCode).toBe(403);
+
     const job = await prisma.mediaProcessingJob.findFirstOrThrow({
       where: { videoId: item.video.id },
       orderBy: { generation: "desc" },
@@ -209,6 +224,76 @@ databaseDescribe("Task 30 controlled content seeding", () => {
       }),
     ).toBe(1);
     expect(await prisma.playlistItem.count({ where: { videoId: item.video.id } })).toBe(1);
+  });
+
+  it("selects eligible channels before the 100-row bound and reads an original batch beyond recent history", async () => {
+    const admin = await register("Selection Admin", "selection-admin@example.com");
+    await prisma.adminRoleAssignment.create({
+      data: { accountId: admin.user.account.id, role: "CONTENT_MODERATOR" },
+    });
+    await prisma.channel.update({
+      where: { id: admin.user.channel.id },
+      data: { isPlatformOwned: true, status: "SUSPENDED", createdAt: new Date("2020-01-01") },
+    });
+    const handles = Array.from({ length: 101 }, (_, index) => `seed-selection-${index}`);
+    await prisma.channel.createMany({
+      data: handles.map((handle) => ({ handle, name: handle, isPlatformOwned: false })),
+    });
+    try {
+      const result = await app.inject({
+        method: "GET",
+        url: "/admin/content-seeding/channels",
+        headers: { cookie: admin.cookie },
+      });
+      expect(result.statusCode).toBe(200);
+      expect(
+        result.json().items.some((channel: { id: string }) => channel.id === admin.user.channel.id),
+      ).toBe(true);
+      expect(
+        result
+          .json()
+          .items.every(
+            (channel: { isPlatformOwned: boolean; status: string }) =>
+              channel.isPlatformOwned && channel.status !== "REMOVED",
+          ),
+      ).toBe(true);
+      const original = await prisma.contentSeedBatch.create({
+        data: {
+          channelId: admin.user.channel.id,
+          createdByAccountId: admin.user.account.id,
+          sourceLabel: "Original old batch",
+          createdAt: new Date("2020-01-01"),
+        },
+      });
+      await prisma.contentSeedBatch.createMany({
+        data: Array.from({ length: 51 }, (_, index) => ({
+          channelId: admin.user.channel.id,
+          createdByAccountId: admin.user.account.id,
+          sourceLabel: `Later batch ${index}`,
+        })),
+      });
+      const recent = await app.inject({
+        method: "GET",
+        url: "/admin/content-seeding/batches?take=50",
+        headers: { cookie: admin.cookie },
+      });
+      expect(recent.json().some((batch: { id: string }) => batch.id === original.id)).toBe(false);
+      const exact = await app.inject({
+        method: "GET",
+        url: `/admin/content-seeding/batches/${original.id}`,
+        headers: { cookie: admin.cookie },
+      });
+      expect(exact.statusCode).toBe(200);
+      expect(exact.json().id).toBe(original.id);
+      const invalid = await app.inject({
+        method: "GET",
+        url: "/admin/content-seeding/batches/not-an-id",
+        headers: { cookie: admin.cookie },
+      });
+      expect(invalid.statusCode).toBe(400);
+    } finally {
+      await prisma.channel.deleteMany({ where: { handle: { in: handles } } });
+    }
   });
 
   it("rejects non-platform channels and safely rolls back unpublished batches", async () => {

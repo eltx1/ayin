@@ -173,3 +173,7 @@ A later rollout may generate V2 outputs behind a disabled/default-off capability
 ## Exact Task 40 dependency
 
 Task 40 must implement **generation of V2 adaptive outputs behind a default-off rollout control using the existing media queue/worker**, consuming the Task 39 planner, object-key contracts and persistence model. It must add rotation-aware probe metadata, create only justified 360p/480p/720p/1080p renditions, package HLS, verify every required object, and atomically mark the playback generation ready. It must **not** make AYIN Player prefer HLS until a separate playback-switch step proves output compatibility and rollback behavior.
+
+## Required-integrity output attempt extension
+
+ADR-016 supersedes shared generation retry paths only for `MediaProcessingJob.inputIntegrityVersion=1`. The current queue allocates an append-only output attempt before I/O. Required canonical, HLS and generated-thumbnail paths live under `playback/g{generation}/attempts/{attemptId}/`; the canonical leaf is `canonical.mp4`. Retry uses a fresh attempt, while explicit reprocess also advances generation. Lease/attempt-aware callbacks and recorded winning asset/generation keys are authoritative. Legacy generation and SEO paths remain unchanged. Unsettled losing attempts are retained for cleanup, and issuance remains disabled. See `docs/DECISIONS.md` and the worker integrity evidence document for compatibility and validation gates.

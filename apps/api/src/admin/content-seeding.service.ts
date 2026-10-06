@@ -31,6 +31,31 @@ function slugBase(title: string): string {
   return normalized || "content";
 }
 
+// Read-only recovery must resolve the exact original batch, even after it leaves
+// the recent list. Latest durable worker state explains pending/failed uploads.
+const batchInclude = {
+  channel: { select: { id: true, handle: true, name: true, isPlatformOwned: true } },
+  items: {
+    orderBy: { createdAt: "asc" },
+    include: {
+      video: {
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          contentType: true,
+          status: true,
+          mediaProcessingJobs: {
+            orderBy: { generation: "desc" },
+            take: 1,
+            select: { status: true },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
 @Injectable()
 export class ContentSeedingService {
   constructor(
@@ -118,22 +143,31 @@ export class ContentSeedingService {
     });
   }
 
+  async listChannels() {
+    return this.database.client.channel.findMany({
+      where: { isPlatformOwned: true, status: { not: "REMOVED" } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+      select: { id: true, handle: true, name: true, status: true, isPlatformOwned: true },
+    });
+  }
+
   async listBatches(take = 50) {
     return this.database.client.contentSeedBatch.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take,
-      include: {
-        channel: { select: { id: true, handle: true, name: true, isPlatformOwned: true } },
-        items: {
-          orderBy: { createdAt: "asc" },
-          include: {
-            video: {
-              select: { id: true, slug: true, title: true, contentType: true, status: true },
-            },
-          },
-        },
-      },
+      include: batchInclude,
     });
+  }
+
+  async getBatch(batchId: string) {
+    const batch = await this.database.client.contentSeedBatch.findUnique({
+      where: { id: batchId },
+      include: batchInclude,
+    });
+    if (!batch)
+      throw adminBadRequest("SEED_BATCH_NOT_FOUND", "This content seed batch does not exist.");
+    return batch;
   }
 
   async createUploadSession(

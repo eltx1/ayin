@@ -576,7 +576,7 @@ databaseDescribe("Current administrator upload continuation authority", () => {
     expect(storage.completeMultipartUpload).toHaveBeenCalledTimes(2);
   });
 
-  it("allows worker finalization to win an observed source-lock race against duplicate HTTP completion", async () => {
+  it("allows worker finalization to win an observed generation/source-lock race against duplicate HTTP completion", async () => {
     const f = await fixture();
     expect((await send(f, "complete")).statusCode).toBe(201);
     const job = (await state(f)).jobs[0]!;
@@ -612,12 +612,15 @@ databaseDescribe("Current administrator upload continuation authority", () => {
       workerId: "actual-upload-race-worker",
       metadata: { sizeBytes: 4096, durationMs: 1000, width: 640, height: 360 },
     });
+    // The worker now takes generation -> sorted assets before finalization.
+    // Observe that actual source wait, then the duplicate request's generation
+    // wait, rather than relying on the former UPDATE-first lock implementation.
     let request: ReturnType<typeof send> | undefined;
     try {
       await vi.waitFor(
         async () => {
           const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(
-            Prisma.sql`SELECT count(*)::bigint AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE 'UPDATE%MediaAsset%'`,
+            Prisma.sql`SELECT count(*)::bigint AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%ayin-worker-integrity-asset-lock%'`,
           );
           expect(Number(rows[0]?.count ?? 0)).toBeGreaterThan(0);
         },
@@ -627,7 +630,7 @@ databaseDescribe("Current administrator upload continuation authority", () => {
       await vi.waitFor(
         async () => {
           const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(
-            Prisma.sql`SELECT count(*)::bigint AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%ayin-upload-source-lock%'`,
+            Prisma.sql`SELECT count(*)::bigint AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%pg_advisory_xact_lock(86192043%'`,
           );
           expect(Number(rows[0]?.count ?? 0)).toBeGreaterThan(0);
         },

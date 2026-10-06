@@ -35,6 +35,11 @@ export interface DirectUploadResult {
   status: "UPLOADED";
 }
 
+export interface DirectUploadCompletionInput {
+  sessionToken: string;
+  parts: { partNumber: number; etag: string }[];
+}
+
 export interface DirectUploadStatus {
   phase: "uploading" | "retrying" | "finalizing";
   message: string;
@@ -83,6 +88,9 @@ export async function uploadPreparedVideoDirectly(input: {
   onProgress: (percent: number) => void;
   onStatus?: (status: DirectUploadStatus) => void;
   signal?: AbortSignal;
+  // Admin may require an explicit verification continuation for this metadata
+  // request. Storage bodies and completion acknowledgment validation stay here.
+  completeUpload?: (payload: DirectUploadCompletionInput) => Promise<unknown>;
 }): Promise<DirectUploadResult> {
   const { file, onProgress, onStatus, signal } = input;
   signal?.throwIfAborted();
@@ -119,14 +127,7 @@ export async function uploadPreparedVideoDirectly(input: {
     reportProgress(file.size);
     onStatus?.({ phase: "finalizing", message: "Finalizing upload…" });
     const completed = parseUploadCompletion(
-      await apiJson<unknown>(
-        "/media/uploads/sessions/complete",
-        {
-          sessionToken: session.sessionToken,
-          parts: [],
-        },
-        signal,
-      ),
+      await completePreparedUpload(input, { sessionToken: session.sessionToken, parts: [] }),
       session.assetId,
     );
     onProgress(100);
@@ -205,16 +206,10 @@ export async function uploadPreparedVideoDirectly(input: {
 
   onStatus?.({ phase: "finalizing", message: "Finalizing upload…" });
   const completed = parseUploadCompletion(
-    await apiJson<unknown>(
-      "/media/uploads/sessions/complete",
-      {
-        sessionToken: session.sessionToken,
-        parts: [...completedParts.values()].sort(
-          (left, right) => left.partNumber - right.partNumber,
-        ),
-      },
-      signal,
-    ),
+    await completePreparedUpload(input, {
+      sessionToken: session.sessionToken,
+      parts: [...completedParts.values()].sort((left, right) => left.partNumber - right.partNumber),
+    }),
     session.assetId,
   );
   onProgress(100);
@@ -238,6 +233,19 @@ async function createSession(
     ),
     file.size,
   );
+}
+
+async function completePreparedUpload(
+  input: {
+    completeUpload?: (payload: DirectUploadCompletionInput) => Promise<unknown>;
+    signal?: AbortSignal;
+  },
+  payload: DirectUploadCompletionInput,
+) {
+  input.signal?.throwIfAborted();
+  return input.completeUpload
+    ? input.completeUpload(payload)
+    : apiJson<unknown>("/media/uploads/sessions/complete", payload, input.signal);
 }
 
 async function apiJson<T>(path: string, payload: unknown, signal?: AbortSignal): Promise<T> {
