@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
 import { getAdvertisingConsentSnapshot } from "@/lib/advertising-consent";
 import { GptRuntimeError, mountGooglePublisherTagSlot } from "@/lib/google-gpt-page-ad-service";
@@ -10,11 +11,35 @@ import {
   getPageAdSessionId,
   type HousePageAdDemand,
   recordPageAdEvent,
+  subscribePageAdDevice,
+  type PageAdDevice,
 } from "@/lib/page-ads";
 
 import styles from "./page-ad-slot.module.css";
 
 export function PageAdSlot({ placementKey }: { placementKey: string }) {
+  const pathname = usePathname();
+  const device = useSyncExternalStore(subscribePageAdDevice, detectPageAdDevice, () => null);
+  if (!device || !pathname) return <div className={styles.probe} aria-hidden="true" />;
+  return (
+    <PageAdSlotSession
+      key={JSON.stringify([placementKey, pathname, device])}
+      placementKey={placementKey}
+      route={pathname}
+      device={device}
+    />
+  );
+}
+
+function PageAdSlotSession({
+  placementKey,
+  route,
+  device,
+}: {
+  placementKey: string;
+  route: string;
+  device: PageAdDevice;
+}) {
   const reactId = useId();
   const divId = `ayin-ad-${reactId.replaceAll(":", "")}`;
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -44,12 +69,7 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
     const start = async () => {
       if (started) return;
       started = true;
-      const decision = await fetchPageAdDecision(
-        placementKey,
-        window.location.pathname,
-        detectPageAdDevice(),
-        controller.signal,
-      );
+      const decision = await fetchPageAdDecision(placementKey, route, device, controller.signal);
       if (!active || !decision.enabled) return;
 
       await recordPageAdEvent({
@@ -59,6 +79,7 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
         sessionId,
         provider: decision.demand.provider,
       });
+      if (!active) return;
 
       if (decision.demand.provider === "HOUSE") {
         setHouse(decision.demand);
@@ -80,6 +101,7 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
           sizes: decision.sizes,
           responsive: decision.responsive,
           consent: getAdvertisingConsentSnapshot(),
+          signal: controller.signal,
           onRender: (filled) => {
             if (!active) return;
             if (filled) {
@@ -114,7 +136,9 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
             void showHouseFallback(decision.fallback);
           },
         });
+        if (!active) cleanupGpt();
       } catch (error) {
+        if (!active) return;
         setShowGpt(false);
         const errorCode =
           error instanceof GptRuntimeError ? error.diagnosticCode : "GPT_RUNTIME_FAILURE";
@@ -132,13 +156,13 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
 
     const host = hostRef.current;
     if (!host || !("IntersectionObserver" in window)) {
-      void start();
+      void start().catch(() => undefined);
     } else {
       const observer = new IntersectionObserver(
         (entries) => {
           if (entries.some((entry) => entry.isIntersecting)) {
             observer.disconnect();
-            void start();
+            void start().catch(() => undefined);
           }
         },
         { rootMargin: "400px 0px" },
@@ -157,13 +181,17 @@ export function PageAdSlot({ placementKey }: { placementKey: string }) {
       controller.abort();
       cleanupGpt?.();
     };
-  }, [divId, placementKey]);
+  }, [device, divId, placementKey, route]);
 
-  if (!house && !showGpt) return <div className={styles.probe} ref={hostRef} aria-hidden="true" />;
-
+  const visible = Boolean(house || showGpt);
   return (
-    <aside className={styles.slot} ref={hostRef} aria-label="Advertisement">
-      <span className={styles.label}>Advertisement</span>
+    <aside
+      className={visible ? styles.slot : styles.probe}
+      ref={hostRef}
+      aria-label={visible ? "Advertisement" : undefined}
+      aria-hidden={!visible}
+    >
+      {visible ? <span className={styles.label}>Advertisement</span> : null}
       {house ? (
         house.clickUrl ? (
           <a

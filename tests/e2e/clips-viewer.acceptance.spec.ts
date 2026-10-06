@@ -121,14 +121,42 @@ async function captureViewport(page: Page, videoId: string, name: string, testIn
       },
       controls: [...element.querySelectorAll("button,a,h2,p")].map((control) => {
         const r = box(control);
-        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        const fragments = [...control.getClientRects()]
+          .filter((fragment) => fragment.width > 0 && fragment.height > 0)
+          .map((fragment) => ({
+            left: fragment.left,
+            right: fragment.right,
+            top: fragment.top,
+            bottom: fragment.bottom,
+            width: fragment.width,
+            height: fragment.height,
+          }));
+        // Wrapped inline links have whitespace inside their union box.
+        const hitTests = control.matches("button,a")
+          ? fragments.flatMap((fragment) =>
+              [0.25, 0.5, 0.75].map((fraction) => {
+                const point = {
+                  x: fragment.left + fragment.width * fraction,
+                  y: fragment.top + fragment.height / 2,
+                };
+                const hit = document.elementFromPoint(point.x, point.y);
+                return {
+                  ...point,
+                  hit: hit?.tagName ?? null,
+                  passes: Boolean(hit && (hit === control || control.contains(hit))),
+                };
+              }),
+            )
+          : [];
         return {
           label: control.textContent?.trim(),
           tag: control.tagName,
           box: r,
+          fragments,
+          hitTests,
           hit:
             !control.matches("button,a") ||
-            Boolean(hit && (hit === control || control.contains(hit))),
+            (hitTests.length > 0 && hitTests.every((hit) => hit.passes)),
         };
       }),
     };
@@ -164,7 +192,7 @@ async function captureViewport(page: Page, videoId: string, name: string, testIn
   });
 }
 
-test.use({ serviceWorkers: "block", reducedMotion: "reduce" });
+test.use({ serviceWorkers: "block", contextOptions: { reducedMotion: "reduce" } });
 
 test.beforeEach(() => {
   db("reset");

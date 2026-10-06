@@ -71,6 +71,52 @@ still requiring exactly one real target for every requested native control.
 Other inspection errors remain failures. No application change was needed for
 that observer correction.
 
+## Wrapped channel links and retrievable CI evidence
+
+PR #256's mobile EN/AR cases failed the channel-link hit assertion while the
+same desktop cases passed. The observer sampled the vertical midpoint of
+`getBoundingClientRect()`, which is a union of every inline fragment. A wrapped
+link can have a line gap at that midpoint; the metadata panel receives the
+pointer there even though every rendered part of the link is unobstructed.
+
+A local probe seeded the exact two reported handles as real channel records:
+`clips-viewer-muwa5r8w-ew4c00` and `clips-viewer-muwa5y7f-cj2qg0`. With a
+process-local DejaVu font environment, CDP identified DejaVu Sans Bold at the
+application's existing 15px size and 22.5px line height. Both handles wrapped
+onto two lines with three client fragments. All three original union samples
+hit the panel between the lines; all nine fragment samples hit the link. The
+original assertion failed for both handles. Real mouse clicks on every fragment
+navigated to the corresponding channel. Native video actions still worked, and
+a temporary negative-control occluder caused the fragment assertion to fail.
+
+This is a controlled-font reproduction of the failure mechanism, not proof of
+CI's exact font environment. The default cloud font substitution and a broader
+local Linux font set kept these handles on one line. The combined CI artifact
+was returned by the GitHub artifact connector, but its 64,732,451-byte size exceeded
+the executor transfer limit. The separately returned signed download URL gave 403. Its screenshots were not independently inspected.
+
+The native-layout observer and the viewer/social screenshot helper now sample
+all positive `getClientRects()` fragments and require nonempty hit targets. The
+preservation run exposed the same union-box defect in the viewer helper after
+all 20 progress, 16 social-scope and four native-layout cases had passed. Union-box containment, minimum button size, native-control
+separation, and every per-point occlusion assertion remain in place. No product
+markup, styling, media, social or progress implementation changed. The matrix's
+reduced-motion setting also now uses Playwright's supported `contextOptions`,
+with explicit media-query assertions before reduced and smooth navigation.
+
+Bounds and native mouse-action evidence are written as per-test JSON files, and
+original viewport PNGs have a common `clips-layout-` prefix. CI always attempts a
+separate `clips-layout-evidence` upload containing those JSON/PNG files and any
+layout-test failure screenshot/context. It excludes recordings, traces and the
+full HTML report; the existing full failure report remains available separately.
+If no layout evidence was produced, the upload ignores missing files without
+changing the acceptance result. The final focused replay passed all four native
+layout cases and the viewer/social pagination case. The earlier 40-pass/one-fail
+preservation run is retained separately; it supplies the 20 progress and 16
+social-scope passes and is not described as a clean combined run. The focused
+layout artifact contains 16 original PNGs and 21 JSON files, about 1.5 MB before
+compression in the local replay.
+
 ## Progress preservation and CI observation
 
 The layout work leaves the accepted identity, revision and lifecycle code

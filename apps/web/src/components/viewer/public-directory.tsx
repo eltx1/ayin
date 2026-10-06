@@ -2,6 +2,7 @@ import { ActionLink, PageHeader } from "@/components/ui/design-system";
 import Link from "next/link";
 import { mediaAssetUrl } from "@/lib/channel";
 import type { Locale } from "@/lib/i18n/config";
+import { translateCatalogDetail } from "@/lib/i18n/catalog-detail";
 import { localizePath } from "@/lib/i18n/routing";
 import { translate } from "@/lib/i18n/translator";
 import {
@@ -19,31 +20,43 @@ export async function PublicDirectory({
   section,
   locale,
   cursor,
+  query,
 }: {
   section: DirectorySection;
   locale: Locale;
   cursor?: string | string[] | undefined;
+  query?: string | string[] | undefined;
 }) {
   const t = (key: Parameters<typeof translate>[1]) => translate(locale, key);
+  const catalogText = (key: Parameters<typeof translateCatalogDetail>[1]) =>
+    translateCatalogDetail(locale, key);
   const path = localizePath(`/${section}`, locale);
+  const searchable = section === "movies" || section === "series";
+  const search = searchable && typeof query === "string" ? query.trim() : "";
   const invalidCursor = cursor !== undefined && !isDirectoryCursor(cursor);
+  const invalidSearch =
+    searchable && query !== undefined && (typeof query !== "string" || search.length > 100);
+  const pageLink = (nextCursor?: string) => {
+    const params = new URLSearchParams();
+    if (search && !invalidSearch) params.set("q", search);
+    if (nextCursor) params.set("cursor", nextCursor);
+    return `${path}${params.size ? `?${params}` : ""}`;
+  };
   let page: Awaited<ReturnType<typeof fetchPublicDirectory>> | null = null;
-  if (!invalidCursor) {
+  if (!invalidCursor && !invalidSearch) {
     try {
       page = await fetchPublicDirectory(
         section,
         locale,
         cursor as string | undefined,
         await trustedApiRegionHeaders(),
+        search,
       );
     } catch {
       /* The recovery view distinguishes an unavailable request from a real empty catalog. */
     }
   }
-  const retry =
-    typeof cursor === "string" && !invalidCursor
-      ? `${path}?${new URLSearchParams({ cursor })}`
-      : path;
+  const retry = typeof cursor === "string" && !invalidCursor ? pageLink(cursor) : pageLink();
   return (
     <main className={styles.page}>
       <PageHeader
@@ -68,23 +81,64 @@ export async function PublicDirectory({
           <Link href={localizePath("/clips", locale)}>{t("nav.shorts")}</Link>
         </nav>
       </PageHeader>
+      {searchable ? (
+        <form
+          key={`${section}:${locale}:${search}`}
+          action={path}
+          method="get"
+          role="search"
+          className={styles.search}
+        >
+          <label htmlFor="catalog-search">{catalogText(`browse.search.${section}`)}</label>
+          <div>
+            <input
+              id="catalog-search"
+              name="q"
+              type="search"
+              defaultValue={search}
+              maxLength={100}
+              dir="auto"
+            />
+            <button type="submit">{catalogText("browse.search.submit")}</button>
+            {search ? (
+              <ActionLink href={path} tone="secondary">
+                {catalogText("browse.search.clear")}
+              </ActionLink>
+            ) : null}
+          </div>
+        </form>
+      ) : null}
       {!page ? (
         <ErrorState
-          title={t(invalidCursor ? "browse.invalidPage" : "browse.errorTitle")}
+          title={
+            invalidSearch
+              ? catalogText("browse.search.invalid")
+              : t(invalidCursor ? "browse.invalidPage" : "browse.errorTitle")
+          }
           description={t("browse.errorDescription")}
           action={
             <ActionLink href={retry} prefetch={false}>
-              {t(invalidCursor ? "browse.firstPage" : "browse.retry")}
+              {t(invalidCursor || invalidSearch ? "browse.firstPage" : "browse.retry")}
             </ActionLink>
           }
         />
       ) : page.items.length === 0 ? (
         <EmptyState
-          title={t(cursor ? "browse.endTitle" : "browse.emptyTitle")}
-          description={t("browse.emptyDescription")}
+          title={
+            search
+              ? catalogText("browse.search.empty")
+              : t(cursor ? "browse.endTitle" : "browse.emptyTitle")
+          }
+          description={
+            search ? catalogText("browse.search.emptyDescription") : t("browse.emptyDescription")
+          }
           action={
-            <ActionLink href={cursor ? path : localizePath("/search", locale)}>
-              {t(cursor ? "browse.firstPage" : "nav.search")}
+            <ActionLink
+              href={search ? path : cursor ? pageLink() : localizePath("/search", locale)}
+            >
+              {search
+                ? catalogText("browse.search.clear")
+                : t(cursor ? "browse.firstPage" : "nav.search")}
             </ActionLink>
           }
         />
@@ -107,12 +161,9 @@ export async function PublicDirectory({
       )}
       {page && (cursor || page.nextCursor) ? (
         <nav className={styles.pagination} aria-label={t("browse.pages")}>
-          {cursor ? <ActionLink href={path}>{t("browse.firstPage")}</ActionLink> : null}
+          {cursor ? <ActionLink href={pageLink()}>{t("browse.firstPage")}</ActionLink> : null}
           {page.nextCursor ? (
-            <ActionLink
-              prefetch={false}
-              href={`${path}?${new URLSearchParams({ cursor: page.nextCursor })}`}
-            >
+            <ActionLink prefetch={false} href={pageLink(page.nextCursor)}>
               {t("browse.more")}
             </ActionLink>
           ) : null}

@@ -8,7 +8,11 @@ import {
   availableVideoPolicySql,
   publicPlayableVideoSql,
 } from "../video-policy/video-policy-query.js";
-import { catalogAvailabilitySql, directoryPage } from "../video-policy/catalog-directory-query.js";
+import {
+  catalogAvailabilitySql,
+  catalogDirectorySearchSql,
+  directoryPage,
+} from "../video-policy/catalog-directory-query.js";
 import {
   isSafeSeriesSlug,
   nextCatalogEpisode,
@@ -639,12 +643,19 @@ export class SeriesCatalogService {
     return result;
   }
 
-  async listPublicDirectory(limit: number, cursor?: string, countryCode?: string) {
+  async listPublicDirectory(
+    limit: number,
+    cursor?: string,
+    countryCode?: string,
+    query?: string,
+    locale?: string,
+  ) {
     const now = new Date();
     const candidates = await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT s.id FROM "Series" s WHERE s.status = 'PUBLISHED'
         AND ${catalogAvailabilitySql("SERIES", Prisma.sql`s.id`, countryCode, now)}
         AND ${cursor ? Prisma.sql`s.id > ${cursor}::uuid` : Prisma.sql`TRUE`}
+        AND ${catalogDirectorySearchSql("SERIES", Prisma.sql`s.id`, Prisma.sql`s.title`, Prisma.sql`s.synopsis`, query, locale)}
         AND EXISTS (
           SELECT 1 FROM "SeriesSeason" season JOIN "SeriesEpisode" episode ON episode."seasonId" = season.id
           JOIN "Video" v ON v.id = episode."videoId"

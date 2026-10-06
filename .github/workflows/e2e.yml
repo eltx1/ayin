@@ -105,6 +105,29 @@ jobs:
           name: playwright-report
           path: playwright-report
           retention-days: 7
+      - name: Preserve Clips layout evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clips-layout-evidence
+          path: |
+            test-results/**/clips-layout-*.png
+            test-results/**/clips-layout-*.json
+            test-results/**/clips-layout.acceptance-*/test-failed-*.png
+            test-results/**/clips-layout.acceptance-*/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve Auth recovery visual evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-recovery-visuals
+          path: |
+            test-results/**/design-auth-recovery-*.png
+            test-results/**/auth-recovery.acceptance-*/test-failed-*.png
+            test-results/**/auth-recovery.acceptance-*/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload PWA lifecycle failure report
         if: failure()
         uses: actions/upload-artifact@v4

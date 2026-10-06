@@ -32,6 +32,7 @@ interface ImaAdsManager {
 
 interface ImaAdsLoader {
   addEventListener(type: string, listener: (event: unknown) => void): void;
+  removeEventListener(type: string, listener: (event: unknown) => void): void;
   requestAds(request: ImaAdsRequest): void;
   contentComplete(): void;
   destroy(): void;
@@ -176,9 +177,11 @@ export class GoogleImaVideoAdService implements VideoAdService {
   private adsManager: ImaAdsManager | null = null;
   private ima: ImaNamespace | null = null;
   private initialized = false;
+  private generation = 0;
+  private cancelPlayback: (() => void) | null = null;
 
   async preload(): Promise<void> {
-    this.ima = await loadImaSdk();
+    await loadImaSdk();
   }
 
   async initialize(container: HTMLDivElement, contentVideo: HTMLVideoElement): Promise<void> {
@@ -198,7 +201,9 @@ export class GoogleImaVideoAdService implements VideoAdService {
       return;
     }
 
+    const generation = this.generation;
     const ima = await loadImaSdk();
+    if (generation !== this.generation) throw new ImaRuntimeError("IMA_INITIALIZATION_CANCELLED");
     this.attach(ima, container, contentVideo);
   }
 
@@ -217,43 +222,46 @@ export class GoogleImaVideoAdService implements VideoAdService {
       throw new ImaRuntimeError("IMA_NOT_INITIALIZED");
     }
 
+    // One SDK request owns the loader and manager callbacks at a time.
+    if (this.cancelPlayback) throw new ImaRuntimeError("IMA_REQUEST_IN_PROGRESS");
     callbacks.onEvent("REQUEST");
     return new Promise<void>((resolve) => {
       let settled = false;
+      let manager: ImaAdsManager | null = null;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        loader.removeEventListener(ima.AdErrorEvent.Type.AD_ERROR, fail);
+        loader.removeEventListener(ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, loaded);
+        manager?.destroy();
+        if (this.adsManager === manager) this.adsManager = null;
+        if (this.cancelPlayback === finish) this.cancelPlayback = null;
+        resolve();
+      };
       const fail = (error: unknown) => {
+        if (settled) return;
         const imaError = error as Partial<ImaErrorEvent>;
         const detail = imaError.getError?.();
         const code = detail?.getErrorCode?.();
         const diagnosticCode =
           error instanceof ImaRuntimeError ? error.diagnosticCode : classifyImaErrorCode(code);
         callbacks.onEvent("ERROR", diagnosticCode);
-        this.adsManager?.destroy();
-        this.adsManager = null;
+        finish();
         callbacks.onContentResume();
-        if (!settled) {
-          settled = true;
-          // IMA/VAST failures are handled failures: content resumes and the caller must not
-          // emit a second generic error for the same ad request.
-          resolve();
-        }
       };
-
-      loader.addEventListener(ima.AdErrorEvent.Type.AD_ERROR, fail);
-      loader.addEventListener(ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, (event) => {
+      const loaded = (event: unknown) => {
+        if (settled || manager) return;
         try {
-          const manager = (event as ImaLoadedEvent).getAdsManager(content);
-          this.adsManager?.destroy();
+          manager = (event as ImaLoadedEvent).getAdsManager(content);
           this.adsManager = manager;
           manager.addEventListener(ima.AdErrorEvent.Type.AD_ERROR, fail);
-          manager.addEventListener(ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, () =>
-            callbacks.onContentPause(),
-          );
+          manager.addEventListener(ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, () => {
+            if (!settled) callbacks.onContentPause();
+          });
           manager.addEventListener(ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => {
+            if (settled) return;
+            finish();
             callbacks.onContentResume();
-            if (!settled) {
-              settled = true;
-              resolve();
-            }
           });
           const eventMap: Array<[string, Parameters<VideoAdCallbacks["onEvent"]>[0]]> = [
             [ima.AdEvent.Type.LOADED, "FILL"],
@@ -266,7 +274,9 @@ export class GoogleImaVideoAdService implements VideoAdService {
             [ima.AdEvent.Type.CLICK, "CLICK"],
           ];
           for (const [imaEvent, ayinEvent] of eventMap) {
-            manager.addEventListener(imaEvent, () => callbacks.onEvent(ayinEvent));
+            manager.addEventListener(imaEvent, () => {
+              if (!settled) callbacks.onEvent(ayinEvent);
+            });
           }
           manager.init(
             Math.max(container.clientWidth, 1),
@@ -277,17 +287,27 @@ export class GoogleImaVideoAdService implements VideoAdService {
         } catch (error) {
           fail(error);
         }
-      });
+      };
+      this.cancelPlayback = finish;
+      loader.addEventListener(ima.AdErrorEvent.Type.AD_ERROR, fail);
+      loader.addEventListener(ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, loaded);
 
-      const request = new ima.AdsRequest();
-      request.adTagUrl = applyGoogleImaConsent(tagUrl, consent ?? getAdvertisingConsentSnapshot());
-      request.linearAdSlotWidth = Math.max(container.clientWidth, 640);
-      request.linearAdSlotHeight = Math.max(container.clientHeight, 360);
-      request.nonLinearAdSlotWidth = Math.max(container.clientWidth, 640);
-      request.nonLinearAdSlotHeight = 150;
-      request.setAdWillAutoPlay(playbackIntent?.autoPlay ?? false);
-      request.setAdWillPlayMuted(playbackIntent?.muted ?? content.muted);
-      loader.requestAds(request);
+      try {
+        const request = new ima.AdsRequest();
+        request.adTagUrl = applyGoogleImaConsent(
+          tagUrl,
+          consent ?? getAdvertisingConsentSnapshot(),
+        );
+        request.linearAdSlotWidth = Math.max(container.clientWidth, 640);
+        request.linearAdSlotHeight = Math.max(container.clientHeight, 360);
+        request.nonLinearAdSlotWidth = Math.max(container.clientWidth, 640);
+        request.nonLinearAdSlotHeight = 150;
+        request.setAdWillAutoPlay(playbackIntent?.autoPlay ?? false);
+        request.setAdWillPlayMuted(playbackIntent?.muted ?? content.muted);
+        loader.requestAds(request);
+      } catch (error) {
+        fail(error);
+      }
     });
   }
 
@@ -296,6 +316,8 @@ export class GoogleImaVideoAdService implements VideoAdService {
   }
 
   destroy(): void {
+    this.generation += 1;
+    this.cancelPlayback?.();
     this.adsManager?.destroy();
     this.adsLoader?.destroy();
     this.adsManager = null;

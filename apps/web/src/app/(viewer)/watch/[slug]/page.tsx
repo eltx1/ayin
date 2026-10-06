@@ -12,6 +12,8 @@ import { type PublicPlaybackResponse } from "@/lib/ayin-player";
 import { mediaAssetUrl } from "@/lib/channel";
 import { localizePath } from "@/lib/i18n/routing";
 import { getRequestLocale } from "@/lib/i18n/server";
+import { formatNumber } from "@/lib/i18n/format";
+import { translateCatalogDetail } from "@/lib/i18n/catalog-detail";
 import { translate } from "@/lib/i18n/translator";
 import { getSeoVideo } from "@/lib/seo-content";
 import { trustedApiRegionHeaders } from "@/lib/trusted-region";
@@ -88,19 +90,27 @@ export default async function WatchPage({ params, searchParams }: WatchPagePrope
   const t = (key: Parameters<typeof translate>[1], values?: Parameters<typeof translate>[2]) =>
     translate(locale, key, values);
   const regionHeaders = await trustedApiRegionHeaders();
+  const playbackQuery = new URLSearchParams({ locale, ...(kidsMode ? { kids: "1" } : {}) });
   const [response, seoVideo] = await Promise.all([
-    fetch(
-      `${apiBaseUrl}/public/videos/${encodeURIComponent(slug)}/playback${kidsMode ? "?kids=1" : ""}`,
-      {
-        cache: "no-store",
-        headers: regionHeaders,
-      },
-    ),
+    fetch(`${apiBaseUrl}/public/videos/${encodeURIComponent(slug)}/playback?${playbackQuery}`, {
+      cache: "no-store",
+      headers: regionHeaders,
+    }),
     getSeoVideo(slug, regionHeaders),
   ]);
   if (response.status === 404) notFound();
   if (!response.ok) throw new Error(t("watch.loadError"));
   const data = (await response.json()) as PublicPlaybackResponse;
+  const seriesContext =
+    !kidsMode && data.detail.contentType === "SERIES_EPISODE" ? data.detail.seriesContext : null;
+  const catalogText = (
+    key: Parameters<typeof translateCatalogDetail>[1],
+    values?: Parameters<typeof translateCatalogDetail>[2],
+  ) => translateCatalogDetail(locale, key, values);
+  const episodePosition = (seasonNumber: number, episodeNumber: number) =>
+    `${catalogText("series.season", { count: formatNumber(seasonNumber, locale) })} · ${catalogText("series.episode", { count: formatNumber(episodeNumber, locale) })}`;
+  const displayTitle = seriesContext?.episode.title ?? data.video.title;
+  const displayDescription = seriesContext?.episode.synopsis || data.video.description;
   const sourceUrl = mediaAssetUrl(data.video.source.objectKey);
   if (!sourceUrl) throw new Error(t("watch.deliveryError"));
   const adaptiveSourceUrl = data.video.adaptiveSource
@@ -143,14 +153,60 @@ export default async function WatchPage({ params, searchParams }: WatchPagePrope
         durationMs={data.video.durationMs}
         progressPolicy={data.playerPolicy}
         sourceUrl={sourceUrl}
-        title={data.video.title}
+        title={displayTitle}
         videoId={data.video.id}
       />
       <section className={styles.details}>
+        {seriesContext ? (
+          <nav
+            className={styles.seriesNavigation}
+            aria-label={catalogText("series.episodeNavigation")}
+          >
+            <ActionLink
+              tone="secondary"
+              href={localizePath(
+                `/series/${encodeURIComponent(seriesContext.series.slug)}?season=${seriesContext.season.seasonNumber}`,
+                locale,
+              )}
+              data-tv-focusable="true"
+            >
+              <span dir="auto">{seriesContext.series.title}</span>
+              <span>{catalogText("series.allEpisodes")}</span>
+            </ActionLink>
+            <p dir="auto">
+              {episodePosition(
+                seriesContext.season.seasonNumber,
+                seriesContext.episode.episodeNumber,
+              )}
+              {seriesContext.season.title ? ` · ${seriesContext.season.title}` : ""}
+            </p>
+            {seriesContext.nextEpisode ? (
+              <ActionLink
+                href={localizePath(
+                  `/watch/${encodeURIComponent(seriesContext.nextEpisode.video.slug)}`,
+                  locale,
+                )}
+                data-tv-focusable="true"
+                data-tv-focus-id="watch-next-episode"
+              >
+                <span>{catalogText("series.nextEpisode")}</span>
+                <span dir="auto">
+                  {episodePosition(
+                    seriesContext.nextEpisode.seasonNumber,
+                    seriesContext.nextEpisode.episodeNumber,
+                  )}{" "}
+                  · {seriesContext.nextEpisode.title}
+                </span>
+              </ActionLink>
+            ) : (
+              <p>{catalogText("series.lastAvailableEpisode")}</p>
+            )}
+          </nav>
+        ) : null}
         <PageHeader
           eyebrow={t("watch.eyebrow")}
-          title={data.video.title}
-          {...(data.video.description ? { description: data.video.description } : {})}
+          title={displayTitle}
+          {...(displayDescription ? { description: displayDescription } : {})}
           {...(!kidsMode
             ? {
                 actions: (

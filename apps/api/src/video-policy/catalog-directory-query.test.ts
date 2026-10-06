@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { directoryPage, parseDirectoryQuery } from "./catalog-directory-query.js";
+import {
+  directoryPage,
+  parseCatalogDirectoryQuery,
+  parseDirectoryQuery,
+} from "./catalog-directory-query.js";
 
 describe("public directory boundaries", () => {
   it("rejects malformed cursors, oversized pages and unknown parameters", () => {
@@ -17,6 +21,16 @@ describe("public directory boundaries", () => {
     ]) {
       expect(() => parseDirectoryQuery(query)).toThrow();
     }
+  });
+  it("accepts bounded catalog searches without silently accepting filters on other directories", () => {
+    expect(parseCatalogDirectoryQuery({ q: "  رحلة  ", locale: "ar" })).toEqual({
+      limit: 24,
+      q: "رحلة",
+      locale: "ar",
+    });
+    for (const q of ["x".repeat(101), ["one", "two"]])
+      expect(() => parseCatalogDirectoryQuery({ q })).toThrow();
+    expect(() => parseDirectoryQuery({ q: "ignored" })).toThrow();
   });
   it("keeps the lookahead out of results and permits complete traversal", () => {
     const rows = [{ id: "one" }, { id: "two" }, { id: "three" }];

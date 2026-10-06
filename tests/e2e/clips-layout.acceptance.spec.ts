@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
@@ -39,7 +39,7 @@ interface NativeControl {
   box: Rect;
 }
 
-test.use({ serviceWorkers: "block", reducedMotion: "reduce" });
+test.use({ serviceWorkers: "block", contextOptions: { reducedMotion: "reduce" } });
 
 test.afterEach(({ browserName }, testInfo) => {
   expect(browserName).toBe("chromium");
@@ -214,14 +214,29 @@ async function geometry(page: Page, id: string) {
       },
       controls: [...element.querySelectorAll("button,a,h2,p")].map((control) => {
         const box = rect(control);
-        const points = [0.25, 0.5, 0.75].map((fraction) => ({
-          x: box.left + box.width * fraction,
-          y: box.top + box.height / 2,
-        }));
+        const fragments = [...control.getClientRects()]
+          .filter((fragment) => fragment.width > 0 && fragment.height > 0)
+          .map((fragment) => ({
+            left: fragment.left,
+            top: fragment.top,
+            right: fragment.right,
+            bottom: fragment.bottom,
+            width: fragment.width,
+            height: fragment.height,
+          }));
+        // A wrapped inline link's union box includes the gap between lines.
+        // Hit-test every rendered fragment, retaining the union for containment.
+        const points = fragments.flatMap((fragment) =>
+          [0.25, 0.5, 0.75].map((fraction) => ({
+            x: fragment.left + fragment.width * fraction,
+            y: fragment.top + fragment.height / 2,
+          })),
+        );
         return {
           tag: control.tagName,
           label: control.textContent?.trim().slice(0, 160) ?? "",
           box,
+          fragments,
           hitTests: control.matches("button,a")
             ? points.map((point) => {
                 const hit = document.elementFromPoint(point.x, point.y);
@@ -358,6 +373,10 @@ function assertLayout(
     if (longDescription && control.tag === "P") continue;
     expect(fits(control.box, bounds.usable), control.label).toBe(true);
     expect(fits(control.box, bounds.article), control.label).toBe(true);
+    if (control.tag === "BUTTON" || control.tag === "A")
+      expect(control.hitTests.length, `${control.label} has rendered hit targets`).toBeGreaterThan(
+        0,
+      );
     for (const hit of control.hitTests) expect(hit.passes, control.label).toBe(true);
     if (control.tag === "BUTTON") {
       expect(control.box.width, control.label).toBeGreaterThanOrEqual(44);
@@ -386,6 +405,12 @@ async function revealNativeControls(page: Page, id: string) {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height - 12);
 }
 
+async function attachJson(testInfo: TestInfo, name: string, value: unknown) {
+  const output = testInfo.outputPath(`clips-layout-${name}.json`);
+  writeFileSync(output, JSON.stringify(value, null, 2));
+  await testInfo.attach(name, { path: output, contentType: "application/json" });
+}
+
 async function capture(page: Page, id: string, name: string, testInfo: TestInfo) {
   await revealNativeControls(page, id);
   await page.evaluate(async () => {
@@ -396,11 +421,8 @@ async function capture(page: Page, id: string, name: string, testInfo: TestInfo)
   });
   const bounds = await geometry(page, id);
   const native = await nativeBounds(page, id);
-  await testInfo.attach(`${name}-bounds`, {
-    body: JSON.stringify({ bounds, native }, null, 2),
-    contentType: "application/json",
-  });
-  const screenshot = testInfo.outputPath(`${name}.png`);
+  await attachJson(testInfo, `${name}-bounds`, { bounds, native });
+  const screenshot = testInfo.outputPath(`clips-layout-${name}.png`);
   await page.screenshot({ path: screenshot, fullPage: false, animations: "disabled" });
   await testInfo.attach(`${name}-viewport-original`, {
     path: screenshot,
@@ -462,13 +484,13 @@ async function exerciseNativeControls(page: Page, id: string, label: string, tes
   const fullscreen = await nativeBounds(page, id);
   await clickNative(page, id, "fullscreen");
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
-  await testInfo.attach(`${label}-native-mouse-actions`, {
-    body: JSON.stringify(
-      { start, beforeSeek, afterSeek, enteredFullscreen: true, exitedFullscreen: true, fullscreen },
-      null,
-      2,
-    ),
-    contentType: "application/json",
+  await attachJson(testInfo, `${label}-native-mouse-actions`, {
+    start,
+    beforeSeek,
+    afterSeek,
+    enteredFullscreen: true,
+    exitedFullscreen: true,
+    fullscreen,
   });
 }
 
@@ -569,6 +591,9 @@ for (const locale of ["en", "ar"] as const) {
       test.setTimeout(120_000);
       expect(browserName).toBe("chromium");
       await page.setViewportSize(viewport);
+      expect(
+        await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+      ).toBe(true);
       const label = `${locale}-${viewport.width}`;
       const [first, second] = seedClips(testInfo);
       await register(page, label);
@@ -602,6 +627,9 @@ for (const locale of ["en", "ar"] as const) {
 
       if (locale === "en" && viewport.width === 390) {
         await page.emulateMedia({ reducedMotion: "no-preference" });
+        expect(
+          await page.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches),
+        ).toBe(false);
         await navigate(page, second.id, "ArrowDown");
         await pauseDecodedFrame(page, second.id);
         const smoothDown = await capture(

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { CatalogLocalizationService } from "../catalog-localization/catalog-localization.service.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
-import { parseDirectoryQuery } from "../video-policy/catalog-directory-query.js";
+import { parseCatalogDirectoryQuery } from "../video-policy/catalog-directory-query.js";
 import { MovieCatalogService } from "./movie-catalog.service.js";
 
 const listQuerySchema = z
@@ -36,11 +36,13 @@ export class PublicMovieCatalogController {
   @Get("directory")
   @Header("Cache-Control", "private, no-store")
   async directory(@Query() query: unknown, @Headers() headers: HeaderBag) {
-    const { limit, cursor, locale } = parseDirectoryQuery(query);
+    const { limit, cursor, locale, q } = parseCatalogDirectoryQuery(query);
     const page = await this.catalog.listPublicDirectory(
       limit,
       cursor,
       this.trustedRegion.countryFromHeaders(headers),
+      q,
+      locale,
     );
     return { ...page, items: await this.localization.localizeMovies(page.items, locale) };
   }

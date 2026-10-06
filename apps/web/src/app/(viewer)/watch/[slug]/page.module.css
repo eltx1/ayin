@@ -15,6 +15,27 @@
   min-inline-size: 0;
   padding-block: 0.35rem 1rem;
 }
+.seriesNavigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8rem 1.2rem;
+  margin-block-end: 1.4rem;
+  padding-block-end: 1.2rem;
+  border-bottom: 1px solid var(--border);
+}
+.seriesNavigation > a {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.seriesNavigation > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 
 .details h1 {
   font-size: clamp(1.65rem, 3vw, 2.7rem);

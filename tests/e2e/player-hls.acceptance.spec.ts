@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
+import type { PublicCreatorTvResponse } from "../../apps/web/src/lib/creator-tv";
 
 const DB_HELPER = path.resolve(process.cwd(), "tests/e2e/db-helper.mjs");
 
@@ -220,6 +221,12 @@ async function installMediaHarness(
           addEventListener(type: string, listener: (event: unknown) => void) {
             this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
           }
+          removeEventListener(type: string, listener: (event: unknown) => void) {
+            this.listeners.set(
+              type,
+              (this.listeners.get(type) ?? []).filter((item) => item !== listener),
+            );
+          }
           requestAds(request: { adTagUrl: string }) {
             state.imaTags.push(request.adTagUrl);
             const manager = new AdsManager();
@@ -292,6 +299,7 @@ async function mockPreroll(
   page: Page,
   fixture: VideoFixture,
   tagUrl = "https://ads.invalid/task-41",
+  allBreaks = false,
 ) {
   await page.route(`**/ads/video/decision/${fixture.id}`, async (route) => {
     await route.fulfill({
@@ -302,9 +310,9 @@ async function mockPreroll(
         provider: "GOOGLE_IMA",
         tagUrl,
         preRollEnabled: true,
-        midRollEnabled: false,
-        postRollEnabled: false,
-        midRollEverySec: 900,
+        midRollEnabled: allBreaks,
+        postRollEnabled: allBreaks,
+        midRollEverySec: allBreaks ? 10 : 900,
         frequencyCapPerSession: 10,
         attribution: { videoId: fixture.id, channelId: fixture.channelId },
       }),
@@ -457,6 +465,318 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       await expect(page.locator("video:visible")).toHaveCount(1);
     });
   }
+
+  test("Creator TV resets ad ownership for new programs while same-video URL refresh keeps position", async ({
+    page,
+  }) => {
+    type TvFixture = {
+      fixtureId: string;
+      channelId: string;
+      handle: string;
+      videos: VideoFixture[];
+    };
+    const helper = path.resolve(process.cwd(), "tests/e2e/ad-lifecycle-fixture.mjs");
+    const seed = (command: string, payload = {}) =>
+      JSON.parse(
+        execFileSync(process.execPath, [helper, command, JSON.stringify(payload)], {
+          cwd: process.cwd(),
+          env: process.env,
+          encoding: "utf8",
+        }),
+      );
+    const tv = seed("seed") as TvFixture;
+    try {
+      const response = await page.request.get(
+        `http://127.0.0.1:3001/public/channels/${tv.handle}/tv`,
+      );
+      expect(response.ok()).toBe(true);
+      const initial = (await response.json()) as PublicCreatorTvResponse;
+      expect(initial.schedule.nowPlaying).not.toBeNull();
+      const first = initial.schedule.nowPlaying!;
+      const second = initial.schedule.guide.find((item) => item.video.id !== first.video.id)!;
+      expect(second).toBeTruthy();
+      await installMediaHarness(page, { ima: true });
+      const events: Array<{ videoId: string; slot: string; eventType: string }> = [];
+      await page.route("**/ads/video/events", async (route) => {
+        events.push(route.request().postDataJSON());
+        await route.fulfill({ json: { accepted: true } });
+      });
+      for (const video of tv.videos)
+        await mockPreroll(page, video, "https://ads.invalid/lifecycle", true);
+      await page.goto(`/c/${tv.handle}/tv`);
+      await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
+      await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
+      const video = page.locator("main video");
+      await video.evaluate((element) => {
+        element.currentTime = 15;
+        element.dispatchEvent(new Event("timeupdate"));
+      });
+      await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(2);
+      await expect
+        .poll(() => events.filter((event) => event.eventType === "COMPLETE").length)
+        .toBe(2);
+
+      // A refreshed URL is still the same logical video. It must not remount
+      // progress/media state, replay preroll, or replay its already-used midroll.
+      let nextData = structuredClone(initial);
+      nextData.schedule.nowPlaying!.video.source.objectKey = first.video.source.objectKey.replace(
+        ".mp4",
+        "-refreshed.mp4",
+      );
+      await page.route(`**/public/channels/${tv.handle}/tv`, (route) =>
+        route.fulfill({ json: nextData }),
+      );
+      await video.evaluate((element) => {
+        element.dataset.originalMedia = "yes";
+        element.currentTime = 45;
+      });
+      await page.getByRole("button", { name: /^Next:/ }).focus();
+      await page.getByRole("button", { name: /^Next:/ }).press("Enter");
+      await expect(video).toHaveAttribute("src", /-refreshed\.mp4/);
+      await expect(video).toHaveAttribute("data-original-media", "yes");
+      expect(await video.evaluate((element) => element.currentTime)).toBe(45);
+      expect((await harnessState(page)).imaStarted).toBe(2);
+
+      nextData = structuredClone(initial);
+      nextData.schedule.nowPlaying = { ...second, playbackOffsetMs: 0 };
+      await page.getByRole("button", { name: /^Next:/ }).focus();
+      await page.getByRole("button", { name: /^Next:/ }).press("Enter");
+      await expect(video).toHaveAttribute(
+        "src",
+        new RegExp(second.video.source.objectKey.replaceAll(".", "\\.")),
+      );
+      await expect(video).not.toHaveAttribute("data-original-media", "yes");
+      await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(3);
+      await expect
+        .poll(
+          () =>
+            events.filter(
+              (event) => event.videoId === second.video.id && event.eventType === "COMPLETE",
+            ).length,
+        )
+        .toBe(1);
+      await video.evaluate((element) => {
+        element.currentTime = 15;
+        element.dispatchEvent(new Event("timeupdate"));
+      });
+      await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(4);
+      await expect
+        .poll(
+          () =>
+            events.filter(
+              (event) => event.videoId === second.video.id && event.eventType === "COMPLETE",
+            ).length,
+        )
+        .toBe(2);
+      await video.evaluate((element) => element.dispatchEvent(new Event("ended")));
+      await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(5);
+      await expect
+        .poll(
+          () =>
+            events.filter(
+              (event) => event.videoId === second.video.id && event.eventType === "COMPLETE",
+            ).length,
+        )
+        .toBe(3);
+      expect(
+        events
+          .filter((event) => event.eventType === "START")
+          .map((event) => [event.videoId, event.slot]),
+      ).toEqual([
+        [first.video.id, "PRE_ROLL"],
+        [first.video.id, "MID_ROLL"],
+        [second.video.id, "PRE_ROLL"],
+        [second.video.id, "MID_ROLL"],
+        [second.video.id, "POST_ROLL"],
+      ]);
+    } finally {
+      await page.goto("about:blank").catch(() => undefined);
+      seed("cleanup", tv);
+    }
+  });
+
+  test("page placements redecide only on route or device category changes", async ({ page }) => {
+    await installMediaHarness(page);
+    await mockNoAds(page, fixture.id);
+    const decisions: Array<{ route: string | null; device: string | null }> = [];
+    const events: string[] = [];
+    await page.route("**/ads/page/decision/**", async (route) => {
+      const url = new URL(route.request().url());
+      decisions.push({
+        route: url.searchParams.get("route"),
+        device: url.searchParams.get("device"),
+      });
+      await route.fulfill({
+        json: {
+          enabled: true,
+          demand: {
+            provider: "HOUSE",
+            imageUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+            altText: "Synthetic house",
+            clickUrl: null,
+          },
+          fallback: null,
+        },
+      });
+    });
+    await page.route("**/ads/page/events", async (route) => {
+      events.push(route.request().postDataJSON().eventType);
+      await route.fulfill({ json: {} });
+    });
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.goto(`/watch/${fixture.slug}`);
+    await expect(page.getByRole("img", { name: "Synthetic house" })).toBeVisible();
+    expect(decisions).toEqual([{ route: `/watch/${fixture.slug}`, device: "DESKTOP" }]);
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    expect(decisions).toHaveLength(1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(() => decisions.length).toBe(2);
+    expect(decisions[1]!.device).toBe("MOBILE");
+    // Next's supported native history API retains this tree and publishes a
+    // new pathname; the placement must no longer use its previous route.
+    await page.evaluate(() => window.history.pushState({}, "", "/watch/synthetic-retained-route"));
+    await expect.poll(() => decisions.length).toBe(3);
+    expect(decisions[2]).toEqual({ route: "/watch/synthetic-retained-route", device: "MOBILE" });
+    await expect.poll(() => events.filter((event) => event === "IMPRESSION").length).toBe(3);
+  });
+
+  test("leaving while page REQUEST telemetry is pending cannot create a house impression", async ({
+    page,
+  }) => {
+    await installMediaHarness(page);
+    await mockNoAds(page, fixture.id);
+    let requestRoute: Route | undefined;
+    const events: string[] = [];
+    await page.route("**/ads/page/decision/**", (route) =>
+      route.fulfill({
+        json:
+          new URL(route.request().url()).searchParams.get("route") === `/watch/${fixture.slug}`
+            ? {
+                enabled: true,
+                demand: {
+                  provider: "HOUSE",
+                  imageUrl: "https://media.invalid/synthetic-house.png",
+                  altText: "Synthetic house",
+                  clickUrl: null,
+                },
+                fallback: null,
+              }
+            : { enabled: false },
+      }),
+    );
+    await page.route("**/ads/page/events", async (route) => {
+      const type = route.request().postDataJSON().eventType;
+      events.push(type);
+      if (type === "REQUEST") requestRoute = route;
+      else await route.fulfill({ json: {} });
+    });
+    await page.goto(`/watch/${fixture.slug}`);
+    await expect.poll(() => Boolean(requestRoute)).toBe(true);
+    await page.locator('a[href="/"]').first().click();
+    await expect(page).toHaveURL(/\/$/);
+    await requestRoute!.fulfill({ json: {} });
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
+    expect(events).toEqual(["REQUEST"]);
+    await expect(page.getByRole("img", { name: "Synthetic house" })).toHaveCount(0);
+  });
+
+  test("already-loaded GPT always receives a mounted host and is destroyed on device change and exit", async ({
+    page,
+  }) => {
+    await installMediaHarness(page);
+    await mockNoAds(page, fixture.id);
+    await page.addInitScript(() => {
+      const state = { displayed: 0, destroyed: 0, missingHost: false };
+      Object.assign(window, { __ayinMountedGpt: state });
+      document.addEventListener(
+        "DOMContentLoaded",
+        () => {
+          const marker = document.createElement("script");
+          marker.type = "application/json";
+          marker.src = "https://pagead2.googlesyndication.com/tag/js/gpt.js";
+          document.head.append(marker);
+          const pubads = {
+            setPrivacySettings() {},
+            addEventListener() {},
+            removeEventListener() {},
+          };
+          Object.assign(window, {
+            googletag: {
+              cmd: {
+                push(callback: () => void) {
+                  callback();
+                },
+              },
+              defineSlot() {
+                return {
+                  setConfig() {
+                    return this;
+                  },
+                  addService() {
+                    return this;
+                  },
+                };
+              },
+              pubads() {
+                return pubads;
+              },
+              enableServices() {},
+              display(id: string) {
+                state.displayed++;
+                state.missingHost ||= !document.getElementById(id);
+              },
+              destroySlots() {
+                state.destroyed++;
+              },
+            },
+          });
+        },
+        { once: true },
+      );
+    });
+    await page.route("https://pagead2.googlesyndication.com/**", (route) => route.abort());
+    await page.route("**/ads/page/events", (route) => route.fulfill({ json: {} }));
+    await page.route("**/ads/page/decision/**", (route) =>
+      route.fulfill({
+        json:
+          new URL(route.request().url()).searchParams.get("route") === `/watch/${fixture.slug}`
+            ? {
+                enabled: true,
+                demand: { provider: "GOOGLE_GPT", adUnitPath: "/123/synthetic" },
+                sizes: [[300, 250]],
+                responsive: [],
+                fallback: null,
+              }
+            : { enabled: false },
+      }),
+    );
+    const state = () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __ayinMountedGpt: { displayed: number; destroyed: number; missingHost: boolean };
+            }
+          ).__ayinMountedGpt,
+      );
+    await page.setViewportSize({ width: 1100, height: 900 });
+    await page.goto(`/watch/${fixture.slug}`);
+    await page
+      .locator("aside")
+      .filter({ has: page.locator('[id^="ayin-ad-"]') })
+      .scrollIntoViewIfNeeded();
+    await expect.poll(async () => (await state()).displayed).toBe(1);
+    expect((await state()).missingHost).toBe(false);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(async () => (await state()).displayed).toBe(2);
+    expect((await state()).destroyed).toBe(1);
+    await page.locator('a[href="/"]').first().click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect.poll(async () => (await state()).destroyed).toBe(2);
+  });
 
   test("mobile preroll preserves the user-gesture gate with HLS", async ({ browser }) => {
     const context = await browser.newContext({

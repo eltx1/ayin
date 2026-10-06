@@ -9,7 +9,7 @@ import { absoluteUrl } from "@/lib/seo";
 
 type Props = {
   params: Promise<{ section: string }>;
-  searchParams: Promise<{ cursor?: string | string[] }>;
+  searchParams: Promise<{ cursor?: string | string[]; q?: string | string[] }>;
 };
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const [{ section }, query, locale] = await Promise.all([
@@ -29,7 +29,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
         "x-default": absoluteUrl(`/${section}`),
       },
     },
-    robots: { index: !query.cursor, follow: true },
+    robots: { index: !query.cursor && !query.q, follow: true },
   };
 }
 export default async function SectionPage({ params, searchParams }: Props) {
@@ -39,5 +39,7 @@ export default async function SectionPage({ params, searchParams }: Props) {
     getRequestLocale(),
   ]);
   if (!isDirectorySection(section)) notFound();
-  return <PublicDirectory section={section} locale={locale} cursor={query.cursor} />;
+  return (
+    <PublicDirectory section={section} locale={locale} cursor={query.cursor} query={query.q} />
+  );
 }
