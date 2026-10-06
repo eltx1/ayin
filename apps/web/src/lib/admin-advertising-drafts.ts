@@ -31,3 +31,12 @@ export function reconcileAdvertisingRead(
     appAds: current.appAds === original.appAds ? incoming.appAds : current.appAds,
   };
 }
+
+// A verified campaign deletion also removes its cascade-deleted creative rows.
+// Apply this to an older outstanding read as well, so it cannot resurrect them.
+export function retainCampaignCreatives<T extends { campaignId: string }>(
+  values: T[],
+  currentCampaignIds: ReadonlySet<string>,
+): T[] {
+  return values.filter((value) => currentCampaignIds.has(value.campaignId));
+}

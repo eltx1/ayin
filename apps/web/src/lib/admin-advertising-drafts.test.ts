@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   reconcileAdvertisingRead,
+  retainCampaignCreatives,
   type AdvertisingEditableRecords,
 } from "./admin-advertising-drafts";
 const original: AdvertisingEditableRecords = {
@@ -72,4 +73,14 @@ describe("manual Advertising read reconciliation", () => {
       incoming,
     );
   });
+});
+
+it("removes only creatives whose campaign is absent and fences an older read", () => {
+  const keep = { campaignId: "current", name: "Retained creative draft" },
+    removed = { campaignId: "deleted", name: "Deleted child" };
+  const prior = [keep, removed];
+  expect(retainCampaignCreatives(prior, new Set(["current"]))).toEqual([keep]);
+  expect(retainCampaignCreatives(prior, new Set(["current"]))[0]).toBe(keep);
+  expect(prior).toEqual([keep, removed]);
+  expect(retainCampaignCreatives(prior, new Set())).toEqual([]);
 });

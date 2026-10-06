@@ -7,6 +7,7 @@ export class AdminWorkspaceError extends Error {
     readonly status = 0,
     readonly writeStarted = false,
     readonly verificationRequired = false,
+    readonly code = "",
   ) {
     super("Admin workspace could not be verified");
   }
@@ -86,8 +87,22 @@ export async function adminWorkspaceRequest(
   });
   if (!response.ok) {
     const verification = await adminVerificationRequired(response);
+    const body: unknown = await response
+      .clone()
+      .json()
+      .catch(() => null);
+    const code =
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      body.error &&
+      typeof body.error === "object" &&
+      "code" in body.error &&
+      typeof body.error.code === "string"
+        ? body.error.code
+        : "";
     await readAdminApiError(response);
-    throw new AdminWorkspaceError(response.status, Boolean(init.method), verification);
+    throw new AdminWorkspaceError(response.status, Boolean(init.method), verification, code);
   }
   return (await response.json()) as unknown;
 }

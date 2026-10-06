@@ -1,12 +1,23 @@
-import { Body, Controller, Get, Inject, Param, Patch, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Inject,
+  Param,
+  Patch,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
+import { unauthorized } from "../auth/auth.errors.js";
 import { DatabaseService } from "../database/database.service.js";
 import { FeatureFlagService } from "../platform-config/feature-flag.service.js";
 import { AdminAuditLogService } from "./admin-audit-log.service.js";
 import { AdminAuthorizationService } from "./admin-authorization.service.js";
-import { adminBadRequest } from "./admin.errors.js";
+import { adminBadRequest, adminForbidden } from "./admin.errors.js";
 import {
   AdminGuard,
   type AdminAuthenticatedRequest,
@@ -36,11 +47,41 @@ export class AdminController {
   ) {}
 
   @Get("session")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   @RequireAdminRoles(...staffRoles)
   async session(@Req() request: AdminAuthenticatedRequest) {
+    // Re-read the validated durable session and current account version. The
+    // response is a non-authenticating draft boundary, never a token or grant.
+    const auth = request.ayinAuth;
+    const current = await this.database.client.accountSession.findFirst({
+      where: {
+        id: auth.sessionId,
+        accountId: auth.accountId,
+        authVersion: auth.authVersion,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: {
+        id: true,
+        authVersion: true,
+        account: { select: { authVersion: true, status: true } },
+      },
+    });
+    if (
+      !current ||
+      current.account.status !== "ACTIVE" ||
+      current.account.authVersion !== auth.authVersion ||
+      current.authVersion !== auth.authVersion
+    )
+      throw unauthorized();
+    const roles = await this.authorization.getRoles(auth.accountId);
+    if (!roles.length) throw adminForbidden();
     return {
-      accountId: request.ayinAuth.accountId,
-      roles: await this.authorization.getRoles(request.ayinAuth.accountId),
+      accountId: auth.accountId,
+      roles,
+      sessionId: current.id,
+      authVersion: current.account.authVersion,
     };
   }
 

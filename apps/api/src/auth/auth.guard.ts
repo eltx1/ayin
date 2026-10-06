@@ -5,6 +5,7 @@ import { AuthService } from "./auth.service.js";
 import { unauthorized } from "./auth.errors.js";
 import { readSessionToken } from "./session-transport.js";
 import { assertExpectedAccount } from "./assert-expected-account.js";
+import { assertExpectedSession } from "./assert-expected-session.js";
 
 export interface AuthenticatedRequest extends FastifyRequest {
   ayinAuth: {
@@ -30,6 +31,7 @@ export class AuthGuard implements CanActivate {
 
     const auth = await this.authService.authenticate(token);
     assertExpectedAccount(request.headers["x-ayin-expected-account"], auth.accountId);
+    assertExpectedSession(request.headers["x-ayin-expected-session"], auth.sessionId);
     (request as AuthenticatedRequest).ayinAuth = auth;
     return true;
   }

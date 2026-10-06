@@ -255,6 +255,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Preserve direct advertiser and campaign visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-campaign-workspace-visuals
+          path: test-results/**/design-direct-*.png
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Preserve long-content MediaCard visuals
         if: always()
         uses: actions/upload-artifact@v4

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpException,
   Inject,
   Param,
@@ -23,6 +24,7 @@ import {
 import { AuthGuard } from "../auth/auth.guard.js";
 import { AdvertisingControlService } from "./advertising-control.service.js";
 import { directDecisionContextSchema } from "./direct-ad.schemas.js";
+import { advertisingError } from "./advertising-write-contract.js";
 
 const uuid = z.string().uuid();
 const killSwitchSchema = z.object({
@@ -140,15 +142,41 @@ export class AdminAdvertisingControlController {
     );
   }
 
+  @Get("workspace")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  workspace() {
+    return this.advertising.workspace();
+  }
+
+  @Get("mutations/:mutationId")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  mutationRecord(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("mutationId") mutationId: string,
+  ) {
+    return this.advertising.mutationRecord(request.ayinAuth.accountId, this.id(mutationId));
+  }
+
   @Get("advertisers")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
   advertisers() {
     return this.advertising.listAdvertisers();
+  }
+
+  @Get("advertisers/:id")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  advertiser(@Param("id") id: string) {
+    return this.advertising.advertiserRecord(this.id(id));
   }
 
   @Post("advertisers")
   @RequireAdminStepUp()
   createAdvertiser(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
-    return this.execute(() => this.advertising.createAdvertiser(request.ayinAuth.accountId, body));
+    return this.executeWorkspace(() => this.advertising.createAdvertiser(request.ayinAuth, body));
   }
 
   @Patch("advertisers/:id")
@@ -158,40 +186,41 @@ export class AdminAdvertisingControlController {
     @Param("id") idRaw: string,
     @Body() body: unknown,
   ) {
-    return this.execute(() =>
-      this.advertising.updateAdvertiser(request.ayinAuth.accountId, this.id(idRaw), body),
+    return this.executeWorkspace(() =>
+      this.advertising.updateAdvertiser(request.ayinAuth, this.id(idRaw), body),
     );
   }
 
   @Delete("advertisers/:id")
   @RequireAdminStepUp()
-  deleteAdvertiser(@Req() request: AdminAuthenticatedRequest, @Param("id") idRaw: string) {
-    return this.execute(() =>
-      this.advertising.deleteAdvertiser(request.ayinAuth.accountId, this.id(idRaw)),
+  deleteAdvertiser(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("id") idRaw: string,
+    @Body() body: unknown,
+  ) {
+    return this.executeWorkspace(() =>
+      this.advertising.deleteAdvertiser(request.ayinAuth, this.id(idRaw), body ?? {}),
     );
   }
 
   @Get("campaigns")
-  async campaigns() {
-    const campaigns = await this.advertising.listCampaigns();
-    return campaigns.map((campaign) => ({
-      ...campaign,
-      direct: campaign.direct
-        ? {
-            ...campaign.direct,
-            impressionGoal:
-              campaign.direct.impressionGoal === null
-                ? null
-                : Number(campaign.direct.impressionGoal),
-          }
-        : null,
-    }));
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  campaigns() {
+    return this.advertising.listCampaigns();
+  }
+
+  @Get("campaigns/:id")
+  @Header("Cache-Control", "private, no-store")
+  @Header("Pragma", "no-cache")
+  campaign(@Param("id") id: string) {
+    return this.advertising.campaignRecord(this.id(id));
   }
 
   @Post("campaigns")
   @RequireAdminStepUp()
   createCampaign(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
-    return this.execute(() => this.advertising.createCampaign(request.ayinAuth.accountId, body));
+    return this.executeWorkspace(() => this.advertising.createCampaign(request.ayinAuth, body));
   }
 
   @Patch("campaigns/:id")
@@ -201,16 +230,20 @@ export class AdminAdvertisingControlController {
     @Param("id") idRaw: string,
     @Body() body: unknown,
   ) {
-    return this.execute(() =>
-      this.advertising.updateCampaign(request.ayinAuth.accountId, this.id(idRaw), body),
+    return this.executeWorkspace(() =>
+      this.advertising.updateCampaign(request.ayinAuth, this.id(idRaw), body),
     );
   }
 
   @Delete("campaigns/:id")
   @RequireAdminStepUp()
-  deleteCampaign(@Req() request: AdminAuthenticatedRequest, @Param("id") idRaw: string) {
-    return this.execute(() =>
-      this.advertising.deleteCampaign(request.ayinAuth.accountId, this.id(idRaw)),
+  deleteCampaign(
+    @Req() request: AdminAuthenticatedRequest,
+    @Param("id") idRaw: string,
+    @Body() body: unknown,
+  ) {
+    return this.executeWorkspace(() =>
+      this.advertising.deleteCampaign(request.ayinAuth, this.id(idRaw), body ?? {}),
     );
   }
 
@@ -243,6 +276,32 @@ export class AdminAdvertisingControlController {
     return this.execute(() =>
       this.advertising.deleteCreative(request.ayinAuth.accountId, this.id(idRaw)),
     );
+  }
+
+  private async executeWorkspace<T>(callback: () => Promise<T>) {
+    try {
+      return await callback();
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      if (error instanceof z.ZodError) throw this.invalid("INVALID_ADVERTISING_MUTATION");
+      const code =
+        typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+      if (code === "P2025")
+        throw advertisingError(
+          404,
+          "ADVERTISING_RECORD_NOT_FOUND",
+          "The advertising record is unavailable.",
+        );
+      if (code === "P2002" || code === "P2003" || code === "P2034")
+        throw advertisingError(
+          409,
+          "ADVERTISING_WRITE_CONFLICT",
+          "The advertising records changed or have dependent records. Review them before a new operation.",
+        );
+      // Audit/database/transport failures are uncertain server outcomes, never
+      // reclassified as bad input or silently replayed.
+      throw error;
+    }
   }
 
   private async execute<T>(callback: () => Promise<T>) {
