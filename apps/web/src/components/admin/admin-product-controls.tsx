@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { ActionButton } from "@/components/ui/design-system";
 import pickerStyles from "./merchandising-target-picker.module.css";
@@ -49,22 +56,24 @@ export function AdminProductControls() {
   const { t } = useI18n();
   const access = useAdminAccess();
   const { getScopeLease, subscribeScopeInvalidation, invalidateScope, refresh } = access;
-  const [lease, setLease] = useState<AdminScopeLease | null>(null);
   const root = useRef<HTMLDivElement>(null);
-  useLayoutEffect(
-    () =>
+  const subscribe = useCallback(
+    (notify: () => void) =>
       subscribeScopeInvalidation(() => {
         // Hide native DOM before React cleanup so private selections cannot survive
         // a same-account new session, role change, backgrounding or route review.
         if (root.current) root.current.hidden = true;
-        setLease(null);
+        notify();
       }),
     [subscribeScopeInvalidation],
   );
-  useLayoutEffect(() => {
+  const getSnapshot = useCallback(() => {
     const current = getScopeLease();
-    setLease(current && canAdministerOperations(current.session.roles) ? current : null);
-  }, [access.session, access.loading, getScopeLease]);
+    return current && canAdministerOperations(current.session.roles) ? current : null;
+  }, [getScopeLease]);
+  // The provider owns the lease. Read its stable object directly, including on
+  // provider re-renders after verification; never mirror it into effect state.
+  const lease = useSyncExternalStore(subscribe, getSnapshot, () => null);
   useLayoutEffect(() => {
     if (root.current) root.current.hidden = !lease;
   }, [lease]);

@@ -337,6 +337,33 @@ test("same-account new session rejects a delayed selection read and destroys its
   await expect(picks(page).getByRole("list", { name: "Search results" })).toHaveCount(0);
 });
 
+test("lease invalidation conceals native fields synchronously and resumes with a fresh editor", async ({
+  page,
+}) => {
+  const f = await setup(page);
+  await page.goto("/admin/product-controls");
+  const workspace = page.getByRole("group", { name: "Product and regional settings", exact: true });
+  await expect(picks(page)).toBeVisible();
+  await page.getByLabel("Audit reason", { exact: true }).fill("Private prior-lease review draft");
+  const nativeConcealed = await workspace.evaluate((node) => {
+    const root = node.parentElement!;
+    window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true }));
+    // Observe in the same event turn, before waiting for a React commit.
+    return root.hidden;
+  });
+  expect(nativeConcealed).toBe(true);
+  await expect(workspace).toHaveCount(0);
+  await page.evaluate(() =>
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
+  );
+  await expect(picks(page)).toBeVisible();
+  await expect(page.getByLabel("Audit reason", { exact: true })).toHaveValue(
+    "Routine merchandising update",
+  );
+  await expect(picks(page).getByText(f.videos[26].title, { exact: true })).toBeVisible();
+  expect(fixture("evidence", f).audits).toHaveLength(0);
+});
+
 for (const language of ["en", "ar"])
   for (const width of [390, 1440])
     test(`original ${language} ${width} selection rendering and keyboard`, async ({ page }) => {
