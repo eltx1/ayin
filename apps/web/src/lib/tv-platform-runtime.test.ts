@@ -5,6 +5,7 @@ import {
   detectTvWebPlatform,
   isSupportedSamsungTizenRuntime,
   isTvHomePathname,
+  installTvPlatformRuntime,
   normalizeTvRemoteEvent,
   parseSamsungTizenVersion,
   registerTizenMediaKeys,
@@ -218,3 +219,31 @@ describe("TV platform runtime", () => {
     expect(registerTizenMediaKeys(target)).toBe("failed");
   });
 });
+
+for (const lifecycle of ["pagehide", "hidden"] as const) {
+  it(`prepares final progress before the existing ${lifecycle} media pause`, () => {
+    const order: string[] = [];
+    const video = { paused: false, ended: false, pause: () => order.push("pause") };
+    const document = Object.assign(new EventTarget(), {
+      hidden: true,
+      documentElement: { dataset: {} },
+      querySelectorAll: () => [video],
+    });
+    const target = Object.assign(new EventTarget(), {
+      document,
+      location: { href: "https://ayin.stream/watch/test", search: "", pathname: "/watch/test" },
+      navigator: { userAgent: "Mozilla/5.0" },
+    }) as unknown as Window;
+    const uninstall = installTvPlatformRuntime(target);
+    // The subscriber is deliberately registered after the TV runtime.
+    target.addEventListener("ayin:before-page-suspend", () => order.push("checkpoint"));
+    if (lifecycle === "pagehide") target.dispatchEvent(new Event("pagehide"));
+    else document.dispatchEvent(new Event("visibilitychange"));
+    expect(order).toEqual(["checkpoint", "pause"]);
+    uninstall();
+    order.length = 0;
+    target.dispatchEvent(new Event("pagehide"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(order).toEqual([]);
+  });
+}

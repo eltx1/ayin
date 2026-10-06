@@ -165,3 +165,81 @@ describe("WatchService adaptive playback", () => {
     expect(response.video.source.objectKey).toBe("media/v1/canonical.mp4");
   });
 });
+
+function progressHarness(
+  rows: Array<{ positionMs: number; completedAt: Date | null; lastWatchedAt: Date }>,
+) {
+  const query = vi.fn().mockResolvedValue(rows);
+  const history = vi.fn().mockResolvedValue({});
+  const tx = { $queryRaw: query, watchHistory: { upsert: history } };
+  const service = new WatchService(
+    {
+      client: {
+        viewerProfile: {
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ id: "44444444-4444-4444-8444-444444444444", isKids: false }),
+        },
+        video: { findFirst: vi.fn().mockResolvedValue(video) },
+        $transaction: (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
+      },
+    } as never,
+    {
+      get: vi.fn(async (key: string) => (key === "watchProgressSaveIntervalSeconds" ? 15 : 90)),
+    } as never,
+    {} as never,
+    {} as never,
+    { decide: vi.fn().mockResolvedValue({ allowed: true }) } as never,
+  );
+  return { service, query, history };
+}
+
+describe("WatchService freshness statement boundary", () => {
+  const revision = "2026-10-05T00:00:00.000Z";
+  const saved = {
+    positionMs: 37_000,
+    completedAt: null,
+    lastWatchedAt: new Date("2026-10-05T00:00:00.001Z"),
+  };
+
+  for (const expectedRevision of [null, revision]) {
+    it(`does not touch history when atomic ${expectedRevision === null ? "create" : "update"} has no winner`, async () => {
+      const { service, query, history } = progressHarness([]);
+      await expect(
+        service.saveProgress("account", video.id, { positionMs: 37_000, expectedRevision }),
+      ).rejects.toMatchObject({ code: "WATCH_PROGRESS_CONFLICT", statusCode: 409 });
+      expect(query).toHaveBeenCalledTimes(1);
+      expect(history).not.toHaveBeenCalled();
+      const sql = (query.mock.calls[0]![0] as string[]).join("?");
+      expect(sql).toContain(
+        expectedRevision === null
+          ? 'ON CONFLICT ("profileId", "videoId") DO NOTHING'
+          : 'AND "lastWatchedAt" =',
+      );
+    });
+  }
+
+  it("keeps revision comparison in the UPDATE and returns the saved DB revision", async () => {
+    const { service, query, history } = progressHarness([saved]);
+    const result = await service.saveProgress("account", video.id, {
+      positionMs: 37_000,
+      expectedRevision: revision,
+    });
+    expect(result.revision).toBe(saved.lastWatchedAt.toISOString());
+    const sql = (query.mock.calls[0]![0] as string[]).join("?");
+    expect(sql).toContain("AT TIME ZONE 'UTC'");
+    expect(sql).toContain("INTERVAL '1 millisecond'");
+    expect(query.mock.calls[0]!.slice(1)).toContain(revision);
+    expect(history).toHaveBeenCalledWith(
+      expect.objectContaining({ update: { lastWatchedAt: saved.lastWatchedAt } }),
+    );
+  });
+
+  it("keeps legacy saves unconditional while advancing the same revision", async () => {
+    const { service, query } = progressHarness([saved]);
+    await service.saveProgress("account", video.id, { positionMs: 37_000 });
+    const sql = (query.mock.calls[0]![0] as string[]).join("?");
+    expect(sql).toContain('ON CONFLICT ("profileId", "videoId") DO UPDATE');
+    expect(sql).toContain('"WatchProgress"."lastWatchedAt" + INTERVAL');
+  });
+});
