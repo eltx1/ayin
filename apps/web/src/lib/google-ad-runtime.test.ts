@@ -20,6 +20,16 @@ const nonPersonalized: AdvertisingConsentSnapshot = {
 };
 
 describe("Google advertising runtime hardening", () => {
+  it("keeps the opaque provider revision out of Google scripts, privacy settings and ad tags", () => {
+    const tag = "https://securepubads.g.doubleclick.net/gampad/ads?iu=%2F123%2Fvideo&tfat=1";
+    for (const consent of [nonPersonalized, limited]) {
+      const revised = { ...consent, providerRevision: "local-policy:42" };
+      expect(gptScriptUrlForConsent(revised)).toBe(gptScriptUrlForConsent(consent));
+      expect(gptPrivacySettingsForConsent(revised)).toEqual(gptPrivacySettingsForConsent(consent));
+      expect(applyGoogleImaConsent(tag, revised)).toBe(applyGoogleImaConsent(tag, consent));
+    }
+  });
+
   it("never upgrades restrictions already present on a Google tag", () => {
     const personalized: AdvertisingConsentSnapshot = {
       mode: "PERSONALIZED",

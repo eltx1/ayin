@@ -7,6 +7,8 @@ export interface AdvertisingConsentSnapshot {
   source: AdvertisingConsentSource;
   providerManaged: boolean;
   ageTreatment?: AdvertisingAgeTreatment;
+  // Opaque local invalidation token, never a consent string or permission.
+  providerRevision?: string;
 }
 
 export interface AdvertisingConsentProvider {
@@ -47,7 +49,8 @@ function equivalent(left: AdvertisingConsentSnapshot, right: AdvertisingConsentS
     left.mode === right.mode &&
     left.source === right.source &&
     left.providerManaged === right.providerManaged &&
-    left.ageTreatment === right.ageTreatment
+    left.ageTreatment === right.ageTreatment &&
+    left.providerRevision === right.providerRevision
   );
 }
 
@@ -152,6 +155,11 @@ export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentS
     snapshot.ageTreatment === "CHILD" || snapshot.ageTreatment === "TEEN"
       ? snapshot.ageTreatment
       : undefined;
+  const providerRevision =
+    typeof snapshot.providerRevision === "string" &&
+    /^[A-Za-z0-9._:-]{1,128}$/.test(snapshot.providerRevision)
+      ? snapshot.providerRevision
+      : undefined;
   const fallback: AdvertisingConsentSnapshot = ageTreatment
     ? { ...safeDefault, ageTreatment }
     : safeDefault;
@@ -162,6 +170,7 @@ export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentS
     !["SAFE_DEFAULT", "CMP", "APPLICATION"].includes(snapshot.source) ||
     typeof snapshot.providerManaged !== "boolean" ||
     snapshot.source === "SAFE_DEFAULT" ||
+    (snapshot.providerRevision !== undefined && providerRevision === undefined) ||
     (snapshot.ageTreatment !== undefined && !ageTreatment)
   )
     return fallback;
@@ -173,6 +182,7 @@ export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentS
     source: snapshot.source as AdvertisingConsentSource,
     providerManaged: snapshot.providerManaged,
     ...(ageTreatment ? { ageTreatment } : {}),
+    ...(providerRevision ? { providerRevision } : {}),
   };
 }
 
