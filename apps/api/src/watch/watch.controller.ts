@@ -22,6 +22,7 @@ const uuidSchema = z.string().uuid();
 const progressBodySchema = z
   .object({
     profileId: uuidSchema.optional(),
+    expectedRevision: z.iso.datetime({ precision: 3 }).nullable().optional(),
     positionMs: z
       .number()
       .int()
@@ -71,6 +72,7 @@ export class WatchProgressController {
   ) {}
 
   @Get("progress/:videoId")
+  @Header("Cache-Control", "private, no-store")
   async progress(
     @Req() request: AuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,
@@ -95,6 +97,7 @@ export class WatchProgressController {
   }
 
   @Put("progress/:videoId")
+  @Header("Cache-Control", "private, no-store")
   async saveProgress(
     @Req() request: AuthenticatedRequest,
     @Param("videoId") videoIdRaw: string,

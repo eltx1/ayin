@@ -27,13 +27,8 @@ import {
   type AyinPlayerUpNext,
   noopPlayerAnalytics,
 } from "@/lib/ayin-player";
-import {
-  persistWatchProgress,
-  readWatchProgress,
-  resumablePositionMs,
-  shouldPersistProgress,
-  type PlayerProgressPolicy,
-} from "@/lib/player-progress";
+import { type PlayerProgressPolicy } from "@/lib/player-progress";
+import { useWatchProgress, type PlayerProgressIdentity } from "./use-watch-progress";
 
 import styles from "./ayin-player.module.css";
 
@@ -49,6 +44,8 @@ export interface AyinPlayerProps {
   initialPositionMs?: number | undefined;
   progressEnabled?: boolean | undefined;
   profileId?: string | undefined;
+  progressIdentity?: PlayerProgressIdentity | null | undefined;
+  onProgressIdentityInvalid?: (() => void) | undefined;
   progressPolicy?: PlayerProgressPolicy | undefined;
   upNext?: AyinPlayerUpNext | null | undefined;
   onNext?: (() => void) | undefined;
@@ -73,7 +70,8 @@ export function AyinPlayer({
   chapters = [],
   initialPositionMs = 0,
   progressEnabled = true,
-  profileId,
+  progressIdentity,
+  onProgressIdentityInvalid,
   progressPolicy,
   upNext = null,
   onNext,
@@ -100,10 +98,6 @@ export function AyinPlayer({
   const lastQualityTelemetryRef = useRef<string | null>(null);
   const suppressPauseTelemetryRef = useRef(false);
   const suppressNextPlayTelemetryRef = useRef(false);
-  const lastPersistedAtRef = useRef(0);
-  const lastPersistedPositionRef = useRef(0);
-  const persistBusyRef = useRef(false);
-  const resumeAppliedRef = useRef(false);
   const lastAdActiveRef = useRef(adMode.active);
   const defaultCaptionId = useMemo(
     () => captions.find((track) => track.default)?.id ?? null,
@@ -122,9 +116,6 @@ export function AyinPlayer({
   }>({ videoId, trackId: defaultCaptionId });
   const selectedCaptionId =
     captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;
-  const [savedResume, setSavedResume] = useState<{ videoId: string; positionMs: number } | null>(
-    null,
-  );
   const [qualities, setQualities] = useState<AyinPlaybackRendition[]>([]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
   const [error, setError] = useState<string | null>(null);
@@ -310,99 +301,23 @@ export function AyinPlayer({
     };
   }, [adaptiveSourceUrl, analytics, onPlaybackReady, sourceUrl, videoId]);
 
+  const { applyResume, markUserSeek, persist } = useWatchProgress({
+    videoId,
+    videoRef,
+    identity: progressIdentity,
+    enabled: progressEnabled,
+    initialPositionMs,
+    durationMs: declaredDurationMs,
+    intervalMs: effectivePolicy.progressSaveIntervalMs,
+    adActiveRef,
+    analytics,
+    onPosition: setPositionMs,
+    onIdentityInvalid: onProgressIdentityInvalid,
+  });
+
   useEffect(() => {
-    resumeAppliedRef.current = false;
-    lastPersistedAtRef.current = 0;
-    lastPersistedPositionRef.current = 0;
-    if (!progressEnabled || initialPositionMs > 0) return;
-
-    let cancelled = false;
-    void readWatchProgress(videoId, profileId).then((snapshot) => {
-      if (cancelled || !snapshot) return;
-      setSavedResume({
-        videoId,
-        positionMs: resumablePositionMs(snapshot, declaredDurationMs),
-      });
-      lastPersistedPositionRef.current = snapshot.positionMs;
-      lastPersistedAtRef.current = Date.now();
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [declaredDurationMs, initialPositionMs, profileId, progressEnabled, videoId]);
-
-  const resumePositionMs =
-    savedResume?.videoId === videoId ? savedResume.positionMs : initialPositionMs;
-
-  const applyResume = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || resumeAppliedRef.current || resumePositionMs <= 0) return;
-    const mediaDurationMs = Number.isFinite(video.duration) ? video.duration * 1000 : durationMs;
-    const safePositionMs = Math.min(
-      resumePositionMs,
-      Math.max(0, mediaDurationMs > 0 ? mediaDurationMs - 250 : resumePositionMs),
-    );
-    if (safePositionMs <= 0) return;
-    try {
-      video.currentTime = safePositionMs / 1000;
-      setPositionMs(safePositionMs);
-      resumeAppliedRef.current = true;
-    } catch {
-      // Progressive MP4/HLS seeking is best-effort; playback can still start at zero.
-    }
-  }, [durationMs, resumePositionMs]);
-
-  const persist = useCallback(
-    async (force = false, keepalive = false) => {
-      const video = videoRef.current;
-      if (!progressEnabled || !video || adMode.active || persistBusyRef.current) return;
-      const currentPositionMs = Math.max(0, Math.floor(video.currentTime * 1000));
-      const nowMs = Date.now();
-      if (
-        !shouldPersistProgress({
-          nowMs,
-          lastPersistedAtMs: lastPersistedAtRef.current,
-          positionMs: currentPositionMs,
-          lastPersistedPositionMs: lastPersistedPositionRef.current,
-          intervalMs: effectivePolicy.progressSaveIntervalMs,
-          force,
-        })
-      ) {
-        return;
-      }
-
-      lastPersistedAtRef.current = nowMs;
-      lastPersistedPositionRef.current = currentPositionMs;
-      persistBusyRef.current = true;
-      try {
-        const mediaDurationMs = Number.isFinite(video.duration)
-          ? Math.floor(video.duration * 1000)
-          : durationMs || undefined;
-        const snapshot = await persistWatchProgress(
-          videoId,
-          {
-            ...(profileId ? { profileId } : {}),
-            positionMs: currentPositionMs,
-            ...(mediaDurationMs ? { durationMs: mediaDurationMs } : {}),
-          },
-          keepalive,
-        );
-        analytics.emit({ type: "progress_checkpoint", videoId, positionMs: currentPositionMs });
-        if (snapshot?.completedAt) analytics.emit({ type: "complete", videoId });
-      } finally {
-        persistBusyRef.current = false;
-      }
-    },
-    [
-      adMode.active,
-      analytics,
-      durationMs,
-      effectivePolicy.progressSaveIntervalMs,
-      profileId,
-      progressEnabled,
-      videoId,
-    ],
-  );
+    if (!adMode.active) applyResume();
+  }, [adMode.active, applyResume]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -411,20 +326,6 @@ export function AyinPlayer({
       if (video) releaseHtmlMediaElement(video);
     };
   }, []);
-
-  useEffect(() => {
-    if (!progressEnabled) return;
-    const flush = () => void persist(true, true);
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") flush();
-    };
-    window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      window.removeEventListener("pagehide", flush);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [persist, progressEnabled]);
 
   const togglePlay = useCallback(async () => {
     const video = videoRef.current;
@@ -437,23 +338,25 @@ export function AyinPlayer({
     (seconds: number) => {
       const video = videoRef.current;
       if (!video || (adMode.active && adMode.controlsLocked !== false)) return;
+      markUserSeek();
       const max = Number.isFinite(video.duration) ? video.duration : Number.MAX_SAFE_INTEGER;
       video.currentTime = Math.max(0, Math.min(max, video.currentTime + seconds));
       setPositionMs(Math.floor(video.currentTime * 1000));
       analytics.emit({ type: "seek", videoId, positionMs: Math.floor(video.currentTime * 1000) });
     },
-    [adMode.active, adMode.controlsLocked, analytics, videoId],
+    [adMode.active, adMode.controlsLocked, analytics, markUserSeek, videoId],
   );
 
   const seekTo = useCallback(
     (nextMs: number) => {
       const video = videoRef.current;
       if (!video || (adMode.active && adMode.controlsLocked !== false)) return;
+      markUserSeek();
       video.currentTime = Math.max(0, nextMs) / 1000;
       setPositionMs(Math.max(0, nextMs));
       analytics.emit({ type: "seek", videoId, positionMs: Math.max(0, nextMs) });
     },
-    [adMode.active, adMode.controlsLocked, analytics, videoId],
+    [adMode.active, adMode.controlsLocked, analytics, markUserSeek, videoId],
   );
 
   const seekToChapter = useCallback(

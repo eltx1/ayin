@@ -210,6 +210,9 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   const onVisibility = () => {
     if (nativeShell) return;
     const hidden = target.document.hidden;
+    // Let the viewer capture its verified final progress before native pause
+    // fires the player's ordinary (abortable) onPause checkpoint.
+    if (hidden) target.dispatchEvent(new Event("ayin:before-page-suspend"));
     if (!hidden && (platform === "tizen" || platform === "webos")) {
       target.dispatchEvent(
         new CustomEvent<NativeNetworkEventDetail>("ayin:native-network", {
@@ -225,6 +228,7 @@ export function installTvPlatformRuntime(target: Window = window): () => void {
   };
 
   const onPageHide = () => {
+    target.dispatchEvent(new Event("ayin:before-page-suspend"));
     target.dispatchEvent(
       new CustomEvent<NativeLifecycleEventDetail>("ayin:native-lifecycle", {
         detail: { state: "stop", platform },
