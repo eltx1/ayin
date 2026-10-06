@@ -1,3 +1,5 @@
+import type { PublicSeriesContext } from "./series-catalog";
+
 export interface AyinCaptionTrack {
   id: string;
   src: string;
@@ -123,7 +125,6 @@ export interface PublicPlaybackResponse {
     chapters: AyinPlayerChapter[];
   };
   detail: {
-    contentType: "CREATOR_VIDEO";
     saveHook: { action: "WATCH_LATER"; available: boolean };
     commentsSlot: { reserved: boolean; enabled: boolean };
     externalAdPlacementKeys: string[];
@@ -133,7 +134,18 @@ export interface PublicPlaybackResponse {
       href: string;
       durationMs: number | null;
     }>;
-  };
+  } & (
+    | {
+        contentType: "CREATOR_VIDEO";
+        seriesContext?: null;
+        nextEpisode?: null;
+      }
+    | {
+        contentType: "SERIES_EPISODE";
+        seriesContext: PublicSeriesContext;
+        nextEpisode: PublicSeriesContext["nextEpisode"];
+      }
+  );
   playerPolicy: {
     progressSaveIntervalMs: number;
     completionThresholdPercent: number;

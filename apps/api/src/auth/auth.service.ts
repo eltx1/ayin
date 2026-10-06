@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
@@ -61,6 +61,8 @@ export interface MfaLoginResult {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
     @Inject(PasswordService) private readonly passwordService: PasswordService,
@@ -299,10 +301,12 @@ export class AuthService {
         resetUrl: resetUrl.toString(),
       });
     } catch {
-      throw new AuthHttpError(
-        503,
-        "EMAIL_DELIVERY_FAILED",
-        "Password reset email could not be delivered.",
+      // Keep delivery failures observable without exposing whether an account exists.
+      this.logger.error(
+        JSON.stringify({
+          event: "auth.password_reset.delivery_failed",
+          code: "EMAIL_DELIVERY_FAILED",
+        }),
       );
     }
   }

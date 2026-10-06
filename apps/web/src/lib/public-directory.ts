@@ -37,9 +37,12 @@ export async function fetchPublicDirectory(
   locale: Locale,
   cursor?: string,
   trustedHeaders: Record<string, string> = {},
+  query?: string,
 ): Promise<DirectoryResponse<DiscoveryItem>> {
   const params = new URLSearchParams({ locale, limit: "24" });
   if (cursor) params.set("cursor", cursor);
+  if (query?.trim() && (section === "movies" || section === "series"))
+    params.set("q", query.trim());
   const path =
     section === "movies" || section === "series"
       ? `/public/${section}/directory`

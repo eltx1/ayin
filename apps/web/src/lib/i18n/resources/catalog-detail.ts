@@ -1,4 +1,16 @@
 export const catalogDetailEn = {
+  "browse.search.movies": "Search movies",
+  "browse.search.series": "Search series",
+  "browse.search.submit": "Search",
+  "browse.search.clear": "Clear search",
+  "browse.search.empty": "No matching titles",
+  "browse.search.emptyDescription":
+    "Try another title or clear the search to browse all available titles.",
+  "browse.search.invalid": "Use a search of up to 100 characters",
+  "series.episodeNavigation": "Series episodes",
+  "series.allEpisodes": "All episodes",
+  "series.nextEpisode": "Next episode",
+  "series.lastAvailableEpisode": "You are watching the last available episode.",
   "movie.notFound": "Movie not found | AYIN",
   "movie.eyebrow": "Movie",
   "movie.watch": "Watch movie",
@@ -18,6 +30,17 @@ export const catalogDetailEn = {
 } as const;
 
 export const catalogDetailAr: Record<keyof typeof catalogDetailEn, string> = {
+  "browse.search.movies": "ابحث في الأفلام",
+  "browse.search.series": "ابحث في المسلسلات",
+  "browse.search.submit": "بحث",
+  "browse.search.clear": "مسح البحث",
+  "browse.search.empty": "لا توجد عناوين مطابقة",
+  "browse.search.emptyDescription": "جرّب عنوانًا آخر أو امسح البحث لتصفّح جميع العناوين المتاحة.",
+  "browse.search.invalid": "استخدم عبارة بحث لا تتجاوز ١٠٠ حرف",
+  "series.episodeNavigation": "حلقات المسلسل",
+  "series.allEpisodes": "جميع الحلقات",
+  "series.nextEpisode": "الحلقة التالية",
+  "series.lastAvailableEpisode": "تشاهد آخر حلقة متاحة.",
   "movie.notFound": "الفيلم غير موجود | AYIN",
   "movie.eyebrow": "فيلم",
   "movie.watch": "شاهد الفيلم",

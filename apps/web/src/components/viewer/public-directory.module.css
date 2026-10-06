@@ -28,6 +28,41 @@
   background: var(--surface-elevated, #22182c);
   border-color: var(--muted);
 }
+.search {
+  display: grid;
+  gap: 0.6rem;
+  margin-block: 1rem 2rem;
+}
+.search label {
+  font-weight: 700;
+}
+.search > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.search input,
+.search button {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--foreground);
+  padding: 0.65rem 1rem;
+  font: inherit;
+}
+.search input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.search button {
+  cursor: pointer;
+}
+.search input:focus-visible,
+.search button:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));

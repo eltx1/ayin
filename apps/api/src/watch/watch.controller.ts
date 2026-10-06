@@ -15,6 +15,7 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { CatalogLocalizationService } from "../catalog-localization/catalog-localization.service.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { WatchError, WatchService } from "./watch.service.js";
 
@@ -37,12 +38,23 @@ const progressBodySchema = z
   })
   .strict();
 const progressQuerySchema = z.object({ profileId: uuidSchema.optional() }).strict();
+const playbackQuerySchema = z
+  .object({
+    kids: z.unknown().optional(),
+    locale: z.string().trim().min(2).max(35).optional(),
+  })
+  .passthrough()
+  .refine(
+    (query) =>
+      !Object.keys(query).some((key) => key.startsWith("locale[") || key.startsWith("locale.")),
+  );
 
 @Controller("public/videos")
 export class PublicWatchController {
   constructor(
     @Inject(WatchService) private readonly watch: WatchService,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
+    @Inject(CatalogLocalizationService) private readonly localization: CatalogLocalizationService,
   ) {}
 
   @Get(":slug/playback")
@@ -50,16 +62,28 @@ export class PublicWatchController {
   @Header("Pragma", "no-cache")
   async playback(
     @Param("slug") slug: string,
-    @Query("kids") kids: string | undefined,
+    @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
-    return runWatchOperation(() =>
-      this.watch.getPublicPlayback(
+    return runWatchOperation(async () => {
+      const parsed = playbackQuerySchema.safeParse(query);
+      if (!parsed.success)
+        throw new WatchError("INVALID_PLAYBACK_QUERY", "The playback request is invalid.");
+      const playback = await this.watch.getPublicPlayback(
         slug,
         this.trustedRegion.countryFromHeaders(headers),
-        kids === "1",
-      ),
-    );
+        parsed.data.kids === "1",
+      );
+      if (!playback.detail.seriesContext) return playback;
+      const seriesContext = await this.localization.localizeSeriesContext(
+        playback.detail.seriesContext,
+        parsed.data.locale,
+      );
+      return {
+        ...playback,
+        detail: { ...playback.detail, seriesContext, nextEpisode: seriesContext.nextEpisode },
+      };
+    });
   }
 }
 

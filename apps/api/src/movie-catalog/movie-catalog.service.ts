@@ -8,7 +8,11 @@ import {
   availableVideoPolicySql,
   publicPlayableVideoSql,
 } from "../video-policy/video-policy-query.js";
-import { catalogAvailabilitySql, directoryPage } from "../video-policy/catalog-directory-query.js";
+import {
+  catalogAvailabilitySql,
+  catalogDirectorySearchSql,
+  directoryPage,
+} from "../video-policy/catalog-directory-query.js";
 import {
   isMovieAvailableInTerritory,
   isSafeMovieSlug,
@@ -363,7 +367,13 @@ export class MovieCatalogService {
       .map(toPublicMovieCard);
   }
 
-  async listPublicDirectory(limit: number, cursor?: string, countryCode?: string) {
+  async listPublicDirectory(
+    limit: number,
+    cursor?: string,
+    countryCode?: string,
+    query?: string,
+    locale?: string,
+  ) {
     const now = new Date();
     const candidates = await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT m.id FROM "Movie" m JOIN "Video" v ON v.id = m."primaryVideoId"
@@ -371,6 +381,7 @@ export class MovieCatalogService {
         AND ${catalogAvailabilitySql("MOVIE", Prisma.sql`m.id`, countryCode, now)}
         AND ${availableVideoPolicySql(Prisma.sql`v.id`, { countryCode, now })}
         AND ${cursor ? Prisma.sql`m.id > ${cursor}::uuid` : Prisma.sql`TRUE`}
+        AND ${catalogDirectorySearchSql("MOVIE", Prisma.sql`m.id`, Prisma.sql`m.title`, Prisma.sql`m.synopsis`, query, locale)}
       ORDER BY m.id ASC LIMIT ${limit + 1}
     `);
     const page = directoryPage(candidates, limit);

@@ -24,8 +24,13 @@ function count(value: unknown): number {
   return value;
 }
 
-export function parseChannelSocialState(value: unknown): ChannelSocialState {
+export function parseChannelSocialState(
+  value: unknown,
+  expectedChannelId?: string,
+): ChannelSocialState {
   const data = record(value);
+  if (expectedChannelId !== undefined && data.channelId !== expectedChannelId)
+    throw new Error("INVALID_SOCIAL_RESPONSE");
   if (typeof data.subscribed !== "boolean") throw new Error("INVALID_SOCIAL_RESPONSE");
   return {
     subscribed: data.subscribed,
@@ -33,8 +38,10 @@ export function parseChannelSocialState(value: unknown): ChannelSocialState {
   };
 }
 
-export function parseVideoSocialState(value: unknown): VideoSocialState {
+export function parseVideoSocialState(value: unknown, expectedVideoId?: string): VideoSocialState {
   const data = record(value);
+  if (expectedVideoId !== undefined && data.videoId !== expectedVideoId)
+    throw new Error("INVALID_SOCIAL_RESPONSE");
   const reaction = data.reaction;
   if (reaction !== null && reaction !== "LIKE" && reaction !== "DISLIKE") {
     throw new Error("INVALID_SOCIAL_RESPONSE");
@@ -48,6 +55,26 @@ export function parseVideoSocialState(value: unknown): VideoSocialState {
     watchLater: data.watchLater,
     myList: data.myList,
   };
+}
+
+export function parseReactionMutation(
+  value: unknown,
+  expectedReaction: "LIKE" | "DISLIKE" | null,
+  expectedVideoId: string,
+): VideoSocialState {
+  const state = parseVideoSocialState(value, expectedVideoId);
+  if (state.reaction !== expectedReaction) throw new Error("INVALID_SOCIAL_RESPONSE");
+  return state;
+}
+
+export function parseSubscriptionMutation(
+  value: unknown,
+  expectedSubscribed: boolean,
+  expectedChannelId: string,
+): ChannelSocialState {
+  const state = parseChannelSocialState(value, expectedChannelId);
+  if (state.subscribed !== expectedSubscribed) throw new Error("INVALID_SOCIAL_RESPONSE");
+  return state;
 }
 
 export function parseSavedMutation(

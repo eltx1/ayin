@@ -1,6 +1,7 @@
 import { Prisma } from "@ayin/db";
 import { HttpException } from "@nestjs/common";
 import { z } from "zod";
+import { normalizeCatalogLocale } from "../catalog-localization/catalog-localization.js";
 
 const directoryQuerySchema = z
   .object({
@@ -11,7 +12,18 @@ const directoryQuerySchema = z
   .strict();
 
 export function parseDirectoryQuery(query: unknown) {
-  const parsed = directoryQuerySchema.safeParse(query);
+  return parseQuery(directoryQuerySchema, query);
+}
+
+export function parseCatalogDirectoryQuery(query: unknown) {
+  return parseQuery(
+    directoryQuerySchema.extend({ q: z.string().trim().max(100).optional() }),
+    query,
+  );
+}
+
+function parseQuery<T extends z.ZodType>(schema: T, query: unknown): z.output<T> {
+  const parsed = schema.safeParse(query);
   if (!parsed.success)
     throw new HttpException(
       {
@@ -23,6 +35,32 @@ export function parseDirectoryQuery(query: unknown) {
       400,
     );
   return parsed.data;
+}
+
+// Search before pagination, across original copy and requested/English fallback
+// translations. Values stay bound; LIKE metacharacters are literal search text.
+export function catalogDirectorySearchSql(
+  kind: "MOVIE" | "SERIES",
+  id: Prisma.Sql,
+  title: Prisma.Sql,
+  synopsis: Prisma.Sql,
+  query?: string,
+  locale?: string,
+): Prisma.Sql {
+  const normalized = query?.trim();
+  if (!normalized) return Prisma.sql`TRUE`;
+  const pattern = `%${normalized.replace(/[\\%_]/g, "\\$&")}%`;
+  const table =
+    kind === "MOVIE" ? Prisma.sql`"MovieLocalization"` : Prisma.sql`"SeriesLocalization"`;
+  const column = kind === "MOVIE" ? Prisma.sql`copy."movieId"` : Prisma.sql`copy."seriesId"`;
+  return Prisma.sql`(
+    concat_ws(' ', ${title}, ${synopsis}) ILIKE ${pattern} ESCAPE '\\'
+    OR EXISTS (
+      SELECT 1 FROM ${table} copy WHERE ${column} = ${id}
+        AND copy.locale IN (${normalizeCatalogLocale(locale)}, 'en')
+        AND concat_ws(' ', copy.title, copy.synopsis, copy."shortDescription") ILIKE ${pattern} ESCAPE '\\'
+    )
+  )`;
 }
 
 // Mirrors catalog availability (not VideoPolicy). Exact active territory rules

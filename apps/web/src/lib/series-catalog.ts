@@ -36,6 +36,14 @@ export interface PublicSeriesSeason {
   episodes: PublicSeriesEpisode[];
 }
 
+export interface PublicSeriesContext {
+  series: { id: string; title: string; slug: string; href: string };
+  season: { id: string; seasonNumber: number; title: string | null };
+  episode: PublicSeriesEpisode;
+  nextEpisode: (PublicSeriesEpisode & { seasonNumber: number }) | null;
+  locale?: string;
+}
+
 export interface PublicSeries {
   id: string;
   title: string;

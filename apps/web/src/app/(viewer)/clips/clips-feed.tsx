@@ -2,23 +2,35 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { ActionButton, StatusNotice } from "@/components/ui/design-system";
+import { useViewerProduct } from "@/components/viewer/viewer-product-context";
+import { AccountScopeError, requestAccountScope } from "@/lib/account-scope";
 import { trackAnalyticsEvent } from "@/lib/analytics";
-import { apiBaseUrl } from "@/lib/api";
 import { mediaAssetUrl } from "@/lib/channel";
 import { mergeClipItems, parseClipsPage, type ClipItem, type ClipsPage } from "@/lib/clips";
 import { translateClips } from "@/lib/i18n/clips";
 import {
   parseChannelSocialState,
+  parseReactionMutation,
+  parseSubscriptionMutation,
   parseVideoSocialState,
   type ChannelSocialState,
   type VideoSocialState,
 } from "@/lib/social-action-contracts";
 
 import styles from "./clips.module.css";
+import { ClipVideo } from "./clip-video";
 
 type ActionMode = "loading" | "ready" | "signedOut" | "error" | "uncertain";
 
@@ -41,21 +53,6 @@ function initialActions(clip: ClipItem): ActionSnapshot {
   };
 }
 
-function persistWatchProgress(clip: ClipItem, video: HTMLVideoElement) {
-  const durationMs = Number.isFinite(video.duration)
-    ? Math.max(1, Math.round(video.duration * 1000))
-    : (clip.durationMs ?? undefined);
-  void fetch(`${apiBaseUrl}/watch/progress/${clip.id}`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      positionMs: Math.max(0, Math.round(video.currentTime * 1000)),
-      ...(durationMs ? { durationMs } : {}),
-    }),
-  }).catch(() => undefined);
-}
-
 function ClipActions({ clip }: { clip: ClipItem }) {
   const router = useRouter();
   const { locale, href, formatNumber } = useI18n();
@@ -63,128 +60,205 @@ function ClipActions({ clip }: { clip: ClipItem }) {
     (key: Parameters<typeof translateClips>[1], values = {}) => translateClips(locale, key, values),
     [locale],
   );
-  const [snapshot, setSnapshot] = useState<ActionSnapshot>(() => initialActions(clip));
+  const {
+    identity,
+    identityRevision,
+    isIdentityCurrent,
+    onBeforeIdentitySuspend,
+    retryNavigation,
+  } = useViewerProduct();
+  const root = useRef<HTMLDivElement>(null);
   const [attempt, setAttempt] = useState(0);
-  const [pending, setPending] = useState<"like" | "subscribe" | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const requestedVideoId = clip.id;
-    const requestedChannelId = clip.channel.id;
-
-    void Promise.all([
-      fetch(`${apiBaseUrl}/social/videos/${requestedVideoId}`, {
-        credentials: "include",
-        cache: "no-store",
-        signal: controller.signal,
-      }),
-      fetch(`${apiBaseUrl}/social/channels/${requestedChannelId}`, {
-        credentials: "include",
-        cache: "no-store",
-        signal: controller.signal,
-      }),
-    ])
-      .then(async ([videoResponse, channelResponse]) => {
-        if (videoResponse.status === 401 || channelResponse.status === 401) {
-          return { ...initialActions(clip), mode: "signedOut" as const };
-        }
-        if (!videoResponse.ok || !channelResponse.ok) throw new Error("CLIP_ACTIONS_UNAVAILABLE");
-        return {
-          mode: "ready" as const,
-          video: parseVideoSocialState(await videoResponse.json()),
-          channel: parseChannelSocialState(await channelResponse.json()),
+  const accountId = identity?.account.id;
+  const profileId = identity?.profile.id;
+  // This component owns only its request lifetime. The existing viewer provider
+  // is the sole owner of identity, suspension and revalidation.
+  const scope = useMemo(
+    () => ({
+      accountId,
+      profileId,
+      videoId: clip.id,
+      channelId: clip.channel.id,
+      identityRevision,
+      attempt,
+      isCurrent: isIdentityCurrent,
+    }),
+    [accountId, profileId, clip, identityRevision, isIdentityCurrent, attempt],
+  );
+  const runRef = useRef<{
+    scope: typeof scope;
+    controller: AbortController;
+    pending: boolean;
+  } | null>(null);
+  const [result, setResult] = useState<{ scope: typeof scope; snapshot: ActionSnapshot } | null>(
+    null,
+  );
+  const [operation, setOperation] = useState<{
+    scope: typeof scope;
+    action: "like" | "subscribe";
+  } | null>(null);
+  const snapshot =
+    result?.scope === scope && scope.isCurrent()
+      ? result.snapshot
+      : {
+          ...initialActions(clip),
+          mode: accountId ? ("loading" as const) : ("signedOut" as const),
         };
-      })
-      .then((value) => {
-        if (!controller.signal.aborted) setSnapshot(value);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setSnapshot((current) => ({ ...current, mode: "error" }));
-        }
-      });
+  const pending = operation?.scope === scope ? operation.action : null;
 
-    return () => controller.abort();
-  }, [attempt, clip]);
+  useLayoutEffect(() => {
+    // A development Strict Mode replay receives its own request lifetime too.
+    const controller = new AbortController();
+    const run = { scope, controller, pending: false };
+    runRef.current = run;
+    const node = root.current;
+    if (node) node.hidden = false;
+    const revoke = () => {
+      controller.abort();
+      if (node) node.hidden = true;
+    };
+    const removeSuspend = onBeforeIdentitySuspend(revoke);
+    const valid = () => runRef.current === run && !controller.signal.aborted && scope.isCurrent();
+    if (scope.accountId && scope.profileId && valid()) {
+      const options = {
+        expectedAccountId: scope.accountId,
+        expectedProfileId: scope.profileId,
+        signal: controller.signal,
+        maxResponseBytes: 32 * 1024,
+      };
+      void Promise.all([
+        requestAccountScope(
+          `/social/videos/${scope.videoId}?profileId=${scope.profileId}`,
+          "GET",
+          (value) => parseVideoSocialState(value, scope.videoId),
+          options,
+        ),
+        requestAccountScope(
+          `/social/channels/${scope.channelId}?profileId=${scope.profileId}`,
+          "GET",
+          (value) => parseChannelSocialState(value, scope.channelId),
+          options,
+        ),
+      ])
+        .then(([video, channel]) => {
+          if (valid())
+            setResult({
+              scope,
+              snapshot: { mode: "ready", video: video.value, channel: channel.value },
+            });
+        })
+        .catch((error: unknown) => {
+          if (!valid()) return;
+          setResult({ scope, snapshot: { ...initialActions(clip), mode: "error" } });
+          if (
+            error instanceof AccountScopeError &&
+            (error.status === 401 ||
+              error.code === "ACCOUNT_CHANGED" ||
+              error.code === "PROFILE_CHANGED")
+          ) {
+            revoke();
+            retryNavigation();
+          }
+        });
+    }
+    return () => {
+      if (runRef.current === run) runRef.current = null;
+      revoke();
+      removeSuspend();
+    };
+  }, [scope, clip, onBeforeIdentitySuspend, retryNavigation]);
 
   function signIn() {
     router.push(href("/login"));
   }
 
   function refresh() {
-    if (pending) return;
-    setSnapshot((current) => ({ ...current, mode: "loading" }));
+    const run = runRef.current;
+    if (run?.pending) return;
+    run?.controller.abort();
+    if (root.current) root.current.hidden = true;
     setAttempt((value) => value + 1);
   }
 
-  async function toggleLike() {
-    if (snapshot.mode === "signedOut") {
-      signIn();
-      return;
-    }
-    if (snapshot.mode !== "ready" || pending) return;
-
-    const removing = snapshot.video.reaction === "LIKE";
-    setPending("like");
-    try {
-      const response = await fetch(`${apiBaseUrl}/social/videos/${clip.id}/reaction`, {
-        method: removing ? "DELETE" : "PUT",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        ...(removing ? {} : { body: JSON.stringify({ type: "LIKE" }) }),
-      });
-      if (response.status === 401) {
-        setSnapshot((current) => ({ ...current, mode: "signedOut" }));
-        signIn();
-        return;
-      }
-      if (!response.ok) throw new Error("CLIP_LIKE_UNCONFIRMED");
-      const video = parseVideoSocialState(await response.json());
-      setSnapshot((current) => ({ ...current, mode: "ready", video }));
-      if (!removing) {
-        trackAnalyticsEvent("LIKE", { videoId: clip.id, channelId: clip.channel.id });
-      }
-    } catch {
-      setSnapshot((current) => ({ ...current, mode: "uncertain" }));
-    } finally {
-      setPending(null);
-    }
-  }
-
-  async function toggleSubscription() {
-    if (snapshot.mode === "signedOut") {
-      signIn();
-      return;
-    }
-    if (snapshot.mode !== "ready" || pending) return;
-
-    const removing = snapshot.channel.subscribed;
-    setPending("subscribe");
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/social/channels/${clip.channel.id}/subscription`,
-        {
-          method: removing ? "DELETE" : "PUT",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          ...(removing ? {} : { body: "{}" }),
-        },
+  async function mutate(action: "like" | "subscribe") {
+    const run = runRef.current;
+    const current = () =>
+      Boolean(
+        run &&
+        runRef.current === run &&
+        run.scope === scope &&
+        !run.controller.signal.aborted &&
+        scope.isCurrent(),
       );
-      if (response.status === 401) {
-        setSnapshot((current) => ({ ...current, mode: "signedOut" }));
-        signIn();
-        return;
+    if (snapshot.mode === "signedOut") {
+      signIn();
+      return;
+    }
+    if (
+      !run ||
+      !current() ||
+      snapshot.mode !== "ready" ||
+      run.pending ||
+      !scope.profileId ||
+      !scope.accountId
+    )
+      return;
+    const removing =
+      action === "like" ? snapshot.video.reaction === "LIKE" : snapshot.channel.subscribed;
+    // A synchronous latch also covers two activations before React can commit.
+    run.pending = true;
+    setOperation({ scope, action });
+    const target =
+      action === "like"
+        ? `videos/${scope.videoId}/reaction`
+        : `channels/${scope.channelId}/subscription`;
+    const path = `/social/${target}${removing ? `?profileId=${scope.profileId}` : ""}`;
+    try {
+      const response = await requestAccountScope(
+        path,
+        removing ? "DELETE" : "PUT",
+        (value) =>
+          action === "like"
+            ? { video: parseReactionMutation(value, removing ? null : "LIKE", scope.videoId) }
+            : { channel: parseSubscriptionMutation(value, !removing, scope.channelId) },
+        {
+          expectedAccountId: scope.accountId,
+          expectedProfileId: scope.profileId,
+          signal: run.controller.signal,
+          maxResponseBytes: 32 * 1024,
+        },
+        removing
+          ? undefined
+          : { profileId: scope.profileId, ...(action === "like" ? { type: "LIKE" } : {}) },
+      );
+      if (!current()) return;
+      setResult({ scope, snapshot: { ...snapshot, ...response.value, mode: "ready" } });
+      if (!removing)
+        trackAnalyticsEvent(action === "like" ? "LIKE" : "SUBSCRIBE", {
+          videoId: scope.videoId,
+          channelId: scope.channelId,
+          profileId: scope.profileId,
+        });
+    } catch (error) {
+      if (!current()) return;
+      if (
+        error instanceof AccountScopeError &&
+        (error.identityUnverified ||
+          error.status === 401 ||
+          error.code === "ACCOUNT_CHANGED" ||
+          error.code === "PROFILE_CHANGED")
+      ) {
+        // Conceal immediately, including when a late identity check fails. A
+        // retry cannot replay this mutation; a new owner must read fresh state.
+        if (root.current) root.current.hidden = true;
+        run.controller.abort();
+        retryNavigation();
+      } else {
+        setResult({ scope, snapshot: { ...snapshot, mode: "uncertain" } });
       }
-      if (!response.ok) throw new Error("CLIP_SUBSCRIPTION_UNCONFIRMED");
-      const channel = parseChannelSocialState(await response.json());
-      setSnapshot((current) => ({ ...current, mode: "ready", channel }));
-      if (!removing) {
-        trackAnalyticsEvent("SUBSCRIBE", { videoId: clip.id, channelId: clip.channel.id });
-      }
-    } catch {
-      setSnapshot((current) => ({ ...current, mode: "uncertain" }));
     } finally {
-      setPending(null);
+      run.pending = false;
+      if (current()) setOperation((value) => (value?.scope === scope ? null : value));
     }
   }
 
@@ -212,7 +286,7 @@ function ClipActions({ clip }: { clip: ClipItem }) {
           : null;
 
   return (
-    <div className={styles.actionWorkspace}>
+    <div ref={root} className={styles.actionWorkspace} data-private-viewer-state>
       <nav className={styles.actions} aria-label={t("clips.actions", { title: clip.title })}>
         <ActionButton
           className={styles.clipAction}
@@ -223,7 +297,7 @@ function ClipActions({ clip }: { clip: ClipItem }) {
           data-tv-focus-id={`clip-${clip.id}-like`}
           disabled={mutationDisabled || Boolean(pending)}
           pending={pending === "like"}
-          onClick={() => void toggleLike()}
+          onClick={() => void mutate("like")}
         >
           {snapshot.video.reaction === "LIKE" ? t("clips.liked") : t("clips.like")} ·{" "}
           {formatNumber(snapshot.video.likeCount)}
@@ -237,7 +311,7 @@ function ClipActions({ clip }: { clip: ClipItem }) {
           data-tv-focus-id={`clip-${clip.id}-subscribe`}
           disabled={mutationDisabled || Boolean(pending)}
           pending={pending === "subscribe"}
-          onClick={() => void toggleSubscription()}
+          onClick={() => void mutate("subscribe")}
         >
           {snapshot.channel.subscribed ? t("clips.subscribed") : t("clips.subscribe")}
         </ActionButton>
@@ -381,13 +455,36 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
     if (event.target !== event.currentTarget) return;
     const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!delta) return;
-    const target = root.current?.querySelector<HTMLElement>(`[data-clip-index='${index + delta}']`);
-    if (!target) return;
+    const container = root.current;
+    const target = container?.querySelector<HTMLElement>(`[data-clip-index='${index + delta}']`);
+    if (!container || !target) return;
     event.preventDefault();
     event.stopPropagation();
-    target.scrollIntoView({
-      block: "start",
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "instant"
+      : "smooth";
+    // Scroll the feed itself; scrollIntoView also moves the document and can
+    // align the selected clip underneath the sticky shell header.
+    const feedBounds = container.getBoundingClientRect();
+    container.scrollTo({
+      top:
+        container.scrollTop +
+        target.getBoundingClientRect().top -
+        feedBounds.top -
+        container.clientTop,
+      behavior,
+    });
+    const header = document
+      .querySelector<HTMLElement>("[data-tv-focus-id='brand-home']")
+      ?.closest("header");
+    const bottomNavigation = [...document.querySelectorAll<HTMLElement>("nav[data-mobile-visible]")]
+      .filter((element) => getComputedStyle(element).position === "fixed")
+      .find((element) => element.getBoundingClientRect().height > 0);
+    const visibleTop = Math.max(0, header?.getBoundingClientRect().bottom ?? 0);
+    const visibleBottom = bottomNavigation?.getBoundingClientRect().top ?? window.innerHeight;
+    window.scrollBy({
+      top: (feedBounds.top + feedBounds.bottom - visibleTop - visibleBottom) / 2,
+      behavior,
     });
     target.focus({ preventScroll: true });
   }
@@ -412,24 +509,7 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
               onKeyDown={(event) => moveByKeyboard(event, index)}
             >
               {sourceUrl ? (
-                <video
-                  className={styles.video}
-                  src={sourceUrl}
-                  playsInline
-                  muted
-                  controls
-                  preload="metadata"
-                  data-tv-focusable="true"
-                  data-tv-focus-id={`clip-${clip.id}-player`}
-                  onPause={(event) => persistWatchProgress(clip, event.currentTarget)}
-                  onEnded={(event) => {
-                    persistWatchProgress(clip, event.currentTarget);
-                    trackAnalyticsEvent("CLIP_COMPLETE", {
-                      videoId: clip.id,
-                      channelId: clip.channel.id,
-                    });
-                  }}
-                />
+                <ClipVideo clip={clip} sourceUrl={sourceUrl} />
               ) : (
                 <div className={styles.mediaFallback}>
                   <StatusNotice tone="danger">{t("clips.mediaUnavailable")}</StatusNotice>

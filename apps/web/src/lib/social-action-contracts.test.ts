@@ -3,10 +3,55 @@ import { describe, expect, it } from "vitest";
 import {
   parseChannelSocialState,
   parseSavedMutation,
+  parseReactionMutation,
+  parseSubscriptionMutation,
   parseVideoSocialState,
 } from "./social-action-contracts";
 
 describe("social action response contracts", () => {
+  it("acknowledges only the exact reaction or subscription requested", () => {
+    const state = {
+      videoId: "video",
+      reaction: "LIKE",
+      likeCount: 1,
+      watchLater: false,
+      myList: false,
+    };
+    expect(parseReactionMutation(state, "LIKE", "video")).toMatchObject({
+      reaction: "LIKE",
+      likeCount: 1,
+    });
+    expect(() => parseReactionMutation(state, "LIKE", "another-video")).toThrow(
+      "INVALID_SOCIAL_RESPONSE",
+    );
+    expect(() =>
+      parseChannelSocialState(
+        { channelId: "wrong", subscribed: true, subscriberCount: 1 },
+        "channel",
+      ),
+    ).toThrow("INVALID_SOCIAL_RESPONSE");
+    expect(() => parseReactionMutation(state, null, "video")).toThrow("INVALID_SOCIAL_RESPONSE");
+    expect(() => parseReactionMutation(state, "DISLIKE", "video")).toThrow(
+      "INVALID_SOCIAL_RESPONSE",
+    );
+    expect(
+      parseSubscriptionMutation(
+        { channelId: "channel", subscribed: false, subscriberCount: 0 },
+        false,
+        "channel",
+      ),
+    ).toEqual({
+      subscribed: false,
+      subscriberCount: 0,
+    });
+    expect(() =>
+      parseSubscriptionMutation(
+        { channelId: "channel", subscribed: false, subscriberCount: 0 },
+        true,
+        "channel",
+      ),
+    ).toThrow("INVALID_SOCIAL_RESPONSE");
+  });
   it("accepts bounded channel state and rejects misleading counts", () => {
     expect(
       parseChannelSocialState({ subscribed: true, subscriberCount: 12, notificationLevel: "ALL" }),

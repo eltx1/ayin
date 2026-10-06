@@ -151,6 +151,207 @@ databaseDescribe("Web/PWA public directories", () => {
     expect(seen).toEqual(Array.from({ length: 80 }, (_, i) => id(i + 4)));
     expect(new Set(seen).size).toBe(seen.length);
   });
+  it("searches localized catalog copy before paging beyond 100 titles", async () => {
+    const c = await channel();
+    const v = await video(c.id);
+    for (let n = 1; n <= 113; n++) {
+      await movie(n, v.id, n <= 3 ? "DE" : "*");
+      await series(n, v.id, n <= 3 ? "DE" : "*");
+    }
+    await prisma.movieLocalization.createMany({
+      data: Array.from({ length: 113 }, (_, i) => ({
+        movieId: id(i + 1),
+        locale: "ar",
+        title: `رحلة ${i + 1}`,
+      })),
+    });
+    await prisma.seriesLocalization.createMany({
+      data: Array.from({ length: 113 }, (_, i) => ({
+        seriesId: id(i + 1),
+        locale: "ar",
+        title: `رحلة ${i + 1}`,
+      })),
+    });
+    for (const kind of ["movies", "series"]) {
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const params = new URLSearchParams({ locale: "ar", q: "رحلة", limit: "24" });
+        if (cursor) params.set("cursor", cursor);
+        const response = await app.inject({ url: `/public/${kind}/directory?${params}`, headers });
+        expect(response.statusCode).toBe(200);
+        const page = response.json();
+        expect(page.items.every((item: { title: string }) => item.title.startsWith("رحلة"))).toBe(
+          true,
+        );
+        seen.push(...page.items.map((item: { id: string }) => item.id));
+        cursor = page.nextCursor;
+        expect(seen.length).toBeLessThanOrEqual(110);
+      } while (cursor);
+      expect(seen).toEqual(Array.from({ length: 110 }, (_, i) => id(i + 4)));
+      const english = await app.inject({
+        url: `/public/${kind}/directory?locale=en&q=${encodeURIComponent("رحلة")}`,
+        headers,
+      });
+      expect(english.json()).toEqual({ items: [], nextCursor: null });
+      const original = await app.inject({
+        url: `/public/${kind}/directory?locale=ar&q=${kind === "movies" ? "Film" : "Series"}%20113`,
+        headers,
+      });
+      expect(original.json().items.map((item: { id: string }) => item.id)).toEqual([id(113)]);
+    }
+  });
+  it("treats search wildcards literally and does not return blocked translated titles", async () => {
+    const c = await channel();
+    const v = await video(c.id);
+    for (const n of [1, 2, 3]) {
+      await movie(n, v.id, n === 1 ? "DE" : "*");
+      await series(n, v.id, n === 1 ? "DE" : "*");
+    }
+    await prisma.movieLocalization.createMany({
+      data: [1, 2].map((n) => ({ movieId: id(n), locale: "en", title: "Literal 100%_match" })),
+    });
+    await prisma.seriesLocalization.createMany({
+      data: [1, 2].map((n) => ({ seriesId: id(n), locale: "en", title: "Literal 100%_match" })),
+    });
+    for (const kind of ["movies", "series"]) {
+      const response = await app.inject({
+        url: `/public/${kind}/directory?locale=ar&q=${encodeURIComponent("%_")}`,
+        headers,
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().items.map((item: { id: string }) => item.id)).toEqual([id(2)]);
+      expect(response.json().nextCursor).toBeNull();
+      const injection = await app.inject({
+        url: `/public/${kind}/directory?q=${encodeURIComponent("' OR TRUE --")}`,
+        headers,
+      });
+      expect(injection.json()).toEqual({ items: [], nextCursor: null });
+    }
+  });
+  it("localizes Watch episode context and advances only through eligible published episodes", async () => {
+    const c = await channel();
+    const current = await video(c.id);
+    await series(1, current.id);
+    const season = await prisma.seriesSeason.findFirstOrThrow({ where: { seriesId: id(1) } });
+    const first = await prisma.seriesEpisode.findFirstOrThrow({ where: { seasonId: season.id } });
+    const nextVideo = await video(c.id);
+    const futureVideo = await video(c.id);
+    const privateVideo = await video(c.id);
+    await prisma.video.update({ where: { id: privateVideo.id }, data: { visibility: "PRIVATE" } });
+    await prisma.seriesEpisode.createMany({
+      data: [
+        {
+          seasonId: season.id,
+          episodeNumber: 2,
+          title: "Future",
+          synopsis: "Future",
+          videoId: futureVideo.id,
+          status: "PUBLISHED",
+          sortOrder: 1,
+          releaseDate: new Date(Date.now() + 86_400_000),
+        },
+        {
+          seasonId: season.id,
+          episodeNumber: 3,
+          title: "Private",
+          synopsis: "Private",
+          videoId: privateVideo.id,
+          status: "PUBLISHED",
+          sortOrder: 2,
+        },
+      ],
+    });
+    const nextSeason = await prisma.seriesSeason.create({
+      data: { seriesId: id(1), seasonNumber: 2, sortOrder: 1 },
+    });
+    const next = await prisma.seriesEpisode.create({
+      data: {
+        seasonId: nextSeason.id,
+        episodeNumber: 1,
+        title: "Next season",
+        synopsis: "Next episode",
+        videoId: nextVideo.id,
+        status: "PUBLISHED",
+      },
+    });
+    await prisma.seriesLocalization.create({
+      data: { seriesId: id(1), locale: "ar", title: "المسلسل" },
+    });
+    await prisma.seriesSeasonLocalization.create({
+      data: { seasonId: season.id, locale: "ar", title: "البداية" },
+    });
+    await prisma.seriesEpisodeLocalization.createMany({
+      data: [
+        { episodeId: first.id, locale: "ar", title: "الحلقة الأولى", synopsis: "وصف البداية" },
+        { episodeId: next.id, locale: "ar", title: "عودة القصة" },
+      ],
+    });
+    const response = await app.inject({
+      url: `/public/videos/${current.slug}/playback?locale=ar`,
+      headers,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().detail).toMatchObject({
+      contentType: "SERIES_EPISODE",
+      seriesContext: {
+        series: { title: "المسلسل" },
+        season: { title: "البداية" },
+        episode: { title: "الحلقة الأولى", synopsis: "وصف البداية" },
+      },
+      nextEpisode: {
+        id: next.id,
+        title: "عودة القصة",
+        seasonNumber: 2,
+        video: { id: nextVideo.id },
+      },
+    });
+    const last = await app.inject({
+      url: `/public/videos/${nextVideo.slug}/playback?locale=en`,
+      headers,
+    });
+    expect(last.json().detail.seriesContext.nextEpisode).toBeNull();
+    await prisma.seriesAvailability.create({
+      data: { seriesId: id(1), territoryCode: "JP", rule: "BLOCK" },
+    });
+    const blocked = await app.inject({
+      url: `/public/videos/${current.slug}/playback?locale=ar`,
+      headers,
+    });
+    expect(blocked.json().detail).toMatchObject({
+      contentType: "CREATOR_VIDEO",
+      seriesContext: null,
+      nextEpisode: null,
+    });
+  });
+  it("returns a deliberate 400 for malformed playback locales on series episodes", async () => {
+    const c = await channel();
+    const v = await video(c.id);
+    await series(1, v.id);
+    for (const query of [
+      "locale=ar&locale=en",
+      "locale[name]=ar",
+      "locale[]=ar",
+      `locale=${"a".repeat(36)}`,
+      "locale=",
+    ]) {
+      const response = await app.inject({
+        url: `/public/videos/${v.slug}/playback?${query}`,
+        headers,
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe("INVALID_PLAYBACK_QUERY");
+    }
+    expect(
+      (await app.inject({ url: `/public/videos/${v.slug}/playback?locale=ar`, headers }))
+        .statusCode,
+    ).toBe(200);
+    // This ordinary fixture is not Kids eligible; the validated query retains the Kids policy gate.
+    expect(
+      (await app.inject({ url: `/public/videos/${v.slug}/playback?locale=ar&kids=1`, headers }))
+        .statusCode,
+    ).toBe(404);
+  });
   it("retains exact-region precedence, wildcard/expired policy and unknown-region behavior", async () => {
     const c = await channel();
     const v = await video(c.id);

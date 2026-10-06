@@ -387,3 +387,84 @@ describe("explicit identity verification failure classification", () => {
     ).rejects.toMatchObject({ identityUnverified: false, acknowledged: false, writeStarted: true });
   });
 });
+
+const profile = "c0000000-0000-4000-8000-000000000003";
+const anotherProfile = "d0000000-0000-4000-8000-000000000004";
+const profileActor = (id = profile) => json({ account: { id: a }, profile: { id } });
+describe("Clips account/profile scope transport", () => {
+  it("binds both social read identities to the captured account and profile", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(profileActor())
+      .mockResolvedValueOnce(json({ changed: true }))
+      .mockResolvedValueOnce(profileActor());
+    vi.stubGlobal("fetch", fetcher);
+    const path = `/social/videos/${b}?profileId=${profile}`;
+    await requestAccountScope(path, "GET", decode, {
+      expectedAccountId: a,
+      expectedProfileId: profile,
+    });
+    expect(fetcher.mock.calls[1]?.[0]).toContain(path);
+    expect(fetcher.mock.calls[1]?.[1]).toMatchObject({ headers: { "x-ayin-expected-account": a } });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+  it("cannot send a Clips mutation after the active profile changes", async () => {
+    const fetcher = vi.fn().mockResolvedValue(profileActor(anotherProfile));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(
+      requestAccountScope(
+        `/social/videos/${b}/reaction`,
+        "PUT",
+        decode,
+        { expectedAccountId: a, expectedProfileId: profile },
+        { profileId: profile, type: "LIKE" },
+      ),
+    ).rejects.toMatchObject({
+      code: "PROFILE_CHANGED",
+      writeStarted: false,
+      identityUnverified: true,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("rejects a late ACK when the active profile changes", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(profileActor())
+      .mockResolvedValueOnce(json({ changed: true }))
+      .mockResolvedValueOnce(profileActor(anotherProfile));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(
+      requestAccountScope(
+        `/social/channels/${b}/subscription?profileId=${profile}`,
+        "DELETE",
+        decode,
+        { expectedAccountId: a, expectedProfileId: profile },
+      ),
+    ).rejects.toMatchObject({
+      code: "PROFILE_CHANGED",
+      writeStarted: true,
+      acknowledged: true,
+      identityUnverified: true,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+  it("does not broaden account-scope access to other social paths or methods", async () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    for (const [path, method] of [
+      [`/social/videos/${b}`, "PUT"],
+      [`/social/videos/${b}/reaction`, "POST"],
+      [`/social/videos/${b}/subscription`, "DELETE"],
+      [`/social/channels/${b}/reaction`, "PUT"],
+      ["/social/notifications", "GET"],
+      ["/auth/password/change", "PUT"],
+    ] as const)
+      await expect(requestAccountScope(path, method, decode)).rejects.toMatchObject({
+        code: "INVALID_REQUEST",
+      });
+    await expect(
+      requestAccountScope(`/social/videos/${b}`, "GET", decode, { expectedProfileId: "invalid" }),
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
