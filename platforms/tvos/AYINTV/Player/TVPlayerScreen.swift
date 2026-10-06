@@ -11,7 +11,7 @@ struct TVPlayerScreen: View {
 
     private var sessionIdentity: String {
         if session.isRestoring { return "restoring" }
-        return session.identity?.account.id ?? "guest"
+        return [session.identity?.account.id ?? "guest", session.identity?.profile.id ?? "", session.token ?? ""].joined(separator: ":")
     }
 
     var body: some View {
@@ -35,8 +35,25 @@ struct TVPlayerScreen: View {
                 }
             }
         }
+        .overlay(alignment: .bottom) {
+            if model.progressNeedsReview {
+                VStack(spacing: 16) {
+                    Text("Playback continues. Review saved progress before saving more.")
+                    Button(model.isReviewingProgress ? "Reviewing…" : "Review saved progress") {
+                        model.reviewProgress()
+                    }
+                    .disabled(model.isReviewingProgress)
+                }
+                .padding(30)
+                .background(.ultraThinMaterial)
+                .padding(40)
+            }
+        }
         .task(id: sessionIdentity) {
-            guard !session.isRestoring else { return }
+            guard !session.isRestoring else {
+                await model.stop(saveProgress: false)
+                return
+            }
             await model.load(
                 token: session.isAuthenticated ? session.token : nil,
                 profileId: session.isAuthenticated ? session.identity?.profile.id : nil

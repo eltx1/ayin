@@ -28,9 +28,11 @@ struct ProgressRevisionState {
         return ticket
     }
 
-    mutating func beginSave(positionMs: Int) -> Ticket? {
+    // TV may explicitly seek backward against a known revision. This never bypasses
+    // the current-read, one-pending-write, or post-failure review requirements.
+    mutating func beginSave(positionMs: Int, allowsBackward: Bool = false) -> Ticket? {
         guard pending == nil, !requiresReview, let snapshot,
-              positionMs >= snapshot.positionMs else { return nil }
+              allowsBackward || positionMs >= snapshot.positionMs else { return nil }
         sequence &+= 1
         let ticket = Ticket(sequence: sequence, expectedRevision: snapshot.revision)
         pending = ticket

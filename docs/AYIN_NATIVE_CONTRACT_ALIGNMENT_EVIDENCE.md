@@ -16,6 +16,14 @@ Independent source review also identified asynchronous work outside the progress
 
 New XCTest assertions cover explicit-null first writes, revision handoff, missing/malformed/foreign baselines, one pending checkpoint, conflict/unknown acknowledgment requiring review, no backwards replay and old-scope read/write rejection. Existing service transport assertions were updated to the actual current API response.
 
+## tvOS: align the shared progress-service caller
+
+The first owning native CI exposed a shared-source compile failure: the tvOS target compiles `WatchProgressService.swift` but its player still called the old save signature. The fix updates that actual caller, rather than supplying an unconditional or always-null revision. The tvOS target now also compiles the shared `ProgressRevisionState`; its player reads the baseline revision, serializes saves and adopts only matching acknowledgments. Failed baseline reads, conflicts and unknown acknowledgments require the native “Review saved progress” action. Review reads only, drops queued pre-conflict work and does not seek or replay a checkpoint.
+
+The existing TV transport explicitly supports intentional backward seeks. That remains supported when the user navigates against a resolved current baseline. Each queued checkpoint captures the navigation sequence; a save consumes only that sequence. Failure, review and scope reset clear prior intent, and a fresh user seek can save against the reviewed revision. The API schema remains unchanged: it has no seek-intent field, and its atomic `expectedRevision` comparison permits a lower position when the supplied revision still matches. The iOS default remains forward-only.
+
+Mounted TV playback now keys token/profile changes, cancels old-scope checkpoints without a final save and fences asynchronous load, observer, caption, completion, retry and remote-controller work against the originating scope/player/item. AVKit transport, captions, PiP, live/Creator TV continuation and native playback remain in place. Six additional tvOS regressions cover serial ACK handoff, intentional backward seeks, conflict and lost-ACK review, failed initial reads, replacement profiles, and first-write/reset tickets. They are authored but not locally executed; the existing `tvos-app.yml` owns unsigned Apple TV simulator compilation and `AYINTVTests` execution.
+
 ## Android: one permission-free video document selection
 
 The shared creator upload route already has a real file input, but the native `WebChromeClient` had no file-selection callback. The shell now launches the system document picker for one accepted video file using the existing Activity Result API. It requests no camera or broad storage permission and does not persist a document grant. Existing Web/API file-size and upload validation remain authoritative.
