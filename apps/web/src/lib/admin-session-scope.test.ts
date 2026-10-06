@@ -166,3 +166,89 @@ describe("provider-owned Admin draft shelf", () => {
     expect(scope.getScopedDraft("direct-campaign", current)).toBeNull();
   });
 });
+
+describe("fixed independent catalog retention slots", () => {
+  it("keeps all three slots independent across same-session review and clears only the requested slot", () => {
+    const { scope, lease } = setup();
+    scope.setScopedDraft("catalog-movie", { title: "Movie draft" }, lease);
+    scope.setScopedDraft("catalog-series", { title: "Series draft" }, lease);
+    const current = scope.completeRead(scope.beginRead(), session)!;
+    expect(scope.getScopedDraft("direct-campaign", current)).toEqual(draft);
+    expect(scope.getScopedDraft("catalog-movie", current)).toEqual({ title: "Movie draft" });
+    expect(scope.getScopedDraft("catalog-series", current)).toEqual({ title: "Series draft" });
+    scope.setScopedDraft("catalog-movie", null, current);
+    expect(scope.getScopedDraft("catalog-movie", current)).toBeNull();
+    expect(scope.getScopedDraft("catalog-series", current)).not.toBeNull();
+    expect(scope.getScopedDraft("direct-campaign", current)).toEqual(draft);
+  });
+  it.each(["invalidated", "failed", "changed"])("clears all slots after %s identity", (reason) => {
+    const { scope, lease } = setup();
+    scope.setScopedDraft("catalog-movie", { private: "movie" }, lease);
+    scope.setScopedDraft("catalog-series", { private: "series" }, lease);
+    if (reason === "invalidated") scope.invalidate();
+    else if (reason === "failed") scope.failRead(scope.beginRead());
+    else scope.completeRead(scope.beginRead(), { ...session, sessionId: other });
+    const current = scope.completeRead(
+      scope.beginRead(),
+      reason === "changed" ? { ...session, sessionId: other } : session,
+    )!;
+    for (const key of ["direct-campaign", "catalog-movie", "catalog-series"] as const)
+      expect(scope.getScopedDraft(key, current)).toBeNull();
+  });
+  it("bounds serialized slots and refuses partial, cyclic and arbitrary-key writes", () => {
+    const { scope, lease } = setup();
+    expect(scope.setScopedDraft("catalog-series", { draft: "x".repeat(1024 * 1024) }, lease)).toBe(
+      false,
+    );
+    expect(scope.getScopedDraft("catalog-series", lease)).toBeNull();
+    expect(scope.getScopedDraft("direct-campaign", lease)).toEqual(draft);
+    const cyclic: { self?: unknown } = {};
+    cyclic.self = cyclic;
+    expect(scope.setScopedDraft("catalog-movie", cyclic, lease)).toBe(false);
+    expect(scope.setScopedDraft("other" as "catalog-movie", {}, lease)).toBe(false);
+    expect(scope.setScopedDraft("catalog-series", { overflow: true }, lease)).toBe(true);
+    expect(scope.getScopedDraft("catalog-series", lease)).toEqual({ overflow: true });
+  });
+  it("does not retain mutable references or let a reader mutate another return", () => {
+    const { scope, lease } = setup();
+    const candidate = { draft: { title: "Original" } };
+    scope.setScopedDraft("catalog-movie", candidate, lease);
+    candidate.draft.title = "Later mutation";
+    const first = scope.getScopedDraft<typeof candidate>("catalog-movie", lease)!;
+    expect(first.draft.title).toBe("Original");
+    first.draft.title = "Reader mutation";
+    expect(scope.getScopedDraft<typeof candidate>("catalog-movie", lease)?.draft.title).toBe(
+      "Original",
+    );
+  });
+});
+
+describe("failed retention cannot revive an older campaign", () => {
+  it("removes the old value, retains a scoped failure marker and preserves other keys", () => {
+    const { scope, lease } = setup();
+    scope.setScopedDraft("catalog-movie", { title: "Movie candidate" }, lease);
+    scope.setScopedDraft("catalog-series", { title: "Series candidate" }, lease);
+    expect(
+      scope.setScopedDraft("direct-campaign", { latest: "r".repeat(4 * 1024 * 1024 + 1) }, lease),
+    ).toBe(false);
+    expect(scope.getScopedDraft("direct-campaign", lease)).toBeNull();
+    expect(scope.getScopedDraftFailure("direct-campaign", lease)).toBe(true);
+    const current = scope.completeRead(scope.beginRead(), session)!;
+    expect(scope.getScopedDraft("direct-campaign", current)).toBeNull();
+    expect(scope.getScopedDraftFailure("direct-campaign", current)).toBe(true);
+    expect(scope.getScopedDraft("catalog-movie", current)).toEqual({ title: "Movie candidate" });
+    expect(scope.getScopedDraft("catalog-series", current)).toEqual({ title: "Series candidate" });
+    scope.setScopedDraft("direct-campaign", { latest: "Shortened candidate" }, current);
+    expect(scope.getScopedDraftFailure("direct-campaign", current)).toBe(false);
+    expect(scope.getScopedDraft("direct-campaign", current)).toEqual({
+      latest: "Shortened candidate",
+    });
+  });
+  it("destroys failure markers with all other slots on identity change", () => {
+    const { scope, lease } = setup();
+    scope.setScopedDraft("direct-campaign", { latest: "r".repeat(4 * 1024 * 1024 + 1) }, lease);
+    const current = scope.completeRead(scope.beginRead(), { ...session, sessionId: other })!;
+    expect(scope.getScopedDraftFailure("direct-campaign", current)).toBe(false);
+    expect(scope.getScopedDraft("direct-campaign", current)).toBeNull();
+  });
+});

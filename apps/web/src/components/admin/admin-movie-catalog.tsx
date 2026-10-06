@@ -1,10 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
-import { apiBaseUrl } from "@/lib/api";
-import { readAdminApiError as readApiError } from "@/lib/admin-reauthentication";
+import { catalogRecord, catalogList } from "@/lib/catalog-editor-contract";
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { ActionButton } from "@/components/ui/design-system";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
+import {
+  CatalogEditorWorkspace,
+  useCatalogRequest,
+  useCatalogDrafts,
+  useCatalogDirty,
+  useCatalogTarget,
+  draftChanged,
+  changedCatalogFields,
+  catalogOutcomeUncertain,
+} from "./catalog-editor-workspace";
+import { CatalogValidationIssues } from "./catalog-validation";
+import { catalogValidationReason } from "@/lib/catalog-validation-copy";
+import { catalogFormFingerprint } from "@/lib/catalog-draft-retention";
+import { useCatalogCopy } from "./catalog-editor-copy";
 import { CatalogResourcePicker } from "./catalog-resource-picker";
 
 type VideoRef = { id: string; title: string; slug: string } | null;
@@ -66,7 +82,10 @@ type Draft = {
   trailerVideoId: string | null;
   trailerVideoLabel: string | null;
   genres: string;
-  artwork: Record<ArtworkType, { id: string | null; label: string | null }>;
+  artwork: Record<
+    ArtworkType,
+    { id: string | null; label: string | null; altText?: string | null }
+  >;
   availability: AvailabilityDraft[];
 };
 
@@ -93,433 +112,620 @@ const emptyDraft = (): Draft => ({
 });
 
 export function AdminMovieCatalog() {
+  return (
+    <CatalogEditorWorkspace kind="movie">
+      <MovieCatalogContent />
+    </CatalogEditorWorkspace>
+  );
+}
+
+function MovieCatalogContent() {
+  const t = useCatalogCopy();
+  const { direction } = useI18n();
+  const { request, current } = useCatalogRequest();
+  const {
+    navigate,
+    dirty,
+    restoredForm,
+    restoredRecord,
+    restoredBlocked,
+    markPending,
+    acknowledgeRecord,
+    clearRestoration,
+  } = useCatalogDrafts();
+  const recovered = restoredForm<Draft>("movie");
+  const initialRecord = restoredRecord<MovieRow>();
   const [items, setItems] = useState<MovieRow[]>([]);
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft>(
+    () => recovered?.draft ?? (initialRecord ? fromMovie(initialRecord) : emptyDraft()),
+  );
+  const [baseline, setBaseline] = useState<Draft>(
+    () => recovered?.baseline ?? (initialRecord ? fromMovie(initialRecord) : emptyDraft()),
+  );
+  const [sourceFingerprint, setSourceFingerprint] = useState(
+    () => recovered?.sourceFingerprint ?? catalogFormFingerprint("movie", initialRecord),
+  );
+  const [editing, setEditing] = useState<MovieRow | null>(initialRecord);
+  const editingId = editing?.id ?? null;
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"" | MovieRow["status"]>("");
   const [busy, setBusy] = useState<string | null>(null);
+  const lock = useRef(false);
+  const [writeBlocked, setWriteBlocked] = useState(restoredBlocked);
+  const reads = useRef(0);
+  const cancelBrowseReads = useCallback(() => {
+    reads.current++;
+  }, []);
+  const browseKey = `${query}\0${status}`;
+  const latestBrowseKey = useRef(browseKey);
+  useLayoutEffect(() => {
+    latestBrowseKey.current = browseKey;
+  }, [browseKey]);
+  const targetRead = useRef(0);
+  const form = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<"publish" | "unpublish" | "archive" | null>(null);
 
   const load = useCallback(async () => {
+    if (latestBrowseKey.current !== browseKey) return;
+    const read = ++reads.current;
     const params = new URLSearchParams({ limit: "100" });
     if (query.trim()) params.set("q", query.trim());
     if (status) params.set("status", status);
-    const response = await fetch(`${apiBaseUrl}/admin/catalog/movies?${params.toString()}`, {
-      credentials: "include",
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error(await readApiError(response));
-    const body = (await response.json()) as { items: MovieRow[] };
-    setItems(body.items);
-    if (editingId) {
-      const current = body.items.find((item) => item.id === editingId);
-      if (current) setDraft(fromMovie(current));
-    }
-  }, [editingId, query, status]);
+    const body = await request<{ items: MovieRow[] }>(`/admin/catalog/movies?${params}`);
+    if (read === reads.current && latestBrowseKey.current === browseKey && current())
+      setItems(catalogList<MovieRow>(body, "movie"));
+  }, [query, status, request, current, browseKey]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void load().catch((caught) =>
-        setError(caught instanceof Error ? caught.message : "Movie catalog could not be loaded."),
-      );
+      void load().catch((caught: unknown) => {
+        if (current())
+          setError(
+            caught instanceof Error ? caught.message : t("Movie catalog could not be loaded."),
+          );
+      });
     }, 200);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+    return () => {
+      cancelBrowseReads();
+      window.clearTimeout(timer);
+    };
+  }, [load, current, t, cancelBrowseReads]);
 
-  const editing = useMemo(
-    () => (editingId ? (items.find((item) => item.id === editingId) ?? null) : null),
-    [editingId, items],
-  );
+  async function refreshBrowse() {
+    try {
+      await load();
+    } catch {
+      if (current())
+        setError(
+          t(
+            "Changes were saved, but the catalog list could not refresh. Use Refresh list; do not submit again.",
+          ),
+        );
+    }
+  }
 
-  async function save(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveDraft() {
+    if (lock.current || writeBlocked || !current() || !form.current?.reportValidity()) return false;
+    lock.current = true;
+    markPending(true);
     setBusy("save");
     setError(null);
     setMessage(null);
+    const snapshot = draft;
     try {
-      const response = await fetch(
-        `${apiBaseUrl}/admin/catalog/movies${editingId ? `/${editingId}` : ""}`,
+      const body = await request<{ movie: MovieRow }>(
+        `/admin/catalog/movies${editingId ? `/${editingId}` : ""}`,
         {
           method: editingId ? "PATCH" : "POST",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(toPayload(draft)),
+          body: JSON.stringify(
+            editingId
+              ? changedCatalogFields(toPayload(baseline), toPayload(snapshot))
+              : toPayload(snapshot),
+          ),
         },
       );
-      if (!response.ok) throw new Error(await readApiError(response));
-      const body = (await response.json()) as { movie: MovieRow };
-      setEditingId(body.movie.id);
-      setMessage(editingId ? "Movie changes saved." : "Movie draft created.");
-      await load();
+      body.movie = catalogRecord<MovieRow>(body, "movie", editingId ?? undefined);
+      clearRestoration();
+      acknowledgeRecord(body.movie);
+      setEditing(body.movie);
+      setSourceFingerprint(catalogFormFingerprint("movie", body.movie));
+      const saved = fromMovie(body.movie);
+      setBaseline(saved);
+      setDraft(saved);
+      setMessage(t(editingId ? "Movie changes saved." : "Movie draft created."));
+      await refreshBrowse();
+      return true;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Movie could not be saved.");
+      if (current() && catalogOutcomeUncertain(caught)) {
+        setWriteBlocked(true);
+        markPending(false, true);
+      }
+      if (current())
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : t("The outcome is uncertain. Refresh the record before trying again."),
+        );
+      return false;
     } finally {
-      setBusy(null);
+      lock.current = false;
+      markPending(false);
+      if (current()) setBusy(null);
     }
   }
+  useCatalogDirty("movie", draftChanged(draft, baseline), saveDraft, {
+    draft,
+    baseline,
+    sourceFingerprint,
+  });
+  useCatalogTarget(editing, writeBlocked);
 
-  async function lifecycle(movie: MovieRow, action: "publish" | "unpublish" | "archive") {
-    setBusy(`${action}:${movie.id}`);
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await saveDraft();
+  }
+
+  async function lifecycle(action: "publish" | "unpublish" | "archive") {
+    if (!editing || lock.current || writeBlocked || dirty || !current()) return;
+    lock.current = true;
+    markPending(true);
+    setBusy(action);
+    setConfirm(null);
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`${apiBaseUrl}/admin/catalog/movies/${movie.id}/${action}`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error(await readApiError(response));
-      setMessage(
-        `Movie ${action === "publish" ? "published" : action === "unpublish" ? "unpublished" : "archived"}.`,
+      const body = await request<{ movie: MovieRow }>(
+        `/admin/catalog/movies/${editing.id}/${action}`,
+        { method: "POST" },
       );
-      await load();
+      body.movie = catalogRecord<MovieRow>(body, "movie", editing.id);
+      clearRestoration();
+      acknowledgeRecord(body.movie);
+      setEditing(body.movie);
+      setSourceFingerprint(catalogFormFingerprint("movie", body.movie));
+      setWriteBlocked(false);
+      setDraft(fromMovie(body.movie));
+      setBaseline(fromMovie(body.movie));
+      setMessage(
+        t(
+          action === "publish"
+            ? "Movie published."
+            : action === "unpublish"
+              ? "Movie unpublished."
+              : "Movie archived.",
+        ),
+      );
+      await refreshBrowse();
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : `Movie could not ${action}.`);
+      if (current() && catalogOutcomeUncertain(caught)) {
+        setWriteBlocked(true);
+        markPending(false, true);
+      }
+      if (current())
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : t("The outcome is uncertain. Refresh the record before trying again."),
+        );
     } finally {
-      setBusy(null);
+      lock.current = false;
+      markPending(false);
+      if (current()) setBusy(null);
     }
   }
 
+  async function openMovie(movie: MovieRow) {
+    if (lock.current) return;
+    const read = ++targetRead.current;
+    setBusy("open");
+    setError(null);
+    setMessage(null);
+    try {
+      const body = await request<{ movie: MovieRow }>(`/admin/catalog/movies/${movie.id}`);
+      if (read !== targetRead.current || !current()) return;
+      body.movie = catalogRecord<MovieRow>(body, "movie", movie.id);
+      clearRestoration();
+      setEditing(body.movie);
+      setSourceFingerprint(catalogFormFingerprint("movie", body.movie));
+      setWriteBlocked(false);
+      setDraft(fromMovie(body.movie));
+      setBaseline(fromMovie(body.movie));
+    } catch (caught) {
+      if (read === targetRead.current && current())
+        setError(
+          caught instanceof Error ? caught.message : t("Movie catalog could not be loaded."),
+        );
+    } finally {
+      if (read === targetRead.current && current()) setBusy(null);
+    }
+  }
   function beginEdit(movie: MovieRow) {
-    setEditingId(movie.id);
-    setDraft(fromMovie(movie));
-    setError(null);
-    setMessage(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (!lock.current)
+      navigate(() => {
+        void openMovie(movie);
+      });
   }
-
   function beginCreate() {
-    setEditingId(null);
-    setDraft(emptyDraft());
-    setError(null);
-    setMessage(null);
+    if (lock.current) return;
+    navigate(() => {
+      ++targetRead.current;
+      clearRestoration();
+      setBusy(null);
+      setEditing(null);
+      setSourceFingerprint(null);
+      setWriteBlocked(false);
+      const next = emptyDraft();
+      setDraft(next);
+      setBaseline(next);
+      setError(null);
+      setMessage(null);
+    });
   }
-
   return (
     <>
       <section className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>Catalog operations</span>
-          <h1>Movies</h1>
+          <span className={styles.eyebrow}>{t("Catalog operations")}</span>
+          <h1>{t("Movies")}</h1>
           <p className={styles.muted}>
-            Draft, validate and publish movie identities without exposing database IDs or unsafe
-            media.
+            {t(
+              "Draft, validate and publish movie identities without exposing database IDs or unsafe media.",
+            )}
           </p>
         </div>
-        <button className={styles.button} onClick={beginCreate} type="button">
-          New movie draft
-        </button>
+        <ActionButton className={styles.button} onClick={beginCreate} type="button">
+          {t("New movie draft")}
+        </ActionButton>
       </section>
 
-      {error ? <div className={styles.error}>{error}</div> : null}
-      {message ? <div className={styles.notice}>{message}</div> : null}
+      {error ? (
+        <div className={styles.error} role="alert">
+          {error}
+        </div>
+      ) : null}
+      {writeBlocked ? (
+        <div className={styles.error} role="alert">
+          {t(
+            "The outcome is uncertain. Reopen a saved record to review it before making another change. No request was repeated.",
+          )}
+        </div>
+      ) : null}
+      {message ? (
+        <div className={styles.notice} role="status">
+          {message}
+        </div>
+      ) : null}
 
       <section className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <span className={styles.eyebrow}>{editing ? "Edit movie" : "Create draft"}</span>
-            <h2>{editing?.title ?? "New movie"}</h2>
+            <span className={styles.eyebrow}>{editing ? t("Edit movie") : t("Create draft")}</span>
+            <h2>{editing?.title ?? t("New movie")}</h2>
           </div>
           {editing ? (
             <ValidationBadge validation={editing.validation} />
           ) : (
-            <span className={styles.statusPill}>DRAFT</span>
+            <span className={styles.statusPill}>{t("DRAFT")}</span>
           )}
         </div>
         {editing?.validation.issues.length ? (
-          <div className={styles.error}>Validation: {editing.validation.issues.join(" · ")}</div>
+          <CatalogValidationIssues issues={editing.validation.issues} />
         ) : null}
-        <form className={styles.formGrid} onSubmit={save}>
-          <label>
-            Title
-            <input
-              required
-              maxLength={200}
-              value={draft.title}
-              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-            />
-          </label>
-          <label>
-            Slug
-            <input
-              maxLength={160}
-              placeholder="generated from title when blank"
-              value={draft.slug}
-              onChange={(event) => setDraft({ ...draft, slug: event.target.value })}
-            />
-          </label>
-          <label className={styles.fullField}>
-            Synopsis
-            <textarea
-              required
-              value={draft.synopsis}
-              onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
-            />
-          </label>
-          <label>
-            Release year
-            <input
-              min="1888"
-              max="2200"
-              required
-              type="number"
-              value={draft.releaseYear}
-              onChange={(event) => setDraft({ ...draft, releaseYear: event.target.value })}
-            />
-          </label>
-          <label>
-            Runtime (minutes)
-            <input
-              min="1"
-              max="1440"
-              required
-              type="number"
-              value={draft.runtimeMinutes}
-              onChange={(event) => setDraft({ ...draft, runtimeMinutes: event.target.value })}
-            />
-          </label>
-          <label>
-            Release date
-            <input
-              type="date"
-              value={draft.releaseDate}
-              onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
-            />
-          </label>
-          <label>
-            Maturity
-            <input
-              required
-              maxLength={32}
-              placeholder="PG-13"
-              value={draft.maturityRating}
-              onChange={(event) => setDraft({ ...draft, maturityRating: event.target.value })}
-            />
-          </label>
-          <label>
-            Original language
-            <input
-              required
-              maxLength={16}
-              placeholder="en"
-              value={draft.originalLanguage}
-              onChange={(event) => setDraft({ ...draft, originalLanguage: event.target.value })}
-            />
-          </label>
-          <label>
-            Genres / categories
-            <input
-              required
-              placeholder="Drama, Mystery"
-              value={draft.genres}
-              onChange={(event) => setDraft({ ...draft, genres: event.target.value })}
-            />
-          </label>
-          <div className={styles.fullField}>
-            <CatalogResourcePicker
-              kind="video"
-              label="Primary playback"
-              required
-              value={draft.primaryVideoId}
-              selectedLabel={draft.primaryVideoLabel}
-              onChange={(id, label) =>
-                setDraft({ ...draft, primaryVideoId: id, primaryVideoLabel: label })
-              }
-            />
-          </div>
-          <div className={styles.fullField}>
-            <CatalogResourcePicker
-              kind="video"
-              label="Trailer"
-              value={draft.trailerVideoId}
-              selectedLabel={draft.trailerVideoLabel}
-              onChange={(id, label) =>
-                setDraft({ ...draft, trailerVideoId: id, trailerVideoLabel: label })
-              }
-            />
-          </div>
-          {(["POSTER", "BACKDROP", "LOGO"] as const).map((type) => (
-            <div className={styles.fullField} key={type}>
+        <fieldset disabled={Boolean(busy) || writeBlocked}>
+          <form
+            ref={form}
+            aria-label={t("Movie details")}
+            className={styles.formGrid}
+            onSubmit={save}
+          >
+            <label>
+              {t("Title")}
+              <input
+                required
+                maxLength={200}
+                value={draft.title}
+                onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Slug")}
+              <input
+                maxLength={160}
+                placeholder={t("generated from title when blank")}
+                value={draft.slug}
+                onChange={(event) => setDraft({ ...draft, slug: event.target.value })}
+              />
+            </label>
+            <label className={styles.fullField}>
+              {t("Synopsis")}
+              <textarea
+                required
+                value={draft.synopsis}
+                onChange={(event) => setDraft({ ...draft, synopsis: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Release year")}
+              <input
+                min="1888"
+                max="2200"
+                required
+                type="number"
+                value={draft.releaseYear}
+                onChange={(event) => setDraft({ ...draft, releaseYear: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Runtime (minutes)")}
+              <input
+                min="1"
+                max="1440"
+                required
+                type="number"
+                value={draft.runtimeMinutes}
+                onChange={(event) => setDraft({ ...draft, runtimeMinutes: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Release date")}
+              <input
+                type="date"
+                value={draft.releaseDate}
+                onChange={(event) => setDraft({ ...draft, releaseDate: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Maturity")}
+              <input
+                required
+                maxLength={32}
+                placeholder={t("PG-13")}
+                value={draft.maturityRating}
+                onChange={(event) => setDraft({ ...draft, maturityRating: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Original language")}
+              <input
+                required
+                maxLength={16}
+                placeholder={t("en")}
+                value={draft.originalLanguage}
+                onChange={(event) => setDraft({ ...draft, originalLanguage: event.target.value })}
+              />
+            </label>
+            <label>
+              {t("Genres / categories")}
+              <input
+                required
+                placeholder={t("Drama, Mystery")}
+                value={draft.genres}
+                onChange={(event) => setDraft({ ...draft, genres: event.target.value })}
+              />
+            </label>
+            <div className={styles.fullField}>
               <CatalogResourcePicker
-                kind="artwork"
-                label={`${type[0]}${type.slice(1).toLowerCase()} artwork`}
-                required={type === "POSTER"}
-                value={draft.artwork[type].id}
-                selectedLabel={draft.artwork[type].label}
+                kind="video"
+                label={t("Primary playback")}
+                required
+                value={draft.primaryVideoId}
+                selectedLabel={draft.primaryVideoLabel}
                 onChange={(id, label) =>
-                  setDraft({
-                    ...draft,
-                    artwork: { ...draft.artwork, [type]: { id, label } },
-                  })
+                  setDraft({ ...draft, primaryVideoId: id, primaryVideoLabel: label })
                 }
               />
             </div>
-          ))}
-          <div className={`${styles.cardInset} ${styles.fullField}`}>
-            <div className={styles.cardHeader}>
-              <div>
-                <strong>Availability</strong>
-                <p className={styles.muted}>
-                  Use * for global rights or a two-letter territory code.
-                </p>
-              </div>
-              <button
-                className={styles.button}
-                type="button"
-                onClick={() =>
-                  setDraft({
-                    ...draft,
-                    availability: [
-                      ...draft.availability,
-                      { territoryCode: "*", rule: "ALLOW", startsAt: "", endsAt: "", note: "" },
-                    ],
-                  })
+            <div className={styles.fullField}>
+              <CatalogResourcePicker
+                kind="video"
+                label={t("Trailer")}
+                value={draft.trailerVideoId}
+                selectedLabel={draft.trailerVideoLabel}
+                onChange={(id, label) =>
+                  setDraft({ ...draft, trailerVideoId: id, trailerVideoLabel: label })
                 }
-              >
-                Add rule
-              </button>
+              />
             </div>
-            {draft.availability.map((rule, index) => (
-              <div className={styles.formGrid} key={`${index}-${rule.territoryCode}`}>
-                <label>
-                  Territory
-                  <input
-                    maxLength={2}
-                    value={rule.territoryCode}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, {
-                        territoryCode: event.target.value.toUpperCase(),
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  Rule
-                  <select
-                    value={rule.rule}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, {
-                        rule: event.target.value as AvailabilityRule,
-                      })
-                    }
-                  >
-                    <option value="ALLOW">Allow</option>
-                    <option value="BLOCK">Block</option>
-                  </select>
-                </label>
-                <label>
-                  Starts
-                  <input
-                    type="datetime-local"
-                    value={rule.startsAt}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, { startsAt: event.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  Ends
-                  <input
-                    type="datetime-local"
-                    value={rule.endsAt}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, { endsAt: event.target.value })
-                    }
-                  />
-                </label>
-                <label className={styles.fullField}>
-                  Note
-                  <input
-                    maxLength={240}
-                    value={rule.note}
-                    onChange={(event) =>
-                      updateAvailability(setDraft, draft, index, { note: event.target.value })
-                    }
-                  />
-                </label>
-                <div className={`${styles.actions} ${styles.fullField}`}>
-                  <button
-                    className={styles.danger}
-                    type="button"
-                    onClick={() =>
-                      setDraft({
-                        ...draft,
-                        availability: draft.availability.filter(
-                          (_, itemIndex) => itemIndex !== index,
-                        ),
-                      })
-                    }
-                  >
-                    Remove rule
-                  </button>
-                </div>
+            {(["POSTER", "BACKDROP", "LOGO"] as const).map((type) => (
+              <div className={styles.fullField} key={type}>
+                <CatalogResourcePicker
+                  kind="artwork"
+                  label={t(`${type[0]}${type.slice(1).toLowerCase()} artwork`)}
+                  required={type === "POSTER"}
+                  value={draft.artwork[type].id}
+                  selectedLabel={draft.artwork[type].label}
+                  onChange={(id, label) =>
+                    setDraft({
+                      ...draft,
+                      artwork: { ...draft.artwork, [type]: { id, label } },
+                    })
+                  }
+                />
               </div>
             ))}
-          </div>
-          <div className={`${styles.actions} ${styles.fullField}`}>
-            <button className={styles.button} disabled={busy === "save"} type="submit">
-              {busy === "save" ? "Saving…" : editingId ? "Save movie" : "Create draft"}
-            </button>
-            {editing ? (
-              <>
-                {editing.status === "PUBLISHED" ? (
-                  <button
-                    className={styles.danger}
-                    disabled={Boolean(busy)}
-                    type="button"
-                    onClick={() => void lifecycle(editing, "unpublish")}
-                  >
-                    Unpublish
-                  </button>
-                ) : editing.status === "DRAFT" ? (
-                  <button
-                    className={styles.button}
-                    disabled={Boolean(busy) || !editing.validation.publishable}
-                    type="button"
-                    onClick={() => void lifecycle(editing, "publish")}
-                  >
-                    Publish
-                  </button>
-                ) : null}
-                {editing.status === "DRAFT" ? (
-                  <button
-                    className={styles.danger}
-                    disabled={Boolean(busy)}
-                    type="button"
-                    onClick={() => void lifecycle(editing, "archive")}
-                  >
-                    Archive
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-        </form>
+            <div className={`${styles.cardInset} ${styles.fullField}`}>
+              <div className={styles.cardHeader}>
+                <div>
+                  <strong>{t("Availability")}</strong>
+                  <p className={styles.muted}>
+                    {t("Use * for global rights or a two-letter territory code.")}
+                  </p>
+                </div>
+                <ActionButton
+                  className={styles.button}
+                  type="button"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      availability: [
+                        ...draft.availability,
+                        { territoryCode: "*", rule: "ALLOW", startsAt: "", endsAt: "", note: "" },
+                      ],
+                    })
+                  }
+                >
+                  {t("Add rule")}
+                </ActionButton>
+              </div>
+              {draft.availability.map((rule, index) => (
+                <div className={styles.formGrid} key={index}>
+                  <label>
+                    {t("Territory")}
+                    <input
+                      maxLength={2}
+                      value={rule.territoryCode}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, {
+                          territoryCode: event.target.value.toUpperCase(),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    {t("Rule")}
+                    <select
+                      value={rule.rule}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, {
+                          rule: event.target.value as AvailabilityRule,
+                        })
+                      }
+                    >
+                      <option value="ALLOW">{t("Allow")}</option>
+                      <option value="BLOCK">{t("Block")}</option>
+                    </select>
+                  </label>
+                  <label>
+                    {t("Starts")}
+                    <input
+                      type="datetime-local"
+                      value={rule.startsAt}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, { startsAt: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label>
+                    {t("Ends")}
+                    <input
+                      type="datetime-local"
+                      value={rule.endsAt}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, { endsAt: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className={styles.fullField}>
+                    {t("Note")}
+                    <input
+                      maxLength={240}
+                      value={rule.note}
+                      onChange={(event) =>
+                        updateAvailability(setDraft, draft, index, { note: event.target.value })
+                      }
+                    />
+                  </label>
+                  <div className={`${styles.actions} ${styles.fullField}`}>
+                    <ActionButton
+                      className={styles.danger}
+                      type="button"
+                      onClick={() =>
+                        setDraft({
+                          ...draft,
+                          availability: draft.availability.filter(
+                            (_, itemIndex) => itemIndex !== index,
+                          ),
+                        })
+                      }
+                    >
+                      {t("Remove rule")}
+                    </ActionButton>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className={`${styles.actions} ${styles.fullField}`}>
+              <ActionButton className={styles.button} disabled={busy === "save"} type="submit">
+                {busy === "save" ? t("Saving…") : editingId ? t("Save movie") : t("Create draft")}
+              </ActionButton>
+              {editing ? (
+                <>
+                  {editing.status === "PUBLISHED" ? (
+                    <ActionButton
+                      className={styles.danger}
+                      disabled={Boolean(busy) || dirty}
+                      type="button"
+                      onClick={() => setConfirm("unpublish")}
+                    >
+                      {t("Unpublish")}
+                    </ActionButton>
+                  ) : editing.status === "DRAFT" ? (
+                    <ActionButton
+                      className={styles.button}
+                      disabled={Boolean(busy) || dirty || !editing.validation.publishable}
+                      type="button"
+                      onClick={() => setConfirm("publish")}
+                    >
+                      {t("Publish")}
+                    </ActionButton>
+                  ) : null}
+                  {editing.status === "DRAFT" ? (
+                    <ActionButton
+                      className={styles.danger}
+                      disabled={Boolean(busy) || dirty}
+                      type="button"
+                      onClick={() => setConfirm("archive")}
+                    >
+                      {t("Archive")}
+                    </ActionButton>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          </form>
+        </fieldset>
       </section>
 
       <section className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <span className={styles.eyebrow}>Catalog browser</span>
-            <h2>Movies</h2>
+            <span className={styles.eyebrow}>{t("Catalog browser")}</span>
+            <h2>{t("Movies")}</h2>
           </div>
-          <span className={styles.statusPill}>{items.length} results</span>
+          <span className={styles.statusPill}>
+            {items.length} {t("results")}
+          </span>
         </div>
         <div className={styles.toolbar}>
+          {editing ? (
+            <ActionButton disabled={Boolean(busy)} onClick={() => beginEdit(editing)}>
+              {t("Refresh record")}
+            </ActionButton>
+          ) : null}
+          <ActionButton
+            onClick={() =>
+              void load().catch(() => setError(t("Movie catalog could not be loaded.")))
+            }
+          >
+            {t("Refresh list")}
+          </ActionButton>
           <input
-            placeholder="Search title, slug, synopsis or genre…"
+            aria-label={t("Search movies")}
+            placeholder={t("Search title, slug, synopsis or genre…")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
           <select
+            aria-label={t("Filter by status")}
             value={status}
             onChange={(event) => setStatus(event.target.value as typeof status)}
           >
-            <option value="">All statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="PUBLISHED">Published</option>
-            <option value="ARCHIVED">Archived</option>
+            <option value="">{t("All statuses")}</option>
+            <option value="DRAFT">{t("Draft")}</option>
+            <option value="PUBLISHED">{t("Published")}</option>
+            <option value="ARCHIVED">{t("Archived")}</option>
           </select>
         </div>
         <div className={styles.grid}>
@@ -529,39 +735,61 @@ export function AdminMovieCatalog() {
                 <div>
                   <strong>{movie.title}</strong>
                   <p className={styles.muted}>
-                    /{movie.slug} · {movie.releaseYear} · {movie.runtimeMinutes} min ·{" "}
+                    /{movie.slug} · {movie.releaseYear} · {movie.runtimeMinutes} {t("min ·")}{" "}
                     {movie.originalLanguage.toUpperCase()}
                   </p>
                 </div>
                 <ValidationBadge validation={movie.validation} />
               </div>
-              <p>{movie.genres.map((genre) => genre.name).join(" · ") || "No genres"}</p>
+              <p>{movie.genres.map((genre) => genre.name).join(" · ") || t("No genres")}</p>
               <p className={styles.muted}>
-                Primary:{" "}
+                {t("Primary:")}{" "}
                 {movie.primaryVideo
                   ? `${movie.primaryVideo.title} (${movie.primaryVideo.slug})`
-                  : "Not assigned"}
+                  : t("Not assigned")}
               </p>
               <div className={styles.actions}>
-                <span className={styles.statusPill}>{movie.status}</span>
-                <button className={styles.button} type="button" onClick={() => beginEdit(movie)}>
-                  Edit
-                </button>
+                <span className={styles.statusPill}>{t(movie.status)}</span>
+                <ActionButton
+                  className={styles.button}
+                  type="button"
+                  onClick={() => beginEdit(movie)}
+                >
+                  {t("Edit")}
+                </ActionButton>
               </div>
             </article>
           ))}
         </div>
       </section>
+      <ConfirmationDialog
+        open={confirm !== null}
+        direction={direction}
+        title={t("Change movie status?")}
+        description={t("This changes the saved record’s public availability.")}
+        confirmLabel={t("Confirm")}
+        cancelLabel={t("Cancel")}
+        busy={Boolean(busy)}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          if (confirm) void lifecycle(confirm);
+        }}
+      />
     </>
   );
 }
 
 function ValidationBadge({ validation }: { validation: Validation }) {
+  const t = useCatalogCopy();
+  const { locale } = useI18n();
   return (
-    <span className={styles.statusPill} title={validation.issues.join(", ")}>
+    <span
+      className={styles.statusPill}
+      title={validation.issues.map((issue) => catalogValidationReason(issue, locale)).join(" ")}
+    >
       {validation.status === "READY"
-        ? "Ready"
-        : `${validation.issues.length} validation issue${validation.issues.length === 1 ? "" : "s"}`}
+        ? t("Ready")
+        : `${validation.issues.length} ${t("validation issues")}`}
     </span>
   );
 }
@@ -571,6 +799,7 @@ function fromMovie(movie: MovieRow): Draft {
   for (const item of movie.artwork) {
     artwork[item.type] = {
       id: item.mediaAssetId,
+      altText: item.altText,
       label: item.asset
         ? `${item.type} · ${item.asset.r2ObjectKey.split("/").at(-1) ?? "image"}`
         : item.type,
@@ -622,7 +851,14 @@ function toPayload(draft: Draft) {
       Object.entries(draft.artwork) as Array<[ArtworkType, Draft["artwork"][ArtworkType]]>
     ).flatMap(([type, item]) =>
       item.id
-        ? [{ type, mediaAssetId: item.id, altText: `${draft.title} ${type.toLowerCase()}` }]
+        ? [
+            {
+              type,
+              mediaAssetId: item.id,
+              altText:
+                item.altText !== undefined ? item.altText : `${draft.title} ${type.toLowerCase()}`,
+            },
+          ]
         : [],
     ),
     availability: draft.availability.map((item) => ({

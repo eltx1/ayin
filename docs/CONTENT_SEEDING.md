@@ -40,10 +40,22 @@ For each seed item:
 1. Request `POST /admin/content-seeding/items/:itemId/upload-session` with the MP4 size, MIME type, and optional duration.
 2. Upload the bytes using the returned media authorization. Production uses the configured Cloudflare R2 adapter; tests use the isolated test adapter. AWS/S3 is not introduced by this workflow.
 3. Complete the upload through the existing `/media/uploads/sessions/complete` endpoint.
-4. Call `POST /admin/content-seeding/items/:itemId/confirm-upload` so AYIN verifies an uploaded source asset is attached.
-5. Call `POST /admin/content-seeding/items/:itemId/publish`. Publishing adds the video to the protected Uploads playlist and connects the primary Creator TV source playlist when necessary.
+4. Upload completion acknowledges received bytes. The canonical media worker must still validate playback. In the native `/admin/content` workflow, use **Refresh original batch** to read the original batch and item's durable processing status. A pending worker job is **Processing**, not an upload failure. The worker transitions the seed item to `READY`; the UI does not call or replay `confirm-upload`. API clients may explicitly call `POST /admin/content-seeding/items/:itemId/confirm-upload` after readiness, preserving its current validation contract.
+5. Review the ready original item, then explicitly choose **Publish**. The former “publish immediately” option is replaced by this separate review step; publication intent is never silently resumed after processing, navigation, verification, or reload. API clients call `POST /admin/content-seeding/items/:itemId/publish`. Publishing adds the video to the protected Uploads playlist and connects the primary Creator TV source playlist when necessary.
 
 The privileged upload-session flag exists only in the server-side Admin service path. Normal creator upload requests still require channel ownership.
+
+### Native processing and recovery
+
+The page retains the exact returned batch/item IDs as soon as creation is acknowledged. It offers bounded, explicit status reads, with no background polling. `GET /admin/content-seeding/batches/:batchId` returns the original batch even after it leaves the recent-50 list, including each video's latest durable processing-job status. The read uses the same Admin roles as the existing list. Eligible channel filtering happens on the server before the 100-channel bound; eligibility remains platform-owned and not removed, including suspended channels as before.
+
+A failed upload/session/publication acknowledgment never restarts file bytes, creates a replacement batch, replays upload confirmation, or publishes automatically. If the server explicitly rejects the original upload-session request (for example, step-up is required), the operator may verify and choose **Continue original upload** while that file is still present. When upload bytes finish after the five-minute verification window, a definitive `STEP_UP_REQUIRED` completion rejection opens verification and retains only that exact completion payload in transient, identity-bound memory. After verification, **Finish original upload** submits that metadata explicitly; it never resends file bytes. A timeout, lost acknowledgment, changed identity, unverified failure or departure cannot replay that completion. An ambiguous transfer/session outcome instead requires reading the original batch. This is not durable file-transfer recovery. If batch creation's acknowledgment is lost, creation is blocked until the operator reviews recent source/title evidence and opens the original batch.
+
+A lost publication or rollback acknowledgment blocks repeating that mutation while its outcome is unknown. A subsequent read can establish that the original operation committed. An acknowledged publication remains shown as committed even if the next status read fails. Processing failures link to the existing Media Processing controls; retry there and then refresh the original batch. Rollback always requires an explicit confirmation, and published content remains protected.
+
+The native workspace uses the shared Admin session coordinator, pre/post authority reads, bounded request cancellation and synchronous native-field concealment. A session/role/lifecycle change cancels ongoing work and destroys private draft/file state when authority is invalidated. No publish intent or file is stored across reloads.
+
+Acceptance coverage: `tests/e2e/content-import.acceptance.spec.ts` uses isolated API/Prisma fixtures and the existing worker lifecycle to prove processing → ready → explicit publication, failures, ambiguous acknowledgments, duplicate actions, rollback cancellation and EN/AR originals. The test storage endpoint is isolated; it does not activate a real catalog import or claim production R2 processing evidence.
 
 ## Validation and rollback
 

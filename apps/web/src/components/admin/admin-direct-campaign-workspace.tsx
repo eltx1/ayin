@@ -81,6 +81,8 @@ type State = {
   reviewed: boolean;
   generation: number;
   destruction: number;
+  retentionFailure: boolean;
+  retentionLost: boolean;
 };
 type Workspace = State & {
   placements: AdPlacement[];
@@ -116,6 +118,7 @@ export function DirectCampaignWorkspaceProvider({
   const {
     getScopeLease,
     getScopedDraft,
+    getScopedDraftFailure,
     setScopedDraft,
     subscribeScopeInvalidation,
     invalidateScope,
@@ -133,6 +136,8 @@ export function DirectCampaignWorkspaceProvider({
     reviewed: false,
     generation: 0,
     destruction: 0,
+    retentionFailure: false,
+    retentionLost: false,
   });
   const stateRef = useRef(state),
     actor = useRef<DirectAdminSession | null>(null),
@@ -150,13 +155,8 @@ export function DirectCampaignWorkspaceProvider({
   const update = useCallback(
     (patch: Partial<State>) => {
       const next = { ...stateRef.current, ...patch };
-      stateRef.current = next;
-      if (mounted.current) {
-        setState(next);
-        if (patch.snapshot) onCampaignsChange(patch.snapshot.campaigns);
-      }
-      if (actor.current && lease.current)
-        setScopedDraft(
+      if (actor.current && lease.current && !next.retentionLost) {
+        const retained = setScopedDraft(
           draftShelfKey,
           {
             actor: actor.current,
@@ -166,8 +166,16 @@ export function DirectCampaignWorkspaceProvider({
           },
           lease.current,
         );
+        // A scope review also refuses stale writes; it is not a capacity failure.
+        if (getScopeLease() === lease.current) next.retentionFailure = !retained;
+      }
+      stateRef.current = next;
+      if (mounted.current) {
+        setState(next);
+        if (patch.snapshot) onCampaignsChange(patch.snapshot.campaigns);
+      }
     },
-    [setScopedDraft, onCampaignsChange],
+    [setScopedDraft, getScopeLease, onCampaignsChange],
   );
   const conceal = useCallback(
     (denied = false) => {
@@ -226,6 +234,8 @@ export function DirectCampaignWorkspaceProvider({
               pending: null,
               acknowledgment: null,
               destruction: stateRef.current.destruction + 1,
+              retentionFailure: false,
+              retentionLost: false,
             }
           : {}),
       });
@@ -252,6 +262,9 @@ export function DirectCampaignWorkspaceProvider({
     controller.current = pending;
     update({ busy: "read", failure: null });
     const prior = actor.current ? null : getScopedDraft<Retained>(draftShelfKey, currentLease);
+    const retentionLost =
+      stateRef.current.retentionLost ||
+      (!actor.current && getScopedDraftFailure(draftShelfKey, currentLease));
     try {
       const snapshot = await readDirectWorkspace(
         pending.signal,
@@ -282,6 +295,8 @@ export function DirectCampaignWorkspaceProvider({
         pending: unknown,
         acknowledgment: prior?.acknowledgment ?? stateRef.current.acknowledgment,
         failure: unknown ? "uncertain" : null,
+        retentionLost,
+        retentionFailure: retentionLost || stateRef.current.retentionFailure,
       });
     } catch (error) {
       if (pending.signal.aborted || epoch.current !== generation) return;
@@ -308,7 +323,15 @@ export function DirectCampaignWorkspaceProvider({
         update({ busy: null });
       }
     }
-  }, [conceal, update, getScopeLease, getScopedDraft, invalidateScope, refreshAccess]);
+  }, [
+    conceal,
+    update,
+    getScopeLease,
+    getScopedDraft,
+    getScopedDraftFailure,
+    invalidateScope,
+    refreshAccess,
+  ]);
   useEffect(() => {
     mounted.current = true;
     const unsubscribe = subscribeScopeInvalidation((reason) => conceal(reason === "invalidated"));
@@ -328,7 +351,9 @@ export function DirectCampaignWorkspaceProvider({
       } else if (active && initial.current && getScopeLease()) {
         initial.current = false;
         const existing = getScopedDraft<Retained>(draftShelfKey, getScopeLease()!);
-        if (existing) update({ failure: "read" });
+        const retentionLost = getScopedDraftFailure(draftShelfKey, getScopeLease()!);
+        if (existing || retentionLost)
+          update({ failure: "read", retentionLost, retentionFailure: retentionLost });
         else void load();
       } else if (readRevision !== lastRevision.current) {
         lastRevision.current = readRevision;
@@ -346,6 +371,7 @@ export function DirectCampaignWorkspaceProvider({
     access.session,
     getScopeLease,
     getScopedDraft,
+    getScopedDraftFailure,
     update,
   ]);
   function ask(next: Intent) {
@@ -404,7 +430,10 @@ export function DirectCampaignWorkspaceProvider({
     };
   }, []);
   function edit(editor: DirectEditor) {
-    update({ editors: { ...stateRef.current.editors, [editor.kind]: editor } });
+    update({
+      editors: { ...stateRef.current.editors, [editor.kind]: editor },
+      retentionLost: false,
+    });
   }
   function choose(panel: DirectKind, record?: DirectRecord) {
     if (operation.current || stateRef.current.pending) return;
@@ -726,15 +755,20 @@ export function DirectCampaignWorkspaceProvider({
                         "Keep your draft and use the current record as its new baseline. Review all values before explicitly saving again.",
                         "احتفظ بمسودتك واستخدم السجل الحالي أساسًا جديدًا لها. راجع كل القيم قبل الحفظ مجددًا بنفسك.",
                       )
-                    : intent?.kind === "navigate"
+                    : intent?.kind === "navigate" && state.retentionFailure
                       ? copy(
-                          "Your draft may be kept only within this verified admin session. Leaving Admin or an unverified session clears private drafts. Returning requires an explicit read; nothing is submitted automatically.",
-                          "قد تُحفظ المسودة داخل جلسة الإدارة المتحقق منها فقط. تُمسح المسودات الخاصة عند مغادرة الإدارة أو تعذّر التحقق من الجلسة. تتطلب العودة قراءة صريحة؛ لا يُرسل شيء تلقائيًا.",
+                          "This draft cannot be kept across navigation. Leaving discards its unsaved edits; keep editing to shorten or save them first.",
+                          "لا يمكن الاحتفاظ بهذه المسودة عند التنقل. المغادرة تتجاهل التعديلات غير المحفوظة؛ تابع التحرير لتقليلها أو حفظها أولًا.",
                         )
-                      : copy(
-                          "Discard this editor's unsaved changes?",
-                          "تجاهل التغييرات غير المحفوظة في هذا المحرّر؟",
-                        )
+                      : intent?.kind === "navigate"
+                        ? copy(
+                            "Your draft may be kept only within this verified admin session. Leaving Admin or an unverified session clears private drafts. Returning requires an explicit read; nothing is submitted automatically.",
+                            "قد تُحفظ المسودة داخل جلسة الإدارة المتحقق منها فقط. تُمسح المسودات الخاصة عند مغادرة الإدارة أو تعذّر التحقق من الجلسة. تتطلب العودة قراءة صريحة؛ لا يُرسل شيء تلقائيًا.",
+                          )
+                        : copy(
+                            "Discard this editor's unsaved changes?",
+                            "تجاهل التغييرات غير المحفوظة في هذا المحرّر؟",
+                          )
             }
             confirmLabel={
               intent?.kind === "activate"
@@ -840,6 +874,19 @@ function DirectCampaignPanelBody({ kind }: { kind: DirectKind }) {
           {c.busy === "write"
             ? copy("Saving this action…", "جارٍ حفظ الإجراء…")
             : copy("Reading current records…", "جارٍ قراءة السجلات الحالية…")}
+        </StatusNotice>
+      ) : null}
+      {c.retentionFailure || c.retentionLost ? (
+        <StatusNotice tone="warning" announce="assertive">
+          {c.retentionLost
+            ? copy(
+                "The earlier draft could not be retained. No older draft was restored. Start from the current records.",
+                "تعذر الاحتفاظ بالمسودة السابقة. لم تُستعد أي مسودة أقدم. ابدأ من السجلات الحالية.",
+              )
+            : copy(
+                "This draft cannot be kept across navigation. Keep this page open and shorten or save the edits before leaving.",
+                "لا يمكن الاحتفاظ بهذه المسودة عند التنقل. أبقِ الصفحة مفتوحة وقلّل التعديلات أو احفظها قبل المغادرة.",
+              )}
         </StatusNotice>
       ) : null}
       {c.acknowledgment ? (

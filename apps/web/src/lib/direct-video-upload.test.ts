@@ -54,6 +54,58 @@ afterEach(() => {
   vi.useRealTimers();
 });
 describe("prepared upload transport", () => {
+  it("offers one metadata-only completion callback after storage transfer without changing validation", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const completeUpload = vi.fn().mockResolvedValue({ assetId: id, status: "UPLOADED" });
+    const progress = vi.fn();
+    await expect(
+      uploadPreparedVideoDirectly({
+        session,
+        file: new File(["bytes"], "video.mp4"),
+        onProgress: progress,
+        completeUpload,
+      }),
+    ).resolves.toEqual({ assetId: id, status: "UPLOADED" });
+    expect(completeUpload).toHaveBeenCalledExactlyOnceWith({ sessionToken: "token", parts: [] });
+    expect(FakeRequest.instances).toHaveLength(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(progress).toHaveBeenLastCalledWith(100);
+  });
+  it("does not repeat a rejected custom completion or resend storage bytes", async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const denied = new Error("Definitive verification rejection");
+    const completeUpload = vi.fn().mockRejectedValue(denied),
+      progress = vi.fn();
+    await expect(
+      uploadPreparedVideoDirectly({
+        session,
+        file: new File(["bytes"], "video.mp4"),
+        onProgress: progress,
+        completeUpload,
+      }),
+    ).rejects.toBe(denied);
+    expect(completeUpload).toHaveBeenCalledTimes(1);
+    expect(FakeRequest.instances).toHaveLength(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(progress).not.toHaveBeenCalledWith(100);
+  });
+  it("rejects a mismatched custom completion acknowledgment", async () => {
+    const completeUpload = vi
+      .fn()
+      .mockResolvedValue({ assetId: "22222222-2222-4222-8222-222222222222", status: "UPLOADED" });
+    await expect(
+      uploadPreparedVideoDirectly({
+        session,
+        file: new File(["bytes"], "video.mp4"),
+        onProgress: vi.fn(),
+        completeUpload,
+      }),
+    ).rejects.toThrow();
+    expect(completeUpload).toHaveBeenCalledTimes(1);
+    expect(FakeRequest.instances).toHaveLength(1);
+  });
   it("does not retry a rejected part authorization", async () => {
     const fetch = vi
       .fn()
