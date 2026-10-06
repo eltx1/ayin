@@ -18,6 +18,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -25,12 +26,18 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
@@ -44,6 +51,42 @@ class MainActivity : AppCompatActivity() {
     private var shellFullscreen = false
     private var networkCallbackRegistered = false
     private var lastNetworkOnline: Boolean? = null
+    private data class VideoSelection(
+        val view: WebView,
+        val url: String,
+        val types: List<String>,
+        val callback: ValueCallback<Array<Uri>>,
+    )
+    private val fileSelection = FileSelectionLease<VideoSelection>()
+    private var fileValidationJob: Job? = null
+    private val videoPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val selection = fileSelection.receiveResult() ?: return@registerForActivityResult
+        val clip = result.data?.clipData
+        val uri = result.data?.data ?: clip?.takeIf { it.itemCount == 1 }?.getItemAt(0)?.uri
+        val singleSelection = clip == null || (clip.itemCount == 1 && clip.getItemAt(0).uri == uri)
+        val eligible = result.resultCode == RESULT_OK && uri != null &&
+            singleSelection && uri.scheme == "content" &&
+            ownsFileSelection(selection)
+        if (!eligible || uri == null) {
+            fileSelection.completeValidation(selection)?.callback?.onReceiveValue(null)
+            return@registerForActivityResult
+        }
+        fileValidationJob = lifecycleScope.launch {
+            val selected = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (!VideoFileSelection.accepts(contentResolver.getType(uri), selection.types)) {
+                        null
+                    } else {
+                        // A temporary user-selected document grant suffices. Never persist it.
+                        contentResolver.openFileDescriptor(uri, "r")?.use { arrayOf(uri) }
+                    }
+                }.getOrNull()
+            }
+            // Provider I/O may finish after navigation, renderer replacement, or a new request.
+            val current = fileSelection.completeValidation(selection) ?: return@launch
+            current.callback.onReceiveValue(selected.takeIf { ownsFileSelection(current) })
+        }
+    }
 
     private val connectivityManager by lazy {
         getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -135,6 +178,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        cancelFileSelection()
         unregisterNetworkCallback()
         customViewCallback = null
         customView = null
@@ -204,6 +248,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun replaceWebView(target: String, rendererRecovery: Boolean) {
         if (isFinishing || isDestroyed) return
+        cancelFileSelection()
         if (customView != null) hideCustomView()
 
         val previous = webView
@@ -225,8 +270,8 @@ class MainActivity : AppCompatActivity() {
             view,
             "AyinNativeTransport",
             setOf(BuildConfig.AYIN_ORIGIN),
-        ) { _, message, sourceOrigin, isMainFrame, _ ->
-            if (!isMainFrame || !isTrustedOrigin(sourceOrigin)) return@addWebMessageListener
+        ) { sourceView, message, sourceOrigin, isMainFrame, _ ->
+            if (sourceView !== webView || !isMainFrame || !isTrustedOrigin(sourceOrigin)) return@addWebMessageListener
             val data = message.data ?: return@addWebMessageListener
             handleBridgeMessage(data)
         }
@@ -306,6 +351,7 @@ class MainActivity : AppCompatActivity() {
                 val url = payload.optString("url").take(MAX_EXTERNAL_URL_LENGTH)
                 if (!isTrustedWebUrl(url)) return
                 runOnUiThread {
+                    cancelFileSelection()
                     lastTrustedUrl = url
                     debugLog("navigation=$url")
                 }
@@ -332,6 +378,7 @@ class MainActivity : AppCompatActivity() {
         view.url?.takeIf(::isTrustedWebUrl) ?: lastTrustedUrl
 
     private fun loadIntent(intent: Intent) {
+        cancelFileSelection()
         val raw = intent.dataString
         val target = ShellNavigation.normalizeDeepLink(raw) ?: BuildConfig.AYIN_ORIGIN
         directBackArmed =
@@ -489,6 +536,7 @@ class MainActivity : AppCompatActivity() {
     private inner class AyinWebViewClient : WebViewClient() {
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             super.onPageStarted(view, url, favicon)
+            if (view === webView) cancelFileSelection()
             if (isTrustedWebUrl(url)) mainFrameLoadFailed = false
         }
 
@@ -540,6 +588,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private inner class AyinChromeClient : WebChromeClient() {
+        override fun onShowFileChooser(
+            view: WebView,
+            callback: ValueCallback<Array<Uri>>,
+            params: FileChooserParams,
+        ): Boolean {
+            val url = view.url
+            val types = VideoFileSelection.acceptedTypes(params.acceptTypes)
+            if (view !== webView || url == null || !isTrustedWebUrl(url) ||
+                params.mode != FileChooserParams.MODE_OPEN || params.isCaptureEnabled || types.isEmpty()
+            ) {
+                callback.onReceiveValue(null)
+                return true
+            }
+            val selection = VideoSelection(view, url, types, callback)
+            // A canceled request keeps its slot until its system result arrives.
+            // Otherwise a late result from A could satisfy a new callback B.
+            if (!fileSelection.begin(selection)) {
+                callback.onReceiveValue(null)
+                return true
+            }
+            val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = types.singleOrNull() ?: "video/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            try {
+                videoPicker.launch(picker)
+            } catch (_: RuntimeException) {
+                fileSelection.launchFailed()?.callback?.onReceiveValue(null)
+            }
+            return true
+        }
+
         override fun onShowCustomView(view: View, callback: CustomViewCallback) {
             if (customView != null) {
                 callback.onCustomViewHidden()
@@ -560,6 +643,16 @@ class MainActivity : AppCompatActivity() {
 
         override fun onHideCustomView() = hideCustomView()
     }
+
+    private fun cancelFileSelection() {
+        fileValidationJob?.cancel()
+        fileValidationJob = null
+        fileSelection.cancel()?.callback?.onReceiveValue(null)
+    }
+
+    private fun ownsFileSelection(selection: VideoSelection): Boolean =
+        !isFinishing && !isDestroyed && selection.view === webView &&
+            webView.url == selection.url && isTrustedWebUrl(selection.url)
 
     private fun hideCustomView() {
         val view = customView ?: return

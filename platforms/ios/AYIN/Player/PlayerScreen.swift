@@ -12,7 +12,7 @@ struct PlayerScreen: View {
 
     private var playerSessionIdentity: String {
         if session.isRestoring { return "restoring" }
-        return session.identity?.account.id ?? "guest"
+        return [session.identity?.account.id ?? "guest", session.identity?.profile.id ?? "", session.token ?? ""].joined(separator: ":")
     }
 
     var body: some View {
@@ -71,8 +71,27 @@ struct PlayerScreen: View {
             }
             .padding()
         }
+        .overlay(alignment: .bottom) {
+            if model.progressNeedsReview {
+                VStack(spacing: 8) {
+                    Text("Playback continues. Review saved progress before saving more.")
+                        .font(.callout)
+                    Button(model.isReviewingProgress ? "Reviewing…" : "Review saved progress") {
+                        model.reviewProgress()
+                    }
+                    .disabled(model.isReviewingProgress)
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+                .background(.ultraThinMaterial)
+                .padding()
+            }
+        }
         .task(id: playerSessionIdentity) {
-            guard !session.isRestoring else { return }
+            guard !session.isRestoring else {
+                await model.stop(saveProgress: false)
+                return
+            }
             await model.load(
                 token: session.isAuthenticated ? session.token : nil,
                 profileId: session.isAuthenticated ? session.identity?.profile.id : nil
