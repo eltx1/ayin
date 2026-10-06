@@ -209,6 +209,7 @@ databaseDescribe("Dormant upload session inspection", () => {
     expect(result.statusCode).toBe(200);
     expect(result.headers["cache-control"]).toBe("private, no-store");
     expect(result.json()).toMatchObject({
+      protocolVersion: 1,
       actorAccountId: f.actor.accountId,
       channelId: f.owner.channelId,
       sessionId: f.sessionId,

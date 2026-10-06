@@ -24,6 +24,11 @@ enum MediaUploadSessionState {
 
 model MediaUploadSession {
   id                       String                      @id @default(uuid()) @db.Uuid
+  creationRequestId        String?                     @db.Uuid
+  creationRequestDigest    String?                     @db.Char(64)
+  // Explicit server reservation witness; null legacy history stays unknown.
+  grantlessReservationId   String?                     @db.Uuid
+  grantReservationCount    Int                         @default(0)
   sourceAssetId            String?                     @unique @db.Uuid
   initiatingAccountId      String?                     @db.Uuid
   channelId                String                      @db.Uuid
@@ -44,18 +49,46 @@ model MediaUploadSession {
   hardExpiresAt            DateTime
   // Future issuance must persist the maximum signed grant expiry atomically.
   // Null is unknown, never proof that no grant/in-flight write exists.
-  lastGrantExpiresAt        DateTime?
-  grantsRevokedAt           DateTime?
-  cleanupRequestedAt        DateTime?
-  cleanupRetainUntil        DateTime?
+  lastGrantExpiresAt       DateTime?
+  grantsRevokedAt          DateTime?
+  cleanupRequestedAt       DateTime?
+  cleanupRetainUntil       DateTime?
 
-  sourceAsset       MediaAsset? @relation(fields: [sourceAssetId], references: [id], onDelete: SetNull)
-  initiatingAccount Account?    @relation(fields: [initiatingAccountId], references: [id], onDelete: SetNull)
+  operations        MediaUploadOperation[]
+  sourceAsset       MediaAsset?            @relation(fields: [sourceAssetId], references: [id], onDelete: SetNull)
+  initiatingAccount Account?               @relation(fields: [initiatingAccountId], references: [id], onDelete: SetNull)
 
   // Snapshot addresses survive reference removal for later, explicit cleanup.
   // SET NULL is loss of recoverability, never evidence of privacy completion.
+  @@unique([initiatingAccountId, creationRequestId])
   @@index([initiatingAccountId, channelId, createdAt])
   @@index([state, hardExpiresAt])
   @@index([cleanupRetainUntil])
   @@index([channelId, state, hardExpiresAt])
+}
+
+// Bounded by the command service; no signed URLs or client-supplied provider IDs.
+enum MediaUploadOperationStatus {
+  RESERVED
+  DISPATCHED
+  SUCCEEDED
+  UNKNOWN
+}
+
+model MediaUploadOperation {
+  id                String                     @id @default(uuid()) @db.Uuid
+  sessionId         String                     @db.Uuid
+  requestId         String                     @db.Uuid
+  kind              String                     @db.VarChar(16)
+  requestDigest     String                     @db.Char(64)
+  expectedRevision  Int
+  status            MediaUploadOperationStatus @default(RESERVED)
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  dispatchStartedAt DateTime?
+  grantIssuedAt     DateTime?
+  grantExpiresAt    DateTime?
+  session           MediaUploadSession         @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, requestId])
 }

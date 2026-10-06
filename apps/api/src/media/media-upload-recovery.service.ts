@@ -84,6 +84,7 @@ export class MediaUploadRecoveryService {
         );
     }
     return {
+      protocolVersion: 1 as const,
       actorAccountId: actor.accountId,
       channelId: initial.channelId,
       sessionId: initial.id,

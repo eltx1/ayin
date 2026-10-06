@@ -1,3 +1,5 @@
+import { MediaUploadRecoveryCommandsService } from "../media/media-upload-recovery-commands.service.js";
+import { createRecoverableDraftSchema } from "../media/media-upload-recovery.validation.js";
 import {
   Body,
   Controller,
@@ -56,6 +58,8 @@ const thumbnailCompleteSchema = z.object({ assetId: z.string().uuid() });
 export class QuickUploadController {
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(MediaUploadRecoveryCommandsService)
+    private readonly recovery: MediaUploadRecoveryCommandsService,
     @Inject(QuickUploadService) private readonly quickUpload: QuickUploadService,
     @Inject(VideoMetadataService) private readonly metadata: VideoMetadataService,
   ) {}
@@ -73,6 +77,47 @@ export class QuickUploadController {
       .safeParse(query);
     if (!parsed.success) throw new HttpException("Invalid upload history query.", 400);
     return this.run(() => this.quickUpload.uploadHistory(request.ayinAuth.accountId, parsed.data));
+  }
+
+  @Get("recoverable-drafts/:requestId")
+  @Header("Cache-Control", "private, no-store")
+  async recoverableDraftOutcome(
+    @Req() request: AuthenticatedRequest,
+    @Param("requestId") requestId: string,
+    @Query() query: unknown,
+  ) {
+    if (
+      !z.string().uuid().safeParse(requestId).success ||
+      !z.object({}).strict().safeParse(query).success
+    )
+      throw new HttpException("Invalid saved draft outcome request.", 400);
+    return this.run(() => this.recovery.creationOutcome(request.ayinAuth, requestId.toLowerCase()));
+  }
+
+  @Post("recoverable-drafts")
+  @Header("Cache-Control", "private, no-store")
+  async createRecoverableDraft(
+    @Req() request: AuthenticatedRequest,
+    @Body() body: unknown,
+    @Query() query: unknown,
+  ) {
+    const parsed = createRecoverableDraftSchema.safeParse(body);
+    if (!parsed.success || !z.object({}).strict().safeParse(query).success)
+      throw new HttpException(
+        {
+          error: {
+            code: "INVALID_RECOVERABLE_DRAFT",
+            message: "Check the recoverable upload request.",
+          },
+        },
+        400,
+      );
+    return this.run(() =>
+      this.recovery.createDraft(request.ayinAuth, {
+        ...parsed.data,
+        durationMs: parsed.data.durationMs ?? null,
+      }),
+    );
   }
 
   @Post("drafts")

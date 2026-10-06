@@ -1,3 +1,8 @@
+import {
+  DURABLE_UPLOAD_SETTLEMENT,
+  UnsupportedDurableUploadSettlement,
+} from "./durable-upload-settlement.js";
+import { MediaUploadRecoveryCommandsService } from "./media-upload-recovery-commands.service.js";
 import { Module } from "@nestjs/common";
 
 import { AuthModule } from "../auth/auth.module.js";
@@ -48,6 +53,8 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     UploadRateLimiter,
     MediaUploadService,
     MediaUploadRecoveryService,
+    MediaUploadRecoveryCommandsService,
+    { provide: DURABLE_UPLOAD_SETTLEMENT, useClass: UnsupportedDurableUploadSettlement },
     MediaProcessingQueueService,
     MediaProcessingLifecycleService,
     MediaProcessingStorageService,
@@ -64,6 +71,7 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MEDIA_STORAGE_ADAPTER,
     MEDIA_STORAGE_CONFIG,
     MediaUploadService,
+    MediaUploadRecoveryCommandsService,
     MediaProcessingQueueService,
     MediaProcessingLifecycleService,
     MediaProcessingStorageService,

@@ -1,6 +1,7 @@
 import { QuickUpload } from "@/components/upload/quick-upload";
 
 import { UploadHistory } from "@/components/upload/upload-history";
+import { UploadRecovery } from "@/components/upload/upload-recovery";
 
 export default function UploadPage() {
   return (
@@ -10,6 +11,7 @@ export default function UploadPage() {
       }}
     >
       <QuickUpload />
+      <UploadRecovery />
       <UploadHistory />
     </main>
   );

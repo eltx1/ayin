@@ -1,0 +1,24 @@
+.facts[hidden] {
+  display: none;
+}
+.picker {
+  display: grid;
+  gap: var(--space-3);
+}
+.picker input {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  color: inherit;
+  font: inherit;
+}
+.picker input::file-selector-button {
+  max-inline-size: 100%;
+  margin-inline-end: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  color: inherit;
+  background: var(--surface-raised);
+  font: inherit;
+}

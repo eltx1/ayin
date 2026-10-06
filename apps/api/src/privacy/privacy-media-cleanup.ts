@@ -424,6 +424,9 @@ export async function minimizeCompletedUploadCleanup(db: PrismaClient, now: Date
         where: { uploadSessionId: session.id, status: "DONE" },
         data: { target: null, providerUploadId: null, sourceAssetId: null },
       });
+      // Command hashes/IDs expire only with the verified terminal session.
+      // No cascade may erase a live or unresolved operation/cleanup obligation.
+      await tx.mediaUploadOperation.deleteMany({ where: { sessionId: session.id } });
       // Snapshot job IDs remain for idempotency/audit. No FK cascade can erase work.
       await tx.mediaUploadSession.delete({ where: { id: session.id } });
     });

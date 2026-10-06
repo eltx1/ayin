@@ -86,11 +86,13 @@ export interface MediaStorageAdapter {
     uploadId: string;
     partNumber: number;
     expiresInSeconds: number;
+    now?: Date;
   }): Promise<{ url: string; expiresAt: Date }>;
   authorizeSinglePut(input: {
     key: string;
     contentType: string;
     expiresInSeconds: number;
+    now?: Date;
   }): Promise<{ url: string; expiresAt: Date }>;
   // Resolve only after observing every page within provider/time/size bounds.
   // This is not a transactional snapshot; concurrent storage changes remain possible.
