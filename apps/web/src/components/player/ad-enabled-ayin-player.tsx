@@ -27,6 +27,12 @@ function mobileImaRequiresGesture(): boolean {
 }
 
 export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
+  // Creator TV replaces programs in the same tree. A new video needs fresh
+  // decisions, media references and break state; token/URL refreshes do not.
+  return <AdEnabledPlayerSession key={props.videoId} {...props} />;
+}
+
+function AdEnabledPlayerSession(props: AyinPlayerProps) {
   const [decision, setDecision] = useState<VideoAdDecision | null>(null);
   const [decisionLoaded, setDecisionLoaded] = useState(false);
   const [targetsReady, setTargetsReady] = useState(false);
@@ -42,9 +48,20 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   const midRollPlayedRef = useRef(false);
   const postRollPlayedRef = useRef(false);
   const requestIdRef = useRef(crypto.randomUUID());
+  const lifecycleRef = useRef<{ active: boolean; busy: boolean }>({ active: false, busy: false });
   const playbackIdentity = `${props.videoId}:${props.sourceUrl}:${props.adaptiveSourceUrl ?? ""}`;
   const playbackReady = playbackReadyFor === playbackIdentity;
   const onPlaybackReady = props.onPlaybackReady;
+
+  useEffect(() => {
+    const lifecycle = { active: true, busy: false };
+    lifecycleRef.current = lifecycle;
+    return () => {
+      lifecycle.active = false;
+      serviceRef.current?.destroy();
+      serviceRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -101,20 +118,25 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
   );
 
   const attemptContentPlayback = useCallback(async () => {
+    const lifecycle = lifecycleRef.current;
     const video = contentVideoRef.current;
-    if (!video) return false;
+    if (!video || !lifecycle.active) return false;
     try {
       await video.play();
+      if (!lifecycle.active) return false;
       setAutoplayBlocked(false);
       return true;
     } catch {
+      if (!lifecycle.active) return false;
       // Browsers commonly permit muted autoplay before a user gesture.
       video.muted = true;
       try {
         await video.play();
+        if (!lifecycle.active) return false;
         setAutoplayBlocked(false);
         return true;
       } catch {
+        if (!lifecycle.active) return false;
         setAutoplayBlocked(true);
         return false;
       }
@@ -123,14 +145,18 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
 
   const playAd = useCallback(
     async (slot: VideoAdSlot, playbackIntent?: VideoAdPlaybackIntent) => {
+      const lifecycle = lifecycleRef.current;
       const adContainer = adContainerRef.current;
       const contentVideo = contentVideoRef.current;
-      if (!decision || !adContainer || !contentVideo) return false;
+      if (!lifecycle.active || lifecycle.busy || !decision || !adContainer || !contentVideo)
+        return false;
       if (!canServeSessionAd(decision.frequencyCapPerSession)) return false;
+      lifecycle.busy = true;
       const service = serviceRef.current ?? new GoogleImaVideoAdService();
       serviceRef.current = service;
       try {
         await service.initialize(adContainer, contentVideo);
+        if (!lifecycle.active) return false;
         setAdActive(true);
         setStatus("Advertisement");
         contentVideo.pause();
@@ -138,12 +164,16 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
           slot,
           decision.tagUrl,
           {
-            onEvent: (type, errorCode) => emit(slot, type, errorCode),
+            onEvent: (type, errorCode) => {
+              if (lifecycle.active) emit(slot, type, errorCode);
+            },
             onContentPause: () => {
+              if (!lifecycle.active) return;
               contentVideo.pause();
               setAdActive(true);
             },
             onContentResume: () => {
+              if (!lifecycle.active) return;
               setAdActive(false);
               setStatus(null);
               if (slot !== "POST_ROLL") void attemptContentPlayback();
@@ -153,10 +183,13 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
         );
         return true;
       } catch {
+        if (!lifecycle.active) return false;
         emit(slot, "ERROR", "IMA_PLAYBACK_EXCEPTION");
         setAdActive(false);
         setStatus(null);
         return false;
+      } finally {
+        lifecycle.busy = false;
       }
     },
     [attemptContentPlayback, decision, emit],
@@ -164,9 +197,11 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
 
   const activatePlayback = useCallback(
     async (autoPlayAttempt = false) => {
+      const lifecycle = lifecycleRef.current;
       const contentVideo = contentVideoRef.current;
       const adContainer = adContainerRef.current;
-      if (!contentVideo || !adContainer || !playbackReady) return;
+      if (!lifecycle.active || !contentVideo || !adContainer || !playbackReady || lifecycle.busy)
+        return;
       setActivated(true);
       setAutoplayBlocked(false);
 
@@ -176,6 +211,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
           autoPlay: autoPlayAttempt,
           muted: contentVideo.muted,
         });
+        if (!lifecycle.active) return;
         if (served) return;
       }
       await attemptContentPlayback();
@@ -215,6 +251,7 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
     const onTimeUpdate = () => {
       if (
         !decision.midRollEnabled ||
+        lifecycleRef.current.busy ||
         midRollPlayedRef.current ||
         contentVideo.currentTime < decision.midRollEverySec
       ) {
@@ -237,14 +274,6 @@ export function AdEnabledAyinPlayer(props: AyinPlayerProps) {
       contentVideo.removeEventListener("ended", onEnded);
     };
   }, [activated, decision, playAd]);
-
-  useEffect(
-    () => () => {
-      serviceRef.current?.destroy();
-      serviceRef.current = null;
-    },
-    [],
-  );
 
   const adEligible = Boolean(
     decision && (decision.preRollEnabled || decision.midRollEnabled || decision.postRollEnabled),
