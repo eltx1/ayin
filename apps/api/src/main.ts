@@ -53,6 +53,7 @@ async function bootstrap(): Promise<void> {
       "x-ayin-auth-transport",
       "x-ayin-expected-account",
       "x-ayin-expected-session",
+      "x-ayin-locale",
       "x-request-id",
       "x-correlation-id",
     ],
