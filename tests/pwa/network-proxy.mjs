@@ -10,8 +10,8 @@ if (
 )
   throw Error("PWA proxy requires explicit isolated local E2E configuration");
 const source = await readFile("apps/web/public/sw.js", "utf8");
-let mode = "v3";
-const modes = new Set(["v3", "v4", "late", "legacy"]);
+let mode = "v4";
+const modes = new Set(["v4", "v5", "late", "legacy"]);
 const legacy = `
 const VERSION = 'ayin-pwa-v2-fixture';
 self.addEventListener('install', e => e.waitUntil(caches.open('ayin-pwa-v2-read').then(c => c.put('/account', new Response('isolated-legacy-private-sentinel'))).then(() => self.skipWaiting())));
@@ -19,17 +19,24 @@ self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 `;
 function worker() {
   if (mode === "legacy") return legacy;
-  if (mode === "v3") return source;
-  let result = source.replace(
-    '"ayin-pwa-v3"',
-    `"ayin-pwa-${mode === "v4" ? "v4-test" : "v5-late-test"}"`,
-  );
+  let result =
+    mode === "v4"
+      ? source
+      : source.replace('"ayin-pwa-v4"', `"ayin-pwa-${mode === "v5" ? "v5-test" : "v6-late-test"}"`);
   if (mode === "late")
     result = result.replace(
       "event.waitUntil(self.skipWaiting());",
       "event.waitUntil(new Promise(resolve => setTimeout(resolve, 15000)).then(() => self.skipWaiting()));",
     );
-  return result;
+  // Test-only barrier: observe the actual worker's queued writes without sleeps.
+  return (
+    result +
+    `\nself.addEventListener('message', event => {
+    if (event.data?.type === 'AYIN_TEST_DRAIN_CACHE') {
+      event.waitUntil(pendingCacheWrite.then(() => event.ports[0]?.postMessage('drained')));
+    }
+  });`
+  );
 }
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1:3100");
@@ -53,10 +60,27 @@ const server = http.createServer((req, res) => {
       .end(worker());
     return;
   }
+  if (
+    /^\/_next\/static\/__pwa_fixture\/[a-z0-9-]+\.js$/.test(url.pathname) &&
+    req.method === "GET"
+  ) {
+    res
+      .writeHead(200, {
+        "content-type": "application/javascript",
+        "cache-control": "public, max-age=31536000, immutable",
+        ...(url.pathname.endsWith("/vary.js") ? { vary: "x-ayin-pwa-variant" } : {}),
+      })
+      .end(`/* isolated public build fixture: ${url.pathname} */`);
+    return;
+  }
   const upstream = http.request(
     { hostname: "127.0.0.1", port: 3102, method: req.method, path: req.url, headers: req.headers },
     (response) => {
-      res.writeHead(response.statusCode ?? 502, response.headers);
+      // Exercise real Cache API Vary matching for a pinned shell asset too.
+      res.writeHead(response.statusCode ?? 502, {
+        ...response.headers,
+        ...(url.pathname === "/icons/ayin-192.svg" ? { vary: "x-ayin-pwa-variant" } : {}),
+      });
       response.pipe(res);
     },
   );

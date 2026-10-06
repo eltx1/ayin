@@ -24,7 +24,7 @@ test("PWA stores only public assets and displays a neutral offline page", async 
     }
     return { names, urls };
   });
-  expect(cached.names).toEqual(["ayin-pwa-v3-static"]);
+  expect(cached.names).toEqual(["ayin-pwa-v4-static"]);
   expect(cached.urls).toContain("/offline.html");
   expect(
     cached.urls.every(

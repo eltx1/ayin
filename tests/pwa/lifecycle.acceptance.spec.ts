@@ -12,7 +12,7 @@ test.beforeEach(async ({ request }) => {
   execFileSync(process.execPath, [path.resolve("tests/e2e/db-helper.mjs"), "reset", "{}"], {
     env: process.env,
   });
-  expect((await request.post(`${WEB}/__pwa_fixture/control?mode=v3`)).status()).toBe(204);
+  expect((await request.post(`${WEB}/__pwa_fixture/control?mode=v4`)).status()).toBe(204);
 });
 async function controlled(page: Page) {
   await page.evaluate(async () => {
@@ -22,7 +22,7 @@ async function controlled(page: Page) {
     .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
     .toBe(true);
 }
-async function update(page: Page, mode: "v3" | "v4" | "late") {
+async function update(page: Page, mode: "v4" | "v5" | "late") {
   expect((await page.request.post(`${WEB}/__pwa_fixture/control?mode=${mode}`)).status()).toBe(204);
   await page.evaluate(async () => {
     await (await navigator.serviceWorker.ready).update();
@@ -86,7 +86,7 @@ for (const locale of ["en", "ar"] as const)
       dialogs++;
       await dialog.dismiss();
     });
-    await update(page, "v4");
+    await update(page, "v5");
     const accept = ar ? "تحديث وإعادة تحميل" : "Update and reload";
     await expect(page.getByRole("button", { name: accept, exact: true })).toBeEnabled();
     await expect(other.getByRole("button", { name: accept, exact: true })).toBeEnabled();
@@ -103,7 +103,7 @@ for (const locale of ["en", "ar"] as const)
     expect(otherNavigations).toBe(0);
     await expect
       .poll(async () => (await cacheState(page)).names)
-      .toEqual(["ayin-pwa-v4-test-static"]);
+      .toEqual(["ayin-pwa-v5-test-static"]);
     await page.screenshot({
       path: info.outputPath(`design-pwa-refresh-390-${locale}.png`),
       fullPage: true,
@@ -137,8 +137,8 @@ for (const locale of ["en", "ar"] as const)
           scope:
             "Chromium production-bundle loopback software acceptance; worker version fixture only",
           locale,
-          initialVersion: "v3",
-          activatedVersion: "v4-test",
+          initialVersion: "v4",
+          activatedVersion: "v5-test",
           dismissedNativeWarnings: dialogs,
           explicitSavedDraftWrites: writes,
           explicitRefreshNavigations: firstNavigations,
@@ -172,7 +172,7 @@ test("late actual activation after the deadline offers refresh without automatic
   expect(navigations).toBe(0);
   await expect
     .poll(async () => (await cacheState(page)).names)
-    .toEqual(["ayin-pwa-v5-late-test-static"]);
+    .toEqual(["ayin-pwa-v6-late-test-static"]);
   await writeFile(
     info.outputPath("pwa-lifecycle-late.json"),
     JSON.stringify(
@@ -187,7 +187,7 @@ test("late actual activation after the deadline offers refresh without automatic
   );
 });
 
-test("real v3 migration purges controlled unsafe legacy caches and preserves foreign ownership", async ({
+test("real current-worker migration purges controlled unsafe legacy caches and preserves foreign ownership", async ({
   page,
 }, info) => {
   expect((await page.request.post(`${WEB}/__pwa_fixture/control?mode=legacy`)).status()).toBe(204);
@@ -203,8 +203,8 @@ test("real v3 migration purges controlled unsafe legacy caches and preserves for
   page.on("request", (r) => {
     if (r.isNavigationRequest() && r.frame() === page.mainFrame()) navigations++;
   });
-  await update(page, "v3");
-  await expect.poll(async () => (await cacheState(page)).names).toEqual(["ayin-pwa-v3-static"]);
+  await update(page, "v4");
+  await expect.poll(async () => (await cacheState(page)).names).toEqual(["ayin-pwa-v4-static"]);
   expect(await page.evaluate(async () => caches.has("foreign-app-static"))).toBe(true);
   expect(navigations).toBe(0);
   await expect(page.getByRole("button", { name: "Reload AYIN", exact: true })).toBeEnabled();
@@ -235,7 +235,7 @@ test("authenticated reads, logout and reopened offline navigation expose only th
   const response = await page.request.post(`${API}/auth/logout`, { headers: { origin: WEB } });
   expect(response.ok()).toBe(true);
   const cached = await cacheState(page);
-  expect(cached.names).toEqual(["ayin-pwa-v3-static"]);
+  expect(cached.names).toEqual(["ayin-pwa-v4-static"]);
   expect(
     cached.urls.every(
       (url) =>
