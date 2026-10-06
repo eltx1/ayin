@@ -24,13 +24,15 @@ import { MediaProcessingStorageService } from "./media-processing-storage.servic
 import { MediaProcessingWorkerService } from "./media-processing-worker.service.js";
 import { MediaUploadController } from "./media-upload.controller.js";
 import { MediaUploadService } from "./media-upload.service.js";
+import { MediaUploadRecoveryController } from "./media-upload-recovery.controller.js";
+import { MediaUploadRecoveryService } from "./media-upload-recovery.service.js";
 import { R2MediaStorageAdapter } from "./r2-media-storage.adapter.js";
 import { UploadRateLimiter } from "./upload-rate-limiter.js";
 import { UploadSessionTokenService } from "./upload-session-token.service.js";
 
 @Module({
   imports: [AuthModule, DatabaseModule, PlatformConfigModule],
-  controllers: [MediaUploadController],
+  controllers: [MediaUploadController, MediaUploadRecoveryController],
   providers: [
     { provide: MEDIA_STORAGE_CONFIG, useFactory: () => loadMediaStorageConfig() },
     {
@@ -45,6 +47,7 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     UploadSessionTokenService,
     UploadRateLimiter,
     MediaUploadService,
+    MediaUploadRecoveryService,
     MediaProcessingQueueService,
     MediaProcessingLifecycleService,
     MediaProcessingStorageService,

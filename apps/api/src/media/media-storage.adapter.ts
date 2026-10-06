@@ -31,7 +31,7 @@ export type MediaStorageObservationCode =
 export class MediaStorageObservationError extends Error {
   constructor(
     readonly code: MediaStorageObservationCode,
-    readonly operation: "listParts" | "listMultipartUploads",
+    readonly operation: "listParts" | "listMultipartUploads" | "deletePrefix",
     readonly providerStatus?: number,
   ) {
     super(`The media storage observation could not be verified (${code}).`);
@@ -39,9 +39,46 @@ export class MediaStorageObservationError extends Error {
   }
 }
 
+// This is a trusted provider-adapter contract, never a client assertion or a
+// duration-based assumption. R2 currently implements NO settlement verifier.
+// A future implementation requires externally certified replay/in-flight-create,
+// PUT/part/complete settlement semantics and must bind every field below.
+export interface UploadCleanupSettlementBinding {
+  provider: "r2" | "development";
+  operationKey: string;
+  kind: "OBJECT" | "MULTIPART" | "ALLOCATION";
+  key: string;
+  uploadId: string | null;
+  sessionId: string;
+  sessionRevision: number;
+  mode: "SINGLE" | "MULTIPART";
+  grantsRevokedAt: string;
+  lastGrantExpiresAt: string | null;
+  leaseToken: string;
+  attempt: number;
+}
+
+export interface UploadCleanupSettlementEvidence {
+  binding: UploadCleanupSettlementBinding;
+  // Both claims are necessary: a delayed create or complete can recreate data.
+  conclusion: "NO_FUTURE_ALLOCATION_OR_WRITE";
+  provenance: {
+    provider: "r2" | "development";
+    verifierVersion: "AYIN_UPLOAD_SETTLEMENT_V1";
+    proofReference: string;
+  };
+  verifiedAt: Date;
+}
+
 export interface MediaStorageAdapter {
   readonly kind: "r2" | "development";
   readonly available: boolean;
+
+  // Absence, DELETE/abort success and URL expiry never substitute for evidence.
+  // Unsupported providers leave durable obligations pending/FAILED for review.
+  verifyUploadCleanupSettlement?(
+    binding: UploadCleanupSettlementBinding,
+  ): Promise<UploadCleanupSettlementEvidence | null>;
 
   createMultipartUpload(input: { key: string; contentType: string }): Promise<{ uploadId: string }>;
   authorizeMultipartPart(input: {

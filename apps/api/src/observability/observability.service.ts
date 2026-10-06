@@ -1,3 +1,4 @@
+import { publicMediaProcessingCounts } from "../media/media-processing-status.js";
 import { readFile } from "node:fs/promises";
 
 import { Inject, Injectable } from "@nestjs/common";
@@ -132,7 +133,7 @@ export class ObservabilityService {
     const [queueRows, oldestQueued, failed, retries, adErrors] = await Promise.all([
       this.database.client.mediaProcessingJob.groupBy({ by: ["status"], _count: { _all: true } }),
       this.database.client.mediaProcessingJob.findFirst({
-        where: { status: "QUEUED" },
+        where: { status: { in: ["QUEUED", "INTEGRITY_QUEUED"] } },
         orderBy: { queuedAt: "asc" },
         select: { queuedAt: true },
       }),
@@ -145,7 +146,9 @@ export class ObservabilityService {
         },
       }),
     ]);
-    const queueCounts = Object.fromEntries(queueRows.map((row) => [row.status, row._count._all]));
+    const queueCounts = publicMediaProcessingCounts(
+      Object.fromEntries(queueRows.map((row) => [row.status, row._count._all])),
+    );
     const activeJobs = ACTIVE_MEDIA_STATUSES.reduce(
       (sum, status) => sum + (queueCounts[status] ?? 0),
       0,

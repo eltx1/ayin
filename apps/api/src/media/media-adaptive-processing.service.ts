@@ -1,3 +1,4 @@
+import { capturedMediaClaim } from "./media-output-attempt.js";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -22,6 +23,7 @@ import {
 } from "./media-hls-manifest.js";
 import { MediaHlsSettingsService } from "./media-hls-settings.service.js";
 import { MediaHlsTranscoderService } from "./media-hls-transcoder.service.js";
+import { assertJobInputIntegrity } from "./media-processing-integrity.js";
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
 import type { MediaProbeMetadata } from "./media-probe.js";
@@ -49,6 +51,7 @@ export class MediaAdaptiveProcessingService {
     signal?: AbortSignal;
   }): Promise<boolean> {
     input.signal?.throwIfAborted();
+    const requiredIntegrity = assertJobInputIntegrity(input.job);
     const settings = await this.settings.resolve(input.job);
     if (!settings.enabled) return false;
     const { width, height, durationMs } = input.canonicalMetadata;
@@ -77,6 +80,7 @@ export class MediaAdaptiveProcessingService {
       generationId: generation.id,
       jobId: input.job.id,
       workerId: input.workerId,
+      ...capturedMediaClaim(input.job),
     } as const;
     this.requireAdaptiveOwnership(
       await this.adaptiveLifecycle.markFallbackReadyIfOwned(ownedGeneration),
@@ -84,6 +88,7 @@ export class MediaAdaptiveProcessingService {
     generation = { ...generation, fallbackStatus: "READY" };
 
     if (
+      !requiredIntegrity &&
       generation.status === "READY" &&
       (await this.verifyReadyGeneration(generation, input.canonicalMetadata.hasAudio))
     ) {
@@ -101,6 +106,7 @@ export class MediaAdaptiveProcessingService {
         input.signal?.throwIfAborted();
         activeRendition = rendition;
         if (
+          !requiredIntegrity &&
           rendition.status === "READY" &&
           (await this.verifyRemoteRendition(generation, rendition))
         ) {
@@ -108,7 +114,7 @@ export class MediaAdaptiveProcessingService {
         }
 
         await this.requireOwnedStage(
-          input.job.id,
+          input.job,
           input.workerId,
           `HLS_${rendition.identity.toUpperCase()}_TRANSCODING`,
           95,
@@ -147,7 +153,7 @@ export class MediaAdaptiveProcessingService {
           );
 
           await this.requireOwnedStage(
-            input.job.id,
+            input.job,
             input.workerId,
             `HLS_${rendition.identity.toUpperCase()}_UPLOADING`,
             96,
@@ -166,6 +172,9 @@ export class MediaAdaptiveProcessingService {
                 channelId: generation.channelId,
                 videoId: generation.videoId,
                 generation: generation.generation,
+                ...(generation.outputAttemptId
+                  ? { outputAttemptId: generation.outputAttemptId }
+                  : {}),
               },
               rendition.identity,
               segment.sequence,
@@ -179,7 +188,7 @@ export class MediaAdaptiveProcessingService {
           );
 
           await this.requireOwnedStage(
-            input.job.id,
+            input.job,
             input.workerId,
             `HLS_${rendition.identity.toUpperCase()}_VERIFYING`,
             97,
@@ -215,7 +224,7 @@ export class MediaAdaptiveProcessingService {
       const masterPath = join(hlsRoot, "master.m3u8");
       await writeFile(masterPath, master, { encoding: "utf8", flag: "w" });
 
-      await this.requireOwnedStage(input.job.id, input.workerId, "HLS_MASTER_UPLOADING", 98);
+      await this.requireOwnedStage(input.job, input.workerId, "HLS_MASTER_UPLOADING", 98);
       this.requireAdaptiveOwnership(
         await this.adaptiveLifecycle.setMasterStatusIfOwned({
           ...ownedGeneration,
@@ -228,7 +237,7 @@ export class MediaAdaptiveProcessingService {
         HLS_PLAYLIST_CONTENT_TYPE,
       );
 
-      await this.requireOwnedStage(input.job.id, input.workerId, "HLS_MASTER_VERIFYING", 99);
+      await this.requireOwnedStage(input.job, input.workerId, "HLS_MASTER_VERIFYING", 99);
       this.requireAdaptiveOwnership(
         await this.adaptiveLifecycle.setMasterStatusIfOwned({
           ...ownedGeneration,
@@ -289,6 +298,7 @@ export class MediaAdaptiveProcessingService {
             channelId: generation.channelId,
             videoId: generation.videoId,
             generation: generation.generation,
+            ...(generation.outputAttemptId ? { outputAttemptId: generation.outputAttemptId } : {}),
           },
           rendition.identity,
           sequence,
@@ -339,6 +349,7 @@ export class MediaAdaptiveProcessingService {
             channelId: generation.channelId,
             videoId: generation.videoId,
             generation: generation.generation,
+            ...(generation.outputAttemptId ? { outputAttemptId: generation.outputAttemptId } : {}),
           },
           rendition.identity,
           sequence,
@@ -366,6 +377,7 @@ export class MediaAdaptiveProcessingService {
           channelId: generation.channelId,
           videoId: generation.videoId,
           generation: generation.generation,
+          ...(generation.outputAttemptId ? { outputAttemptId: generation.outputAttemptId } : {}),
         },
         rendition.identity,
         segment.sequence,
@@ -402,13 +414,14 @@ export class MediaAdaptiveProcessingService {
   }
 
   private async requireOwnedStage(
-    jobId: string,
+    job: MediaProcessingJob,
     workerId: string,
     stage: string,
     progressPercent: number,
   ): Promise<void> {
     const updated = await this.processingLifecycle.setOwnedStage({
-      jobId,
+      jobId: job.id,
+      ...capturedMediaClaim(job),
       workerId,
       status: stage.includes("VERIFY")
         ? "VERIFYING"

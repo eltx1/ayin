@@ -1,3 +1,4 @@
+import { redactCancelledInputIntegrityInTransaction } from "../media/media-processing-integrity.js";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
@@ -16,6 +17,12 @@ import { PasswordService } from "../auth/password.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { MEDIA_STORAGE_ADAPTER, type MediaStorageAdapter } from "../media/media-storage.adapter.js";
 
+import {
+  cleanupOperationKey,
+  registerUploadCleanupInTransaction,
+} from "../media/media-upload-cleanup.js";
+import { processPrivacyMediaDeletionBatch } from "./privacy-media-cleanup.js";
+
 export const ACCOUNT_DELETION_CONFIRMATION = "DELETE MY AYIN ACCOUNT";
 export const ACCOUNT_DELETION_GRACE_DAYS = 14;
 export const ACCOUNT_DEACTIVATED_RECOVERY_HOURS = 24;
@@ -23,7 +30,6 @@ export const ACCOUNT_DEACTIVATED_RECOVERY_HOURS = 24;
 const GRACE_MS = ACCOUNT_DELETION_GRACE_DAYS * 24 * 60 * 60 * 1_000;
 const RECOVERY_MS = ACCOUNT_DEACTIVATED_RECOVERY_HOURS * 60 * 60 * 1_000;
 const LEASE_MS = 5 * 60 * 1_000;
-const MAX_MEDIA_ATTEMPTS = 5;
 
 type ActiveDeletionState = "REQUESTED" | "GRACE_PERIOD" | "DEACTIVATED";
 
@@ -87,7 +93,22 @@ export class PrivacyLifecycleService {
         mediaCleanupCompletedAt: true,
       },
     });
+    const cleanupCounts = request
+      ? await this.database.client.privacyMediaDeletionJob.groupBy({
+          by: ["status"],
+          where: { requestId: request.id },
+          _count: true,
+        })
+      : [];
     return {
+      mediaCleanup: request
+        ? {
+            pending: cleanupCounts.find((item) => item.status === "PENDING")?._count ?? 0,
+            processing: cleanupCounts.find((item) => item.status === "PROCESSING")?._count ?? 0,
+            requiresReview: cleanupCounts.find((item) => item.status === "FAILED")?._count ?? 0,
+            completed: cleanupCounts.find((item) => item.status === "DONE")?._count ?? 0,
+          }
+        : null,
       policy: {
         gracePeriodDays: ACCOUNT_DELETION_GRACE_DAYS,
         deactivatedRecoveryHours: ACCOUNT_DEACTIVATED_RECOVERY_HOURS,
@@ -331,27 +352,7 @@ export class PrivacyLifecycleService {
   }
 
   async processMediaDeletionBatch(now = new Date(), limit = 20): Promise<number> {
-    let processed = 0;
-    for (let index = 0; index < limit; index += 1) {
-      const job = await this.claimMediaJob(now);
-      if (!job) break;
-      try {
-        if (!this.storage.available) {
-          throw new Error("Media storage is not configured on this worker.");
-        }
-        if (job.kind === "PREFIX") await this.storage.deletePrefix(job.target);
-        else await this.storage.deleteObject(job.target);
-        await this.database.client.privacyMediaDeletionJob.update({
-          where: { id: job.id },
-          data: { status: "DONE", completedAt: new Date(), lastError: null },
-        });
-        await this.finalizeMediaCleanup(job.requestId);
-      } catch (error) {
-        await this.retryMediaJob(job, now, error);
-      }
-      processed += 1;
-    }
-    return processed;
+    return processPrivacyMediaDeletionBatch(this.database.client, this.storage, now, limit);
   }
 
   private async claimLifecycle(now: Date): Promise<LifecycleClaim | null> {
@@ -606,7 +607,7 @@ export class PrivacyLifecycleService {
     postImageIds: string[],
     now: Date,
   ): Promise<number> {
-    const [assets, processingJobs, playbackGenerations] = await Promise.all([
+    const [assets, processingJobs, playbackGenerations, outputAttempts] = await Promise.all([
       tx.mediaAsset.findMany({
         where: {
           OR: [
@@ -615,11 +616,16 @@ export class PrivacyLifecycleService {
             { id: { in: postImageIds } },
           ],
         },
-        select: { id: true, r2ObjectKey: true },
+        select: { id: true, videoId: true, r2ObjectKey: true },
       }),
       tx.mediaProcessingJob.findMany({
         where: { videoId: { in: videoIds } },
         select: {
+          id: true,
+          videoId: true,
+          generation: true,
+          inputIntegrityVersion: true,
+          video: { select: { channelId: true } },
           stagingKey: true,
           inputR2ObjectKey: true,
           outputR2ObjectKey: true,
@@ -629,6 +635,8 @@ export class PrivacyLifecycleService {
         where: { videoId: { in: videoIds } },
         select: {
           id: true,
+          videoId: true,
+          generation: true,
           fallbackR2ObjectKey: true,
           hlsMasterR2ObjectKey: true,
           renditions: {
@@ -636,7 +644,63 @@ export class PrivacyLifecycleService {
           },
         },
       }),
+      // No FK dependency: losing attempts remain discoverable after job/video
+      // deletion through their immutable channel/video custody snapshots.
+      tx.mediaProcessingOutputAttempt.findMany({
+        where: { OR: [{ channelId: { in: channelIds } }, { videoId: { in: videoIds } }] },
+        orderBy: [{ processingJobId: "asc" }, { attempt: "asc" }],
+      }),
     ]);
+
+    const uploadSessions = await tx.mediaUploadSession.findMany({
+      where: {
+        OR: [
+          { channelId: { in: channelIds } },
+          { videoId: { in: videoIds } },
+          { sourceAssetId: { in: assets.map((asset) => asset.id) } },
+          { initiatingAccountId: accountId, state: { not: "COMPLETED" } },
+        ],
+      },
+      orderBy: { id: "asc" },
+    });
+    const cleanupAssetIds = [
+      ...new Set([
+        ...assets.map((asset) => asset.id),
+        ...uploadSessions.flatMap((session) =>
+          session.sourceAssetId ? [session.sourceAssetId] : [],
+        ),
+      ]),
+    ].sort();
+    // Lock the exact union before revoking sessions or mutating any source.
+    if (cleanupAssetIds.length > 0)
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "id" FROM "MediaAsset"
+        WHERE "id" IN (${Prisma.join(cleanupAssetIds.map((id) => Prisma.sql`${id}::uuid`))})
+        ORDER BY "id" FOR NO KEY UPDATE /* ayin-privacy-media-asset-lock */`,
+      );
+    for (const session of uploadSessions)
+      await registerUploadCleanupInTransaction(tx, {
+        sessionId: session.id,
+        accountId,
+        requestId,
+        state: "REVOKED",
+        now,
+      });
+
+    // Preserve orphaned cleanup snapshots too: removing a source/session FK is
+    // not provider cleanup, and previous expiry/processing work remains owed.
+    await tx.privacyMediaDeletionJob.updateMany({
+      where: {
+        scope: { not: "PRIVACY" },
+        OR: [
+          { channelId: { in: channelIds } },
+          // An initiating admin owns an OPEN grant, not another owner's accepted
+          // media. Post-READY source obligations remain channel-owned.
+          { scope: "UPLOAD_SESSION", accountId },
+        ],
+      },
+      data: { requestId },
+    });
 
     const objectTargets = new Set<string>();
     const prefixTargets = new Set<string>();
@@ -654,43 +718,114 @@ export class PrivacyLifecycleService {
         prefixTargets.add(rendition.segmentR2Prefix);
       }
     }
+    for (const attempt of outputAttempts) {
+      objectTargets.add(attempt.canonicalR2ObjectKey);
+      objectTargets.add(attempt.thumbnailR2ObjectKey);
+      objectTargets.add(`${attempt.hlsR2Prefix}master.m3u8`);
+      prefixTargets.add(attempt.prefix);
+    }
     const jobs = [
       ...[...objectTargets].map((target) => ({
         requestId,
         accountId,
         kind: "OBJECT" as const,
+        operationKey: cleanupOperationKey(`privacy:${requestId}`, "object", target),
         target,
       })),
       ...[...prefixTargets].map((target) => ({
         requestId,
         accountId,
         kind: "PREFIX" as const,
+        operationKey: cleanupOperationKey(`privacy:${requestId}`, "prefix", target),
         target,
       })),
     ];
     if (jobs.length > 0) {
       await tx.privacyMediaDeletionJob.createMany({ data: jobs, skipDuplicates: true });
     }
-
-    // Bulk UPDATE does not guarantee row-lock order. Match multi-asset editors
-    // by locking the exact cleanup set in UUID order before changing any asset.
-    // NO KEY UPDATE matches the non-key status change and permits FK readers.
-    // Keep these locks ahead of the later video/channel tombstones as well.
-    if (assets.length > 0) {
-      await tx.$queryRaw(
-        Prisma.sql`SELECT "id" FROM "MediaAsset"
-          WHERE "id" IN (${Prisma.join(assets.map(({ id }) => Prisma.sql`${id}::uuid`))})
-          ORDER BY "id" FOR NO KEY UPDATE /* ayin-privacy-media-asset-lock */`,
+    const outputJobIds = new Set([
+      ...processingJobs.filter((job) => job.inputIntegrityVersion !== 0).map((job) => job.id),
+      ...outputAttempts.map((attempt) => attempt.processingJobId),
+    ]);
+    const outputBarriers = [...outputJobIds].map((jobId) => {
+      const job = processingJobs.find((job) => job.id === jobId);
+      const attempts = outputAttempts.filter((attempt) => attempt.processingJobId === jobId);
+      const snapshot = attempts[0];
+      const videoId = job?.videoId ?? snapshot!.videoId;
+      const generationNumber = job?.generation ?? snapshot!.generation;
+      const generations = playbackGenerations.filter(
+        (generation) =>
+          generation.videoId === videoId && generation.generation === generationNumber,
       );
-    }
+      return {
+        operationKey: `processing-outputs:${jobId}`,
+        requestId,
+        accountId,
+        scope: "PRIVACY" as const,
+        kind: "OUTPUT_SETTLEMENT" as const,
+        processingJobId: jobId,
+        target: job?.outputR2ObjectKey ?? snapshot!.canonicalR2ObjectKey,
+        outputAddresses: {
+          version: 2,
+          videoId,
+          generation: generationNumber,
+          // Snapshot every winning/losing reserved namespace, not only current
+          // generation metadata. This is coverage, never write-settlement proof.
+          attempts: attempts.map((attempt) => ({
+            id: attempt.id,
+            attempt: attempt.attempt,
+            prefix: attempt.prefix,
+          })),
+          objects: [
+            ...new Set([
+              ...(job
+                ? [
+                    job.outputR2ObjectKey,
+                    ...assets
+                      .filter(
+                        (asset) =>
+                          asset.videoId === videoId &&
+                          asset.r2ObjectKey !== job.stagingKey &&
+                          asset.r2ObjectKey !== job.inputR2ObjectKey,
+                      )
+                      .map((asset) => asset.r2ObjectKey),
+                  ]
+                : []),
+              ...attempts.flatMap((attempt) => [
+                attempt.canonicalR2ObjectKey,
+                attempt.thumbnailR2ObjectKey,
+                `${attempt.hlsR2Prefix}master.m3u8`,
+              ]),
+              ...generations.flatMap((generation) => [
+                generation.fallbackR2ObjectKey,
+                generation.hlsMasterR2ObjectKey,
+                ...generation.renditions.map((rendition) => rendition.playlistR2ObjectKey),
+              ]),
+            ]),
+          ].sort(),
+          prefixes: [
+            ...new Set([
+              ...attempts.flatMap((attempt) => [attempt.prefix, attempt.hlsR2Prefix]),
+              ...generations.flatMap((generation) =>
+                generation.renditions.map((rendition) => rendition.segmentR2Prefix),
+              ),
+            ]),
+          ].sort(),
+        },
+      };
+    });
+    if (outputBarriers.length)
+      await tx.privacyMediaDeletionJob.createMany({ data: outputBarriers, skipDuplicates: true });
+
     await tx.mediaAsset.updateMany({
-      where: { id: { in: assets.map(({ id }) => id) } },
+      where: { id: { in: cleanupAssetIds } },
       data: { status: "REMOVED", removedAt: now },
     });
     await tx.mediaProcessingJob.updateMany({
       where: { videoId: { in: videoIds } },
       data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null },
     });
+    await redactCancelledInputIntegrityInTransaction(tx, videoIds, now);
     await tx.mediaPlaybackGeneration.updateMany({
       where: { id: { in: playbackGenerations.map(({ id }) => id) } },
       data: { fallbackStatus: "REMOVED", hlsMasterStatus: "REMOVED" },
@@ -703,7 +838,9 @@ export class PrivacyLifecycleService {
       },
       data: { status: "REMOVED" },
     });
-    return jobs.length;
+    return tx.privacyMediaDeletionJob.count({
+      where: { requestId, status: { not: "DONE" } },
+    });
   }
 
   private async removeExclusiveCreatorSurfaces(
@@ -836,91 +973,5 @@ export class PrivacyLifecycleService {
       where: { profileId: { in: profileIds } },
       data: { profileId: null },
     });
-  }
-
-  private async claimMediaJob(now: Date) {
-    const staleClaim = new Date(now.getTime() - LEASE_MS);
-    const candidate = await this.database.client.privacyMediaDeletionJob.findFirst({
-      where: {
-        OR: [
-          { status: "PENDING", availableAt: { lte: now } },
-          { status: "PROCESSING", claimedAt: { lte: staleClaim } },
-        ],
-      },
-      orderBy: { createdAt: "asc" },
-      select: {
-        id: true,
-        requestId: true,
-        kind: true,
-        target: true,
-        attempts: true,
-      },
-    });
-    if (!candidate) return null;
-    const claimed = await this.database.client.privacyMediaDeletionJob.updateMany({
-      where: {
-        id: candidate.id,
-        OR: [
-          { status: "PENDING", availableAt: { lte: now } },
-          { status: "PROCESSING", claimedAt: { lte: staleClaim } },
-        ],
-      },
-      data: {
-        status: "PROCESSING",
-        claimedAt: now,
-        attempts: { increment: 1 },
-      },
-    });
-    if (claimed.count !== 1) return null;
-    return { ...candidate, attempts: candidate.attempts + 1 };
-  }
-
-  private async retryMediaJob(
-    job: {
-      id: string;
-      requestId: string;
-      attempts: number;
-    },
-    now: Date,
-    error: unknown,
-  ) {
-    const message = (error instanceof Error ? error.message : "Unknown media deletion error").slice(
-      0,
-      1_000,
-    );
-    if (job.attempts >= MAX_MEDIA_ATTEMPTS) {
-      await this.database.client.$transaction(async (tx) => {
-        await tx.privacyMediaDeletionJob.update({
-          where: { id: job.id },
-          data: { status: "FAILED", lastError: message },
-        });
-        await tx.accountDeletionRequest.update({
-          where: { id: job.requestId },
-          data: { lastError: "One or more media objects require operator retry." },
-        });
-      });
-      return;
-    }
-    const backoffMs = Math.min(60_000, 2 ** job.attempts * 1_000);
-    await this.database.client.privacyMediaDeletionJob.update({
-      where: { id: job.id },
-      data: {
-        status: "PENDING",
-        availableAt: new Date(now.getTime() + backoffMs),
-        lastError: message,
-      },
-    });
-  }
-
-  private async finalizeMediaCleanup(requestId: string) {
-    const remaining = await this.database.client.privacyMediaDeletionJob.count({
-      where: { requestId, status: { not: "DONE" } },
-    });
-    if (remaining === 0) {
-      await this.database.client.accountDeletionRequest.update({
-        where: { id: requestId },
-        data: { mediaCleanupCompletedAt: new Date(), lastError: null },
-      });
-    }
   }
 }

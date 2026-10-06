@@ -1,3 +1,4 @@
+import { capturedMediaClaim } from "./media-output-attempt.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, rm } from "node:fs/promises";
@@ -12,6 +13,11 @@ import { MediaAdaptiveProcessingService } from "./media-adaptive-processing.serv
 import { isAdaptiveBackfillJob } from "./media-adaptive-rollout.js";
 import { MediaAutoThumbnailService } from "./media-auto-thumbnail.service.js";
 import { runBoundedMediaProcess } from "./media-process-runner.js";
+import {
+  assertJobInputIntegrity,
+  hashMediaFile,
+  verifyJobInputFile,
+} from "./media-processing-integrity.js";
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
@@ -51,6 +57,8 @@ export class MediaProcessingExecutorService {
   }
 
   async process(job: MediaProcessingJob, workerId: string, signal?: AbortSignal): Promise<void> {
+    const ownershipAbort = new AbortController();
+    signal = signal ? AbortSignal.any([signal, ownershipAbort.signal]) : ownershipAbort.signal;
     const claimScratchId = createHash("sha256").update(workerId).digest("hex").slice(0, 16);
     const workDirectory = join(this.workRoot, `${job.id}-${claimScratchId}`);
     const inputPath = join(workDirectory, `input${sourceExtension(job.sourceMimeType)}`);
@@ -74,6 +82,9 @@ export class MediaProcessingExecutorService {
           .heartbeat(job.id, workerId)
           .then((owned) => {
             if (!owned) {
+              ownershipAbort.abort(
+                new Error("The media worker no longer owns this processing lease."),
+              );
               this.logger.warn(
                 `Heartbeat rejected for media job ${job.id}; this lease is no longer active.`,
               );
@@ -86,11 +97,14 @@ export class MediaProcessingExecutorService {
       heartbeatTimer.unref();
 
       signal?.throwIfAborted();
-      const existingOutput = await this.tryHead(job.outputR2ObjectKey);
+      const requiredIntegrity = assertJobInputIntegrity(job);
+      // A deterministic object/HEAD is not trusted lineage. Durable retries
+      // retain, re-download and verify source, then regenerate all outputs.
+      const existingOutput = requiredIntegrity ? null : await this.tryHead(job.outputR2ObjectKey);
       let canonicalMetadata: MediaProbeMetadata;
 
       if (isVerifiedCanonical(existingOutput)) {
-        await this.requireOwnedStage(job.id, workerId, "VERIFYING", "RECOVERING_FINAL_OBJECT", 90);
+        await this.requireOwnedStage(job, workerId, "VERIFYING", "RECOVERING_FINAL_OBJECT", 90);
         await this.storage.downloadToFile(job.outputR2ObjectKey, outputPath);
         canonicalMetadata = await this.probe(outputPath, signal);
         if (
@@ -106,9 +120,28 @@ export class MediaProcessingExecutorService {
         if (!job.inputR2ObjectKey) {
           throw new Error("The processing job has no input R2 object key.");
         }
-        await this.requireOwnedStage(job.id, workerId, "PROCESSING", "DOWNLOADING_SOURCE", 5);
-        await this.storage.downloadToFile(job.inputR2ObjectKey, inputPath);
+        await this.requireOwnedStage(job, workerId, "PROCESSING", "DOWNLOADING_SOURCE", 5);
+        await this.storage.downloadToFile(
+          job.inputR2ObjectKey,
+          inputPath,
+          requiredIntegrity ? { exactSizeBytes: requiredIntegrity.sizeBytes, signal } : undefined,
+        );
 
+        if (requiredIntegrity) {
+          await this.requireOwnedStage(job, workerId, "VERIFYING", "VERIFYING_SOURCE_BYTES", 10);
+          const identity = await verifyJobInputFile(job, inputPath, signal);
+          if (
+            !(await this.lifecycle.recordInputVerification({
+              jobId: job.id,
+              workerId,
+              ...capturedMediaClaim(job),
+              identity,
+            }))
+          )
+            throw new Error(
+              "The media input integrity verification lost its lease, generation or privacy authority.",
+            );
+        }
         const sourceMetadata = await this.probe(inputPath, signal);
         if (!sourceMetadata.width || !sourceMetadata.height || !sourceMetadata.videoCodec) {
           throw new Error("The uploaded file does not contain a readable video stream.");
@@ -129,7 +162,7 @@ export class MediaProcessingExecutorService {
             this.settings.get("mediaProcessingVideoCrf"),
             this.settings.get("mediaProcessingPreset"),
           ]);
-          await this.requireOwnedStage(job.id, workerId, "PROCESSING", "FFMPEG_TRANSCODING", 20);
+          await this.requireOwnedStage(job, workerId, "PROCESSING", "FFMPEG_TRANSCODING", 20);
           await runCanonicalFfmpeg({
             executable: this.ffmpegPath,
             inputPath,
@@ -151,19 +184,50 @@ export class MediaProcessingExecutorService {
           }
         }
 
-        await this.requireOwnedStage(job.id, workerId, "UPLOADING", "UPLOADING_CANONICAL", 80);
+        await this.requireOwnedStage(job, workerId, "UPLOADING", "UPLOADING_CANONICAL", 80);
         await this.storage.uploadFile(job.outputR2ObjectKey, outputPath, "video/mp4");
       }
 
-      await this.requireOwnedStage(job.id, workerId, "VERIFYING", "VERIFYING_R2_OBJECT", 92);
+      await this.requireOwnedStage(job, workerId, "VERIFYING", "VERIFYING_R2_OBJECT", 92);
       const verified = await this.storage.headObject(job.outputR2ObjectKey);
       if (!isVerifiedCanonical(verified)) {
         throw new Error("The canonical R2 object failed size or content-type verification.");
       }
 
-      await this.requireOwnedStage(job.id, workerId, "VERIFYING", "GENERATING_AUTO_THUMBNAIL", 94);
+      if (requiredIntegrity) {
+        const produced = await hashMediaFile(outputPath, signal);
+        const remotePath = join(workDirectory, "canonical-verified.mp4");
+        await this.requireOwnedStage(job, workerId, "VERIFYING", "VERIFYING_CANONICAL_BYTES", 93);
+        await this.storage.downloadToFile(job.outputR2ObjectKey, remotePath, {
+          exactSizeBytes: produced.sizeBytes,
+          signal,
+        });
+        const actual = await hashMediaFile(remotePath, signal);
+        await rm(remotePath, { force: true });
+        if (
+          actual.rootSha256 !== produced.rootSha256 ||
+          actual.sizeBytes !== produced.sizeBytes ||
+          actual.sizeBytes !== verified.sizeBytes
+        )
+          throw new Error("The canonical R2 object failed byte integrity verification.");
+        if (
+          !(await this.lifecycle.recordCanonicalVerification({
+            jobId: job.id,
+            ...capturedMediaClaim(job),
+            workerId,
+            identity: actual,
+          }))
+        )
+          throw new Error(
+            "The canonical integrity verification lost its lease, generation or privacy authority.",
+          );
+      }
+      await this.requireOwnedStage(job, workerId, "VERIFYING", "GENERATING_AUTO_THUMBNAIL", 94);
       try {
         const thumbnail = await this.thumbnails.ensureForCanonical({
+          jobId: job.id,
+          ...capturedMediaClaim(job),
+          workerId,
           videoId: job.videoId,
           canonicalPath: outputPath,
           durationMs: canonicalMetadata.durationMs,
@@ -189,16 +253,18 @@ export class MediaProcessingExecutorService {
       });
 
       if (
+        !requiredIntegrity &&
         job.inputR2ObjectKey &&
         job.stagingKey === job.inputR2ObjectKey &&
         job.inputR2ObjectKey !== job.outputR2ObjectKey
       ) {
-        await this.requireOwnedStage(job.id, workerId, "VERIFYING", "REMOVING_STAGING_SOURCE", 99);
+        await this.requireOwnedStage(job, workerId, "VERIFYING", "REMOVING_STAGING_SOURCE", 99);
         await this.storage.deleteObject(job.inputR2ObjectKey);
       }
 
       const finalized = await this.lifecycle.finalizeReady({
         jobId: job.id,
+        ...capturedMediaClaim(job),
         workerId,
         metadata: {
           sizeBytes: verified.sizeBytes,
@@ -269,14 +335,15 @@ export class MediaProcessingExecutorService {
   }
 
   private async requireOwnedStage(
-    jobId: string,
+    job: MediaProcessingJob,
     workerId: string,
     status: "PROCESSING" | "UPLOADING" | "VERIFYING",
     stage: string,
     progressPercent: number,
   ): Promise<void> {
     const updated = await this.lifecycle.setOwnedStage({
-      jobId,
+      jobId: job.id,
+      ...capturedMediaClaim(job),
       workerId,
       status,
       stage,
@@ -319,6 +386,7 @@ function classifyProcessingError(error: unknown): string {
   if (message.includes("worker shutdown") || message.includes("aborted")) {
     return "MEDIA_WORKER_SHUTDOWN";
   }
+  if (message.includes("integrity")) return "MEDIA_INPUT_INTEGRITY_FAILED";
   if (message.includes("timed out")) return "MEDIA_PROCESSING_TIMEOUT";
   if (message.includes("hls") || message.includes("rendition")) return "HLS_PROCESSING_FAILED";
   if (message.includes("ffmpeg") || message.includes("ffprobe")) return "FFMPEG_PROCESSING_FAILED";

@@ -232,11 +232,16 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
       method: "DELETE",
       key: input.key,
       query: [["uploadId", input.uploadId]],
+      signal: AbortSignal.timeout(LIST_DEADLINE_MS),
     });
   }
 
   async headObject(key: string): Promise<StoredObjectMetadata> {
-    const response = await this.signer.request({ method: "HEAD", key });
+    const response = await this.signer.request({
+      method: "HEAD",
+      key,
+      signal: AbortSignal.timeout(LIST_DEADLINE_MS),
+    });
     return {
       sizeBytes: Number(response.headers.get("content-length") ?? "0"),
       contentType: response.headers.get("content-type"),
@@ -266,33 +271,82 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   }
 
   async deleteObject(key: string): Promise<void> {
-    await this.signer.request({ method: "DELETE", key });
+    await this.signer.request({
+      method: "DELETE",
+      key,
+      signal: AbortSignal.timeout(LIST_DEADLINE_MS),
+    });
   }
 
   async deletePrefix(prefix: string): Promise<void> {
-    let continuationToken: string | null = null;
-    do {
-      const query: Array<[string, string]> = [
-        ["list-type", "2"],
-        ["prefix", prefix],
-        ["max-keys", "1000"],
-        ["encoding-type", "url"],
-      ];
-      if (continuationToken) query.push(["continuation-token", continuationToken]);
-      const response = await this.signer.request({ method: "GET", query });
-      const xml = await response.text();
-      const keys: string[] = [];
-      for (const match of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
-        const encodedKey = xmlValue(match[1] ?? "", "Key");
-        if (encodedKey) keys.push(decodeURIComponent(encodedKey));
+    // Bound the whole legacy prefix operation below one cleanup lease. An
+    // expired lease must never be "solved" by accepting an unfenced DONE.
+    await this.observe("deletePrefix", async (page, signal) => {
+      boundedText(prefix, 1024);
+      let continuationToken: string | null = null;
+      let items = 0;
+      const cursors = new Set<string>();
+      for (let index = 0; index < MAX_LIST_PAGES; index++) {
+        const query: Array<[string, string]> = [
+          ["list-type", "2"],
+          ["prefix", prefix],
+          ["max-keys", "1000"],
+          ["encoding-type", "url"],
+        ];
+        if (continuationToken) query.push(["continuation-token", continuationToken]);
+        const root = await page({ query });
+        if (root.name !== "ListBucketResult") throw new R2XmlError();
+        xmlFields(root, [
+          "Name",
+          "Prefix",
+          "KeyCount",
+          "MaxKeys",
+          "Delimiter",
+          "IsTruncated",
+          "Contents",
+          "CommonPrefixes",
+          "EncodingType",
+          "ContinuationToken",
+          "NextContinuationToken",
+          "StartAfter",
+        ]);
+        if (
+          xmlField(root, "EncodingType") !== "url" ||
+          decodedKey(xmlField(root, "Prefix")) !== prefix ||
+          xmlField(root, "Name") !== this.config.bucket
+        )
+          throw new R2XmlError();
+        if (
+          root.children.some((child) => child.name === "CommonPrefixes") ||
+          xmlField(root, "Delimiter", false)
+        )
+          throw new R2XmlError();
+        const rows = root.children.filter((child) => child.name === "Contents");
+        if (
+          integerField(root, "KeyCount", 0, LIST_PAGE_SIZE) !== rows.length ||
+          integerField(root, "MaxKeys", 1, LIST_PAGE_SIZE) !== LIST_PAGE_SIZE
+        )
+          throw new R2XmlError();
+        if (rows.length > LIST_PAGE_SIZE || items + rows.length > MAX_LIST_ITEMS)
+          throw new R2XmlError(true);
+        const keys = rows.map((row) => decodedKey(xmlField(row, "Key")));
+        if (new Set(keys).size !== keys.length || keys.some((key) => !key.startsWith(prefix)))
+          throw new R2XmlError();
+        const more = truncated(root);
+        const next = xmlField(root, "NextContinuationToken", false);
+        if (more && (!rows.length || !next || cursors.has(next))) throw new R2XmlError();
+        // Validate the complete page and cursor before any mutation from it.
+        for (const key of keys) {
+          signal.throwIfAborted();
+          await this.signer.request({ method: "DELETE", key, signal });
+        }
+        items += keys.length;
+        if (!more) return;
+        continuationToken = boundedText(next, 4096);
+        cursors.add(continuationToken);
       }
-      for (const key of keys) await this.deleteObject(key);
-      continuationToken =
-        xmlValue(xml, "IsTruncated") === "true" ? xmlValue(xml, "NextContinuationToken") : null;
-      if (continuationToken === null && xmlValue(xml, "IsTruncated") === "true") {
-        throw new Error("R2 returned a truncated prefix listing without a continuation token.");
-      }
-    } while (continuationToken);
+      throw new R2XmlError(true);
+    });
   }
 
   async listMultipartUploads(prefix: string): Promise<AbandonedMultipartUpload[]> {
@@ -373,9 +427,10 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   }
 
   private async observe<T>(
-    operation: "listParts" | "listMultipartUploads",
+    operation: "listParts" | "listMultipartUploads" | "deletePrefix",
     work: (
       page: (input: { key?: string; query: Array<[string, string]> }) => Promise<R2XmlNode>,
+      signal: AbortSignal,
     ) => Promise<T>,
   ): Promise<T> {
     const controller = new AbortController();
@@ -408,7 +463,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
           );
           remainingBytes -= Buffer.byteLength(xml);
           return parseR2Xml(xml);
-        }),
+        }, controller.signal),
       ]);
     } catch (error) {
       if (error instanceof MediaStorageObservationError) throw error;

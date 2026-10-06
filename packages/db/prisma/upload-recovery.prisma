@@ -1,0 +1,61 @@
+// Dormant persistence only. Production issuance must wait for worker integrity
+// verification and atomic privacy multipart-cleanup obligations.
+enum MediaUploadSessionAuthority {
+  OWNER
+  ADMIN
+}
+
+enum MediaUploadSessionMode {
+  SINGLE
+  MULTIPART
+}
+
+enum MediaUploadSessionState {
+  PREPARING
+  OPEN
+  FINALIZING
+  COMPLETED
+  CANCELLING
+  ABORTED
+  EXPIRED
+  REVOKED
+  UNRESOLVED
+}
+
+model MediaUploadSession {
+  id                       String                      @id @default(uuid()) @db.Uuid
+  sourceAssetId            String?                     @unique @db.Uuid
+  initiatingAccountId      String?                     @db.Uuid
+  channelId                String                      @db.Uuid
+  videoId                  String?                     @db.Uuid
+  authority                MediaUploadSessionAuthority
+  mode                     MediaUploadSessionMode
+  objectKey                String                      @db.VarChar(1024)
+  providerUploadId         String?                     @db.VarChar(1024)
+  sizeBytes                BigInt
+  mimeType                 String                      @db.VarChar(255)
+  partSizeBytes            BigInt
+  contentIdentityAlgorithm String                      @db.VarChar(32)
+  contentIdentityDigest    String?                     @db.Char(64)
+  state                    MediaUploadSessionState     @default(PREPARING)
+  revision                 Int                         @default(1)
+  createdAt                DateTime                    @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')"))
+  updatedAt                DateTime                    @updatedAt
+  hardExpiresAt            DateTime
+  // Future issuance must persist the maximum signed grant expiry atomically.
+  // Null is unknown, never proof that no grant/in-flight write exists.
+  lastGrantExpiresAt        DateTime?
+  grantsRevokedAt           DateTime?
+  cleanupRequestedAt        DateTime?
+  cleanupRetainUntil        DateTime?
+
+  sourceAsset       MediaAsset? @relation(fields: [sourceAssetId], references: [id], onDelete: SetNull)
+  initiatingAccount Account?    @relation(fields: [initiatingAccountId], references: [id], onDelete: SetNull)
+
+  // Snapshot addresses survive reference removal for later, explicit cleanup.
+  // SET NULL is loss of recoverability, never evidence of privacy completion.
+  @@index([initiatingAccountId, channelId, createdAt])
+  @@index([state, hardExpiresAt])
+  @@index([cleanupRetainUntil])
+  @@index([channelId, state, hardExpiresAt])
+}
