@@ -65,16 +65,9 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
         expect(allIds.size).toBeLessThanOrEqual(111);
       } while (cursor);
       expect(movieIds.size).toBe(110);
+      expect(pages.length).toBeGreaterThan(1);
       expect(lastCursor).toBeTruthy();
       await page.setViewportSize(layout);
-      const suggestionsResponse = page.waitForResponse((response) => {
-        const url = new URL(response.url());
-        return (
-          response.request().method() === "GET" &&
-          url.pathname === "/public/search/suggestions" &&
-          url.searchParams.get("q") === query
-        );
-      });
       await page.goto(`${prefix}/search?q=${encodeURIComponent(query)}&lang=${layout.locale}`);
       const main = page.locator("main:visible");
       const results = main.getByRole("region", {
@@ -88,15 +81,31 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
       const cardHrefs = () =>
         cards.evaluateAll((links) => links.map((link) => link.getAttribute("href")));
       await expect(cards.first()).toContainText(ar ? "رحلة" : "Journey");
-      await expect.poll(cardHrefs).toEqual(pages[0].hrefs);
-      await expect(main.getByRole("searchbox")).toHaveValue(query);
-      const suggestionResponse = await suggestionsResponse;
-      expect(suggestionResponse.ok()).toBe(true);
-      const suggestionData = await suggestionResponse.json();
+      await expect.poll(cardHrefs).toEqual(pages[0]!.hrefs);
+      const searchbox = main.getByRole("searchbox");
+      await expect(searchbox).toHaveValue(query);
       const suggestions = main.getByRole("list", {
         name: ar ? "اقتراحات البحث" : "Search suggestions",
         exact: true,
       });
+      // Initial results are unobscured, even after the debounce interval.
+      await page.waitForTimeout(350);
+      await expect(suggestions).toHaveCount(0);
+      await page.screenshot({
+        path: testInfo.outputPath(`global-search-initial-${layout.width}-${layout.locale}.png`),
+      });
+      const suggestionsResponse = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          response.request().method() === "GET" &&
+          url.pathname === "/public/search/suggestions" &&
+          url.searchParams.get("q") === query
+        );
+      });
+      await searchbox.focus();
+      const suggestionResponse = await suggestionsResponse;
+      expect(suggestionResponse.ok()).toBe(true);
+      const suggestionData = await suggestionResponse.json();
       await expect(suggestions).toBeVisible();
       await expect
         .poll(() =>
@@ -107,7 +116,18 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
         .toEqual(
           suggestionData.suggestions.map((item: { href: string }) => `${prefix}${item.href}`),
         );
-      await expect.poll(cardHrefs).toEqual(pages[0].hrefs);
+      await expect.poll(cardHrefs).toEqual(pages[0]!.hrefs);
+      await page.keyboard.press("ArrowDown");
+      await expect(suggestions.getByRole("link").first()).toBeFocused();
+      await page.screenshot({
+        path: testInfo.outputPath(`global-search-suggestions-${layout.width}-${layout.locale}.png`),
+      });
+      await page.keyboard.press("ArrowUp");
+      await expect(searchbox).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(suggestions).toHaveCount(0);
+      await expect(searchbox).toBeFocused();
+      await expect.poll(cardHrefs).toEqual(pages[0]!.hrefs);
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
@@ -122,18 +142,21 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
         exact: true,
       });
       const secondPageUrl = new URL((await more.getAttribute("href"))!, firstPageUrl).href;
-      expect(new URL(secondPageUrl).searchParams.get("cursor")).toBe(pages[0].nextCursor);
+      expect(new URL(secondPageUrl).searchParams.get("cursor")).toBe(pages[0]!.nextCursor);
       await more.focus();
       await expect(more).toBeFocused();
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(secondPageUrl);
-      await expect.poll(cardHrefs).toEqual(pages[1].hrefs);
+      await expect.poll(cardHrefs).toEqual(pages[1]!.hrefs);
+      await expect(suggestions).toHaveCount(0);
       await page.goBack();
       await expect(page).toHaveURL(firstPageUrl);
-      await expect.poll(cardHrefs).toEqual(pages[0].hrefs);
+      await expect.poll(cardHrefs).toEqual(pages[0]!.hrefs);
+      await expect(suggestions).toHaveCount(0);
       await page.goForward();
       await expect(page).toHaveURL(secondPageUrl);
-      await expect.poll(cardHrefs).toEqual(pages[1].hrefs);
+      await expect.poll(cardHrefs).toEqual(pages[1]!.hrefs);
+      await expect(suggestions).toHaveCount(0);
       await page.goto(`${prefix}/search?${new URLSearchParams({ q: query, cursor: lastCursor! })}`);
       await expect.poll(cardHrefs).toEqual(pages.at(-1)!.hrefs);
       await expect(more).toHaveCount(0);
