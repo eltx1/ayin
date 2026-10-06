@@ -135,6 +135,61 @@ describe("trusted advertising consent notifications", () => {
     unregister();
   });
 
+  it("revokes same-mode authority when a trusted opaque revision changes without churning duplicates", () => {
+    const source = observable({ ...personalized, providerRevision: "policy:1" });
+    const unregister = registerAdvertisingConsentProvider(source.provider);
+    const first = getAdvertisingConsentSnapshot();
+    const scope = createAdvertisingConsentScope();
+    const order: string[] = [];
+    scope.signal.addEventListener("abort", () => order.push("destroy"));
+    const unsubscribe = subscribeAdvertisingConsent(() =>
+      order.push(`render:${scope.signal.aborted}`),
+    );
+    source.change({ ...personalized, providerRevision: "policy:1" });
+    expect(getAdvertisingConsentSnapshot()).toBe(first);
+    expect(order).toEqual([]);
+    source.change({ ...personalized, providerRevision: "policy:2" });
+    expect(order).toEqual(["destroy", "render:true"]);
+    expect(getAdvertisingConsentSnapshot()).toEqual({
+      ...personalized,
+      providerRevision: "policy:2",
+    });
+    const next = createAdvertisingConsentScope();
+    source.change({ ...personalized, providerRevision: "policy:2" });
+    expect(next.isCurrent()).toBe(true);
+    // Removing a token also invalidates old authority; snapshot-only providers
+    // remain compatible and subsequent duplicate snapshots stay stable.
+    source.change(personalized);
+    expect(next.signal.aborted).toBe(true);
+    const withoutRevision = getAdvertisingConsentSnapshot();
+    source.change(personalized);
+    expect(getAdvertisingConsentSnapshot()).toBe(withoutRevision);
+    expect(scope.isCurrent()).toBe(false);
+    next.release();
+    scope.release();
+    unsubscribe();
+    unregister();
+  });
+
+  it.each(["", "x".repeat(129), "consent string", 1, null])(
+    "fails closed for malformed provider revision %j without weakening a known child restriction",
+    (providerRevision) => {
+      const source = observable({ ...personalized, ageTreatment: "CHILD", providerRevision: "v1" });
+      const unregister = registerAdvertisingConsentProvider(source.provider);
+      const scope = createAdvertisingConsentScope();
+      source.change({ ...personalized, providerRevision } as unknown as AdvertisingConsentSnapshot);
+      expect(scope.signal.aborted).toBe(true);
+      expect(getAdvertisingConsentSnapshot()).toEqual({
+        mode: "LIMITED_ADS",
+        source: "SAFE_DEFAULT",
+        providerManaged: false,
+        ageTreatment: "CHILD",
+      });
+      scope.release();
+      unregister();
+    },
+  );
+
   it("ignores callbacks from a superseded binding even if that provider is restored later", () => {
     const first = observable(personalized);
     const unregisterFirst = registerAdvertisingConsentProvider(first.provider);

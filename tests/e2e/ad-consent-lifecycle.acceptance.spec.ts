@@ -360,6 +360,94 @@ test("DAI revocation tears down live callbacks before switching to the existing 
   expect(reads.external).toBe(0);
 });
 
+test("a same-mode provider revision revokes IMA authority while duplicate notifications preserve playback", async ({
+  page,
+}) => {
+  const { events, reads } = await setup(page);
+  await page.evaluate(() => {
+    window.consentHarness.change({
+      mode: "PERSONALIZED",
+      source: "CMP",
+      providerManaged: true,
+      providerRevision: "policy:1",
+    });
+    window.consentHarness.render("video");
+  });
+  await expect.poll(async () => (await stats(page)).imaStarts).toBe(1);
+  const video = page.locator("video");
+  await video.evaluate((element) => {
+    element.dataset.originalContent = "yes";
+    element.currentTime = 45;
+  });
+  const before = reads.video;
+  const destroyedBefore = (await stats(page)).imaDestroyed;
+  const revoked = await page.evaluate(() => {
+    const host = document.querySelector('[data-ayin-ad-container="true"]')!;
+    window.consentHarness.change({
+      mode: "PERSONALIZED",
+      source: "CMP",
+      providerManaged: true,
+      providerRevision: "policy:2",
+    });
+    const immediately = {
+      destroyed: window.consentHarness.statistics.imaDestroyed,
+      display: getComputedStyle(host).display,
+      frames: host.querySelectorAll("iframe").length,
+    };
+    window.consentHarness.lateAd(0);
+    return immediately;
+  });
+  expect(revoked.destroyed).toBeGreaterThan(destroyedBefore);
+  expect(revoked.display).toBe("none");
+  expect(revoked.frames).toBe(0);
+  await expect.poll(() => reads.video).toBeGreaterThan(before);
+  await expect(video).toHaveAttribute("data-original-content", "yes");
+  expect(
+    await video.evaluate((element) => ({ time: element.currentTime, paused: element.paused })),
+  ).toEqual({ time: 45, paused: false });
+  expect((await stats(page)).imaStarts).toBe(1);
+  expect(events.filter((event) => event.eventType === "START")).toHaveLength(1);
+  const after = reads.video;
+  const destroyed = (await stats(page)).imaDestroyed;
+  await page.evaluate(() =>
+    window.consentHarness.change({
+      mode: "PERSONALIZED",
+      source: "CMP",
+      providerManaged: true,
+      providerRevision: "policy:2",
+    }),
+  );
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+  expect(reads.video).toBe(after);
+  expect((await stats(page)).imaDestroyed).toBe(destroyed);
+  await video.evaluate((element) => {
+    element.currentTime = 60;
+    element.dispatchEvent(new Event("timeupdate"));
+  });
+  await expect.poll(async () => (await stats(page)).imaStarts).toBe(2);
+  await page.evaluate(() => window.consentHarness.completeAd(1));
+  const beforeThird = reads.video;
+  await page.evaluate(() =>
+    window.consentHarness.change({
+      mode: "PERSONALIZED",
+      source: "CMP",
+      providerManaged: true,
+      providerRevision: "policy:3",
+    }),
+  );
+  await expect.poll(() => reads.video).toBeGreaterThan(beforeThird);
+  await video.evaluate((element) => {
+    element.currentTime = 75;
+    element.dispatchEvent(new Event("timeupdate"));
+  });
+  expect((await stats(page)).imaStarts).toBe(2);
+  expect((await stats(page)).imaTags.every((tag) => !tag.includes("policy"))).toBe(true);
+  expect(JSON.stringify(events)).not.toContain("policy:");
+  expect(reads.external).toBe(0);
+});
+
 test("a revoked house creative is hidden immediately and cannot navigate or record a late click", async ({
   page,
 }) => {

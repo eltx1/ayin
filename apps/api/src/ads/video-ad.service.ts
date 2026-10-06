@@ -29,6 +29,32 @@ export const videoAdSettingsSchema = z.object({
 });
 
 export type VideoAdSettings = z.infer<typeof videoAdSettingsSchema>;
+
+function isVideoPlacementKeyConflict(error: unknown) {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== "P2002" ||
+    error.meta?.modelName !== "AdPlacement"
+  )
+    return false;
+  const driver = error.meta.driverAdapterError as
+    | {
+        cause?: {
+          kind?: unknown;
+          originalCode?: unknown;
+          table?: unknown;
+          constraint?: { index?: unknown };
+        };
+      }
+    | undefined;
+  return (
+    driver?.cause?.kind === "UniqueConstraintViolation" &&
+    driver.cause.originalCode === "23505" &&
+    driver.cause.table === "AdPlacement" &&
+    driver.cause.constraint?.index === "AdPlacement_key_key"
+  );
+}
+
 const expectedVersion = z.string().datetime({ offset: true }).nullable().optional();
 const settingsWriteSchema = videoAdSettingsSchema.extend({ expectedUpdatedAt: expectedVersion });
 const overrideDeleteSchema = z.object({ expectedUpdatedAt: expectedVersion }).strict();
@@ -560,18 +586,28 @@ export class VideoAdService {
   }
 
   async recordEvent(input: VideoAdEventInput) {
-    const placement = await this.database.client.adPlacement.upsert({
-      where: { key: `player_${input.slot.toLowerCase()}` },
-      update: {},
-      create: {
-        key: `player_${input.slot.toLowerCase()}`,
-        name: `Player ${input.slot.replaceAll("_", " ").toLowerCase()}`,
-        inventoryFamily: "IN_PLAYER_VIDEO",
-        format: input.slot,
-        enabled: true,
-        config: { system: true, task: 19 },
-      },
-    });
+    const key = `player_${input.slot.toLowerCase()}`;
+    const placement = await this.database.client.adPlacement
+      .upsert({
+        where: { key },
+        update: {},
+        create: {
+          key,
+          name: `Player ${input.slot.replaceAll("_", " ").toLowerCase()}`,
+          inventoryFamily: "IN_PLAYER_VIDEO",
+          format: input.slot,
+          enabled: true,
+          config: { system: true, task: 19 },
+        },
+      })
+      .catch(async (error: unknown) => {
+        // The empty-update upsert preserves existing metadata/updatedAt but can
+        // race through SELECT/INSERT. Recover only the observed PG key collision.
+        if (!isVideoPlacementKeyConflict(error)) throw error;
+        const winner = await this.database.client.adPlacement.findUnique({ where: { key } });
+        if (!winner) throw error;
+        return winner;
+      });
     return this.database.client.adEvent.create({
       data: {
         placementId: placement.id,
