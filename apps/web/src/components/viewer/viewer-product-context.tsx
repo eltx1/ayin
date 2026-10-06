@@ -34,6 +34,8 @@ interface ViewerProductContextValue {
   retryNavigation: () => void;
   identityRevision: number;
   isIdentityCurrent: () => boolean;
+  audienceStatus: "loading" | "ready" | "error";
+  isAudienceCurrent: () => boolean;
   onBeforeIdentitySuspend: (listener: () => void) => () => void;
   claimAccountIdentity: () => {
     publish: (identity: AyinIdentity | null) => void;
@@ -61,8 +63,9 @@ function emptyRead(pathname: string | null, revision: number, suspended: boolean
 
 interface PublishedIdentity {
   pathname: string | null;
-  value: AyinIdentity;
+  value: AyinIdentity | null;
   owned: boolean;
+  status: "loading" | "ready" | "error";
   isCurrent: () => boolean;
 }
 
@@ -111,17 +114,23 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const publishIdentity = useCallback(
-    (next: AyinIdentity | null, path: string | null, owned: boolean) => {
+    (
+      next: AyinIdentity | null,
+      path: string | null,
+      owned: boolean,
+      status: PublishedIdentity["status"] = next ? "ready" : "loading",
+    ) => {
       concealViewerIdentity();
       const epoch = ++identityEpoch.current;
       identityRead.current?.abort();
       identityRead.current = null;
       setPublishedIdentity(
-        next
+        next || status !== "loading"
           ? {
               pathname: path,
               value: next,
               owned,
+              status,
               // Invalidated synchronously, before a consumer's next React commit.
               isCurrent: () => identityEpoch.current === epoch && identityPath.current === path,
             }
@@ -317,14 +326,14 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
     const accountRead = new AbortController();
     const observedIdentityEpoch = identityEpoch.current;
     identityRead.current = accountRead;
-    const applyIdentity = (next: AyinIdentity | null) => {
+    const applyIdentity = (next: AyinIdentity | null, status: PublishedIdentity["status"]) => {
       if (
         !accountRead.signal.aborted &&
         observedIdentityEpoch === identityEpoch.current &&
         !identityOwner.current &&
         identityPath.current === readPath
       ) {
-        publishIdentity(next, readPath, false);
+        publishIdentity(next, readPath, false, status);
       }
     };
     void fetch(`${apiBaseUrl}/auth/me`, {
@@ -333,9 +342,12 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       signal: accountRead.signal,
     })
       .then(async (response) => {
-        applyIdentity(response.ok ? ((await response.json()) as AyinIdentity) : null);
+        // A verified anonymous read is a usable audience for public search.
+        // Network/server failures must not silently become an adult audience.
+        if (response.ok) applyIdentity((await response.json()) as AyinIdentity, "ready");
+        else applyIdentity(null, response.status === 401 ? "ready" : "error");
       })
-      .catch(() => applyIdentity(null));
+      .catch(() => applyIdentity(null, "error"));
     return () => {
       accountRead.abort();
       if (identityRead.current === accountRead) identityRead.current = null;
@@ -348,6 +360,12 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       : null;
 
   const isIdentityCurrent = identity ? publishedIdentity!.isCurrent : noCurrentIdentity;
+  const audienceStatus =
+    publishedIdentity?.pathname === pathname && (publishedIdentity.owned || !suspended)
+      ? publishedIdentity.status
+      : "loading";
+  const isAudienceCurrent =
+    audienceStatus === "ready" ? publishedIdentity!.isCurrent : noCurrentIdentity;
 
   const value = useMemo(
     () => ({
@@ -358,6 +376,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       retryNavigation,
       identityRevision,
       isIdentityCurrent,
+      audienceStatus,
+      isAudienceCurrent,
       onBeforeIdentitySuspend,
       claimAccountIdentity,
     }),
@@ -369,6 +389,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       retryNavigation,
       identityRevision,
       isIdentityCurrent,
+      audienceStatus,
+      isAudienceCurrent,
       onBeforeIdentitySuspend,
       claimAccountIdentity,
     ],

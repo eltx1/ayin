@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 
+import { AuthModule } from "../auth/auth.module.js";
 import { DatabaseModule } from "../database/database.module.js";
 import { MovieCatalogModule } from "../movie-catalog/movie-catalog.module.js";
 import { PlatformConfigModule } from "../platform-config/platform-config.module.js";
@@ -19,9 +20,11 @@ import { SearchController } from "./search.controller.js";
 import { SearchLanguageContextService } from "./search-language-context.service.js";
 import { SearchRateLimiter } from "./search-rate-limiter.js";
 import { SearchService } from "./search.service.js";
+import { SearchViewerContextService } from "./search-viewer-context.service.js";
 
 @Module({
   imports: [
+    AuthModule,
     DatabaseModule,
     MovieCatalogModule,
     PlatformConfigModule,
@@ -31,6 +34,7 @@ import { SearchService } from "./search.service.js";
   controllers: [SearchController],
   providers: [
     SearchService,
+    SearchViewerContextService,
     SearchLanguageContextService,
     LanguageAwarePostgresSearchService,
     {
