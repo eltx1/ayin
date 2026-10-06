@@ -1,0 +1,217 @@
+{
+  "sourceCommit": "ffe3ae9ee754bf459c6fc2849e61c3e70771a77b",
+  "sourceTree": "9ee462104836910e4a5188547479e4b0bd07e64f",
+  "baseCommit": "da65339a4efa088866c17f9309e00495bcae7423",
+  "checks": {
+    "frozenInstall": "passed",
+    "ownPrismaAndPackages": "passed",
+    "apiBuild": "passed; unchanged source equivalence verified from c301a65b",
+    "webBuildAndTypecheck": "passed exact final source",
+    "webUnit": {
+      "passed": 839,
+      "files": 124
+    },
+    "apiFocused": {
+      "passed": 67
+    },
+    "apiTypecheck": "passed",
+    "postgresIntegration": {
+      "passed": 35,
+      "newViewerPolicyCases": 17,
+      "files": 4
+    },
+    "browser": {
+      "startTime": "2026-10-06T09:24:56.561Z",
+      "duration": 127551.538,
+      "expected": 47,
+      "skipped": 0,
+      "unexpected": 0,
+      "flaky": 0
+    },
+    "scopedNextWebLint": "passed",
+    "scopedApiE2eLint": "passed",
+    "format": "passed",
+    "focusedE2eTypecheck": "passed",
+    "diffCheck": "passed",
+    "gitTree": "clean"
+  },
+  "cleanup": {
+    "portsAfterCleanup": {
+      "3000": "closed",
+      "3001": "closed",
+      "55673": "closed"
+    },
+    "postgresDataRemoved": true,
+    "freeBytesAfter": 2748215296
+  },
+  "files": [
+    {
+      "path": "apps/api/src/search/search-viewer-context.service.ts",
+      "sha256": "681d7236f6f204066b5c475107f0ac8aac6f0cc9a8f596d779b2b65402d379d1",
+      "bytes": 2113
+    },
+    {
+      "path": "apps/api/src/search/search.controller.test.ts",
+      "sha256": "da84e464950cb0dff1a817312f130706b41bd6a7e7e1fbed1fc2c93817baa667",
+      "bytes": 9167
+    },
+    {
+      "path": "apps/api/src/search/search.controller.ts",
+      "sha256": "a0b846eec2727676dc810a0aa98dcd52f66bdb65e97456466aafd420a28f95a9",
+      "bytes": 7395
+    },
+    {
+      "path": "apps/api/src/search/search.module.ts",
+      "sha256": "c949d6d3aca075b8b76802fb624daebed81e2c705c5ba4e71bea239edb8b1d1b",
+      "bytes": 2184
+    },
+    {
+      "path": "apps/api/test/search-viewer-policy.integration.test.ts",
+      "sha256": "759dbcfe76716ffd58f7f3ad8b0ff1d66350893fb03a72f7442c41cf91a21f35",
+      "bytes": 12296
+    },
+    {
+      "path": "apps/web/src/app/(viewer)/search/page.test.tsx",
+      "sha256": "118038f37f93d6136608d28530eee90d786a35ac8727e278c0eb6cfca6196d7c",
+      "bytes": 3042
+    },
+    {
+      "path": "apps/web/src/app/(viewer)/search/page.tsx",
+      "sha256": "db5e7548fe1969d4893993e5cd5a09d5b073a5272eea2c69b032dfae2523cec7",
+      "bytes": 1529
+    },
+    {
+      "path": "apps/web/src/components/search/search-box.tsx",
+      "sha256": "57e6b20c0442aed79e338de2286073947f040be41bda27ee12c8ebc6f617a064",
+      "bytes": 7063
+    },
+    {
+      "path": "apps/web/src/components/search/search-privacy.test.tsx",
+      "sha256": "dab0f214b92b61db5e40b611c5a5d7f5f054eaf4a18bc1077beb2e849d3d9f86",
+      "bytes": 1343
+    },
+    {
+      "path": "apps/web/src/components/search/search-results.tsx",
+      "sha256": "168cb6664f49a12fc3c5e3eac89149f91093989ece2b615f6d88d069e6fe0828",
+      "bytes": 5090
+    },
+    {
+      "path": "apps/web/src/components/viewer/viewer-product-context.tsx",
+      "sha256": "01ca4bb6ec364ddb6310a5b06637237766e86e68333bf0f872706d7602186cc4",
+      "bytes": 14528
+    },
+    {
+      "path": "apps/web/src/lib/search-request.test.ts",
+      "sha256": "27d8065599326649e4f409eee5ff0728341f249293813e165e9a8362169216f2",
+      "bytes": 7770
+    },
+    {
+      "path": "apps/web/src/lib/search-request.ts",
+      "sha256": "9da47051a0b814fb9d2c0df606d90c78b29318aad850757deb03ca089f045b0f",
+      "bytes": 4529
+    },
+    {
+      "path": "tests/e2e/catalog-search.acceptance.spec.ts",
+      "sha256": "7eff15a2405e73c78331ad841328f9abaec6f3184321f3cd73d4f504a37209eb",
+      "bytes": 7019
+    },
+    {
+      "path": "tests/e2e/search-viewer-fixture.mjs",
+      "sha256": "07664b622a26993d3310bba3c36f3dc7d651801711b4eb2c246ba71dc1a54545",
+      "bytes": 8602
+    },
+    {
+      "path": "tests/e2e/search-viewer.acceptance.spec.ts",
+      "sha256": "2e9fe5e90aceff400746307e8f6c985ac56848ef929045f175adcb01986a5a09",
+      "bytes": 15258
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-1440-ar.png",
+      "sha256": "e88d330a7ac22046e4e14459fa032d72925247c771b5b99b57a56a5be1edb44c",
+      "bytes": 335274
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-1440-en.png",
+      "sha256": "0136bc0ee8be37cb38c4504e11a6062b00db139a4c055f8fc08d4573ad339f72",
+      "bytes": 344779
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-390-ar.png",
+      "sha256": "47f80545d2a522f633b316eb6d493a9f049f99e31aeaa7751c051102428985e6",
+      "bytes": 107076
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-390-en.png",
+      "sha256": "d99ab7c79632a3979d92798ec024d37be4ef52df97a59a0116aa2f3f0598bbdc",
+      "bytes": 110582
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-initial-1440-ar.png",
+      "sha256": "8bfb13adab6b54d661f629bcb37358567e9c9b35bbaddb4689ed48bdaf720dd7",
+      "bytes": 333398
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-initial-1440-en.png",
+      "sha256": "d7cf9e3be0dd3448aaea739e34d9157e9979aee9e3294cc44044a2838140b8d7",
+      "bytes": 343514
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-initial-390-ar.png",
+      "sha256": "280ce7f5a850a744c9e884c0fdef4691f6c87e7f849d2b4c8562794ab581ee24",
+      "bytes": 105386
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-initial-390-en.png",
+      "sha256": "91da5bd2465d5fbbc8fe39abed32b1eb9fa47e0f4aae12797a446845de6a113d",
+      "bytes": 108854
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-suggestions-1440-ar.png",
+      "sha256": "327c911cd9719b06389d50f6cfb4332b8096bcd24661e1af1f218b62215a2777",
+      "bytes": 285163
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-suggestions-1440-en.png",
+      "sha256": "70a5c27627e2d099e060faca24c45ba5d7c842e74191adc019c89b8838f27110",
+      "bytes": 297050
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-suggestions-390-ar.png",
+      "sha256": "06daf0ce7578cc977c168dd4459982b95bf9df99668eaec79ac0cec3bbe04e1d",
+      "bytes": 84374
+    },
+    {
+      "path": "browser-results/catalog-search.acceptance--42242-s-its-stable-bounded-window-chromium/global-search-suggestions-390-en.png",
+      "sha256": "d2f579234c03560437caefc1642ebeaf871aa6297f2e46f062aeeae1d62486a8",
+      "bytes": 91623
+    },
+    {
+      "path": "browser-results/search-viewer.acceptance-a-22c45-er-embeds-adult-result-data-chromium/authenticated-kids-ordinary-search-ar.png",
+      "sha256": "7157a1bba9867ef10e77d1bbb6f4932a9dc91d35f6003e74f18c53633be08029",
+      "bytes": 100853
+    },
+    {
+      "path": "browser-results/search-viewer.acceptance-a-789f3-te-response-lifecycle-in-ar-chromium/suggestion-native-keyboard-ar.png",
+      "sha256": "7f72bf2aeaa39a696fb48d3f5374f3d57ca6446d0f7741a2ece1b82a1a2393e5",
+      "bytes": 191025
+    },
+    {
+      "path": "browser-results/search-viewer.acceptance-a-88217-te-response-lifecycle-in-en-chromium/suggestion-native-keyboard-en.png",
+      "sha256": "0e1e31f7775f49b230ad8c83795446330e064caaab1229ed8a10cd8328fceefd",
+      "bytes": 191797
+    },
+    {
+      "path": "browser-results/search-viewer.acceptance-p-56898-ult-suggestions-and-results-chromium/search-profile-switch-discards-late-adult.png",
+      "sha256": "0241041b93abbe96d188ab7183bdfc007db00e45a4fa4232063ba620460a9a2c",
+      "bytes": 103152
+    }
+  ],
+  "proofLimits": [
+    "Synthetic loopback test accounts/content only.",
+    "TV routing used a controlled webOS marker; no physical-device claim.",
+    "Player media event controls do not establish decoded-media performance.",
+    "Publication/merge/deployment are not performed by this worker."
+  ]
+}
