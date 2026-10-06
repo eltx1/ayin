@@ -2,6 +2,8 @@ import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
+import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
+import { catalogSearchEligibilitySql } from "./catalog-search-policy.js";
 
 export type SearchCandidateType =
   "VIDEO" | "CHANNEL" | "PLAYLIST" | "CREATOR_TV" | "SERIES" | "MOVIE";
@@ -20,7 +22,7 @@ type SearchCandidateRow = {
   score: number;
 };
 
-const maxCandidatesPerType = 64;
+export const SEARCH_CANDIDATES_PER_TYPE = 64;
 const candidateTypes = new Set<SearchCandidateType>([
   "VIDEO",
   "CHANNEL",
@@ -34,8 +36,12 @@ const candidateTypes = new Set<SearchCandidateType>([
 export class PostgresSearchService {
   constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
-  async searchCandidates(query: string, requestedPerType = 32): Promise<SearchCandidate[]> {
-    const limit = Math.min(Math.max(requestedPerType, 1), maxCandidatesPerType);
+  async searchCandidates(
+    query: string,
+    requestedPerType = 32,
+    context: VideoPolicyContext = {},
+  ): Promise<SearchCandidate[]> {
+    const limit = Math.min(Math.max(requestedPerType, 1), SEARCH_CANDIDATES_PER_TYPE);
     const prefix = escapeLikePrefix(query);
     const fuzzy = Array.from(query).length >= 3;
     const rows = await Promise.all([
@@ -43,15 +49,19 @@ export class PostgresSearchService {
       this.channelCandidates(query, prefix, fuzzy, limit),
       this.playlistCandidates(query, prefix, fuzzy, limit),
       this.creatorTvCandidates(query, prefix, fuzzy, limit),
-      this.seriesCandidates(query, prefix, fuzzy, limit),
-      this.movieCandidates(query, prefix, fuzzy, limit),
+      this.seriesCandidates(query, prefix, fuzzy, limit, context),
+      this.movieCandidates(query, prefix, fuzzy, limit, context),
     ]);
     return mergeCandidateRows(rows.flat());
   }
 
-  async suggestCandidates(query: string, requestedLimit = 8): Promise<SearchCandidate[]> {
+  async suggestCandidates(
+    query: string,
+    requestedLimit = 8,
+    context: VideoPolicyContext = {},
+  ): Promise<SearchCandidate[]> {
     const limit = Math.min(Math.max(requestedLimit, 1), 8);
-    const candidates = await this.searchCandidates(query, Math.min(limit * 3, 24));
+    const candidates = await this.searchCandidates(query, Math.min(limit * 3, 24), context);
     const strongPrefixCandidates = candidates.filter((candidate) => candidate.score >= 60);
     return (strongPrefixCandidates.length ? strongPrefixCandidates : candidates).slice(
       0,
@@ -241,7 +251,13 @@ export class PostgresSearchService {
     `);
   }
 
-  private seriesCandidates(query: string, prefix: string, fuzzy: boolean, limit: number) {
+  private seriesCandidates(
+    query: string,
+    prefix: string,
+    fuzzy: boolean,
+    limit: number,
+    context: VideoPolicyContext,
+  ) {
     return this.database.client.$queryRaw<SearchCandidateRow[]>(Prisma.sql`
       SELECT
         s."id"::text AS "id",
@@ -283,6 +299,7 @@ export class PostgresSearchService {
         )::double precision AS "score"
       FROM "Series" s
       WHERE s."status" = 'PUBLISHED'
+        AND ${catalogSearchEligibilitySql("SERIES", Prisma.sql`s.id`, context)}
         AND (
           lower(s."title") LIKE ${prefix} ESCAPE '\\'
           OR (${fuzzy}::boolean AND lower(s."title") % lower(${query}))
@@ -306,7 +323,13 @@ export class PostgresSearchService {
     `);
   }
 
-  private movieCandidates(query: string, prefix: string, fuzzy: boolean, limit: number) {
+  private movieCandidates(
+    query: string,
+    prefix: string,
+    fuzzy: boolean,
+    limit: number,
+    context: VideoPolicyContext,
+  ) {
     return this.database.client.$queryRaw<SearchCandidateRow[]>(Prisma.sql`
       SELECT
         m."id"::text AS "id",
@@ -348,6 +371,7 @@ export class PostgresSearchService {
         )::double precision AS "score"
       FROM "Movie" m
       WHERE m."status" = 'PUBLISHED'
+        AND ${catalogSearchEligibilitySql("MOVIE", Prisma.sql`m.id`, context)}
         AND m."primaryVideoId" IS NOT NULL
         AND (
           lower(m."title") LIKE ${prefix} ESCAPE '\\'

@@ -643,6 +643,77 @@ export class SeriesCatalogService {
     return result;
   }
 
+  async getPublicSearchCards(ids: string[], countryCode?: string) {
+    if (!ids.length) return [];
+    const rows = await this.database.client.series.findMany({
+      where: { id: { in: [...new Set(ids)] }, status: "PUBLISHED" },
+      include: { artwork: true, availability: true },
+    });
+    const now = new Date();
+    const [episodeFacts, assets] = await Promise.all([
+      this.database.client.$queryRaw<
+        Array<{ seriesId: string; videoId: string; episodeCount: number }>
+      >(Prisma.sql`
+        SELECT "seriesId", "videoId", "episodeCount" FROM (
+          SELECT season."seriesId", episode."videoId",
+            (COUNT(*) OVER (PARTITION BY season."seriesId"))::int AS "episodeCount",
+            ROW_NUMBER() OVER (PARTITION BY season."seriesId" ORDER BY season."sortOrder", season."seasonNumber", season.id, episode."sortOrder", episode."episodeNumber", episode.id) AS position
+          FROM "SeriesSeason" season JOIN "SeriesEpisode" episode ON episode."seasonId" = season.id
+          JOIN "Video" v ON v.id = episode."videoId"
+          WHERE season."seriesId" = ANY(${ids}::uuid[]) AND episode.status = 'PUBLISHED'
+            AND (episode."releaseDate" IS NULL OR episode."releaseDate" <= ${now})
+            AND ${publicPlayableVideoSql()}
+            AND ${availableVideoPolicySql(Prisma.sql`v.id`, { countryCode, now })}
+        ) eligible WHERE position = 1
+      `),
+      this.database.client.mediaAsset.findMany({
+        where: {
+          id: { in: rows.flatMap((series) => series.artwork.map((art) => art.mediaAssetId)) },
+        },
+        select: {
+          id: true,
+          r2ObjectKey: true,
+          mimeType: true,
+          status: true,
+          width: true,
+          height: true,
+          removedAt: true,
+        },
+      }),
+    ]);
+    const facts = new Map(episodeFacts.map((item) => [item.seriesId, item]));
+    const byAsset = new Map(assets.map((asset) => [asset.id, asset]));
+    return rows.flatMap((series) => {
+      const episode = facts.get(series.id);
+      if (!episode || !isSeriesAvailableInTerritory(series.availability, countryCode, now))
+        return [];
+      const artwork = (type: "POSTER" | "BACKDROP") => {
+        const item = series.artwork.find((art) => art.type === type);
+        const asset = item ? byAsset.get(item.mediaAssetId) : null;
+        return item && asset && isReadyAsset(asset)
+          ? {
+              objectKey: asset.r2ObjectKey,
+              altText: item.altText,
+              width: asset.width,
+              height: asset.height,
+            }
+          : null;
+      };
+      return [
+        {
+          id: series.id,
+          title: series.title,
+          slug: series.slug,
+          synopsis: series.synopsis,
+          episodeCount: episode.episodeCount,
+          firstEpisode: { video: { id: episode.videoId } },
+          poster: artwork("POSTER"),
+          backdrop: artwork("BACKDROP"),
+        },
+      ];
+    });
+  }
+
   async listPublicDirectory(
     limit: number,
     cursor?: string,

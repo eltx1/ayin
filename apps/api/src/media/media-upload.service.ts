@@ -1,3 +1,4 @@
+import { assertUploadByteQuota, lockUploadAdmission } from "./media-upload-admission.js";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@ayin/db";
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -62,12 +63,12 @@ type SupportedVideoMimeType =
   | "video/ogg"
   | "application/mxf";
 
-function normalizeVideoMimeType(value: string): SupportedVideoMimeType | null {
+export function normalizeVideoMimeType(value: string): SupportedVideoMimeType | null {
   const mimeType = value.toLowerCase().split(";", 1)[0]?.trim() ?? "";
   return SUPPORTED_VIDEO_MIME_TYPES.has(mimeType) ? (mimeType as SupportedVideoMimeType) : null;
 }
 
-function sourceExtension(mimeType: SupportedVideoMimeType): string {
+export function sourceExtension(mimeType: SupportedVideoMimeType): string {
   const extensions: Record<SupportedVideoMimeType, string> = {
     "video/mp4": "mp4",
     "video/quicktime": "mov",
@@ -222,6 +223,7 @@ export class MediaUploadService {
     try {
       await this.withCreationAuthority(actor, channelId, creationOptions, async (tx) => {
         this.verifySession(sessionToken);
+        await assertUploadByteQuota(tx, channelId, input.sizeBytes, quotaBytes);
         await tx.mediaAsset.create({
           data: {
             id: assetId,
@@ -409,9 +411,9 @@ export class MediaUploadService {
       }
       const asset = await this.database.client.mediaAsset.findUnique({
         where: { r2ObjectKey: upload.key },
-        select: { id: true, status: true },
+        select: { id: true, status: true, uploadIntegrityRequired: true },
       });
-      if (!asset || asset.status !== "PENDING") {
+      if (!asset || asset.status !== "PENDING" || asset.uploadIntegrityRequired) {
         continue;
       }
       await this.storage.abortMultipartUpload({ key: upload.key, uploadId: upload.uploadId });
@@ -424,6 +426,7 @@ export class MediaUploadService {
         status: "PENDING",
         removedAt: null,
         createdAt: { lt: olderThan },
+        uploadIntegrityRequired: false,
       },
       select: { id: true, r2ObjectKey: true },
     });
@@ -490,6 +493,7 @@ export class MediaUploadService {
       await assertActor();
       await assertChannelMediaOwners(tx, channelId, owners);
       if (!options.adminOverride) await this.assertChannelOwner(actor.accountId, channelId, tx);
+      await lockUploadAdmission(tx, channelId);
       if (options.videoId) {
         await lockMediaGeneration(tx, options.videoId);
         const [video] = await tx.$queryRaw<
@@ -565,10 +569,12 @@ export class MediaUploadService {
           sizeBytes: true,
           mimeType: true,
           status: true,
+          uploadIntegrityRequired: true,
         },
       });
       if (
         !asset ||
+        asset.uploadIntegrityRequired ||
         asset.channelId !== session.channelId ||
         asset.videoId !== observed?.videoId ||
         asset.kind !== "SOURCE_VIDEO" ||

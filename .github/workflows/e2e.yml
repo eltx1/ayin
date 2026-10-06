@@ -6,9 +6,11 @@ on:
       - "apps/**"
       - "packages/**"
       - "tests/e2e/**"
+      - "tests/recovery/**"
       - "tests/pwa/**"
       - "tests/captions/**"
       - "playwright.config.ts"
+      - "playwright.recovery.config.ts"
       - "playwright.pwa.config.ts"
       - "playwright.captions.config.ts"
       - "package.json"
@@ -77,6 +79,16 @@ jobs:
           done
       - name: Run real PWA lifecycle acceptance
         run: pnpm exec playwright test --config playwright.pwa.config.ts
+      - name: Run dormant upload recovery against synthetic provider and PostgreSQL
+        run: pnpm test:e2e:recovery
+      - name: Preserve upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upload-recovery-evidence
+          path: test-results-recovery
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Run caption recovery against independent HTTP storage
         timeout-minutes: 10
         # The eighteen dedicated journeys use real PUT/HEAD/read bytes, not the
@@ -126,6 +138,18 @@ jobs:
             test-results/**/design-auth-recovery-*.png
             test-results/**/auth-recovery.acceptance-*/test-failed-*.png
             test-results/**/auth-recovery.acceptance-*/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve Catalog discovery visual evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-discovery-visuals
+          path: |
+            test-results/**/catalog-*.png
+            test-results/**/catalog-*.json
+            test-results/**/global-search-*.png
+            test-results/**/catalog-*.acceptance-*/error-context.md
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload PWA lifecycle failure report

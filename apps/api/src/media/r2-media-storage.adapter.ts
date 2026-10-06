@@ -24,6 +24,8 @@ const MAX_LIST_PAGES = 100;
 const MAX_LIST_PAGE_BYTES = 2 * 1024 * 1024;
 const MAX_LIST_TOTAL_BYTES = 32 * 1024 * 1024;
 const LIST_DEADLINE_MS = 30000;
+const MULTIPART_RESPONSE_BYTES = 64 * 1024;
+const MULTIPART_DEADLINE_MS = 30000;
 
 function integerField(node: R2XmlNode, name: string, min: number, max: number): number {
   const raw = xmlField(node, name)?.trim() ?? "";
@@ -62,14 +64,37 @@ function initiatedDate(value: string | null): Date {
   return date;
 }
 
-function xmlValue(xml: string, tag: string): string | null {
-  const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(xml);
-  return match?.[1]?.trim() ?? null;
+function xmlEscape(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function multipartToken(value: string | null, maxBytes: number): string {
+  const token = boundedText(value, maxBytes);
+  for (const character of token) {
+    const code = character.codePointAt(0)!;
+    if (
+      code <= 0x20 ||
+      code === 0x7f ||
+      (code >= 0xd800 && code <= 0xdfff) ||
+      code === 0xfffe ||
+      code === 0xffff
+    )
+      throw new R2XmlError();
+  }
+  return token;
 }
 
 function normalizeEtag(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.startsWith('"') ? trimmed : `"${trimmed.replaceAll('"', "")}"`;
+  const trimmed = boundedText(value, 256).trim();
+  const contents =
+    trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1) : trimmed;
+  if (contents.includes('"')) throw new R2XmlError();
+  return `"${multipartToken(contents, 254)}"`;
 }
 
 export class R2MediaStorageAdapter implements MediaStorageAdapter {
@@ -85,17 +110,17 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
     key: string;
     contentType: string;
   }): Promise<{ uploadId: string }> {
-    const response = await this.signer.request({
-      method: "POST",
+    boundedText(input.key, 1024);
+    const root = await this.requestMultipartXml({
       key: input.key,
       query: [["uploads", ""]],
       contentType: input.contentType,
     });
-    const xml = await response.text();
-    const uploadId = xmlValue(xml, "UploadId");
-    if (!uploadId) {
-      throw new Error("R2 did not return a multipart upload identifier.");
-    }
+    if (root.name !== "InitiateMultipartUploadResult") throw new R2XmlError();
+    xmlFields(root, ["Bucket", "Key", "UploadId"]);
+    if (xmlField(root, "Bucket") !== this.config.bucket || xmlField(root, "Key") !== input.key)
+      throw new R2XmlError();
+    const uploadId = multipartToken(xmlField(root, "UploadId"), 1024);
     return { uploadId };
   }
 
@@ -104,6 +129,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
     uploadId: string;
     partNumber: number;
     expiresInSeconds: number;
+    now?: Date;
   }): Promise<{ url: string; expiresAt: Date }> {
     return this.signer.presign({
       method: "PUT",
@@ -113,6 +139,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
         ["uploadId", input.uploadId],
       ],
       expiresInSeconds: input.expiresInSeconds,
+      ...(input.now ? { now: input.now } : {}),
     });
   }
 
@@ -120,12 +147,14 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
     key: string;
     contentType: string;
     expiresInSeconds: number;
+    now?: Date;
   }): Promise<{ url: string; expiresAt: Date }> {
     return this.signer.presign({
       method: "PUT",
       key: input.key,
       contentType: input.contentType,
       expiresInSeconds: input.expiresInSeconds,
+      ...(input.now ? { now: input.now } : {}),
     });
   }
 
@@ -209,22 +238,50 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
     uploadId: string;
     parts: CompletedUploadPart[];
   }): Promise<{ etag: string | null }> {
-    const body = `<CompleteMultipartUpload>${input.parts
+    boundedText(input.key, 1024);
+    multipartToken(input.uploadId, 1024);
+    if (!input.parts.length || input.parts.length > MAX_LIST_ITEMS) throw new R2XmlError();
+    const partNumbers = new Set<number>();
+    const body = `<CompleteMultipartUpload>${[...input.parts]
       .sort((left, right) => left.partNumber - right.partNumber)
-      .map(
-        (part) =>
-          `<Part><PartNumber>${part.partNumber}</PartNumber><ETag>${normalizeEtag(part.etag)}</ETag></Part>`,
-      )
+      .map((part) => {
+        if (
+          !Number.isSafeInteger(part.partNumber) ||
+          part.partNumber < 1 ||
+          part.partNumber > MAX_LIST_ITEMS ||
+          partNumbers.has(part.partNumber)
+        )
+          throw new R2XmlError();
+        partNumbers.add(part.partNumber);
+        return `<Part><PartNumber>${part.partNumber}</PartNumber><ETag>${xmlEscape(normalizeEtag(part.etag))}</ETag></Part>`;
+      })
       .join("")}</CompleteMultipartUpload>`;
-    const response = await this.signer.request({
-      method: "POST",
+    const root = await this.requestMultipartXml({
       key: input.key,
       query: [["uploadId", input.uploadId]],
       body,
       contentType: "application/xml",
     });
-    const xml = await response.text();
-    return { etag: xmlValue(xml, "ETag") };
+    if (root.name !== "CompleteMultipartUploadResult") throw new R2XmlError();
+    const fields = [
+      "Location",
+      "Bucket",
+      "Key",
+      "ETag",
+      "ChecksumCRC32",
+      "ChecksumCRC32C",
+      "ChecksumCRC64NVME",
+      "ChecksumSHA1",
+      "ChecksumSHA256",
+      "ChecksumType",
+    ];
+    xmlFields(root, fields);
+    for (const field of fields) xmlField(root, field, false);
+    if (xmlField(root, "Bucket") !== this.config.bucket || xmlField(root, "Key") !== input.key)
+      throw new R2XmlError();
+    const etag = boundedText(xmlField(root, "ETag"), 256);
+    if (normalizeEtag(etag) !== etag) throw new R2XmlError();
+    return { etag };
   }
 
   async abortMultipartUpload(input: { key: string; uploadId: string }): Promise<void> {
@@ -424,6 +481,43 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
       }
       throw new R2XmlError(true);
     });
+  }
+
+  private async requestMultipartXml(input: {
+    key: string;
+    query: Array<[string, string]>;
+    contentType: string;
+    body?: string;
+  }): Promise<R2XmlNode> {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error("R2 multipart request timed out."));
+      }, MULTIPART_DEADLINE_MS);
+      timer.unref();
+    });
+    try {
+      return await Promise.race([
+        deadline,
+        (async () => {
+          const response = await this.signer.request({
+            ...input,
+            method: "POST",
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) void response.body?.cancel().catch(() => undefined);
+          controller.signal.throwIfAborted();
+          return parseR2Xml(
+            await readR2XmlText(response, MULTIPART_RESPONSE_BYTES, controller.signal),
+          );
+        })(),
+      ]);
+    } finally {
+      clearTimeout(timer);
+      controller.abort();
+    }
   }
 
   private async observe<T>(

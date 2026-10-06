@@ -367,6 +367,42 @@ export class MovieCatalogService {
       .map(toPublicMovieCard);
   }
 
+  async getPublicSearchCards(ids: string[], countryCode?: string) {
+    if (!ids.length) return [];
+    const rows = await this.database.client.movie.findMany({
+      where: { id: { in: [...new Set(ids)] }, status: "PUBLISHED", primaryVideoId: { not: null } },
+      include: {
+        genres: { include: { genre: true } },
+        artwork: true,
+        availability: true,
+        localizations: true,
+      },
+    });
+    const hydrated = await this.hydrateMany(rows);
+    const videoIds = hydrated.flatMap((movie) =>
+      movie.primaryVideoId ? [movie.primaryVideoId] : [],
+    );
+    const publicVideos = videoIds.length
+      ? await this.database.client.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT v.id FROM "Video" v WHERE v.id = ANY(${videoIds}::uuid[])
+        AND ${publicPlayableVideoSql()} AND ${availableVideoPolicySql(Prisma.sql`v.id`, { countryCode })}
+    `)
+      : [];
+    const allowed = new Set(publicVideos.map((video) => video.id));
+    return hydrated
+      .filter(
+        (movie) =>
+          movie.primaryVideoId &&
+          allowed.has(movie.primaryVideoId) &&
+          this.isPubliclyAvailable(movie, countryCode),
+      )
+      .map((movie) => ({
+        ...toPublicMovieCard(movie),
+        synopsis: movie.synopsis,
+        primaryVideo: { id: movie.primaryVideoId! },
+      }));
+  }
+
   async listPublicDirectory(
     limit: number,
     cursor?: string,

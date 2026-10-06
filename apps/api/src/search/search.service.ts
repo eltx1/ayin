@@ -2,6 +2,9 @@ import type { Prisma } from "@ayin/db";
 import { HttpException, Inject, Injectable } from "@nestjs/common";
 
 import { VIDEO_CATEGORIES } from "../creator/video-metadata.validation.js";
+import { CatalogLocalizationService } from "../catalog-localization/catalog-localization.service.js";
+import { normalizeCatalogLocale } from "../catalog-localization/catalog-localization.js";
+import { SearchLanguageContextService } from "./search-language-context.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { isKidsSearchResultTypeAllowed, kidsSafeHref } from "../kids/kids-policy.js";
 import { MovieCatalogService } from "../movie-catalog/movie-catalog.service.js";
@@ -12,6 +15,7 @@ import {
 } from "../video-policy/video-policy.service.js";
 import {
   PostgresSearchService,
+  SEARCH_CANDIDATES_PER_TYPE,
   type SearchCandidate,
   type SearchCandidateType,
 } from "./search-postgres.service.js";
@@ -78,6 +82,9 @@ export class SearchService {
     @Inject(SeriesCatalogService) private readonly seriesCatalog: SeriesCatalogService,
     @Inject(MovieCatalogService) private readonly movieCatalog: MovieCatalogService,
     @Inject(VideoPolicyService) private readonly videoPolicy: VideoPolicyService,
+    @Inject(CatalogLocalizationService) private readonly localization: CatalogLocalizationService,
+    @Inject(SearchLanguageContextService)
+    private readonly languageContext: SearchLanguageContextService,
   ) {}
 
   async search(
@@ -89,9 +96,10 @@ export class SearchService {
     const normalized = normalizeSearchQuery(query);
     const offset = decodeCursor(cursor);
     const limit = Math.min(Math.max(requestedLimit, 1), maxPageSize);
-    const takePerType = Math.min(Math.max(offset + limit + 8, 24), 64);
+    // A consistent bounded candidate pool keeps unchanged-catalog offset pages stable.
+    const takePerType = SEARCH_CANDIDATES_PER_TYPE;
     const [lexicalCandidates, metadataMatches] = await Promise.all([
-      this.postgresSearch.searchCandidates(normalized, takePerType),
+      this.postgresSearch.searchCandidates(normalized, takePerType, context),
       this.metadataCandidates(normalized, Math.min(takePerType, 32)),
     ]);
     const candidates = mergeMetadataCandidates(lexicalCandidates, metadataMatches);
@@ -103,7 +111,10 @@ export class SearchService {
     return {
       query: normalized,
       items,
-      nextCursor: eligibleRanked.length > offset + limit ? encodeCursor(offset + limit) : null,
+      nextCursor:
+        eligibleRanked.length > offset + limit && offset + limit <= maxCursorOffset
+          ? encodeCursor(offset + limit)
+          : null,
       emptyMessage:
         items.length === 0
           ? "No matches yet. Try a movie, series, creator name, video title, playlist, or Creator TV."
@@ -114,7 +125,7 @@ export class SearchService {
   async suggest(query: string, requestedLimit = 6, context: VideoPolicyContext = {}) {
     const normalized = normalizeSearchQuery(query);
     const limit = Math.min(Math.max(requestedLimit, 1), 8);
-    const candidates = await this.postgresSearch.suggestCandidates(normalized, limit);
+    const candidates = await this.postgresSearch.suggestCandidates(normalized, limit, context);
     const ranked = await this.hydrateCandidates(candidates, normalized, context, false);
     const suggestions = ranked
       .filter((entry) => !context.isKidsProfile || isKidsSearchResultTypeAllowed(entry.item.type))
@@ -157,6 +168,7 @@ export class SearchService {
     context: VideoPolicyContext,
     includePopularity: boolean,
   ): Promise<RankedResult[]> {
+    const locale = normalizeCatalogLocale(this.languageContext.currentUiLocale());
     const eligibleCandidates = context.isKidsProfile
       ? candidates.filter((candidate) => isKidsSearchResultTypeAllowed(candidate.type))
       : candidates;
@@ -171,91 +183,80 @@ export class SearchService {
     const seriesCandidates = eligibleCandidates.filter((candidate) => candidate.type === "SERIES");
     const movieCandidates = eligibleCandidates.filter((candidate) => candidate.type === "MOVIE");
 
-    const [videos, channels, playlists, televisions, seriesSettled, movies, metadata] =
-      await Promise.all([
-        videoIds.length
-          ? this.database.client.video.findMany({
-              where: { AND: [publicVideoWhere, { id: { in: videoIds } }] },
-              select: {
-                id: true,
-                slug: true,
-                title: true,
-                channel: { select: { name: true } },
-                mediaAssets: {
-                  where: {
-                    kind: "THUMBNAIL",
-                    status: { in: ["UPLOADED", "VALIDATED"] },
-                    removedAt: null,
-                  },
-                  orderBy: { createdAt: "desc" },
-                  take: 1,
-                  select: { r2ObjectKey: true },
+    const [videos, channels, playlists, televisions, series, movies, metadata] = await Promise.all([
+      videoIds.length
+        ? this.database.client.video.findMany({
+            where: { AND: [publicVideoWhere, { id: { in: videoIds } }] },
+            select: {
+              id: true,
+              slug: true,
+              title: true,
+              channel: { select: { name: true } },
+              mediaAssets: {
+                where: {
+                  kind: "THUMBNAIL",
+                  status: { in: ["UPLOADED", "VALIDATED"] },
+                  removedAt: null,
                 },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: { r2ObjectKey: true },
               },
-            })
-          : [],
-        channelIds.length
-          ? this.database.client.channel.findMany({
-              where: { id: { in: channelIds }, status: "ACTIVE", removedAt: null },
-              select: { id: true, handle: true, name: true },
-            })
-          : [],
-        playlistIds.length
-          ? this.database.client.playlist.findMany({
-              where: {
-                id: { in: playlistIds },
-                deletedAt: null,
-                visibility: "PUBLIC",
-                channel: { status: "ACTIVE", removedAt: null },
-              },
-              select: {
-                id: true,
-                slug: true,
-                name: true,
-                channel: { select: { handle: true, name: true } },
-              },
-            })
-          : [],
-        televisionIds.length
-          ? this.database.client.creatorTvChannel.findMany({
-              where: {
-                id: { in: televisionIds },
-                status: "ACTIVE",
-                disabledAt: null,
-                channel: { status: "ACTIVE", removedAt: null },
-              },
-              select: {
-                id: true,
-                name: true,
-                channel: { select: { handle: true, name: true } },
-              },
-            })
-          : [],
-        Promise.allSettled(
-          seriesCandidates
-            .slice(0, maxPageSize)
-            .map((candidate) =>
-              candidate.slug
-                ? this.seriesCatalog.getPublicBySlug(candidate.slug, context.countryCode)
-                : Promise.resolve(null),
-            ),
-        ),
-        Promise.all(
-          movieCandidates
-            .slice(0, maxPageSize)
-            .map((candidate) =>
-              candidate.slug
-                ? this.movieCatalog.getPublicBySlug(candidate.slug, context.countryCode)
-                : Promise.resolve(null),
-            ),
-        ),
-        videoIds.length
-          ? this.database.client.videoCreatorMetadata.findMany({
-              where: { videoId: { in: videoIds } },
-              select: { videoId: true, tags: true, category: true },
-            })
-          : [],
-      ]);
+            },
+          })
+        : [],
+      channelIds.length
+        ? this.database.client.channel.findMany({
+            where: { id: { in: channelIds }, status: "ACTIVE", removedAt: null },
+            select: { id: true, handle: true, name: true },
+          })
+        : [],
+      playlistIds.length
+        ? this.database.client.playlist.findMany({
+            where: {
+              id: { in: playlistIds },
+              deletedAt: null,
+              visibility: "PUBLIC",
+              channel: { status: "ACTIVE", removedAt: null },
+            },
+            select: {
+              id: true,
+              slug: true,
+              name: true,
+              channel: { select: { handle: true, name: true } },
+            },
+          })
+        : [],
+      televisionIds.length
+        ? this.database.client.creatorTvChannel.findMany({
+            where: {
+              id: { in: televisionIds },
+              status: "ACTIVE",
+              disabledAt: null,
+              channel: { status: "ACTIVE", removedAt: null },
+            },
+            select: {
+              id: true,
+              name: true,
+              channel: { select: { handle: true, name: true } },
+            },
+          })
+        : [],
+      this.seriesCatalog.getPublicSearchCards(
+        seriesCandidates.map((candidate) => candidate.id),
+        context.countryCode,
+      ),
+      this.movieCatalog.getPublicSearchCards(
+        movieCandidates.map((candidate) => candidate.id),
+        context.countryCode,
+      ),
+      videoIds.length
+        ? this.database.client.videoCreatorMetadata.findMany({
+            where: { videoId: { in: videoIds } },
+            select: { videoId: true, tags: true, category: true },
+          })
+        : [],
+    ]);
 
     const allowedVideoIds = await this.videoPolicy.filterAvailableVideoIds(
       videos.map((video) => video.id),
@@ -265,16 +266,12 @@ export class SearchService {
     const channelById = new Map(channels.map((channel) => [channel.id, channel]));
     const playlistById = new Map(playlists.map((playlist) => [playlist.id, playlist]));
     const televisionById = new Map(televisions.map((tv) => [tv.id, tv]));
-    const seriesById = new Map(
-      seriesSettled.flatMap((settled) =>
-        settled.status === "fulfilled" && settled.value
-          ? [[settled.value.id, settled.value] as const]
-          : [],
-      ),
-    );
-    const movieById = new Map(
-      movies.flatMap((movie) => (movie ? [[movie.id, movie] as const] : [])),
-    );
+    const [localizedSeries, localizedMovies] = await Promise.all([
+      this.localization.localizeCatalogCards("SERIES", series, locale),
+      this.localization.localizeMovies(movies, locale),
+    ]);
+    const seriesById = new Map(localizedSeries.map((item) => [item.id, item]));
+    const movieById = new Map(localizedMovies.map((item) => [item.id, item]));
     const metadataByVideo = new Map(metadata.map((item) => [item.videoId, item]));
 
     const hydrated = eligibleCandidates.flatMap<RankedResult>((candidate) => {
@@ -367,11 +364,11 @@ export class SearchService {
               title: series.title,
               href: `/series/${series.slug}`,
               kicker: "Series",
-              meta: `${series.episodeCount} episodes`,
-              artworkObjectKey:
-                series.artwork.find((item) => item.type === "POSTER")?.objectKey ??
-                series.artwork.find((item) => item.type === "BACKDROP")?.objectKey ??
-                null,
+              meta:
+                locale.split("-")[0] === "ar"
+                  ? `${new Intl.NumberFormat("ar-EG").format(series.episodeCount)} حلقة`
+                  : `${series.episodeCount} episodes`,
+              artworkObjectKey: series.poster?.objectKey ?? series.backdrop?.objectKey ?? null,
             },
             score: candidate.score,
             popularityVideoId: series.firstEpisode?.video.id ?? null,

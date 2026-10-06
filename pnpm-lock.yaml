@@ -92,6 +92,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@ayin/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@ayin/ui':
         specifier: workspace:*
         version: link:../../packages/ui

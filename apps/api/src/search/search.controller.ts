@@ -1,27 +1,45 @@
-import { Controller, Get, Headers, HttpException, Inject, Query, Req } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Header,
+  Headers,
+  HttpException,
+  Inject,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
+import type { AuthenticatedRequest } from "../auth/auth.guard.js";
+import { OptionalAuthGuard } from "../auth/optional-auth.guard.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
 import { LensSearchService } from "./lens-search.service.js";
 import { SearchLanguageContextService } from "./search-language-context.service.js";
 import { SearchRateLimiter } from "./search-rate-limiter.js";
 import { SearchError, SearchService } from "./search.service.js";
+import { SearchViewerContextService } from "./search-viewer-context.service.js";
+
+type SearchRequest = { ip?: string; ayinAuth?: AuthenticatedRequest["ayinAuth"] };
 
 const searchSchema = z
   .object({
     q: z.string().min(1).max(100),
     cursor: z.string().max(100).optional(),
     limit: z.coerce.number().int().min(1).max(24).optional(),
+    expectedProfileId: z.string().uuid().optional(),
   })
   .strict();
 const suggestSchema = z
   .object({
     q: z.string().min(1).max(100),
     limit: z.coerce.number().int().min(1).max(8).optional(),
+    expectedProfileId: z.string().uuid().optional(),
   })
   .strict();
 
 @Controller("public/search")
+@UseGuards(OptionalAuthGuard)
 export class SearchController {
   constructor(
     @Inject(SearchService) private readonly searchService: SearchService,
@@ -30,11 +48,14 @@ export class SearchController {
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
     @Inject(SearchLanguageContextService)
     private readonly languageContext: SearchLanguageContextService,
+    @Inject(SearchViewerContextService)
+    private readonly viewerContext: SearchViewerContextService,
   ) {}
 
   @Get()
+  @Header("Cache-Control", "private, no-store")
   async search(
-    @Req() request: { ip?: string },
+    @Req() request: SearchRequest,
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
@@ -44,16 +65,28 @@ export class SearchController {
         const parsed = searchSchema.safeParse(query);
         if (!parsed.success)
           throw new SearchError("INVALID_SEARCH_QUERY", "The search request is invalid.");
-        return this.searchService.search(parsed.data.q, parsed.data.cursor, parsed.data.limit, {
-          countryCode: this.trustedRegion.countryFromHeaders(headers),
-        });
+        return this.viewerContext.run(
+          {
+            accountId: request.ayinAuth?.accountId,
+            expectedProfileId: parsed.data.expectedProfileId,
+            countryCode: this.trustedRegion.countryFromHeaders(headers),
+          },
+          (context) =>
+            this.searchService.search(
+              parsed.data.q,
+              parsed.data.cursor,
+              parsed.data.limit,
+              context,
+            ),
+        );
       }),
     );
   }
 
   @Get("kids")
+  @Header("Cache-Control", "private, no-store")
   async kidsSearch(
-    @Req() request: { ip?: string },
+    @Req() request: SearchRequest,
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
@@ -63,17 +96,29 @@ export class SearchController {
         const parsed = searchSchema.safeParse(query);
         if (!parsed.success)
           throw new SearchError("INVALID_SEARCH_QUERY", "The Kids search request is invalid.");
-        return this.searchService.search(parsed.data.q, parsed.data.cursor, parsed.data.limit, {
-          countryCode: this.trustedRegion.countryFromHeaders(headers),
-          isKidsProfile: true,
-        });
+        return this.viewerContext.run(
+          {
+            accountId: request.ayinAuth?.accountId,
+            expectedProfileId: parsed.data.expectedProfileId,
+            countryCode: this.trustedRegion.countryFromHeaders(headers),
+            isKidsProfile: true,
+          },
+          (context) =>
+            this.searchService.search(
+              parsed.data.q,
+              parsed.data.cursor,
+              parsed.data.limit,
+              context,
+            ),
+        );
       }),
     );
   }
 
   @Get("kids/suggestions")
+  @Header("Cache-Control", "private, no-store")
   async kidsSuggestions(
-    @Req() request: { ip?: string },
+    @Req() request: SearchRequest,
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
@@ -83,17 +128,23 @@ export class SearchController {
         const parsed = suggestSchema.safeParse(query);
         if (!parsed.success)
           throw new SearchError("INVALID_SEARCH_QUERY", "The Kids suggestion request is invalid.");
-        return this.searchService.suggest(parsed.data.q, parsed.data.limit, {
-          countryCode: this.trustedRegion.countryFromHeaders(headers),
-          isKidsProfile: true,
-        });
+        return this.viewerContext.run(
+          {
+            accountId: request.ayinAuth?.accountId,
+            expectedProfileId: parsed.data.expectedProfileId,
+            countryCode: this.trustedRegion.countryFromHeaders(headers),
+            isKidsProfile: true,
+          },
+          (context) => this.searchService.suggest(parsed.data.q, parsed.data.limit, context),
+        );
       }),
     );
   }
 
   @Get("lens")
+  @Header("Cache-Control", "private, no-store")
   async lens(
-    @Req() request: { ip?: string },
+    @Req() request: SearchRequest,
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
@@ -103,16 +154,22 @@ export class SearchController {
         const parsed = searchSchema.safeParse(query);
         if (!parsed.success)
           throw new SearchError("INVALID_SEARCH_QUERY", "The Lens search request is invalid.");
-        return this.lensSearch.searchLens(parsed.data.q, parsed.data.limit, {
-          countryCode: this.trustedRegion.countryFromHeaders(headers),
-        });
+        return this.viewerContext.run(
+          {
+            accountId: request.ayinAuth?.accountId,
+            expectedProfileId: parsed.data.expectedProfileId,
+            countryCode: this.trustedRegion.countryFromHeaders(headers),
+          },
+          (context) => this.lensSearch.searchLens(parsed.data.q, parsed.data.limit, context),
+        );
       }),
     );
   }
 
   @Get("suggestions")
+  @Header("Cache-Control", "private, no-store")
   async suggestions(
-    @Req() request: { ip?: string },
+    @Req() request: SearchRequest,
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
   ) {
@@ -122,9 +179,14 @@ export class SearchController {
         const parsed = suggestSchema.safeParse(query);
         if (!parsed.success)
           throw new SearchError("INVALID_SEARCH_QUERY", "The suggestion request is invalid.");
-        return this.searchService.suggest(parsed.data.q, parsed.data.limit, {
-          countryCode: this.trustedRegion.countryFromHeaders(headers),
-        });
+        return this.viewerContext.run(
+          {
+            accountId: request.ayinAuth?.accountId,
+            expectedProfileId: parsed.data.expectedProfileId,
+            countryCode: this.trustedRegion.countryFromHeaders(headers),
+          },
+          (context) => this.searchService.suggest(parsed.data.q, parsed.data.limit, context),
+        );
       }),
     );
   }

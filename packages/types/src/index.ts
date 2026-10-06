@@ -7,3 +7,14 @@ export {
   UPLOAD_FILE_IDENTITY_MAX_SIZE_BYTES,
   type UploadFileIdentity,
 } from "./upload-file-identity.js";
+export type {
+  CreateRecoverableDraftRequest,
+  UploadRecoveryCommandRequest,
+  ResumeUploadRequest,
+  AuthorizeRecoveredUploadRequest,
+  RecoverableUploadState,
+  RecoverableUploadSession,
+  UploadRecoveryCommandResponse,
+  UploadRecoveryCapability,
+  UploadRecoveryOutcomeResponse,
+} from "./upload-recovery.js";

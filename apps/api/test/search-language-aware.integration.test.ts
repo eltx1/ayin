@@ -50,6 +50,17 @@ beforeAll(async () => {
   ]);
   englishVideoId = englishVideo.id;
   arabicVideoId = arabicVideo.id;
+  await client.mediaAsset.createMany({
+    data: [englishVideo, arabicVideo].map((video) => ({
+      channelId,
+      videoId: video.id,
+      kind: "SOURCE_VIDEO",
+      status: "VALIDATED",
+      mimeType: "video/mp4",
+      sizeBytes: 2048n,
+      r2ObjectKey: `language-search/${video.id}.mp4`,
+    })),
+  });
 
   await Promise.all([
     client.videoCreatorMetadata.create({
@@ -105,6 +116,21 @@ beforeAll(async () => {
     },
   });
   seriesId = series.id;
+  await client.seriesSeason.create({
+    data: {
+      seriesId: series.id,
+      seasonNumber: 1,
+      episodes: {
+        create: {
+          episodeNumber: 1,
+          title: "Pilot",
+          synopsis: "Pilot",
+          status: "PUBLISHED",
+          videoId: englishVideo.id,
+        },
+      },
+    },
+  });
 
   const [englishAffinity, arabicAffinity] = await Promise.all([
     client.movie.create({
@@ -138,6 +164,13 @@ beforeAll(async () => {
   ]);
   englishAffinityMovieId = englishAffinity.id;
   arabicAffinityMovieId = arabicAffinity.id;
+  await client.movieAvailability.createMany({
+    data: [movieId, englishAffinityMovieId, arabicAffinityMovieId].map((id) => ({
+      movieId: id,
+      territoryCode: "*",
+      rule: "ALLOW",
+    })),
+  });
 });
 
 afterAll(async () => {
@@ -146,7 +179,12 @@ afterAll(async () => {
       id: { in: [movieId, englishAffinityMovieId, arabicAffinityMovieId].filter(Boolean) },
     },
   });
-  if (seriesId) await client.series.delete({ where: { id: seriesId } });
+  if (seriesId) {
+    await client.seriesEpisode.deleteMany({ where: { season: { seriesId } } });
+    await client.seriesSeason.deleteMany({ where: { seriesId } });
+    await client.series.delete({ where: { id: seriesId } });
+  }
+  if (channelId) await client.mediaAsset.deleteMany({ where: { channelId } });
   if (channelId) await client.video.deleteMany({ where: { channelId } });
   if (channelId) await client.channel.delete({ where: { id: channelId } });
   await client.$disconnect();

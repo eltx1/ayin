@@ -34,6 +34,7 @@ pnpm-debug.log*
 .eslintcache
 .turbo/
 .vitest/
+test-results-recovery/
 
 # iOS local/generated build state
 platforms/ios/AYIN.xcodeproj/

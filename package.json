@@ -27,6 +27,7 @@
     "synthetic:check": "node packages/synthetic-monitoring/src/cli.mjs",
     "test": "node --test deploy/test-ffmpeg-runtime.mjs && corepack pnpm --recursive --if-present run test",
     "test:e2e": "playwright test",
+    "test:e2e:recovery": "playwright test --config playwright.recovery.config.ts",
     "test:integration": "corepack pnpm --filter @ayin/db run test:integration && corepack pnpm --filter @ayin/api run test:integration",
     "typecheck": "corepack pnpm packages:build && corepack pnpm --filter @ayin/api run typecheck && corepack pnpm --filter @ayin/web run typecheck",
     "test:e2e:captions": "playwright test --config=playwright.captions.config.ts"

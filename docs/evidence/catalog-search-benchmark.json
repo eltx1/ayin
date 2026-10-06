@@ -1,0 +1,138 @@
+{
+  "fixture": {
+    "movies": 110,
+    "series": 110,
+    "episodesPerSeries": 1,
+    "playableVideoSources": 1
+  },
+  "method": "Fastify-injected real SearchController, warm alternating samples; pg Client.query counts actual SQL statements; local lab, not production capacity evidence",
+  "baseline": {
+    "apiRequestsPerSample": 1,
+    "medianDurationMs": 59.18,
+    "sqlStatementsPerRequest": [169],
+    "prismaOperationsPerRequest": [203],
+    "resultsPerRequest": [24],
+    "hasNextPage": true
+  },
+  "candidate": {
+    "apiRequestsPerSample": 1,
+    "medianDurationMs": 34.27,
+    "sqlStatementsPerRequest": [26],
+    "prismaOperationsPerRequest": [19],
+    "resultsPerRequest": [24],
+    "hasNextPage": true
+  },
+  "samples": {
+    "baseline": [
+      {
+        "durationMs": 59.18,
+        "sqlStatements": 169,
+        "prismaOperations": 203,
+        "resultCount": 24,
+        "hasNextPage": true
+      },
+      {
+        "durationMs": 49.29,
+        "sqlStatements": 169,
+        "prismaOperations": 203,
+        "resultCount": 24,
+        "hasNextPage": true
+      },
+      {
+        "durationMs": 52.67,
+        "sqlStatements": 169,
+        "prismaOperations": 203,
+        "resultCount": 24,
+        "hasNextPage": true
+      },
+      {
+        "durationMs": 66.08,
+        "sqlStatements": 169,
+        "prismaOperations": 203,
+        "resultCount": 24,
+        "hasNextPage": true
+      },
+      {
+        "durationMs": 71.92,
+        "sqlStatements": 169,
+        "prismaOperations": 203,
+        "resultCount": 24,
+        "hasNextPage": true
+      }
+    ],
+    "candidate": [
+      {
+        "durationMs": 46.1,
+        "sqlStatements": 26,
+        "prismaOperations": 19,
+        "resultCount": 24,
+        "hasNextPage": true
+      },
+      {
+        "durationMs": 39.45,
+        "sqlStatements": 26,
+        "prismaOperations": 19,
+        "resultCount": 24,
+        "hasNextPage": true
+      },
+      {
+        "durationMs": 31.54,
+        "sqlStatements": 26,
+        "prismaOperations": 19,
+        "resultCount": 24,
+        "hasNextPage": true
+      },
+      {
+        "durationMs": 34.24,
+        "sqlStatements": 26,
+        "prismaOperations": 19,
+        "resultCount": 24,
+        "hasNextPage": true
+      },
+      {
+        "durationMs": 34.27,
+        "sqlStatements": 26,
+        "prismaOperations": 19,
+        "resultCount": 24,
+        "hasNextPage": true
+      }
+    ]
+  },
+  "source": {
+    "baselineCommit": "02d765b621388184c4718c9ebea94163cde1eca3",
+    "candidateParentTree": "8bcb8401e4e8fb312ba75472a1b0c7a5cf306edd",
+    "candidateSourceFilesSha256": {
+      "apps/api/src/catalog-localization/catalog-localization.service.ts": "d60b93c9a48b4272709d9cfe343b4d78aec7c8d46494f3e4baab9f73dc8660ae",
+      "apps/api/src/movie-catalog/movie-catalog.service.ts": "c71de982dbab9572e1df0f5a0ca3d0ec3ff2b3448e0147508ad1f2141401efa1",
+      "apps/api/src/search/catalog-search-policy.ts": "9d327342109bc83b4bae122141eb766befd412278f4cd5d2791e0fd94dd64c41",
+      "apps/api/src/search/language-aware-postgres-search.service.ts": "fc1b0f314f28d95c0fbe897dff860ea97ed6b3bf4c81493db9562263a475a468",
+      "apps/api/src/search/search-postgres.service.ts": "fce54edc0c19035183a17f7494c8e274770fc1aca6a6bf2a2b80959b519dd621",
+      "apps/api/src/search/search.controller.ts": "c4d052dead413714208f13843e6b14ca81a03d1fb032be492eb192aa00d60547",
+      "apps/api/src/search/search.service.ts": "0cdf4a3f761de5f6413c2870b738cf0e08c1077c91956ada788f5595839dd183",
+      "apps/api/src/series-catalog/series-catalog.service.ts": "9fc99d4be0344d4742a7efd9daf505ee8761ab4685b7e4c76bd8b2849b759fc7"
+    },
+    "lockfileSha256": "f665acd4a85383cdbe89c051139fd9ab1fdce59ac787bfd933c2f2d051fb55ad"
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "platform": "linux",
+    "architecture": "x64",
+    "postgres": "17.10",
+    "poolMaxPerImplementation": 10,
+    "generatedPrisma": {
+      "client": "7.10.0",
+      "engine": "0edf323efd1d98336f3f0a68684b56f689b900d3"
+    },
+    "resolvedDependencies": {
+      "mysql2": "3.22.0",
+      "source-map-js": "1.2.1",
+      "next": "16.3.6",
+      "react": "19.2.8",
+      "typescript": "5.9.3",
+      "vitest": "4.1.11",
+      "prisma": "7.10.0",
+      "pg": "8.23.0"
+    },
+    "dependencyProvenance": "Historical ayin-master third-party installation with isolated generated/application output. Exact frozen-lock CI remains mandatory; installed source-map-js and mysql2 differ from the current lock."
+  }
+}
