@@ -17,6 +17,7 @@ export function UploadRecovery() {
   const [view, setView] = useState<RecoveryView | null>(null);
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [initialized, setInitialized] = useState(false);
+  const [observedAt, setObservedAt] = useState(0);
   const client = useRef<UploadRecoveryClient | null>(null);
   const facts = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -27,14 +28,23 @@ export function UploadRecovery() {
         storage: window.localStorage,
         changed: (next) => {
           if (!next.scope && facts.current) facts.current.hidden = true;
-          if (active) setView(next);
+          if (active) {
+            setObservedAt(Date.now());
+            setView(next);
+          }
         },
       });
       client.current = instance;
-      setInitialized(true);
+      queueMicrotask(() => {
+        if (active) setInitialized(true);
+      });
     } catch {
-      setStorageAvailable(false);
-      return;
+      queueMicrotask(() => {
+        if (active) setStorageAvailable(false);
+      });
+      return () => {
+        active = false;
+      };
     }
     const hide = () => {
       if (facts.current) facts.current.hidden = true;
@@ -79,7 +89,18 @@ export function UploadRecovery() {
     );
   }, [identity, identityRevision, isIdentityCurrent]);
   const session = view?.saved?.session;
-  const expired = session ? Date.parse(session.expiresAt) <= Date.now() : false;
+  const expiresAt = session?.expiresAt;
+  useEffect(() => {
+    if (!expiresAt) return;
+    const remaining = Date.parse(expiresAt) - Date.now();
+    if (remaining <= 0) return;
+    const timer = window.setTimeout(
+      () => setObservedAt(Date.now()),
+      Math.min(remaining + 1, 2_147_483_647),
+    );
+    return () => window.clearTimeout(timer);
+  }, [expiresAt, observedAt]);
+  const expired = session ? Date.parse(session.expiresAt) <= observedAt : false;
   const mutable = Boolean(
     session && !expired && ["OPEN", "PREPARING"].includes(session.state) && !view?.saved?.pending,
   );
