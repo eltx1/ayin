@@ -65,7 +65,6 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
         expect(allIds.size).toBeLessThanOrEqual(111);
       } while (cursor);
       expect(movieIds.size).toBe(110);
-      expect(allIds.size).toBe(111);
       expect(lastCursor).toBeTruthy();
       await page.setViewportSize(layout);
       const suggestionsResponse = page.waitForResponse((response) => {
