@@ -9,6 +9,13 @@ import { assignableAdminRoles, type AdminRole } from "./admin.roles.js";
 import { CatalogAdminMediaService } from "./catalog-admin-media.service.js";
 
 const directorySearchSchema = z.string().trim().min(2).max(200);
+const playlistSearchSchema = z
+  .object({
+    query: z.string().trim().max(200).optional(),
+    page: z.coerce.number().int().min(1).max(10_000).default(1),
+    take: z.coerce.number().int().min(1).max(25).default(25),
+  })
+  .strict();
 const catalogSearchSchema = z.string().trim().max(200).optional();
 
 @Controller("admin/operations/directory")
@@ -62,6 +69,55 @@ export class AdminScopedDirectoryController {
   async catalogArtwork(@Query("query") queryRaw?: string) {
     const query = this.parseCatalogQuery(queryRaw, "INVALID_CATALOG_ARTWORK_SEARCH");
     return { items: await this.catalogMedia.searchArtwork(query, 25) };
+  }
+
+  // Other merchandising types use the existing paginated Admin directories.
+  // Playlists previously had only owner-scoped/public readers, neither suitable
+  // for an Operations selector across channels.
+  @Get("playlists")
+  @Header("Cache-Control", "private, no-store")
+  @RequireAdminRoles("OPERATIONS")
+  async playlists(@Query() raw: unknown) {
+    const parsed = playlistSearchSchema.safeParse(raw);
+    if (!parsed.success)
+      throw adminBadRequest("INVALID_PLAYLIST_SEARCH", "Check the playlist search.");
+    const { query, page, take } = parsed.data;
+    const where = {
+      deletedAt: null,
+      ...(query
+        ? {
+            OR: [
+              { name: { contains: query, mode: "insensitive" as const } },
+              { slug: { contains: query, mode: "insensitive" as const } },
+              { channel: { name: { contains: query, mode: "insensitive" as const } } },
+              { channel: { handle: { contains: query, mode: "insensitive" as const } } },
+            ],
+          }
+        : {}),
+    };
+    const [total, items] = await this.database.client.$transaction(
+      [
+        this.database.client.playlist.count({ where }),
+        this.database.client.playlist.findMany({
+          where,
+          take,
+          skip: (page - 1) * take,
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            visibility: true,
+            channel: { select: { name: true, handle: true } },
+          },
+        }),
+      ],
+      { isolationLevel: "RepeatableRead" },
+    );
+    return {
+      items,
+      pagination: { total, page, take, pages: Math.max(1, Math.ceil(total / take)) },
+    };
   }
 
   @Get("catalog-genres")

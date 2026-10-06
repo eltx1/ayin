@@ -36,13 +36,97 @@ export class AdminProductService {
       this.getPublicControls(),
     ]);
 
+    const targets: Array<{ entityType: string; entityId: string }> = rows.flatMap(
+      (row) => row.manualItems,
+    );
+    if (controls.hero.entityType && controls.hero.entityId) {
+      targets.push({ entityType: controls.hero.entityType, entityId: controls.hero.entityId });
+    }
+    const selectedTargets = await this.selectedTargets(targets);
     return {
+      selectedTargets,
       rows: rows.map((row) => ({
         ...row,
         targetRegions: row.regionTargets.map((target) => target.regionCode),
       })),
       controls,
     };
+  }
+
+  // Recover labels independently of search pages and public eligibility. A
+  // removed/private selection remains the operator's exact choice; it is never
+  // silently replaced with an available search result.
+  private async selectedTargets(targets: Array<{ entityType: string; entityId: string }>) {
+    if (!targets.length) return [];
+    const ids = (type: string) => [
+      ...new Set(
+        targets.filter((target) => target.entityType === type).map((target) => target.entityId),
+      ),
+    ];
+    const [videos, channels, tv, playlists] = await Promise.all([
+      this.database.client.video.findMany({
+        where: { id: { in: ids("VIDEO") } },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          status: true,
+          visibility: true,
+          channel: { select: { handle: true } },
+        },
+      }),
+      this.database.client.channel.findMany({
+        where: { id: { in: ids("CHANNEL") } },
+        select: { id: true, name: true, handle: true, status: true },
+      }),
+      this.database.client.creatorTvChannel.findMany({
+        where: { id: { in: ids("CREATOR_TV") } },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          status: true,
+          channel: { select: { handle: true } },
+        },
+      }),
+      this.database.client.playlist.findMany({
+        where: { id: { in: ids("PLAYLIST") } },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          visibility: true,
+          deletedAt: true,
+          channel: { select: { handle: true } },
+        },
+      }),
+    ]);
+    return [
+      ...videos.map((row) => ({
+        entityType: "VIDEO",
+        entityId: row.id,
+        label: row.title,
+        detail: `@${row.channel.handle} · ${row.slug} · ${row.status} · ${row.visibility}`,
+      })),
+      ...channels.map((row) => ({
+        entityType: "CHANNEL",
+        entityId: row.id,
+        label: row.name,
+        detail: `@${row.handle} · ${row.status}`,
+      })),
+      ...tv.map((row) => ({
+        entityType: "CREATOR_TV",
+        entityId: row.id,
+        label: row.name,
+        detail: `@${row.channel.handle} · ${row.slug} · ${row.status}`,
+      })),
+      ...playlists.map((row) => ({
+        entityType: "PLAYLIST",
+        entityId: row.id,
+        label: row.name,
+        detail: `@${row.channel.handle} · ${row.slug} · ${row.deletedAt ? "DELETED" : row.visibility}`,
+      })),
+    ];
   }
 
   async getPublicControls(): Promise<ProductControls> {
