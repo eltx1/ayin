@@ -1,7 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
+import { ActionButton } from "@/components/ui/design-system";
+import pickerStyles from "./merchandising-target-picker.module.css";
+import { useAdminAccess } from "./admin-access";
+import { MerchandisingTargetPicker } from "./merchandising-target-picker";
+import {
+  targetKey,
+  merchandisingIdentityFailure,
+  verifiedMerchandisingOperation,
+  type MerchandisingSelection,
+  type MerchandisingTarget,
+} from "@/lib/admin-merchandising";
+import type { AdminScopeLease } from "@/lib/admin-session-scope";
+import { AdminWorkspaceError, canAdministerOperations } from "@/lib/verified-admin-transport";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { AdminRegionalMerchandising } from "./admin-regional-merchandising";
 import styles from "@/app/admin/admin.module.css";
@@ -32,12 +52,73 @@ const homeRowSources = [
   "EDITOR_PICKS",
 ] as const;
 
-function manualText(row: Pick<AdminHomeRow, "manualItems">): string {
-  return row.manualItems.map((item) => `${item.entityType}:${item.entityId}`).join("\n");
-}
-
 export function AdminProductControls() {
   const { t } = useI18n();
+  const access = useAdminAccess();
+  const { getScopeLease, subscribeScopeInvalidation, invalidateScope, refresh } = access;
+  const root = useRef<HTMLDivElement>(null);
+  const subscribe = useCallback(
+    (notify: () => void) =>
+      subscribeScopeInvalidation(() => {
+        // Hide native DOM before React cleanup so private selections cannot survive
+        // a same-account new session, role change, backgrounding or route review.
+        if (root.current) root.current.hidden = true;
+        notify();
+      }),
+    [subscribeScopeInvalidation],
+  );
+  const getSnapshot = useCallback(() => {
+    const current = getScopeLease();
+    return current && canAdministerOperations(current.session.roles) ? current : null;
+  }, [getScopeLease]);
+  // The provider owns the lease. Read its stable object directly, including on
+  // provider re-renders after verification; never mirror it into effect state.
+  const lease = useSyncExternalStore(subscribe, getSnapshot, () => null);
+  useLayoutEffect(() => {
+    if (root.current) root.current.hidden = !lease;
+  }, [lease]);
+  const isCurrent = useCallback(
+    () => Boolean(lease && getScopeLease() === lease),
+    [getScopeLease, lease],
+  );
+  return (
+    <>
+      {!lease &&
+        (access.loading ? (
+          <p role="status">{t("merch.loading")}</p>
+        ) : (
+          <section className={styles.card}>
+            <p role="alert">{t("merch.loadError")}</p>
+            <button type="button" onClick={refresh}>
+              {t("merch.retry")}
+            </button>
+          </section>
+        ))}
+      <div ref={root} hidden={!lease}>
+        {lease && (
+          <ProductControlsEditor
+            key={lease.epoch}
+            lease={lease}
+            isCurrent={isCurrent}
+            onDenied={invalidateScope}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
+function ProductControlsEditor({
+  lease,
+  isCurrent,
+  onDenied,
+}: {
+  lease: AdminScopeLease;
+  isCurrent: () => boolean;
+  onDenied: () => void;
+}) {
+  const { t, locale } = useI18n();
+  const copy = (en: string, ar: string) => (locale === "ar" ? ar : en);
   const mounted = useRef(true);
   const pending = useRef(false);
   const [revision, setRevision] = useState(0);
@@ -45,28 +126,51 @@ export function AdminProductControls() {
   const [error, setError] = useState<string | null>(null);
   const [regionDrafts, setRegionDrafts] = useState<Record<string, string>>({});
   const [rows, setRows] = useState<AdminHomeRow[]>([]);
-  const [manualDrafts, setManualDrafts] = useState<Record<string, string>>({});
+  const [manualDrafts, setManualDrafts] = useState<Record<string, MerchandisingSelection[]>>({});
+  const [targets, setTargets] = useState<Record<string, MerchandisingTarget>>({});
+  const activeWrite = useRef<AbortController | null>(null);
   const [controls, setControls] = useState<ProductControls | null>(null);
-  const [reason, setReason] = useState("Routine merchandising update");
+  const [reason, setReason] = useState(
+    copy("Routine merchandising update", "تحديث دوري لعرض المحتوى"),
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     mounted.current = true;
     const controller = new AbortController();
-    void getAdminProductControls(controller.signal)
+    void verifiedMerchandisingOperation(lease.session, controller.signal, (signal) =>
+      getAdminProductControls(signal, lease.session),
+    )
       .then((snapshot) => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || !isCurrent()) return;
         setRows(snapshot.rows);
         setControls(snapshot.controls);
-        setManualDrafts(Object.fromEntries(snapshot.rows.map((row) => [row.id, manualText(row)])));
+        setManualDrafts(
+          Object.fromEntries(
+            snapshot.rows.map((row) => [
+              row.id,
+              row.manualItems.map((item) => ({
+                entityType: item.entityType as MerchandisingSelection["entityType"],
+                entityId: item.entityId,
+              })),
+            ]),
+          ),
+        );
+        setTargets(
+          Object.fromEntries(snapshot.selectedTargets.map((target) => [targetKey(target), target])),
+        );
         setRegionDrafts(
           Object.fromEntries(snapshot.rows.map((row) => [row.id, row.targetRegions.join(", ")])),
         );
       })
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Controls could not be loaded.");
+        if (controller.signal.aborted || !isCurrent()) return;
+        if (merchandisingIdentityFailure(cause)) {
+          onDenied();
+          return;
+        }
+        setError(cause instanceof Error ? cause.message : "Controls could not be loaded.");
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -74,43 +178,65 @@ export function AdminProductControls() {
     return () => {
       mounted.current = false;
       controller.abort();
+      activeWrite.current?.abort();
     };
-  }, [revision]);
+  }, [revision, lease, isCurrent, onDenied]);
 
   async function mutate<T>(
-    operation: () => Promise<T>,
+    operation: (signal: AbortSignal) => Promise<T>,
     success: string,
     apply: (result: T) => void,
   ) {
-    if (pending.current) return;
+    if (pending.current || !isCurrent()) return;
     pending.current = true;
     setBusy(true);
     setMessage(null);
     setError(null);
+    const controller = new AbortController();
+    activeWrite.current = controller;
     try {
-      const result = await operation();
-      if (mounted.current) {
+      const result = await verifiedMerchandisingOperation(
+        lease.session,
+        controller.signal,
+        (signal) => {
+          if (!isCurrent()) throw new AdminWorkspaceError(403);
+          return operation(signal);
+        },
+      );
+      if (mounted.current && !controller.signal.aborted && isCurrent()) {
         apply(result);
         setMessage(success);
       }
     } catch (cause) {
-      if (mounted.current) setError(cause instanceof Error ? cause.message : t("merch.saveError"));
+      if (!mounted.current || controller.signal.aborted || !isCurrent()) return;
+      if (merchandisingIdentityFailure(cause)) {
+        onDenied();
+        return;
+      }
+      setError(
+        cause instanceof AdminWorkspaceError
+          ? t("merch.saveError")
+          : cause instanceof Error
+            ? cause.message
+            : t("merch.saveError"),
+      );
     } finally {
       pending.current = false;
-      if (mounted.current) setBusy(false);
+      activeWrite.current = null;
+      if (mounted.current && isCurrent()) setBusy(false);
     }
   }
 
   function saveRegions(row: AdminHomeRow) {
     void mutate(
-      () => {
+      (signal) => {
         let targetRegions: string[];
         try {
           targetRegions = parseRegionTargets(regionDrafts[row.id] ?? "");
         } catch {
           throw new Error(t("merch.invalidRegions"));
         }
-        return patchAdminHomeRow(row.id, { targetRegions, reason });
+        return patchAdminHomeRow(row.id, { targetRegions, reason }, signal, lease.session);
       },
       t("merch.savedRegions"),
       (result) => {
@@ -134,12 +260,14 @@ export function AdminProductControls() {
     next[index] = swap;
     next[target] = current;
     void mutate(
-      () =>
+      (signal) =>
         reorderAdminHomeRows(
           next.map((row) => row.id),
           reason,
+          signal,
+          lease.session,
         ),
-      "Home row order updated.",
+      copy("Home row order updated.", "تم تحديث ترتيب الصفوف."),
       (result) =>
         setRows((current) =>
           result.rowIds.flatMap((id, position) => {
@@ -148,27 +276,6 @@ export function AdminProductControls() {
           }),
         ),
     );
-  }
-
-  function parseManualItems(rowId: string) {
-    const lines = (manualDrafts[rowId] ?? "")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    return lines.map((line) => {
-      const [entityType, entityId] = line.split(":", 2);
-      if (
-        !entityType ||
-        !entityId ||
-        !["VIDEO", "CREATOR_TV", "CHANNEL", "PLAYLIST"].includes(entityType)
-      ) {
-        throw new Error("Manual items must use TYPE:UUID, one per line.");
-      }
-      return {
-        entityType: entityType as "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST",
-        entityId,
-      };
-    });
   }
 
   if (loading)
@@ -200,10 +307,13 @@ export function AdminProductControls() {
       <legend className={styles.visuallyHidden}>{t("merch.settings")}</legend>
       <header className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>Product controls</span>
-          <h1>Home, navigation & merchandising</h1>
+          <span className={styles.eyebrow}>{copy("Product controls", "إعدادات المنتج")}</span>
+          <h1>{copy("Home, navigation & merchandising", "الرئيسية والتنقل وعرض المحتوى")}</h1>
           <p className={styles.muted}>
-            Changes are validated, audited and consumed from data rather than hard-coded page rules.
+            {copy(
+              "Changes are validated and audited before appearing in public discovery.",
+              "يتم التحقق من التغييرات وتسجيلها قبل ظهورها في استكشاف المحتوى العام.",
+            )}
           </p>
         </div>
       </header>
@@ -216,23 +326,25 @@ export function AdminProductControls() {
       </label>
 
       <section className={styles.card}>
-        <h2>Home Builder</h2>
+        <h2>{copy("Home Builder", "إعداد الصفحة الرئيسية")}</h2>
         <p className={styles.muted}>
-          Rename, source, audience, limits, regional requirements and manual Editor Picks update the
-          public discovery feed without a deployment.
+          {copy(
+            "Configure rows, audience, limits and Editor Picks for public discovery.",
+            "اضبط الصفوف والجمهور والحدود واختيارات المحررين لاستكشاف المحتوى العام.",
+          )}
         </p>
         {rows.length === 0 ? <p role="status">{t("merch.empty")}</p> : null}
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Row</th>
-                <th>Source</th>
-                <th>Audience</th>
-                <th>Limit</th>
-                <th>State</th>
-                <th>Order</th>
-                <th>Save</th>
+                <th>{copy("Row", "الصف")}</th>
+                <th>{copy("Source", "المصدر")}</th>
+                <th>{copy("Audience", "الجمهور")}</th>
+                <th>{copy("Limit", "الحد")}</th>
+                <th>{copy("State", "الحالة")}</th>
+                <th>{copy("Order", "الترتيب")}</th>
+                <th>{copy("Save", "حفظ")}</th>
               </tr>
             </thead>
             <tbody>
@@ -257,48 +369,8 @@ export function AdminProductControls() {
                           })
                         }
                       />
-                      Region signal required
+                      {copy("Region signal required", "إشارة المنطقة مطلوبة")}
                     </label>
-                    {row.source === "EDITOR_PICKS" ? (
-                      <>
-                        <textarea
-                          aria-label={`${row.key} manual items`}
-                          placeholder={"VIDEO:uuid\nCHANNEL:uuid"}
-                          value={manualDrafts[row.id] ?? ""}
-                          onChange={(event) =>
-                            setManualDrafts((current) => ({
-                              ...current,
-                              [row.id]: event.target.value,
-                            }))
-                          }
-                        />
-                        <button
-                          disabled={busy || reason.trim().length < 3}
-                          onClick={() =>
-                            void mutate(
-                              () =>
-                                replaceAdminHomeRowManualItems(
-                                  row.id,
-                                  parseManualItems(row.id),
-                                  reason,
-                                ),
-                              "Manual featured items updated.",
-                              (result) => {
-                                setRows((current) =>
-                                  mergeHomeRowFields(current, row.id, result, ["manualItems"]),
-                                );
-                                setManualDrafts((current) => ({
-                                  ...current,
-                                  [row.id]: manualText(result),
-                                }));
-                              },
-                            )
-                          }
-                        >
-                          Save featured items
-                        </button>
-                      </>
-                    ) : null}
                   </td>
                   <td>
                     <select
@@ -344,8 +416,16 @@ export function AdminProductControls() {
                       disabled={busy || reason.trim().length < 3}
                       onClick={() =>
                         void mutate(
-                          () => patchAdminHomeRow(row.id, { enabled: !row.enabled, reason }),
-                          row.enabled ? "Row disabled." : "Row enabled.",
+                          (signal) =>
+                            patchAdminHomeRow(
+                              row.id,
+                              { enabled: !row.enabled, reason },
+                              signal,
+                              lease.session,
+                            ),
+                          row.enabled
+                            ? copy("Row disabled.", "تم تعطيل الصف.")
+                            : copy("Row enabled.", "تم تفعيل الصف."),
                           (result) =>
                             setRows((current) =>
                               mergeHomeRowFields(current, row.id, result, ["enabled"]),
@@ -353,7 +433,7 @@ export function AdminProductControls() {
                         )
                       }
                     >
-                      {row.enabled ? "On" : "Off"}
+                      {row.enabled ? copy("On", "مفعّل") : copy("Off", "معطّل")}
                     </button>
                   </td>
                   <td>
@@ -377,16 +457,21 @@ export function AdminProductControls() {
                       disabled={busy || reason.trim().length < 3 || row.title.trim().length === 0}
                       onClick={() =>
                         void mutate(
-                          () =>
-                            patchAdminHomeRow(row.id, {
-                              title: row.title,
-                              source: row.source,
-                              audience: row.audience,
-                              maxItems: row.maxItems,
-                              regionPersonalizationRequired: row.regionPersonalizationRequired,
-                              reason,
-                            }),
-                          "Home row updated.",
+                          (signal) =>
+                            patchAdminHomeRow(
+                              row.id,
+                              {
+                                title: row.title,
+                                source: row.source,
+                                audience: row.audience,
+                                maxItems: row.maxItems,
+                                regionPersonalizationRequired: row.regionPersonalizationRequired,
+                                reason,
+                              },
+                              signal,
+                              lease.session,
+                            ),
+                          copy("Home row updated.", "تم تحديث الصف."),
                           (result) =>
                             setRows((current) =>
                               mergeHomeRowFields(current, row.id, result, [
@@ -400,7 +485,7 @@ export function AdminProductControls() {
                         )
                       }
                     >
-                      Save row
+                      {copy("Save row", "حفظ الصف")}
                     </button>
                   </td>
                 </tr>
@@ -409,6 +494,61 @@ export function AdminProductControls() {
           </table>
         </div>
       </section>
+
+      {rows
+        .filter((row) => row.source === "EDITOR_PICKS")
+        .map((row) => (
+          <section className={styles.card} key={row.id}>
+            <MerchandisingTargetPicker
+              label={copy(`Featured items: ${row.title}`, `المحتوى المميز: ${row.title}`)}
+              value={manualDrafts[row.id] ?? []}
+              targets={targets}
+              actor={lease.session}
+              isCurrent={isCurrent}
+              onDenied={onDenied}
+              disabled={busy}
+              onChange={(items, target) => {
+                setManualDrafts((current) => ({ ...current, [row.id]: items }));
+                if (target) setTargets((current) => ({ ...current, [targetKey(target)]: target }));
+              }}
+            />
+            <ActionButton
+              className={pickerStyles.saveAction}
+              type="button"
+              disabled={busy || reason.trim().length < 3}
+              onClick={() =>
+                void mutate(
+                  (signal) =>
+                    replaceAdminHomeRowManualItems(
+                      row.id,
+                      (manualDrafts[row.id] ?? []).map(({ entityType, entityId }) => ({
+                        entityType,
+                        entityId,
+                      })),
+                      reason,
+                      signal,
+                      lease.session,
+                    ),
+                  copy("Manual featured items updated.", "تم تحديث المحتوى المميز."),
+                  (result) => {
+                    setRows((current) =>
+                      mergeHomeRowFields(current, row.id, result, ["manualItems"]),
+                    );
+                    setManualDrafts((current) => ({
+                      ...current,
+                      [row.id]: result.manualItems.map((item) => ({
+                        entityType: item.entityType as MerchandisingSelection["entityType"],
+                        entityId: item.entityId,
+                      })),
+                    }));
+                  },
+                )
+              }
+            >
+              {copy("Save featured items", "حفظ المحتوى المميز")}
+            </ActionButton>
+          </section>
+        ))}
 
       <AdminRegionalMerchandising
         rows={rows}
@@ -419,9 +559,12 @@ export function AdminProductControls() {
       />
 
       <section className={styles.card}>
-        <h2>Main navigation</h2>
+        <h2>{copy("Main navigation", "التنقل الرئيسي")}</h2>
         <p className={styles.muted}>
-          Toggle feature-ready destinations without redeploying the public shell.
+          {copy(
+            "Toggle feature-ready destinations without redeploying the public shell.",
+            "فعّل وجهات التنقل الجاهزة دون إعادة نشر الواجهة العامة.",
+          )}
         </p>
         {controls.navigation.map((item, index) => (
           <label className={styles.checkboxRow} key={item.key}>
@@ -443,41 +586,50 @@ export function AdminProductControls() {
       </section>
 
       <section className={styles.card}>
-        <h2>Hero selector</h2>
-        <div className={styles.filters}>
-          <select
-            value={controls.hero.entityType ?? ""}
-            onChange={(event) =>
-              setControls({
-                ...controls,
-                hero: {
-                  ...controls.hero,
-                  entityType: (event.target.value || null) as ProductControls["hero"]["entityType"],
-                },
-              })
-            }
+        <MerchandisingTargetPicker
+          label={copy("Hero selector", "اختيار المحتوى الرئيسي")}
+          emptyMessage={
+            Boolean(controls.hero.entityType) !== Boolean(controls.hero.entityId)
+              ? copy(
+                  "The saved Hero choice is incomplete. Select a target or use automatic selection.",
+                  "اختيار المحتوى الرئيسي المحفوظ غير مكتمل. اختر محتوى أو استخدم الاختيار التلقائي.",
+                )
+              : undefined
+          }
+          single
+          value={
+            controls.hero.entityType && controls.hero.entityId
+              ? [{ entityType: controls.hero.entityType, entityId: controls.hero.entityId }]
+              : []
+          }
+          targets={targets}
+          actor={lease.session}
+          isCurrent={isCurrent}
+          onDenied={onDenied}
+          disabled={busy}
+          onChange={(items, target) => {
+            const item = items[0];
+            setControls({
+              ...controls,
+              hero: item
+                ? { entityType: item.entityType, entityId: item.entityId }
+                : { entityType: null, entityId: null },
+            });
+            if (target) setTargets((current) => ({ ...current, [targetKey(target)]: target }));
+          }}
+        />
+        {Boolean(controls.hero.entityType) !== Boolean(controls.hero.entityId) && (
+          <button
+            type="button"
+            onClick={() => setControls({ ...controls, hero: { entityType: null, entityId: null } })}
           >
-            <option value="">Automatic / none</option>
-            <option value="VIDEO">Video</option>
-            <option value="CREATOR_TV">Creator TV</option>
-            <option value="CHANNEL">Channel</option>
-            <option value="PLAYLIST">Playlist</option>
-          </select>
-          <input
-            placeholder="Stable entity UUID"
-            value={controls.hero.entityId ?? ""}
-            onChange={(event) =>
-              setControls({
-                ...controls,
-                hero: { ...controls.hero, entityId: event.target.value || null },
-              })
-            }
-          />
-        </div>
+            {copy("Use automatic selection", "استخدام الاختيار التلقائي")}
+          </button>
+        )}
       </section>
 
       <section className={styles.card}>
-        <h2>Announcement</h2>
+        <h2>{copy("Announcement", "الإعلان")}</h2>
         <label className={styles.checkboxRow}>
           <input
             type="checkbox"
@@ -489,12 +641,12 @@ export function AdminProductControls() {
               })
             }
           />{" "}
-          Enabled
+          {copy("Enabled", "مفعّل")}
         </label>
         <input
           value={controls.announcement.text}
           maxLength={240}
-          placeholder="Platform announcement"
+          placeholder={copy("Platform announcement", "إعلان المنصة")}
           onChange={(event) =>
             setControls({
               ...controls,
@@ -504,7 +656,7 @@ export function AdminProductControls() {
         />
         <input
           value={controls.announcement.href ?? ""}
-          placeholder="Optional internal path, e.g. /tv"
+          placeholder={copy("Optional internal path, e.g. /tv", "مسار داخلي اختياري، مثل /tv")}
           onChange={(event) =>
             setControls({
               ...controls,
@@ -515,9 +667,12 @@ export function AdminProductControls() {
       </section>
 
       <section className={styles.card}>
-        <h2>Taxonomy</h2>
+        <h2>{copy("Taxonomy", "التصنيفات")}</h2>
         <p className={styles.muted}>
-          Comma-separated category labels create normalized, admin-managed taxonomy keys.
+          {copy(
+            "Comma-separated category labels create normalized, admin-managed taxonomy keys.",
+            "أدخل أسماء التصنيفات مفصولة بفواصل لإنشاء تصنيفات تديرها الإدارة.",
+          )}
         </p>
         <textarea
           value={controls.taxonomy.map((item) => item.label).join(", ")}
@@ -543,7 +698,7 @@ export function AdminProductControls() {
       </section>
 
       <section className={styles.card}>
-        <h2>Device visibility</h2>
+        <h2>{copy("Device visibility", "العرض حسب الجهاز")}</h2>
         {(["web", "mobile", "tv"] as const).map((device) => (
           <label className={styles.checkboxRow} key={device}>
             <input
@@ -564,18 +719,21 @@ export function AdminProductControls() {
         ))}
       </section>
 
-      <button
+      <ActionButton
+        type="button"
         disabled={busy || reason.trim().length < 3}
         onClick={() =>
           void mutate(
-            () => updateAdminProductControls(controls, reason),
-            "Global product controls updated.",
+            (signal) => updateAdminProductControls(controls, reason, signal, lease.session),
+            copy("Global product controls updated.", "تم تحديث إعدادات المنتج العامة."),
             setControls,
           )
         }
       >
-        {busy ? "Saving…" : "Save global controls"}
-      </button>
+        {busy
+          ? copy("Saving…", "جارٍ الحفظ…")
+          : copy("Save global controls", "حفظ الإعدادات العامة")}
+      </ActionButton>
     </fieldset>
   );
 }

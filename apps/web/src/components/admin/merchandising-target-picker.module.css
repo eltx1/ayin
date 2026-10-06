@@ -1,0 +1,73 @@
+.picker {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.picker h3 {
+  margin: 0;
+}
+.hint {
+  color: var(--text-muted, #9ea8b8);
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.selected {
+  min-width: 0;
+}
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border, #354052);
+  border-radius: 0.75rem;
+  min-width: 0;
+}
+.identity {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.identity small {
+  color: var(--text-muted, #9ea8b8);
+}
+.search {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.5fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.8rem;
+}
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+  .search {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .item button {
+    align-self: flex-start;
+  }
+}
+
+.identity > span {
+  justify-self: start;
+}
+.saveAction {
+  margin-block-start: 1rem;
+}

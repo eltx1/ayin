@@ -1,5 +1,6 @@
-import { apiBaseUrl } from "./api";
-import { readAdminApiError as readApiError } from "./admin-reauthentication";
+import { merchandisingScopeHeaders, type MerchandisingTarget } from "./admin-merchandising";
+import type { DirectAdminSession } from "./admin-session-scope";
+import { adminWorkspaceRequest } from "./verified-admin-transport";
 
 export interface AdminHomeRow {
   id: string;
@@ -33,54 +34,93 @@ export interface ProductControls {
 }
 
 export interface AdminProductSnapshot {
+  selectedTargets: MerchandisingTarget[];
   rows: AdminHomeRow[];
   controls: ProductControls;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    credentials: "include",
-    cache: "no-store",
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  actor?: DirectAdminSession,
+): Promise<T> {
+  return (await adminWorkspaceRequest(path, init?.signal ?? new AbortController().signal, {
     ...init,
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as T;
+    headers: {
+      "content-type": "application/json",
+      ...(init?.headers ?? {}),
+      ...(actor ? merchandisingScopeHeaders(actor) : {}),
+    },
+  })) as T;
 }
 
-export const getAdminProductControls = (signal?: AbortSignal) =>
-  request<AdminProductSnapshot>("/admin/product-controls", signal ? { signal } : undefined);
+export const getAdminProductControls = (signal?: AbortSignal, actor?: DirectAdminSession) =>
+  request<AdminProductSnapshot>("/admin/product-controls", signal ? { signal } : undefined, actor);
 
-export const patchAdminHomeRow = (rowId: string, body: Record<string, unknown>) =>
-  request<Omit<AdminHomeRow, "manualItems">>(`/admin/product-controls/home-rows/${rowId}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
+export const patchAdminHomeRow = (
+  rowId: string,
+  body: Record<string, unknown>,
+  signal?: AbortSignal,
+  actor?: DirectAdminSession,
+) =>
+  request<Omit<AdminHomeRow, "manualItems">>(
+    `/admin/product-controls/home-rows/${rowId}`,
+    {
+      signal: signal ?? null,
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+    actor,
+  );
 
-export const reorderAdminHomeRows = (rowIds: string[], reason: string) =>
-  request<{ rowIds: string[] }>("/admin/product-controls/home-rows/order", {
-    method: "PUT",
-    body: JSON.stringify({ rowIds, reason }),
-  });
+export const reorderAdminHomeRows = (
+  rowIds: string[],
+  reason: string,
+  signal?: AbortSignal,
+  actor?: DirectAdminSession,
+) =>
+  request<{ rowIds: string[] }>(
+    "/admin/product-controls/home-rows/order",
+    {
+      signal: signal ?? null,
+      method: "PUT",
+      body: JSON.stringify({ rowIds, reason }),
+    },
+    actor,
+  );
 
 export const replaceAdminHomeRowManualItems = (
   rowId: string,
   items: Array<{ entityType: "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST"; entityId: string }>,
   reason: string,
+  signal?: AbortSignal,
+  actor?: DirectAdminSession,
 ) =>
   request<Omit<AdminHomeRow, "targetRegions">>(
     `/admin/product-controls/home-rows/${rowId}/manual-items`,
     {
+      signal: signal ?? null,
       method: "PUT",
       body: JSON.stringify({ items, reason }),
     },
+    actor,
   );
 
-export const updateAdminProductControls = (controls: ProductControls, reason: string) =>
-  request<ProductControls>("/admin/product-controls/global", {
-    method: "PUT",
-    body: JSON.stringify({ ...controls, reason }),
-  });
+export const updateAdminProductControls = (
+  controls: ProductControls,
+  reason: string,
+  signal?: AbortSignal,
+  actor?: DirectAdminSession,
+) =>
+  request<ProductControls>(
+    "/admin/product-controls/global",
+    {
+      signal: signal ?? null,
+      method: "PUT",
+      body: JSON.stringify({ ...controls, reason }),
+    },
+    actor,
+  );
 
 export function parseRegionTargets(value: string): string[] {
   const regions = [
