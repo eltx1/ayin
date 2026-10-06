@@ -1,0 +1,4 @@
+/* Status labels remain whole even in the shared horizontally scrollable table. */
+.status {
+  white-space: nowrap;
+}

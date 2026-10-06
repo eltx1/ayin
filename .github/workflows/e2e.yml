@@ -7,8 +7,10 @@ on:
       - "packages/**"
       - "tests/e2e/**"
       - "tests/pwa/**"
+      - "tests/captions/**"
       - "playwright.config.ts"
       - "playwright.pwa.config.ts"
+      - "playwright.captions.config.ts"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/e2e.yml"
@@ -75,6 +77,27 @@ jobs:
           done
       - name: Run real PWA lifecycle acceptance
         run: pnpm exec playwright test --config playwright.pwa.config.ts
+      - name: Run caption recovery against independent HTTP storage
+        timeout-minutes: 10
+        # The eighteen dedicated journeys use real PUT/HEAD/read bytes, not the
+        # ordinary E2E adapter's hardcoded caption object. Keep counts separate.
+        env:
+          NEXT_PUBLIC_MEDIA_BASE_URL: http://127.0.0.1:3002
+        run: |
+          pnpm --filter @ayin/web build
+          pnpm test:e2e:captions
+      - name: Preserve caption recovery evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: caption-recovery-visuals-and-traces
+          path: |
+            test-results-captions/**/captions-*.png
+            test-results-captions/**/test-failed-*.png
+            test-results-captions/**/trace.zip
+            playwright-report-captions
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -210,6 +233,44 @@ jobs:
           name: admin-videos-visuals
           path: test-results/**/design-admin-videos-*.png
           if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Preserve Studio Content pagination visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-content-pagination-visuals
+          path: |
+            test-results/**/design-studio-content-page2-*.png
+            test-results/**/design-studio-content-controls-*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve consolidated advertising recovery visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: advertising-navigation-visuals
+          path: test-results/**/design-advertising-*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve direct advertiser and campaign visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: direct-campaign-workspace-visuals
+          path: test-results/**/design-direct-*.png
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Preserve long-content MediaCard visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: media-card-long-content-visuals
+          path: test-results/**/design-media-card-long-*.png
+          if-no-files-found: error
           retention-days: 7
 
       - name: Preserve native video advertising visuals

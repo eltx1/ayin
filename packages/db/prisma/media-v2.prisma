@@ -42,6 +42,7 @@ model MediaPlaybackGeneration {
   videoId              String                        @db.Uuid
   sourceMediaAssetId   String?                       @db.Uuid
   processingJobId      String?                       @unique @db.Uuid
+  outputAttemptId      String?                       @db.Uuid
   generation           Int
   processingVersion    Int                           @default(2)
   status               MediaPlaybackGenerationStatus @default(BUILDING)

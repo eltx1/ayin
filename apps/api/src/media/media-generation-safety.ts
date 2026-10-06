@@ -3,6 +3,7 @@ import type { Prisma } from "@ayin/db";
 export const ACTIVE_MEDIA_JOB_STATUSES = [
   "INGESTING",
   "QUEUED",
+  "INTEGRITY_QUEUED",
   "PROCESSING",
   "UPLOADING",
   "VERIFYING",

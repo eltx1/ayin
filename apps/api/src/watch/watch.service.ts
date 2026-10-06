@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { Inject, Injectable } from "@nestjs/common";
 
 import { DatabaseService } from "../database/database.service.js";
@@ -22,6 +24,8 @@ export class WatchError extends Error {
 }
 
 export interface SaveWatchProgressInput {
+  // Omitted for legacy clients; null means the row must still be absent.
+  expectedRevision?: string | null | undefined;
   profileId?: string | undefined;
   positionMs: number;
   durationMs?: number | undefined;
@@ -270,6 +274,7 @@ export class WatchService {
       positionMs: progress?.positionMs ?? 0,
       completedAt: progress?.completedAt ?? null,
       lastWatchedAt: progress?.lastWatchedAt ?? null,
+      revision: progress?.lastWatchedAt.toISOString() ?? null,
       policy: await this.getPlayerPolicy(),
     };
   }
@@ -300,37 +305,65 @@ export class WatchService {
     const now = new Date();
 
     const progress = await this.database.client.$transaction(async (tx) => {
-      const saved = await tx.watchProgress.upsert({
-        where: { profileId_videoId: { profileId: profile.id, videoId } },
-        create: {
-          profileId: profile.id,
-          videoId,
-          positionMs,
-          lastWatchedAt: now,
-          completedAt: completed ? now : null,
-        },
-        update: {
-          positionMs,
-          lastWatchedAt: now,
-          completedAt: completed ? now : null,
-        },
-        select: {
-          positionMs: true,
-          completedAt: true,
-          lastWatchedAt: true,
-        },
-      });
+      // TIMESTAMP(3) is already the persisted watch-state version. Advance it
+      // even for same-millisecond/clock-backwards writes, including old clients.
+      // The compare-and-write is one SQL statement, never a read-then-upsert.
+      type SavedProgress = { positionMs: number; completedAt: Date | null; lastWatchedAt: Date };
+      const completedAt = completed ? now.toISOString() : null;
+      let saved: SavedProgress | undefined;
+      if (typeof input.expectedRevision === "string") {
+        [saved] = await tx.$queryRaw<SavedProgress[]>`
+          UPDATE "WatchProgress"
+          SET "positionMs" = ${positionMs},
+              "lastWatchedAt" = GREATEST((clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3), "lastWatchedAt" + INTERVAL '1 millisecond'),
+              "completedAt" = ${completedAt}::timestamp,
+              "updatedAt" = GREATEST((clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3), "lastWatchedAt" + INTERVAL '1 millisecond')
+          WHERE "profileId" = ${profile.id}::uuid AND "videoId" = ${videoId}::uuid
+            AND "lastWatchedAt" = ${input.expectedRevision}::timestamp
+          RETURNING "positionMs", "completedAt", "lastWatchedAt"
+        `;
+      } else if (input.expectedRevision === null) {
+        [saved] = await tx.$queryRaw<SavedProgress[]>`
+          INSERT INTO "WatchProgress"
+            ("id", "profileId", "videoId", "positionMs", "lastWatchedAt", "completedAt", "createdAt", "updatedAt")
+          VALUES (${randomUUID()}::uuid, ${profile.id}::uuid, ${videoId}::uuid, ${positionMs},
+            (clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3), ${completedAt}::timestamp, (clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3), (clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3))
+          ON CONFLICT ("profileId", "videoId") DO NOTHING
+          RETURNING "positionMs", "completedAt", "lastWatchedAt"
+        `;
+      } else {
+        // Backward-compatible callers retain unconditional save semantics, but
+        // must still invalidate every revision observed by a conditional caller.
+        [saved] = await tx.$queryRaw<SavedProgress[]>`
+          INSERT INTO "WatchProgress"
+            ("id", "profileId", "videoId", "positionMs", "lastWatchedAt", "completedAt", "createdAt", "updatedAt")
+          VALUES (${randomUUID()}::uuid, ${profile.id}::uuid, ${videoId}::uuid, ${positionMs},
+            (clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3), ${completedAt}::timestamp, (clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3), (clock_timestamp() AT TIME ZONE 'UTC')::timestamp(3))
+          ON CONFLICT ("profileId", "videoId") DO UPDATE
+          SET "positionMs" = EXCLUDED."positionMs",
+              "lastWatchedAt" = GREATEST(EXCLUDED."lastWatchedAt", "WatchProgress"."lastWatchedAt" + INTERVAL '1 millisecond'),
+              "completedAt" = EXCLUDED."completedAt",
+              "updatedAt" = GREATEST(EXCLUDED."updatedAt", "WatchProgress"."lastWatchedAt" + INTERVAL '1 millisecond')
+          RETURNING "positionMs", "completedAt", "lastWatchedAt"
+        `;
+      }
+      if (!saved)
+        throw new WatchError(
+          "WATCH_PROGRESS_CONFLICT",
+          "Watch progress changed. Read its current revision before another checkpoint.",
+          409,
+        );
 
       await tx.watchHistory.upsert({
         where: { profileId_videoId: { profileId: profile.id, videoId } },
         create: {
           profileId: profile.id,
           videoId,
-          firstWatchedAt: now,
-          lastWatchedAt: now,
+          firstWatchedAt: saved.lastWatchedAt,
+          lastWatchedAt: saved.lastWatchedAt,
           viewCount: 1,
         },
-        update: { lastWatchedAt: now },
+        update: { lastWatchedAt: saved.lastWatchedAt },
       });
       return saved;
     });
@@ -341,6 +374,7 @@ export class WatchService {
       positionMs: progress.positionMs,
       completedAt: progress.completedAt,
       lastWatchedAt: progress.lastWatchedAt,
+      revision: progress.lastWatchedAt.toISOString(),
       completed,
       policy,
     };

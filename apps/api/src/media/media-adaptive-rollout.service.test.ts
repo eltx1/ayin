@@ -173,3 +173,45 @@ describe("MediaAdaptiveRolloutService backfill safety", () => {
     expect(tx.mediaProcessingJob.updateMany).toHaveBeenCalledTimes(1);
   });
 });
+
+it.each(["channels/c/videos/v/playback/g1/attempts/a/hls/master.m3u8", null])(
+  "required recovery inspection uses its recorded attempt manifest (%s), never a reconstructed legacy key",
+  async (attemptMasterKey) => {
+    const candidate = {
+      id: "11111111-1111-4111-8111-111111111111",
+      channelId: "22222222-2222-4222-8222-222222222222",
+    };
+    const database = {
+      client: {
+        $queryRaw: vi
+          .fn()
+          .mockResolvedValueOnce([candidate])
+          .mockResolvedValueOnce([
+            { videoId: candidate.id, generation: 1, inputIntegrityVersion: 1, attemptMasterKey },
+          ]),
+        mediaPlaybackGeneration: { findMany: vi.fn().mockResolvedValue([]) },
+      },
+    };
+    const storage = { headObject: vi.fn().mockResolvedValue({ sizeBytes: 1 }) };
+    const service = new MediaAdaptiveRolloutService(
+      database as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      storage as never,
+    );
+    const result = await (
+      service as unknown as {
+        findVerifiedHlsMissingDb(limit: number): Promise<{ videos: unknown[] }>;
+      }
+    ).findVerifiedHlsMissingDb(1);
+    if (attemptMasterKey) {
+      expect(storage.headObject).toHaveBeenCalledExactlyOnceWith(attemptMasterKey);
+      expect(result.videos).toEqual([candidate]);
+    } else {
+      expect(storage.headObject).not.toHaveBeenCalled();
+      expect(result.videos).toEqual([]);
+    }
+  },
+);

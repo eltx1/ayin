@@ -30,6 +30,7 @@ import {
   type VideoAdCommand,
 } from "@/lib/admin-video-ad-workspace";
 import styles from "./admin-record-workspace.module.css";
+import { AdminAdvertisingNavigation } from "./admin-advertising-navigation";
 type Snapshot = Awaited<ReturnType<typeof getVideoAdWorkspace>>;
 type Matches = Awaited<ReturnType<typeof searchVideoAdTargets>>;
 type Recovery = { kind: "SETTINGS" } | AdTarget;
@@ -393,6 +394,7 @@ export function AdminVideoAds({ initialQuery = "" }: { initialQuery?: string }) 
           </ActionButton>
         }
       />
+      <AdminAdvertisingNavigation current="video" />
       {error && <StatusNotice tone="danger">{errors[error]}</StatusNotice>}
       <div
         ref={body}

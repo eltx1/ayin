@@ -1,3 +1,4 @@
+import { publicMediaProcessingJob } from "../media/media-processing-status.js";
 import { randomUUID } from "node:crypto";
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
 import { Prisma } from "@ayin/db";
@@ -130,7 +131,7 @@ export class QuickUploadService {
           },
           items: items.map(({ mediaProcessingJobs, ...video }) => ({
             ...video,
-            processing: mediaProcessingJobs[0] ?? null,
+            processing: publicMediaProcessingJob(mediaProcessingJobs[0]),
           })),
         };
       },
@@ -268,7 +269,7 @@ export class QuickUploadService {
       return {
         videoId,
         status: "VALIDATING" as const,
-        processing: processing ?? {
+        processing: publicMediaProcessingJob(processing) ?? {
           status: "QUEUED" as const,
           stage: "QUEUED",
           progressPercent: 0,
@@ -284,7 +285,11 @@ export class QuickUploadService {
       },
       select: { id: true, status: true },
     });
-    return { videoId: updated.id, status: updated.status, processing };
+    return {
+      videoId: updated.id,
+      status: updated.status,
+      processing: publicMediaProcessingJob(processing),
+    };
   }
 
   async processingStatus(accountId: string, videoId: string) {
@@ -320,7 +325,7 @@ export class QuickUploadService {
       videoId,
       ready: Boolean(canonical),
       videoStatus: video.status,
-      processing,
+      processing: publicMediaProcessingJob(processing),
     };
   }
 

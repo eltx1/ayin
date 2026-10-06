@@ -86,6 +86,7 @@ enum MediaAssetStatus {
 }
 
 enum MediaProcessingJobStatus {
+  INTEGRITY_QUEUED
   INGESTING
   QUEUED
   PROCESSING
@@ -493,6 +494,7 @@ model Video {
   recommendationFeedback RecommendationFeedback[]
 
   @@index([channelId, status, publishedAt])
+  @@index([channelId, updatedAt, id], map: "video_studio_content_cursor_idx")
   @@index([status, visibility, publishedAt])
   @@index([videoForm, status, visibility, publishedAt])
   @@index([scheduledPublishAt, status])
@@ -500,6 +502,7 @@ model Video {
 }
 
 model MediaAsset {
+  uploadIntegrityRequired Boolean @default(false)
   id          String           @id @default(uuid()) @db.Uuid
   videoId     String?          @db.Uuid
   channelId   String?          @db.Uuid
@@ -539,6 +542,23 @@ model MediaProcessingJob {
   inputR2ObjectKey  String?                  @db.VarChar(1024)
   outputR2ObjectKey String                   @unique @db.VarChar(1024)
   outputSizeBytes   BigInt?
+  currentOutputAttemptId String? @db.Uuid
+  // 0 explicitly preserves pre-protocol jobs; no legacy identities are backfilled.
+  inputIntegrityVersion       Int       @default(0)
+  inputIntegritySessionId     String?   @db.Uuid
+  inputIntegritySourceAssetId String?   @db.Uuid
+  inputIntegrityAccountId     String?   @db.Uuid
+  inputIntegrityOwnerlessPlatform Boolean?
+  inputIntegrityParentJobId   String?   @db.Uuid
+  inputIntegrityAlgorithm     String?   @db.VarChar(32)
+  inputIntegrityDigest        String?   @db.Char(64)
+  inputIntegrityRedactedAt    DateTime?
+  inputVerifiedAt             DateTime?
+  inputVerifiedLeaseOwner     String?   @db.VarChar(255)
+  inputVerifiedAttempt        Int?
+  outputIntegrityDigest       String?   @db.Char(64)
+  outputIntegritySizeBytes    BigInt?
+  outputVerifiedAt            DateTime?
   attempt           Int                      @default(0)
   priority          Int                      @default(0)
   progressPercent   Int                      @default(0)
@@ -563,6 +583,27 @@ model MediaProcessingJob {
   @@index([leaseExpiresAt])
   @@index([leaseWorkerId, status, leaseExpiresAt], map: "media_job_worker_lease_idx")
   @@index([videoId, status])
+}
+
+// Address/claim ledger only, not another work queue. Never discard losing
+// attempts merely because a later claim became READY or a remote key is absent.
+model MediaProcessingOutputAttempt {
+  channelId String @db.Uuid
+  videoId String @db.Uuid
+  generation Int
+  id String @id @db.Uuid
+  processingJobId String @db.Uuid
+  claimToken String @db.VarChar(255)
+  attempt Int
+  prefix String @unique @db.VarChar(1024)
+  canonicalR2ObjectKey String @unique @db.VarChar(1024)
+  hlsR2Prefix String @unique @db.VarChar(1024)
+  thumbnailR2ObjectKey String @unique @db.VarChar(1024)
+  createdAt DateTime @default(now())
+  @@unique([processingJobId, claimToken])
+  @@index([processingJobId, createdAt])
+  @@index([channelId])
+  @@index([videoId])
 }
 
 model Playlist {

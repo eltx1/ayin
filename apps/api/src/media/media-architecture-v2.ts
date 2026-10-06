@@ -78,6 +78,7 @@ export interface MediaRenditionPlanningOptions {
 }
 
 export interface MediaGenerationNamespace {
+  outputAttemptId?: string;
   channelId: string;
   videoId: string;
   generation: number;
@@ -135,7 +136,9 @@ export function planAdaptiveRenditions(
 }
 
 export function canonicalFallbackObjectKey(namespace: MediaGenerationNamespace): string {
-  return `${generationBase(namespace)}.mp4`;
+  return namespace.outputAttemptId
+    ? `${generationBase(namespace)}/canonical.mp4`
+    : `${generationBase(namespace)}.mp4`;
 }
 
 export function hlsMasterObjectKey(namespace: MediaGenerationNamespace): string {
@@ -182,7 +185,15 @@ function generationBase(namespace: MediaGenerationNamespace): string {
   if (!Number.isSafeInteger(namespace.generation) || namespace.generation <= 0) {
     throw new Error("Media processing generation must be a positive integer.");
   }
-  return `channels/${namespace.channelId}/videos/${namespace.videoId}/playback/g${namespace.generation}`;
+  const generation = `channels/${namespace.channelId}/videos/${namespace.videoId}/playback/g${namespace.generation}`;
+  if (!namespace.outputAttemptId) return generation;
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      namespace.outputAttemptId,
+    )
+  )
+    throw new Error("Output attempt identity must be a fresh UUID.");
+  return `${generation}/attempts/${namespace.outputAttemptId}`;
 }
 
 function scaledEvenWidth(source: MediaSourceDimensions, targetHeight: number): number {

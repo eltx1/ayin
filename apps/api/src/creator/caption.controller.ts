@@ -30,7 +30,7 @@ export class CaptionController {
 
   @Get()
   list(@Req() request: AuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
-    return this.run(() => this.captions.list(request.ayinAuth.accountId, this.id(videoIdRaw)));
+    return this.run(() => this.captions.list(request.ayinAuth, this.id(videoIdRaw)));
   }
 
   @Post("uploads")
@@ -42,7 +42,7 @@ export class CaptionController {
     const parsed = captionUploadSchema.safeParse(body);
     if (!parsed.success) this.invalid(parsed.error.issues[0]?.message);
     return this.run(() =>
-      this.captions.prepareCreate(request.ayinAuth.accountId, this.id(videoIdRaw), parsed.data),
+      this.captions.prepareCreate(request.ayinAuth, this.id(videoIdRaw), parsed.data),
     );
   }
 
@@ -57,7 +57,7 @@ export class CaptionController {
     if (!parsed.success) this.invalid(parsed.error.issues[0]?.message);
     return this.run(() =>
       this.captions.prepareReplacement(
-        request.ayinAuth.accountId,
+        request.ayinAuth,
         this.id(videoIdRaw),
         this.id(trackIdRaw),
         parsed.data,
@@ -72,7 +72,7 @@ export class CaptionController {
     @Param("trackId") trackIdRaw: string,
   ) {
     return this.run(() =>
-      this.captions.finalize(request.ayinAuth.accountId, this.id(videoIdRaw), this.id(trackIdRaw)),
+      this.captions.finalize(request.ayinAuth, this.id(videoIdRaw), this.id(trackIdRaw)),
     );
   }
 
@@ -86,12 +86,7 @@ export class CaptionController {
     const parsed = captionPatchSchema.safeParse(body);
     if (!parsed.success) this.invalid(parsed.error.issues[0]?.message);
     return this.run(() =>
-      this.captions.patch(
-        request.ayinAuth.accountId,
-        this.id(videoIdRaw),
-        this.id(trackIdRaw),
-        parsed.data,
-      ),
+      this.captions.patch(request.ayinAuth, this.id(videoIdRaw), this.id(trackIdRaw), parsed.data),
     );
   }
 
@@ -102,7 +97,7 @@ export class CaptionController {
     @Param("trackId") trackIdRaw: string,
   ) {
     return this.run(() =>
-      this.captions.remove(request.ayinAuth.accountId, this.id(videoIdRaw), this.id(trackIdRaw)),
+      this.captions.remove(request.ayinAuth, this.id(videoIdRaw), this.id(trackIdRaw)),
     );
   }
 
@@ -110,7 +105,7 @@ export class CaptionController {
     const parsed = uuidSchema.safeParse(raw);
     if (!parsed.success)
       throw this.httpError(new CaptionError("INVALID_ID", "This caption link is invalid."));
-    return parsed.data;
+    return parsed.data.toLowerCase();
   }
 
   private invalid(message?: string): never {

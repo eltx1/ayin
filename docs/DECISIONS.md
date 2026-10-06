@@ -178,3 +178,27 @@ Only planned rendition identities receive objects. A retry of the same generatio
 **Rollout:** (1) Task 39 contracts/schema only; (2) generate and verify V2 outputs behind a default-off capability; (3) observe production output correctness while the player remains MP4; (4) expose adaptive metadata without preferring it; (5) enable adaptive player selection separately with automatic/manual MP4 fallback; (6) retain old generations until cleanup policy and rollback windows are proven.
 
 **Consequences:** The processing worker may use bounded ephemeral local scratch for probe/transcode/package work, but R2 remains the only durable creator video object store and upload request bodies still bypass web/API servers. PostgreSQL stores metadata/lifecycle state, never media bytes. The `MediaAsset`/watch/player V1 contract remains untouched in Task 39. See `docs/MEDIA_ARCHITECTURE_V2.md` for the detailed contract and drift audit.
+
+## ADR-016 — Immutable output attempts for required-integrity processing
+
+**Status:** Accepted prerequisite, issuance disabled (2026-10-05)
+
+**Context:** ADR-015 generation keys are shared by retries. A database lease can reject a stale callback but cannot retract a provider PUT already in flight. An old PUT could therefore settle after a replacement claim's canonical readback and READY, changing the bytes at the recorded address. Input hashing and a privacy settlement barrier do not alone prevent that playback race.
+
+**Decision:** For jobs with `inputIntegrityVersion=1`, the existing queue claim transaction allocates a fresh random UUIDv4 output attempt and persists its complete address reservation before returning work. The append-only `MediaProcessingOutputAttempt` ledger records the original claim token/count, job, video/channel/generation snapshots, canonical key, HLS prefix and generated-thumbnail key. It is metadata, not a second queue. No FK cascade erases losing attempts. Every subsequent stage, verification and readiness callback must carry the originally captured claim token, attempt ID and count.
+
+Required output-key protocol v2 uses:
+
+```text
+channels/{channelId}/videos/{videoId}/playback/g{generation}/attempts/{attemptId}/canonical.mp4
+channels/{channelId}/videos/{videoId}/playback/g{generation}/attempts/{attemptId}/hls/master.m3u8
+channels/{channelId}/videos/{videoId}/playback/g{generation}/attempts/{attemptId}/hls/{rendition}/index.m3u8
+channels/{channelId}/videos/{videoId}/playback/g{generation}/attempts/{attemptId}/hls/{rendition}/segment-000001.ts
+channels/{channelId}/videos/{videoId}/playback/g{generation}/attempts/{attemptId}/thumbnail.jpg
+```
+
+A retry gets a new attempt UUID within the same generation. The existing numeric retry-budget counter may reset after an explicit failed-job retry; the ledger keeps its original captured count, UUID and claim token, and no address is reused. Canonical-derived reprocessing gets a new generation and new attempt, while preserving the trusted input's recorded key/digest. Required claims never reuse remote outputs. A later claim atomically repoints/reset its generation metadata before I/O; stale writes can settle only under the losing attempt's prefix. READY stores the actual winning canonical `MediaAsset.r2ObjectKey` and generation/rendition keys. Existing eligible creator or previously validated thumbnails may be preserved; losing pending automatic reservations cannot displace a replacement. Playback, export and SEO consume recorded keys, not reconstructed legacy paths. MP4 remains mandatory fallback.
+
+**Compatibility:** This narrowly supersedes ADR-015's same-key retry and canonical/SEO key rules for required-integrity jobs only. Legacy version-0 rows and their generation/SEO paths retain existing behavior. Worker transaction capability advances to `2`; an intermediate input-only worker cannot claim required work. The separate migration preserves populated legacy rows but deliberately refuses genuinely unsupported pre-attempt required jobs, because their in-flight write history cannot be reconstructed. No live issuance has been enabled. Regenerated clients, compatible API/worker/cleanup binaries and all required-job readers must be deployed before any later issuance. Rollback must retain these guards and outstanding address evidence.
+
+**Cleanup:** Every losing attempt remains discoverable through immutable channel/video/job snapshots, including after lifecycle FK detachment. Address reservation, object absence, one successful DELETE and source-key settlement are not proof that provider writes have settled. Required privacy completion remains blocked by the existing output-settlement obligation until a separately reviewed provider output-settlement protocol exists. This slice does not activate a provider, authorize production writes or enable recovery issuance.

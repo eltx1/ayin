@@ -33,6 +33,8 @@ interface ViewerProductContextValue {
   navigationStatus: "loading" | "ready" | "error";
   retryNavigation: () => void;
   identityRevision: number;
+  isIdentityCurrent: () => boolean;
+  onBeforeIdentitySuspend: (listener: () => void) => () => void;
   claimAccountIdentity: () => {
     publish: (identity: AyinIdentity | null) => void;
     release: () => void;
@@ -61,6 +63,7 @@ interface PublishedIdentity {
   pathname: string | null;
   value: AyinIdentity;
   owned: boolean;
+  isCurrent: () => boolean;
 }
 
 function concealViewerIdentity() {
@@ -76,6 +79,7 @@ function concealViewerIdentity() {
 }
 
 const ViewerProductContext = createContext<ViewerProductContextValue | null>(null);
+const noCurrentIdentity = () => false;
 
 export function ViewerProductProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -96,14 +100,31 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
   const identityOwnerPath = useRef<string | null>(null);
   const identityRead = useRef<AbortController | null>(null);
   const identityPath = useRef(pathname);
+  const beforeSuspend = useRef(new Set<() => void>());
+  const onBeforeIdentitySuspend = useCallback((listener: () => void) => {
+    beforeSuspend.current.add(listener);
+    return () => {
+      beforeSuspend.current.delete(listener);
+    };
+  }, []);
 
   const publishIdentity = useCallback(
     (next: AyinIdentity | null, path: string | null, owned: boolean) => {
       concealViewerIdentity();
-      identityEpoch.current++;
+      const epoch = ++identityEpoch.current;
       identityRead.current?.abort();
       identityRead.current = null;
-      setPublishedIdentity(next ? { pathname: path, value: next, owned } : null);
+      setPublishedIdentity(
+        next
+          ? {
+              pathname: path,
+              value: next,
+              owned,
+              // Invalidated synchronously, before a consumer's next React commit.
+              isCurrent: () => identityEpoch.current === epoch && identityPath.current === path,
+            }
+          : null,
+      );
       setIdentityRevision((value) => value + 1);
     },
     [],
@@ -179,6 +200,15 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Commit the cleared snapshot before a hidden/frozen page can be restored.
     const suspend = () => {
+      // Capture already-authorized final work before revoking the published
+      // lease. A consumer must never postpone concealment or revalidation.
+      for (const listener of [...beforeSuspend.current]) {
+        try {
+          listener();
+        } catch {
+          /* Final delivery is best-effort. */
+        }
+      }
       if (!identityOwner.current) publishIdentity(null, identityPath.current, false);
       flushSync(() => {
         setState((current) =>
@@ -213,12 +243,17 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("blur", suspend);
     window.addEventListener("focus", resume);
+    // The existing TV runtime emits this before its pagehide/hidden pause.
+    // Window-target event listeners otherwise run in registration order even
+    // when capture is requested, so a later handler cannot safely race pause.
+    window.addEventListener("ayin:before-page-suspend", suspend);
     window.addEventListener("pagehide", suspend);
     window.addEventListener("pageshow", restore);
     document.addEventListener("visibilitychange", visibility);
     return () => {
       window.removeEventListener("blur", suspend);
       window.removeEventListener("focus", resume);
+      window.removeEventListener("ayin:before-page-suspend", suspend);
       window.removeEventListener("pagehide", suspend);
       window.removeEventListener("pageshow", restore);
       document.removeEventListener("visibilitychange", visibility);
@@ -310,6 +345,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       ? publishedIdentity.value
       : null;
 
+  const isIdentityCurrent = identity ? publishedIdentity!.isCurrent : noCurrentIdentity;
+
   const value = useMemo(
     () => ({
       flags: state.flags,
@@ -318,6 +355,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       navigationStatus: state.navigationStatus,
       retryNavigation,
       identityRevision,
+      isIdentityCurrent,
+      onBeforeIdentitySuspend,
       claimAccountIdentity,
     }),
     [
@@ -327,6 +366,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       state.navigationStatus,
       retryNavigation,
       identityRevision,
+      isIdentityCurrent,
+      onBeforeIdentitySuspend,
       claimAccountIdentity,
     ],
   );

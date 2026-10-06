@@ -1,9 +1,10 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { stat } from "node:fs/promises";
-import { Readable } from "node:stream";
+import { open, rm, stat } from "node:fs/promises";
+import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 
+import { UPLOAD_FILE_IDENTITY_MAX_SIZE_BYTES } from "@ayin/types";
 import { Inject, Injectable } from "@nestjs/common";
 
 import {
@@ -31,15 +32,33 @@ export class MediaProcessingStorageService {
     this.r2TransferTimeoutMs = timeouts.r2TransferMs;
   }
 
-  async downloadToFile(key: string, destinationPath: string): Promise<void> {
+  async downloadToFile(
+    key: string,
+    destinationPath: string,
+    options?: { exactSizeBytes: number; signal?: AbortSignal },
+  ): Promise<void> {
     this.assertR2();
-    await this.withDeadline("download", this.r2TransferTimeoutMs, async (signal) => {
+    if (
+      options &&
+      (!Number.isSafeInteger(options.exactSizeBytes) ||
+        options.exactSizeBytes < 1 ||
+        options.exactSizeBytes > UPLOAD_FILE_IDENTITY_MAX_SIZE_BYTES)
+    )
+      throw new Error("The exact media download byte limit is invalid.");
+    await this.withDeadline("download", this.r2TransferTimeoutMs, async (deadline) => {
+      const signal = options?.signal ? AbortSignal.any([deadline, options.signal]) : deadline;
+      signal.throwIfAborted();
       const response = await new R2SigV4(this.config).request({ method: "GET", key, signal });
-      if (!response.body) {
+      if (!response.body)
         throw new Error("R2 returned an empty response body for the media source.");
+      if (options) {
+        await downloadExactFile(response, destinationPath, options.exactSizeBytes, signal);
+      } else {
+        // Preserve the existing legacy contract. Required-input/canonical
+        // callers opt into the immutable exact-byte scratch bound below.
+        const readable = Readable.fromWeb(response.body as WebReadableStream);
+        await pipeline(readable, createWriteStream(destinationPath, { flags: "wx" }));
       }
-      const readable = Readable.fromWeb(response.body as WebReadableStream);
-      await pipeline(readable, createWriteStream(destinationPath, { flags: "wx" }));
     });
   }
 
@@ -150,5 +169,52 @@ export class MediaProcessingStorageService {
     if (!this.storage.available || this.storage.kind !== "r2" || this.config.mode !== "r2") {
       throw new MediaStorageUnavailableError();
     }
+  }
+}
+
+async function downloadExactFile(
+  response: Response,
+  path: string,
+  exactSizeBytes: number,
+  signal: AbortSignal,
+) {
+  let file: Awaited<ReturnType<typeof open>> | undefined;
+  let readable: Readable | undefined;
+  let completed = false;
+  try {
+    signal.throwIfAborted();
+    const declared = response.headers.get("content-length");
+    if (
+      declared !== null &&
+      (!/^\d+$/.test(declared) ||
+        !Number.isSafeInteger(Number(declared)) ||
+        Number(declared) !== exactSizeBytes)
+    )
+      throw new Error("R2 Content-Length does not match the exact media byte size.");
+    // Exclusive open establishes ownership before any removal on failure. Never
+    // delete an existing file when opening it failed with EEXIST.
+    file = await open(path, "wx");
+    signal.throwIfAborted();
+    let observed = 0;
+    const bound = new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        if (!(chunk instanceof Uint8Array) || observed + chunk.byteLength > exactSizeBytes) {
+          callback(new Error("R2 media stream exceeds its exact byte size."));
+          return;
+        }
+        observed += chunk.byteLength;
+        callback(null, chunk);
+      },
+    });
+    readable = Readable.fromWeb(response.body as WebReadableStream);
+    await pipeline(readable, bound, file.createWriteStream(), { signal });
+    if (observed !== exactSizeBytes)
+      throw new Error("R2 media stream ended before its exact byte size.");
+    completed = true;
+  } finally {
+    if (readable) readable.destroy();
+    else if (response.body) void response.body.cancel().catch(() => undefined);
+    await file?.close().catch(() => undefined);
+    if (file && !completed) await rm(path, { force: true });
   }
 }

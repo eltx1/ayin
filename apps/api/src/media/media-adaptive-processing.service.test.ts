@@ -395,3 +395,41 @@ describe("Task 40 adaptive processing", () => {
     );
   });
 });
+
+it("never reuses a READY generation or READY rendition without durable output lineage", async () => {
+  const base = generation("READY");
+  const state: AdaptiveGenerationState = {
+    ...base,
+    hlsMasterStatus: "READY",
+    renditions: base.renditions.map((r) => ({ ...r, status: "READY" })),
+  };
+  const transcode = vi.fn().mockRejectedValue(new Error("regeneration reached"));
+  const fixture = serviceFixture({ generation: state, transcode });
+  const local = await canonicalFixture();
+  const requiredJob = {
+    ...(job() as Record<string, unknown>),
+    inputIntegrityVersion: 1,
+    attempt: 1,
+    currentOutputAttemptId: "66666666-6666-4666-8666-666666666666",
+    inputIntegrityOwnerlessPlatform: false,
+    inputIntegritySessionId: "session",
+    inputIntegritySourceAssetId: "source",
+    inputIntegrityAccountId: "account",
+    inputIntegrityAlgorithm: "AYIN_SHA256_CHUNKS_V1",
+    inputIntegrityDigest: "a".repeat(64),
+    sourceSizeBytes: 1024n,
+  };
+  await expect(
+    fixture.service.process({
+      job: requiredJob as never,
+      workerId: "claim",
+      workDirectory: local.directory,
+      canonicalPath: local.canonicalPath,
+      canonicalMetadata,
+    }),
+  ).rejects.toThrow("regeneration reached");
+  expect(fixture.adaptiveLifecycle.reopenIfOwned).toHaveBeenCalledOnce();
+  expect(transcode).toHaveBeenCalledOnce();
+  expect(fixture.storage.downloadText).not.toHaveBeenCalled();
+  expect(fixture.adaptiveLifecycle.markReadyIfCompleteIfOwned).not.toHaveBeenCalled();
+});

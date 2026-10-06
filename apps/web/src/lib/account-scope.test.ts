@@ -306,3 +306,84 @@ describe("actual account scope transport", () => {
     expect(fetcher.mock.calls[1]?.[1].headers["content-type"]).toBeUndefined();
   });
 });
+
+describe("explicit identity verification failure classification", () => {
+  const cases = [
+    {
+      name: "preflight transport",
+      path: "/creator/studio/content",
+      method: "GET" as const,
+      responses: [new Error("offline")],
+      acknowledged: false,
+      writeStarted: false,
+    },
+    {
+      name: "identity endpoint transport",
+      path: "/auth/me",
+      method: "GET" as const,
+      responses: [actor(), new Error("offline")],
+      acknowledged: false,
+      writeStarted: false,
+    },
+    {
+      name: "identity endpoint decoding",
+      path: "/auth/me",
+      method: "GET" as const,
+      responses: [actor(), json({ changed: false })],
+      acknowledged: false,
+      writeStarted: false,
+    },
+    {
+      name: "post-read transport",
+      path: "/creator/studio/content",
+      method: "GET" as const,
+      responses: [actor(), json({ changed: true }), new Error("offline")],
+      acknowledged: false,
+      writeStarted: false,
+    },
+    {
+      name: "post-write transport",
+      path: "/auth/password/change",
+      method: "POST" as const,
+      responses: [actor(), json({ changed: true }), new Error("offline")],
+      acknowledged: true,
+      writeStarted: true,
+    },
+    {
+      name: "post-read mismatch",
+      path: "/creator/studio/content",
+      method: "GET" as const,
+      responses: [actor(), json({ changed: true }), actor(b)],
+      acknowledged: false,
+      writeStarted: false,
+    },
+  ];
+  for (const example of cases)
+    it(`marks ${example.name} independently of write ACK`, async () => {
+      const fetcher = vi.fn();
+      for (const response of example.responses) {
+        if (response instanceof Error) fetcher.mockRejectedValueOnce(response);
+        else fetcher.mockResolvedValueOnce(response);
+      }
+      vi.stubGlobal("fetch", fetcher);
+      await expect(
+        requestAccountScope(example.path, example.method, decode, { expectedAccountId: a }),
+      ).rejects.toMatchObject({
+        identityUnverified: true,
+        acknowledged: example.acknowledged,
+        writeStarted: example.writeStarted,
+      });
+      expect(fetcher).toHaveBeenCalledTimes(example.responses.length);
+    });
+  it("does not misclassify an unconfirmed operation as failed identity verification", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(actor()).mockRejectedValueOnce(new Error("lost operation ACK")),
+    );
+    await expect(
+      requestAccountScope("/creator/studio/videos/x/captions/y", "PATCH", decode, {
+        expectedAccountId: a,
+      }),
+    ).rejects.toMatchObject({ identityUnverified: false, acknowledged: false, writeStarted: true });
+  });
+});

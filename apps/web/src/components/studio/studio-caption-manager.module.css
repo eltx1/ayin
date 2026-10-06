@@ -1,0 +1,95 @@
+.root {
+  min-inline-size: 0;
+}
+.root summary {
+  cursor: pointer;
+  min-block-size: 44px;
+  padding-block: 12px;
+  color: var(--text-primary);
+}
+.content,
+.form {
+  display: grid;
+  gap: 16px;
+  min-inline-size: 0;
+}
+.content {
+  padding-block: 16px;
+}
+.hint {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.tracks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.track {
+  padding-block: 16px;
+  border-block-end: 1px solid var(--border-strong);
+  display: grid;
+  gap: 12px;
+}
+.track h3 {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+.actions,
+.status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-block-size: 44px;
+}
+.check input {
+  inline-size: 20px;
+  block-size: 20px;
+}
+.file {
+  display: grid;
+  gap: 8px;
+  min-inline-size: 0;
+  color: var(--text-primary);
+}
+.file input {
+  display: block;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  inline-size: 100%;
+  min-block-size: 44px;
+  font: inherit;
+  color: inherit;
+}
+.file input::file-selector-button {
+  min-block-size: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  margin-inline-end: 8px;
+  padding-inline: 12px;
+}
+.root :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+@media (max-width: 600px) {
+  .actions > button {
+    flex: 1 1 auto;
+  }
+}
+
+.content[hidden] {
+  display: none;
+}

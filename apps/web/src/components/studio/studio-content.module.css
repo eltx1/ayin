@@ -53,3 +53,7 @@
 .editor label {
   overflow-wrap: anywhere;
 }
+
+.editor [data-caption-parent-private][hidden] {
+  display: none;
+}

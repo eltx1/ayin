@@ -1,3 +1,7 @@
+import {
+  publicMediaProcessingJob,
+  publicMediaProcessingStatus,
+} from "../media/media-processing-status.js";
 import type { MediaProcessingJob } from "@ayin/db";
 import { Body, Controller, Get, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
 import { z } from "zod";
@@ -75,7 +79,7 @@ export class AdminMediaProcessingController {
         },
       }),
     ]);
-    return { ...overview, jobs };
+    return { ...overview, jobs: jobs.map((job) => publicMediaProcessingJob(job)) };
   }
 
   @Get("adaptive-rollout")
@@ -99,7 +103,7 @@ export class AdminMediaProcessingController {
         id: job.id,
         videoId: job.videoId,
         generation: job.generation,
-        status: job.status,
+        status: publicMediaProcessingStatus(job.status),
         stage: job.stage,
       })),
     };
@@ -251,5 +255,13 @@ export class AdminMediaProcessingController {
 // outcome the operator needs; serialization must not fail after the commit.
 function mediaJobMutationResponse(job: MediaProcessingJob) {
   const { id, videoId, generation, status, stage, queuedAt, updatedAt } = job;
-  return { id, videoId, generation, status, stage, queuedAt, updatedAt };
+  return {
+    id,
+    videoId,
+    generation,
+    status: publicMediaProcessingStatus(status),
+    stage,
+    queuedAt,
+    updatedAt,
+  };
 }

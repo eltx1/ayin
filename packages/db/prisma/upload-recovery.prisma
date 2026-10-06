@@ -42,6 +42,12 @@ model MediaUploadSession {
   createdAt                DateTime                    @default(dbgenerated("(clock_timestamp() AT TIME ZONE 'UTC')"))
   updatedAt                DateTime                    @updatedAt
   hardExpiresAt            DateTime
+  // Future issuance must persist the maximum signed grant expiry atomically.
+  // Null is unknown, never proof that no grant/in-flight write exists.
+  lastGrantExpiresAt        DateTime?
+  grantsRevokedAt           DateTime?
+  cleanupRequestedAt        DateTime?
+  cleanupRetainUntil        DateTime?
 
   sourceAsset       MediaAsset? @relation(fields: [sourceAssetId], references: [id], onDelete: SetNull)
   initiatingAccount Account?    @relation(fields: [initiatingAccountId], references: [id], onDelete: SetNull)
@@ -50,5 +56,6 @@ model MediaUploadSession {
   // SET NULL is loss of recoverability, never evidence of privacy completion.
   @@index([initiatingAccountId, channelId, createdAt])
   @@index([state, hardExpiresAt])
+  @@index([cleanupRetainUntil])
   @@index([channelId, state, hardExpiresAt])
 }

@@ -25,7 +25,7 @@ import {
 } from "./media-generation-safety.js";
 
 const ACTIVE_PROCESSING = ["PROCESSING", "UPLOADING", "VERIFYING"] as const;
-const ACTIVE_OR_QUEUED = ["QUEUED", ...ACTIVE_PROCESSING] as const;
+const ACTIVE_OR_QUEUED = ["QUEUED", "INTEGRITY_QUEUED", ...ACTIVE_PROCESSING] as const;
 const RECOVERY_STALE_MS = 10 * 60 * 1000;
 const METRICS_WINDOW_DAYS = 30;
 const RECOVERY_SCAN_PAGE_SIZE = 25;
@@ -102,7 +102,10 @@ export class MediaAdaptiveRolloutService {
     const [catalog, queued, processing, failed, metrics] = await Promise.all([
       this.catalogSummary(),
       this.database.client.mediaProcessingJob.count({
-        where: { stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER }, status: "QUEUED" },
+        where: {
+          stagingKey: { contains: ADAPTIVE_BACKFILL_MARKER },
+          status: { in: ["QUEUED", "INTEGRITY_QUEUED"] },
+        },
       }),
       this.database.client.mediaProcessingJob.count({
         where: {
@@ -269,7 +272,7 @@ export class MediaAdaptiveRolloutService {
               WHERE newer."videoId" = j."videoId" AND newer."generation" > j."generation")
             AND NOT EXISTS (SELECT 1 FROM "MediaProcessingJob" active
               WHERE active."videoId" = j."videoId"
-                AND active."status" IN ('INGESTING', 'QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
+                AND active."status" IN ('INGESTING', 'QUEUED', 'INTEGRITY_QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
           ORDER BY j."updatedAt", j."id"
           LIMIT ${Math.min(batchSize, availableSlots)}
         `;
@@ -401,7 +404,7 @@ export class MediaAdaptiveRolloutService {
               WHERE newer."videoId" = v.id AND newer.generation > g.generation)
             AND NOT EXISTS (SELECT 1 FROM "MediaProcessingJob" active
               WHERE active."videoId" = v.id AND active.status IN
-                ('INGESTING', 'QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
+                ('INGESTING', 'QUEUED', 'INTEGRITY_QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
             AND NOT EXISTS (SELECT 1 FROM "MediaPlaybackGeneration" ready
               WHERE ready."videoId" = v.id AND ready.status = 'READY'
                 AND ready."fallbackStatus" = 'READY' AND ready."hlsMasterStatus" = 'READY'
@@ -532,13 +535,21 @@ export class MediaAdaptiveRolloutService {
 
     // One bounded query finds the latest job per candidate; no per-video SQL loop.
     const latestJobs = candidates.length
-      ? await this.database.client.$queryRaw<Array<{ videoId: string; generation: number }>>`
-      SELECT v.id AS "videoId", j.generation
+      ? await this.database.client.$queryRaw<
+          Array<{
+            videoId: string;
+            generation: number;
+            inputIntegrityVersion: number;
+            attemptMasterKey: string | null;
+          }>
+        >`
+      SELECT v.id AS "videoId", j.generation, j."inputIntegrityVersion", a."hlsR2Prefix" || 'master.m3u8' AS "attemptMasterKey"
       FROM "Video" v
       CROSS JOIN LATERAL (
-        SELECT generation FROM "MediaProcessingJob"
+        SELECT id, generation, "inputIntegrityVersion", "currentOutputAttemptId" FROM "MediaProcessingJob"
         WHERE "videoId" = v.id ORDER BY generation DESC LIMIT 1
       ) j
+      LEFT JOIN "MediaProcessingOutputAttempt" a ON a.id = j."currentOutputAttemptId" AND a."processingJobId" = j.id
       WHERE v.id IN (${Prisma.join(candidates.map((video) => Prisma.sql`${video.id}::uuid`))})
     `
       : [];
@@ -555,12 +566,15 @@ export class MediaAdaptiveRolloutService {
       scanned += 1;
       const latestJob = jobsByVideo.get(video.id);
       if (!latestJob || existingIds.has(video.id)) continue;
-      const manifestKey = hlsMasterObjectKey({
-        channelId: video.channelId,
-        videoId: video.id,
-        generation: latestJob.generation,
-      });
-      if (!(await this.objectExists(manifestKey))) continue;
+      const manifestKey =
+        latestJob.inputIntegrityVersion === 1
+          ? latestJob.attemptMasterKey
+          : hlsMasterObjectKey({
+              channelId: video.channelId,
+              videoId: video.id,
+              generation: latestJob.generation,
+            });
+      if (!manifestKey || !(await this.objectExists(manifestKey))) continue;
       videos.push(video);
       if (videos.length >= batchSize) break;
     }
@@ -695,7 +709,7 @@ export class MediaAdaptiveRolloutService {
           AND EXISTS (SELECT 1 FROM "MediaPlaybackRendition" r WHERE r."playbackGenerationId" = g.id
             AND r.status = 'READY' AND r.protocol = 'HLS'))
         AND NOT EXISTS (SELECT 1 FROM "MediaProcessingJob" j WHERE j."videoId" = v.id
-          AND j.status IN ('INGESTING', 'QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
+          AND j.status IN ('INGESTING', 'QUEUED', 'INTEGRITY_QUEUED', 'PROCESSING', 'UPLOADING', 'VERIFYING'))
       ORDER BY v.id LIMIT ${Math.min(limit, RECOVERY_SCAN_MAX_ROWS)}
     `;
     return candidates;

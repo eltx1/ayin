@@ -96,7 +96,6 @@ export const adminNavigation: readonly WorkspaceNavigationGroup[] = [
     label: "navigation.monetization",
     items: [
       { label: "navigation.advertising", href: "/admin/advertising", roles: advertising },
-      { label: "navigation.videoAds", href: "/admin/video-ads", roles: advertising },
       { label: "navigation.revenue", href: "/admin/revenue", roles: finance },
     ],
   },
@@ -151,6 +150,10 @@ export function navigationPath(value: string): string {
 export function isNavigationCurrent(pathname: string | null, target: string): boolean {
   if (!pathname || !target.startsWith("/") || target.startsWith("//")) return false;
   const current = navigationPath(pathname);
+  // Existing player-control URLs remain canonical while belonging to the one
+  // Advertising workspace destination. This is presentation matching, not a redirect.
+  if (navigationPath(target) === "/admin/advertising" && current === "/admin/video-ads")
+    return true;
   const destination = navigationPath(target);
   if (["/", "/admin", "/studio"].includes(destination)) return current === destination;
   return current === destination || current.startsWith(`${destination}/`);

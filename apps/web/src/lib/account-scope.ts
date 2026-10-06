@@ -6,6 +6,7 @@ export class AccountScopeError extends Error {
     readonly code: string,
     readonly writeStarted = false,
     readonly acknowledged = false,
+    readonly identityUnverified = false,
   ) {
     super("The current account operation could not be verified.");
   }
@@ -134,10 +135,14 @@ export async function requestAccountScope<T>(
   );
   let started = false,
     acknowledged = false;
+  // Identity verification is an independent privacy boundary, including GETs
+  // and explicit /auth/me requests. A failed check is not a write-ACK signal.
+  let verifyingIdentity = true;
   try {
     const accountId = await actor(controller.signal, options.expectedAccountId);
     controller.signal.throwIfAborted();
     started = method !== "GET";
+    verifyingIdentity = method === "GET" && path === "/auth/me";
     const value = decode(
       await json(
         await fetch(apiBaseUrl + path, {
@@ -161,13 +166,28 @@ export async function requestAccountScope<T>(
       options.allowCurrentLogout &&
       ((sessionLogout && object(value).currentSessionRevoked === true) ||
         (mfaLogout && object(value).disabled === true));
-    if (!intentionalLogout) await actor(controller.signal, accountId);
+    if (!intentionalLogout) {
+      verifyingIdentity = true;
+      await actor(controller.signal, accountId);
+    }
     controller.signal.throwIfAborted();
     return { accountId, value };
   } catch (error) {
     if (error instanceof AccountScopeError)
-      throw new AccountScopeError(error.status, error.code, started, acknowledged);
-    throw new AccountScopeError(0, "RESPONSE_UNCONFIRMED", started, acknowledged);
+      throw new AccountScopeError(
+        error.status,
+        error.code,
+        started,
+        acknowledged,
+        verifyingIdentity || error.identityUnverified,
+      );
+    throw new AccountScopeError(
+      0,
+      "RESPONSE_UNCONFIRMED",
+      started,
+      acknowledged,
+      verifyingIdentity,
+    );
   } finally {
     clearTimeout(timer);
     options.signal?.removeEventListener("abort", abort);

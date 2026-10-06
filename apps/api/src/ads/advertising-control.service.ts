@@ -1,16 +1,29 @@
-import type { Prisma } from "@ayin/db";
+import { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
+import {
+  lockAdminAccountWrite,
+  type AccountWriteActor,
+} from "../admin/admin-account-write-authority.js";
+import {
+  advertiserCreateWriteSchema,
+  advertiserPatchWriteSchema,
+  advertisingDeleteWriteSchema,
+  campaignCreateWriteSchema,
+  campaignPatchWriteSchema,
+  advertisingActions,
+  advertisingError,
+  assertAdvertisingVersion,
+  nextAdvertisingVersion,
+  type AdvertisingAction,
+  type AdvertisingAcknowledgment,
+} from "./advertising-write-contract.js";
 import { DatabaseService } from "../database/database.service.js";
 import { chooseDirectCampaign, type DirectCampaignCandidate } from "./direct-ad-decision.js";
 import {
   type DirectCampaignConfigInput,
   type DirectDecisionContext,
-  advertiserCreateSchema,
-  advertiserPatchSchema,
-  campaignCreateSchema,
-  campaignPatchSchema,
   creativeCreateSchema,
   creativePatchSchema,
   directCampaignConfigSchema,
@@ -129,82 +142,211 @@ export class AdvertisingControlService {
   }
 
   async listAdvertisers() {
-    return this.database.client.advertiser.findMany({
-      orderBy: [{ status: "asc" }, { name: "asc" }],
-    });
+    return this.readAdvertisers(this.database.client);
   }
 
-  async createAdvertiser(actorAccountId: string, input: unknown) {
-    const data = advertiserCreateSchema.parse(input);
-    return this.database.client.$transaction(async (tx) => {
-      const advertiser = await tx.advertiser.create({ data });
-      await this.audit.recordInTransaction(tx, {
+  async advertiserRecord(advertiserId: string) {
+    const record = await this.database.client.advertiser.findUnique({
+      where: { id: advertiserId },
+    });
+    if (!record) throw advertisingError(404, "ADVERTISER_NOT_FOUND", "Advertiser unavailable.");
+    return record;
+  }
+
+  async workspace() {
+    return this.database.client.$transaction(
+      async (tx) => ({
+        advertisers: await this.readAdvertisers(tx),
+        campaigns: await this.readCampaigns(tx),
+      }),
+      { isolationLevel: "RepeatableRead" },
+    );
+  }
+
+  async mutationRecord(actorAccountId: string, mutationId: string) {
+    // This is correlation with an already committed command, not an idempotency
+    // or replay service. No row does not prove an in-flight request cannot commit.
+    const rows = await this.database.client.adminAuditLog.findMany({
+      where: {
         actorAccountId,
+        action: { in: [...advertisingActions] },
+        metadata: { path: ["mutationId"], equals: mutationId },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 2,
+      select: {
+        actorAccountId: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        metadata: true,
+      },
+    });
+    if (!rows.length)
+      throw advertisingError(
+        404,
+        "ADVERTISING_MUTATION_NOT_FOUND",
+        "No committed matching operation was found. An in-flight operation may still finish.",
+      );
+    if (rows.length !== 1)
+      throw advertisingError(
+        409,
+        "ADVERTISING_MUTATION_AMBIGUOUS",
+        "This operation identifier was reused. Review the records before another operation.",
+      );
+    const row = rows[0]!;
+    const metadata = row.metadata as { acknowledgedUpdatedAt?: unknown } | null;
+    if (
+      !row.entityId ||
+      !["Advertiser", "Campaign"].includes(row.entityType) ||
+      typeof metadata?.acknowledgedUpdatedAt !== "string"
+    )
+      throw advertisingError(
+        500,
+        "ADVERTISING_ACKNOWLEDGMENT_UNAVAILABLE",
+        "The operation acknowledgment could not be verified.",
+      );
+    return {
+      acknowledgment: {
+        mutationId,
+        actorAccountId,
+        action: row.action as AdvertisingAction,
+        entityType: row.entityType as "Advertiser" | "Campaign",
+        entityId: row.entityId,
+        updatedAt: metadata.acknowledgedUpdatedAt,
+      } satisfies AdvertisingAcknowledgment,
+    };
+  }
+
+  async createAdvertiser(actor: AccountWriteActor, input: unknown) {
+    const { mutationId, ...data } = advertiserCreateWriteSchema.parse(input);
+    return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
+      const advertiser = await tx.advertiser.create({ data });
+      await this.writeAuthority(tx, actor);
+      await this.audit.recordInTransaction(tx, {
+        actorAccountId: actor.accountId,
         action: "ADVERTISER_CREATED",
         entityType: "Advertiser",
         entityId: advertiser.id,
-        metadata: { name: advertiser.name, status: advertiser.status },
+        metadata: {
+          name: advertiser.name,
+          status: advertiser.status,
+          ...this.correlation(mutationId, advertiser.updatedAt),
+        },
       });
-      return advertiser;
+      await this.writeAuthority(tx, actor);
+      return this.writeResult(
+        actor,
+        mutationId,
+        "ADVERTISER_CREATED",
+        "Advertiser",
+        advertiser,
+        advertiser,
+      );
     });
   }
 
-  async updateAdvertiser(actorAccountId: string, advertiserId: string, input: unknown) {
-    const data = advertiserPatchSchema.parse(input);
+  async updateAdvertiser(actor: AccountWriteActor, advertiserId: string, input: unknown) {
+    const { mutationId, expectedUpdatedAt, ...data } = advertiserPatchWriteSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
+      const current = await this.lockAdvertiser(tx, advertiserId);
+      await this.writeAuthority(tx, actor);
+      assertAdvertisingVersion(current.updatedAt, expectedUpdatedAt);
       const advertiser = await tx.advertiser.update({
         where: { id: advertiserId },
         data: {
           ...(data.name !== undefined ? { name: data.name } : {}),
           ...(data.status !== undefined ? { status: data.status } : {}),
+          updatedAt: nextAdvertisingVersion(current.updatedAt),
         },
       });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "ADVERTISER_UPDATED",
         entityType: "Advertiser",
         entityId: advertiser.id,
-        metadata: { name: advertiser.name, status: advertiser.status },
+        metadata: {
+          name: advertiser.name,
+          status: advertiser.status,
+          ...this.correlation(mutationId, advertiser.updatedAt),
+        },
       });
-      return advertiser;
+      await this.writeAuthority(tx, actor);
+      return this.writeResult(
+        actor,
+        mutationId,
+        "ADVERTISER_UPDATED",
+        "Advertiser",
+        advertiser,
+        advertiser,
+      );
     });
   }
 
-  async deleteAdvertiser(actorAccountId: string, advertiserId: string) {
+  async deleteAdvertiser(actor: AccountWriteActor, advertiserId: string, input: unknown = {}) {
+    const { mutationId, expectedUpdatedAt } = advertisingDeleteWriteSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
+      const advertiser = await this.lockAdvertiser(tx, advertiserId);
+      await this.writeAuthority(tx, actor);
+      assertAdvertisingVersion(advertiser.updatedAt, expectedUpdatedAt);
       const campaignCount = await tx.campaign.count({ where: { advertiserId } });
-      if (campaignCount > 0) throw new Error("ADVERTISER_HAS_CAMPAIGNS");
-      const advertiser = await tx.advertiser.delete({ where: { id: advertiserId } });
+      if (campaignCount > 0)
+        throw advertisingError(
+          409,
+          "ADVERTISER_HAS_CAMPAIGNS",
+          "Remove eligible campaigns before deleting this advertiser.",
+        );
+      await tx.advertiser.delete({ where: { id: advertiserId } });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "ADVERTISER_DELETED",
         entityType: "Advertiser",
         entityId: advertiser.id,
-        metadata: { name: advertiser.name },
+        metadata: { name: advertiser.name, ...this.correlation(mutationId, advertiser.updatedAt) },
       });
-      return { deleted: true };
+      await this.writeAuthority(tx, actor);
+      return this.writeResult(
+        actor,
+        mutationId,
+        "ADVERTISER_DELETED",
+        "Advertiser",
+        advertiser,
+        null,
+      );
     });
   }
 
   async listCampaigns() {
-    const campaigns = await this.database.client.campaign.findMany({
-      include: { advertiser: { select: { name: true } } },
-      orderBy: [{ createdAt: "desc" }],
+    return this.database.client.$transaction((tx) => this.readCampaigns(tx), {
+      isolationLevel: "RepeatableRead",
     });
-    const configs = await this.database.client.directCampaignConfig.findMany({
-      where: { campaignId: { in: campaigns.map((item) => item.id) } },
-    });
-    const byCampaign = new Map(configs.map((item) => [item.campaignId, item]));
-    return campaigns.map((campaign) => ({
-      ...campaign,
-      direct: byCampaign.get(campaign.id) ?? null,
-    }));
   }
 
-  async createCampaign(actorAccountId: string, input: unknown) {
-    const data = campaignCreateSchema.parse(input);
-    this.assertDates(data.startsAt, data.endsAt);
+  async campaignRecord(campaignId: string) {
+    return this.database.client.$transaction(
+      async (tx) => {
+        const records = await this.readCampaigns(tx, campaignId);
+        if (!records[0]) throw advertisingError(404, "CAMPAIGN_NOT_FOUND", "Campaign unavailable.");
+        return records[0];
+      },
+      { isolationLevel: "RepeatableRead" },
+    );
+  }
+
+  async createCampaign(actor: AccountWriteActor, input: unknown) {
+    const { mutationId, expectedAdvertiserUpdatedAt, ...data } =
+      campaignCreateWriteSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
+      const advertiser = await this.lockAdvertiser(tx, data.advertiserId);
+      await this.writeAuthority(tx, actor);
+      assertAdvertisingVersion(advertiser.updatedAt, expectedAdvertiserUpdatedAt);
+      this.assertDates(data.startsAt, data.endsAt);
       const campaign = await tx.campaign.create({
         data: {
           advertiserId: data.advertiserId,
@@ -217,8 +359,10 @@ export class AdvertisingControlService {
         },
       });
       await this.writeDirectConfig(tx, campaign.id, data.direct);
+      const record = mutationId ? (await this.readCampaigns(tx, campaign.id))[0]! : campaign;
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "CAMPAIGN_CREATED",
         entityType: "Campaign",
         entityId: campaign.id,
@@ -228,22 +372,26 @@ export class AdvertisingControlService {
           budget: data.budget,
           currency: data.currency,
           pricing: json(data.direct.pricing),
+          ...this.correlation(mutationId, campaign.updatedAt),
         },
       });
-      return campaign;
+      await this.writeAuthority(tx, actor);
+      return this.writeResult(actor, mutationId, "CAMPAIGN_CREATED", "Campaign", campaign, record);
     });
   }
 
-  async updateCampaign(actorAccountId: string, campaignId: string, input: unknown) {
-    const data = campaignPatchSchema.parse(input);
-    const current = await this.database.client.campaign.findUniqueOrThrow({
-      where: { id: campaignId },
-    });
-    const startsAt = data.startsAt !== undefined ? data.startsAt : current.startsAt;
-    const endsAt = data.endsAt !== undefined ? data.endsAt : current.endsAt;
-    this.assertDates(startsAt, endsAt);
-
+  async updateCampaign(actor: AccountWriteActor, campaignId: string, input: unknown) {
+    const { mutationId, expectedUpdatedAt, ...data } = campaignPatchWriteSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
+      const current = await this.lockCampaign(tx, campaignId);
+      await this.writeAuthority(tx, actor);
+      assertAdvertisingVersion(current.updatedAt, expectedUpdatedAt);
+      this.assertDates(
+        data.startsAt !== undefined ? data.startsAt : current.startsAt,
+        data.endsAt !== undefined ? data.endsAt : current.endsAt,
+      );
+      const { direct } = data;
       const campaign = await tx.campaign.update({
         where: { id: campaignId },
         data: {
@@ -253,11 +401,14 @@ export class AdvertisingControlService {
           ...(data.endsAt !== undefined ? { endsAt: data.endsAt } : {}),
           ...(data.budget !== undefined ? { budget: data.budget } : {}),
           ...(data.currency !== undefined ? { currency: data.currency } : {}),
+          updatedAt: nextAdvertisingVersion(current.updatedAt),
         },
       });
-      if (data.direct) await this.writeDirectConfig(tx, campaignId, data.direct);
+      if (direct) await this.writeDirectConfig(tx, campaignId, direct);
+      const record = mutationId ? (await this.readCampaigns(tx, campaignId))[0]! : campaign;
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "CAMPAIGN_UPDATED",
         entityType: "Campaign",
         entityId: campaign.id,
@@ -265,28 +416,147 @@ export class AdvertisingControlService {
           status: campaign.status,
           ...(data.budget !== undefined ? { budget: data.budget } : {}),
           ...(data.currency !== undefined ? { currency: data.currency } : {}),
-          ...(data.direct ? { pricing: json(data.direct.pricing) } : {}),
+          ...(direct ? { pricing: json(direct.pricing) } : {}),
+          ...this.correlation(mutationId, campaign.updatedAt),
         },
       });
-      return campaign;
+      await this.writeAuthority(tx, actor);
+      return this.writeResult(actor, mutationId, "CAMPAIGN_UPDATED", "Campaign", campaign, record);
     });
   }
 
-  async deleteCampaign(actorAccountId: string, campaignId: string) {
+  async deleteCampaign(actor: AccountWriteActor, campaignId: string, input: unknown = {}) {
+    const { mutationId, expectedUpdatedAt } = advertisingDeleteWriteSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
-      const campaign = await tx.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+      await this.writeAuthority(tx, actor);
+      const campaign = await this.lockCampaign(tx, campaignId);
+      await this.writeAuthority(tx, actor);
+      assertAdvertisingVersion(campaign.updatedAt, expectedUpdatedAt);
       const events = await tx.adEvent.count({ where: { campaignId } });
-      if (campaign.status !== "DRAFT" || events > 0) throw new Error("CAMPAIGN_NOT_DELETABLE");
+      if (campaign.status !== "DRAFT" || events > 0)
+        throw advertisingError(
+          409,
+          "CAMPAIGN_NOT_DELETABLE",
+          "Only draft campaigns with no events can be deleted.",
+        );
       await tx.campaign.delete({ where: { id: campaignId } });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "CAMPAIGN_DELETED",
         entityType: "Campaign",
         entityId: campaignId,
-        metadata: { name: campaign.name },
+        metadata: { name: campaign.name, ...this.correlation(mutationId, campaign.updatedAt) },
       });
-      return { deleted: true };
+      await this.writeAuthority(tx, actor);
+      return this.writeResult(actor, mutationId, "CAMPAIGN_DELETED", "Campaign", campaign, null);
     });
+  }
+
+  private readAdvertisers(tx: Prisma.TransactionClient) {
+    return tx.advertiser.findMany({ orderBy: [{ status: "asc" }, { name: "asc" }, { id: "asc" }] });
+  }
+
+  private async readCampaigns(tx: Prisma.TransactionClient, campaignId?: string) {
+    const campaigns = await tx.campaign.findMany({
+      ...(campaignId ? { where: { id: campaignId } } : {}),
+      include: { advertiser: { select: { name: true } } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    const configs = await tx.directCampaignConfig.findMany({
+      where: { campaignId: { in: campaigns.map((item) => item.id) } },
+    });
+    const byCampaign = new Map(
+      configs.map((item) => [
+        item.campaignId,
+        {
+          ...item,
+          impressionGoal: item.impressionGoal === null ? null : Number(item.impressionGoal),
+        },
+      ]),
+    );
+    return campaigns.map((campaign) => ({
+      ...campaign,
+      direct: byCampaign.get(campaign.id) ?? null,
+    }));
+  }
+
+  private writeAuthority(tx: Prisma.TransactionClient, actor: AccountWriteActor) {
+    return lockAdminAccountWrite(tx, actor, actor.accountId, undefined, ["AD_MANAGER"]);
+  }
+
+  private async lockAdvertiser(tx: Prisma.TransactionClient, advertiserId: string) {
+    // FOR UPDATE also fences child FK inserts (campaign creation), unlike NO KEY UPDATE.
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; name: string; status: string; updatedAt: Date }>
+    >(
+      Prisma.sql`SELECT "id", "name", "status", "updatedAt" FROM "Advertiser"
+        WHERE "id"=${advertiserId}::uuid FOR UPDATE /* ayin-advertiser-write-lock */`,
+    );
+    if (!rows[0]) throw advertisingError(404, "ADVERTISER_NOT_FOUND", "Advertiser unavailable.");
+    return rows[0];
+  }
+
+  private async lockCampaign(tx: Prisma.TransactionClient, campaignId: string) {
+    // Parent is immutable through this API. Observe its ID, then use the same
+    // actor -> advertiser -> campaign order as creation and advertiser deletion.
+    const observed = await tx.campaign.findUnique({
+      where: { id: campaignId },
+      select: { advertiserId: true },
+    });
+    if (!observed) throw advertisingError(404, "CAMPAIGN_NOT_FOUND", "Campaign unavailable.");
+    await this.lockAdvertiser(tx, observed.advertiserId);
+    const rows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        advertiserId: string;
+        name: string;
+        status: string;
+        startsAt: Date | null;
+        endsAt: Date | null;
+        updatedAt: Date;
+      }>
+    >(
+      Prisma.sql`SELECT "id", "advertiserId", "name", "status", "startsAt", "endsAt", "updatedAt"
+        FROM "Campaign" WHERE "id"=${campaignId}::uuid FOR UPDATE /* ayin-campaign-write-lock */`,
+    );
+    if (!rows[0]) throw advertisingError(404, "CAMPAIGN_NOT_FOUND", "Campaign unavailable.");
+    if (rows[0].advertiserId !== observed.advertiserId)
+      throw advertisingError(
+        409,
+        "CAMPAIGN_PARENT_CONFLICT",
+        "The campaign advertiser changed. Review the campaign again.",
+      );
+    // The campaign lock blocks concurrent event/creative FK inserts; delete
+    // preconditions are read only after it is acquired. Existing creative paths
+    // retain their semantics and finish their FK reads before this lock wins.
+    return rows[0];
+  }
+
+  private correlation(mutationId: string | undefined, updatedAt: Date) {
+    return mutationId ? { mutationId, acknowledgedUpdatedAt: updatedAt.toISOString() } : {};
+  }
+
+  private writeResult<T>(
+    actor: AccountWriteActor,
+    mutationId: string | undefined,
+    action: AdvertisingAction,
+    entityType: "Advertiser" | "Campaign",
+    entity: { id: string; updatedAt: Date },
+    record: T,
+  ) {
+    if (!mutationId) return record ?? { deleted: true };
+    return {
+      acknowledgment: {
+        mutationId,
+        actorAccountId: actor.accountId,
+        action,
+        entityType,
+        entityId: entity.id,
+        updatedAt: entity.updatedAt.toISOString(),
+      } satisfies AdvertisingAcknowledgment,
+      record,
+    };
   }
 
   async listCreatives(campaignId?: string) {
@@ -552,6 +822,11 @@ export class AdvertisingControlService {
   }
 
   private assertDates(startsAt: Date | null, endsAt: Date | null) {
-    if (startsAt && endsAt && endsAt <= startsAt) throw new Error("INVALID_CAMPAIGN_DATES");
+    if (startsAt && endsAt && endsAt <= startsAt)
+      throw advertisingError(
+        400,
+        "INVALID_CAMPAIGN_DATES",
+        "The end date must be later than the start date.",
+      );
   }
 }
