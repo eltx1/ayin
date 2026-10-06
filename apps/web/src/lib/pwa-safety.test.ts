@@ -6,15 +6,18 @@ const source = readFileSync(new URL("../../public/sw.js", import.meta.url), "utf
 function harness() {
   const listeners = new Map<string, (event: Record<string, unknown>) => void>();
   const entries = new Map<string, Response>();
-  const key = (request: string | Request) => (typeof request === "string" ? request : request.url);
+  const key = (request: string | Request) =>
+    new URL(typeof request === "string" ? request : request.url, "https://ayin.stream").href;
   const cache = {
     addAll: vi.fn(async (paths: string[]) =>
-      paths.forEach((path) => entries.set(path, new Response("offline"))),
+      paths.forEach((path) => entries.set(key(path), new Response("offline"))),
     ),
     match: vi.fn(async (request: string | Request) => entries.get(key(request))),
     put: vi.fn(async (request: string | Request, response: Response) => {
       entries.set(key(request), response);
     }),
+    keys: vi.fn(async () => [...entries.keys()].map((url) => new Request(url))),
+    delete: vi.fn(async (request: string | Request) => entries.delete(key(request))),
   };
   const caches = {
     open: vi.fn(async () => cache),
@@ -37,18 +40,19 @@ function harness() {
   runInNewContext(source, { self, caches, fetch, URL, Response });
   async function dispatch(name: string, fields: Record<string, unknown> = {}) {
     let response: Promise<Response> | undefined;
-    let pending: Promise<unknown> | undefined;
+    const pending: Promise<unknown>[] = [];
     listeners.get(name)?.({
       ...fields,
       respondWith: (value: Promise<Response>) => {
         response = value;
       },
       waitUntil: (value: Promise<unknown>) => {
-        pending = value;
+        pending.push(value);
       },
     });
-    await pending;
-    return response;
+    const result = await response;
+    await Promise.all(pending);
+    return result;
   }
   function request(path: string, overrides: Record<string, unknown> = {}) {
     return {
@@ -60,7 +64,7 @@ function harness() {
       ...overrides,
     };
   }
-  return { cache, caches, fetch, self, dispatch, request };
+  return { cache, caches, entries, fetch, self, dispatch, request };
 }
 
 describe("AYIN service worker behavior", () => {
@@ -88,12 +92,14 @@ describe("AYIN service worker behavior", () => {
       "ayin-pwa-v2-static",
       "ayin-pwa-v2-read",
       "ayin-pwa-v3-static",
+      "ayin-pwa-v4-static",
       "other-app",
     ]);
     await h.dispatch("activate");
     expect(h.caches.delete.mock.calls.map(([name]) => name)).toEqual([
       "ayin-pwa-v2-static",
       "ayin-pwa-v2-read",
+      "ayin-pwa-v3-static",
     ]);
     expect(h.self.clients.claim).toHaveBeenCalledOnce();
     expect(h.self.registration.navigationPreload.enable).toHaveBeenCalledOnce();
@@ -179,5 +185,79 @@ describe("AYIN service worker behavior", () => {
         }),
       }),
     ).toBeUndefined();
+  });
+  it.each(["open", "match", "put", "keys", "delete"] as const)(
+    "returns network assets despite a %s storage failure",
+    async (operation) => {
+      const h = harness();
+      if (operation === "open") h.caches.open.mockRejectedValue(new Error("storage disabled"));
+      else if (operation === "delete") {
+        for (let i = 0; i < 128; i++) {
+          await h.cache.put(
+            h.request(`/_next/static/old-${i}.js`) as unknown as Request,
+            new Response("old"),
+          );
+        }
+        h.cache.delete.mockRejectedValue(new Error("storage disabled"));
+      } else h.cache[operation].mockRejectedValue(new Error("storage disabled"));
+      const response = await h.dispatch("fetch", {
+        request: h.request("/_next/static/current.js"),
+      });
+      expect(response?.status).toBe(200);
+      expect(await response?.text()).toBe("network");
+    },
+  );
+  it("bounds concurrent assets across releases while retaining the neutral offline shell", async () => {
+    const h = harness();
+    await h.dispatch("install");
+    await Promise.all(
+      Array.from({ length: 150 }, (_, i) =>
+        h.dispatch("fetch", {
+          request: h.request(`/_next/static/build-${Math.floor(i / 50)}/${i}.js`),
+        }),
+      ),
+    );
+    const assets = [...h.entries.keys()].filter((url) => url.includes("/_next/static/"));
+    expect(assets).toHaveLength(128);
+    expect(assets[0]).toContain("/22.js");
+    expect(assets.at(-1)).toContain("/149.js");
+    expect(h.entries.has("https://ayin.stream/offline.html")).toBe(true);
+    expect(h.entries.has("https://ayin.stream/icons/ayin-192.svg")).toBe(true);
+    expect(h.entries.has("https://ayin.stream/icons/ayin-512.svg")).toBe(true);
+    h.fetch.mockRejectedValueOnce(new TypeError("offline"));
+    const offline = await h.dispatch("fetch", {
+      request: h.request("/account", { mode: "navigate" }),
+    });
+    expect(await offline?.text()).toBe("offline");
+  });
+  it("recovers cache writes after a transient quota failure", async () => {
+    const h = harness();
+    h.cache.put.mockRejectedValueOnce(new Error("QuotaExceededError"));
+    await h.dispatch("fetch", { request: h.request("/_next/static/first.js") });
+    await h.dispatch("fetch", { request: h.request("/_next/static/second.js") });
+    expect(h.entries.has("https://ayin.stream/_next/static/second.js")).toBe(true);
+  });
+  it("bypasses partial requests and refuses partial or redirected cache responses", async () => {
+    const h = harness();
+    expect(
+      await h.dispatch("fetch", {
+        request: h.request("/_next/static/x.js", { headers: new Headers({ range: "bytes=0-10" }) }),
+      }),
+    ).toBeUndefined();
+    for (const [status, redirected] of [
+      [206, false],
+      [200, true],
+    ] as const) {
+      const response = new Response("network", { status });
+      Object.defineProperties(response, {
+        type: { value: "basic" },
+        redirected: { value: redirected },
+      });
+      h.fetch.mockResolvedValueOnce(response);
+      expect(await h.dispatch("fetch", { request: h.request("/_next/static/x.js") })).toBe(
+        response,
+      );
+    }
+    expect(h.cache.put).not.toHaveBeenCalled();
   });
 });
