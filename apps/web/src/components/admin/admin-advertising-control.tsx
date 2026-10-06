@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import styles from "@/app/admin/admin.module.css";
 import { useI18n } from "@/components/i18n/i18n-provider";
@@ -18,18 +18,18 @@ import { adminAdvertisingAr, adminAdvertisingEn } from "@/lib/i18n/resources/adm
 import { AdminAdvertisingNavigation } from "./admin-advertising-navigation";
 import advertisingStyles from "./admin-advertising-navigation.module.css";
 import {
+  DirectCampaignPanel,
+  DirectCampaignWorkspaceProvider,
+} from "./admin-direct-campaign-workspace";
+import {
   reconcileAdvertisingRead,
+  retainCampaignCreatives,
   type AdvertisingEditableRecords,
 } from "@/lib/admin-advertising-drafts";
 import {
   createAdPlacement,
-  createAdvertiser,
-  createCampaign,
   createCreative,
-  deleteAdvertiser,
-  deleteCampaign,
   deleteCreative,
-  getAdvertisers,
   getAdvertisingOverview,
   getCampaigns,
   getCreatives,
@@ -39,17 +39,10 @@ import {
   saveSellerFile,
   setAdvertisingKillSwitch,
   updateAdPlacement,
-  updateAdvertiser,
-  updateCampaign,
   updateCreative,
   updatePageAdSettings,
-  type AdDevice,
   type AdPlacement,
-  type Advertiser,
-  type AdvertiserStatus,
   type Campaign,
-  type CampaignInput,
-  type CampaignStatus,
   type Creative,
   type CreativeInput,
   type CreativeStatus,
@@ -58,59 +51,9 @@ import {
   type PageAdSettings,
   type SellerFiles,
 } from "@/lib/admin-advertising";
-import {
-  searchAdminAdvertisingTargets,
-  type AdminAdvertisingChannelTarget,
-  type AdminAdvertisingVideoTarget,
-} from "@/lib/admin-operations-directory";
-
 type Overview = Awaited<ReturnType<typeof getAdvertisingOverview>>;
 
-type CampaignDraft = {
-  name: string;
-  status: CampaignStatus;
-  startsAt: string;
-  endsAt: string;
-  budget: string;
-  currency: string;
-  pricingModel: "CPM" | "FIXED";
-  rate: string;
-  priority: string;
-  impressionGoal: string;
-  frequencyCap: string;
-  pacing: "EVEN" | "ASAP";
-  placementKeys: string;
-  countries: string;
-  regions: string;
-  categories: string;
-  devices: AdDevice[];
-  channelIds: string[];
-  videoIds: string[];
-};
-
-const emptyCampaignDraft: CampaignDraft = {
-  name: "",
-  status: "DRAFT",
-  startsAt: "",
-  endsAt: "",
-  budget: "",
-  currency: "USD",
-  pricingModel: "CPM",
-  rate: "1.000000",
-  priority: "100",
-  impressionGoal: "",
-  frequencyCap: "3",
-  pacing: "EVEN",
-  placementKeys: "",
-  countries: "",
-  regions: "",
-  categories: "",
-  devices: [],
-  channelIds: [],
-  videoIds: [],
-};
-
-function splitList(value: string, upper = false) {
+function splitList(value: string) {
   return [
     ...new Set(
       value
@@ -118,99 +61,27 @@ function splitList(value: string, upper = false) {
         .map((item) => item.trim())
         .filter(Boolean),
     ),
-  ].map((item) => (upper ? item.toUpperCase() : item));
-}
-
-function localDateTime(value: string | null | undefined) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-function isoOrNull(value: string) {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function draftFromCampaign(campaign: Campaign): CampaignDraft {
-  const direct = campaign.direct;
-  const pricing = direct?.pricing;
-  const targeting = direct?.targeting ?? {};
-  return {
-    name: campaign.name,
-    status: campaign.status,
-    startsAt: localDateTime(campaign.startsAt),
-    endsAt: localDateTime(campaign.endsAt),
-    budget: campaign.budget ?? "",
-    currency: campaign.currency ?? "USD",
-    pricingModel: pricing?.model ?? "CPM",
-    rate:
-      pricing?.model === "FIXED"
-        ? pricing.fixedPrice
-        : pricing?.model === "CPM"
-          ? pricing.cpm
-          : "1.000000",
-    priority: String(direct?.priority ?? 100),
-    impressionGoal:
-      direct?.impressionGoal === null || direct?.impressionGoal === undefined
-        ? ""
-        : String(direct.impressionGoal),
-    frequencyCap: String(direct?.frequencyCap ?? 3),
-    pacing: direct?.pacing ?? "EVEN",
-    placementKeys: (targeting.placementKeys ?? []).join(", "),
-    countries: (targeting.countries ?? []).join(", "),
-    regions: (targeting.regions ?? []).join(", "),
-    categories: (targeting.categories ?? []).join(", "),
-    devices: targeting.devices ?? [],
-    channelIds: targeting.channelIds ?? [],
-    videoIds: targeting.videoIds ?? [],
-  };
-}
-
-function campaignInput(draft: CampaignDraft): CampaignInput {
-  const rate = draft.rate.trim();
-  return {
-    name: draft.name.trim(),
-    status: draft.status,
-    startsAt: isoOrNull(draft.startsAt),
-    endsAt: isoOrNull(draft.endsAt),
-    budget: draft.budget.trim() || null,
-    currency: draft.currency.trim() ? draft.currency.trim().toUpperCase() : null,
-    direct: {
-      priority: Number(draft.priority),
-      pricing:
-        draft.pricingModel === "FIXED"
-          ? { model: "FIXED", cpm: null, fixedPrice: rate }
-          : { model: "CPM", cpm: rate, fixedPrice: null },
-      impressionGoal: draft.impressionGoal.trim() ? Number(draft.impressionGoal) : null,
-      frequencyCap: Number(draft.frequencyCap),
-      pacing: draft.pacing,
-      targeting: {
-        placementKeys: splitList(draft.placementKeys),
-        countries: splitList(draft.countries, true),
-        regions: splitList(draft.regions),
-        categories: splitList(draft.categories),
-        devices: draft.devices,
-        channelIds: draft.channelIds,
-        videoIds: draft.videoIds,
-      },
-    },
-  };
+  ];
 }
 
 export function AdminAdvertisingControl() {
   const { locale, direction } = useI18n();
   const copy = locale === "ar" ? adminAdvertisingAr : adminAdvertisingEn;
   const [section, setSection] = useState("overview");
+  const [readRevision, setReadRevision] = useState(0);
   const [reading, setReading] = useState(true);
   const [readError, setReadError] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [advertisers, setAdvertisers] = useState<Advertiser[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const campaignRevision = useRef(0);
+  const currentCampaignIds = useRef<ReadonlySet<string>>(new Set());
   const [creatives, setCreatives] = useState<Creative[]>([]);
+  const acceptCampaigns = useCallback((next: Campaign[]) => {
+    campaignRevision.current++;
+    currentCampaignIds.current = new Set(next.map((campaign) => campaign.id));
+    setCampaigns(next);
+    setCreatives((current) => retainCampaignCreatives(current, currentCampaignIds.current));
+  }, []);
   const [gam, setGam] = useState<GamDiagnostics | null>(null);
   const [pageAds, setPageAds] = useState<PageAdSettings | null>(null);
   const [sellerFiles, setSellerFiles] = useState<SellerFiles | null>(null);
@@ -239,28 +110,23 @@ export function AdminAdvertisingControl() {
   const load = useCallback(async (preserveDrafts = false) => {
     setReading(true);
     setReadError(false);
+    const observedCampaignRevision = campaignRevision.current;
     try {
-      const [
-        nextOverview,
-        nextAdvertisers,
-        nextCampaigns,
-        nextCreatives,
-        nextGam,
-        nextPageAds,
-        nextSellerFiles,
-      ] = await Promise.all([
-        getAdvertisingOverview(),
-        getAdvertisers(),
-        getCampaigns(),
-        getCreatives(),
-        getGamDiagnostics(),
-        getPageAdSettings(),
-        getSellerFiles(),
-      ]);
+      const [nextOverview, nextCampaigns, nextCreatives, nextGam, nextPageAds, nextSellerFiles] =
+        await Promise.all([
+          getAdvertisingOverview(),
+          getCampaigns(),
+          getCreatives(),
+          getGamDiagnostics(),
+          getPageAdSettings(),
+          getSellerFiles(),
+        ]);
       setOverview(nextOverview);
-      setAdvertisers(nextAdvertisers);
-      setCampaigns(nextCampaigns);
-      setCreatives(nextCreatives);
+      if (campaignRevision.current === observedCampaignRevision) {
+        currentCampaignIds.current = new Set(nextCampaigns.map((campaign) => campaign.id));
+        setCampaigns(nextCampaigns);
+      }
+      setCreatives(retainCampaignCreatives(nextCreatives, currentCampaignIds.current));
       setGam(nextGam);
       const incoming = {
         page: nextPageAds,
@@ -275,6 +141,7 @@ export function AdminAdvertisingControl() {
       setSellerFiles(nextSellerFiles);
       setAdsText(nextDraft.ads);
       setAppAdsText(nextDraft.appAds);
+      setReadRevision((value) => value + 1);
     } catch {
       setReadError(true);
     } finally {
@@ -305,7 +172,12 @@ export function AdminAdvertisingControl() {
   const activeCreatives = creatives.filter((creative) => creative.status === "ACTIVE").length;
 
   return (
-    <>
+    <DirectCampaignWorkspaceProvider
+      active={section === "advertisers" || section === "campaigns"}
+      readRevision={readRevision}
+      placements={overview?.placements ?? []}
+      onCampaignsChange={acceptCampaigns}
+    >
       <PageHeader
         title={copy.title}
         description={copy.description}
@@ -584,28 +456,12 @@ export function AdminAdvertisingControl() {
             {
               id: "advertisers",
               label: copy.advertisers,
-              content: (
-                <>
-                  {locale === "ar" ? <p className={styles.muted}>{copy.legacyEditor}</p> : null}
-                  <AdvertiserManager advertisers={advertisers} busy={busy} onAct={act} />
-                </>
-              ),
+              content: <DirectCampaignPanel kind="advertiser" />,
             },
             {
               id: "campaigns",
               label: copy.campaigns,
-              content: (
-                <>
-                  {locale === "ar" ? <p className={styles.muted}>{copy.legacyEditor}</p> : null}
-                  <CampaignManager
-                    advertisers={advertisers}
-                    busy={busy}
-                    campaigns={campaigns}
-                    placements={overview?.placements ?? []}
-                    onAct={act}
-                  />
-                </>
-              ),
+              content: <DirectCampaignPanel kind="campaign" />,
             },
             {
               id: "creatives",
@@ -666,7 +522,7 @@ export function AdminAdvertisingControl() {
           ]}
         />
       </div>
-    </>
+    </DirectCampaignWorkspaceProvider>
   );
 }
 
@@ -911,563 +767,6 @@ function PlacementCard({
         </button>
       </div>
     </article>
-  );
-}
-
-function AdvertiserManager({
-  advertisers,
-  busy,
-  onAct,
-}: {
-  advertisers: Advertiser[];
-  busy: boolean;
-  onAct: (action: () => Promise<unknown>, success: string) => Promise<void>;
-}) {
-  const [name, setName] = useState("");
-  const [status, setStatus] = useState<AdvertiserStatus>("ACTIVE");
-  return (
-    <section className={styles.card}>
-      <h2>Advertisers</h2>
-      <form
-        className={styles.toolbar}
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!name.trim()) return;
-          void onAct(
-            () => createAdvertiser({ name: name.trim(), status }),
-            "Advertiser created.",
-          ).then(() => setName(""));
-        }}
-      >
-        <input
-          minLength={2}
-          maxLength={160}
-          placeholder="Advertiser name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-        <select
-          value={status}
-          onChange={(event) => setStatus(event.target.value as AdvertiserStatus)}
-        >
-          <option value="ACTIVE">Active</option>
-          <option value="PAUSED">Paused</option>
-          <option value="DISABLED">Disabled</option>
-        </select>
-        <button className={styles.button} disabled={busy || name.trim().length < 2} type="submit">
-          Create advertiser
-        </button>
-      </form>
-      <div className={styles.grid}>
-        {advertisers.map((advertiser) => (
-          <AdvertiserCard advertiser={advertiser} busy={busy} key={advertiser.id} onAct={onAct} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function AdvertiserCard({
-  advertiser,
-  busy,
-  onAct,
-}: {
-  advertiser: Advertiser;
-  busy: boolean;
-  onAct: (action: () => Promise<unknown>, success: string) => Promise<void>;
-}) {
-  const [name, setName] = useState(advertiser.name);
-  const [status, setStatus] = useState<AdvertiserStatus>(advertiser.status);
-  return (
-    <article className={styles.cardInset}>
-      <div className={styles.formGrid}>
-        <label>
-          Name
-          <input value={name} onChange={(event) => setName(event.target.value)} />
-        </label>
-        <label>
-          Status
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as AdvertiserStatus)}
-          >
-            <option value="ACTIVE">ACTIVE</option>
-            <option value="PAUSED">PAUSED</option>
-            <option value="DISABLED">DISABLED</option>
-          </select>
-        </label>
-      </div>
-      <div className={styles.actions}>
-        <button
-          className={styles.button}
-          disabled={busy}
-          type="button"
-          onClick={() =>
-            void onAct(
-              () => updateAdvertiser(advertiser.id, { name: name.trim(), status }),
-              `Advertiser ${name.trim()} updated.`,
-            )
-          }
-        >
-          Save
-        </button>
-        <button
-          className={styles.danger}
-          disabled={busy}
-          type="button"
-          onClick={() => {
-            if (
-              window.confirm(
-                `Delete advertiser “${advertiser.name}”? This is allowed only when it has no campaigns.`,
-              )
-            )
-              void onAct(
-                () => deleteAdvertiser(advertiser.id),
-                `Advertiser ${advertiser.name} deleted.`,
-              );
-          }}
-        >
-          Delete
-        </button>
-      </div>
-    </article>
-  );
-}
-
-function CampaignManager({
-  advertisers,
-  campaigns,
-  placements,
-  busy,
-  onAct,
-}: {
-  advertisers: Advertiser[];
-  campaigns: Campaign[];
-  placements: AdPlacement[];
-  busy: boolean;
-  onAct: (action: () => Promise<unknown>, success: string) => Promise<void>;
-}) {
-  const [advertiserId, setAdvertiserId] = useState("");
-  const [draft, setDraft] = useState<CampaignDraft>(emptyCampaignDraft);
-  return (
-    <section className={styles.card}>
-      <h2>Direct campaigns</h2>
-      <p className={styles.muted}>
-        Pricing, pacing, frequency caps and targeting are controlled here rather than hidden behind
-        API calls.
-      </p>
-      <CampaignEditor
-        advertiserId={advertiserId}
-        advertisers={advertisers}
-        busy={busy}
-        draft={draft}
-        mode="create"
-        onAdvertiserChange={setAdvertiserId}
-        onChange={setDraft}
-        placements={placements}
-        onSubmit={() =>
-          onAct(
-            () => createCampaign({ ...campaignInput(draft), advertiserId }),
-            `Campaign ${draft.name.trim()} created.`,
-          ).then(() => {
-            setDraft(emptyCampaignDraft);
-            setAdvertiserId("");
-          })
-        }
-      />
-      <div className={styles.grid}>
-        {campaigns.map((campaign) => (
-          <ExistingCampaign
-            key={campaign.id}
-            campaign={campaign}
-            placements={placements}
-            busy={busy}
-            onAct={onAct}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ExistingCampaign({
-  campaign,
-  placements,
-  busy,
-  onAct,
-}: {
-  campaign: Campaign;
-  placements: AdPlacement[];
-  busy: boolean;
-  onAct: (action: () => Promise<unknown>, success: string) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<CampaignDraft>(() => draftFromCampaign(campaign));
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDraft(draftFromCampaign(campaign)), 0);
-    return () => window.clearTimeout(timer);
-  }, [campaign]);
-  return (
-    <article className={styles.cardInset}>
-      <div className={styles.cardHeader}>
-        <div>
-          <strong>{campaign.name}</strong>
-          <p className={styles.muted}>
-            {campaign.advertiser.name} · {campaign.currency ?? "No currency"}{" "}
-            {campaign.budget ?? ""}
-          </p>
-        </div>
-        <span className={styles.statusBadge}>{campaign.status}</span>
-      </div>
-      <p className={styles.muted}>
-        Priority {campaign.direct?.priority ?? "—"} · frequency cap{" "}
-        {campaign.direct?.frequencyCap ?? "—"} · pacing {campaign.direct?.pacing ?? "—"}
-      </p>
-      <div className={styles.actions}>
-        <button className={styles.button} type="button" onClick={() => setOpen((value) => !value)}>
-          {open ? "Close editor" : "Edit campaign"}
-        </button>
-        {campaign.status === "DRAFT" ? (
-          <button
-            className={styles.danger}
-            disabled={busy}
-            type="button"
-            onClick={() => {
-              if (window.confirm(`Delete draft campaign “${campaign.name}”?`))
-                void onAct(() => deleteCampaign(campaign.id), `Campaign ${campaign.name} deleted.`);
-            }}
-          >
-            Delete draft
-          </button>
-        ) : null}
-      </div>
-      {open ? (
-        <CampaignEditor
-          busy={busy}
-          draft={draft}
-          mode="edit"
-          onChange={setDraft}
-          placements={placements}
-          onSubmit={() =>
-            onAct(
-              () => updateCampaign(campaign.id, campaignInput(draft)),
-              `Campaign ${draft.name.trim()} updated.`,
-            )
-          }
-        />
-      ) : null}
-    </article>
-  );
-}
-
-function CampaignEditor({
-  draft,
-  onChange,
-  placements,
-  busy,
-  mode,
-  advertisers = [],
-  advertiserId = "",
-  onAdvertiserChange,
-  onSubmit,
-}: {
-  draft: CampaignDraft;
-  onChange: (draft: CampaignDraft) => void;
-  placements: AdPlacement[];
-  busy: boolean;
-  mode: "create" | "edit";
-  advertisers?: Advertiser[];
-  advertiserId?: string;
-  onAdvertiserChange?: (value: string) => void;
-  onSubmit: () => Promise<void>;
-}) {
-  const [targetQuery, setTargetQuery] = useState("");
-  const [channelMatches, setChannelMatches] = useState<AdminAdvertisingChannelTarget[]>([]);
-  const [videoMatches, setVideoMatches] = useState<AdminAdvertisingVideoTarget[]>([]);
-  const selectedPlacementKeys = useMemo(
-    () => new Set(splitList(draft.placementKeys)),
-    [draft.placementKeys],
-  );
-
-  async function searchTargets() {
-    if (targetQuery.trim().length < 2) return;
-    const result = await searchAdminAdvertisingTargets(targetQuery);
-    setChannelMatches(result.channels);
-    setVideoMatches(result.videos);
-  }
-
-  function toggleDevice(device: AdDevice) {
-    onChange({
-      ...draft,
-      devices: draft.devices.includes(device)
-        ? draft.devices.filter((item) => item !== device)
-        : [...draft.devices, device],
-    });
-  }
-
-  return (
-    <form
-      className={styles.formGrid}
-      onSubmit={(event) => {
-        event.preventDefault();
-        void onSubmit();
-      }}
-    >
-      {mode === "create" ? (
-        <label>
-          Advertiser
-          <select
-            required
-            value={advertiserId}
-            onChange={(event) => onAdvertiserChange?.(event.target.value)}
-          >
-            <option value="">Choose advertiser</option>
-            {advertisers.map((advertiser) => (
-              <option key={advertiser.id} value={advertiser.id}>
-                {advertiser.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-      <label>
-        Campaign name
-        <input
-          required
-          minLength={2}
-          maxLength={160}
-          value={draft.name}
-          onChange={(event) => onChange({ ...draft, name: event.target.value })}
-        />
-      </label>
-      <label>
-        Status
-        <select
-          value={draft.status}
-          onChange={(event) => onChange({ ...draft, status: event.target.value as CampaignStatus })}
-        >
-          {["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED"].map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Starts at
-        <input
-          type="datetime-local"
-          value={draft.startsAt}
-          onChange={(event) => onChange({ ...draft, startsAt: event.target.value })}
-        />
-      </label>
-      <label>
-        Ends at
-        <input
-          type="datetime-local"
-          value={draft.endsAt}
-          onChange={(event) => onChange({ ...draft, endsAt: event.target.value })}
-        />
-      </label>
-      <label>
-        Budget
-        <input
-          placeholder="1000.000000"
-          value={draft.budget}
-          onChange={(event) => onChange({ ...draft, budget: event.target.value })}
-        />
-      </label>
-      <label>
-        Currency
-        <input
-          maxLength={3}
-          value={draft.currency}
-          onChange={(event) => onChange({ ...draft, currency: event.target.value.toUpperCase() })}
-        />
-      </label>
-      <label>
-        Pricing
-        <select
-          value={draft.pricingModel}
-          onChange={(event) =>
-            onChange({ ...draft, pricingModel: event.target.value as "CPM" | "FIXED" })
-          }
-        >
-          <option value="CPM">CPM</option>
-          <option value="FIXED">Fixed</option>
-        </select>
-      </label>
-      <label>
-        {draft.pricingModel === "CPM" ? "CPM" : "Fixed price"}
-        <input
-          required
-          value={draft.rate}
-          onChange={(event) => onChange({ ...draft, rate: event.target.value })}
-        />
-      </label>
-      <label>
-        Priority
-        <input
-          type="number"
-          min={1}
-          max={1000}
-          value={draft.priority}
-          onChange={(event) => onChange({ ...draft, priority: event.target.value })}
-        />
-      </label>
-      <label>
-        Impression goal
-        <input
-          type="number"
-          min={1}
-          value={draft.impressionGoal}
-          onChange={(event) => onChange({ ...draft, impressionGoal: event.target.value })}
-          placeholder="Unlimited"
-        />
-      </label>
-      <label>
-        Frequency cap
-        <input
-          type="number"
-          min={0}
-          max={100}
-          value={draft.frequencyCap}
-          onChange={(event) => onChange({ ...draft, frequencyCap: event.target.value })}
-        />
-      </label>
-      <label>
-        Pacing
-        <select
-          value={draft.pacing}
-          onChange={(event) =>
-            onChange({ ...draft, pacing: event.target.value as "EVEN" | "ASAP" })
-          }
-        >
-          <option value="EVEN">Even</option>
-          <option value="ASAP">ASAP</option>
-        </select>
-      </label>
-      <label className={styles.fullField}>
-        Placement targeting
-        <div className={styles.actions}>
-          {placements.map((placement) => (
-            <label className={styles.check} key={placement.key}>
-              <input
-                checked={selectedPlacementKeys.has(placement.key)}
-                type="checkbox"
-                onChange={(event) => {
-                  const next = new Set(selectedPlacementKeys);
-                  if (event.target.checked) next.add(placement.key);
-                  else next.delete(placement.key);
-                  onChange({ ...draft, placementKeys: [...next].join(", ") });
-                }}
-              />
-              {placement.key}
-            </label>
-          ))}
-        </div>
-      </label>
-      <label>
-        Countries
-        <input
-          placeholder="US, GB, EG"
-          value={draft.countries}
-          onChange={(event) => onChange({ ...draft, countries: event.target.value })}
-        />
-      </label>
-      <label>
-        Regions
-        <input
-          placeholder="California, Cairo"
-          value={draft.regions}
-          onChange={(event) => onChange({ ...draft, regions: event.target.value })}
-        />
-      </label>
-      <label>
-        Categories
-        <input
-          placeholder="sports, news"
-          value={draft.categories}
-          onChange={(event) => onChange({ ...draft, categories: event.target.value })}
-        />
-      </label>
-      <div>
-        <span>Devices</span>
-        <div className={styles.actions}>
-          {(["MOBILE", "DESKTOP", "TV"] as AdDevice[]).map((device) => (
-            <label className={styles.check} key={device}>
-              <input
-                checked={draft.devices.includes(device)}
-                type="checkbox"
-                onChange={() => toggleDevice(device)}
-              />
-              {device}
-            </label>
-          ))}
-        </div>
-      </div>
-      <div className={styles.fullField}>
-        <span>Channel / video targeting</span>
-        <div className={styles.toolbar}>
-          <input
-            placeholder="Search channel or video"
-            value={targetQuery}
-            onChange={(event) => setTargetQuery(event.target.value)}
-          />
-          <button
-            className={styles.button}
-            disabled={targetQuery.trim().length < 2}
-            type="button"
-            onClick={() => void searchTargets()}
-          >
-            Search targets
-          </button>
-        </div>
-        <div className={styles.commandGrid}>
-          {channelMatches.map((channel) => (
-            <button
-              className={styles.button}
-              key={channel.id}
-              type="button"
-              onClick={() =>
-                onChange({ ...draft, channelIds: [...new Set([...draft.channelIds, channel.id])] })
-              }
-            >
-              + @{channel.handle}
-            </button>
-          ))}
-          {videoMatches.map((video) => (
-            <button
-              className={styles.button}
-              key={video.id}
-              type="button"
-              onClick={() =>
-                onChange({ ...draft, videoIds: [...new Set([...draft.videoIds, video.id])] })
-              }
-            >
-              + {video.title}
-            </button>
-          ))}
-        </div>
-        <p className={styles.muted}>
-          Selected: {draft.channelIds.length} channels · {draft.videoIds.length} videos
-        </p>
-        {draft.channelIds.length || draft.videoIds.length ? (
-          <button
-            className={styles.danger}
-            type="button"
-            onClick={() => onChange({ ...draft, channelIds: [], videoIds: [] })}
-          >
-            Clear channel/video targeting
-          </button>
-        ) : null}
-      </div>
-      <button
-        className={styles.button}
-        disabled={busy || draft.name.trim().length < 2 || (mode === "create" && !advertiserId)}
-        type="submit"
-      >
-        {mode === "create" ? "Create campaign" : "Save campaign"}
-      </button>
-    </form>
   );
 }
 

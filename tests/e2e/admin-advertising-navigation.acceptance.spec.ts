@@ -148,7 +148,10 @@ for (const locale of ["en", "ar"] as const) {
       .fill("https://example.test/retained-house.png");
     await page.getByRole("tab", { name: copy.advertisers, exact: true }).click();
     await page
-      .getByPlaceholder("Advertiser name", { exact: true })
+      .getByRole("button", { name: locale === "ar" ? "معلن جديد" : "New advertiser", exact: true })
+      .click();
+    await page
+      .getByLabel(locale === "ar" ? "اسم المعلن" : "Advertiser name", { exact: true })
       .fill("Retained advertiser draft");
     await page.getByRole("tab", { name: copy.sellers, exact: true }).click();
     const seller = page.getByRole("tabpanel").locator("textarea").first();
@@ -159,9 +162,9 @@ for (const locale of ["en", "ar"] as const) {
     );
     await screenshots(page, info, locale, "inventory");
     await page.getByRole("tab", { name: copy.advertisers, exact: true }).click();
-    await expect(page.getByPlaceholder("Advertiser name", { exact: true })).toHaveValue(
-      "Retained advertiser draft",
-    );
+    await expect(
+      page.getByLabel(locale === "ar" ? "اسم المعلن" : "Advertiser name", { exact: true }),
+    ).toHaveValue("Retained advertiser draft");
     await page.getByRole("tab", { name: copy.sellers, exact: true }).click();
     await expect(seller).toHaveValue("# Retained manual seller draft");
     await seller.focus();
@@ -181,6 +184,26 @@ for (const locale of ["en", "ar"] as const) {
       "page",
     );
     await nav.getByRole("link", { name: copy.videoArea, exact: true }).click();
+    // The native advertiser draft now has an explicit departure boundary.
+    // Cancel once to prove intent remains, then deliberately leave without saving.
+    await page
+      .getByRole("dialog")
+      .getByRole("button", {
+        name: locale === "ar" ? "متابعة التحرير" : "Keep editing",
+        exact: true,
+      })
+      .click();
+    await expect(page).toHaveURL(/\/admin\/advertising$/);
+    await page.getByRole("tab", { name: copy.advertisers, exact: true }).click();
+    await expect(
+      page.getByLabel(locale === "ar" ? "اسم المعلن" : "Advertiser name", { exact: true }),
+    ).toHaveValue("Retained advertiser draft");
+    await summary.click();
+    await nav.getByRole("link", { name: copy.videoArea, exact: true }).click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: locale === "ar" ? "مغادرة الصفحة" : "Leave page", exact: true })
+      .click();
     await expect(page).toHaveURL(new RegExp((locale === "ar" ? "/ar" : "") + "/admin/video-ads$"));
     await expect(page.locator("[data-ad-override]").first()).toBeVisible();
     await expect(nav.getByRole("link", { name: copy.videoArea, exact: true })).toHaveAttribute(

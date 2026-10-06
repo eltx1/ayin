@@ -379,3 +379,6 @@ export function saveVideoAdCommand(a: AdminSession, command: VideoAdCommand, sig
     }
   });
 }
+
+// Shared validated target facts for the scoped direct-campaign transport.
+export { channel as parseVideoAdChannel, video as parseVideoAdVideo };
