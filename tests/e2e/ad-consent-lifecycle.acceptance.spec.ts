@@ -342,7 +342,7 @@ test("DAI revocation tears down live callbacks before switching to the existing 
   expect(transition.afterLatePlays).toBe(transition.plays);
   expect(transition.display).toBe("none");
   const video = page.locator("main video");
-  await expect(video).toHaveAttribute("data-synthetic-src", /synthetic\.mp4$/);
+  await expect(video).toHaveAttribute("data-synthetic-src", /\/test\.mp4$/);
   const position = await video.evaluate((element) => element.currentTime * 1000);
   expect(position).toBeGreaterThanOrEqual(transition.expectedOffset - 100);
   expect(position).toBeLessThan(transition.expectedOffset + 1000);
