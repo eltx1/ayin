@@ -1,6 +1,6 @@
 # Product Controls source and acceptance boundary
 
-Status: source reviewed; local focused verification only. Full remote quality and browser gates, original screenshot retrieval, and visual inspection are pending. This document does not claim runtime or release acceptance.
+Status: source reviewed; the first owning remote quality run failed full typecheck and a narrow correction is prepared below. Full remote quality and browser gates, original screenshot retrieval, and visual inspection remain pending. This document does not claim runtime or release acceptance.
 
 ## Source provenance
 
@@ -33,6 +33,12 @@ pnpm --filter @ayin/web exec vitest run \
 ```
 
 Changed-file formatting and `git diff --check` also passed. This was not the full Web or repository test suite. No local lint, typecheck, production build, PostgreSQL integration, or browser acceptance was run for this slice. Dependency preparation used the approved current dependency donor, immutable package hardlinks with private mutable metadata, and an offline frozen install with lifecycle scripts disabled. The unchanged UI package's existing output was used only for focused SSR tests; it is not evidence of a fresh release build.
+
+## First owning remote failure and correction
+
+PR #263's Task quality gates run `37447375697`, job `112215354016`, failed the full typecheck. In `admin-product-fields.tsx`, the announcement text and link call sites explicitly supplied `error: string | undefined` to the shared `FieldCopy` contract `error?: string`. With `exactOptionalPropertyTypes`, an absent optional property is distinct from a property whose value is `undefined`.
+
+Only those two call sites now conditionally spread an `error` property when their matching issue exists; otherwise they omit it. The shared field contract and rendered behavior are unchanged. This is a correction after the byte-identical initial source transfer. No local full typecheck or runtime was run for the correction while the shared runtime was allocated elsewhere. The exact owning remote quality run must be repeated for the corrected candidate; the earlier focused 37-test result does not replace it.
 
 ## Exact remote gates still required
 

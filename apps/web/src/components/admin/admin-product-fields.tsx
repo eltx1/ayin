@@ -51,9 +51,9 @@ export function AdminProductFields({
             "Up to 240 characters. Your text is kept when the announcement is hidden.",
             "حتى 240 حرفًا. يُحتفظ بالنص عند إخفاء الإعلان.",
           )}
-          error={
-            issue === "announcementText" ? productControlsIssueMessage(issue, locale) : undefined
-          }
+          {...(issue === "announcementText"
+            ? { error: productControlsIssueMessage(issue, locale) }
+            : {})}
           dir="auto"
           rows={3}
           maxLength={240}
@@ -69,9 +69,9 @@ export function AdminProductFields({
             "Use an internal path such as /tv. Leave blank for an announcement without a link.",
             "استخدم مسارًا داخليًا مثل /tv. اتركه فارغًا لعرض الإعلان دون رابط.",
           )}
-          error={
-            issue === "announcementHref" ? productControlsIssueMessage(issue, locale) : undefined
-          }
+          {...(issue === "announcementHref"
+            ? { error: productControlsIssueMessage(issue, locale) }
+            : {})}
           dir="ltr"
           type="text"
           inputMode="url"
