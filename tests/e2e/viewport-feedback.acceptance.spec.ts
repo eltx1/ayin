@@ -3,6 +3,64 @@ import { expect, test } from "@playwright/test";
 // These are deterministic UI events. Actual SW/cache/update behavior has its own PWA gate.
 test.use({ serviceWorkers: "block" });
 
+test("leaving Viewer clears measured chrome while the shared feedback dock survives", async ({
+  page,
+}) => {
+  const response = await page.request.post("http://127.0.0.1:3001/auth/register", {
+    headers: { origin: "http://127.0.0.1:3000" },
+    data: {
+      name: "Viewport route owner",
+      email: `viewport-${Date.now()}@example.test`,
+      password: "strong-pass-123",
+    },
+  });
+  expect(response.ok()).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/search?lang=en");
+  await page.bringToFront();
+  await expect(page.locator("[data-private-viewer-identity]")).toHaveAttribute(
+    "aria-busy",
+    "false",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        parseFloat(document.documentElement.style.getPropertyValue("--ayin-shell-bottom")),
+      ),
+    )
+    .toBeGreaterThan(0);
+  await page.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await expect(page.locator("[data-ayin-feedback-dock]")).toBeVisible();
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await page.getByRole("dialog").getByRole("link", { name: "Creator Studio", exact: true }).click();
+  await expect(page).toHaveURL(/\/studio$/);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        ["--ayin-shell-top", "--ayin-shell-bottom"]
+          .map((key) => document.documentElement.style.getPropertyValue(key))
+          .join(""),
+      ),
+    )
+    .toBe("");
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.style.getPropertyValue("--ayin-shell-bottom")),
+    )
+    .toBe("");
+  await page.getByRole("link", { name: /Back to AYIN/ }).click();
+  await expect(page).toHaveURL("http://127.0.0.1:3000/");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        parseFloat(document.documentElement.style.getPropertyValue("--ayin-shell-bottom")),
+      ),
+    )
+    .toBeGreaterThan(0);
+});
+
 for (const locale of ["en", "ar"]) {
   test(`global feedback clears measured navigation and native modal focus in ${locale}`, async ({
     page,
@@ -113,6 +171,9 @@ test("200% text and short landscape keep mobile navigation labels and targets re
     });
     const links = page.locator("[data-ayin-bottom-navigation] a");
     await expect(links.first()).toBeVisible();
+    const library = page.locator('[data-ayin-bottom-navigation] a[href="/ar/my-ayin"]');
+    await expect(library.locator("span")).toHaveText("مكتبتي");
+    await expect(library).toHaveAccessibleName(/^مكتبتي, AYIN الخاص بي$/);
     for (const link of await links.all()) {
       const geometry = await link.evaluate((node) => {
         const box = node.getBoundingClientRect();

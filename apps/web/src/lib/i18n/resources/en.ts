@@ -70,6 +70,7 @@ export const enMessages = {
   "nav.shorts": "Clips",
   "nav.kids": "Kids",
   "nav.myAyin": "My AYIN",
+  "nav.myAyinShort": "My AYIN",
   "nav.search": "Search",
   "shell.homeAria": "AYIN home",
   "shell.primaryNavigation": "Primary navigation",

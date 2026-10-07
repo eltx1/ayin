@@ -54,6 +54,7 @@ function ProductLinks({
   return items.map((item) => {
     const key = navigationLabelKeys[item.key];
     const label = key ? t(key) : item.label;
+    const visibleLabel = mobile && item.key === "my-ayin" ? t("nav.myAyinShort") : label;
     const active =
       isNavigationCurrent(pathname, item.href) ||
       (navigationPath(item.href) === "/browse" &&
@@ -61,6 +62,7 @@ function ProductLinks({
     return (
       <Link
         aria-current={active ? "page" : undefined}
+        aria-label={visibleLabel !== label ? `${visibleLabel}, ${label}` : undefined}
         className={mobile ? styles.mobileTab : styles.navLink}
         data-tv-focusable="true"
         data-tv-focus-id={`${surface}-${item.key}`}
@@ -68,7 +70,7 @@ function ProductLinks({
         key={item.key}
       >
         {mobile ? <NavigationIcon name={icons[item.key] ?? "browse"} /> : null}
-        <span>{label}</span>
+        <span>{visibleLabel}</span>
       </Link>
     );
   });

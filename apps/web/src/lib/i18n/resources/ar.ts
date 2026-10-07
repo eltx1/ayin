@@ -70,6 +70,7 @@ export const arMessages = {
   "nav.shorts": "المقاطع القصيرة",
   "nav.kids": "الأطفال",
   "nav.myAyin": "AYIN الخاص بي",
+  "nav.myAyinShort": "مكتبتي",
   "nav.search": "البحث",
   "shell.homeAria": "الصفحة الرئيسية لـ AYIN",
   "shell.primaryNavigation": "التنقل الرئيسي",
