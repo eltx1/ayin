@@ -13,11 +13,11 @@ enum APIClientError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "AYIN returned an invalid response."
+            return NSLocalizedString("AYIN returned an invalid response.", comment: "API response error")
         case let .server(_, message):
             return message
         case .invalidURL:
-            return "AYIN could not build a secure request URL."
+            return NSLocalizedString("AYIN could not build a secure request URL.", comment: "API URL error")
         }
     }
 }
@@ -60,7 +60,7 @@ struct APIClient {
             let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
             throw APIClientError.server(
                 status: http.statusCode,
-                message: envelope?.error?.message ?? envelope?.message ?? "AYIN request failed."
+                message: envelope?.error?.message ?? envelope?.message ?? NSLocalizedString("AYIN request failed.", comment: "API fallback error")
             )
         }
         return try JSONDecoder().decode(Response.self, from: data)
@@ -86,7 +86,7 @@ struct APIClient {
             throw APIClientError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw APIClientError.server(status: http.statusCode, message: "AYIN request failed.")
+            throw APIClientError.server(status: http.statusCode, message: NSLocalizedString("AYIN request failed.", comment: "API fallback error"))
         }
     }
 }

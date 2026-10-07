@@ -26,6 +26,7 @@ struct DiscoveryItem: Decodable, Identifiable {
     let href: String
     let kicker: String
     let meta: String?
+    let artworkObjectKey: String?
 }
 
 struct EmptyResponse: Decodable {}

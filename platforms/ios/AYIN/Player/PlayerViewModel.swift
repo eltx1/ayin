@@ -34,6 +34,7 @@ final class PlayerViewModel: ObservableObject {
     private var playAttemptStartedAt: Date?
     private var startupReported = false
     private var lastAnalyticsPositionMs: Int?
+    private var finalDurationMs: Int?
     private var progressState = ProgressRevisionState()
     private var loadGeneration: UInt64 = 0
     private var didComplete = false
@@ -174,7 +175,9 @@ final class PlayerViewModel: ObservableObject {
         let generation = loadGeneration
         isLoading = false
         let finalTime = player?.currentTime()
+        finalDurationMs = playback.flatMap { resolvedDurationMs($0) }
         player?.pause()
+        shouldResumeAfterInterruption = false
 
         resumeTask?.cancel()
         resumeTask = nil
@@ -193,6 +196,13 @@ final class PlayerViewModel: ObservableObject {
                 forceProgressSave: true
             ) ?? checkpointToAwait
         }
+
+        // Release media and the audio session before checkpoint I/O can suspend.
+        // A late acknowledgment must not deactivate a newly opened player's audio.
+        if let player {
+            player.replaceCurrentItem(with: nil)
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
         if !saveProgress {
             checkpointTask?.cancel()
             checkpointWorkerID = nil
@@ -203,11 +213,11 @@ final class PlayerViewModel: ObservableObject {
 
         guard loadGeneration == generation else { return false }
 
-        clearPlayback()
+        clearPlayback(deactivateAudio: false)
         return true
     }
 
-    private func clearPlayback() {
+    private func clearPlayback(deactivateAudio: Bool = true) {
         checkpointTask = nil
         checkpointWorkerID = nil
         pendingCheckpoint = nil
@@ -222,12 +232,15 @@ final class PlayerViewModel: ObservableObject {
         playAttemptStartedAt = nil
         startupReported = false
         lastAnalyticsPositionMs = nil
+        finalDurationMs = nil
         progressState.reset()
         progressNeedsReview = false
         isReviewingProgress = false
         didComplete = false
         shouldResumeAfterInterruption = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if deactivateAudio {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
     }
 
     private func installPlaybackObservers(player: AVPlayer, item: AVPlayerItem) {
@@ -589,6 +602,7 @@ final class PlayerViewModel: ObservableObject {
 
     private func resolvedDurationMs(_ playback: NativePlayback) -> Int? {
         if let durationMs = playback.durationMs, durationMs > 0 { return durationMs }
+        if let finalDurationMs { return finalDurationMs }
         guard let duration = player?.currentItem?.duration else { return nil }
         let seconds = CMTimeGetSeconds(duration)
         guard seconds.isFinite, seconds > 0 else { return nil }
@@ -666,7 +680,7 @@ final class PlayerViewModel: ObservableObject {
         }
         player?.replaceCurrentItem(with: nil)
         player = nil
-        errorMessage = message
+        errorMessage = error?.localizedDescription ?? NSLocalizedString("Playback failed.", comment: "Playback error")
 
         Task { @MainActor [weak self] in
             guard let self, self.loadGeneration == generation else { return }

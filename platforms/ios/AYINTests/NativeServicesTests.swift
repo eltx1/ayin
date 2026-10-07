@@ -7,6 +7,40 @@ final class NativeServicesTests: XCTestCase {
         super.tearDown()
     }
 
+    func testAPIErrorLocalizesOnlyItsMissingMessageFallback() async throws {
+        for (body, expected) in [
+            (#"{}"#, NSLocalizedString("AYIN request failed.", comment: "")),
+            (#"{"error":{"message":"Sign in"}}"#, "Sign in"),
+            (#"{"message":"Server-owned error"}"#, "Server-owned error")
+        ] {
+            TestURLProtocol.handler = { request in
+                XCTAssertEqual(request.url?.path, "/discovery/home")
+                XCTAssertNil(request.url?.query)
+                return (testHTTPResponse(for: request, statusCode: 503), Data(body.utf8))
+            }
+            do {
+                let _: DiscoveryHomeResponse = try await makeTestAPIClient().request("/discovery/home")
+                XCTFail("Expected the server rejection")
+            } catch let error as APIClientError {
+                XCTAssertEqual(error.statusCode, 503)
+                XCTAssertEqual(error.errorDescription, expected)
+            }
+        }
+    }
+
+    func testNoContentAPIFailureUsesLocalizedFallback() async throws {
+        TestURLProtocol.handler = { request in
+            (testHTTPResponse(for: request, statusCode: 503), Data())
+        }
+        do {
+            try await makeTestAPIClient().requestNoContent("/auth/logout", method: "POST", token: nil)
+            XCTFail("Expected the server rejection")
+        } catch let error as APIClientError {
+            XCTAssertEqual(error.statusCode, 503)
+            XCTAssertEqual(error.errorDescription, NSLocalizedString("AYIN request failed.", comment: ""))
+        }
+    }
+
     func testKidsPlaybackRequestRetainsKidsPolicyAndNativeIdentity() async throws {
         var captured: URLRequest?
         TestURLProtocol.handler = { request in

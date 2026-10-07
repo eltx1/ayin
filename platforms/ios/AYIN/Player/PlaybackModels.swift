@@ -76,9 +76,9 @@ enum PlaybackError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable:
-            return "This AYIN stream is not available right now."
+            return NSLocalizedString("This AYIN stream is not available right now.", comment: "Unavailable stream error")
         case .invalidMediaURL:
-            return "AYIN returned an invalid media URL."
+            return NSLocalizedString("AYIN returned an invalid media URL.", comment: "Media URL error")
         }
     }
 }

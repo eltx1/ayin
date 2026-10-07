@@ -181,7 +181,8 @@ private func home(title: String) -> DiscoveryHomeResponse {
                         title: "Example",
                         href: "/watch/example",
                         kicker: "Video",
-                        meta: nil
+                        meta: nil,
+                        artworkObjectKey: "artwork/private-history.jpg"
                     )
                 ],
                 availability: "AVAILABLE",

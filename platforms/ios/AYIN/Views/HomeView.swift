@@ -87,7 +87,7 @@ struct HomeView: View {
             openWebDiscovery(.search)
         } label: {
             Label(
-                isKidsProfile ? "Browse Kids on web" : "Search on web",
+                NativeStrings.discoverySearchTitle(isKids: isKidsProfile),
                 systemImage: isKidsProfile ? "sparkles.tv" : "magnifyingglass"
             )
         }
@@ -152,16 +152,14 @@ struct HomeView: View {
     }
 
     private var webBrowseButton: some View {
-        Button(isKidsProfile ? "Browse Kids on web" : "Browse more on web") {
+        Button(NativeStrings.discoveryBrowseTitle(isKids: isKidsProfile)) {
             openWebDiscovery(.home)
         }
         .disabled(!canOpenWebDiscovery)
     }
 
     private var webSessionNotice: some View {
-        Text(canOpenWebDiscovery
-             ? "Web sign-in is separate from this app. Available rows may differ."
-             : "Sign in or retry your saved session before opening Web discovery.")
+        Text(NativeStrings.webSessionNotice(canOpen: canOpenWebDiscovery))
             .font(.caption)
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
@@ -192,14 +190,7 @@ struct HomeView: View {
                             router.openHref(item.href)
                         } label: {
                             VStack(alignment: .leading, spacing: 8) {
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(.quaternary)
-                                    .frame(width: 210, height: 118)
-                                    .overlay {
-                                        Image(systemName: item.type == "VIDEO" ? "play.fill" : "sparkles.tv")
-                                            .font(.largeTitle)
-                                            .foregroundStyle(.secondary)
-                                    }
+                                DiscoveryArtwork(artworkObjectKey: item.artworkObjectKey, type: item.type)
 
                                 Text(item.title)
                                     .font(.headline)
@@ -222,10 +213,8 @@ struct HomeView: View {
             if row.hasMore {
                 VStack(spacing: 8) {
                     webBrowseButton
-                        .accessibilityLabel("Browse more from \(row.title) on the web")
-                        .accessibilityHint(isKidsProfile
-                            ? "Opens the Web Kids catalog, where available rows have Load more controls."
-                            : "Opens Web Home, where available rows have Load more controls.")
+                        .accessibilityLabel(NativeStrings.browseMoreAccessibilityLabel(rowTitle: row.title))
+                        .accessibilityHint(NativeStrings.discoveryBrowseHint(isKids: isKidsProfile))
                     webSessionNotice
                 }
                 .frame(maxWidth: .infinity)

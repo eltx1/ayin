@@ -179,9 +179,178 @@ final class PlayerViewModelLifecycleTests: XCTestCase {
         XCTAssertEqual(requests.count, 1)
     }
 
+    func testWebContinuationFinishesOneCheckpointAndReleasesMediaBeforeSafari() async throws {
+        let fixture = try SilentPlaybackFixture()
+        defer { fixture.remove() }
+        let service = LifecyclePlaybackService(playback: fixture.playback(durationMs: nil))
+        let progress = DeferredLifecycleProgress()
+        let model = makeModel(service: service, progress: progress)
+        await load(model, token: "token-a", profile: "profile-a")
+        let nativePlayer = try XCTUnwrap(model.player)
+        let item = try XCTUnwrap(nativePlayer.currentItem)
+        let ready = expectation(description: "Local media duration is available")
+        let observation = item.publisher(for: \.status).filter { $0 == .readyToPlay }.first()
+            .sink { _ in ready.fulfill() }
+        await fulfillment(of: [ready], timeout: 2)
+        withExtendedLifetime(observation) {}
+        let shareURL = try XCTUnwrap(model.playback?.shareURL)
+        let router = AppRouter()
+        router.player = model.destination
+        let transition = Task {
+            await router.openPlaybackOnWeb(from: model.destination, shareURL: shareURL, isCurrentViewer: { true }) { await model.stop() }
+        }
+        await fulfillment(of: [progress.saveStarted], timeout: 2)
+
+        XCTAssertEqual(nativePlayer.rate, 0)
+        XCTAssertNil(nativePlayer.currentItem, "Held checkpoint I/O must not retain playable media")
+        XCTAssertEqual(router.player, model.destination)
+        XCTAssertNil(router.webFallback)
+        await progress.acknowledgeSave()
+        let dismissed = await transition.value
+        XCTAssertTrue(dismissed)
+        XCTAssertNil(nativePlayer.currentItem, "External playback must lose the old media before Safari opens")
+        XCTAssertNil(model.player)
+        XCTAssertNil(model.playback)
+        XCTAssertNil(router.webFallback)
+        let saves = await progress.saves
+        let savedDurations = await progress.savedDurations
+        XCTAssertEqual(saves, 1)
+        XCTAssertEqual(savedDurations, [60_000], "Capture media duration before releasing the AVPlayerItem")
+
+        router.playerDidDismiss()
+        XCTAssertEqual(router.webFallback, shareURL)
+        router.webFallback = nil
+        XCTAssertNil(model.player, "Closing Safari must not resume the stopped native player")
+
+        router.open(shareURL)
+        await load(model, token: "token-a", profile: "profile-a")
+        let loads = await service.loadCount
+        XCTAssertEqual(loads, 2, "Reopening native playback must request fresh server validation")
+        XCTAssertFalse(model.player === nativePlayer)
+        await model.stop(saveProgress: false)
+    }
+
+    func testViewerChangeDuringWebCheckpointCannotOpenStaleSafariOrReleaseReplacementMedia() async throws {
+        let fixture = try SilentPlaybackFixture()
+        defer { fixture.remove() }
+        let service = LifecyclePlaybackService(playback: fixture.playback())
+        let progress = DeferredLifecycleProgress()
+        let model = makeModel(service: service, progress: progress)
+        await load(model, token: "token-a", profile: "profile-a")
+        let nativePlayer = try XCTUnwrap(model.player)
+        let shareURL = try XCTUnwrap(model.playback?.shareURL)
+        let router = AppRouter()
+        router.player = model.destination
+        let transition = Task {
+            await router.openPlaybackOnWeb(from: model.destination, shareURL: shareURL, isCurrentViewer: { true }) { await model.stop() }
+        }
+        await fulfillment(of: [progress.saveStarted], timeout: 2)
+
+        router.cancelPlaybackWebContinuation()
+        model.viewerDidChange(token: "token-b", accountId: nil, profileId: "profile-b", isKids: false)
+        XCTAssertNil(nativePlayer.currentItem)
+        await load(model, token: "token-b", profile: "profile-b")
+        let replacement = try XCTUnwrap(model.player)
+        await progress.acknowledgeSave()
+        let dismissed = await transition.value
+
+        XCTAssertFalse(dismissed)
+        XCTAssertTrue(model.player === replacement)
+        XCTAssertEqual(router.player, model.destination)
+        XCTAssertNil(router.webFallback)
+        let loads = await service.loadCount
+        XCTAssertEqual(loads, 2)
+        await model.stop(saveProgress: false)
+    }
+
+    func testCanceledWebContinuationStillReleasesNativeMediaAfterHeldCheckpoint() async throws {
+        let fixture = try SilentPlaybackFixture()
+        defer { fixture.remove() }
+        let service = LifecyclePlaybackService(playback: fixture.playback())
+        let progress = DeferredLifecycleProgress()
+        let model = makeModel(service: service, progress: progress)
+        await load(model, token: "token-a", profile: "profile-a")
+        let nativePlayer = try XCTUnwrap(model.player)
+        let shareURL = try XCTUnwrap(model.playback?.shareURL)
+        let router = AppRouter()
+        router.player = model.destination
+        let transition = Task {
+            await router.openPlaybackOnWeb(from: model.destination, shareURL: shareURL, isCurrentViewer: { true }) { await model.stop() }
+        }
+        await fulfillment(of: [progress.saveStarted], timeout: 2)
+        transition.cancel()
+        router.closePlayer()
+        router.playerDidDismiss()
+        await progress.acknowledgeSave()
+        let dismissed = await transition.value
+
+        XCTAssertFalse(dismissed)
+        XCTAssertNil(nativePlayer.currentItem)
+        XCTAssertNil(model.player)
+        XCTAssertNil(model.playback)
+        XCTAssertNil(router.player)
+        XCTAssertNil(router.webFallback)
+        let saves = await progress.saves
+        XCTAssertEqual(saves, 1)
+    }
+
+    func testHeldResumeCannotSeekMediaReopenedAfterWebContinuation() async throws {
+        let fixture = try SilentPlaybackFixture()
+        defer { fixture.remove() }
+        let service = LifecyclePlaybackService(playback: fixture.playback())
+        let progress = HeldResumeLifecycleProgress()
+        let model = makeModel(service: service, progress: progress)
+        await model.load(token: "token-a", profileId: "profile-a")
+        model.player?.pause()
+        await fulfillment(of: [progress.readStarted], timeout: 2)
+        let nativePlayer = try XCTUnwrap(model.player)
+        let shareURL = try XCTUnwrap(model.playback?.shareURL)
+        let router = AppRouter()
+        router.player = model.destination
+
+        let dismissed = await router.openPlaybackOnWeb(from: model.destination, shareURL: shareURL, isCurrentViewer: { true }) { await model.stop() }
+        XCTAssertTrue(dismissed, "An unresolved resume lookup must not block Web continuation")
+        XCTAssertNil(nativePlayer.currentItem)
+        router.playerDidDismiss()
+        router.webFallback = nil
+        router.open(shareURL)
+        await load(model, token: "token-a", profile: "profile-a")
+        let replacement = try XCTUnwrap(model.player)
+        let replacementItem = try XCTUnwrap(replacement.currentItem)
+        XCTAssertLessThan(CMTimeGetSeconds(replacement.currentTime()), 2.5)
+        let unexpectedSeek = expectation(description: "Held 40-second resume must not move the reopened player")
+        unexpectedSeek.isInverted = true
+        let observer = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.timeJumpedNotification, object: replacementItem, queue: .main
+        ) { notification in
+            // A notification alone does not identify a resume seek. Inspect its
+            // position so events near the current zero baseline are not mistaken
+            // for the held response's 40-second position.
+            guard let item = notification.object as? AVPlayerItem else { return }
+            let position = CMTimeGetSeconds(item.currentTime())
+            if position.isFinite, position >= 2.5 { unexpectedSeek.fulfill() }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        await progress.releaseRead()
+        await fulfillment(of: [progress.readReturned], timeout: 2)
+        await fulfillment(of: [unexpectedSeek], timeout: 0.2)
+
+        XCTAssertTrue(model.player === replacement)
+        XCTAssertTrue(replacement.currentItem === replacementItem)
+        XCTAssertLessThan(CMTimeGetSeconds(replacement.currentTime()), 2.5)
+        XCTAssertNil(nativePlayer.currentItem)
+        let loads = await service.loadCount
+        let saves = await progress.saves
+        let heldReadWasCancelled = await progress.heldReadWasCancelled
+        XCTAssertEqual(loads, 2)
+        XCTAssertEqual(saves, 0, "Unknown progress must not be overwritten during the transition")
+        XCTAssertEqual(heldReadWasCancelled, true, "Stop must cancel the held lookup even when its transport still returns")
+        await model.stop(saveProgress: false)
+    }
+
     private func makeModel(
         service: any PlaybackServicing,
-        progress: DeferredLifecycleProgress,
+        progress: any WatchProgressServicing,
         analytics: LifecycleAnalytics = LifecycleAnalytics()
     ) -> PlayerViewModel {
         PlayerViewModel(
@@ -258,6 +427,8 @@ private actor DeferredLifecycleProgress: WatchProgressServicing {
     private var continuation: CheckedContinuation<WatchProgress, Error>?
     private var acknowledgment: WatchProgress?
     private(set) var reads = 0
+    private(set) var saves = 0
+    private(set) var savedDurations: [Int?] = []
 
     func progress(videoId: String, profileId: String?, token: String) async throws -> WatchProgress {
         reads += 1
@@ -269,6 +440,8 @@ private actor DeferredLifecycleProgress: WatchProgressServicing {
         videoId: String, profileId: String?, positionMs: Int,
         durationMs: Int?, expectedRevision: String?, token: String
     ) async throws -> WatchProgress {
+        saves += 1
+        savedDurations.append(durationMs)
         acknowledgment = WatchProgress(profileId: profileId ?? "", videoId: videoId, positionMs: positionMs,
                                        completedAt: nil, revision: "2026-10-06T08:00:00.002Z")
         // Deliberately ignore cancellation so the test exercises a late transport result.
@@ -283,6 +456,48 @@ private actor DeferredLifecycleProgress: WatchProgressServicing {
         self.continuation = nil
         self.acknowledgment = nil
         continuation.resume(returning: acknowledgment)
+    }
+}
+
+private actor HeldResumeLifecycleProgress: WatchProgressServicing {
+    nonisolated let readStarted = XCTestExpectation(description: "Old resume response is held")
+    nonisolated let readReturned = XCTestExpectation(description: "Held resume response was delivered")
+    private var continuation: CheckedContinuation<WatchProgress, Never>?
+    private var heldProgress: WatchProgress?
+    private(set) var reads = 0
+    private(set) var saves = 0
+    private(set) var heldReadWasCancelled: Bool?
+
+    func progress(videoId: String, profileId: String?, token: String) async throws -> WatchProgress {
+        reads += 1
+        guard reads == 1 else {
+            return WatchProgress(profileId: profileId ?? "", videoId: videoId, positionMs: 0,
+                                 completedAt: nil, revision: "2026-10-06T08:00:00.002Z")
+        }
+        heldProgress = WatchProgress(profileId: profileId ?? "", videoId: videoId, positionMs: 40_000,
+                                     completedAt: nil, revision: "2026-10-06T08:00:00.001Z")
+        // A transport may ignore cancellation and return after Safari or a new player opens.
+        let response: WatchProgress = await withCheckedContinuation {
+            continuation = $0
+            readStarted.fulfill()
+        }
+        heldReadWasCancelled = Task.isCancelled
+        readReturned.fulfill()
+        return response
+    }
+
+    func releaseRead() {
+        guard let continuation, let heldProgress else { return }
+        self.continuation = nil
+        self.heldProgress = nil
+        continuation.resume(returning: heldProgress)
+    }
+
+    func save(videoId: String, profileId: String?, positionMs: Int, durationMs: Int?,
+              expectedRevision: String?, token: String) async throws -> WatchProgress {
+        saves += 1
+        return WatchProgress(profileId: profileId ?? "", videoId: videoId, positionMs: positionMs,
+                             completedAt: nil, revision: "2026-10-06T08:00:00.003Z")
     }
 }
 
@@ -330,12 +545,12 @@ private struct SilentPlaybackFixture {
         try data.write(to: url)
     }
 
-    func playback(withFallback: Bool = false) -> NativePlayback {
+    func playback(withFallback: Bool = false, durationMs: Int? = 60_000) -> NativePlayback {
         NativePlayback(title: "Lifecycle fixture", sourceURL: url,
                        fallbackSourceURL: withFallback ? url : nil,
                        shareURL: URL(string: "https://ayin.stream/watch/lifecycle-test")!,
                        isLive: false, isKids: false, videoId: "video", channelId: "channel",
-                       durationMs: 60_000, protocolName: withFallback ? "HLS" : "MP4")
+                       durationMs: durationMs, protocolName: withFallback ? "HLS" : "MP4")
     }
 
     func remove() { try? FileManager.default.removeItem(at: url) }

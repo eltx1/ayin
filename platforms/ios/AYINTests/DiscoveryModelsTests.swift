@@ -2,6 +2,31 @@ import XCTest
 @testable import AYIN
 
 final class DiscoveryModelsTests: XCTestCase {
+    func testArtworkObjectKeyDecodesWithoutChangingItsPath() throws {
+        let item = try JSONDecoder().decode(DiscoveryItem.self, from: Data("""
+        {
+          "id": "video-1", "type": "VIDEO", "title": "Example",
+          "href": "/watch/example", "kicker": "Video", "meta": null,
+          "artworkObjectKey": "artwork/a cover.jpg"
+        }
+        """.utf8))
+
+        XCTAssertEqual(item.artworkObjectKey, "artwork/a cover.jpg")
+    }
+
+    func testAbsentAndNullArtworkKeepOlderDiscoveryResponsesDecodable() throws {
+        for artwork in ["", #", "artworkObjectKey": null"#] {
+            let item = try JSONDecoder().decode(DiscoveryItem.self, from: Data("""
+            {
+              "id": "video-1", "type": "VIDEO", "title": "Example",
+              "href": "/watch/example", "kicker": "Video", "meta": null\(artwork)
+            }
+            """.utf8))
+
+            XCTAssertNil(item.artworkObjectKey)
+        }
+    }
+
     func testHomeDecodesExistingPageContinuationWithoutTreatingCursorAsURL() throws {
         let response = try JSONDecoder().decode(DiscoveryHomeResponse.self, from: Data("""
         {
