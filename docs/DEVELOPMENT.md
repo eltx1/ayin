@@ -8,6 +8,8 @@ This document defines the local-development and repository conventions that main
 post-roadmap work must preserve. The listed command surface is implemented and must remain
 truthful; do not add misleading no-op scripts.
 
+As of 2026-10-07 19:24 UTC, the verified live release remains #266/debf276, recorded in the [October 7 checkpoint](https://github.com/eltx1/ayin/blob/96b804257486b6eaca36606b6670a61ef5c54942/docs/AYIN_RELEASE_CHECKPOINT_2026-10-07.md). [The active remainder ledger](AYIN_MASTER_REMAINDER_LEDGER.md) separates accepted capability from remaining release work: PR267/268/269 are merged with owning native acceptance; PR269 tvOS 59/portable five tests, both quality runs and inventory passed. The bounded iOS/tvOS source gaps are closed. Deployment failed twice before activation on empty SSH key scans; its helper and these active documents were published at 19:22 UTC in draft PR270, head prefix `334a2003`. The helper passed 14 local tests and independent review, with pinned trust unchanged; remote quality, review/merge and exact deployment proof remain pending. Feature scope is frozen; physical/store/provider acceptance remains separate.
+
 ## 1. Current repository baseline
 
 Tasks 00–38 are implemented on `main`. The repository contains the complete roadmap-side Web/PWA,
