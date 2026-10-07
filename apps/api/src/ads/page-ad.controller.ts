@@ -14,7 +14,12 @@ import {
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 
-import { AdminGuard, RequireAdminRoles, RequireAdminStepUp } from "../admin/admin.guard.js";
+import {
+  AdminGuard,
+  type AdminAuthenticatedRequest,
+  RequireAdminRoles,
+  RequireAdminStepUp,
+} from "../admin/admin.guard.js";
 import { AuthGuard } from "../auth/auth.guard.js";
 import { AuthService } from "../auth/auth.service.js";
 import { readSessionToken } from "../auth/session-transport.js";
@@ -95,10 +100,11 @@ export class AdminPageAdController {
 
   @Patch("settings")
   @RequireAdminStepUp()
-  async updateSettings(@Body() body: unknown) {
+  async updateSettings(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
     try {
-      return await this.pageAds.updateSettings(body);
-    } catch {
+      return await this.pageAds.updateSettings(request.ayinAuth, body);
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) throw error;
       throw new HttpException(
         {
           error: { code: "INVALID_PAGE_AD_SETTINGS", message: "Check page advertising settings." },

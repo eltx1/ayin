@@ -1,6 +1,10 @@
 import type { Prisma } from "@ayin/db";
-import { Inject, Injectable } from "@nestjs/common";
+import { HttpException, Inject, Injectable } from "@nestjs/common";
 
+import {
+  lockAdminAccountWrite,
+  type AccountWriteActor,
+} from "../admin/admin-account-write-authority.js";
 import { AdminAuditLogService } from "../admin/admin-audit-log.service.js";
 import { DatabaseService } from "../database/database.service.js";
 import { GamProductionService } from "./gam-production.service.js";
@@ -53,13 +57,27 @@ export class AuthorizedSellerFileService {
   }
 
   async update(
-    actorAccountId: string,
+    actor: AccountWriteActor,
     kind: AuthorizedSellerFileKind,
     inputText: string,
     reason: string,
   ): Promise<AuthorizedSellerFileSnapshot> {
-    const normalized = validateAuthorizedSellerText(inputText);
+    let normalized: string;
+    try {
+      normalized = validateAuthorizedSellerText(inputText);
+    } catch (error) {
+      throw new HttpException(
+        {
+          error: {
+            code: "INVALID_AUTHORIZED_SELLER_SYNTAX",
+            message: error instanceof Error ? error.message : "Invalid authorized seller file.",
+          },
+        },
+        400,
+      );
+    }
     await this.database.client.$transaction(async (tx) => {
+      await lockAdminAccountWrite(tx, actor, actor.accountId, undefined, ["AD_MANAGER"]);
       await tx.platformSetting.upsert({
         where: {
           namespace_key: {
@@ -82,8 +100,9 @@ export class AuthorizedSellerFileService {
           description: `${kind}.txt manually managed authorized seller content`,
         },
       });
+      await lockAdminAccountWrite(tx, actor, actor.accountId, undefined, ["AD_MANAGER"]);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "AUTHORIZED_SELLER_FILE_UPDATED",
         entityType: "AuthorizedSellerFile",
         entityId: kind,
@@ -94,6 +113,7 @@ export class AuthorizedSellerFileService {
           manualByteLength: Buffer.byteLength(normalized, "utf8"),
         } as Prisma.InputJsonObject,
       });
+      await lockAdminAccountWrite(tx, actor, actor.accountId, undefined, ["AD_MANAGER"]);
     });
     return this.snapshot(kind);
   }

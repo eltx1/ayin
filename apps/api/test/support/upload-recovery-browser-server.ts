@@ -1,6 +1,6 @@
 /** Isolated synthetic provider for browser acceptance only. Never imported by AppModule. */
 import "reflect-metadata";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { createPrismaClient } from "@ayin/db";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
@@ -32,6 +32,18 @@ if (
 process.env.DATABASE_URL = databaseUrl.href;
 const db = createPrismaClient(databaseUrl.href);
 const PART = 5 * 1024 * 1024;
+// Optional local transport measurement only. Reuses this exact synthetic store;
+// never imported by AppModule or enabled by production API bootstrap.
+const directTransfer = process.env.AYIN_LAB_DIRECT_TRANSFER === "1";
+const directPrefix = "/_test/recovery-byte-store/";
+const received: Array<{
+  bytes: number;
+  sha256: string;
+  bodyReceiveMs: number;
+  cookiePresent: boolean;
+  authorizationPresent: boolean;
+}> = [];
+const requestStarts = new WeakMap<object, number>();
 let supported = true,
   failAuthorize = false;
 let counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
@@ -82,7 +94,24 @@ function authorize(input: {
   const token = randomUUID(),
     expiresAt = new Date((input.now ?? new Date()).getTime() + input.expiresInSeconds * 1000);
   grants.set(token, { ...input, expiresAt, used: false });
-  return { url: `https://recovery-provider.invalid/${token}`, expiresAt };
+  return {
+    url: directTransfer
+      ? `http://127.0.0.1:3001${directPrefix}${token}`
+      : `https://recovery-provider.invalid/${token}`,
+    expiresAt,
+  };
+}
+function storeGrantedBytes(token: string, body: Buffer) {
+  const grant = grants.get(token);
+  if (!grant || grant.used || grant.expiresAt.getTime() <= Date.now())
+    throw Error("Synthetic grant expired/reused");
+  grant.used = true;
+  counters.puts++;
+  if (grant.uploadId) {
+    const upload = uploads.get(grant.uploadId);
+    if (!upload || !grant.partNumber) throw Error("Unknown synthetic upload");
+    upload.parts.set(grant.partNumber, body);
+  } else objects.set(grant.key, { bytes: body, contentType: grant.contentType });
 }
 const storage: MediaStorageAdapter = {
   kind: "r2",
@@ -165,19 +194,50 @@ app.enableCors({
   origin: "http://127.0.0.1:3000",
   credentials: true,
   allowedHeaders: ["content-type", "x-ayin-expected-account", "x-ayin-expected-session"],
-  methods: ["GET", "POST", "OPTIONS"],
+  methods: ["GET", "POST", "OPTIONS", ...(directTransfer ? ["PUT"] : [])],
 });
 app
   .getHttpAdapter()
   .getInstance()
   .addHook("onRequest", async (request, reply) => {
+    if (directTransfer && request.url.startsWith(directPrefix))
+      requestStarts.set(request, performance.now());
     applyApiSecurityHeaders(reply, request);
     if (!isAllowedCookieMutationOrigin(request, "http://127.0.0.1:3000"))
       await reply.code(403).send({ error: { code: "CSRF_ORIGIN_REJECTED" } });
   });
+if (directTransfer) {
+  const server = app.getHttpAdapter().getInstance();
+  server.addContentTypeParser(
+    ["video/webm", "video/mp4", "application/octet-stream"],
+    { parseAs: "buffer", bodyLimit: PART + 1024 },
+    (_request, body, done) => done(null, body),
+  );
+  server.put(directPrefix + ":token", { bodyLimit: PART + 1024 }, async (request, reply) => {
+    try {
+      if (!Buffer.isBuffer(request.body)) throw Error("Synthetic byte body required");
+      const token = (request.params as { token: string }).token;
+      const startedAt = requestStarts.get(request);
+      if (startedAt === undefined) throw Error("Missing synthetic receiver timing start");
+      const bodyReceiveMs = performance.now() - startedAt;
+      storeGrantedBytes(token, request.body);
+      received.push({
+        bytes: request.body.length,
+        sha256: createHash("sha256").update(request.body).digest("hex"),
+        bodyReceiveMs,
+        cookiePresent: Boolean(request.headers.cookie),
+        authorizationPresent: Boolean(request.headers.authorization),
+      });
+      return { ok: true };
+    } catch {
+      return reply.code(409).send({ error: "Synthetic provider rejection" });
+    }
+  });
+}
 await app.listen(3001, "127.0.0.1");
 // A separate provider test server receives synthetic fixture bytes. The AYIN API
-// never accepts/proxies creator bodies. Playwright forwards synthetic URLs here.
+// never accepts/proxies creator bodies in production. The guarded direct lab
+// uses the same maps through the optional test-only API-origin route above.
 const provider = createServer(async (request, reply) => {
   reply.setHeader("content-type", "application/json");
   try {
@@ -185,6 +245,23 @@ const provider = createServer(async (request, reply) => {
       reply.end(
         JSON.stringify({
           ...counters,
+          ...(directTransfer
+            ? {
+                received,
+                storedObjects: [...objects.values()].map(({ bytes, contentType }) => ({
+                  bytes: bytes.length,
+                  sha256: createHash("sha256").update(bytes).digest("hex"),
+                  contentType,
+                })),
+                uploadedSources: await db.mediaAsset.count({
+                  where: { kind: "SOURCE_VIDEO", status: "UPLOADED" },
+                }),
+                processingQueued: await db.mediaProcessingJob.count({
+                  where: { status: "QUEUED", stage: "QUEUED" },
+                }),
+                validatingVideos: await db.video.count({ where: { status: "VALIDATING" } }),
+              }
+            : {}),
           sessions: await db.mediaUploadSession.count(),
           journal: await db.mediaUploadOperation.count(),
           queued: await db.mediaProcessingJob.count({ where: { stage: "INTEGRITY_QUEUED" } }),
@@ -213,6 +290,7 @@ const provider = createServer(async (request, reply) => {
         await db.$executeRawUnsafe(
           'TRUNCATE TABLE "Account", "Channel", "MediaUploadSession", "AccountDeletionRequest", "PrivacyMediaDeletionJob", "MediaProcessingOutputAttempt" CASCADE',
         );
+        received.length = 0;
         uploads.clear();
         objects.clear();
         grants.clear();
@@ -226,16 +304,7 @@ const provider = createServer(async (request, reply) => {
       return;
     }
     if (request.method === "PUT") {
-      const grant = grants.get(request.url?.slice(1) ?? "");
-      if (!grant || grant.used || grant.expiresAt.getTime() <= Date.now())
-        throw Error("Synthetic grant expired/reused");
-      grant.used = true;
-      counters.puts++;
-      if (grant.uploadId) {
-        const upload = uploads.get(grant.uploadId);
-        if (!upload || !grant.partNumber) throw Error("Unknown synthetic upload");
-        upload.parts.set(grant.partNumber, body);
-      } else objects.set(grant.key, { bytes: body, contentType: grant.contentType });
+      storeGrantedBytes(request.url?.slice(1) ?? "", body);
       reply.end('{"ok":true}');
       return;
     }

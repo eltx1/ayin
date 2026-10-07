@@ -286,32 +286,93 @@ test("late A progress cannot resume B after retained Watch revalidation", async 
 });
 
 for (const action of ["logout", "revoke"] as const) {
-  test(`${action} prevents delayed resume and later checkpoint on retained Watch`, async ({
+  test(`${action} rejects delayed progress and later checkpoints on retired Watch`, async ({
     page,
   }) => {
     const video = seedVideo();
     const a = await register(page, action);
     await seedProgress(page, video, a, 42_000);
+    const before = fixture<Rows>("rows", { videoId: video.id });
     const held = holdProgress(page, video);
     await held.setup;
     try {
       await openWatch(page, video);
       await expect.poll(() => Boolean(held.captured())).toBe(true);
+      expect(await held.captured()!.json()).toMatchObject({
+        profileId: a.profile.id,
+        positionMs: 42_000,
+      });
+      const retiredA = await page.locator("video:visible").elementHandle();
+      if (!retiredA) throw new Error("The original A media element is required.");
       if (action === "logout")
         expect(
           (await page.request.post(`${API}/auth/logout`, { headers: { origin: WEB } })).ok(),
         ).toBe(true);
       else fixture("revoke", { accountId: a.account.id });
+      const freshPlayback = page.waitForResponse(
+        (response) =>
+          response.url().includes(`/public/videos/${video.slug}/playback`) &&
+          response.status() === (action === "logout" ? 200 : 401),
+      );
       await refocus(page);
+      const playback = await freshPlayback;
       held.release();
       await settle(page);
-      await ready(page);
-      expect(await position(page)).toBe(0);
-      await position(page, 57, "pause");
+      await expect(page.locator("[data-private-viewer-identity]:visible")).not.toContainText(
+        a.account.displayName,
+      );
+      await expect(page.locator('[data-tv-focus-id="join-ayin"]:visible')).toHaveCount(1);
+      const retirement = await retiredA.evaluate((node) => {
+        const media = node as HTMLVideoElement;
+        return {
+          connected: media.isConnected,
+          hasSource: media.hasAttribute("src"),
+          paused: media.paused,
+        };
+      });
+      expect(retirement).toEqual({ connected: false, hasSource: false, paused: true });
+      if (action === "logout") {
+        // A removed cookie permits a new anonymous public player, never A's resume.
+        await expect(page.locator("video:visible")).toHaveCount(1);
+        expect(
+          await page.locator("video:visible").evaluate((current, old) => current !== old, retiredA),
+        ).toBe(true);
+        await ready(page);
+        expect(await position(page)).toBe(0);
+        await position(page, 57, "pause");
+      } else {
+        // A revoked cookie is rejected by the fresh playback read. No retired
+        // player is made visible merely to exercise a delayed callback.
+        await expect(page.locator("video:visible")).toHaveCount(0);
+      }
+      await retiredA.evaluate((node) => {
+        const media = node as HTMLVideoElement & { _ready?: number };
+        media._ready = 4;
+        media.dispatchEvent(new Event("loadedmetadata"));
+        media.dispatchEvent(new Event("canplay"));
+        media.currentTime = 57;
+        media.dispatchEvent(new Event("timeupdate"));
+        media.dispatchEvent(new Event("pause"));
+        media.dispatchEvent(new Event("ended"));
+      });
       await settle(page);
-      expect(fixture<Rows>("rows", { videoId: video.id }).progress).toEqual([
-        { profileId: a.profile.id, videoId: video.id, positionMs: 42_000 },
-      ]);
+      const writes = await page.evaluate(() =>
+        (
+          window as unknown as { progressRequestLog: { method: string }[] }
+        ).progressRequestLog.filter((request) => request.method === "PUT"),
+      );
+      expect(writes).toEqual([]);
+      expect(fixture<Rows>("rows", { videoId: video.id })).toEqual(before);
+      await test.info().attach(`watch-${action}-retirement`, {
+        body: JSON.stringify({
+          retirement,
+          freshPlaybackStatus: playback.status(),
+          writes,
+          rows: before,
+        }),
+        contentType: "application/json",
+      });
+      await retiredA.dispose();
     } finally {
       held.release();
     }
@@ -654,14 +715,70 @@ test("a delayed A write ACK cannot block or acknowledge B checkpoints", async ({
     await openWatch(page, video);
     await settle(page);
     await ready(page);
+    const retiredA = await page.locator("video:visible").elementHandle();
+    if (!retiredA) throw new Error("The original A media element is required.");
     await position(page, 37, "pause");
     await expect.poll(() => aCommitted).toBe(true);
     const other = await context.newPage();
     const b = await register(other, "late-write-b");
+    const bRead = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === `/watch/progress/${video.id}` &&
+        url.searchParams.get("profileId") === b.profile.id &&
+        response.request().headers()["x-ayin-expected-account"] === b.account.id &&
+        response.request().method() === "GET" &&
+        response.status() === 200
+      );
+    });
     await refocus(page);
+    await bRead;
+
     await expect(page.locator("[data-private-viewer-identity]:visible")).toContainText(
       b.account.displayName,
     );
+    // B owns a replacement source. Its synthetic metadata must be delivered
+    // independently without waiting on A's deliberately held write response.
+    const replacement = await page.locator("video:visible").evaluate(
+      (element, old) => ({
+        sameNode: element === old,
+        readyState: (element as HTMLVideoElement).readyState,
+      }),
+      retiredA,
+    );
+    await test.info().attach("watch-b-replacement-before-metadata", {
+      body: JSON.stringify(replacement),
+      contentType: "application/json",
+    });
+    expect(replacement).toEqual({ sameNode: false, readyState: 0 });
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    // An unready pause at B's own zero must not create its first checkpoint.
+    expect(await position(page, undefined, "pause")).toBe(0);
+    expect(
+      await page.evaluate(
+        (accountId) =>
+          (
+            window as unknown as {
+              progressRequestLog: { method: string; accountId: string | null }[];
+            }
+          ).progressRequestLog.filter(
+            (request) => request.method === "PUT" && request.accountId === accountId,
+          ),
+        b.account.id,
+      ),
+    ).toEqual([]);
+    expect(
+      fixture<Rows>("rows", { videoId: video.id }).progress.find(
+        (row) => row.profileId === b.profile.id,
+      ),
+    ).toBeUndefined();
+    await ready(page);
+    await expect.poll(() => position(page)).toBe(0);
     await position(page, 13, "pause");
     // A's response is intentionally held. Inspect B's independent real DB row
     // instead of waiting for every outstanding fetch (which would deadlock the baseline).
@@ -680,6 +797,7 @@ test("a delayed A write ACK cannot block or acknowledge B checkpoints", async ({
     const rows = fixture<Rows>("rows", { videoId: video.id });
     expect(rows.progress.find((row) => row.profileId === a.profile.id)?.positionMs).toBe(37_000);
     expect(rows.progress.find((row) => row.profileId === b.profile.id)?.positionMs).toBe(19_000);
+    await retiredA.dispose();
   } finally {
     release();
   }
@@ -960,13 +1078,18 @@ test("freshness: delayed final37 before commit cannot overwrite a newer same-acc
     await openWatch(page, video);
     await settle(page);
     await ready(page);
+    const retired = await page.locator("video:visible").elementHandle();
+    if (!retired) throw new Error("The original media element is required.");
     await position(page, 37);
     await page.evaluate(() => window.dispatchEvent(new Event("blur")));
     await expect.poll(() => captured).toBe(true);
     const resumed = page.waitForResponse(
       (response) =>
         response.url().includes(`/watch/progress/${video.id}`) &&
-        response.request().method() === "GET",
+        response.request().method() === "GET" &&
+        new URL(response.url()).searchParams.get("profileId") === a.profile.id &&
+        response.request().headers()["x-ayin-expected-account"] === a.account.id &&
+        response.status() === 200,
     );
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await resumed;
@@ -979,6 +1102,30 @@ test("freshness: delayed final37 before commit cannot overwrite a newer same-acc
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         ),
     );
+    const replacement = await page.locator("video:visible").evaluate(
+      (element, old) => ({
+        sameNode: element === old,
+        readyState: (element as HTMLVideoElement).readyState,
+      }),
+      retired,
+    );
+    await test.info().attach("watch-same-owner-replacement-before-metadata", {
+      body: JSON.stringify(replacement),
+      contentType: "application/json",
+    });
+    expect(replacement).toEqual({ sameNode: false, readyState: 0 });
+    await position(page, 53, "pause");
+    expect(
+      await page.evaluate(
+        () =>
+          (
+            window as unknown as { progressRequestLog: { method: string }[] }
+          ).progressRequestLog.filter((request) => request.method === "PUT").length,
+      ),
+    ).toBe(1);
+    expect(fixture<Rows>("rows", { videoId: video.id }).progress).toEqual([]);
+    await ready(page);
+    await expect.poll(() => position(page)).toBe(37);
     await position(page, 53, "pause");
     await expect
       .poll(
@@ -1001,6 +1148,7 @@ test("freshness: delayed final37 before commit cannot overwrite a newer same-acc
     await expect(page.locator("[data-private-viewer-identity]:visible")).toContainText(
       a.account.displayName,
     );
+    await retired.dispose();
   } finally {
     release();
     await test.info().attach("freshness-commit-order", {

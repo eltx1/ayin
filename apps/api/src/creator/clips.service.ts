@@ -26,7 +26,7 @@ const clipSelect = {
       ],
     },
     orderBy: { createdAt: "desc" },
-    select: { kind: true, r2ObjectKey: true },
+    select: { id: true, kind: true, r2ObjectKey: true },
   },
   _count: {
     select: {
@@ -47,7 +47,9 @@ export class ClipsService {
     take: number;
     cursor?: string | undefined;
     countryCode?: string | undefined;
+    isKidsProfile?: boolean | undefined;
   }) {
+    const viewer = { isKids: input.isKidsProfile === true };
     const [enabled, autoplayEnabled, adsEnabled, adFrequency] = await Promise.all([
       this.settings.get("clipsEnabled"),
       this.settings.get("clipsAutoplayEnabled"),
@@ -56,6 +58,7 @@ export class ClipsService {
     ]);
     if (!(enabled as boolean)) {
       return {
+        viewer,
         enabled: false,
         items: [],
         nextCursor: null,
@@ -75,6 +78,7 @@ export class ClipsService {
         AND (${publicPlayableVideoSql()})
         AND (${availableVideoPolicySql(Prisma.sql`v.id`, {
           countryCode: input.countryCode,
+          isKidsProfile: viewer.isKids,
           now,
         })})
         AND ${
@@ -96,11 +100,12 @@ export class ClipsService {
     const pageIds = candidates.slice(0, input.take).map((row) => row.id);
     const hasMore = candidates.length > input.take;
     const policy = {
-      enabled: adsEnabled as boolean,
+      enabled: !viewer.isKids && (adsEnabled as boolean),
       minimumOrganicClips: adFrequency as number,
     };
     if (!pageIds.length) {
       return {
+        viewer,
         enabled: true,
         items: [],
         nextCursor: null,
@@ -134,15 +139,67 @@ export class ClipsService {
     });
     const allowed = await this.videoPolicy.filterAvailableVideoIds(
       rows.map((row) => row.id),
-      { countryCode: input.countryCode, now },
+      { countryCode: input.countryCode, isKidsProfile: viewer.isKids, now: new Date() },
     );
-    const byId = new Map(rows.filter((row) => allowed.has(row.id)).map((row) => [row.id, row]));
+    const selected = rows.filter((row) => allowed.has(row.id));
+    const selectedAssets = selected.flatMap((row) =>
+      row.mediaAssets.map(
+        (asset) =>
+          Prisma.sql`(${row.id}::uuid, ${asset.id}::uuid, ${asset.r2ObjectKey}, ${asset.kind})`,
+      ),
+    );
+    // The response contains playable object keys. After hydration/policy work,
+    // revalidate the exact selected assets, publication/channel and policy at a
+    // fresh point in time. Another playable source cannot rescue a revoked one.
+    const finalNow = new Date();
+    const currentAssets = selectedAssets.length
+      ? await this.database.client.$queryRaw<Array<{ assetId: string }>>(Prisma.sql`
+          SELECT m.id AS "assetId"
+          FROM (VALUES ${Prisma.join(selectedAssets)}) AS selected("videoId", "assetId", "objectKey", kind)
+          JOIN "Video" v ON v.id = selected."videoId"
+          JOIN "MediaAsset" m ON m.id = selected."assetId" AND m."videoId" = v.id
+            AND m."r2ObjectKey" = selected."objectKey"
+            AND m.kind::text = selected.kind
+          WHERE v."videoForm" = 'CLIP'
+            AND v."publishedAt" <= ${finalNow}
+            AND (${publicPlayableVideoSql()})
+            AND (${availableVideoPolicySql(Prisma.sql`v.id`, {
+              countryCode: input.countryCode,
+              isKidsProfile: viewer.isKids,
+              now: finalNow,
+            })})
+            AND m."removedAt" IS NULL
+            AND (
+              (m.kind = 'SOURCE_VIDEO' AND m.status = 'VALIDATED' AND m."mimeType" = 'video/mp4')
+              OR (m.kind = 'THUMBNAIL' AND m.status IN ('UPLOADED', 'VALIDATED'))
+            )
+        `)
+      : [];
+    const currentAssetIds = new Set(currentAssets.map((asset) => asset.assetId));
+    const byId = new Map(
+      selected.flatMap((row) => {
+        const source = row.mediaAssets.find((asset) => asset.kind === "SOURCE_VIDEO");
+        if (!source || !currentAssetIds.has(source.id)) return [];
+        return [
+          [
+            row.id,
+            {
+              ...row,
+              mediaAssets: row.mediaAssets
+                .filter((asset) => currentAssetIds.has(asset.id))
+                .map(({ kind, r2ObjectKey }) => ({ kind, r2ObjectKey })),
+            },
+          ] as const,
+        ];
+      }),
+    );
     const items = pageIds.flatMap((id) => {
       const row = byId.get(id);
       return row ? [row] : [];
     });
 
     return {
+      viewer,
       enabled: true,
       items,
       nextCursor: hasMore ? (pageIds.at(-1) ?? null) : null,

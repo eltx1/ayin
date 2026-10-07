@@ -53,6 +53,7 @@ struct TVVideoPlaybackResponse: Decodable {
     }
 
     let video: Video
+    let viewer: PlaybackViewerPolicy?
 }
 
 struct TVPlaybackAsset: Equatable {

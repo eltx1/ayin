@@ -105,7 +105,14 @@ test("global catalog search presents EN/AR copy and traverses its stable bounded
       await searchbox.focus();
       const suggestionResponse = await suggestionsResponse;
       expect(suggestionResponse.ok()).toBe(true);
-      const suggestionData = await suggestionResponse.json();
+      // Chromium may discard the body handle when the component supersedes its
+      // request. Retain the observed successful component request and verify the
+      // rendered order against the same URL in the same authenticated context.
+      const expectedSuggestions = await page.request.get(suggestionResponse.url(), {
+        headers: { "x-ayin-locale": layout.locale },
+      });
+      expect(expectedSuggestions.ok()).toBe(true);
+      const suggestionData = await expectedSuggestions.json();
       await expect(suggestions).toBeVisible();
       await expect
         .poll(() =>

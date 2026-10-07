@@ -159,6 +159,10 @@ try {
         settings: { value: setting.value, updatedAt: setting.updatedAt },
         overrides,
         audits,
+        emergencyAudits: await prisma.adminAuditLog.findMany({
+          where: { actorAccountId: payload.accountId, action: "AD_EMERGENCY_KILL_SWITCH_UPDATED" },
+          select: { action: true, entityId: true },
+        }),
         sessions,
       }),
     );

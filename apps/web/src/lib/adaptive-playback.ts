@@ -153,9 +153,11 @@ export async function startAdaptiveHlsPlayback(input: {
   video: HTMLVideoElement;
   hlsUrl: string;
   mode?: "VOD" | "LIVE" | undefined;
+  signal?: AbortSignal | undefined;
   callbacks?: AyinAdaptivePlaybackCallbacks | undefined;
 }): Promise<AyinAdaptivePlaybackSession | null> {
-  const { video, hlsUrl, mode = "VOD", callbacks = {} } = input;
+  const { video, hlsUrl, mode = "VOD", callbacks = {}, signal } = input;
+  if (signal?.aborted) return null;
 
   if (supportsNativeHls(video)) {
     let destroyed = false;
@@ -172,16 +174,14 @@ export async function startAdaptiveHlsPlayback(input: {
     video.addEventListener("error", failed, { once: true });
     video.src = hlsUrl;
     video.load();
-    return {
-      protocol: "HLS",
-      native: true,
-      setQuality: () => undefined,
-      destroy() {
-        destroyed = true;
-        video.removeEventListener("loadedmetadata", ready);
-        video.removeEventListener("error", failed);
-      },
+    const destroy = () => {
+      destroyed = true;
+      video.removeEventListener("loadedmetadata", ready);
+      video.removeEventListener("error", failed);
+      signal?.removeEventListener("abort", destroy);
     };
+    signal?.addEventListener("abort", destroy, { once: true });
+    return { protocol: "HLS", native: true, setQuality: () => undefined, destroy };
   }
 
   let Hls: HlsConstructor;
@@ -191,6 +191,8 @@ export async function startAdaptiveHlsPlayback(input: {
     callbacks.onFatal?.("UNSUPPORTED");
     return null;
   }
+  // A viewer can change while the HLS runtime import is still pending.
+  if (signal?.aborted) return null;
   if (!Hls.isSupported()) {
     callbacks.onFatal?.("UNSUPPORTED");
     return null;
@@ -284,11 +286,18 @@ export async function startAdaptiveHlsPlayback(input: {
     reportFatal(reason);
   });
 
+  const destroy = () => {
+    if (destroyed) return;
+    destroyed = true;
+    signal?.removeEventListener("abort", destroy);
+    hls.destroy();
+  };
+  signal?.addEventListener("abort", destroy, { once: true });
   try {
     hls.attachMedia(video);
   } catch {
     reportFatal("OTHER");
-    hls.destroy();
+    destroy();
     return null;
   }
 
@@ -315,10 +324,6 @@ export async function startAdaptiveHlsPlayback(input: {
         automatic: false,
       });
     },
-    destroy() {
-      if (destroyed) return;
-      destroyed = true;
-      hls.destroy();
-    },
+    destroy,
   };
 }

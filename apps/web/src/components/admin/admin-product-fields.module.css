@@ -1,0 +1,110 @@
+.panel,
+.list,
+.globalForm {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.panel h2 {
+  margin-block-end: 0;
+}
+
+.panel input:not([type="checkbox"]),
+.panel textarea,
+.regionalItem input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.panel textarea {
+  resize: vertical;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+
+.check input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-height: 1.25rem;
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.taxonomyItem,
+.regionalItem {
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+}
+
+.taxonomyItem legend {
+  padding-inline: 0.4rem;
+  font-weight: 700;
+}
+
+.key,
+.error {
+  overflow-wrap: anywhere;
+}
+
+.key {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.key span {
+  display: inline-block;
+}
+
+.actions,
+.devices {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.actions {
+  justify-content: space-between;
+}
+
+.regionalItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto;
+  align-items: end;
+  gap: 1rem;
+}
+
+.regionalIdentity {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.regionalIdentity h3 {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .regionalItem {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .regionalItem button {
+    justify-self: start;
+  }
+
+  .devices {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}

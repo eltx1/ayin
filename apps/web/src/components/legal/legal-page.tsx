@@ -14,7 +14,7 @@ export function LegalPage({
   children: ReactNode;
 }) {
   return (
-    <main className={styles.page}>
+    <main className={styles.page} lang="en" dir="ltr">
       <header className={styles.header}>
         <p className={styles.eyebrow}>AYIN · Legal & Trust</p>
         <h1 className={styles.title}>{title}</h1>

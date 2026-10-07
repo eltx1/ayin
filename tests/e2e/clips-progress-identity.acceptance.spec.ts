@@ -1,6 +1,13 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { expect, test, type APIResponse, type Page, type Route } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIResponse,
+  type ElementHandle,
+  type Page,
+  type Route,
+} from "@playwright/test";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:3001";
 const WEB = "http://127.0.0.1:3000";
@@ -315,6 +322,35 @@ function nextProgressRead(page: Page, clip: Clip) {
       response.url().includes(`/watch/progress/${clip.id}`) &&
       response.request().method() === "GET",
   );
+}
+
+function nextOwnerClipRead(page: Page, identity: Identity) {
+  return page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/public/clips" &&
+      url.searchParams.get("expectedProfileId") === identity.profile.id &&
+      response.request().headers()["x-ayin-expected-account"] === identity.account.id &&
+      response.status() === 200
+    );
+  });
+}
+
+async function expectRetiredClipOwner(page: Page, clip: Clip, retired: ElementHandle) {
+  const retirement = await retired.evaluate((node) => {
+    const video = node as HTMLVideoElement;
+    return {
+      connected: video.isConnected,
+      hasSource: video.hasAttribute("src"),
+      paused: video.paused,
+    };
+  });
+  expect(retirement).toEqual({ connected: false, hasSource: false, paused: true });
+  expect(await media(page, clip).evaluate((current, old) => current !== old, retired)).toBe(true);
+  // Metadata must not reapply the retired owner's time while B's saved read is held.
+  await ready(page, clip);
+  await expect.poll(() => position(page, clip)).toBe(0);
+  return { ...retirement, replacementIsDifferent: true };
 }
 
 test("retained Clips reset old time when focus verifies a different real account", async ({
@@ -707,6 +743,10 @@ for (const event of ["pagehide", "blur-hidden"] as const) {
       await settle(page);
       await ready(page, clip);
       await position(page, clip, 17);
+      // The neutral audience shell unmounts this video on suspension. Keep the
+      // retiring node to dispatch a stale event without waiting for a new feed.
+      const retiringVideo = await media(page, clip).elementHandle();
+      expect(retiringVideo).not.toBeNull();
       await page.evaluate((event) => {
         if (event === "blur-hidden") {
           window.dispatchEvent(new Event("blur"));
@@ -739,7 +779,10 @@ for (const event of ["pagehide", "blur-hidden"] as const) {
       await page.evaluate(() =>
         window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })),
       );
-      await position(page, clip, 23, "pause");
+      await retiringVideo!.evaluate((video: HTMLVideoElement) => {
+        video.currentTime = 23;
+        video.dispatchEvent(new Event("pause"));
+      });
       await settle(page);
       expect((await requestLog(page)).filter((item) => item.method === "PUT")).toHaveLength(1);
       expect(rows(clip).progress[0]?.positionMs).toBe(17_000);
@@ -896,61 +939,98 @@ test("Clips keyboard navigation and real pagination preserve independent progres
   expect(rows(secondClip).progress[0]?.positionMs).toBe(7_000);
 });
 
-test("native Clips seeking from A reset cannot suppress a held B saved resume", async ({
-  page,
-  context,
-}) => {
-  const [clip] = seedClips();
-  const a = await register(page, "native-reset-a");
-  await seedProgress(page, clip, a, 17_000);
-  await openClips(page, clip, false, true);
-  await settle(page);
-  await ready(page, clip);
-  await expect.poll(() => position(page, clip)).toBe(17);
-  const other = await context.newPage();
-  const b = await register(other, "native-reset-b");
-  await seedProgress(other, clip, b, 13_000);
-  const held = holdRead(page, clip);
-  await held.setup;
-  try {
-    await refocus(page);
-    await expect(page.locator("[data-private-viewer-identity]:visible")).toContainText(
-      b.account.displayName,
-    );
-    await expect.poll(() => Boolean(held.captured())).toBe(true);
-    expect((await held.captured()!.json()).profileId).toBe(b.profile.id);
-    await expect.poll(() => position(page, clip)).toBe(0);
-    // The internal owner reset fired an asynchronous native seeking event while
-    // B's13-second snapshot was still unavailable. It is not a user rewind.
-    await expect
-      .poll(() =>
-        page.evaluate(
-          (videoId) =>
-            (
-              window as unknown as {
-                clipsNativeSeeks: { videoId: string | null; position: number }[];
-              }
-            ).clipsNativeSeeks
-              .filter((item) => item.videoId === videoId)
-              .map((item) => item.position),
-          clip.id,
-        ),
-      )
-      .toContain(0);
-    held.release();
+for (const intent of ["restore", "rewind"] as const) {
+  test(`native Clips retired-A seeking preserves B's held ${intent} intent`, async ({
+    page,
+    context,
+  }) => {
+    const [clip] = seedClips();
+    const a = await register(page, "native-reset-a");
+    await seedProgress(page, clip, a, 17_000);
+    await openClips(page, clip, false, true);
     await settle(page);
     await ready(page, clip);
-    await expect.poll(() => position(page, clip)).toBe(13);
-    expect(rows(clip).progress.find((row) => row.profileId === b.profile.id)?.positionMs).toBe(
-      13_000,
-    );
-    expect(rows(clip).progress.find((row) => row.profileId === a.profile.id)?.positionMs).toBe(
-      17_000,
-    );
-  } finally {
-    held.release();
-  }
-});
+    await expect.poll(() => position(page, clip)).toBe(17);
+    const retiredA = await media(page, clip).elementHandle();
+    if (!retiredA) throw new Error("The original A media element is required.");
+    const other = await context.newPage();
+    const b = await register(other, "native-reset-b");
+    await seedProgress(other, clip, b, 13_000);
+    await settle(page);
+    const before = rows(clip);
+    const held = holdRead(page, clip);
+    await held.setup;
+    try {
+      const freshBRead = nextOwnerClipRead(page, b);
+      await refocus(page);
+      await freshBRead;
+      await expect(page.locator("[data-private-viewer-identity]:visible")).toContainText(
+        b.account.displayName,
+      );
+      await expect.poll(() => Boolean(held.captured())).toBe(true);
+      expect((await held.captured()!.json()).profileId).toBe(b.profile.id);
+      const retirement = await expectRetiredClipOwner(page, clip, retiredA);
+      // Owner changes now mount fresh media. Replay a late native seek on the
+      // actual retired A element, while B's saved snapshot is still held.
+      const retiredEvents = await retiredA.evaluate(async (node) => {
+        const video = node as HTMLVideoElement;
+        const events: { type: string; position: number; connected: boolean }[] = [];
+        const record = (event: Event) =>
+          events.push({
+            type: event.type,
+            position: video.currentTime,
+            connected: video.isConnected,
+          });
+        video.addEventListener("seeking", record, { once: true });
+        video.addEventListener("seeked", record, { once: true });
+        video.currentTime = 0;
+        await Promise.resolve();
+        return events;
+      });
+      expect(retiredEvents).toEqual([
+        { type: "seeking", position: 0, connected: false },
+        { type: "seeked", position: 0, connected: false },
+      ]);
+      await expect.poll(() => position(page, clip)).toBe(0);
+      if (intent === "rewind") {
+        await media(page, clip).evaluate((video: HTMLVideoElement) => {
+          video.currentTime = 7;
+        });
+        await expect.poll(() => position(page, clip)).toBe(7);
+      }
+      expect(
+        (await requestLog(page)).filter(
+          (item) => item.method === "PUT" && item.accountId === b.account.id,
+        ),
+      ).toEqual([]);
+      held.release();
+      await settle(page);
+      await ready(page, clip);
+      await expect.poll(() => position(page, clip)).toBe(intent === "rewind" ? 7 : 13);
+      expect(rows(clip).progress.find((row) => row.profileId === b.profile.id)?.positionMs).toBe(
+        13_000,
+      );
+      expect(rows(clip).progress.find((row) => row.profileId === a.profile.id)?.positionMs).toBe(
+        17_000,
+      );
+      expect(rows(clip)).toEqual(before);
+      await test.info().attach(`clips-retired-a-${intent}`, {
+        body: JSON.stringify({
+          retirement,
+          retiredEvents,
+          currentAccountId: b.account.id,
+          currentProfileId: b.profile.id,
+          position: await position(page, clip),
+          rows: rows(clip),
+        }),
+        contentType: "application/json",
+      });
+    } finally {
+      held.release();
+      await retiredA.dispose();
+    }
+  });
+}
 
 for (const order of ["metadata-first", "progress-first", "deliberate-rewind"] as const) {
   test(`native Clips resume handles ${order} without treating its own seek as user intent`, async ({
@@ -1044,7 +1124,7 @@ for (const event of ["metadata-only", "queued-paused-play"] as const) {
   });
 }
 
-test("native Clips stale seeked from A cannot clear the in-progress B reset marker", async ({
+test("native Clips late seek events on retired A cannot suppress B's held saved resume", async ({
   page,
   context,
 }) => {
@@ -1058,6 +1138,8 @@ test("native Clips stale seeked from A cannot clear the in-progress B reset mark
   await settle(page);
   await ready(page, clip);
   await expect.poll(() => position(page, clip)).toBe(17);
+  const retiredA = await media(page, clip).elementHandle();
+  if (!retiredA) throw new Error("The original A media element is required.");
   await media(page, clip).evaluate((video: HTMLVideoElement) => {
     const events: { event: string; position: number; seeking: boolean }[] = [];
     Object.assign(window, { clipsSeekOrdering: events });
@@ -1068,22 +1150,27 @@ test("native Clips stale seeked from A cannot clear the in-progress B reset mark
     };
     dispatch("seeking", true);
     dispatch("timeupdate", false);
-    // A's terminal seeked is still queued when B's owner reset starts.
+    // A's terminal seeked is still queued when B's owner transition starts.
   });
   const other = await context.newPage();
   const b = await register(other, "stale-seeked-b");
   await seedProgress(other, clip, b, 13_000);
+  await settle(page);
+  const before = rows(clip);
   const held = holdRead(page, clip);
   await held.setup;
   try {
+    const freshBRead = nextOwnerClipRead(page, b);
     await refocus(page);
+    await freshBRead;
     await expect(page.locator("[data-private-viewer-identity]:visible")).toContainText(
       b.account.displayName,
     );
     await expect.poll(() => Boolean(held.captured())).toBe(true);
     expect((await held.captured()!.json()).profileId).toBe(b.profile.id);
-    await expect.poll(() => position(page, clip)).toBe(0);
-    const ordering = await media(page, clip).evaluate((video: HTMLVideoElement) => {
+    const retirement = await expectRetiredClipOwner(page, clip, retiredA);
+    const ordering = await retiredA.evaluate((node) => {
+      const video = node as HTMLVideoElement;
       const events = (
         window as unknown as {
           clipsSeekOrdering: { event: string; position: number; seeking: boolean }[];
@@ -1094,8 +1181,8 @@ test("native Clips stale seeked from A cannot clear the in-progress B reset mark
         events.push({ event, position: video.currentTime, seeking: video.seeking });
         video.dispatchEvent(new Event(event));
       };
-      // A's old terminal event observes B already seeking to0. It must not
-      // finish B's new internal seek or turn the next seeking into user intent.
+      // These callbacks belong to A's retired element. Dispatching them on the
+      // current B locator would instead create real new-owner seek intent.
       dispatch("seeked", true);
       dispatch("seeking", true);
       dispatch("timeupdate", false);
@@ -1105,13 +1192,24 @@ test("native Clips stale seeked from A cannot clear the in-progress B reset mark
     expect(ordering).toEqual([
       { event: "seeking", position: 17, seeking: true },
       { event: "timeupdate", position: 17, seeking: false },
-      { event: "seeked", position: 0, seeking: true },
-      { event: "seeking", position: 0, seeking: true },
-      { event: "timeupdate", position: 0, seeking: false },
-      { event: "seeked", position: 0, seeking: false },
+      { event: "seeked", position: 17, seeking: true },
+      { event: "seeking", position: 17, seeking: true },
+      { event: "timeupdate", position: 17, seeking: false },
+      { event: "seeked", position: 17, seeking: false },
     ]);
+    await expect.poll(() => position(page, clip)).toBe(0);
+    expect(
+      (await requestLog(page)).filter(
+        (item) => item.method === "PUT" && item.accountId === b.account.id,
+      ),
+    ).toEqual([]);
     await test.info().attach("clips-overlapping-native-seek-order", {
-      body: JSON.stringify(ordering),
+      body: JSON.stringify({
+        retirement,
+        ordering,
+        currentAccountId: b.account.id,
+        currentProfileId: b.profile.id,
+      }),
       contentType: "application/json",
     });
     held.release();
@@ -1124,7 +1222,9 @@ test("native Clips stale seeked from A cannot clear the in-progress B reset mark
     expect(rows(clip).progress.find((row) => row.profileId === a.profile.id)?.positionMs).toBe(
       17_000,
     );
+    expect(rows(clip)).toEqual(before);
   } finally {
     held.release();
+    await retiredA.dispose();
   }
 });

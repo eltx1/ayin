@@ -1,5 +1,9 @@
 import Foundation
 
+struct PlaybackViewerPolicy: Decodable {
+    let isKids: Bool
+}
+
 struct VideoPlaybackResponse: Decodable {
     struct Video: Decodable {
         struct Source: Decodable {
@@ -21,6 +25,7 @@ struct VideoPlaybackResponse: Decodable {
     }
 
     let video: Video
+    let viewer: PlaybackViewerPolicy?
 }
 
 struct LivePlaybackResponse: Decodable {

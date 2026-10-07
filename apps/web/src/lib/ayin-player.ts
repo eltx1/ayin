@@ -9,6 +9,13 @@ export interface AyinCaptionTrack {
   default?: boolean | undefined;
 }
 
+export interface AyinPlayerInitialPreferences {
+  captionId: string | null;
+  playbackRate: number;
+  volume: number;
+  muted: boolean;
+}
+
 export interface AyinPlayerChapter {
   id: string;
   title: string;
@@ -93,6 +100,7 @@ export const noopPlayerAnalytics: AyinPlayerAnalytics = {
 };
 
 export interface PublicPlaybackResponse {
+  viewer: { isKids: boolean };
   video: {
     id: string;
     slug: string;

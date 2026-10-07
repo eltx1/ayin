@@ -23,9 +23,9 @@ describe("Advertising route navigation", () => {
       }
     }
   });
-  it("has matching nonempty route-local EN/AR vocabulary and states localization limits", () => {
+  it("has matching nonempty route-local EN/AR vocabulary", () => {
     expect(Object.keys(adminAdvertisingAr).sort()).toEqual(Object.keys(adminAdvertisingEn).sort());
     for (const value of Object.values(adminAdvertisingAr)) expect(value.trim()).not.toBe("");
-    expect(adminAdvertisingAr.legacyEditor).toContain("الإنجليزية");
+    expect(adminAdvertisingAr).not.toHaveProperty("legacyEditor");
   });
 });

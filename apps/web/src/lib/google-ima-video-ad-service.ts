@@ -184,7 +184,12 @@ export class GoogleImaVideoAdService implements VideoAdService {
     await loadImaSdk();
   }
 
-  async initialize(container: HTMLDivElement, contentVideo: HTMLVideoElement): Promise<void> {
+  async initialize(
+    container: HTMLDivElement,
+    contentVideo: HTMLVideoElement,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (signal?.aborted) throw new ImaRuntimeError("IMA_INITIALIZATION_CANCELLED");
     if (this.container === container && this.contentVideo === contentVideo && this.adsLoader) {
       if (!this.initialized) {
         this.displayContainer?.initialize();
@@ -198,13 +203,35 @@ export class GoogleImaVideoAdService implements VideoAdService {
     if (existing) {
       // Mobile IMA requires AdDisplayContainer.initialize() to stay in the direct user gesture.
       this.attach(existing, container, contentVideo);
+      if (signal?.aborted) {
+        this.destroy();
+        throw new ImaRuntimeError("IMA_INITIALIZATION_CANCELLED");
+      }
       return;
     }
 
     const generation = this.generation;
-    const ima = await loadImaSdk();
-    if (generation !== this.generation) throw new ImaRuntimeError("IMA_INITIALIZATION_CANCELLED");
-    this.attach(ima, container, contentVideo);
+    let cancel: (() => void) | undefined;
+    try {
+      const ima = await (signal
+        ? Promise.race([
+            loadImaSdk(),
+            new Promise<never>((_resolve, reject) => {
+              cancel = () => reject(new ImaRuntimeError("IMA_INITIALIZATION_CANCELLED"));
+              signal.addEventListener("abort", cancel, { once: true });
+            }),
+          ])
+        : loadImaSdk());
+      if (signal?.aborted || generation !== this.generation)
+        throw new ImaRuntimeError("IMA_INITIALIZATION_CANCELLED");
+      this.attach(ima, container, contentVideo);
+      if (signal?.aborted) {
+        this.destroy();
+        throw new ImaRuntimeError("IMA_INITIALIZATION_CANCELLED");
+      }
+    } finally {
+      if (cancel) signal?.removeEventListener("abort", cancel);
+    }
   }
 
   async play(
@@ -213,7 +240,9 @@ export class GoogleImaVideoAdService implements VideoAdService {
     callbacks: VideoAdCallbacks,
     playbackIntent?: VideoAdPlaybackIntent,
     consent?: AdvertisingConsentSnapshot,
+    signal?: AbortSignal,
   ): Promise<void> {
+    if (signal?.aborted) return;
     const ima = this.ima;
     const loader = this.adsLoader;
     const content = this.contentVideo;
@@ -231,6 +260,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
       const finish = () => {
         if (settled) return;
         settled = true;
+        signal?.removeEventListener("abort", cancel);
         loader.removeEventListener(ima.AdErrorEvent.Type.AD_ERROR, fail);
         loader.removeEventListener(ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, loaded);
         manager?.destroy();
@@ -247,12 +277,17 @@ export class GoogleImaVideoAdService implements VideoAdService {
           error instanceof ImaRuntimeError ? error.diagnosticCode : classifyImaErrorCode(code);
         callbacks.onEvent("ERROR", diagnosticCode);
         finish();
-        callbacks.onContentResume();
+        if (!signal?.aborted) callbacks.onContentResume();
       };
       const loaded = (event: unknown) => {
         if (settled || manager) return;
         try {
-          manager = (event as ImaLoadedEvent).getAdsManager(content);
+          const nextManager = (event as ImaLoadedEvent).getAdsManager(content);
+          if (settled) {
+            nextManager.destroy();
+            return;
+          }
+          manager = nextManager;
           this.adsManager = manager;
           manager.addEventListener(ima.AdErrorEvent.Type.AD_ERROR, fail);
           manager.addEventListener(ima.AdEvent.Type.CONTENT_PAUSE_REQUESTED, () => {
@@ -261,7 +296,7 @@ export class GoogleImaVideoAdService implements VideoAdService {
           manager.addEventListener(ima.AdEvent.Type.CONTENT_RESUME_REQUESTED, () => {
             if (settled) return;
             finish();
-            callbacks.onContentResume();
+            if (!signal?.aborted) callbacks.onContentResume();
           });
           const eventMap: Array<[string, Parameters<VideoAdCallbacks["onEvent"]>[0]]> = [
             [ima.AdEvent.Type.LOADED, "FILL"],
@@ -283,14 +318,20 @@ export class GoogleImaVideoAdService implements VideoAdService {
             Math.max(container.clientHeight, 1),
             ima.ViewMode.NORMAL,
           );
-          manager.start();
+          if (!settled) manager.start();
         } catch (error) {
           fail(error);
         }
       };
+      const cancel = () => this.destroy();
       this.cancelPlayback = finish;
+      signal?.addEventListener("abort", cancel, { once: true });
       loader.addEventListener(ima.AdErrorEvent.Type.AD_ERROR, fail);
       loader.addEventListener(ima.AdsManagerLoadedEvent.Type.ADS_MANAGER_LOADED, loaded);
+      if (signal?.aborted) {
+        cancel();
+        return;
+      }
 
       try {
         const request = new ima.AdsRequest();

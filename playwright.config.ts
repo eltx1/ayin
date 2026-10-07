@@ -6,6 +6,9 @@ if (!databaseUrl)
 
 export default defineConfig({
   testDir: "tests/e2e",
+  // The new 42-sample product lab runs only through its dedicated entry point.
+  // Existing Browse/Analytics measurement cases retain their prior CI placement.
+  testIgnore: ["**/product-performance-lab.acceptance.spec.ts"],
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

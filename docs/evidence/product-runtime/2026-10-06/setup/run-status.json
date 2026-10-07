@@ -1,0 +1,46 @@
+{
+  "stages": [
+    {
+      "stage": "postgres-final-init",
+      "exitCode": 0,
+      "wallSeconds": 0.39936351776123047
+    },
+    {
+      "stage": "database-create",
+      "exitCode": 0,
+      "wallSeconds": 0.10921430587768555
+    },
+    {
+      "stage": "migrations-final",
+      "exitCode": 0,
+      "wallSeconds": 2.407045841217041
+    },
+    {
+      "stage": "seed-final",
+      "exitCode": 0,
+      "wallSeconds": 2.4200074672698975
+    },
+    {
+      "stage": "locale-cors-contract",
+      "exitCode": 0,
+      "wallSeconds": 4.543079137802124
+    },
+    {
+      "stage": "product-runtime-run",
+      "exitCode": 0,
+      "wallSeconds": 163.12339186668396
+    },
+    {
+      "stage": "historical-runtime-run",
+      "exitCode": 0,
+      "wallSeconds": 54.6350839138031
+    }
+  ],
+  "portsAfterCleanup": {
+    "3000": "closed",
+    "3001": "closed",
+    "55671": "closed"
+  },
+  "postgresPidFilePresent": false,
+  "postgresDataDirectory": "/tmp/ayin-perf-final-pg.0_os61lj"
+}

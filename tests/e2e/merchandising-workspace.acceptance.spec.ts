@@ -76,7 +76,7 @@ test("merchandising retries once, preserves unrelated drafts, requires step-up a
   await announcement.fill("Preserved global draft");
   await page.getByLabel("Audit reason", { exact: true }).fill("Review DE and JP targeting");
   const save = target
-    .locator("xpath=ancestor::tr")
+    .locator("xpath=ancestor::form")
     .getByRole("button", { name: "Save regions", exact: true });
   await target.fill("invalid");
   await save.click();

@@ -1,0 +1,52 @@
+{
+  "capturedAt": "2026-10-06T07:18:55.338Z",
+  "stage": "isolated frozen install passed; lifecycle scripts deferred; own Prisma generation/build not yet performed",
+  "donor": "ayin-catalog-import-current-main",
+  "pnpm": "11.24.0",
+  "store": "/tmp/ayin-pnpm-store/v11",
+  "metadataCache": "/tmp/ayin-pnpm/pnpm/v11",
+  "frozenInstallLogSha256": "8a84a582342aa7d48376f9f7e45186d243457ae820ef6176db9e74d92bdfaf41",
+  "installedLockSha256": "f665acd4a85383cdbe89c051139fd9ab1fdce59ac787bfd933c2f2d051fb55ad",
+  "provenance": {
+    "commit": "cd8eb49e746718420694329000b66e2cd498e194",
+    "tree": "eb608f6acc8d8c8154bac65e4aa00dcf307bacca",
+    "trackedWorktreeClean": true,
+    "node": "v24.19.0",
+    "chromium": "not launched",
+    "host": {
+      "platform": "linux",
+      "architecture": "x64",
+      "availableParallelism": 9,
+      "cpuModel": "AMD EPYC 9V74 80-Core Processor",
+      "totalMemoryBytes": 10451464192
+    },
+    "runtime": {
+      "declaredBuildCommit": null,
+      "declaredBuildTree": null,
+      "artifactSha256": {
+        "apps/web/.next/BUILD_ID": null,
+        "apps/web/.next/build-manifest.json": null,
+        "apps/api/dist/main.js": null,
+        "packages/db/src/generated/prisma/internal/class.ts": "83a3dc7771954c9651ff7b8f9153aa0983c7f3e7068cd31e037866d6ee117dea",
+        "pnpm-lock.yaml": "f665acd4a85383cdbe89c051139fd9ab1fdce59ac787bfd933c2f2d051fb55ad",
+        "pnpm-workspace.yaml": "b9fc9a7b48dd3310d06c0602e38767027adac288d9b65d581a0a27613c6413c2"
+      },
+      "resolvedPackages": {
+        "next": "16.3.6",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "hls.js": "1.7.2",
+        "@nestjs/core": "12.0.3",
+        "fastify": "5.12.5",
+        "prisma": "7.10.0",
+        "@prisma/client": "7.10.0",
+        "@prisma/adapter-pg": "7.10.0",
+        "pg": "8.23.0",
+        "@playwright/test": "1.55.1",
+        "source-map-js": "1.2.2",
+        "mysql2": "3.23.1"
+      },
+      "note": "Artifact hashes identify inspected local outputs; runtime provenance requires the separately retained build/start command. A null declaration is unverified, not an assumed source match."
+    }
+  }
+}

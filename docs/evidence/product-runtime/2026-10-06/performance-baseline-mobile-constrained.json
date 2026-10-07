@@ -1,0 +1,1164 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-06T08:26:57.059Z",
+  "source": {
+    "commit": "5965ab29e7e9355060688f38d09ca87a9ece4808",
+    "tree": "77ae930c3a24f1c4af50cbfdf80edf21c542c545",
+    "node": "v24.19.0",
+    "chromium": "140.0.7339.186"
+  },
+  "environment": "isolated CI/local PostgreSQL and production Next output; local server warmed by suite; fresh browser context per sample",
+  "profile": {
+    "name": "mobile-constrained",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "cpuRate": 4,
+    "latencyMs": 150,
+    "downloadBytesPerSecond": 200000,
+    "uploadBytesPerSecond": 96000
+  },
+  "networkConditionCommand": "Network.emulateNetworkConditions (pinned-browser compatibility)",
+  "fixture": {
+    "analyticsViews": 280,
+    "exposedRows": 27,
+    "seededCompleteDays": 28
+  },
+  "limits": [
+    "Three samples per route; no field population or percentile certification",
+    "CPU slowdown is relative to the CI host, not a physical mobile device",
+    "Browser HTTP cache disabled and Service Worker blocked; PWA startup/cache not measured",
+    "Navigation/observer/CDP metrics are laboratory observations, not production CWV compliance",
+    "Raw Event Timing entries after actual tab/paging inputs are not aggregated or labelled as INP",
+    "Encoded network bytes are CDP request totals, not all later dynamic resources or a CDN model",
+    "API context reads are unthrottled and include client transfer/JSON body receipt; not server-only query timing",
+    "No headers/cookies/storage state/response bodies or account/profile/video IDs are persisted",
+    "Real fixture projections test reads; scheduled aggregation/provider/player/upload/concurrency remain separate",
+    "Separate detail windows include native focus/keyboard automation and two frame callbacks; they are not field INP or a user-latency guarantee",
+    "Detail CPU/heap observations are host-dependent and are recorded after the unchanged baseline snapshot; no before/after speedup is inferred"
+  ],
+  "apiMeasurements": [
+    {
+      "days": 7,
+      "sample": 1,
+      "durationMs": 15.413305999998556,
+      "jsonBodyBytes": 6921,
+      "views": 70,
+      "audienceRows": 7
+    },
+    {
+      "days": 7,
+      "sample": 2,
+      "durationMs": 13.445184000000154,
+      "jsonBodyBytes": 6921,
+      "views": 70,
+      "audienceRows": 7
+    },
+    {
+      "days": 7,
+      "sample": 3,
+      "durationMs": 10.205823000000237,
+      "jsonBodyBytes": 6921,
+      "views": 70,
+      "audienceRows": 7
+    },
+    {
+      "days": 28,
+      "sample": 1,
+      "durationMs": 13.287829000000784,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 28,
+      "sample": 2,
+      "durationMs": 12.752441999997245,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 28,
+      "sample": 3,
+      "durationMs": 12.465242000002036,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 90,
+      "sample": 1,
+      "durationMs": 11.896913999997196,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 90,
+      "sample": 2,
+      "durationMs": 13.764586000001145,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 90,
+      "sample": 3,
+      "durationMs": 16.977528999999777,
+      "jsonBodyBytes": 21971,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 365,
+      "sample": 1,
+      "durationMs": 14.849863999999798,
+      "jsonBodyBytes": 21972,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 365,
+      "sample": 2,
+      "durationMs": 12.547015999996802,
+      "jsonBodyBytes": 21972,
+      "views": 280,
+      "audienceRows": 27
+    },
+    {
+      "days": 365,
+      "sample": 3,
+      "durationMs": 16.174866000001202,
+      "jsonBodyBytes": 21972,
+      "views": 280,
+      "audienceRows": 27
+    }
+  ],
+  "queryPlans": {
+    "database": "PostgreSQL 17.10 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit",
+    "rangeDays": 365,
+    "fixtureMinimum": 20,
+    "plans": [
+      {
+        "kind": "channel-aggregate",
+        "planningMs": 0.367,
+        "executionMs": 0.072,
+        "plan": {
+          "Node Type": "Aggregate",
+          "Plan Rows": 1,
+          "Actual Rows": 1,
+          "Actual Loops": 1,
+          "Actual Startup Time": 0.041,
+          "Actual Total Time": 0.042,
+          "Shared Hit Blocks": 2,
+          "Shared Read Blocks": 0,
+          "Plans": [
+            {
+              "Node Type": "Index Scan",
+              "Relation Name": "AnalyticsChannelDailyRollup",
+              "Index Name": "AnalyticsChannelDailyRollup_channelId_bucketStart_idx",
+              "Scan Direction": "Forward",
+              "Plan Rows": 1,
+              "Actual Rows": 28,
+              "Actual Loops": 1,
+              "Actual Startup Time": 0.019,
+              "Actual Total Time": 0.025,
+              "Shared Hit Blocks": 2,
+              "Shared Read Blocks": 0
+            }
+          ]
+        }
+      },
+      {
+        "kind": "threshold-qualified-audience",
+        "planningMs": 0.189,
+        "executionMs": 0.031,
+        "plan": {
+          "Node Type": "Index Scan",
+          "Relation Name": "AnalyticsChannelAudienceDailyRollup",
+          "Index Name": "AnalyticsChannelAudienceDailyRollup_channelId_bucketStart_idx",
+          "Scan Direction": "Forward",
+          "Plan Rows": 1,
+          "Actual Rows": 27,
+          "Actual Loops": 1,
+          "Actual Startup Time": 0.012,
+          "Actual Total Time": 0.019,
+          "Shared Hit Blocks": 2,
+          "Shared Read Blocks": 0,
+          "Rows Removed by Filter": 1
+        }
+      },
+      {
+        "kind": "threshold-qualified-subscriber-cohorts",
+        "planningMs": 0.137,
+        "executionMs": 0.028,
+        "plan": {
+          "Node Type": "Index Scan",
+          "Relation Name": "AnalyticsSubscriberCohortRollup",
+          "Index Name": "AnalyticsSubscriberCohortRollup_channelId_cohortDate_idx",
+          "Scan Direction": "Forward",
+          "Plan Rows": 1,
+          "Actual Rows": 27,
+          "Actual Loops": 1,
+          "Actual Startup Time": 0.009,
+          "Actual Total Time": 0.017,
+          "Shared Hit Blocks": 2,
+          "Shared Read Blocks": 0,
+          "Rows Removed by Filter": 1
+        }
+      }
+    ]
+  },
+  "samples": [
+    {
+      "route": "/browse",
+      "disclosureMeasurements": [],
+      "sample": 1,
+      "readyIncludingDefinedSettleMs": 2174.034272000001,
+      "beforeInteractionsMs": 2192,
+      "ttfbMs": 16,
+      "domContentLoadedMs": 999.8999999985099,
+      "fcpMs": 988,
+      "observedLcpMs": 988,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [
+        {
+          "time": 912.5,
+          "duration": 66
+        },
+        {
+          "time": 1817.2000000029802,
+          "duration": 178
+        }
+      ],
+      "observedEventTimingEntries": [],
+      "domElements": 117,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.178164,
+          "deltaMs": 178.164
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000013,
+          "afterSeconds": 0.704366,
+          "deltaMs": 704.353
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.045238,
+          "deltaMs": 45.238
+        }
+      },
+      "rendererJsHeapUsedBytes": 4390776,
+      "network": {
+        "document-or-other": {
+          "requests": 6,
+          "failed": 0,
+          "encodedBytes": 30676
+        },
+        "stylesheet": {
+          "requests": 4,
+          "failed": 0,
+          "encodedBytes": 30562
+        },
+        "script": {
+          "requests": 12,
+          "failed": 0,
+          "encodedBytes": 195370
+        },
+        "api": {
+          "requests": 3,
+          "failed": 0,
+          "encodedBytes": 0
+        }
+      }
+    },
+    {
+      "route": "/browse",
+      "disclosureMeasurements": [],
+      "sample": 2,
+      "readyIncludingDefinedSettleMs": 2190.9163719999997,
+      "beforeInteractionsMs": 2192.2000000029802,
+      "ttfbMs": 10.799999997019768,
+      "domContentLoadedMs": 1026.5,
+      "fcpMs": 1008,
+      "observedLcpMs": 1008,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [
+        {
+          "time": 915.3000000044703,
+          "duration": 75
+        },
+        {
+          "time": 1819.3000000044703,
+          "duration": 161
+        }
+      ],
+      "observedEventTimingEntries": [],
+      "domElements": 117,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.188575,
+          "deltaMs": 188.575
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000015,
+          "afterSeconds": 0.746291,
+          "deltaMs": 746.2760000000001
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.048823,
+          "deltaMs": 48.823
+        }
+      },
+      "rendererJsHeapUsedBytes": 4379500,
+      "network": {
+        "document-or-other": {
+          "requests": 6,
+          "failed": 0,
+          "encodedBytes": 30676
+        },
+        "stylesheet": {
+          "requests": 4,
+          "failed": 0,
+          "encodedBytes": 30562
+        },
+        "script": {
+          "requests": 12,
+          "failed": 0,
+          "encodedBytes": 195370
+        },
+        "api": {
+          "requests": 3,
+          "failed": 0,
+          "encodedBytes": 0
+        }
+      }
+    },
+    {
+      "route": "/browse",
+      "disclosureMeasurements": [],
+      "sample": 3,
+      "readyIncludingDefinedSettleMs": 2157.1087850000004,
+      "beforeInteractionsMs": 2165.39999999851,
+      "ttfbMs": 12.899999998509884,
+      "domContentLoadedMs": 1006.1000000014901,
+      "fcpMs": 1004,
+      "observedLcpMs": 1004,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [
+        {
+          "time": 917.5,
+          "duration": 69
+        },
+        {
+          "time": 1818.3999999985099,
+          "duration": 164
+        }
+      ],
+      "observedEventTimingEntries": [],
+      "domElements": 117,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.157267,
+          "deltaMs": 157.267
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000082,
+          "afterSeconds": 0.694714,
+          "deltaMs": 694.6320000000001
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.046972,
+          "deltaMs": 46.972
+        }
+      },
+      "rendererJsHeapUsedBytes": 4379348,
+      "network": {
+        "document-or-other": {
+          "requests": 6,
+          "failed": 0,
+          "encodedBytes": 30676
+        },
+        "stylesheet": {
+          "requests": 4,
+          "failed": 0,
+          "encodedBytes": 30562
+        },
+        "script": {
+          "requests": 12,
+          "failed": 0,
+          "encodedBytes": 195370
+        },
+        "api": {
+          "requests": 3,
+          "failed": 0,
+          "encodedBytes": 0
+        }
+      }
+    },
+    {
+      "route": "/studio/analytics",
+      "disclosureMeasurements": [
+        {
+          "kind": "first-open",
+          "scope": "Native keyboard detail toggle after the recorded tab/paging baseline; laboratory observation, not INP",
+          "browserWindowMs": 399.90000000596046,
+          "automationToTwoFramesMs": 401.5729019999999,
+          "domElementsBefore": 853,
+          "domElementsAfter": 883,
+          "domElementsAdded": 30,
+          "cpuDeltaMs": {
+            "ScriptDuration": 12.187000000000058,
+            "TaskDuration": 398.6869999999998,
+            "LayoutDuration": 20.820000000000004
+          },
+          "rendererHeapBeforeBytes": 6588228,
+          "rendererHeapAfterBytes": 8679420,
+          "observedLongTasks": [],
+          "observedEventTimingEntries": [
+            {
+              "time": 5818.79999999702,
+              "name": "keydown",
+              "duration": 32,
+              "interactionId": 6207
+            },
+            {
+              "time": 5818.79999999702,
+              "name": "keypress",
+              "duration": 32,
+              "interactionId": 6207
+            },
+            {
+              "time": 5818.79999999702,
+              "name": "click",
+              "duration": 32,
+              "interactionId": 6207
+            },
+            {
+              "time": 5822.60000000149,
+              "name": "keyup",
+              "duration": 32,
+              "interactionId": 6207
+            }
+          ]
+        },
+        {
+          "kind": "reopen",
+          "scope": "Native keyboard detail toggle after the recorded tab/paging baseline; laboratory observation, not INP",
+          "browserWindowMs": 327.8999999985099,
+          "automationToTwoFramesMs": 323.2303200000024,
+          "domElementsBefore": 883,
+          "domElementsAfter": 883,
+          "domElementsAdded": 0,
+          "cpuDeltaMs": {
+            "ScriptDuration": 2.2539999999999782,
+            "TaskDuration": 312.89200000000017,
+            "LayoutDuration": 8.117999999999986
+          },
+          "rendererHeapBeforeBytes": 9027636,
+          "rendererHeapAfterBytes": 7556972,
+          "observedLongTasks": [],
+          "observedEventTimingEntries": [
+            {
+              "time": 6717.39999999851,
+              "name": "keydown",
+              "duration": 32,
+              "interactionId": 6221
+            },
+            {
+              "time": 6717.39999999851,
+              "name": "keypress",
+              "duration": 32,
+              "interactionId": 6221
+            },
+            {
+              "time": 6717.39999999851,
+              "name": "click",
+              "duration": 32,
+              "interactionId": 6221
+            },
+            {
+              "time": 6719.79999999702,
+              "name": "keyup",
+              "duration": 24,
+              "interactionId": 6221
+            }
+          ]
+        }
+      ],
+      "sample": 1,
+      "readyIncludingDefinedSettleMs": 4164.938578000001,
+      "beforeInteractionsMs": 4170.39999999851,
+      "ttfbMs": 12.699999995529652,
+      "domContentLoadedMs": 1037.1000000014901,
+      "fcpMs": 1040,
+      "observedLcpMs": 1040,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [
+        {
+          "time": 943.7000000029802,
+          "duration": 74
+        },
+        {
+          "time": 1830.6000000014901,
+          "duration": 184
+        },
+        {
+          "time": 2525.39999999851,
+          "duration": 151
+        },
+        {
+          "time": 4264.70000000298,
+          "duration": 97
+        },
+        {
+          "time": 4386.70000000298,
+          "duration": 76
+        },
+        {
+          "time": 4895.20000000298,
+          "duration": 69
+        }
+      ],
+      "observedEventTimingEntries": [
+        {
+          "time": 4255.10000000149,
+          "name": "pointerdown",
+          "duration": 160,
+          "interactionId": 6179
+        },
+        {
+          "time": 4255.10000000149,
+          "name": "pointerup",
+          "duration": 160,
+          "interactionId": 6179
+        },
+        {
+          "time": 4255.10000000149,
+          "name": "click",
+          "duration": 160,
+          "interactionId": 6179
+        },
+        {
+          "time": 4649.60000000149,
+          "name": "pointerdown",
+          "duration": 56,
+          "interactionId": 6186
+        },
+        {
+          "time": 4649.60000000149,
+          "name": "pointerup",
+          "duration": 56,
+          "interactionId": 6186
+        },
+        {
+          "time": 4649.60000000149,
+          "name": "click",
+          "duration": 56,
+          "interactionId": 6186
+        },
+        {
+          "time": 4893.39999999851,
+          "name": "pointerdown",
+          "duration": 96,
+          "interactionId": 6193
+        },
+        {
+          "time": 4893.5,
+          "name": "pointerup",
+          "duration": 96,
+          "interactionId": 6193
+        },
+        {
+          "time": 4893.5,
+          "name": "click",
+          "duration": 96,
+          "interactionId": 6193
+        }
+      ],
+      "domElements": 853,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.517996,
+          "deltaMs": 517.996
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000013,
+          "afterSeconds": 2.021541,
+          "deltaMs": 2021.528
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.13947,
+          "deltaMs": 139.47
+        }
+      },
+      "rendererJsHeapUsedBytes": 7683432,
+      "network": {
+        "document-or-other": {
+          "requests": 9,
+          "failed": 4,
+          "encodedBytes": 38311
+        },
+        "stylesheet": {
+          "requests": 5,
+          "failed": 0,
+          "encodedBytes": 35316
+        },
+        "script": {
+          "requests": 13,
+          "failed": 0,
+          "encodedBytes": 217476
+        },
+        "api": {
+          "requests": 2,
+          "failed": 0,
+          "encodedBytes": 22683
+        }
+      }
+    },
+    {
+      "route": "/studio/analytics",
+      "disclosureMeasurements": [
+        {
+          "kind": "first-open",
+          "scope": "Native keyboard detail toggle after the recorded tab/paging baseline; laboratory observation, not INP",
+          "browserWindowMs": 438.29999999701977,
+          "automationToTwoFramesMs": 440.4835170000006,
+          "domElementsBefore": 853,
+          "domElementsAfter": 883,
+          "domElementsAdded": 30,
+          "cpuDeltaMs": {
+            "ScriptDuration": 9.461000000000052,
+            "TaskDuration": 429.22899999999987,
+            "LayoutDuration": 19.811999999999998
+          },
+          "rendererHeapBeforeBytes": 6618868,
+          "rendererHeapAfterBytes": 8981384,
+          "observedLongTasks": [],
+          "observedEventTimingEntries": [
+            {
+              "time": 5928.89999999851,
+              "name": "keydown",
+              "duration": 32,
+              "interactionId": 257
+            },
+            {
+              "time": 5928.89999999851,
+              "name": "keypress",
+              "duration": 32,
+              "interactionId": 257
+            },
+            {
+              "time": 5928.89999999851,
+              "name": "click",
+              "duration": 32,
+              "interactionId": 257
+            },
+            {
+              "time": 5933.70000000298,
+              "name": "keyup",
+              "duration": 24,
+              "interactionId": 257
+            }
+          ]
+        },
+        {
+          "kind": "reopen",
+          "scope": "Native keyboard detail toggle after the recorded tab/paging baseline; laboratory observation, not INP",
+          "browserWindowMs": 432.6000000014901,
+          "automationToTwoFramesMs": 424.7573080000002,
+          "domElementsBefore": 883,
+          "domElementsAfter": 883,
+          "domElementsAdded": 0,
+          "cpuDeltaMs": {
+            "ScriptDuration": 3.0719999999999636,
+            "TaskDuration": 410.9440000000002,
+            "LayoutDuration": 6.417000000000006
+          },
+          "rendererHeapBeforeBytes": 8958548,
+          "rendererHeapAfterBytes": 7512496,
+          "observedLongTasks": [],
+          "observedEventTimingEntries": [
+            {
+              "time": 7078.10000000149,
+              "name": "keydown",
+              "duration": 32,
+              "interactionId": 271
+            },
+            {
+              "time": 7078.10000000149,
+              "name": "keypress",
+              "duration": 32,
+              "interactionId": 271
+            },
+            {
+              "time": 7078.10000000149,
+              "name": "click",
+              "duration": 32,
+              "interactionId": 271
+            },
+            {
+              "time": 7081,
+              "name": "keyup",
+              "duration": 32,
+              "interactionId": 271
+            }
+          ]
+        }
+      ],
+      "sample": 2,
+      "readyIncludingDefinedSettleMs": 4157.4777019999965,
+      "beforeInteractionsMs": 4163.80000000447,
+      "ttfbMs": 12.200000002980232,
+      "domContentLoadedMs": 1039.3000000044703,
+      "fcpMs": 1040,
+      "observedLcpMs": 1040,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [
+        {
+          "time": 952.3999999985099,
+          "duration": 75
+        },
+        {
+          "time": 1825.8999999985099,
+          "duration": 207
+        },
+        {
+          "time": 2524.39999999851,
+          "duration": 159
+        },
+        {
+          "time": 4276.80000000447,
+          "duration": 133
+        },
+        {
+          "time": 4446.80000000447,
+          "duration": 69
+        },
+        {
+          "time": 4927.30000000447,
+          "duration": 76
+        }
+      ],
+      "observedEventTimingEntries": [
+        {
+          "time": 4275.5,
+          "name": "pointerdown",
+          "duration": 200,
+          "interactionId": 229
+        },
+        {
+          "time": 4275.5,
+          "name": "pointerup",
+          "duration": 200,
+          "interactionId": 229
+        },
+        {
+          "time": 4275.5,
+          "name": "click",
+          "duration": 200,
+          "interactionId": 229
+        },
+        {
+          "time": 4699.80000000447,
+          "name": "pointerdown",
+          "duration": 64,
+          "interactionId": 236
+        },
+        {
+          "time": 4699.89999999851,
+          "name": "pointerup",
+          "duration": 64,
+          "interactionId": 236
+        },
+        {
+          "time": 4699.89999999851,
+          "name": "click",
+          "duration": 64,
+          "interactionId": 236
+        },
+        {
+          "time": 4926.10000000149,
+          "name": "pointerdown",
+          "duration": 104,
+          "interactionId": 243
+        },
+        {
+          "time": 4926.20000000298,
+          "name": "pointerup",
+          "duration": 104,
+          "interactionId": 243
+        },
+        {
+          "time": 4926.20000000298,
+          "name": "click",
+          "duration": 104,
+          "interactionId": 243
+        }
+      ],
+      "domElements": 853,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.518981,
+          "deltaMs": 518.981
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000011,
+          "afterSeconds": 2.044651,
+          "deltaMs": 2044.6399999999999
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.157141,
+          "deltaMs": 157.141
+        }
+      },
+      "rendererJsHeapUsedBytes": 7658048,
+      "network": {
+        "document-or-other": {
+          "requests": 9,
+          "failed": 4,
+          "encodedBytes": 38309
+        },
+        "stylesheet": {
+          "requests": 5,
+          "failed": 0,
+          "encodedBytes": 35316
+        },
+        "script": {
+          "requests": 13,
+          "failed": 0,
+          "encodedBytes": 217476
+        },
+        "api": {
+          "requests": 2,
+          "failed": 0,
+          "encodedBytes": 22683
+        }
+      }
+    },
+    {
+      "route": "/studio/analytics",
+      "disclosureMeasurements": [
+        {
+          "kind": "first-open",
+          "scope": "Native keyboard detail toggle after the recorded tab/paging baseline; laboratory observation, not INP",
+          "browserWindowMs": 388.90000000596046,
+          "automationToTwoFramesMs": 393.24502799999755,
+          "domElementsBefore": 853,
+          "domElementsAfter": 883,
+          "domElementsAdded": 30,
+          "cpuDeltaMs": {
+            "ScriptDuration": 9.470999999999897,
+            "TaskDuration": 392.6850000000002,
+            "LayoutDuration": 16.990000000000006
+          },
+          "rendererHeapBeforeBytes": 6614140,
+          "rendererHeapAfterBytes": 9452020,
+          "observedLongTasks": [],
+          "observedEventTimingEntries": [
+            {
+              "time": 5855.5,
+              "name": "keydown",
+              "duration": 24,
+              "interactionId": 9895
+            },
+            {
+              "time": 5855.5,
+              "name": "keypress",
+              "duration": 24,
+              "interactionId": 9895
+            },
+            {
+              "time": 5855.5,
+              "name": "click",
+              "duration": 24,
+              "interactionId": 9895
+            },
+            {
+              "time": 5859.39999999851,
+              "name": "keyup",
+              "duration": 16,
+              "interactionId": 9895
+            }
+          ]
+        },
+        {
+          "kind": "reopen",
+          "scope": "Native keyboard detail toggle after the recorded tab/paging baseline; laboratory observation, not INP",
+          "browserWindowMs": 315.70000000298023,
+          "automationToTwoFramesMs": 309.41765999999916,
+          "domElementsBefore": 883,
+          "domElementsAfter": 883,
+          "domElementsAdded": 0,
+          "cpuDeltaMs": {
+            "ScriptDuration": 3.0009999999999204,
+            "TaskDuration": 321.8870000000003,
+            "LayoutDuration": 6.645000000000012
+          },
+          "rendererHeapBeforeBytes": 5912080,
+          "rendererHeapAfterBytes": 7420604,
+          "observedLongTasks": [],
+          "observedEventTimingEntries": [
+            {
+              "time": 6779.39999999851,
+              "name": "keydown",
+              "duration": 24,
+              "interactionId": 9909
+            },
+            {
+              "time": 6779.39999999851,
+              "name": "keypress",
+              "duration": 24,
+              "interactionId": 9909
+            },
+            {
+              "time": 6779.39999999851,
+              "name": "click",
+              "duration": 24,
+              "interactionId": 9909
+            },
+            {
+              "time": 6782.10000000149,
+              "name": "keyup",
+              "duration": 24,
+              "interactionId": 9909
+            }
+          ]
+        }
+      ],
+      "sample": 3,
+      "readyIncludingDefinedSettleMs": 4176.313901999994,
+      "beforeInteractionsMs": 4182.39999999851,
+      "ttfbMs": 11.200000002980232,
+      "domContentLoadedMs": 1052.1000000014901,
+      "fcpMs": 1044,
+      "observedLcpMs": 1044,
+      "observerAvailability": [
+        "element",
+        "event",
+        "first-input",
+        "largest-contentful-paint",
+        "layout-shift",
+        "long-animation-frame",
+        "longtask",
+        "mark",
+        "measure",
+        "navigation",
+        "paint",
+        "resource",
+        "visibility-state"
+      ],
+      "observedClsMaxSessionWindow": 0,
+      "longTasks": [
+        {
+          "time": 944.2999999970198,
+          "duration": 88
+        },
+        {
+          "time": 1830.2999999970198,
+          "duration": 187
+        },
+        {
+          "time": 2516.89999999851,
+          "duration": 147
+        },
+        {
+          "time": 4296.29999999702,
+          "duration": 115
+        },
+        {
+          "time": 4438.89999999851,
+          "duration": 61
+        },
+        {
+          "time": 4942.39999999851,
+          "duration": 62
+        }
+      ],
+      "observedEventTimingEntries": [
+        {
+          "time": 4296,
+          "name": "pointerdown",
+          "duration": 168,
+          "interactionId": 9867
+        },
+        {
+          "time": 4296.10000000149,
+          "name": "pointerup",
+          "duration": 168,
+          "interactionId": 9867
+        },
+        {
+          "time": 4296.10000000149,
+          "name": "click",
+          "duration": 168,
+          "interactionId": 9867
+        },
+        {
+          "time": 4710.69999999553,
+          "name": "pointerdown",
+          "duration": 56,
+          "interactionId": 9874
+        },
+        {
+          "time": 4710.79999999702,
+          "name": "pointerup",
+          "duration": 56,
+          "interactionId": 9874
+        },
+        {
+          "time": 4710.79999999702,
+          "name": "click",
+          "duration": 56,
+          "interactionId": 9874
+        },
+        {
+          "time": 4941.69999999553,
+          "name": "pointerdown",
+          "duration": 88,
+          "interactionId": 9881
+        },
+        {
+          "time": 4942,
+          "name": "pointerup",
+          "duration": 88,
+          "interactionId": 9881
+        },
+        {
+          "time": 4942,
+          "name": "click",
+          "duration": 88,
+          "interactionId": 9881
+        }
+      ],
+      "domElements": 853,
+      "cpu": {
+        "ScriptDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.517292,
+          "deltaMs": 517.292
+        },
+        "TaskDuration": {
+          "beforeSeconds": 0.000017,
+          "afterSeconds": 2.04042,
+          "deltaMs": 2040.403
+        },
+        "LayoutDuration": {
+          "beforeSeconds": 0,
+          "afterSeconds": 0.129187,
+          "deltaMs": 129.18699999999998
+        }
+      },
+      "rendererJsHeapUsedBytes": 7676752,
+      "network": {
+        "document-or-other": {
+          "requests": 9,
+          "failed": 3,
+          "encodedBytes": 41005
+        },
+        "stylesheet": {
+          "requests": 5,
+          "failed": 0,
+          "encodedBytes": 35316
+        },
+        "script": {
+          "requests": 13,
+          "failed": 0,
+          "encodedBytes": 217476
+        },
+        "api": {
+          "requests": 2,
+          "failed": 0,
+          "encodedBytes": 22683
+        }
+      }
+    }
+  ]
+}

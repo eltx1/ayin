@@ -1,7 +1,8 @@
 import Foundation
 
 protocol PlaybackServicing {
-    func load(_ destination: PlayerDestination) async throws -> NativePlayback
+    func load(_ destination: PlayerDestination, token: String?, accountId: String?,
+              profileId: String?, isKids: Bool) async throws -> NativePlayback
 }
 
 struct PlaybackService: PlaybackServicing {
@@ -11,13 +12,23 @@ struct PlaybackService: PlaybackServicing {
         self.client = client
     }
 
-    func load(_ destination: PlayerDestination) async throws -> NativePlayback {
+    func load(_ destination: PlayerDestination, token: String? = nil, accountId: String? = nil,
+              profileId: String? = nil, isKids: Bool = false) async throws -> NativePlayback {
         switch destination.kind {
         case .video:
-            let kidsQuery = destination.isKids ? "?kids=1" : ""
+            let requestedKids = destination.isKids || isKids
+            var components = URLComponents()
+            components.path = "/public/videos/\(destination.slug)/playback"
+            var query: [URLQueryItem] = []
+            if requestedKids { query.append(URLQueryItem(name: "kids", value: "1")) }
+            if let profileId { query.append(URLQueryItem(name: "expectedProfileId", value: profileId)) }
+            components.queryItems = query.isEmpty ? nil : query
+            guard let path = components.string else { throw APIClientError.invalidURL }
             let response: VideoPlaybackResponse = try await client.request(
-                "/public/videos/\(destination.slug)/playback\(kidsQuery)"
+                path, token: token,
+                headers: accountId.map { ["X-AYIN-Expected-Account": $0] } ?? [:]
             )
+            let effectiveKids = requestedKids || response.viewer?.isKids == true
 
             guard let mp4URL = MediaURLBuilder.url(objectKey: response.video.source.objectKey) else {
                 throw PlaybackError.invalidMediaURL
@@ -34,9 +45,9 @@ struct PlaybackService: PlaybackServicing {
                 title: response.video.title,
                 sourceURL: adaptiveURL ?? mp4URL,
                 fallbackSourceURL: adaptiveURL == nil ? nil : mp4URL,
-                shareURL: destination.shareURL,
+                shareURL: PlayerDestination(kind: .video, slug: destination.slug, isKids: effectiveKids).shareURL,
                 isLive: false,
-                isKids: destination.isKids,
+                isKids: effectiveKids,
                 videoId: response.video.id,
                 channelId: response.video.channel.id,
                 durationMs: response.video.durationMs,

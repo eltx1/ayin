@@ -1,0 +1,40 @@
+.fields {
+  border: 0;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 16px 0;
+  min-inline-size: 0;
+  padding: 0;
+}
+.fields > * {
+  min-inline-size: 0;
+}
+.full {
+  grid-column: 1 / -1;
+}
+.summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 8px 16px;
+}
+.summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-inline-size: 100%;
+}
+@media (max-width: 640px) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fields button {
+    inline-size: 100%;
+  }
+  .summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

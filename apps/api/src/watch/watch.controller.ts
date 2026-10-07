@@ -15,8 +15,10 @@ import {
 import { z } from "zod";
 
 import { AuthGuard, type AuthenticatedRequest } from "../auth/auth.guard.js";
+import { OptionalAuthGuard } from "../auth/optional-auth.guard.js";
 import { CatalogLocalizationService } from "../catalog-localization/catalog-localization.service.js";
 import { TrustedRegionService, type HeaderBag } from "../video-policy/trusted-region.service.js";
+import { ViewerPolicyContextService } from "../video-policy/viewer-policy-context.service.js";
 import { WatchError, WatchService } from "./watch.service.js";
 
 const uuidSchema = z.string().uuid();
@@ -42,6 +44,7 @@ const playbackQuerySchema = z
   .object({
     kids: z.unknown().optional(),
     locale: z.string().trim().min(2).max(35).optional(),
+    expectedProfileId: uuidSchema.optional(),
   })
   .passthrough()
   .refine(
@@ -50,17 +53,20 @@ const playbackQuerySchema = z
   );
 
 @Controller("public/videos")
+@UseGuards(OptionalAuthGuard)
 export class PublicWatchController {
   constructor(
     @Inject(WatchService) private readonly watch: WatchService,
     @Inject(TrustedRegionService) private readonly trustedRegion: TrustedRegionService,
     @Inject(CatalogLocalizationService) private readonly localization: CatalogLocalizationService,
+    @Inject(ViewerPolicyContextService) private readonly viewerContext: ViewerPolicyContextService,
   ) {}
 
   @Get(":slug/playback")
   @Header("Cache-Control", "private, no-store")
   @Header("Pragma", "no-cache")
   async playback(
+    @Req() request: { ayinAuth?: AuthenticatedRequest["ayinAuth"] },
     @Param("slug") slug: string,
     @Query() query: unknown,
     @Headers() headers: HeaderBag,
@@ -69,20 +75,48 @@ export class PublicWatchController {
       const parsed = playbackQuerySchema.safeParse(query);
       if (!parsed.success)
         throw new WatchError("INVALID_PLAYBACK_QUERY", "The playback request is invalid.");
-      const playback = await this.watch.getPublicPlayback(
-        slug,
-        this.trustedRegion.countryFromHeaders(headers),
-        parsed.data.kids === "1",
+      return this.viewerContext.run(
+        {
+          accountId: request.ayinAuth?.accountId,
+          expectedProfileId: parsed.data.expectedProfileId,
+          countryCode: this.trustedRegion.countryFromHeaders(headers),
+          isKidsProfile: parsed.data.kids === "1",
+        },
+        async (policy) => {
+          const { mediaSelection, ...playback } = await this.watch.getPublicPlayback(
+            slug,
+            policy.countryCode,
+            policy.isKidsProfile,
+          );
+          const viewer = { isKids: policy.isKidsProfile === true };
+          const seriesContext = playback.detail.seriesContext
+            ? await this.localization.localizeSeriesContext(
+                playback.detail.seriesContext,
+                parsed.data.locale,
+              )
+            : null;
+          // Policy may change while source, captions, or episode context are
+          // loading. Revalidate immediately before disclosing the result.
+          await this.watch.assertPlaybackStillAvailable(
+            playback.video,
+            mediaSelection,
+            policy.countryCode,
+            policy.isKidsProfile,
+          );
+          if (!seriesContext) return { ...playback, viewer };
+          return {
+            ...playback,
+            viewer,
+            detail: { ...playback.detail, seriesContext, nextEpisode: seriesContext.nextEpisode },
+          };
+        },
+        () =>
+          new WatchError(
+            "PLAYBACK_VIEWER_CHANGED",
+            "Your viewer profile changed. Refresh and try again.",
+            409,
+          ),
       );
-      if (!playback.detail.seriesContext) return playback;
-      const seriesContext = await this.localization.localizeSeriesContext(
-        playback.detail.seriesContext,
-        parsed.data.locale,
-      );
-      return {
-        ...playback,
-        detail: { ...playback.detail, seriesContext, nextEpisode: seriesContext.nextEpisode },
-      };
     });
   }
 }

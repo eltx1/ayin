@@ -1,0 +1,11 @@
+# Current Search and Watch readiness continuation
+
+Status: source prepared, zero of twelve samples accepted. Execution waits for the final accepted Playback policy source/build handoff and its recorded dependency/Prisma provenance.
+
+The dedicated `playwright.changed-routes.config.ts` selects exactly Search and Watch from the existing product collector: two routes, two unchanged desktop/constrained profiles, three serialized fresh authenticated contexts each. It does not repeat Home, movie detail, Upload workspace, Admin or Studio. Trace and screen-video recording are disabled. HTTP cache stays disabled and Service Workers blocked. The original owned synthetic database fixture, cleanup, fixed one-second observation window and separate trusted interactions remain.
+
+Current Search readiness requires the seeded movie in the named scoped result region and the hydrated query field after the authenticated audience/client read. Suggestions are initially closed and are measured only after trusted keyboard input. Current Watch readiness requires the actual authorized video heading/player, resolved social state and Comments disclosure after audience revalidation. Comments receive a separate trusted read. Watch source bytes remain deliberately unavailable in this route study; decoded startup is a separate native WebM study.
+
+Raw output uses `performance-baseline-changed-routes-*.json`, names the bounded selection and records exact test/build/source/lock identities, real requests and failures at each cutoff. The previous 42-route and twelve Browse/Analytics samples remain historical evidence from test source `5965ab29` and compiled source `1b9e244b`. New Search readiness excludes initial suggestions and capture overhead differs, so the studies are not a matched speedup comparison. No field INP, provider throughput, production scalability or final-source performance is claimed until this run actually completes.
+
+Run only with a fresh isolated local `ayin_e2e`, the recorded accepted build and `pnpm exec playwright test --config=playwright.changed-routes.config.ts`. Ordinary acceptance excludes the product collector; this explicit configuration opts in only the two changed routes. Preserve partial failures and raw provenance, stop owned services, and verify database/media cleanup after the finite run.

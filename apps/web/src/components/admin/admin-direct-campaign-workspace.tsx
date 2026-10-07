@@ -794,6 +794,21 @@ export function DirectCampaignWorkspaceProvider({
   );
 }
 
+// A validated receipt remains a known outcome even when identity rechecking
+// conceals the private editor. This notice never renders receipt or record data.
+export function DirectCampaignRecoveryNotice() {
+  const context = useContext(Context);
+  const { locale } = useI18n();
+  if (!context?.acknowledgment) return null;
+  return (
+    <StatusNotice tone="success" announce="polite">
+      {locale === "ar"
+        ? "تم حفظ الإجراء وتسجيله للمراجعة. لم يُكرّر أي إجراء."
+        : "The action was committed and recorded in the audit log. No action was repeated."}
+    </StatusNotice>
+  );
+}
+
 export function DirectCampaignPanel({ kind }: { kind: DirectKind }) {
   const context = useContext(Context);
   if (!context) throw Error("Direct campaign workspace required");
@@ -889,14 +904,7 @@ function DirectCampaignPanelBody({ kind }: { kind: DirectKind }) {
               )}
         </StatusNotice>
       ) : null}
-      {c.acknowledgment ? (
-        <StatusNotice tone="success" announce="polite">
-          {copy(
-            "The action was committed and recorded in the audit log. No action was repeated.",
-            "تم حفظ الإجراء وتسجيله للمراجعة. لم يُكرّر أي إجراء.",
-          )}
-        </StatusNotice>
-      ) : null}
+      <DirectCampaignRecoveryNotice />
       {c.failure ? (
         <StatusNotice tone={c.failure === "verification" ? "warning" : "danger"} announce="polite">
           {c.failure === "denied"

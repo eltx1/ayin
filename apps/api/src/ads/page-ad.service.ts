@@ -2,6 +2,10 @@ import type { Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
 import { z } from "zod";
 
+import {
+  lockAdminAccountWrite,
+  type AccountWriteActor,
+} from "../admin/admin-account-write-authority.js";
 import { DatabaseService } from "../database/database.service.js";
 import { GamProductionService } from "./gam-production.service.js";
 import {
@@ -81,20 +85,24 @@ export class PageAdService {
     return parsed.success ? parsed.data : defaultPageAdSettings;
   }
 
-  async updateSettings(input: unknown): Promise<PageAdSettings> {
+  async updateSettings(actor: AccountWriteActor, input: unknown): Promise<PageAdSettings> {
     const settings = pageAdSettingsSchema.parse(input);
     const value = settings as unknown as Prisma.InputJsonValue;
-    await this.database.client.platformSetting.upsert({
-      where: { namespace_key: { namespace: "ADVERTISING", key: "pageAdsV1" } },
-      update: { value, valueType: "JSON", schemaVersion: 1 },
-      create: {
-        namespace: "ADVERTISING",
-        key: "pageAdsV1",
-        valueType: "JSON",
-        value,
-        schemaVersion: 1,
-        description: "Task 20 outside-player advertising defaults.",
-      },
+    await this.database.client.$transaction(async (tx) => {
+      await lockAdminAccountWrite(tx, actor, actor.accountId, undefined, ["AD_MANAGER"]);
+      await tx.platformSetting.upsert({
+        where: { namespace_key: { namespace: "ADVERTISING", key: "pageAdsV1" } },
+        update: { value, valueType: "JSON", schemaVersion: 1 },
+        create: {
+          namespace: "ADVERTISING",
+          key: "pageAdsV1",
+          valueType: "JSON",
+          value,
+          schemaVersion: 1,
+          description: "Task 20 outside-player advertising defaults.",
+        },
+      });
+      await lockAdminAccountWrite(tx, actor, actor.accountId, undefined, ["AD_MANAGER"]);
     });
     return settings;
   }

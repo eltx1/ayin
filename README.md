@@ -6,11 +6,14 @@ The target product combines premium Netflix-style viewing, a frictionless YouTub
 
 ## Current status
 
-The repository-side scope of the complete Tasks 00–38 roadmap is implemented on `main`.
-AYIN includes the Web/PWA viewer product, Creator Studio, Admin control plane, direct-to-R2
+The initial Tasks 00–38 roadmap established the repository foundations on `main`.
+The repository includes the Web/PWA viewer product, Creator Studio, Admin control plane, direct-to-R2
 creator uploads, queued FFmpeg media processing, Creator TV, advertising and revenue foundations,
 analytics, moderation, Clips, community posts, recommendations, provider-neutral live/FAST
-boundaries, and thin Android/Tizen/webOS shells.
+boundaries, thin Android/Tizen/webOS shells, and native SwiftUI/AVPlayer iOS and tvOS clients.
+See the [current platform surfaces and acceptance gates](docs/PLATFORM_WRAPPERS.md) for their
+supported scope, Web/Safari fallbacks and remaining native parity work. Source availability
+does not establish that a candidate has passed native validation or been released.
 
 Post-roadmap production hardening now accepts common mobile/camera source containers and normalizes
 video through the isolated AYIN media worker to validated canonical MP4 playback media stored in R2.

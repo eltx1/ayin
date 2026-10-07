@@ -33,6 +33,7 @@ targets:
       - path: ../ios/AYIN/Player/PlaybackModels.swift
       - path: ../ios/AYIN/Player/PlaybackService.swift
       - path: ../ios/AYIN/Player/WatchProgressService.swift
+      - path: ../ios/AYIN/Player/ProgressRevisionState.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(AYIN_TV_BUNDLE_ID)"

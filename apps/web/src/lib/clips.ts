@@ -15,6 +15,7 @@ export interface ClipItem {
 }
 
 export interface ClipsPage {
+  viewer: { isKids: boolean };
   enabled: boolean;
   items: ClipItem[];
   nextCursor: string | null;
@@ -103,7 +104,10 @@ function parseItem(value: unknown): ClipItem {
 export function parseClipsPage(value: unknown): ClipsPage {
   const page = record(value);
   const adPolicy = record(page.adPolicy);
+  const viewer = record(page.viewer);
   if (
+    typeof viewer.isKids !== "boolean" ||
+    (viewer.isKids && adPolicy.enabled !== false) ||
     typeof page.enabled !== "boolean" ||
     typeof page.autoplayEnabled !== "boolean" ||
     !Array.isArray(page.items) ||
@@ -123,6 +127,7 @@ export function parseClipsPage(value: unknown): ClipsPage {
     throw new Error("INVALID_CLIPS_RESPONSE");
   }
   return {
+    viewer: { isKids: viewer.isKids },
     enabled: page.enabled,
     items: page.items.map(parseItem),
     nextCursor: page.nextCursor,
@@ -144,4 +149,54 @@ export function mergeClipItems(
       return true;
     }),
   ];
+}
+
+// A paused offscreen element is ordinary feed behavior, not user intent. Keep
+// the restored active Clip's pause until navigation selects another Clip, then
+// let normal autoplay policy handle all subsequent activations (including Back).
+export function createClipsAutoplayGate(restored?: {
+  activeId: string | null;
+  playback: Record<string, { paused: boolean }>;
+}) {
+  let pausedClipId =
+    restored?.activeId && restored.playback[restored.activeId]?.paused ? restored.activeId : null;
+  return (videoId: string, enabled: boolean, reducedMotion: boolean): boolean => {
+    if (videoId !== pausedClipId) pausedClipId = null;
+    return enabled && !reducedMotion && videoId !== pausedClipId;
+  };
+}
+
+export interface ClipPlaybackPosition {
+  positionMs: number | undefined;
+  paused: boolean;
+  muted: boolean;
+  volume: number;
+  playbackRate: number;
+}
+
+export type RegisterClipPositionAuthority = (
+  videoId: string,
+  isPositionAuthoritative: () => boolean,
+) => () => void;
+
+export function captureClipPlaybackPosition(
+  media: Pick<
+    HTMLVideoElement,
+    "readyState" | "currentTime" | "paused" | "muted" | "volume" | "playbackRate"
+  >,
+  positionAuthoritative: boolean,
+  previousPositionMs?: number,
+): ClipPlaybackPosition {
+  return {
+    // Metadata at zero does not establish a viewing position while the saved
+    // progress read is still pending. Its provenance comes from useWatchProgress.
+    positionMs:
+      positionAuthoritative && media.readyState >= 1 && Number.isFinite(media.currentTime)
+        ? Math.max(0, Math.floor(media.currentTime * 1000))
+        : previousPositionMs,
+    paused: media.paused,
+    muted: media.muted,
+    volume: media.volume,
+    playbackRate: media.playbackRate,
+  };
 }

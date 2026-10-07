@@ -191,11 +191,23 @@ jobs:
               range="${BEFORE_SHA}..${GITHUB_SHA}"
             fi
           fi
+          scan_status=0
           "$RUNNER_TEMP/gitleaks" git \
             --log-opts="$range" \
             --no-banner \
             --redact \
-            .
+            --report-format json \
+            --report-path "$RUNNER_TEMP/ayin-secret-findings.json" \
+            . || scan_status=$?
+          python3 - <<'PYREPORT'
+          import json, os
+          from pathlib import Path
+          report = Path(os.environ["RUNNER_TEMP"]) / "ayin-secret-findings.json"
+          if report.exists():
+              for finding in json.loads(report.read_text()):
+                  print(json.dumps({key: finding.get(key) for key in ("RuleID", "File", "StartLine", "Commit")}, sort_keys=True))
+          PYREPORT
+          exit "$scan_status"
 
   codeql:
     name: CodeQL JavaScript and TypeScript

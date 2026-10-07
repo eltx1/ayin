@@ -4,15 +4,42 @@ import { useEffect, useMemo } from "react";
 
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { createPlayerAnalytics, trackAnalyticsEvent } from "@/lib/analytics";
+import type { AyinPlayerAnalytics } from "@/lib/ayin-player";
+import type { VideoAdSlot } from "@/lib/video-ads";
 
 import { AyinPlayer } from "./ayin-player";
 import { AdEnabledAyinPlayer } from "./ad-enabled-ayin-player";
 import type { AyinPlayerProps } from "./ayin-player";
 
+export interface PlayerAnalyticsSession {
+  analytics: AyinPlayerAnalytics;
+  recordImpression: () => void;
+  completedAdBreaks: Set<VideoAdSlot>;
+}
+
+// Accounting only: this never retains a playable source or an audience lease.
+export function createPlayerAnalyticsSession(videoId: string): PlayerAnalyticsSession {
+  let impressed = false;
+  return {
+    analytics: createPlayerAnalytics(),
+    completedAdBreaks: new Set<VideoAdSlot>(),
+    recordImpression: () => {
+      if (impressed) return;
+      impressed = true;
+      trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId });
+    },
+  };
+}
+
 export function AnalyticsAyinPlayer({
   advertisingEnabled = true,
+  analytics: suppliedAnalytics,
+  onContentImpression,
   ...props
-}: AyinPlayerProps & { advertisingEnabled?: boolean }) {
+}: AyinPlayerProps & {
+  advertisingEnabled?: boolean;
+  onContentImpression?: (() => void) | undefined;
+}) {
   const {
     identity,
     identityRevision,
@@ -32,11 +59,15 @@ export function AnalyticsAyinPlayer({
           onBeforeSuspend: onBeforeIdentitySuspend,
         }
       : null;
-  const analytics = useMemo(() => createPlayerAnalytics(props.profileId), [props.profileId]);
+  const analytics = useMemo(
+    () => suppliedAnalytics ?? createPlayerAnalytics(props.profileId),
+    [props.profileId, suppliedAnalytics],
+  );
 
   useEffect(() => {
-    trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId });
-  }, [videoId]);
+    if (onContentImpression) onContentImpression();
+    else trackAnalyticsEvent("CONTENT_IMPRESSION", { videoId });
+  }, [onContentImpression, videoId]);
 
   return advertisingEnabled ? (
     <AdEnabledAyinPlayer

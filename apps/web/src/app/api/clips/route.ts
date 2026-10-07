@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { isClipCursor } from "@/lib/clips";
-import { fetchClipsPage } from "@/lib/clips-server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,15 +12,10 @@ export async function GET(request: NextRequest) {
       { status: 400, headers: { "cache-control": "private, no-store" } },
     );
   }
-  try {
-    const page = await fetchClipsPage(cursor ?? undefined);
-    return NextResponse.json(page, {
-      headers: { "cache-control": "private, no-store" },
-    });
-  } catch {
-    return NextResponse.json(
-      { error: { code: "CLIPS_UNAVAILABLE", message: "Clips are unavailable." } },
-      { status: 503, headers: { "cache-control": "private, no-store" } },
-    );
-  }
+  // The browser must read the API with its own scoped credentials. Forwarding
+  // an anonymous server fetch here can expose adult sources to a Kids session.
+  return NextResponse.json(
+    { error: { code: "CLIPS_DIRECT_READ_REQUIRED", message: "Reload Clips to continue." } },
+    { status: 410, headers: { "cache-control": "private, no-store" } },
+  );
 }

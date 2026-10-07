@@ -54,9 +54,9 @@ test("Arabic watch page preserves mixed-content direction and LTR media semantic
   // The trace contains a transient hidden streamed copy; inspect the accessible player.
   const main = page.getByRole("main");
   await expect(main).toHaveCount(1);
-  const player = main.getByRole("region", { name: "Catalog E2E Feature player", exact: true });
+  const player = main.getByRole("region", { name: "مشغّل Catalog E2E Feature", exact: true });
   await expect(player).toHaveCount(1);
-  const controls = player.getByLabel("Playback controls", { exact: true });
+  const controls = player.getByLabel("عناصر التحكم في التشغيل", { exact: true });
   await expect(controls).toHaveCount(1);
   await expect(controls).toBeVisible();
   await expect(controls).toHaveCSS("direction", "ltr");

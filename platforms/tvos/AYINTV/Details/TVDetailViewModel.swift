@@ -14,6 +14,11 @@ final class TVDetailViewModel: ObservableObject {
 
     private let catalog: TVCatalogService
     private let playback: any TVPlaybackServicing
+    private var loadGeneration: UInt64 = 0
+    private var token: String?
+    private var accountId: String?
+    private var profileId: String?
+    private var viewerIsKids = false
 
     init(
         catalog: TVCatalogService = TVCatalogService(),
@@ -23,8 +28,15 @@ final class TVDetailViewModel: ObservableObject {
         self.playback = playback
     }
 
-    func load(_ route: TVRoute) async {
-        isLoading = true
+    func viewerDidChange(token: String?, accountId: String?, profileId: String?, isKids: Bool) {
+        guard self.token != token || self.accountId != accountId || self.profileId != profileId ||
+                viewerIsKids != isKids else { return }
+        invalidateViewer()
+    }
+
+    func invalidateViewer() {
+        loadGeneration &+= 1
+        isLoading = false
         errorMessage = nil
         video = nil
         channel = nil
@@ -32,27 +44,53 @@ final class TVDetailViewModel: ObservableObject {
         playlist = nil
         movie = nil
         series = nil
-        defer { isLoading = false }
+    }
+
+    func load(_ route: TVRoute, token: String? = nil, accountId: String? = nil,
+              profileId: String? = nil, isKids: Bool = false) async {
+        guard !Task.isCancelled else { return }
+        invalidateViewer()
+        let generation = loadGeneration
+        self.token = token
+        self.accountId = accountId
+        self.profileId = profileId
+        viewerIsKids = isKids
+        isLoading = true
+        defer { if loadGeneration == generation { isLoading = false } }
 
         do {
             switch route {
-            case let .video(slug, isKids):
-                video = try await playback.load(.video(slug: slug, isKids: isKids))
+            case let .video(slug, routeIsKids):
+                let loaded = try await playback.load(.video(slug: slug, isKids: routeIsKids), token: token,
+                                                     accountId: accountId, profileId: profileId, isKids: isKids)
+                guard !Task.isCancelled, loadGeneration == generation else { return }
+                video = loaded
             case let .channel(handle):
-                channel = try await catalog.channel(handle: handle)
+                let loaded = try await catalog.channel(handle: handle)
+                guard !Task.isCancelled, loadGeneration == generation else { return }
+                channel = loaded
             case let .creatorTV(handle):
-                creatorTV = try await catalog.creatorTV(handle: handle)
+                let loaded = try await catalog.creatorTV(handle: handle)
+                guard !Task.isCancelled, loadGeneration == generation else { return }
+                creatorTV = loaded
             case let .playlist(handle, slug):
-                playlist = try await catalog.playlist(handle: handle, slug: slug)
+                let loaded = try await catalog.playlist(handle: handle, slug: slug)
+                guard !Task.isCancelled, loadGeneration == generation else { return }
+                playlist = loaded
             case let .movie(slug):
-                movie = try await catalog.movie(slug: slug).movie
+                let loaded = try await catalog.movie(slug: slug).movie
+                guard !Task.isCancelled, loadGeneration == generation else { return }
+                movie = loaded
                 if movie == nil { errorMessage = "This movie is not available." }
             case let .series(slug):
-                series = try await catalog.series(slug: slug).series
+                let loaded = try await catalog.series(slug: slug).series
+                guard !Task.isCancelled, loadGeneration == generation else { return }
+                series = loaded
             case .live:
                 break
             }
         } catch {
+            guard !Task.isCancelled, loadGeneration == generation else { return }
             errorMessage = error.localizedDescription
         }
     }

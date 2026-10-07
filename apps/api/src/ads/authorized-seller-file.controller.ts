@@ -94,23 +94,6 @@ export class AdminAuthorizedSellerFileController {
       );
     }
 
-    try {
-      return await this.files.update(
-        request.ayinAuth.accountId,
-        kind.data,
-        input.data.text,
-        input.data.reason,
-      );
-    } catch (error) {
-      throw new HttpException(
-        {
-          error: {
-            code: "INVALID_AUTHORIZED_SELLER_SYNTAX",
-            message: error instanceof Error ? error.message : "Invalid authorized seller file.",
-          },
-        },
-        400,
-      );
-    }
+    return this.files.update(request.ayinAuth, kind.data, input.data.text, input.data.reason);
   }
 }

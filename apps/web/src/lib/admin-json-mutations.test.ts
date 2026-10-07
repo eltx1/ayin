@@ -2,20 +2,27 @@ import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  deleteAdvertiser,
-  deleteCampaign,
-  deleteCreative,
-  getAdvertisers,
-} from "./admin-advertising";
+import { createAdvertisingClient } from "./admin-advertising";
 import { seedPost, seedRequest } from "./admin-content-import";
 import { registerAdminVerification } from "./admin-reauthentication";
 import { parseVideoAdTarget, saveVideoAdCommand, videoAdValues } from "./admin-video-ad-workspace";
 
+const advertisingActor = {
+  accountId: "00000000-0000-4000-8000-000000000001",
+  sessionId: "00000000-0000-4000-8000-000000000002",
+  authVersion: 1,
+  roles: ["AD_MANAGER" as const],
+};
+const advertisingClient = () =>
+  createAdvertisingClient({
+    lease: { epoch: 1, session: advertisingActor },
+    isCurrent: () => true,
+    signal: new AbortController().signal,
+  });
 const deletes = [
-  { run: deleteAdvertiser, path: "advertisers" },
-  { run: deleteCampaign, path: "campaigns" },
-  { run: deleteCreative, path: "creatives" },
+  { run: (id: string) => advertisingClient().deleteAdvertiser(id), path: "advertisers" },
+  { run: (id: string) => advertisingClient().deleteCampaign(id), path: "campaigns" },
+  { run: (id: string) => advertisingClient().deleteCreative(id), path: "creatives" },
 ];
 afterEach(() => vi.unstubAllGlobals());
 
@@ -23,14 +30,24 @@ describe("Admin JSON mutation transport", () => {
   it.each(deletes)(
     "sends a real JSON body for $path without changing session policy",
     async ({ run, path }) => {
-      const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ deleted: true })));
+      const fetcher = vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(url.endsWith("/admin/session") ? advertisingActor : { deleted: true }),
+          ),
+      );
       vi.stubGlobal("fetch", fetcher);
       await expect(run("fixture/id")).resolves.toEqual({ deleted: true });
-      expect(fetcher).toHaveBeenCalledExactlyOnceWith(
+      expect(fetcher).toHaveBeenNthCalledWith(
+        2,
         expect.stringContaining(`/admin/advertising/${path}/fixture%2Fid`),
         expect.objectContaining({
           method: "DELETE",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            "x-ayin-expected-account": advertisingActor.accountId,
+            "x-ayin-expected-session": advertisingActor.sessionId,
+          },
           body: "{}",
           credentials: "include",
           cache: "no-store",
@@ -42,32 +59,45 @@ describe("Admin JSON mutation transport", () => {
   it.each(deletes)("does not replay $path after step-up or a lost response", async ({ run }) => {
     const verification = vi.fn();
     const unregister = registerAdminVerification(verification);
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
+    let write = 0;
+    const fetcher = vi.fn(async (url: string) => {
+      if (url.endsWith("/admin/session")) return new Response(JSON.stringify(advertisingActor));
+      if (++write === 1)
+        return new Response(
           JSON.stringify({ error: { code: "STEP_UP_REQUIRED", message: "Verify first" } }),
           { status: 403 },
-        ),
-      )
-      .mockRejectedValueOnce(new TypeError("Response lost"));
+        );
+      throw new TypeError("Response lost");
+    });
     vi.stubGlobal("fetch", fetcher);
     try {
-      await expect(run("fixture-id")).rejects.toThrow("Verify first");
+      await expect(run("fixture-id")).rejects.toMatchObject({
+        verificationRequired: true,
+        uncertain: false,
+      });
       expect(verification).toHaveBeenCalledTimes(1);
-      expect(fetcher).toHaveBeenCalledTimes(1);
-      await expect(run("fixture-id")).rejects.toThrow("Response lost");
       expect(fetcher).toHaveBeenCalledTimes(2);
+      await expect(run("fixture-id")).rejects.toMatchObject({ uncertain: true });
+      expect(fetcher).toHaveBeenCalledTimes(4);
     } finally {
       unregister();
     }
   });
 
   it("does not add bodies to reads", async () => {
-    const fetcher = vi.fn().mockResolvedValue(new Response("[]"));
+    const fetcher = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(
+      async (url: string) =>
+        new Response(JSON.stringify(url.endsWith("/admin/session") ? advertisingActor : [])),
+    );
     vi.stubGlobal("fetch", fetcher);
-    await getAdvertisers();
-    expect(fetcher.mock.calls[0]![1]).not.toHaveProperty("body");
+    await advertisingClient().getAdvertisers();
+    expect(fetcher.mock.calls).toHaveLength(3);
+    expect(fetcher.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([
+      "/admin/session",
+      "/admin/advertising/advertisers",
+      "/admin/session",
+    ]);
+    for (const [, init] of fetcher.mock.calls) expect(init).not.toHaveProperty("body");
   });
 
   it("native import mutations use the JSON helper at every scoped write call site", () => {
