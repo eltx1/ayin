@@ -1,0 +1,680 @@
+diff --git a/docs/IOS_DISTRIBUTION.md b/docs/IOS_DISTRIBUTION.md
+index 6d40645..442668e 100644
+--- a/docs/IOS_DISTRIBUTION.md
++++ b/docs/IOS_DISTRIBUTION.md
+@@ -222,6 +222,37 @@ Task 80 implements:
+ - safe-area-native SwiftUI layout;
+ - Safari fallback for unsupported non-core pages.
+ 
++### Bounded discovery continuation
++
++The Home toolbar exposes **Search on web** through the existing AppRouter and
++SFSafariViewController at `/search`. A row with a nonempty API `nextCursor` offers
++**Browse more on web**, opening Web Home at `/`, where the existing row **Load more**
++controls remain responsible for pagination. The API does not provide a row-specific
++Web destination. This bridge does not jump to a particular row or resume its native
++page cursor.
++
++Safari verifies its own Web session. Native bearer tokens, account/profile identifiers
++and page cursors are never added to the fallback URLs; the UI explains that Web sign-in
++is separate and available rows may differ. A known Kids profile receives **Browse Kids
++on web** to the existing explicitly filtered `/kids` catalog for both entry points.
++General Web Search cannot inherit the native Kids audience, so it is not offered from
++that profile. This is a filtered entry point, not browser navigation confinement or a
++shared-session claim. Web discovery actions are unavailable while session restoration
++is unresolved or has failed.
++
++No configured rows, or rows containing no items, now produce an explicit empty Home
++with **Try again** and Web browse actions. Failed reads retain the existing retryable
++error state; refresh failures with visible items retain those items. Rendering checks
++account, profile and Kids scope before an asynchronous reload starts, concealing the
++previous scope's rows and errors immediately. Existing cancellation and request-generation
++guards remain in place. Watch/live links continue to use native playback.
++
++This continuation adds no native Search engine, endpoint, artwork, captions, translation
++system, provider configuration or signing change. Decoding, routing, empty/retry,
++scope-concealment and late-response XCTest regressions are included. Their execution
++and the SwiftUI build require the owning unsigned macOS iOS workflow; Linux source and
++fixture checks are not native acceptance.
++
+ ## Verification truth
+ 
+ Repository CI can prove source/configuration quality and simulator behavior. It cannot prove App Store approval.
+diff --git a/platforms/ios/AYIN/AppRouter.swift b/platforms/ios/AYIN/AppRouter.swift
+index 95305d0..3973573 100644
+--- a/platforms/ios/AYIN/AppRouter.swift
++++ b/platforms/ios/AYIN/AppRouter.swift
+@@ -1,6 +1,21 @@
+ import Combine
+ import Foundation
+ 
++enum DiscoveryWebDestination {
++    case search
++    case home
++
++    func href(isKids: Bool) -> String {
++        // Safari verifies its own session. A native Kids profile must enter
++        // the explicitly filtered Kids catalog, not general Web Search/Home.
++        if isKids { return "/kids" }
++        switch self {
++        case .search: return "/search"
++        case .home: return "/"
++        }
++    }
++}
++
+ @MainActor
+ final class AppRouter: ObservableObject {
+     @Published var player: PlayerDestination?
+@@ -24,6 +39,12 @@ final class AppRouter: ObservableObject {
+ 
+     func openHref(_ href: String) {
+         guard let url = URL(string: href, relativeTo: AppEnvironment.webBaseURL) else { return }
+-        open(url)
++        open(url.absoluteURL)
++    }
++
++    func openDiscovery(_ destination: DiscoveryWebDestination, isKids: Bool) {
++        // Only route constants cross into Safari: never bearer tokens, profile
++        // identifiers, or cursors from the independently authenticated feed.
++        openHref(destination.href(isKids: isKids))
+     }
+ }
+diff --git a/platforms/ios/AYIN/Discovery/DiscoveryModels.swift b/platforms/ios/AYIN/Discovery/DiscoveryModels.swift
+index 81c5147..f604a88 100644
+--- a/platforms/ios/AYIN/Discovery/DiscoveryModels.swift
++++ b/platforms/ios/AYIN/Discovery/DiscoveryModels.swift
+@@ -9,8 +9,14 @@ struct DiscoveryRow: Decodable, Identifiable {
+     let title: String
+     let items: [DiscoveryItem]
+     let availability: String?
++    let nextCursor: String?
+ 
+     var id: String { key }
++
++    var hasMore: Bool {
++        guard let nextCursor else { return false }
++        return !nextCursor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
++    }
+ }
+ 
+ struct DiscoveryItem: Decodable, Identifiable {
+diff --git a/platforms/ios/AYIN/Discovery/HomeViewModel.swift b/platforms/ios/AYIN/Discovery/HomeViewModel.swift
+index 5efcc28..489856d 100644
+--- a/platforms/ios/AYIN/Discovery/HomeViewModel.swift
++++ b/platforms/ios/AYIN/Discovery/HomeViewModel.swift
+@@ -8,6 +8,13 @@ enum HomeLoadResult: Equatable {
+     case superseded
+ }
+ 
++enum HomeContentState: Equatable {
++    case loading
++    case unavailable(String)
++    case empty
++    case content
++}
++
+ @MainActor
+ final class HomeViewModel: ObservableObject {
+     @Published private(set) var rows: [DiscoveryRow] = []
+@@ -23,6 +30,20 @@ final class HomeViewModel: ObservableObject {
+         self.discovery = discovery
+     }
+ 
++    var contentState: HomeContentState {
++        if rows.contains(where: { !$0.items.isEmpty }) { return .content }
++        if isLoading { return .loading }
++        if let errorMessage { return .unavailable(errorMessage) }
++        return .empty
++    }
++
++    func contentState(for scope: String) -> HomeContentState {
++        // SwiftUI can render the new identity before its .task begins. Conceal
++        // the previous profile's rows and errors immediately in that render.
++        guard scope == sessionScope else { return .loading }
++        return contentState
++    }
++
+     func prepareForSession(scope: String) {
+         guard scope != sessionScope else { return }
+         sessionScope = scope
+diff --git a/platforms/ios/AYIN/Views/HomeView.swift b/platforms/ios/AYIN/Views/HomeView.swift
+index d8afd3d..71fba80 100644
+--- a/platforms/ios/AYIN/Views/HomeView.swift
++++ b/platforms/ios/AYIN/Views/HomeView.swift
+@@ -8,92 +8,168 @@ struct HomeView: View {
+ 
+     var body: some View {
+         NavigationStack {
+-            Group {
+-                if model.isLoading && model.rows.isEmpty {
+-                    ProgressView("Loading AYIN…")
+-                } else if let error = model.errorMessage, model.rows.isEmpty {
+-                    VStack(spacing: 16) {
+-                        ContentUnavailableView(
+-                            "AYIN is unavailable",
+-                            systemImage: "wifi.exclamationmark",
+-                            description: Text(error)
+-                        )
+-                        Button("Try again") {
+-                            Task { await loadForCurrentSession() }
+-                        }
+-                        .buttonStyle(.borderedProminent)
+-                    }
+-                } else {
+-                    ScrollView {
+-                        LazyVStack(alignment: .leading, spacing: 28) {
+-                            ForEach(model.rows) { row in
+-                                if !row.items.isEmpty {
+-                                    discoveryRow(row)
+-                                }
+-                            }
+-                        }
+-                        .padding(.vertical)
+-                    }
+-                    .refreshable {
+-                        await loadForCurrentSession()
++            homeContent
++                .navigationTitle("AYIN")
++                .toolbar {
++                    ToolbarItem(placement: .topBarLeading) { webSearchButton }
++                    ToolbarItem(placement: .topBarTrailing) { accountMenu }
++                }
++                .sheet(isPresented: $showingLogin) {
++                    LoginView()
++                        .environmentObject(session)
++                }
++                .task(id: sessionTaskIdentity) {
++                    guard !session.isRestoring else {
++                        model.prepareForSession(scope: "restoring")
++                        return
+                     }
++                    await loadForCurrentSession()
+                 }
++        }
++    }
++
++    @ViewBuilder
++    private var homeContent: some View {
++        if session.isRestoring {
++            ProgressView("Restoring session…")
++        } else {
++            switch model.contentState(for: sessionTaskIdentity) {
++            case .loading:
++                ProgressView("Loading AYIN…")
++            case let .unavailable(error):
++                unavailableContent(error)
++            case .empty:
++                emptyContent
++            case .content:
++                discoveryContent
+             }
+-            .navigationTitle("AYIN")
+-            .toolbar {
+-                ToolbarItem(placement: .topBarTrailing) {
+-                    if session.isAuthenticated, let identity = session.identity {
+-                        Menu {
+-                            Button("Sign out", role: .destructive) {
+-                                Task {
+-                                    model.prepareForSession(scope: "guest")
+-                                    await session.logout()
+-                                }
+-                            }
+-                        } label: {
+-                            Label(identity.account.displayName, systemImage: "person.crop.circle")
+-                                .labelStyle(.iconOnly)
+-                        }
+-                        .accessibilityLabel(identity.account.displayName)
+-                    } else if session.isRestoring {
+-                        ProgressView()
+-                            .accessibilityLabel("Restoring session")
+-                    } else {
+-                        Menu {
+-                            Button("Sign in") { showingLogin = true }
+-                            if session.restoreErrorMessage != nil, session.token != nil {
+-                                Button("Retry saved session") {
+-                                    Task { await session.retryRestore() }
+-                                }
+-                            }
+-                        } label: {
+-                            Text("Sign in")
+-                        }
+-                    }
++        }
++    }
++
++    private func unavailableContent(_ error: String) -> some View {
++        VStack(spacing: 16) {
++            ContentUnavailableView(
++                "AYIN is unavailable",
++                systemImage: "wifi.exclamationmark",
++                description: Text(error)
++            )
++            retryButton
++        }
++    }
++
++    private var emptyContent: some View {
++        VStack(spacing: 16) {
++            ContentUnavailableView(
++                "No content to show yet",
++                systemImage: "rectangle.stack",
++                description: Text("Try loading Home again or browse AYIN on the web.")
++            )
++            retryButton
++            webBrowseButton
++            webSessionNotice
++        }
++    }
++
++    private var discoveryContent: some View {
++        ScrollView {
++            LazyVStack(alignment: .leading, spacing: 28) {
++                ForEach(model.rows) { row in
++                    if !row.items.isEmpty { discoveryRow(row) }
+                 }
+             }
+-            .sheet(isPresented: $showingLogin) {
+-                LoginView()
+-                    .environmentObject(session)
++            .padding(.vertical)
++        }
++        .refreshable { await loadForCurrentSession() }
++    }
++
++    private var webSearchButton: some View {
++        Button {
++            openWebDiscovery(.search)
++        } label: {
++            Label(
++                isKidsProfile ? "Browse Kids on web" : "Search on web",
++                systemImage: isKidsProfile ? "sparkles.tv" : "magnifyingglass"
++            )
++        }
++        .disabled(!canOpenWebDiscovery)
++        .accessibilityHint("Opens in Safari. Web sign-in is separate from this app.")
++    }
++
++    @ViewBuilder
++    private var accountMenu: some View {
++        if session.isAuthenticated, let identity = session.identity {
++            Menu {
++                Button("Sign out", role: .destructive) {
++                    Task {
++                        model.prepareForSession(scope: "guest")
++                        await session.logout()
++                    }
++                }
++            } label: {
++                Label(identity.account.displayName, systemImage: "person.crop.circle")
++                    .labelStyle(.iconOnly)
+             }
+-            .task(id: sessionTaskIdentity) {
+-                guard !session.isRestoring else {
+-                    model.prepareForSession(scope: "restoring")
+-                    return
++            .accessibilityLabel(identity.account.displayName)
++        } else if session.isRestoring {
++            ProgressView()
++                .accessibilityLabel("Restoring session")
++        } else {
++            Menu {
++                Button("Sign in") { showingLogin = true }
++                if session.restoreErrorMessage != nil, session.token != nil {
++                    Button("Retry saved session") {
++                        Task { await session.retryRestore() }
++                    }
+                 }
+-                await loadForCurrentSession()
++            } label: {
++                Text("Sign in")
+             }
+         }
+     }
+ 
+     private var sessionTaskIdentity: String {
+         if session.isRestoring { return "restoring" }
+-        return session.identity?.account.id ?? "guest"
++        guard let identity = session.identity else { return "guest" }
++        return "\(identity.account.id):\(identity.profile.id):\(identity.profile.isKids)"
++    }
++
++    private var isKidsProfile: Bool { session.identity?.profile.isKids == true }
++
++    private var canOpenWebDiscovery: Bool {
++        !session.isRestoring && session.restoreErrorMessage == nil
++    }
++
++    private func openWebDiscovery(_ destination: DiscoveryWebDestination) {
++        guard canOpenWebDiscovery else { return }
++        router.openDiscovery(destination, isKids: isKidsProfile)
++    }
++
++    private var retryButton: some View {
++        Button("Try again") {
++            Task { await loadForCurrentSession() }
++        }
++        .buttonStyle(.borderedProminent)
++    }
++
++    private var webBrowseButton: some View {
++        Button(isKidsProfile ? "Browse Kids on web" : "Browse more on web") {
++            openWebDiscovery(.home)
++        }
++        .disabled(!canOpenWebDiscovery)
++    }
++
++    private var webSessionNotice: some View {
++        Text(canOpenWebDiscovery
++             ? "Web sign-in is separate from this app. Available rows may differ."
++             : "Sign in or retry your saved session before opening Web discovery.")
++            .font(.caption)
++            .foregroundStyle(.secondary)
++            .multilineTextAlignment(.center)
++            .padding(.horizontal)
+     }
+ 
+     private func loadForCurrentSession() async {
+-        let scope = session.identity?.account.id ?? "guest"
+-        model.prepareForSession(scope: scope)
++        model.prepareForSession(scope: sessionTaskIdentity)
+         let token = session.isAuthenticated ? session.token : nil
+         let result = await model.load(token: token)
+         if result == .authenticationRejected {
+@@ -142,6 +218,18 @@ struct HomeView: View {
+                 }
+                 .padding(.horizontal)
+             }
++
++            if row.hasMore {
++                VStack(spacing: 8) {
++                    webBrowseButton
++                        .accessibilityLabel("Browse more from \(row.title) on the web")
++                        .accessibilityHint(isKidsProfile
++                            ? "Opens the Web Kids catalog, where available rows have Load more controls."
++                            : "Opens Web Home, where available rows have Load more controls.")
++                    webSessionNotice
++                }
++                .frame(maxWidth: .infinity)
++            }
+         }
+     }
+ }
+diff --git a/platforms/ios/AYINTests/AppRouterTests.swift b/platforms/ios/AYINTests/AppRouterTests.swift
+new file mode 100644
+index 0000000..2a89e18
+--- /dev/null
++++ b/platforms/ios/AYINTests/AppRouterTests.swift
+@@ -0,0 +1,70 @@
++import XCTest
++@testable import AYIN
++
++@MainActor
++final class AppRouterTests: XCTestCase {
++    func testSearchOpensCanonicalWebRouteWithoutNativeSessionData() throws {
++        let router = AppRouter()
++        router.openDiscovery(.search, isKids: false)
++
++        let url = try XCTUnwrap(router.webFallback)
++        XCTAssertEqual(url.absoluteString, "https://ayin.stream/search")
++        XCTAssertNil(url.baseURL)
++        XCTAssertNil(url.query)
++        XCTAssertNil(url.fragment)
++        XCTAssertNil(url.user)
++        XCTAssertNil(url.password)
++        XCTAssertNil(router.player)
++    }
++
++    func testContinuationReturnsToExistingWebHomeInsteadOfForwardingCursor() {
++        let router = AppRouter()
++        router.openDiscovery(.home, isKids: false)
++
++        XCTAssertEqual(router.webFallback?.absoluteString, "https://ayin.stream/")
++        XCTAssertNil(router.player)
++    }
++
++    func testKidsDiscoveryNeverEntersGeneralWebSearchOrHome() {
++        let router = AppRouter()
++        let destinations: [DiscoveryWebDestination] = [.search, .home]
++        for destination in destinations {
++            router.openDiscovery(destination, isKids: true)
++            XCTAssertEqual(router.webFallback?.absoluteString, "https://ayin.stream/kids")
++            XCTAssertNil(router.webFallback?.query)
++            XCTAssertNil(router.player)
++        }
++    }
++
++    func testDismissingSafariAllowsAnotherDiscoveryDestination() {
++        let router = AppRouter()
++        router.openDiscovery(.search, isKids: false)
++        router.webFallback = nil
++        router.openDiscovery(.home, isKids: false)
++
++        XCTAssertEqual(router.webFallback?.absoluteString, "https://ayin.stream/")
++        XCTAssertNil(router.player)
++    }
++
++    func testUntrustedHrefsCannotReplaceWebDestination() {
++        let router = AppRouter()
++        router.openDiscovery(.search, isKids: false)
++        let expected = router.webFallback
++        for href in [
++            "https://example.com/search", "//example.com/search",
++            "http://ayin.stream/search", "javascript:alert(1)",
++            "https://ayin.stream.example.com/search", "ayin://search"
++        ] {
++            router.openHref(href)
++            XCTAssertEqual(router.webFallback, expected)
++            XCTAssertNil(router.player)
++        }
++    }
++
++    func testDiscoveryWatchLinksStillUseNativePlaybackAndKidsPolicy() {
++        let router = AppRouter()
++        router.openHref("/watch/example?kids=1")
++        XCTAssertEqual(router.player, PlayerDestination(kind: .video, slug: "example", isKids: true))
++        XCTAssertNil(router.webFallback)
++    }
++}
+diff --git a/platforms/ios/AYINTests/DiscoveryModelsTests.swift b/platforms/ios/AYINTests/DiscoveryModelsTests.swift
+new file mode 100644
+index 0000000..3d362c8
+--- /dev/null
++++ b/platforms/ios/AYINTests/DiscoveryModelsTests.swift
+@@ -0,0 +1,48 @@
++import XCTest
++@testable import AYIN
++
++final class DiscoveryModelsTests: XCTestCase {
++    func testHomeDecodesExistingPageContinuationWithoutTreatingCursorAsURL() throws {
++        let response = try JSONDecoder().decode(DiscoveryHomeResponse.self, from: Data("""
++        {
++          "rows": [{
++            "key": "new-on-ayin",
++            "title": "New on AYIN",
++            "source": "NEW_ON_AYIN",
++            "maxItems": 24,
++            "items": [{
++              "id": "video-1", "type": "VIDEO", "title": "Example",
++              "href": "/watch/example", "kicker": "Video", "meta": null,
++              "artworkObjectKey": null
++            }],
++            "availability": "AVAILABLE",
++            "nextCursor": "opaque-page-cursor",
++            "emptyMessage": "Nothing here yet."
++          }]
++        }
++        """.utf8))
++
++        let row = try XCTUnwrap(response.rows.first)
++        XCTAssertEqual(row.items.first?.href, "/watch/example")
++        XCTAssertEqual(row.nextCursor, "opaque-page-cursor")
++        XCTAssertTrue(row.hasMore)
++    }
++
++    func testAbsentNullAndBlankCursorDoNotOfferContinuation() throws {
++        for cursor in ["", #", "nextCursor": null"#, #", "nextCursor": """#, #", "nextCursor": "  ""#] {
++            let row = try JSONDecoder().decode(DiscoveryRow.self, from: Data("""
++            {"key":"empty", "title":"Empty", "items":[], "availability":"EMPTY"\(cursor)}
++            """.utf8))
++            XCTAssertFalse(row.hasMore)
++        }
++    }
++
++    func testUnavailableRowsDecodeWithoutInventingContent() throws {
++        let row = try JSONDecoder().decode(DiscoveryRow.self, from: Data("""
++        {"key":"live", "title":"Live", "items":[], "availability":"UNAVAILABLE", "nextCursor":null}
++        """.utf8))
++        XCTAssertEqual(row.availability, "UNAVAILABLE")
++        XCTAssertTrue(row.items.isEmpty)
++        XCTAssertFalse(row.hasMore)
++    }
++}
+diff --git a/platforms/ios/AYINTests/HomeViewModelTests.swift b/platforms/ios/AYINTests/HomeViewModelTests.swift
+index de2ee11..4f5a33b 100644
+--- a/platforms/ios/AYINTests/HomeViewModelTests.swift
++++ b/platforms/ios/AYINTests/HomeViewModelTests.swift
+@@ -3,6 +3,100 @@ import XCTest
+ 
+ @MainActor
+ final class HomeViewModelTests: XCTestCase {
++    func testIdentityChangeConcealsContentBeforeReplacementTaskBegins() async {
++        let model = HomeViewModel(discovery: SequenceDiscoveryService([
++            .success(home(title: "Private history"))
++        ]))
++        model.prepareForSession(scope: "account-a:profile-a:false")
++        _ = await model.load(token: "account-token")
++        XCTAssertEqual(model.contentState(for: "account-a:profile-a:false"), .content)
++
++        // No prepareForSession or replacement request has run yet.
++        for scope in ["guest", "account-b:profile-a:false", "account-a:profile-b:false", "account-a:profile-a:true"] {
++            XCTAssertEqual(model.contentState(for: scope), .loading)
++        }
++    }
++
++    func testNoConfiguredRowsShowsEmptyStateAndCanRetry() async {
++        let model = HomeViewModel(discovery: SequenceDiscoveryService([
++            .success(DiscoveryHomeResponse(rows: [])),
++            .success(home(title: "New on AYIN"))
++        ]))
++        model.prepareForSession(scope: "guest")
++
++        let emptyLoad = await model.load(token: nil)
++        XCTAssertEqual(emptyLoad, .loaded)
++        XCTAssertEqual(model.contentState, .empty)
++
++        let retry = await model.load(token: nil)
++        XCTAssertEqual(retry, .loaded)
++        XCTAssertEqual(model.contentState, .content)
++    }
++
++    func testAllEmptyOrUnavailableRowsShowEmptyStateInsteadOfBlankScrollView() async {
++        let model = HomeViewModel(discovery: SequenceDiscoveryService([
++            .success(emptyHome())
++        ]))
++        _ = await model.load(token: nil)
++        XCTAssertFalse(model.rows.isEmpty)
++        XCTAssertEqual(model.contentState, .empty)
++    }
++
++    func testFailureAfterEmptyRowsShowsRetryableError() async {
++        let error = URLError(.notConnectedToInternet)
++        let model = HomeViewModel(discovery: SequenceDiscoveryService([
++            .success(emptyHome()), .failure(error)
++        ]))
++        _ = await model.load(token: nil)
++        _ = await model.load(token: nil)
++        XCTAssertEqual(model.contentState, .unavailable(error.localizedDescription))
++    }
++
++    func testRefreshFailureRetainsVisibleContent() async {
++        let model = HomeViewModel(discovery: SequenceDiscoveryService([
++            .success(home(title: "New on AYIN")),
++            .failure(URLError(.notConnectedToInternet))
++        ]))
++        _ = await model.load(token: nil)
++        _ = await model.load(token: nil)
++        XCTAssertEqual(model.contentState, .content)
++    }
++
++    func testReplacedProfileResponseCannotReplaceEmptyStateWithStaleContent() async {
++        let service = SuspendedDiscoveryService()
++        let model = HomeViewModel(discovery: service)
++        model.prepareForSession(scope: "account-a:profile-a:false")
++        let load = Task { await model.load(token: "account-token") }
++        await service.waitUntilRequested()
++        XCTAssertEqual(model.contentState, .loading)
++
++        model.prepareForSession(scope: "guest")
++        await service.finish(with: home(title: "Private history"))
++
++        let result = await load.value
++        XCTAssertEqual(result, .superseded)
++        XCTAssertEqual(model.contentState, .empty)
++        XCTAssertTrue(model.rows.isEmpty)
++        XCTAssertFalse(model.isLoading)
++    }
++
++    func testCancelledRequestWithoutScopeChangeCannotPublishContent() async {
++        let service = SuspendedDiscoveryService()
++        let model = HomeViewModel(discovery: service)
++        model.prepareForSession(scope: "guest")
++        let load = Task { await model.load(token: nil) }
++        await service.waitUntilRequested()
++
++        load.cancel()
++        await service.finish(with: home(title: "Late response"))
++
++        let result = await load.value
++        XCTAssertEqual(result, .superseded)
++        XCTAssertEqual(model.contentState(for: "guest"), .empty)
++        XCTAssertTrue(model.rows.isEmpty)
++        XCTAssertFalse(model.isLoading)
++    }
++
+     func testSessionScopeChangeClearsPersonalizedRowsBeforeReplacementRequest() async {
+         let service = SequenceDiscoveryService([
+             .success(home(title: "Continue watching")),
+@@ -90,8 +184,41 @@ private func home(title: String) -> DiscoveryHomeResponse {
+                         meta: nil
+                     )
+                 ],
+-                availability: "AVAILABLE"
++                availability: "AVAILABLE",
++                nextCursor: nil
+             )
+         ]
+     )
+ }
++
++private func emptyHome() -> DiscoveryHomeResponse {
++    DiscoveryHomeResponse(rows: ["EMPTY", "UNAVAILABLE"].map { availability in
++        DiscoveryRow(
++            key: availability, title: availability, items: [],
++            availability: availability, nextCursor: nil
++        )
++    })
++}
++
++private actor SuspendedDiscoveryService: DiscoveryServicing {
++    private var request: CheckedContinuation<DiscoveryHomeResponse, Error>?
++    private var started: CheckedContinuation<Void, Never>?
++
++    func home(token: String?) async throws -> DiscoveryHomeResponse {
++        try await withCheckedThrowingContinuation { continuation in
++            request = continuation
++            started?.resume()
++            started = nil
++        }
++    }
++
++    func waitUntilRequested() async {
++        if request != nil { return }
++        await withCheckedContinuation { started = $0 }
++    }
++
++    func finish(with response: DiscoveryHomeResponse) {
++        request?.resume(returning: response)
++        request = nil
++    }
++}
