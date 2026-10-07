@@ -16,36 +16,52 @@ struct TVPlayerScreen: View {
     }
 
     var body: some View {
-        playbackContent
-        .overlay(alignment: .bottom) {
-            progressReviewOverlay
-        }
-        .task(id: sessionIdentity) {
-            guard !session.isRestoring, session.token == nil || session.isAuthenticated else {
-                model.invalidateViewer()
-                return
+        sessionPlayback
+            .onChange(of: scenePhase) { _, phase in
+                model.handleScene(active: phase == .active)
             }
-            await model.load(
-                token: session.isAuthenticated ? session.token : nil,
-                profileId: session.identity?.profile.id,
-                accountId: session.identity?.account.id,
-                isKids: session.identity?.profile.isKids == true
-            )
+            .onDisappear {
+                Task<Void, Never> { _ = await model.stop() }
+            }
+    }
+
+    private var sessionPlayback: some View {
+        playbackWithProgress
+            .task(id: sessionIdentity) {
+                await loadCurrentViewer()
+            }
+            .onReceive(session.$identity, perform: viewerIdentityDidChange)
+            .onReceive(session.$isRestoring, perform: restorationDidChange)
+    }
+
+    private var playbackWithProgress: some View {
+        playbackContent
+            .overlay(alignment: .bottom) {
+                progressReviewOverlay
+            }
+    }
+
+    private func loadCurrentViewer() async {
+        guard !session.isRestoring, session.token == nil || session.isAuthenticated else {
+            model.invalidateViewer()
+            return
         }
-        .onReceive(session.$identity) { identity in
-            model.viewerDidChange(token: identity == nil ? nil : session.token,
-                                  accountId: identity?.account.id, profileId: identity?.profile.id,
-                                  isKids: identity?.profile.isKids == true)
-        }
-        .onReceive(session.$isRestoring) { restoring in
-            if restoring { model.invalidateViewer() }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            model.handleScene(active: phase == .active)
-        }
-        .onDisappear {
-            Task { await model.stop() }
-        }
+        await model.load(
+            token: session.isAuthenticated ? session.token : nil,
+            profileId: session.identity?.profile.id,
+            accountId: session.identity?.account.id,
+            isKids: session.identity?.profile.isKids == true
+        )
+    }
+
+    private func viewerIdentityDidChange(_ identity: AYINIdentity?) {
+        model.viewerDidChange(token: identity == nil ? nil : session.token,
+                              accountId: identity?.account.id, profileId: identity?.profile.id,
+                              isKids: identity?.profile.isKids == true)
+    }
+
+    private func restorationDidChange(_ restoring: Bool) {
+        if restoring { model.invalidateViewer() }
     }
 
     private var playbackContent: some View {
