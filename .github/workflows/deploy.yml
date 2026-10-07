@@ -117,7 +117,7 @@ jobs:
           chmod 600 "$HOME/.ssh/id_ed25519"
 
           candidate="$HOME/.ssh/known_hosts.candidate"
-          ssh-keyscan -p "$SSH_PORT" -t ed25519 "$DEPLOY_HOST" > "$candidate"
+          bash deploy/acquire-ssh-host-key.sh "$candidate"
           test -s "$candidate"
 
           actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"

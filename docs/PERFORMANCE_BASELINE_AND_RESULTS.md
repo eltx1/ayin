@@ -6,6 +6,12 @@ This is the current performance evidence index, not completion of master Phase 1
 
 Full earlier results and methodological corrections through accepted #145 are preserved byte-for-byte in [historical performance results](PERFORMANCE_RESULTS_THROUGH_145.md). Historical pending statuses are superseded by the current checkpoint, but measurements retain their original source/toolchain/fixture qualifications. Do not compare different measurement methods as though they were the same metric.
 
+## October 7 controlled continuation
+
+The [verified release checkpoint](https://github.com/eltx1/ayin/blob/96b804257486b6eaca36606b6670a61ef5c54942/docs/AYIN_RELEASE_CHECKPOINT_2026-10-07.md) records 24 completed controlled loopback samples on measurement candidate `8d60f3c261805ccf797f33435b5b25f1a58442db`, tree `be298cbaeadd550ef63ea612c84639b7b9732963`: twelve Search/Watch readiness, six decoded startup and six upload/queue observations. Earlier “no successful samples” statements describe their earlier checkpoints. Later narrow source corrections were not measured as a matched comparison, and the optional new raw-evidence inventory is not fully published; do not present it as a published artifact or remaining release gate.
+
+These synthetic/browser-profile observations do not establish field percentiles, physical-device playback, production R2 throughput or universal speedup. Initial/background RSC request churn requires attribution before further performance edits; the completed sample does not prove a causal typing issue or user-visible bottleneck. Historical measurements below keep their original methods and source identities.
+
 ## Phase 4C — focused content editor, 2026-09-29
 
 **Baseline:** accepted main `02e37ce7186eb72f62c940847c630dbc5c8ef159`, tree `02df2edcbba42c546930cda67c6ccf7512dd35d8`. **After:** reviewed implementation `2ebc0c119e68437452a4bee3306ce7be62c784d2` on `web-pwa-phase-4c-content-editor`; final documentation/merge/deployment are recorded separately in the checkpoint. Both same-environment production Web builds completed with exit 0. Local Node22.16.0/restored compatible Web tools are not the fresh frozen CI Node24 graph.

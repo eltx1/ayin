@@ -2,7 +2,19 @@
 
 Date: 2026-10-06. This is a finite reconciliation of the implemented product, not a reconstruction of the original master prompt; that prompt has not been recovered verbatim. It does not relabel historical test results as a new complete run.
 
-## Source and release boundary
+## Current source and release status, October 7 at 19:16 UTC
+
+This document's October 6 inspection is historical. [The verified #266 checkpoint](https://github.com/eltx1/ayin/blob/96b804257486b6eaca36606b6670a61ef5c54942/docs/AYIN_RELEASE_CHECKPOINT_2026-10-07.md) supersedes its pending Search/recovery/union/native gate statements. As of 2026-10-07 19:16 UTC, `debf276555fb30ab163ed1d4f59dc5e77c778208` remains the latest verified live release.
+
+[PR267](https://github.com/eltx1/ayin/pull/267) merged as `ee9d12d4b54342b3553819839048ab430777eac9` after iOS 63 and tvOS 44 tests, [owning quality 37666808595](https://github.com/eltx1/ayin/actions/runs/37666808595), [push quality 37666744786](https://github.com/eltx1/ayin/actions/runs/37666744786) and inventory passed. Its automatic deployment failed twice before activation when SSH key scanning returned an empty result; main deployment/runtime proof remains unverified.
+
+[PR268](https://github.com/eltx1/ayin/pull/268) merged as `d8bb1a23e32eb020fc92330bad342bff48642dde` after corrected head `23dac3d` passed iOS 89 tests, tvOS 44 tests and inventory. It implements iOS artwork, an explicit lifecycle-safe Web route for playback extras and 52 English/Arabic keys for the existing iOS shell. Its native-only scope does not trigger the existing Task quality path filter; that is not a waived gate. Source acceptance does not establish deployment.
+
+[Draft PR269](https://github.com/eltx1/ayin/pull/269), head prefix `d137041` on main, implements tvOS chapter/next adaptation and 76 English/Arabic keys. Exact-head tvOS 59 tests and five portable tests passed; quality is running. These capabilities are implemented published source, while remaining acceptance and merge are queued. The deployment-readiness helper passed 14 local tests and independent review. Source publication and its owning acceptance remain pending; the existing pinned SSH trust is unchanged.
+
+These current implementations supersede the corresponding absent-source findings below; candidate acceptance, merge, deployment and device/store evidence remain distinct. Android's video-only picker is validated within its stated selection/cancellation/late-result scope; broader file types require an established product requirement. tvOS already supported artwork and VTT captions before its published chapter/next and language continuation. [The active ledger](AYIN_MASTER_REMAINDER_LEDGER.md) owns the remaining acceptance queue. The inspected route/state inventory and original evidence below retain their source attribution.
+
+## Historical source and release boundary
 
 - Reviewed Web/API baseline: local commit `108e9224`, tree `32773c41a5b2110f2fc9843aa6aec28cd84bdce1`. The release coordinator reports the same tree deployed as main `36354ed1`, deployment runs `37431450564` / `37431661663`, with independent exact-SHA Chrome verification at 07:53 UTC. That production verification was supplied by the coordinator, not repeated by this reconciliation.
 - Search continuation: local `43fa32a7`; PR258 source `61afd` was still in its own release gates when this report began. Dormant recovery: local `ff479b41`; PR259 source `b72a6bc` includes Search and was also pending its own release gates. Neither candidate is called deployed here.
