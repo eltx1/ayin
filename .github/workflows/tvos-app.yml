@@ -54,6 +54,9 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Validate English and Arabic localization resources
+        run: python3 -m unittest discover -s platforms/tvos/tests -p 'test_*.py'
+
       - name: Generate tvOS project and validate property lists
         working-directory: platforms/tvos
         run: |
@@ -61,6 +64,8 @@ jobs:
           xcodegen generate
           plutil -lint AYINTV/Info.plist
           plutil -lint AYINTV/AYINTV.entitlements
+          plutil -lint AYINTV/Localization/en.lproj/Localizable.strings
+          plutil -lint AYINTV/Localization/ar.lproj/Localizable.strings
           python3 -m json.tool store/apple-app-site-association.template.json >/dev/null
           python3 -m json.tool CERTIFICATION_STATUS.json >/dev/null
           if /usr/libexec/PlistBuddy -c 'Print :NSAppTransportSecurity:NSAllowsArbitraryLoads' AYINTV/Info.plist >/dev/null 2>&1; then

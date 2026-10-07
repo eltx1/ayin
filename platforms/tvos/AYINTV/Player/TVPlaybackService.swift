@@ -77,7 +77,12 @@ struct TVPlaybackService: TVPlaybackServicing {
             protocolName: hls == nil ? "MP4" : "HLS",
             initialOffsetMs: 0,
             captions: response.video.captions,
-            isKids: effectiveKids
+            isKids: effectiveKids,
+            chapters: TVPlaybackChapter.available(response.video.chapters ?? [], durationMs: response.video.durationMs),
+            seriesContext: !effectiveKids && response.detail?.contentType == "SERIES_EPISODE"
+                ? response.detail?.seriesContext : nil,
+            nextEpisode: !effectiveKids && response.detail?.contentType == "SERIES_EPISODE"
+                ? response.detail?.nextEpisode : nil
         )
     }
 
@@ -93,7 +98,7 @@ struct TVPlaybackService: TVPlaybackServicing {
         }
         return TVPlaybackAsset(
             title: response.title,
-            subtitle: "Live",
+            subtitle: TVStrings.text("Live"),
             primaryURL: url,
             fallbackURL: nil,
             shareURL: AppEnvironment.webBaseURL.appending(path: "live").appending(path: slug),

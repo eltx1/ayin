@@ -81,7 +81,7 @@ final class TVDetailViewModel: ObservableObject {
                 let loaded = try await catalog.movie(slug: slug).movie
                 guard !Task.isCancelled, loadGeneration == generation else { return }
                 movie = loaded
-                if movie == nil { errorMessage = "This movie is not available." }
+                if movie == nil { errorMessage = TVStrings.text("This movie is not available.") }
             case let .series(slug):
                 let loaded = try await catalog.series(slug: slug).series
                 guard !Task.isCancelled, loadGeneration == generation else { return }
