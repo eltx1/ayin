@@ -45,6 +45,7 @@ export function useWatchProgress({
   identity,
   enabled,
   initialPositionMs,
+  initialPositionExplicit = false,
   durationMs,
   intervalMs,
   adActiveRef,
@@ -58,6 +59,7 @@ export function useWatchProgress({
   identity?: PlayerProgressIdentity | null | undefined;
   enabled: boolean;
   initialPositionMs: number;
+  initialPositionExplicit?: boolean | undefined;
   durationMs: number | null;
   intervalMs: number;
   adActiveRef: RefObject<boolean>;
@@ -119,6 +121,25 @@ export function useWatchProgress({
     playback.current.touched = true;
     if (current.current) current.current.resume = null;
   }, []);
+
+  // Timeline provenance only, not an audience lease. The coordinator revokes
+  // that lease before consumers synchronously snapshot the retiring media.
+  // Metadata/autoplay at zero cannot stand in for an unresolved saved resume.
+  const isPositionAuthoritative = useCallback(() => {
+    const run = current.current;
+    return Boolean(
+      run &&
+      !run.controller.signal.aborted &&
+      playback.current.videoId === videoId &&
+      // Anonymous/disabled persistence has no saved read to await. An explicit
+      // initial position still waits until it is applied to this media element.
+      (playback.current.touched || (!run.scope && run.resume === null)),
+    );
+  }, [videoId]);
+
+  // Explicit Play, like an explicit seek, elects the displayed timeline. Generic
+  // native/autoplay events must not call this while the initial read is pending.
+  const markUserPlay = markUserSeek;
 
   // Native controls also emit seeking for our own resume/reset assignments.
   // Keep those events separate from deliberate native input, just as Watch's
@@ -284,8 +305,8 @@ export function useWatchProgress({
       reading: false,
       retryRead: null,
       loaded: false,
-      resume: initialPositionMs > 0 ? initialPositionMs : null,
-      resetPosition: ownerChanged,
+      resume: initialPositionExplicit || initialPositionMs > 0 ? initialPositionMs : null,
+      resetPosition: ownerChanged || initialPositionExplicit,
       lastAcknowledgedAt: 0,
       lastAcknowledgedPosition: 0,
       revision: null,
@@ -329,7 +350,9 @@ export function useWatchProgress({
           run.revision = snapshot.revision;
           run.lastAcknowledgedAt = Date.now();
           run.resume =
-            initialPositionMs > 0 ? initialPositionMs : resumablePositionMs(snapshot, durationMs);
+            initialPositionExplicit || initialPositionMs > 0
+              ? initialPositionMs
+              : resumablePositionMs(snapshot, durationMs);
           applyResume();
           const pending = run.pending;
           run.pending = null;
@@ -358,6 +381,7 @@ export function useWatchProgress({
     onBeforeSuspend,
     enabled,
     initialPositionMs,
+    initialPositionExplicit,
     videoId,
     durationMs,
     applyResume,
@@ -367,5 +391,13 @@ export function useWatchProgress({
     videoRef,
   ]);
 
-  return { applyResume, markUserSeek, markNativeSeek, finishNativeSeek, persist };
+  return {
+    applyResume,
+    markUserSeek,
+    markUserPlay,
+    markNativeSeek,
+    finishNativeSeek,
+    isPositionAuthoritative,
+    persist,
+  };
 }

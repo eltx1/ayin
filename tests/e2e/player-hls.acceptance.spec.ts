@@ -14,7 +14,11 @@ type HarnessState = {
   hlsAttachCalls: number;
   hlsLoadCalls: number;
   imaStarted: number;
+  imaCompleted: number;
+  imaDestroyed: number;
+  hlsDestroyed: number;
   imaTags: string[];
+  imaMuted: boolean[];
 };
 
 function db<T>(command: string, payload: Record<string, unknown> = {}): T {
@@ -32,31 +36,51 @@ async function installMediaHarness(
     hlsMode?: "ready" | "malformed" | "unsupported";
     nativeHls?: boolean;
     ima?: boolean;
+    holdImaStart?: number;
+    deferImaSdk?: boolean;
+    errorImaStart?: number;
+    holdImaAfterCompleteStart?: number;
   } = {},
 ) {
   const hlsMode = options.hlsMode ?? "ready";
   const nativeHls = options.nativeHls ?? false;
   const ima = options.ima ?? false;
+  const holdImaStart = options.holdImaStart ?? 0;
+  const deferImaSdk = options.deferImaSdk ?? false;
+  const errorImaStart = options.errorImaStart ?? 0;
+  const holdImaAfterCompleteStart = options.holdImaAfterCompleteStart ?? 0;
   await page.addInitScript(
-    ({ hlsMode: mode, nativeHls: native, ima: useIma }) => {
+    ({
+      hlsMode: mode,
+      nativeHls: native,
+      ima: useIma,
+      holdImaStart,
+      deferImaSdk,
+      errorImaStart,
+      holdImaAfterCompleteStart,
+    }) => {
       const state = {
         playCalls: 0,
         pauseCalls: 0,
         hlsAttachCalls: 0,
         hlsLoadCalls: 0,
         imaStarted: 0,
+        imaCompleted: 0,
+        imaDestroyed: 0,
+        hlsDestroyed: 0,
         imaTags: [] as string[],
+        imaMuted: [] as boolean[],
       };
       Object.defineProperty(window, "__ayinHarness", { value: state, configurable: true });
 
-      const mediaPrototype = HTMLMediaElement.prototype as HTMLMediaElement & {
+      type HarnessMedia = HTMLMediaElement & {
         __ayinPaused?: boolean;
         __ayinCurrentTime?: number;
       };
       Object.defineProperty(HTMLMediaElement.prototype, "paused", {
         configurable: true,
         get() {
-          return (this as typeof mediaPrototype).__ayinPaused ?? true;
+          return (this as HarnessMedia).__ayinPaused ?? true;
         },
       });
       Object.defineProperty(HTMLMediaElement.prototype, "duration", {
@@ -68,10 +92,10 @@ async function installMediaHarness(
       Object.defineProperty(HTMLMediaElement.prototype, "currentTime", {
         configurable: true,
         get() {
-          return (this as typeof mediaPrototype).__ayinCurrentTime ?? 0;
+          return (this as HarnessMedia).__ayinCurrentTime ?? 0;
         },
         set(value: number) {
-          (this as typeof mediaPrototype).__ayinCurrentTime = Number.isFinite(value) ? value : 0;
+          (this as HarnessMedia).__ayinCurrentTime = Number.isFinite(value) ? value : 0;
         },
       });
       const originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
@@ -94,23 +118,22 @@ async function installMediaHarness(
       }
       HTMLMediaElement.prototype.play = function () {
         state.playCalls += 1;
-        (this as typeof mediaPrototype).__ayinPaused = false;
+        (this as HarnessMedia).__ayinPaused = false;
         this.dispatchEvent(new Event("play"));
         this.dispatchEvent(new Event("playing"));
         return Promise.resolve();
       };
       HTMLMediaElement.prototype.pause = function () {
         state.pauseCalls += 1;
-        const wasPaused = (this as typeof mediaPrototype).__ayinPaused ?? true;
-        (this as typeof mediaPrototype).__ayinPaused = true;
+        const wasPaused = (this as HarnessMedia).__ayinPaused ?? true;
+        (this as HarnessMedia).__ayinPaused = true;
         if (!wasPaused) this.dispatchEvent(new Event("pause"));
       };
       HTMLMediaElement.prototype.load = function () {
-        const element = this;
         queueMicrotask(() => {
-          if (element.getAttribute("src") || native) {
-            element.dispatchEvent(new Event("loadedmetadata"));
-            element.dispatchEvent(new Event("canplay"));
+          if (this.getAttribute("src") || native) {
+            this.dispatchEvent(new Event("loadedmetadata"));
+            this.dispatchEvent(new Event("canplay"));
           }
         });
       };
@@ -173,7 +196,9 @@ async function installMediaHarness(
         }
         startLoad() {}
         recoverMediaError() {}
-        destroy() {}
+        destroy() {
+          state.hlsDestroyed += 1;
+        }
       }
 
       Object.defineProperty(window, "Hls", { value: FakeHls, configurable: true });
@@ -209,12 +234,21 @@ async function installMediaHarness(
             state.imaStarted += 1;
             this.emit(events.pause);
             this.emit(events.started);
+            if (state.imaStarted === holdImaStart) return;
             queueMicrotask(() => {
+              if (state.imaStarted === errorImaStart) {
+                this.emit(events.error);
+                return;
+              }
+              state.imaCompleted += 1;
               this.emit(events.complete);
+              if (state.imaStarted === holdImaAfterCompleteStart) return;
               this.emit(events.resume);
             });
           }
-          destroy() {}
+          destroy() {
+            state.imaDestroyed += 1;
+          }
         }
         class AdsLoader {
           listeners = new Map<string, Array<(event: unknown) => void>>();
@@ -227,8 +261,9 @@ async function installMediaHarness(
               (this.listeners.get(type) ?? []).filter((item) => item !== listener),
             );
           }
-          requestAds(request: { adTagUrl: string }) {
+          requestAds(request: { adTagUrl: string; willPlayMuted: boolean }) {
             state.imaTags.push(request.adTagUrl);
+            state.imaMuted.push(request.willPlayMuted);
             const manager = new AdsManager();
             queueMicrotask(() => {
               for (const listener of this.listeners.get(events.managerLoaded) ?? []) {
@@ -245,10 +280,13 @@ async function installMediaHarness(
           linearAdSlotHeight = 0;
           nonLinearAdSlotWidth = 0;
           nonLinearAdSlotHeight = 0;
+          willPlayMuted = false;
           setAdWillAutoPlay() {}
-          setAdWillPlayMuted() {}
+          setAdWillPlayMuted(value: boolean) {
+            this.willPlayMuted = value;
+          }
         }
-        Object.defineProperty(window, "google", {
+        Object.defineProperty(window, deferImaSdk ? "__ayinPendingGoogle" : "google", {
           configurable: true,
           value: {
             ima: {
@@ -277,7 +315,15 @@ async function installMediaHarness(
         });
       }
     },
-    { hlsMode, nativeHls, ima },
+    {
+      hlsMode,
+      nativeHls,
+      ima,
+      holdImaStart,
+      deferImaSdk,
+      errorImaStart,
+      holdImaAfterCompleteStart,
+    },
   );
 }
 
@@ -321,12 +367,11 @@ async function mockPreroll(
 }
 
 let fixture: VideoFixture;
-let hlsFixture: HlsFixture;
 
 test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
   test.beforeAll(() => {
     fixture = db<VideoFixture>("seed-player-video");
-    hlsFixture = db<HlsFixture>("configure-hls-playback", {
+    db<HlsFixture>("configure-hls-playback", {
       enabled: true,
       videoId: fixture.id,
     });
@@ -374,7 +419,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await expect.poll(async () => (await harnessState(page)).hlsAttachCalls).toBe(0);
     await expect(page.locator("video:visible")).toHaveAttribute("src", /canonical\.mp4$/);
 
-    hlsFixture = db<HlsFixture>("configure-hls-playback", {
+    db<HlsFixture>("configure-hls-playback", {
       enabled: true,
       videoId: fixture.id,
     });
@@ -419,6 +464,229 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
     await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
     await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
     await expect(page.locator("video:visible")).toHaveCount(1);
+  });
+
+  for (const breakMode of ["PRE_ROLL", "MID_ROLL", "POST_ROLL", "PAUSED_MID_ROLL"] as const) {
+    test(`Watch focus during active ${breakMode} preserves content intent and destroys the old ad`, async ({
+      page,
+    }) => {
+      const holdImaStart = breakMode === "PRE_ROLL" ? 1 : 2;
+      await installMediaHarness(page, { ima: true, holdImaStart });
+      await mockPreroll(page, fixture, "https://ads.invalid/held-lifecycle", true);
+      await page.goto(`/watch/${fixture.slug}`);
+      await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
+      if (breakMode !== "PRE_ROLL") {
+        await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
+        await page.locator("video:visible").evaluate((video: HTMLVideoElement, mode) => {
+          if (mode === "PAUSED_MID_ROLL") video.pause();
+          if (mode === "POST_ROLL") {
+            video.pause();
+            Object.defineProperty(video, "ended", { configurable: true, value: true });
+            video.currentTime = 120;
+            video.dispatchEvent(new Event("ended"));
+          } else {
+            video.currentTime = 15;
+            video.dispatchEvent(new Event("timeupdate"));
+          }
+        }, breakMode);
+        await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(2);
+      }
+      const shouldPlay = breakMode === "PRE_ROLL" || breakMode === "MID_ROLL";
+      await expect(page.locator("video:visible")).toHaveAttribute(
+        "data-ayin-ad-content-intent",
+        shouldPlay ? "playing" : "paused",
+      );
+      const before = await harnessState(page);
+      const revoked = await page.locator("video:visible").evaluate((video: HTMLVideoElement) => {
+        // The harness controls decoder readiness; use real metadata readiness
+        // semantics so the previous native-paused-only snapshot would fail.
+        Object.defineProperty(video, "readyState", { configurable: true, value: 4 });
+        const root = video.closest<HTMLElement>("[data-private-viewer-state]")!;
+        window.dispatchEvent(new Event("blur"));
+        return {
+          hidden: !root.checkVisibility(),
+          paused: video.paused,
+          source: video.getAttribute("src"),
+          adIntent: video.dataset.ayinAdContentIntent,
+        };
+      });
+      expect(revoked).toEqual({ hidden: true, paused: true, source: null, adIntent: undefined });
+      const stopped = await harnessState(page);
+      expect(stopped.imaDestroyed).toBeGreaterThan(before.imaDestroyed);
+      expect(stopped.hlsDestroyed).toBeGreaterThan(before.hlsDestroyed);
+      expect(stopped.playCalls).toBe(before.playCalls);
+      await expect(page.locator("video:visible")).toHaveCount(0);
+      // A fresh decision has no ad. The recovered content intent alone controls
+      // resumption; no previous manager, source or policy decision is reused.
+      await mockNoAds(page, fixture.id);
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect(page.locator("video:visible")).toHaveCount(1);
+      await expect
+        .poll(async () => (await harnessState(page)).hlsLoadCalls)
+        .toBeGreaterThan(before.hlsLoadCalls);
+      if (shouldPlay)
+        await expect
+          .poll(async () => (await harnessState(page)).playCalls)
+          .toBeGreaterThan(before.playCalls);
+      else {
+        await page.waitForTimeout(150);
+        expect((await harnessState(page)).playCalls).toBe(before.playCalls);
+        await expect
+          .poll(() =>
+            page.locator("video:visible").evaluate((video: HTMLVideoElement) => video.paused),
+          )
+          .toBe(true);
+      }
+      expect((await harnessState(page)).imaStarted).toBe(holdImaStart);
+    });
+  }
+
+  test("Watch revokes pending IMA initialization without losing requested content playback", async ({
+    page,
+  }) => {
+    await installMediaHarness(page, { ima: true, deferImaSdk: true });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const sdkUrl = "https://imasdk.googleapis.com/js/sdkloader/ima3.js";
+    await page.route(sdkUrl, async (route) => {
+      await held;
+      await route.fulfill({
+        contentType: "application/javascript",
+        body: "/* controlled IMA lifecycle fixture */",
+      });
+    });
+    try {
+      await mockPreroll(page, fixture);
+      await page.goto(`/watch/${fixture.slug}`, { waitUntil: "domcontentloaded" });
+      await expect(page.locator(`script[src="${sdkUrl}"]`)).toHaveCount(1);
+      await expect(page.locator("video:visible")).toHaveAttribute(
+        "data-ayin-ad-content-intent",
+        "playing",
+      );
+      const revoked = await page.locator("video:visible").evaluate((video: HTMLVideoElement) => {
+        Object.defineProperty(video, "readyState", { configurable: true, value: 4 });
+        const root = video.closest<HTMLElement>("[data-private-viewer-state]")!;
+        window.dispatchEvent(new Event("blur"));
+        return {
+          hidden: !root.checkVisibility(),
+          source: video.getAttribute("src"),
+          intent: video.dataset.ayinAdContentIntent,
+        };
+      });
+      expect(revoked).toEqual({ hidden: true, source: null, intent: undefined });
+      await page.evaluate(() =>
+        Object.defineProperty(window, "google", {
+          configurable: true,
+          value: (window as unknown as { __ayinPendingGoogle: unknown }).__ayinPendingGoogle,
+        }),
+      );
+      const settled = page.waitForResponse(sdkUrl);
+      release();
+      await settled;
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      );
+      expect((await harnessState(page)).imaStarted).toBe(0);
+      expect((await harnessState(page)).playCalls).toBe(0);
+      await expect(page.locator("video:visible")).toHaveCount(0);
+      await mockNoAds(page, fixture.id);
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
+      expect((await harnessState(page)).imaStarted).toBe(0);
+    } finally {
+      release();
+    }
+  });
+
+  test("Watch preserves restored unmuted intent when a failed preroll remains eligible", async ({
+    page,
+  }) => {
+    await installMediaHarness(page, { ima: true, errorImaStart: 1 });
+    await mockPreroll(page, fixture);
+    await page.goto(`/watch/${fixture.slug}`);
+    await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
+    await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
+    expect((await harnessState(page)).imaMuted).toEqual([true]);
+    await expect
+      .poll(() => page.locator("video:visible").evaluate((video: HTMLVideoElement) => video.muted))
+      .toBe(true);
+    await page.locator('[data-player-stage="true"]:visible').focus();
+    await page.keyboard.press("m");
+    await expect
+      .poll(() => page.locator("video:visible").evaluate((video: HTMLVideoElement) => video.muted))
+      .toBe(false);
+    const priorPlayCalls = (await harnessState(page)).playCalls;
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(2);
+    await expect
+      .poll(async () => (await harnessState(page)).playCalls)
+      .toBeGreaterThan(priorPlayCalls);
+    expect((await harnessState(page)).imaMuted).toEqual([true, false]);
+    await expect
+      .poll(() => page.locator("video:visible").evaluate((video: HTMLVideoElement) => video.muted))
+      .toBe(false);
+  });
+
+  test("Watch does not request completed preroll or midroll again after current-viewer revalidation", async ({
+    page,
+  }) => {
+    await installMediaHarness(page, { ima: true });
+    await mockPreroll(page, fixture, "https://ads.invalid/completed-breaks", true);
+    let decisions = 0;
+    page.on("request", (request) => {
+      if (request.url().endsWith(`/ads/video/decision/${fixture.id}`)) decisions++;
+    });
+    await page.goto(`/watch/${fixture.slug}`);
+    await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
+    await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
+    await page.locator("video:visible").evaluate((video: HTMLVideoElement) => {
+      video.currentTime = 15;
+      video.dispatchEvent(new Event("timeupdate"));
+    });
+    await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(2);
+    await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(1);
+    const before = await harnessState(page);
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await expect.poll(() => decisions).toBe(2);
+    await expect
+      .poll(async () => (await harnessState(page)).playCalls)
+      .toBeGreaterThan(before.playCalls);
+    await page.locator("video:visible").evaluate((video: HTMLVideoElement) => {
+      video.currentTime = 16;
+      video.dispatchEvent(new Event("timeupdate"));
+    });
+    await page.waitForTimeout(150);
+    expect((await harnessState(page)).imaStarted).toBe(2);
+    expect((await harnessState(page)).imaTags).toHaveLength(2);
+  });
+
+  test("an interrupted IMA pod does not retain a completed break after one individual ad completes", async ({
+    page,
+  }) => {
+    await installMediaHarness(page, { ima: true, holdImaAfterCompleteStart: 1 });
+    await mockPreroll(page, fixture);
+    await page.goto(`/watch/${fixture.slug}`);
+    await expect.poll(async () => (await harnessState(page)).imaCompleted).toBe(1);
+    expect((await harnessState(page)).playCalls).toBe(0);
+    await expect(page.locator("video:visible")).toHaveAttribute(
+      "data-ayin-ad-content-intent",
+      "playing",
+    );
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+    });
+    await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(2);
+    await expect.poll(async () => (await harnessState(page)).imaCompleted).toBe(2);
+    await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
   });
 
   test("IMA receives the restrictive tag intact and resumes content under the safe consent default", async ({
@@ -507,7 +775,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       await expect.poll(async () => (await harnessState(page)).imaStarted).toBe(1);
       await expect.poll(async () => (await harnessState(page)).playCalls).toBeGreaterThan(0);
       const video = page.locator("main video");
-      await video.evaluate((element) => {
+      await video.evaluate((element: HTMLVideoElement) => {
         element.currentTime = 15;
         element.dispatchEvent(new Event("timeupdate"));
       });
@@ -526,7 +794,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       await page.route(`**/public/channels/${tv.handle}/tv`, (route) =>
         route.fulfill({ json: nextData }),
       );
-      await video.evaluate((element) => {
+      await video.evaluate((element: HTMLVideoElement) => {
         element.dataset.originalMedia = "yes";
         element.currentTime = 45;
       });
@@ -534,7 +802,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
       await page.getByRole("button", { name: /^Next:/ }).press("Enter");
       await expect(video).toHaveAttribute("src", /-refreshed\.mp4/);
       await expect(video).toHaveAttribute("data-original-media", "yes");
-      expect(await video.evaluate((element) => element.currentTime)).toBe(45);
+      expect(await video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBe(45);
       expect((await harnessState(page)).imaStarted).toBe(2);
 
       nextData = structuredClone(initial);
@@ -555,7 +823,7 @@ test.describe.serial("Task 41 AYIN Player HLS acceptance", () => {
             ).length,
         )
         .toBe(1);
-      await video.evaluate((element) => {
+      await video.evaluate((element: HTMLVideoElement) => {
         element.currentTime = 15;
         element.dispatchEvent(new Event("timeupdate"));
       });

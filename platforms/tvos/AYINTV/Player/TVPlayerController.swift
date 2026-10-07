@@ -78,6 +78,7 @@ struct TVPlayerController: UIViewControllerRepresentable {
         ]
     }
 
+    @MainActor
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
         var subtitleLabel: UILabel?
         weak var model: TVPlayerViewModel?
@@ -89,16 +90,20 @@ struct TVPlayerController: UIViewControllerRepresentable {
         func playerViewControllerWillStartPictureInPicture(
             _ playerViewController: AVPlayerViewController
         ) {
+            let player = playerViewController.player
             Task { @MainActor [weak self] in
-                self?.model?.setPictureInPictureActive(true)
+                guard let model = self?.model, model.player === player else { return }
+                model.setPictureInPictureActive(true)
             }
         }
 
         func playerViewControllerDidStopPictureInPicture(
             _ playerViewController: AVPlayerViewController
         ) {
+            let player = playerViewController.player
             Task { @MainActor [weak self] in
-                self?.model?.setPictureInPictureActive(false)
+                guard let model = self?.model, model.player === player else { return }
+                model.setPictureInPictureActive(false)
             }
         }
 
@@ -106,8 +111,10 @@ struct TVPlayerController: UIViewControllerRepresentable {
             _ playerViewController: AVPlayerViewController,
             failedToStartPictureInPictureWithError error: Error
         ) {
+            let player = playerViewController.player
             Task { @MainActor [weak self] in
-                self?.model?.setPictureInPictureActive(false)
+                guard let model = self?.model, model.player === player else { return }
+                model.setPictureInPictureActive(false)
             }
         }
 
@@ -116,8 +123,12 @@ struct TVPlayerController: UIViewControllerRepresentable {
             willResumePlaybackAfterUserNavigatedFrom oldTime: CMTime,
             to targetTime: CMTime
         ) {
+            let player = playerViewController.player
+            let item = player?.currentItem
             Task { @MainActor [weak self] in
-                self?.model?.noteUserNavigation(to: targetTime)
+                guard let model = self?.model, model.player === player,
+                      player?.currentItem === item else { return }
+                model.noteUserNavigation(to: targetTime)
             }
         }
     }

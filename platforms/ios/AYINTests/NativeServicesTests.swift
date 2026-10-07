@@ -99,13 +99,13 @@ final class NativeServicesTests: XCTestCase {
             if request.httpMethod == "GET" {
                 return (
                     testHTTPResponse(for: request),
-                    Data(#"{"positionMs":42000,"completedAt":null}"#.utf8)
+                    Data(#"{"profileId":"33333333-3333-4333-8333-333333333333","videoId":"11111111-1111-4111-8111-111111111111","positionMs":42000,"completedAt":null,"revision":"2026-10-06T08:00:00.001Z"}"#.utf8)
                 )
             }
             saveBody = try requestBodyData(request)
             return (
                 testHTTPResponse(for: request),
-                Data(#"{"positionMs":45000}"#.utf8)
+                Data(#"{"profileId":"33333333-3333-4333-8333-333333333333","videoId":"11111111-1111-4111-8111-111111111111","positionMs":45000,"completedAt":null,"revision":"2026-10-06T08:00:00.002Z"}"#.utf8)
             )
         }
 
@@ -119,13 +119,15 @@ final class NativeServicesTests: XCTestCase {
         )
         XCTAssertEqual(progress.positionMs, 42000)
 
-        try await service.save(
+        let saved = try await service.save(
             videoId: videoId,
             profileId: profileId,
             positionMs: 45000,
             durationMs: 60000,
+            expectedRevision: progress.revision,
             token: "session-token"
         )
+        XCTAssertEqual(saved.revision, "2026-10-06T08:00:00.002Z")
 
         XCTAssertEqual(requests.count, 2)
         XCTAssertEqual(requests[0].value(forHTTPHeaderField: "Authorization"), "Bearer session-token")
@@ -138,5 +140,56 @@ final class NativeServicesTests: XCTestCase {
         XCTAssertEqual(json["positionMs"] as? Int, 45000)
         XCTAssertEqual(json["durationMs"] as? Int, 60000)
         XCTAssertEqual(json["profileId"] as? String, profileId)
+        XCTAssertEqual(json["expectedRevision"] as? String, "2026-10-06T08:00:00.001Z")
+    }
+
+    func testFirstProgressWriteSendsExplicitNullRevision() async throws {
+        var body: Data?
+        TestURLProtocol.handler = { request in
+            body = try requestBodyData(request)
+            return (testHTTPResponse(for: request), Data(#"{"profileId":"p","videoId":"v","positionMs":5000,"completedAt":null,"revision":"2026-10-06T08:00:00.001Z"}"#.utf8))
+        }
+        _ = try await WatchProgressService(client: makeTestAPIClient()).save(
+            videoId: "v", profileId: "p", positionMs: 5000,
+            durationMs: nil, expectedRevision: nil, token: "session-token"
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(body)) as? [String: Any])
+        XCTAssertTrue(json["expectedRevision"] is NSNull)
+    }
+
+    func testProgressReadRejectsMissingRevisionAndForeignIdentity() async throws {
+        for response in [
+            #"{"profileId":"p","videoId":"v","positionMs":0,"completedAt":null}"#,
+            #"{"profileId":"other","videoId":"v","positionMs":0,"completedAt":null,"revision":null}"#,
+            #"{"profileId":"p","videoId":"other","positionMs":0,"completedAt":null,"revision":null}"#,
+            #"{"profileId":"p","videoId":"v","positionMs":0,"completedAt":null,"revision":"broken"}"#
+        ] {
+            TestURLProtocol.handler = { request in (testHTTPResponse(for: request), Data(response.utf8)) }
+            do {
+                _ = try await WatchProgressService(client: makeTestAPIClient()).progress(videoId: "v", profileId: "p", token: "token")
+                XCTFail("Unverifiable progress must not become a writable baseline")
+            } catch {}
+        }
+    }
+
+    func testConflictingCheckpointIsNotRetriedByTheTransport() async throws {
+        var requests = 0
+        TestURLProtocol.handler = { request in
+            requests += 1
+            return (
+                testHTTPResponse(for: request, statusCode: 409),
+                Data(#"{"error":{"code":"WATCH_PROGRESS_CONFLICT","message":"Read current progress before another checkpoint."}}"#.utf8)
+            )
+        }
+        do {
+            _ = try await WatchProgressService(client: makeTestAPIClient()).save(
+                videoId: "v", profileId: "p", positionMs: 15000, durationMs: 60000,
+                expectedRevision: "2026-10-06T08:00:00.001Z", token: "token"
+            )
+            XCTFail("A conflict must reach the revision state as an unacknowledged save")
+        } catch let error as APIClientError {
+            XCTAssertEqual(error.statusCode, 409)
+        }
+        XCTAssertEqual(requests, 1)
     }
 }

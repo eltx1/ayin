@@ -123,6 +123,155 @@ const callbacks = (): VideoAdCallbacks => ({
 beforeEach(() => vi.resetModules());
 afterEach(() => vi.unstubAllGlobals());
 
+async function consentSource() {
+  const boundary = await import("./advertising-consent");
+  let value: AdvertisingConsentSnapshot = {
+    mode: "PERSONALIZED",
+    source: "CMP",
+    providerManaged: true,
+  };
+  let notify = () => {};
+  const unregister = boundary.registerAdvertisingConsentProvider({
+    getSnapshot: () => value,
+    subscribe: (listener) => {
+      notify = listener;
+      return () => {
+        notify = () => {};
+      };
+    },
+  });
+  return {
+    ...boundary,
+    unregister,
+    change: (next: AdvertisingConsentSnapshot) => {
+      value = next;
+      notify();
+    },
+  };
+}
+
+describe("dynamic trusted consent revocation", () => {
+  it("revokes pending GPT commands and refuses limited demand through a previously unknown script", async () => {
+    scriptHarness();
+    const { gpt, flush } = gptHarness(true);
+    Object.assign(window, { googletag: gpt });
+    const source = await consentSource();
+    const scope = source.createAdvertisingConsentScope();
+    const { mountGooglePublisherTagSlot } = await import("./google-gpt-page-ad-service");
+    const mounting = mountGooglePublisherTagSlot({
+      divId: "slot",
+      adUnitPath: "/123/synthetic",
+      sizes: [[300, 250]],
+      responsive: [],
+      consent: scope.snapshot,
+      signal: scope.signal,
+      onRender: vi.fn(),
+    });
+    await Promise.resolve();
+    source.change({ mode: "LIMITED_ADS", source: "CMP", providerManaged: true });
+    const cleanup = await mounting;
+    flush();
+    cleanup();
+    expect(gpt.defineSlot).not.toHaveBeenCalled();
+    await expect(
+      mountGooglePublisherTagSlot({
+        divId: "next",
+        adUnitPath: "/123/synthetic",
+        sizes: [[300, 250]],
+        responsive: [],
+        consent: source.getAdvertisingConsentSnapshot(),
+        onRender: vi.fn(),
+      }),
+    ).rejects.toThrow("GPT_LIMITED_ADS_SCRIPT_UNKNOWN");
+    expect(gpt.display).not.toHaveBeenCalled();
+    scope.release();
+    source.unregister();
+  });
+
+  it("aborts pending IMA initialization immediately without attaching on late SDK load", async () => {
+    const script = scriptHarness(),
+      harness = imaHarness(),
+      source = await consentSource();
+    const { GoogleImaVideoAdService } = await import("./google-ima-video-ad-service");
+    const service = new GoogleImaVideoAdService(),
+      scope = source.createAdvertisingConsentScope();
+    const { container, video } = targets();
+    const initialization = service.initialize(container, video, scope.signal);
+    source.change({
+      mode: "LIMITED_ADS",
+      source: "CMP",
+      providerManaged: true,
+      ageTreatment: "CHILD",
+    });
+    await expect(initialization).rejects.toThrow("IMA_INITIALIZATION_CANCELLED");
+    Object.assign(window, { google: { ima: harness.ima } });
+    script.emit("load");
+    await Promise.resolve();
+    expect(harness.attach).not.toHaveBeenCalled();
+    service.destroy();
+    scope.release();
+    source.unregister();
+  });
+
+  it("destroys the old IMA loader, fences captured callbacks and uses stricter tags on the next break", async () => {
+    scriptHarness();
+    const harness = imaHarness(),
+      source = await consentSource();
+    Object.assign(window, { google: { ima: harness.ima } });
+    const { GoogleImaVideoAdService } = await import("./google-ima-video-ad-service");
+    const service = new GoogleImaVideoAdService(),
+      scope = source.createAdvertisingConsentScope();
+    const { container, video } = targets();
+    await service.initialize(container, video, scope.signal);
+    const callback = callbacks();
+    const playback = service.play(
+      "PRE_ROLL",
+      "https://securepubads.g.doubleclick.net/gampad/ads?tfat=1",
+      callback,
+      undefined,
+      scope.snapshot,
+      scope.signal,
+    );
+    const oldLoader = harness.loaders[0]!;
+    const pendingLoaded = [...oldLoader.listeners.get("ADS_MANAGER_LOADED")!][0]!;
+    const manager = oldLoader.loaded();
+    const pendingStart = [...manager.listeners.get("STARTED")!][0]!;
+    source.change({
+      mode: "LIMITED_ADS",
+      source: "CMP",
+      providerManaged: true,
+      ageTreatment: "TEEN",
+    });
+    await playback;
+    pendingStart({});
+    pendingLoaded({ getAdsManager: () => manager });
+    expect(oldLoader.destroy).toHaveBeenCalledTimes(1);
+    expect(manager.start).toHaveBeenCalledTimes(1);
+    expect(callback.onEvent).toHaveBeenCalledTimes(1);
+    expect(callback.onContentResume).not.toHaveBeenCalled();
+    const next = source.createAdvertisingConsentScope();
+    await service.initialize(container, video, next.signal);
+    const nextPlayback = service.play(
+      "MID_ROLL",
+      "https://securepubads.g.doubleclick.net/gampad/ads?tfat=1",
+      callbacks(),
+      undefined,
+      next.snapshot,
+      next.signal,
+    );
+    const request = harness.loaders[1]!.requestAds.mock.calls[0]![0] as { adTagUrl: string };
+    const tag = new URL(request.adTagUrl);
+    expect(tag.searchParams.get("ltd")).toBe("1");
+    expect(tag.searchParams.get("npa")).toBe("1");
+    expect(tag.searchParams.get("tfat")).toBe("1");
+    next.release();
+    await nextPlayback;
+    scope.release();
+    source.unregister();
+    service.destroy();
+  });
+});
+
 describe("GPT mount ownership", () => {
   it("settles a canceled queued command without waiting for GPT to drain it", async () => {
     scriptHarness();

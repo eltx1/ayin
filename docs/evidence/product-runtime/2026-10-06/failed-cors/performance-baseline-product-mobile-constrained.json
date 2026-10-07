@@ -1,0 +1,2471 @@
+{
+  "schemaVersion": 2,
+  "capturedAt": "2026-10-06T08:17:09.943Z",
+  "completed": false,
+  "interruptedAt": {
+    "scenario": "search",
+    "sample": 1
+  },
+  "source": {
+    "commit": "e7fd5a37f79e2c9621f12b7b2421ae306975a5b5",
+    "tree": "3c61fa4f42d085fd6a7b1c45dd3f9c22675fdd3c",
+    "trackedWorktreeClean": true,
+    "node": "v24.19.0",
+    "chromium": "140.0.7339.186",
+    "host": {
+      "platform": "linux",
+      "architecture": "x64",
+      "availableParallelism": 9,
+      "cpuModel": "AMD EPYC 9V74 80-Core Processor",
+      "totalMemoryBytes": 10451464192
+    },
+    "runtime": {
+      "declaredBuildCommit": "9a06f9cc264e4606c02ec84933de871173d56495",
+      "declaredBuildTree": "219eeef5bdf8818a83b721d1bec88188f36891b3",
+      "artifactSha256": {
+        "apps/web/.next/BUILD_ID": "fdff508e73cda0124ed98893cb24ee18a74dba04151db5a8e8259da8a4b695be",
+        "apps/web/.next/build-manifest.json": "8e76ea3f011818b035240f8d06cb1686bb0ace8b131fb93140795cdd7bdc10a0",
+        "apps/api/dist/main.js": "182d0bb4732ba365f53dc4d6999c60ff88293cb832a6fc3afb5f2bca14957823",
+        "packages/db/src/generated/prisma/internal/class.ts": "66e8058ce630569abbce1b0e2c4839f753a240b162646cd4f558fce506dc19eb",
+        "pnpm-lock.yaml": "f665acd4a85383cdbe89c051139fd9ab1fdce59ac787bfd933c2f2d051fb55ad",
+        "pnpm-workspace.yaml": "b9fc9a7b48dd3310d06c0602e38767027adac288d9b65d581a0a27613c6413c2"
+      },
+      "resolvedPackages": {
+        "next": "16.3.6",
+        "react": "19.2.8",
+        "react-dom": "19.2.8",
+        "hls.js": "1.7.2",
+        "@nestjs/core": "12.0.3",
+        "fastify": "5.12.5",
+        "prisma": "7.10.0",
+        "@prisma/client": "7.10.0",
+        "@prisma/adapter-pg": "7.10.0",
+        "pg": "8.23.0",
+        "@playwright/test": "1.55.1",
+        "source-map-js": "1.2.2",
+        "mysql2": "3.23.1"
+      },
+      "note": "Artifact hashes identify inspected local outputs; runtime provenance requires the separately retained build/start command. A null declaration is unverified, not an assumed source match."
+    }
+  },
+  "profile": {
+    "name": "mobile-constrained",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "cpuRate": 4,
+    "latencyMs": 150,
+    "downloadBytesPerSecond": 200000,
+    "uploadBytesPerSecond": 96000
+  },
+  "environment": "Real local AppModule/PostgreSQL and production Next; already-running servers; route/data cache temperature not controlled; fresh authenticated browser context per route/sample",
+  "networkConditionCommand": "Network.emulateNetworkConditions (pinned-browser compatibility)",
+  "browserConfiguration": {
+    "cacheDisabled": true,
+    "serviceWorkers": "block",
+    "samplesPerRoute": 3,
+    "authenticated": true,
+    "locale": "en",
+    "parallelSampleContexts": 1
+  },
+  "fixture": {
+    "seedCompleted": true,
+    "databaseInventory": {
+      "accounts": 2,
+      "channels": 2,
+      "videos": 48,
+      "movies": 2,
+      "postgresVersionNumber": 170010
+    },
+    "ownedVideos": 24,
+    "publishedVideos": 1,
+    "catalogMovies": 1,
+    "artwork": "No seeded artwork; native placeholder layout",
+    "media": "Unavailable synthetic source; route readiness only",
+    "adminRole": "OPERATIONS",
+    "cleaned": false,
+    "cleanupFailed": true
+  },
+  "limits": [
+    "Three samples per route/profile are laboratory observations, not field percentiles, production performance or a physical mobile device",
+    "Route readiness is an asserted DOM/API milestone; fixed settling and later interactions are separate windows",
+    "Browser cache disabled and Service Worker blocked; cold-process startup and route/data cache temperature are not isolated; PWA startup unmeasured",
+    "Watch source is unavailable. Media errors remain in report; player DOM does not prove decoded frames, playback startup or successful media delivery",
+    "Upload measures workspace readiness and format controls only; no file inspection, byte transfer, processing, resumability or publication timing",
+    "Raw trusted-input Event Timing entries above the 16ms observer threshold are not an aggregated INP or field CWV claim; absence is not zero latency",
+    "CDP request totals include redirects, errors and in-flight work at each cutoff. Encoded bytes exclude unfinished transfers. Category labels allow attribution without retaining URLs or identities",
+    "Browser request counts exclude server-side Next-to-API requests and do not measure DB query counts, plans, connection pressure or production scalability",
+    "TTFB follows Navigation Timing; the pinned compatibility network emulation can delay delivery without changing responseStart as described in the original lab calibration",
+    "No credentials, headers, storage state, request/response bodies, fixture identifiers or query text are written to reports",
+    "No product optimization or before/after improvement is inferred from this baseline"
+  ],
+  "samples": [
+    {
+      "completed": true,
+      "scenario": "home",
+      "route": "/",
+      "sample": 1,
+      "readiness": "One visible hero h1 and real discovery rows after the loading skeleton is removed",
+      "automationToRouteReadyMs": 3315.0738349999992,
+      "definedSettleMs": 1000,
+      "ready": {
+        "observedAtMs": 3307.39999999851,
+        "ttfbMs": 32.899999998509884,
+        "domContentLoadedMs": 1087.1000000014901,
+        "fcpMs": 1120,
+        "observedLcpMs": 1120,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 922.3000000044703,
+            "duration": 160
+          },
+          {
+            "time": 1867.6000000014901,
+            "duration": 173
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 3,
+            "failed": 4,
+            "canceled": 4,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 6947,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 4
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.324778,
+            "deltaMs": 324.778
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000027,
+            "afterSeconds": 1.788656,
+            "deltaMs": 1788.6290000000001
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.146554,
+            "deltaMs": 146.554
+          }
+        },
+        "rendererJsHeapUsedBytes": 5578844
+      },
+      "settled": {
+        "observedAtMs": 4355.39999999851,
+        "ttfbMs": 32.899999998509884,
+        "domContentLoadedMs": 1087.1000000014901,
+        "fcpMs": 1120,
+        "observedLcpMs": 1120,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 922.3000000044703,
+            "duration": 160
+          },
+          {
+            "time": 1867.6000000014901,
+            "duration": 173
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 3,
+            "failed": 4,
+            "canceled": 4,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 6947,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 4
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.324778,
+            "deltaMs": 324.778
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000027,
+            "afterSeconds": 1.824932,
+            "deltaMs": 1824.905
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.146554,
+            "deltaMs": 146.554
+          }
+        },
+        "rendererJsHeapUsedBytes": 5018404
+      },
+      "interaction": null,
+      "afterInteraction": {
+        "observedAtMs": 4423.5,
+        "ttfbMs": 32.899999998509884,
+        "domContentLoadedMs": 1087.1000000014901,
+        "fcpMs": 1120,
+        "observedLcpMs": 1120,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 922.3000000044703,
+            "duration": 160
+          },
+          {
+            "time": 1867.6000000014901,
+            "duration": 173
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 3,
+            "failed": 4,
+            "canceled": 4,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 6947,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 4
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.324831,
+            "deltaMs": 324.83099999999996
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000027,
+            "afterSeconds": 1.861175,
+            "deltaMs": 1861.1480000000001
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.146554,
+            "deltaMs": 146.554
+          }
+        },
+        "rendererJsHeapUsedBytes": 6019856
+      }
+    },
+    {
+      "completed": true,
+      "scenario": "home",
+      "route": "/",
+      "sample": 2,
+      "readiness": "One visible hero h1 and real discovery rows after the loading skeleton is removed",
+      "automationToRouteReadyMs": 3326.0838170000006,
+      "definedSettleMs": 1000,
+      "ready": {
+        "observedAtMs": 3368.3000000044703,
+        "ttfbMs": 18.899999998509884,
+        "domContentLoadedMs": 1087.6000000014901,
+        "fcpMs": 1104,
+        "observedLcpMs": 1104,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 927.8000000044703,
+            "duration": 148
+          },
+          {
+            "time": 1884.7000000029802,
+            "duration": 185
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 2,
+            "failed": 5,
+            "canceled": 5,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4334,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 5
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.376048,
+            "deltaMs": 376.048
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000027,
+            "afterSeconds": 1.884343,
+            "deltaMs": 1884.316
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.154187,
+            "deltaMs": 154.18699999999998
+          }
+        },
+        "rendererJsHeapUsedBytes": 5407128
+      },
+      "settled": {
+        "observedAtMs": 4432.70000000298,
+        "ttfbMs": 18.899999998509884,
+        "domContentLoadedMs": 1087.6000000014901,
+        "fcpMs": 1104,
+        "observedLcpMs": 1104,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 927.8000000044703,
+            "duration": 148
+          },
+          {
+            "time": 1884.7000000029802,
+            "duration": 185
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 2,
+            "failed": 5,
+            "canceled": 5,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4334,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 5
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.376048,
+            "deltaMs": 376.048
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000027,
+            "afterSeconds": 1.928331,
+            "deltaMs": 1928.304
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.154187,
+            "deltaMs": 154.18699999999998
+          }
+        },
+        "rendererJsHeapUsedBytes": 4802664
+      },
+      "interaction": null,
+      "afterInteraction": {
+        "observedAtMs": 4507.80000000447,
+        "ttfbMs": 18.899999998509884,
+        "domContentLoadedMs": 1087.6000000014901,
+        "fcpMs": 1104,
+        "observedLcpMs": 1104,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 927.8000000044703,
+            "duration": 148
+          },
+          {
+            "time": 1884.7000000029802,
+            "duration": 185
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 2,
+            "failed": 5,
+            "canceled": 5,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4334,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 5
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.376102,
+            "deltaMs": 376.102
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000027,
+            "afterSeconds": 1.978576,
+            "deltaMs": 1978.549
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.154187,
+            "deltaMs": 154.18699999999998
+          }
+        },
+        "rendererJsHeapUsedBytes": 5804528
+      }
+    },
+    {
+      "completed": true,
+      "scenario": "home",
+      "route": "/",
+      "sample": 3,
+      "readiness": "One visible hero h1 and real discovery rows after the loading skeleton is removed",
+      "automationToRouteReadyMs": 3385.397927,
+      "definedSettleMs": 1000,
+      "ready": {
+        "observedAtMs": 3400.39999999851,
+        "ttfbMs": 14.100000001490116,
+        "domContentLoadedMs": 1084.3999999985099,
+        "fcpMs": 1036,
+        "observedLcpMs": 1036,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 953,
+            "duration": 68
+          },
+          {
+            "time": 1881.2999999970198,
+            "duration": 330
+          },
+          {
+            "time": 2897.39999999851,
+            "duration": 64
+          },
+          {
+            "time": 3157.1999999955297,
+            "duration": 54
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 4,
+            "failed": 3,
+            "canceled": 3,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 8533,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 3
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.350548,
+            "deltaMs": 350.548
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000012,
+            "afterSeconds": 2.153545,
+            "deltaMs": 2153.533
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.149045,
+            "deltaMs": 149.04500000000002
+          }
+        },
+        "rendererJsHeapUsedBytes": 5615968
+      },
+      "settled": {
+        "observedAtMs": 4469.19999999553,
+        "ttfbMs": 14.100000001490116,
+        "domContentLoadedMs": 1084.3999999985099,
+        "fcpMs": 1036,
+        "observedLcpMs": 1036,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 953,
+            "duration": 68
+          },
+          {
+            "time": 1881.2999999970198,
+            "duration": 330
+          },
+          {
+            "time": 2897.39999999851,
+            "duration": 64
+          },
+          {
+            "time": 3157.1999999955297,
+            "duration": 54
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 4,
+            "failed": 3,
+            "canceled": 3,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 8533,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 3
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.350548,
+            "deltaMs": 350.548
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000012,
+            "afterSeconds": 2.193027,
+            "deltaMs": 2193.015
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.149045,
+            "deltaMs": 149.04500000000002
+          }
+        },
+        "rendererJsHeapUsedBytes": 5042752
+      },
+      "interaction": null,
+      "afterInteraction": {
+        "observedAtMs": 4565.0999999940395,
+        "ttfbMs": 14.100000001490116,
+        "domContentLoadedMs": 1084.3999999985099,
+        "fcpMs": 1036,
+        "observedLcpMs": 1036,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.03445032109325101,
+        "longTasks": [
+          {
+            "time": 953,
+            "duration": 68
+          },
+          {
+            "time": 1881.2999999970198,
+            "duration": 330
+          },
+          {
+            "time": 2897.39999999851,
+            "duration": 64
+          },
+          {
+            "time": 3157.1999999955297,
+            "duration": 54
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 304,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 9738,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30358,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 204765,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 3,
+            "finished": 3,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4029,
+            "statuses": {
+              "200": 3
+            },
+            "failures": {},
+            "methods": {
+              "GET": 3
+            }
+          },
+          "web:rsc": {
+            "requests": 7,
+            "finished": 4,
+            "failed": 3,
+            "canceled": 3,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 8533,
+            "statuses": {
+              "200": 7
+            },
+            "failures": {
+              "net::ERR_ABORTED": 3
+            },
+            "methods": {
+              "GET": 7
+            }
+          },
+          "api:/ads": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 755,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/discovery/home": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 3945,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.351129,
+            "deltaMs": 351.129
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000012,
+            "afterSeconds": 2.262016,
+            "deltaMs": 2262.004
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.149045,
+            "deltaMs": 149.04500000000002
+          }
+        },
+        "rendererJsHeapUsedBytes": 6050764
+      }
+    },
+    {
+      "completed": false,
+      "scenario": "search",
+      "route": "/search",
+      "sample": 1,
+      "interruptedObservation": {
+        "observedAtMs": 11583.89999999851,
+        "ttfbMs": 21.30000000447035,
+        "domContentLoadedMs": 1009.7999999970198,
+        "fcpMs": 992,
+        "observedLcpMs": 1348,
+        "observerAvailability": [
+          "element",
+          "event",
+          "first-input",
+          "largest-contentful-paint",
+          "layout-shift",
+          "long-animation-frame",
+          "longtask",
+          "mark",
+          "measure",
+          "navigation",
+          "paint",
+          "resource",
+          "visibility-state"
+        ],
+        "observedClsMaxSessionWindow": 0.002627037428030218,
+        "longTasks": [
+          {
+            "time": 919.7999999970198,
+            "duration": 56
+          },
+          {
+            "time": 1834.1000000014901,
+            "duration": 176
+          }
+        ],
+        "observedEventTimingEntries": [],
+        "observerOverflow": {},
+        "domElements": 225,
+        "media": [],
+        "network": {
+          "web:document": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 1,
+            "httpErrors": 0,
+            "encodedBytes": 11800,
+            "statuses": {
+              "200": 1,
+              "307": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 2
+            }
+          },
+          "web:image-optimizer": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 23586,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:stylesheet": {
+            "requests": 4,
+            "finished": 4,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 30763,
+            "statuses": {
+              "200": 4
+            },
+            "failures": {},
+            "methods": {
+              "GET": 4
+            }
+          },
+          "web:script": {
+            "requests": 12,
+            "finished": 12,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 196194,
+            "statuses": {
+              "200": 12
+            },
+            "failures": {},
+            "methods": {
+              "GET": 12
+            }
+          },
+          "api:other": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 899,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/product-controls": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1800,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "api:/auth/me": {
+            "requests": 1,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 1343,
+            "statuses": {
+              "200": 1
+            },
+            "failures": {},
+            "methods": {
+              "GET": 1
+            }
+          },
+          "web:rsc": {
+            "requests": 13,
+            "finished": 2,
+            "failed": 11,
+            "canceled": 11,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 4245,
+            "statuses": {
+              "200": 13
+            },
+            "failures": {
+              "net::ERR_ABORTED": 11
+            },
+            "methods": {
+              "GET": 13
+            }
+          },
+          "api:/public/search/suggestions": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 1,
+            "canceled": 0,
+            "inFlight": 0,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 0,
+            "statuses": {
+              "204": 1,
+              "no-response": 1
+            },
+            "failures": {
+              "net::ERR_FAILED": 1
+            },
+            "methods": {
+              "GET": 1,
+              "OPTIONS": 1
+            }
+          },
+          "api:/analytics": {
+            "requests": 2,
+            "finished": 1,
+            "failed": 0,
+            "canceled": 0,
+            "inFlight": 1,
+            "redirected": 0,
+            "httpErrors": 0,
+            "encodedBytes": 0,
+            "statuses": {
+              "201": 1,
+              "204": 1
+            },
+            "failures": {},
+            "methods": {
+              "OPTIONS": 1,
+              "POST": 1
+            }
+          }
+        },
+        "cpu": {
+          "ScriptDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.251397,
+            "deltaMs": 251.397
+          },
+          "TaskDuration": {
+            "beforeSeconds": 0.000836,
+            "afterSeconds": 1.162285,
+            "deltaMs": 1161.4489999999998
+          },
+          "LayoutDuration": {
+            "beforeSeconds": 0,
+            "afterSeconds": 0.068195,
+            "deltaMs": 68.19500000000001
+          }
+        },
+        "rendererJsHeapUsedBytes": 4944008
+      }
+    }
+  ]
+}

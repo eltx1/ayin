@@ -7,10 +7,15 @@ export interface AdvertisingConsentSnapshot {
   source: AdvertisingConsentSource;
   providerManaged: boolean;
   ageTreatment?: AdvertisingAgeTreatment;
+  // Opaque local invalidation token, never a consent string or permission.
+  providerRevision?: string;
 }
 
 export interface AdvertisingConsentProvider {
   getSnapshot(): AdvertisingConsentSnapshot;
+  // A trusted integration notifies after updating its snapshot. Existing
+  // snapshot-only integrations remain readable but cannot announce changes.
+  subscribe?(listener: () => void): () => void;
 }
 
 const safeDefault: AdvertisingConsentSnapshot = Object.freeze({
@@ -19,16 +24,128 @@ const safeDefault: AdvertisingConsentSnapshot = Object.freeze({
   providerManaged: false,
 });
 
-let provider: AdvertisingConsentProvider = {
-  getSnapshot: () => safeDefault,
-};
+interface ProviderRegistration {
+  provider: AdvertisingConsentProvider;
+  active: boolean;
+}
+
+const registrations: ProviderRegistration[] = [];
+const listeners = new Set<() => void>();
+const revocations = new Set<() => void>();
+let unsubscribeProvider: (() => void) | null = null;
+let providerSubscriptionFailed = false;
+let providerBinding = 0;
+let snapshot = safeDefault;
+let publishedSnapshot = safeDefault;
+
+export const ADVERTISING_CONSENT_CHANGED = "ADVERTISING_CONSENT_CHANGED";
+
+function currentRegistration() {
+  return registrations.at(-1);
+}
+
+function equivalent(left: AdvertisingConsentSnapshot, right: AdvertisingConsentSnapshot) {
+  return (
+    left.mode === right.mode &&
+    left.source === right.source &&
+    left.providerManaged === right.providerManaged &&
+    left.ageTreatment === right.ageTreatment &&
+    left.providerRevision === right.providerRevision
+  );
+}
 
 export function getAdvertisingConsentSnapshot(): AdvertisingConsentSnapshot {
+  let next = safeDefault;
   try {
-    return normalizeAdvertisingConsent(provider.getSnapshot());
+    if (!providerSubscriptionFailed) {
+      next = normalizeAdvertisingConsent(currentRegistration()?.provider.getSnapshot());
+    }
   } catch {
-    return safeDefault;
+    // A failing provider never supplies permission for personalized delivery.
   }
+  if (next.source === "SAFE_DEFAULT" && snapshot.ageTreatment) {
+    // An invalid/missing update is not authority to erase a known restriction.
+    const ageTreatment =
+      snapshot.ageTreatment === "CHILD" || next.ageTreatment === "CHILD" ? "CHILD" : "TEEN";
+    next = { ...next, ageTreatment };
+  }
+  if (!equivalent(snapshot, next)) snapshot = Object.freeze(next);
+  return snapshot;
+}
+
+export function getServerAdvertisingConsentSnapshot() {
+  return safeDefault;
+}
+
+function publishConsent() {
+  const next = getAdvertisingConsentSnapshot();
+  if (publishedSnapshot === next) return;
+  publishedSnapshot = next;
+  // Revoke SDK authority synchronously, before React's store listeners can
+  // commit a new tree or queued provider callbacks can deliver more work.
+  for (const revoke of [...revocations]) revoke();
+  for (const listener of [...listeners]) listener();
+}
+
+export function subscribeAdvertisingConsent(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function bindProvider() {
+  const binding = ++providerBinding;
+  const previousUnsubscribe = unsubscribeProvider;
+  unsubscribeProvider = null;
+  try {
+    previousUnsubscribe?.();
+  } catch {
+    /* Superseded callbacks are fenced below. */
+  }
+  providerSubscriptionFailed = false;
+  const registration = currentRegistration();
+  let subscribing = true;
+  try {
+    unsubscribeProvider =
+      registration?.provider.subscribe?.(() => {
+        if (
+          !subscribing &&
+          binding === providerBinding &&
+          registration.active &&
+          currentRegistration() === registration
+        )
+          publishConsent();
+      }) ?? null;
+  } catch {
+    providerSubscriptionFailed = true;
+  }
+  subscribing = false;
+  publishConsent();
+}
+
+export function createAdvertisingConsentScope(expected = getAdvertisingConsentSnapshot()) {
+  const controller = new AbortController();
+  const revoke = (reason: string) => {
+    revocations.delete(onChange);
+    if (!controller.signal.aborted) controller.abort(reason);
+  };
+  const isCurrent = () => {
+    if (!controller.signal.aborted && getAdvertisingConsentSnapshot() !== expected)
+      revoke(ADVERTISING_CONSENT_CHANGED);
+    return !controller.signal.aborted;
+  };
+  const onChange = () => {
+    isCurrent();
+  };
+  revocations.add(onChange);
+  isCurrent();
+  return {
+    snapshot: expected,
+    signal: controller.signal,
+    isCurrent,
+    release: () => revoke("ADVERTISING_CONSENT_SCOPE_RELEASED"),
+  };
 }
 
 export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentSnapshot {
@@ -37,6 +154,11 @@ export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentS
   const ageTreatment: AdvertisingAgeTreatment | undefined =
     snapshot.ageTreatment === "CHILD" || snapshot.ageTreatment === "TEEN"
       ? snapshot.ageTreatment
+      : undefined;
+  const providerRevision =
+    typeof snapshot.providerRevision === "string" &&
+    /^[A-Za-z0-9._:-]{1,128}$/.test(snapshot.providerRevision)
+      ? snapshot.providerRevision
       : undefined;
   const fallback: AdvertisingConsentSnapshot = ageTreatment
     ? { ...safeDefault, ageTreatment }
@@ -48,6 +170,7 @@ export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentS
     !["SAFE_DEFAULT", "CMP", "APPLICATION"].includes(snapshot.source) ||
     typeof snapshot.providerManaged !== "boolean" ||
     snapshot.source === "SAFE_DEFAULT" ||
+    (snapshot.providerRevision !== undefined && providerRevision === undefined) ||
     (snapshot.ageTreatment !== undefined && !ageTreatment)
   )
     return fallback;
@@ -59,17 +182,27 @@ export function normalizeAdvertisingConsent(value: unknown): AdvertisingConsentS
     source: snapshot.source as AdvertisingConsentSource,
     providerManaged: snapshot.providerManaged,
     ...(ageTreatment ? { ageTreatment } : {}),
+    ...(providerRevision ? { providerRevision } : {}),
   };
 }
 
 export function registerAdvertisingConsentProvider(next: AdvertisingConsentProvider) {
-  const previous = provider;
-  provider = next;
+  const registration = { provider: next, active: true };
+  registrations.push(registration);
+  bindProvider();
   return () => {
-    if (provider === next) provider = previous;
+    if (!registration.active) return;
+    const wasCurrent = currentRegistration() === registration;
+    registration.active = false;
+    registrations.splice(registrations.indexOf(registration), 1);
+    if (wasCurrent) bindProvider();
   };
 }
 
 export function resetAdvertisingConsentProviderForTests() {
-  provider = { getSnapshot: () => safeDefault };
+  for (const registration of registrations) registration.active = false;
+  registrations.length = 0;
+  bindProvider();
+  snapshot = safeDefault;
+  publishConsent();
 }

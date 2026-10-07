@@ -1,0 +1,10 @@
+$ corepack pnpm --filter @ayin/db run db:seed
+$ prisma db seed
+Loaded Prisma config from prisma.config.ts.
+
+Running seed command `prisma db execute --file prisma/seed.sql` ...
+Loaded Prisma config from prisma.config.ts.
+
+Script executed successfully.
+
+🌱  The seed command has been executed.

@@ -2,6 +2,7 @@
 
 Status: Implemented architecture contract through Task 39  
 Last updated: 2026-09-07
+Platform/PWA summary reviewed: 2026-10-07
 
 This document is the engineering contract implemented by the current AYIN repository. The initial Task 00 invariants remain authoritative except where a later explicit ADR records an intentional evolution. Current code is authoritative when a historical task document describes behavior that has since evolved. Media evolution is governed by ADR-015 and `docs/MEDIA_ARCHITECTURE_V2.md`.
 
@@ -11,7 +12,7 @@ The following rules are non-negotiable unless a later explicit ADR supersedes th
 
 - AYIN is a global product. Geography may be an optional discovery, rights, advertising, or compliance signal, but no country is the product identity or default assumption.
 - The responsive Web/PWA is the source of truth for product UI and behavior.
-- TypeScript is used throughout the application and shared packages.
+- TypeScript is used for Web/API applications and shared packages; existing Android adapters use Kotlin and native iOS/tvOS clients use Swift.
 - The repository is a pnpm workspace monorepo.
 - `apps/web` is a current-stable Next.js application using the App Router.
 - `apps/api` is a structured NestJS application using the Fastify adapter.
@@ -264,7 +265,9 @@ The families may share campaign administration, consent signals, frequency polic
 
 `studio.ayin.stream` and `admin.ayin.stream` may later reverse proxy or redirect to these same route areas without requiring separate applications. Separation into different deployments is permitted later only when operational evidence justifies it; domain APIs remain stable.
 
-The web design system must support pointer, keyboard, touch and directional remote input. PWA lifecycle, manifest, deep links and safe service-worker behavior are designed from the start; creator video libraries are never indiscriminately cached offline.
+The web design system must support pointer, keyboard, touch and directional remote input. The [service worker](../apps/web/public/sw.js) caches only the neutral offline page, repository icons and eligible same-origin Next build assets. Navigation uses the network with the neutral offline page as its failure fallback. Documents, API reads and playback/media are not stored in the worker cache; it provides no offline content library.
+
+Android mobile/Google TV/Fire TV, Tizen and webOS reuse the hosted web product through platform adapters. The existing iOS and tvOS clients use SwiftUI and AVPlayer against shared API contracts, with native session/progress/lifecycle handling. iOS routes supported Watch/live links to native playback and other accepted AYIN web routes to Safari. Native UI changes require their own build and validation; hosted Web changes do not establish native feature parity. See [current platform surfaces and gates](PLATFORM_WRAPPERS.md).
 
 ## 7. External provider adapters
 

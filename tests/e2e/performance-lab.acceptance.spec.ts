@@ -3,26 +3,9 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { performance as clock } from "node:perf_hooks";
 import { expect, test } from "@playwright/test";
+import { performanceLabProfiles as profiles } from "./performance-lab-profiles";
 const API = "http://127.0.0.1:3001",
   WEB = "http://127.0.0.1:3000";
-const profiles = [
-  {
-    name: "desktop-unthrottled",
-    viewport: { width: 1440, height: 1000 },
-    cpuRate: 1,
-    latencyMs: 0,
-    downloadBytesPerSecond: -1,
-    uploadBytesPerSecond: -1,
-  },
-  {
-    name: "mobile-constrained",
-    viewport: { width: 390, height: 844 },
-    cpuRate: 4,
-    latencyMs: 150,
-    downloadBytesPerSecond: 200_000,
-    uploadBytesPerSecond: 96_000,
-  },
-];
 for (const profile of profiles)
   test(`controlled runtime measurements ${profile.name}`, async ({ page, browser }, testInfo) => {
     test.setTimeout(180_000);

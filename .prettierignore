@@ -21,3 +21,4 @@ docs/pwa/2026-10-03-lifecycle-54f-offline.json
 
 # Exact local PostgreSQL EXPLAIN measurement; preserve original recorded bytes.
 docs/evidence/studio-content-query.json
+docs/evidence/product-runtime/2026-10-06/**

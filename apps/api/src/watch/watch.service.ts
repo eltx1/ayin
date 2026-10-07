@@ -111,6 +111,7 @@ export class WatchService {
           },
           orderBy: { generation: "desc" },
           select: {
+            id: true,
             fallbackR2ObjectKey: true,
             hlsMasterR2ObjectKey: true,
             renditions: {
@@ -208,6 +209,11 @@ export class WatchService {
         : null;
 
     return {
+      // Controller-only selection fence, omitted from the public contract.
+      mediaSelection: {
+        sourceAssetId: source.id,
+        generationId: playbackGeneration?.id ?? null,
+      },
       video: {
         id: video.id,
         slug: video.slug,
@@ -254,6 +260,57 @@ export class WatchService {
       },
       playerPolicy: await this.getPlayerPolicy(),
     };
+  }
+
+  async assertPlaybackStillAvailable(
+    selected: {
+      id: string;
+      source: { objectKey: string };
+      adaptiveSource: { objectKey: string } | null;
+    },
+    selection: { sourceAssetId: string; generationId: string | null },
+    countryCode?: string,
+    isKidsProfile = false,
+  ) {
+    // Revalidate the exact disclosed object(s), not merely another playable
+    // source for the same video. Replaced/revoked generations cannot escape a
+    // held read. These are point-in-time checks, with no lock over media I/O.
+    const currentGeneration =
+      selected.adaptiveSource && selection.generationId
+        ? await this.database.client.mediaPlaybackGeneration.findFirst({
+            where: {
+              id: selection.generationId,
+              videoId: selected.id,
+              fallbackR2ObjectKey: selected.source.objectKey,
+              hlsMasterR2ObjectKey: selected.adaptiveSource.objectKey,
+              status: "READY",
+              fallbackStatus: "READY",
+              hlsMasterStatus: "READY",
+              renditions: { some: { status: "READY", protocol: "HLS" } },
+            },
+            select: { id: true },
+          })
+        : null;
+    const currentSource = await this.database.client.mediaAsset.findFirst({
+      where: {
+        id: selection.sourceAssetId,
+        videoId: selected.id,
+        ...(selected.adaptiveSource ? {} : { r2ObjectKey: selected.source.objectKey }),
+        kind: "SOURCE_VIDEO",
+        status: "VALIDATED",
+        removedAt: null,
+        mimeType: "video/mp4",
+      },
+      select: { id: true },
+    });
+    const video = await this.findPlayableVideo(selected.id, countryCode, isKidsProfile);
+    if (
+      !currentSource ||
+      (selected.adaptiveSource && !currentGeneration) ||
+      !video.mediaAssets.length
+    ) {
+      throw new WatchError("VIDEO_NOT_FOUND", "This AYIN video could not be found.", 404);
+    }
   }
 
   async getProgress(accountId: string, videoId: string, profileId?: string, countryCode?: string) {

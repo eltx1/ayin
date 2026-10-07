@@ -6,11 +6,19 @@ on:
       - "apps/**"
       - "packages/**"
       - "tests/e2e/**"
+      - "tests/performance-media/**"
+      - "tests/performance-upload/**"
       - "tests/recovery/**"
+      - "tests/player-localization/**"
       - "tests/pwa/**"
       - "tests/captions/**"
       - "playwright.config.ts"
+      - "playwright.performance.config.ts"
+      - "playwright.native-media.config.ts"
+      - "playwright.changed-routes.config.ts"
+      - "playwright.upload-transport.config.ts"
       - "playwright.recovery.config.ts"
+      - "playwright.player-localization.config.ts"
       - "playwright.pwa.config.ts"
       - "playwright.captions.config.ts"
       - "package.json"
@@ -110,6 +118,39 @@ jobs:
             playwright-report-captions
           if-no-files-found: ignore
           retention-days: 7
+      - name: Prepare native player media tooling
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+          ffmpeg -version
+      - name: Run localized native player acceptance
+        env:
+          NEXT_PUBLIC_MEDIA_BASE_URL: http://127.0.0.1:3000
+        run: |
+          pnpm --filter @ayin/web build
+          pnpm exec playwright test --config playwright.player-localization.config.ts
+      - name: Preserve localized player evidence separately
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-localization-evidence
+          path: |
+            test-results-player-localization/**/player-*.png
+            test-results-player-localization/**/player-*.json
+            test-results-player-localization/**/test-failed-*.png
+            test-results-player-localization/**/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve policy navigation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: policy-navigation-evidence
+          path: test-results/**/legal-navigation-*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -127,6 +168,26 @@ jobs:
             test-results/**/clips-layout-*.json
             test-results/**/clips-layout.acceptance-*/test-failed-*.png
             test-results/**/clips-layout.acceptance-*/error-context.md
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Preserve Clips audience and social evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clips-audience-evidence
+          path: |
+            test-results/**/clips-audience-*.png
+            test-results/**/clips-audience-*.json
+            test-results/**/clips-viewer-audience.acceptance-*/test-failed-*.png
+            test-results/**/clips-viewer-audience.acceptance-*/error-context.md
+            test-results/**/clips-viewer-audience.acceptance-*/trace.zip
+            test-results/**/clips-social-scope.acceptance-*/test-failed-*.png
+            test-results/**/clips-social-scope.acceptance-*/error-context.md
+            test-results/**/clips-social-scope.acceptance-*/trace.zip
+            test-results/**/clips-focus-autoplay.acceptance-*/test-failed-*.png
+            test-results/**/clips-focus-autoplay.acceptance-*/error-context.md
+            test-results/**/clips-position-authority.acceptance-*/test-failed-*.png
+            test-results/**/clips-position-authority.acceptance-*/error-context.md
           if-no-files-found: ignore
           retention-days: 7
       - name: Preserve Auth recovery visual evidence separately
@@ -311,6 +372,15 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Preserve Advertising editor visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-advertising-editor-visuals
+          path: test-results/**/advertising-editor-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Preserve long-content MediaCard visuals
         if: always()
         uses: actions/upload-artifact@v4
@@ -376,5 +446,29 @@ jobs:
             test-results/**/search-*.png
             test-results/**/movie-*.png
             test-results/**/series-*.png
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Preserve Product Controls original mobile visuals
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-controls-mobile-visuals
+          path: |
+            test-results/**/taxonomy-en-mobile.png
+            test-results/**/taxonomy-ar-mobile.png
+            test-results/**/regions-en-mobile.png
+            test-results/**/regions-ar-mobile.png
+          if-no-files-found: error
+          retention-days: 7
+
+      # These labs have dedicated opt-in configs; they are not run by the ordinary
+      # acceptance command. Retain outputs when an explicit laboratory run supplies them.
+      - name: Preserve explicit synthetic upload measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-upload-measurements
+          path: test-results/upload-transport/**/upload-transport-runtime.json
           if-no-files-found: ignore
           retention-days: 7

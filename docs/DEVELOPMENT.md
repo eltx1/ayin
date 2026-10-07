@@ -2,6 +2,7 @@
 
 Status: Current development contract through Task 38
 Last updated: 2026-08-30
+Platform/PWA and media conventions reviewed: 2026-10-07
 
 This document defines the local-development and repository conventions that maintenance and
 post-roadmap work must preserve. The listed command surface is implemented and must remain
@@ -11,7 +12,9 @@ truthful; do not add misleading no-op scripts.
 
 Tasks 00–38 are implemented on `main`. The repository contains the complete roadmap-side Web/PWA,
 API, database, creator, admin, advertising, analytics, revenue, trust, live/linear adapter, and
-thin platform-shell foundations. Provider- or device-dependent production verification remains
+thin platform-shell foundations. Post-roadmap source also includes native SwiftUI/AVPlayer iOS
+and tvOS clients; their implemented scope and remaining parity gates are documented in
+[`PLATFORM_WRAPPERS.md`](PLATFORM_WRAPPERS.md). Provider- or device-dependent production verification remains
 tracked separately in `TASK_PROGRESS.md` and `docs/LAUNCH_CHECKLIST.md`.
 
 | Existing area                    | Purpose                                                |
@@ -30,6 +33,8 @@ tracked separately in `TASK_PROGRESS.md` and `docs/LAUNCH_CHECKLIST.md`.
 | `packages/types`                 | Genuinely cross-application TypeScript contracts       |
 | `packages/db`                    | Prisma schema, migrations, seed and database client    |
 | `platforms/android`              | Android mobile, Google TV and Fire TV hybrid shells    |
+| `platforms/ios`                  | Native SwiftUI/AVPlayer viewer with Safari fallbacks   |
+| `platforms/tvos`                 | Native SwiftUI/AVPlayer Apple TV viewer                |
 | `platforms/tizen`                | Samsung Tizen hosted package                           |
 | `platforms/webos`                | LG webOS hosted package                                |
 | `deploy`                         | CloudPanel/AWS process, proxy and atomic release tools |
@@ -57,7 +62,7 @@ Do not install production credentials locally merely to make a test pass. Provid
 - Package manager: pnpm only. Do not commit npm, Yarn, or Bun lockfiles.
 - Workspace applications: `apps/web` and `apps/api`.
 - Shared code: scoped packages under `packages/*` with narrow public exports.
-- Language: strict TypeScript for applications, packages, tests, scripts, and configuration whenever the tool supports TypeScript.
+- Language: strict TypeScript for Web/API applications, shared packages, tests, scripts, and configuration whenever the tool supports TypeScript. Existing Android adapters use Kotlin; iOS/tvOS clients use Swift.
 - Web: Next.js 16.3.3 App Router with React 19.2.8, pinned by the lockfile.
 - API: NestJS 12.0.1 with the Fastify 5.12.1 adapter.
 - Database: PostgreSQL through Prisma 7.10.0 in `packages/db`, with committed forward migrations.
@@ -193,7 +198,7 @@ R2_SECRET_ACCESS_KEY=replace-with-secret-access-key
 - Neither `apps/web` nor `apps/api` may expose an endpoint that accepts/proxies creator video bodies.
 - Local development must use a documented media adapter introduced in the media task. It must be unmistakably non-production and must not falsely report R2 connectivity.
 - R2 keys are server-generated from stable IDs; raw filenames do not determine object keys.
-- V1 accepts playback-ready MP4 and does not introduce transcoding.
+- Creator uploads accept supported mobile/camera source containers. The existing media worker uses FFmpeg to produce and validate canonical MP4 playback media in R2; preserve that processing/publication gate. See [`R2_UPLOADS.md`](R2_UPLOADS.md).
 - Tests use small fixtures outside normal source paths and must not commit large generated media artifacts.
 
 ## 11. Advertising development rules
@@ -213,8 +218,9 @@ Provider tags and credentials belong in validated configuration/adapters, not Re
 - Build accessible shared UI primitives before duplicating patterns.
 - Interactive components must support their relevant pointer, touch, keyboard, and directional-focus behavior.
 - TV focus state and remote key mapping belong in reusable primitives/adapters.
-- Service workers may cache application shell/static assets and explicitly safe reads, but never indiscriminately cache the creator video library.
+- The service worker caches only the neutral offline page, repository icons and eligible same-origin `/_next/static/` assets. Documents use the network with a neutral offline fallback; API reads, playback/media and uploads never enter its cache. Preserve the request/response exclusions and bounded static cache in [`apps/web/public/sw.js`](../apps/web/public/sw.js).
 - Platform shells consume web capabilities through adapters and must not fork ordinary product/business logic.
+- Existing native iOS/tvOS viewers consume the shared API contracts through Swift clients and AVPlayer. Preserve their native lifecycle and viewer/progress authority; do not treat them as WebView wrappers or infer full Web feature parity.
 
 ## 13. External provider convention
 

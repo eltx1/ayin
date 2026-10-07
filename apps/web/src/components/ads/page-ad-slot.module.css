@@ -3,6 +3,11 @@
   width: 100%;
 }
 
+.probe[hidden],
+.slot[hidden] {
+  display: none;
+}
+
 .slot {
   align-items: center;
   display: flex;

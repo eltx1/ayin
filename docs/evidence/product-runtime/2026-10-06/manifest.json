@@ -1,0 +1,92 @@
+{
+  "reports": [
+    {
+      "file": "performance-baseline-mobile-constrained.json",
+      "bytes": 31379,
+      "sha256": "f2013fb0c536f20e14da6353861e8cc61691281f85d357580803a3bbe2ec5839",
+      "sourceCommit": "5965ab29e7e9355060688f38d09ca87a9ece4808",
+      "sourceTree": "77ae930c3a24f1c4af50cbfdf80edf21c542c545"
+    },
+    {
+      "file": "performance-baseline-desktop-unthrottled.json",
+      "bytes": 29563,
+      "sha256": "041b449be5018e087a1a065b420e62050013f8d0ab0fec35e81e89c81205a139",
+      "sourceCommit": "5965ab29e7e9355060688f38d09ca87a9ece4808",
+      "sourceTree": "77ae930c3a24f1c4af50cbfdf80edf21c542c545"
+    },
+    {
+      "file": "performance-baseline-product-mobile-constrained.json",
+      "bytes": 469733,
+      "sha256": "60238e986ff68e9a7b98e5e036c78520f480599868a4bfb26ff56f06add1a814",
+      "sourceCommit": "5965ab29e7e9355060688f38d09ca87a9ece4808",
+      "sourceTree": "77ae930c3a24f1c4af50cbfdf80edf21c542c545"
+    },
+    {
+      "file": "performance-baseline-product-desktop-unthrottled.json",
+      "bytes": 471052,
+      "sha256": "2a779d4fc868aa8db59091e1241ccfac4c15db69f9ea57ef6fb5a2cda9bcce73",
+      "sourceCommit": "5965ab29e7e9355060688f38d09ca87a9ece4808",
+      "sourceTree": "77ae930c3a24f1c4af50cbfdf80edf21c542c545"
+    }
+  ],
+  "preservation": "Verbatim bytes; no relabeling as later documentation head; account/profile/video IDs, cookies, headers and credential fields absent",
+  "runtimeBuild": {
+    "commit": "1b9e244b2fedabbc9666d515b913c27990dfcad1",
+    "tree": "85ecb199bae44fd8203c8a3f5f3ff13b72cd51b1",
+    "reviewedSearchBase": "43fa32a7847172d9aff4734fd72584f8d884bc72",
+    "onlyProductChange": "Existing x-ayin-locale added to CORS allowedHeaders (7756e083); no origin/method/credential changes",
+    "initialInstrumentationCheckpoint": "ad09239bb67ecbebb87ad69bc26c4b71eaf3dbd7"
+  },
+  "additionalEvidence": [
+    {
+      "file": "failed-cors/performance-baseline-product-desktop-unthrottled.json",
+      "bytes": 63909,
+      "sha256": "2a9006ab291984aa78fa2b7cbd12e00f8c466f983dc58f4495b276ec781f34a7"
+    },
+    {
+      "file": "failed-cors/performance-baseline-product-mobile-constrained.json",
+      "bytes": 64869,
+      "sha256": "dd37845406f8af7fbc3c25a9c01969f2113ee3ebb422cbe984eb5c3c1468ed6d"
+    },
+    {
+      "file": "setup/dependency-manifest.json",
+      "bytes": 2157,
+      "sha256": "306742583ddaca5944e94316c20d5be02cc3c0ee4da239a653e88111763b22fd"
+    },
+    {
+      "file": "setup/frozen-install.txt",
+      "bytes": 197,
+      "sha256": "8a84a582342aa7d48376f9f7e45186d243457ae820ef6176db9e74d92bdfaf41"
+    },
+    {
+      "file": "setup/locale-cors-contract.txt",
+      "bytes": 1465,
+      "sha256": "d4defe3d3d2c4d3ef1f681530edbef25f3b169728d946289883e7cb6031fdb36"
+    },
+    {
+      "file": "setup/migrations.txt",
+      "bytes": 8228,
+      "sha256": "394998424e7faeeb559f8d786d68214cd255c92bf8ca9dc502fccf89ad5e4129"
+    },
+    {
+      "file": "setup/postgres-init.txt",
+      "bytes": 884,
+      "sha256": "dd261fa042f107a8bf2c15a9019811578e689a500edc511cf92162fda32c05e1"
+    },
+    {
+      "file": "setup/production-build.txt",
+      "bytes": 4501,
+      "sha256": "dbff0f66f338d29c6f5bc6e883815f3fa5d2369f2e05af31a5fcaaf75e21fb13"
+    },
+    {
+      "file": "setup/run-status.json",
+      "bytes": 985,
+      "sha256": "76c62f589d3acc2d433422e242279aa17d05476ee8c7ea3c3a60f7a5a1d581fb"
+    },
+    {
+      "file": "setup/seed.txt",
+      "bytes": 294,
+      "sha256": "80701c8422171cddfedb8cc76789108a6550474470f98c19f05d6433a8546dca"
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 import Foundation
 
 protocol TVPlaybackServicing {
-    func load(_ destination: TVPlaybackDestination) async throws -> TVPlaybackAsset
+    func load(_ destination: TVPlaybackDestination, token: String?, accountId: String?,
+              profileId: String?, isKids: Bool) async throws -> TVPlaybackAsset
 }
 
 struct TVPlaybackService: TVPlaybackServicing {
@@ -19,10 +20,12 @@ struct TVPlaybackService: TVPlaybackServicing {
         self.advertisingConsent = advertisingConsent
     }
 
-    func load(_ destination: TVPlaybackDestination) async throws -> TVPlaybackAsset {
+    func load(_ destination: TVPlaybackDestination, token: String? = nil, accountId: String? = nil,
+              profileId: String? = nil, isKids: Bool = false) async throws -> TVPlaybackAsset {
         switch destination {
-        case let .video(slug, isKids):
-            return try await video(slug: slug, isKids: isKids)
+        case let .video(slug, routeIsKids):
+            return try await video(slug: slug, isKids: routeIsKids || isKids,
+                                   token: token, accountId: accountId, profileId: profileId)
         case let .live(slug):
             return try await live(slug: slug)
         case let .creatorTV(handle):
@@ -30,11 +33,20 @@ struct TVPlaybackService: TVPlaybackServicing {
         }
     }
 
-    private func video(slug: String, isKids: Bool) async throws -> TVPlaybackAsset {
-        let kidsQuery = isKids ? "?kids=1" : ""
+    private func video(slug: String, isKids: Bool, token: String?, accountId: String?,
+                       profileId: String?) async throws -> TVPlaybackAsset {
+        var components = URLComponents()
+        components.path = "/public/videos/\(slug)/playback"
+        var query: [URLQueryItem] = []
+        if isKids { query.append(URLQueryItem(name: "kids", value: "1")) }
+        if let profileId { query.append(URLQueryItem(name: "expectedProfileId", value: profileId)) }
+        components.queryItems = query.isEmpty ? nil : query
+        guard let path = components.string else { throw APIClientError.invalidURL }
         let response: TVVideoPlaybackResponse = try await client.request(
-            "/public/videos/\(slug)/playback\(kidsQuery)"
+            path, token: token,
+            headers: accountId.map { ["X-AYIN-Expected-Account": $0] } ?? [:]
         )
+        let effectiveKids = isKids || response.viewer?.isKids == true
         guard let mp4 = MediaURLBuilder.url(objectKey: response.video.source.objectKey) else {
             throw PlaybackError.invalidMediaURL
         }
@@ -46,7 +58,7 @@ struct TVPlaybackService: TVPlaybackServicing {
         }
 
         var share = AppEnvironment.webBaseURL.appending(path: "watch").appending(path: slug)
-        if isKids {
+        if effectiveKids {
             var components = URLComponents(url: share, resolvingAgainstBaseURL: false)
             components?.queryItems = [URLQueryItem(name: "kids", value: "1")]
             share = components?.url ?? share
@@ -65,7 +77,7 @@ struct TVPlaybackService: TVPlaybackServicing {
             protocolName: hls == nil ? "MP4" : "HLS",
             initialOffsetMs: 0,
             captions: response.video.captions,
-            isKids: isKids
+            isKids: effectiveKids
         )
     }
 

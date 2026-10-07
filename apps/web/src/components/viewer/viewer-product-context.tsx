@@ -37,6 +37,7 @@ interface ViewerProductContextValue {
   audienceStatus: "loading" | "ready" | "error";
   isAudienceCurrent: () => boolean;
   onBeforeIdentitySuspend: (listener: () => void) => () => void;
+  onAudienceInvalidated: (listener: () => void) => () => void;
   claimAccountIdentity: () => {
     publish: (identity: AyinIdentity | null) => void;
     release: () => void;
@@ -106,6 +107,24 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
   const identityRead = useRef<AbortController | null>(null);
   const identityPath = useRef(pathname);
   const beforeSuspend = useRef(new Set<() => void>());
+  const audienceInvalidated = useRef(new Set<() => void>());
+  const onAudienceInvalidated = useCallback((listener: () => void) => {
+    audienceInvalidated.current.add(listener);
+    return () => {
+      audienceInvalidated.current.delete(listener);
+    };
+  }, []);
+  const invalidateAudience = useCallback(() => {
+    concealViewerIdentity();
+    identityEpoch.current++;
+    for (const listener of [...audienceInvalidated.current]) {
+      try {
+        listener();
+      } catch {
+        /* One consumer must not delay concealment. */
+      }
+    }
+  }, []);
   const onBeforeIdentitySuspend = useCallback((listener: () => void) => {
     beforeSuspend.current.add(listener);
     return () => {
@@ -120,8 +139,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       owned: boolean,
       status: PublishedIdentity["status"] = next ? "ready" : "loading",
     ) => {
-      concealViewerIdentity();
-      const epoch = ++identityEpoch.current;
+      invalidateAudience();
+      const epoch = identityEpoch.current;
       identityRead.current?.abort();
       identityRead.current = null;
       setPublishedIdentity(
@@ -138,7 +157,7 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       );
       setIdentityRevision((value) => value + 1);
     },
-    [],
+    [invalidateAudience],
   );
 
   const claimAccountIdentity = useCallback(() => {
@@ -180,11 +199,10 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       identityOwner.current = null;
       identityOwnerPath.current = null;
     }
-    concealViewerIdentity();
-    identityEpoch.current++;
+    invalidateAudience();
     identityRead.current?.abort();
     identityRead.current = null;
-  }, [pathname]);
+  }, [invalidateAudience, pathname]);
 
   // This layout survives soft navigation and Next may restore cached Home trees.
   // Reset during this provider's render, before children can receive old policy
@@ -379,6 +397,7 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       audienceStatus,
       isAudienceCurrent,
       onBeforeIdentitySuspend,
+      onAudienceInvalidated,
       claimAccountIdentity,
     }),
     [
@@ -392,6 +411,7 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       audienceStatus,
       isAudienceCurrent,
       onBeforeIdentitySuspend,
+      onAudienceInvalidated,
       claimAccountIdentity,
     ],
   );

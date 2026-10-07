@@ -8,6 +8,8 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var playback: NativePlayback?
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
+    @Published private(set) var progressNeedsReview = false
+    @Published private(set) var isReviewingProgress = false
 
     let destination: PlayerDestination
 
@@ -16,12 +18,15 @@ final class PlayerViewModel: ObservableObject {
     private let analytics: any AnalyticsTracking
 
     private var sessionToken: String?
+    private var accountId: String?
     private var profileId: String?
+    private var viewerIsKids = false
     private var shouldResumeAfterInterruption = false
     private var periodicObserver: Any?
     private var notificationObservers: [NSObjectProtocol] = []
     private var timeControlObservation: NSKeyValueObservation?
     private var checkpointTask: Task<Void, Never>?
+    private var checkpointWorkerID: UUID?
     private var pendingCheckpoint: PlaybackCheckpoint?
     private var initialAnalyticsTask: Task<Void, Never>?
     private var startupMetricTask: Task<Void, Never>?
@@ -29,8 +34,8 @@ final class PlayerViewModel: ObservableObject {
     private var playAttemptStartedAt: Date?
     private var startupReported = false
     private var lastAnalyticsPositionMs: Int?
-    private var lastSavedPositionMs: Int?
-    private var progressBaselineResolved = false
+    private var progressState = ProgressRevisionState()
+    private var loadGeneration: UInt64 = 0
     private var didComplete = false
 
     init(
@@ -45,17 +50,25 @@ final class PlayerViewModel: ObservableObject {
         self.analytics = analytics
     }
 
-    func load(token: String?, profileId: String?) async {
+    func load(token: String?, profileId: String?, accountId: String? = nil, isKids: Bool = false) async {
+        guard !Task.isCancelled else { return }
+        viewerDidChange(token: token, accountId: accountId, profileId: profileId, isKids: isKids)
         guard player == nil, !isLoading else { return }
+        loadGeneration &+= 1
+        let generation = loadGeneration
         isLoading = true
         errorMessage = nil
         sessionToken = token
+        self.accountId = accountId
         self.profileId = profileId
-        defer { isLoading = false }
+        viewerIsKids = isKids
+        defer { if loadGeneration == generation { isLoading = false } }
 
         do {
-            let playback = try await service.load(destination)
+            let playback = try await service.load(destination, token: token, accountId: accountId,
+                                                  profileId: profileId, isKids: isKids)
             try Task.checkCancellation()
+            guard loadGeneration == generation else { return }
             try configureAudioSession()
 
             let item = AVPlayerItem(url: playback.sourceURL)
@@ -67,7 +80,8 @@ final class PlayerViewModel: ObservableObject {
             self.player = player
             lastAnalyticsPositionMs = currentPositionMs()
             startupReported = false
-            progressBaselineResolved = token == nil || playback.isLive || playback.videoId == nil
+            progressState.reset()
+            progressNeedsReview = false
             installPlaybackObservers(player: player, item: item)
 
             // Schedule analytics first so event ordering is stable, but never await its I/O.
@@ -85,10 +99,11 @@ final class PlayerViewModel: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            guard loadGeneration == generation else { return }
             errorMessage = error.localizedDescription
             let message = String(error.localizedDescription.prefix(200))
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.loadGeneration == generation else { return }
                 await self.analytics.emit(
                     self.destination.kind == .live ? "LIVE_FATAL_ERROR" : "VIDEO_BUFFER",
                     profileId: self.profileId,
@@ -104,6 +119,30 @@ final class PlayerViewModel: ObservableObject {
                 )
             }
         }
+    }
+
+    func viewerDidChange(token: String?, accountId: String?, profileId: String?, isKids: Bool) {
+        guard sessionToken != token || self.accountId != accountId || self.profileId != profileId ||
+                viewerIsKids != isKids else { return }
+        invalidateViewer()
+    }
+
+    // Session publishers invoke this synchronously, before a replacement load can suspend.
+    // It also revokes held responses and removes media from PiP/AirPlay immediately.
+    func invalidateViewer() {
+        loadGeneration &+= 1
+        isLoading = false
+        player?.pause()
+        removePlaybackObservers()
+        resumeTask?.cancel()
+        resumeTask = nil
+        initialAnalyticsTask?.cancel()
+        initialAnalyticsTask = nil
+        startupMetricTask?.cancel()
+        startupMetricTask = nil
+        checkpointTask?.cancel()
+        clearPlayback()
+        errorMessage = nil
     }
 
     func handleAudioInterruption(_ notification: Notification) {
@@ -129,7 +168,11 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    func stop() async {
+    @discardableResult
+    func stop(saveProgress: Bool = true) async -> Bool {
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        isLoading = false
         let finalTime = player?.currentTime()
         player?.pause()
 
@@ -144,29 +187,44 @@ final class PlayerViewModel: ObservableObject {
         removePlaybackObservers()
 
         var checkpointToAwait = checkpointTask
-        if let finalTime {
+        if saveProgress, let finalTime {
             checkpointToAwait = enqueueCheckpoint(
                 finalTime,
                 forceProgressSave: true
             ) ?? checkpointToAwait
         }
-        if let checkpointToAwait {
+        if !saveProgress {
+            checkpointTask?.cancel()
+            checkpointWorkerID = nil
+            progressState.reset()
+        } else if let checkpointToAwait {
             await checkpointToAwait.value
         }
 
+        guard loadGeneration == generation else { return false }
+
+        clearPlayback()
+        return true
+    }
+
+    private func clearPlayback() {
         checkpointTask = nil
+        checkpointWorkerID = nil
         pendingCheckpoint = nil
 
         player?.replaceCurrentItem(with: nil)
         player = nil
         playback = nil
         sessionToken = nil
+        accountId = nil
         profileId = nil
+        viewerIsKids = false
         playAttemptStartedAt = nil
         startupReported = false
         lastAnalyticsPositionMs = nil
-        lastSavedPositionMs = nil
-        progressBaselineResolved = false
+        progressState.reset()
+        progressNeedsReview = false
+        isReviewingProgress = false
         didComplete = false
         shouldResumeAfterInterruption = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -174,20 +232,23 @@ final class PlayerViewModel: ObservableObject {
 
     private func installPlaybackObservers(player: AVPlayer, item: AVPlayerItem) {
         removePlaybackObservers()
+        let generation = loadGeneration
 
         periodicObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 15, preferredTimescale: 600),
             queue: .main
-        ) { [weak self] time in
-            Task { @MainActor [weak self] in
-                _ = self?.enqueueCheckpoint(time)
+        ) { [weak self, weak player, weak item] time in
+            Task { @MainActor [weak self, weak player, weak item] in
+                guard let self, self.ownsPlayback(player, item: item, generation: generation) else { return }
+                _ = self.enqueueCheckpoint(time)
             }
         }
 
         timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) {
-            [weak self] observedPlayer, _ in
-            Task { @MainActor [weak self] in
-                guard let self, observedPlayer.timeControlStatus == .playing else { return }
+            [weak self, weak item] observedPlayer, _ in
+            Task { @MainActor [weak self, weak item] in
+                guard let self, self.ownsPlayback(observedPlayer, item: item, generation: generation),
+                      observedPlayer.timeControlStatus == .playing else { return }
                 self.reportStartupIfNeeded()
             }
         }
@@ -198,9 +259,10 @@ final class PlayerViewModel: ObservableObject {
                 forName: AVPlayerItem.playbackStalledNotification,
                 object: item,
                 queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self, let playback = self.playback else { return }
+            ) { [weak self, weak player, weak item] _ in
+                Task { @MainActor [weak self, weak player, weak item] in
+                    guard let self, self.ownsPlayback(player, item: item, generation: generation),
+                          let playback = self.playback else { return }
                     await self.emit(
                         playback.isLive ? "LIVE_REBUFFER" : "VIDEO_BUFFER",
                         playback: playback,
@@ -215,9 +277,10 @@ final class PlayerViewModel: ObservableObject {
                 forName: AVPlayerItem.failedToPlayToEndTimeNotification,
                 object: item,
                 queue: .main
-            ) { [weak self] notification in
-                Task { @MainActor [weak self] in
-                    guard let self, let playback = self.playback else { return }
+            ) { [weak self, weak player, weak item] notification in
+                Task { @MainActor [weak self, weak player, weak item] in
+                    guard let self, self.ownsPlayback(player, item: item, generation: generation),
+                          let playback = self.playback else { return }
                     let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
                     await self.handleAsynchronousPlaybackFailure(playback: playback, error: error)
                 }
@@ -229,9 +292,9 @@ final class PlayerViewModel: ObservableObject {
                 forName: AVPlayerItem.timeJumpedNotification,
                 object: item,
                 queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
+            ) { [weak self, weak player, weak item] _ in
+                Task { @MainActor [weak self, weak player, weak item] in
+                    guard let self, self.ownsPlayback(player, item: item, generation: generation) else { return }
                     // A seek is not watched duration. Reset the accounting baseline.
                     self.lastAnalyticsPositionMs = self.currentPositionMs()
                 }
@@ -243,9 +306,10 @@ final class PlayerViewModel: ObservableObject {
                 forName: AVPlayerItem.didPlayToEndTimeNotification,
                 object: item,
                 queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self, !self.didComplete, let playback = self.playback else { return }
+            ) { [weak self, weak player, weak item] _ in
+                Task { @MainActor [weak self, weak player, weak item] in
+                    guard let self, self.ownsPlayback(player, item: item, generation: generation),
+                          !self.didComplete, let playback = self.playback else { return }
                     self.didComplete = true
                     if let player = self.player,
                        let checkpoint = self.enqueueCheckpoint(
@@ -254,6 +318,7 @@ final class PlayerViewModel: ObservableObject {
                        ) {
                         await checkpoint.value
                     }
+                    guard self.ownsPlayback(player, item: item, generation: generation) else { return }
                     await self.emit(
                         playback.isLive ? "LIVE_PLAY_COMPLETE" : "VIDEO_COMPLETE",
                         playback: playback,
@@ -262,6 +327,11 @@ final class PlayerViewModel: ObservableObject {
                 }
             }
         )
+    }
+
+    private func ownsPlayback(_ player: AVPlayer?, item: AVPlayerItem?, generation: UInt64) -> Bool {
+        guard let player, let item else { return false }
+        return loadGeneration == generation && self.player === player && player.currentItem === item
     }
 
     private func removePlaybackObservers() {
@@ -321,7 +391,8 @@ final class PlayerViewModel: ObservableObject {
         player: AVPlayer,
         playback: NativePlayback,
         token: String?,
-        profileId: String?
+        profileId: String?,
+        allowResume: Bool = true
     ) {
         resumeTask?.cancel()
         guard
@@ -329,6 +400,9 @@ final class PlayerViewModel: ObservableObject {
             let token,
             let videoId = playback.videoId
         else { return }
+
+        let ticket = progressState.beginRead()
+        isReviewingProgress = true
 
         resumeTask = Task { @MainActor [weak self, weak player] in
             guard let self, let player else { return }
@@ -342,10 +416,12 @@ final class PlayerViewModel: ObservableObject {
 
                 // From this point forward we know the authoritative server baseline and can
                 // persist only forward progress without accidentally moving Continue Watching back.
-                self.progressBaselineResolved = true
-                self.lastSavedPositionMs = progress.positionMs
+                guard self.progressState.accept(progress, for: ticket) else { return }
+                self.progressNeedsReview = false
+                self.isReviewingProgress = false
 
                 guard
+                    allowResume,
                     progress.completedAt == nil,
                     progress.positionMs > 0,
                     (self.currentPositionMs() ?? 0) <= 2_500
@@ -359,9 +435,23 @@ final class PlayerViewModel: ObservableObject {
             } catch {
                 // A transient progress failure must not delay playback or risk overwriting
                 // an unknown server position with a lower local value.
-                self.progressBaselineResolved = false
+                guard !Task.isCancelled, self.player === player,
+                      self.progressState.fail(ticket) else { return }
+                self.progressNeedsReview = true
+                self.isReviewingProgress = false
             }
         }
+    }
+
+    func reviewProgress() {
+        guard !isReviewingProgress, let player, let playback else { return }
+        loadResumePositionIfUseful(
+            player: player,
+            playback: playback,
+            token: sessionToken,
+            profileId: profileId,
+            allowResume: false
+        )
     }
 
     @discardableResult
@@ -381,9 +471,11 @@ final class PlayerViewModel: ObservableObject {
             return checkpointTask
         }
 
+        let workerID = UUID()
+        checkpointWorkerID = workerID
         let worker = Task { @MainActor [weak self] in
             guard let self else { return }
-            while !Task.isCancelled {
+            while !Task.isCancelled, self.checkpointWorkerID == workerID {
                 guard let checkpoint = self.pendingCheckpoint else { break }
                 self.pendingCheckpoint = nil
                 await self.performCheckpoint(
@@ -391,7 +483,10 @@ final class PlayerViewModel: ObservableObject {
                     forceProgressSave: checkpoint.forceProgressSave
                 )
             }
-            self.checkpointTask = nil
+            if self.checkpointWorkerID == workerID {
+                self.checkpointTask = nil
+                self.checkpointWorkerID = nil
+            }
         }
         checkpointTask = worker
         return worker
@@ -402,6 +497,7 @@ final class PlayerViewModel: ObservableObject {
         forceProgressSave: Bool
     ) async {
         guard let playback else { return }
+        let generation = loadGeneration
 
         let durationDeltaMs = PlaybackAccounting.watchedDeltaMs(
             previousPositionMs: lastAnalyticsPositionMs,
@@ -411,7 +507,7 @@ final class PlayerViewModel: ObservableObject {
 
         if durationDeltaMs > 0 {
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.loadGeneration == generation else { return }
                 await self.emit(
                     playback.isLive ? "LIVE_DURATION" : "VIDEO_PROGRESS",
                     playback: playback,
@@ -425,30 +521,35 @@ final class PlayerViewModel: ObservableObject {
             !playback.isLive,
             let token = sessionToken,
             let videoId = playback.videoId,
-            progressBaselineResolved
+            let baseline = progressState.snapshot,
+            !Task.isCancelled
         else { return }
 
-        if let lastSavedPositionMs, positionMs < lastSavedPositionMs {
+        if positionMs < baseline.positionMs {
             return
         }
 
         let shouldSave =
             forceProgressSave ||
-            lastSavedPositionMs == nil ||
-            positionMs - (lastSavedPositionMs ?? 0) >= 5_000
-        guard shouldSave else { return }
+            positionMs - baseline.positionMs >= 5_000
+        guard shouldSave, let ticket = progressState.beginSave(positionMs: positionMs) else { return }
 
         do {
-            try await progressService.save(
+            let saved = try await progressService.save(
                 videoId: videoId,
                 profileId: profileId,
                 positionMs: positionMs,
                 durationMs: resolvedDurationMs(playback),
+                expectedRevision: ticket.expectedRevision,
                 token: token
             )
-            lastSavedPositionMs = positionMs
+            guard !Task.isCancelled, progressState.accept(saved, for: ticket) else { return }
+            progressNeedsReview = false
         } catch {
-            // Progress persistence must never stop media playback.
+            // An unknown acknowledgment may already have committed. A 409 may be
+            // another device's newer progress. Neither outcome authorizes replay.
+            guard !Task.isCancelled, progressState.fail(ticket) else { return }
+            progressNeedsReview = true
         }
     }
 
@@ -503,16 +604,18 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
-    func retry(token: String?, profileId: String?) async {
-        await stop()
+    func retry(token: String?, profileId: String?, accountId: String? = nil, isKids: Bool = false) async {
+        // A newer identity may load while the old final checkpoint is awaiting I/O.
+        guard await stop(), !Task.isCancelled else { return }
         errorMessage = nil
-        await load(token: token, profileId: profileId)
+        await load(token: token, profileId: profileId, accountId: accountId, isKids: isKids)
     }
 
     private func handleAsynchronousPlaybackFailure(
         playback failedPlayback: NativePlayback,
         error: Error?
     ) async {
+        let generation = loadGeneration
         if let fallbackPlayback = failedPlayback.usingMP4Fallback(), let player {
             let resumePositionMs = currentPositionMs() ?? 0
 
@@ -526,11 +629,11 @@ final class PlayerViewModel: ObservableObject {
             if resumePositionMs > 0 {
                 await seek(player, toMilliseconds: resumePositionMs)
             }
-            guard self.player === player else { return }
+            guard ownsPlayback(player, item: fallbackItem, generation: generation) else { return }
             player.play()
 
-            Task { @MainActor [weak self] in
-                guard let self else { return }
+            Task { @MainActor [weak self, weak player, weak fallbackItem] in
+                guard let self, self.ownsPlayback(player, item: fallbackItem, generation: generation) else { return }
                 await self.emit(
                     "VIDEO_HLS_FATAL",
                     playback: failedPlayback,
@@ -539,6 +642,7 @@ final class PlayerViewModel: ObservableObject {
                         "message": String((error?.localizedDescription ?? "HLS playback failed").prefix(200))
                     ]
                 )
+                guard self.ownsPlayback(player, item: fallbackItem, generation: generation) else { return }
                 await self.emit(
                     "VIDEO_FALLBACK",
                     playback: fallbackPlayback,
@@ -565,7 +669,7 @@ final class PlayerViewModel: ObservableObject {
         errorMessage = message
 
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, self.loadGeneration == generation else { return }
             await self.emit(
                 failedPlayback.isLive ? "LIVE_FATAL_ERROR" :
                     (failedPlayback.protocolName == "HLS" ? "VIDEO_HLS_FATAL" : "VIDEO_BUFFER"),

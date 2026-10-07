@@ -103,6 +103,51 @@ afterEach(() => {
 });
 
 describe("AYIN adaptive playback abstraction", () => {
+  it("never attaches an HLS source after its viewer lease was aborted", async () => {
+    vi.stubGlobal("window", { Hls: FakeHls });
+    const controller = new AbortController();
+    const read = startAdaptiveHlsPlayback({
+      video: new FakeVideo() as never,
+      hlsUrl: "https://media.ayin.test/old-viewer.m3u8",
+      signal: controller.signal,
+    });
+    controller.abort();
+    expect(await read).toBeNull();
+    expect(FakeHls.last).toBeNull();
+  });
+
+  it("destroys an active HLS session synchronously on viewer invalidation", async () => {
+    vi.stubGlobal("window", { Hls: FakeHls });
+    const controller = new AbortController();
+    const ready = vi.fn();
+    await startAdaptiveHlsPlayback({
+      video: new FakeVideo() as never,
+      hlsUrl: "https://media.ayin.test/old-viewer.m3u8",
+      signal: controller.signal,
+      callbacks: { onReady: ready },
+    });
+    expect(FakeHls.last?.destroyed).toBe(false);
+    controller.abort();
+    expect(FakeHls.last?.destroyed).toBe(true);
+    ready.mockClear();
+    FakeHls.last?.emit(FakeHls.Events.MANIFEST_PARSED);
+    expect(ready).not.toHaveBeenCalled();
+  });
+
+  it("does not set native media on an already invalidated viewer lease", async () => {
+    const video = new FakeVideo(true);
+    const controller = new AbortController();
+    controller.abort();
+    expect(
+      await startAdaptiveHlsPlayback({
+        video: video as never,
+        hlsUrl: "https://media.ayin.test/old-viewer.m3u8",
+        signal: controller.signal,
+      }),
+    ).toBeNull();
+    expect(video.src).toBe("");
+  });
+
   it("releases HTML media decoder resources in TV-safe teardown order", () => {
     const calls: string[] = [];
     releaseHtmlMediaElement({

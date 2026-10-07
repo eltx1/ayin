@@ -190,3 +190,13 @@
     grid-template-columns: 1fr;
   }
 }
+
+.audience {
+  display: grid;
+  gap: inherit;
+  min-width: 0;
+}
+
+.audience[hidden] {
+  display: none;
+}

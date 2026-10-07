@@ -1,6 +1,6 @@
 import { merchandisingScopeHeaders, type MerchandisingTarget } from "./admin-merchandising";
 import type { DirectAdminSession } from "./admin-session-scope";
-import { adminWorkspaceRequest } from "./verified-admin-transport";
+import { AdminWorkspaceError, adminWorkspaceRequest } from "./verified-admin-transport";
 
 export interface AdminHomeRow {
   id: string;
@@ -106,27 +106,62 @@ export const replaceAdminHomeRowManualItems = (
     actor,
   );
 
-export const updateAdminProductControls = (
+export const updateAdminProductControls = async (
   controls: ProductControls,
   reason: string,
   signal?: AbortSignal,
   actor?: DirectAdminSession,
-) =>
-  request<ProductControls>(
+) => {
+  // Match the API's documented trimming without deriving taxonomy identifiers
+  // from labels. A successful HTTP status alone is not confirmation of this draft.
+  const submitted: ProductControls = {
+    navigation: controls.navigation.map((item) => ({
+      ...item,
+      label: item.label.trim(),
+      featureFlag: item.featureFlag?.trim() ?? null,
+    })),
+    hero: { ...controls.hero },
+    taxonomy: controls.taxonomy.map((item) => ({ ...item, label: item.label.trim() })),
+    announcement: { ...controls.announcement, text: controls.announcement.text.trim() },
+    deviceVisibility: { ...controls.deviceVisibility },
+  };
+  const result = await request<unknown>(
     "/admin/product-controls/global",
     {
       signal: signal ?? null,
       method: "PUT",
-      body: JSON.stringify({ ...controls, reason }),
+      body: JSON.stringify({ ...submitted, reason }),
     },
     actor,
   );
+  if (!sameProductControlsValue(result, submitted)) throw new AdminWorkspaceError(0, true);
+  return submitted;
+};
+
+function sameProductControlsValue(actual: unknown, expected: unknown): boolean {
+  if (actual === expected) return true;
+  if (Array.isArray(expected))
+    return (
+      Array.isArray(actual) &&
+      actual.length === expected.length &&
+      expected.every((entry, index) => sameProductControlsValue(actual[index], entry))
+    );
+  if (expected && typeof expected === "object") {
+    if (!actual || typeof actual !== "object" || Array.isArray(actual)) return false;
+    const record = actual as Record<string, unknown>;
+    return (
+      Object.keys(record).length === Object.keys(expected).length &&
+      Object.entries(expected).every(([key, value]) => sameProductControlsValue(record[key], value))
+    );
+  }
+  return false;
+}
 
 export function parseRegionTargets(value: string): string[] {
   const regions = [
     ...new Set(
       value
-        .split(/[\s,]+/)
+        .split(/[\s,،]+/)
         .map((part) => part.trim().toUpperCase())
         .filter(Boolean),
     ),

@@ -11,6 +11,7 @@ import {
   adminDirectCampaignEn,
   adminDirectCampaignAr,
 } from "../../apps/web/src/lib/i18n/resources/admin-direct-campaign";
+import { advertisingEditorEn } from "../../apps/web/src/lib/i18n/resources/admin-advertising-editor";
 const API = "http://127.0.0.1:3001",
   WEB = "http://127.0.0.1:3000";
 type RecordRow = { id: string; name: string; updatedAt: string };
@@ -174,11 +175,13 @@ for (const locale of ["en", "ar"] as const) {
     ).toHaveLength(1);
     await shots(page, info, locale, "committed");
     await page.getByRole("tab", { name: nav.creatives, exact: true }).click();
-    await expect(
-      page
-        .getByRole("tabpanel")
-        .getByRole("option", { name: data.prefix + "created-draft", exact: true }),
-    ).toHaveCount(1);
+    const createdOption = page.getByRole("tabpanel").getByRole("option", {
+      name: `${data.prefix}created-draft · ${data.advertisers[0]!.name}`,
+      exact: true,
+    });
+    await expect(createdOption).toHaveCount(1);
+    expect(created?.id).toEqual(expect.any(String));
+    await expect(createdOption).toHaveAttribute("value", String(created?.id));
   });
   test(`Direct campaigns ${locale} retain exact advanced values and dirty drafts across explicit and in-flight reads`, async ({
     page,
@@ -423,18 +426,46 @@ test("Direct campaign role revocation off-route clears private drafts and denies
   const data = await seed(page),
     panel = await open(page, "en", "campaigns");
   await panel.getByRole("button", { name: "New campaign", exact: true }).click();
-  await panel
-    .getByLabel(adminDirectCampaignEn.campaignName, { exact: true })
-    .fill(data.prefix + "revoked-draft");
+  const privateDraft = data.prefix + "revoked-draft";
+  await panel.getByLabel(adminDirectCampaignEn.campaignName, { exact: true }).fill(privateDraft);
+  let writes = 0;
+  page.on("request", (request) => {
+    if (
+      request.url().startsWith(API + "/admin/advertising/") &&
+      ["POST", "PUT", "PATCH", "DELETE"].includes(request.method())
+    )
+      writes++;
+  });
   await leaveWithinAdmin(page);
   db("revoke-role", data);
-  const returned = await returnToCampaigns(page);
-  await returned.getByRole("button", { name: "Read current records", exact: true }).click();
-  await expect(returned.getByText(/Access changed/)).toBeVisible();
-  await expect(
-    returned.getByLabel(adminDirectCampaignEn.campaignName, { exact: true }),
-  ).not.toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/admin\/advertising/);
+  const checkAccess = page.getByRole("button", {
+    name: advertisingEditorEn.refreshAccess,
+    exact: true,
+  });
+  for (const recheck of [false, true]) {
+    if (recheck) await checkAccess.click();
+    await expect(checkAccess).toBeEnabled();
+    await expect(page.getByText(advertisingEditorEn.access, { exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Campaigns", exact: true })).toHaveCount(0);
+    await expect(page.locator("[data-advertising-private]")).toHaveCount(0);
+    await expect(page.getByLabel(adminDirectCampaignEn.campaignName, { exact: true })).toHaveCount(
+      0,
+    );
+    expect(
+      await page.locator("input,textarea").evaluateAll(
+        (nodes, value) =>
+          nodes.some((node) => {
+            const field = node as HTMLInputElement | HTMLTextAreaElement;
+            return field.value === value || field.defaultValue === value;
+          }),
+        privateDraft,
+      ),
+    ).toBe(false);
+  }
   expect((await page.request.get(API + "/admin/advertising/workspace")).status()).toBe(403);
+  expect(writes).toBe(0);
   expect(evidence(data).audits).toHaveLength(0);
 });
 test("Direct campaign hidden/pagehide boundary scrubs captured controls before re-reading", async ({
@@ -464,6 +495,9 @@ test("Direct campaign hidden/pagehide boundary scrubs captured controls before r
   await page.evaluate(() =>
     window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })),
   );
+  // A full privacy invalidation also clears the retained section selection.
+  await page.getByRole("tab", { name: "Campaigns", exact: true }).click();
+  await expect(name).not.toBeVisible();
   await panel.getByRole("button", { name: "Read current records", exact: true }).click();
   await expect(panel.getByRole("button", { name: "New campaign", exact: true })).toBeEnabled();
   await panel.getByRole("button", { name: "New campaign", exact: true }).click();
@@ -637,10 +671,32 @@ for (const phase of ["write", "recovery"] as const) {
       await expect(panel.getByText(/outcome is not confirmed/)).toBeVisible();
       await panel.getByRole("button", { name: "Review original action", exact: true }).click();
     }
+    // The known result must survive the outer private gate disappearing.
+    await expect(page.getByText(/action was committed and recorded/)).toBeVisible();
+    await expect(page.locator("[data-advertising-private]")).toHaveCount(0);
+    await expect(page.getByLabel(adminDirectCampaignEn.campaignName, { exact: true })).toHaveCount(
+      0,
+    );
+    expect(writes).toBe(1);
+    expect(evidence(data).audits.filter((r) => r.action === "CAMPAIGN_CREATED")).toHaveLength(1);
+    // Restoring identity access is an explicit read; it cannot replay the write
+    // or resurrect its private draft. The committed record remains discoverable.
+    await page.unroute(API + "/admin/session");
+    await page
+      .getByRole("button", { name: advertisingEditorEn.refreshAccess, exact: true })
+      .click();
+    await page.getByRole("tab", { name: "Campaigns", exact: true }).click();
     await expect(panel.getByText(/action was committed and recorded/)).toBeVisible();
     await expect(
       panel.getByLabel(adminDirectCampaignEn.campaignName, { exact: true }),
     ).not.toBeVisible();
+    await panel.getByRole("button", { name: "Read current records", exact: true }).click();
+    await expect(panel.getByRole("button", { name: "New campaign", exact: true })).toBeEnabled();
+    const savedName = data.prefix + "committed-read-failed-" + phase;
+    await panel.getByLabel("Search campaigns or advertisers", { exact: true }).fill(savedName);
+    await expect(
+      panel.getByRole("button", { name: "Edit " + savedName, exact: true }),
+    ).toBeVisible();
     expect(writes).toBe(1);
     expect(evidence(data).audits.filter((r) => r.action === "CAMPAIGN_CREATED")).toHaveLength(1);
   });

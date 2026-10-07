@@ -707,6 +707,10 @@ for (const event of ["pagehide", "blur-hidden"] as const) {
       await settle(page);
       await ready(page, clip);
       await position(page, clip, 17);
+      // The neutral audience shell unmounts this video on suspension. Keep the
+      // retiring node to dispatch a stale event without waiting for a new feed.
+      const retiringVideo = await media(page, clip).elementHandle();
+      expect(retiringVideo).not.toBeNull();
       await page.evaluate((event) => {
         if (event === "blur-hidden") {
           window.dispatchEvent(new Event("blur"));
@@ -739,7 +743,10 @@ for (const event of ["pagehide", "blur-hidden"] as const) {
       await page.evaluate(() =>
         window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: true })),
       );
-      await position(page, clip, 23, "pause");
+      await retiringVideo!.evaluate((video: HTMLVideoElement) => {
+        video.currentTime = 23;
+        video.dispatchEvent(new Event("pause"));
+      });
       await settle(page);
       expect((await requestLog(page)).filter((item) => item.method === "PUT")).toHaveLength(1);
       expect(rows(clip).progress[0]?.positionMs).toBe(17_000);

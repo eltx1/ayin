@@ -50,8 +50,9 @@ export class AdvertisingControlService {
     return row?.value === true;
   }
 
-  async setEmergencyKillSwitch(actorAccountId: string, enabled: boolean, reason?: string) {
+  async setEmergencyKillSwitch(actor: AccountWriteActor, enabled: boolean, reason?: string) {
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
       await tx.platformSetting.upsert({
         where: { namespace_key: { namespace: "ADVERTISING", key: "emergencyKillSwitch" } },
         update: { value: enabled, valueType: "BOOLEAN", schemaVersion: 1 },
@@ -64,14 +65,16 @@ export class AdvertisingControlService {
           description: "Emergency master advertising kill switch.",
         },
       });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "AD_EMERGENCY_KILL_SWITCH_UPDATED",
         entityType: "PlatformSetting",
         entityId: "ADVERTISING/emergencyKillSwitch",
         ...(reason ? { reason } : {}),
         metadata: { enabled },
       });
+      await this.writeAuthority(tx, actor);
       return { enabled };
     });
   }
@@ -82,9 +85,10 @@ export class AdvertisingControlService {
     });
   }
 
-  async createPlacement(actorAccountId: string, input: unknown) {
+  async createPlacement(actor: AccountWriteActor, input: unknown) {
     const data = placementMutationSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
       const placement = await tx.adPlacement.create({
         data: {
           key: data.key,
@@ -95,20 +99,23 @@ export class AdvertisingControlService {
           ...(data.config === null ? {} : { config: json(data.config) }),
         },
       });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "AD_PLACEMENT_CREATED",
         entityType: "AdPlacement",
         entityId: placement.id,
         metadata: { key: placement.key, enabled: placement.enabled },
       });
+      await this.writeAuthority(tx, actor);
       return placement;
     });
   }
 
-  async updatePlacement(actorAccountId: string, placementId: string, input: unknown) {
+  async updatePlacement(actor: AccountWriteActor, placementId: string, input: unknown) {
     const data = placementPatchSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
       const placement = await tx.adPlacement.update({
         where: { id: placementId },
         data: {
@@ -122,13 +129,15 @@ export class AdvertisingControlService {
             : {}),
         },
       });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "AD_PLACEMENT_UPDATED",
         entityType: "AdPlacement",
         entityId: placement.id,
         metadata: { key: placement.key, enabled: placement.enabled },
       });
+      await this.writeAuthority(tx, actor);
       return placement;
     });
   }
@@ -574,9 +583,10 @@ export class AdvertisingControlService {
     }));
   }
 
-  async createCreative(actorAccountId: string, input: unknown) {
+  async createCreative(actor: AccountWriteActor, input: unknown) {
     const data = creativeCreateSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
       const creative = await tx.creative.create({
         data: {
           campaignId: data.campaignId,
@@ -593,20 +603,23 @@ export class AdvertisingControlService {
       await tx.directCreativeConfig.create({
         data: { creativeId: creative.id, ...data.direct },
       });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "CREATIVE_CREATED",
         entityType: "Creative",
         entityId: creative.id,
         metadata: { campaignId: creative.campaignId, status: creative.status, type: creative.type },
       });
+      await this.writeAuthority(tx, actor);
       return creative;
     });
   }
 
-  async updateCreative(actorAccountId: string, creativeId: string, input: unknown) {
+  async updateCreative(actor: AccountWriteActor, creativeId: string, input: unknown) {
     const data = creativePatchSchema.parse(input);
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
       const creative = await tx.creative.update({
         where: { id: creativeId },
         data: {
@@ -627,19 +640,22 @@ export class AdvertisingControlService {
           create: { creativeId, ...data.direct },
         });
       }
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "CREATIVE_UPDATED",
         entityType: "Creative",
         entityId: creative.id,
         metadata: { campaignId: creative.campaignId, status: creative.status, type: creative.type },
       });
+      await this.writeAuthority(tx, actor);
       return creative;
     });
   }
 
-  async deleteCreative(actorAccountId: string, creativeId: string) {
+  async deleteCreative(actor: AccountWriteActor, creativeId: string) {
     return this.database.client.$transaction(async (tx) => {
+      await this.writeAuthority(tx, actor);
       const creative = await tx.creative.findUniqueOrThrow({ where: { id: creativeId } });
       const events = await tx.adEvent.count({ where: { creativeId } });
       if (events > 0) {
@@ -647,23 +663,27 @@ export class AdvertisingControlService {
           where: { id: creativeId },
           data: { status: "ARCHIVED" },
         });
+        await this.writeAuthority(tx, actor);
         await this.audit.recordInTransaction(tx, {
-          actorAccountId,
+          actorAccountId: actor.accountId,
           action: "CREATIVE_ARCHIVED",
           entityType: "Creative",
           entityId: creativeId,
           metadata: { campaignId: creative.campaignId },
         });
+        await this.writeAuthority(tx, actor);
         return archived;
       }
       await tx.creative.delete({ where: { id: creativeId } });
+      await this.writeAuthority(tx, actor);
       await this.audit.recordInTransaction(tx, {
-        actorAccountId,
+        actorAccountId: actor.accountId,
         action: "CREATIVE_DELETED",
         entityType: "Creative",
         entityId: creativeId,
         metadata: { campaignId: creative.campaignId },
       });
+      await this.writeAuthority(tx, actor);
       return { deleted: true };
     });
   }

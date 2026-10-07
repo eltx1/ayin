@@ -4,7 +4,23 @@ struct TVDetailView: View {
     let route: TVRoute
 
     @EnvironmentObject private var router: TVRouter
+    @EnvironmentObject private var session: SessionController
     @StateObject private var model = TVDetailViewModel()
+
+    private var loadIdentity: String {
+        if session.isRestoring { return "restoring" }
+        return [String(describing: route), session.identity?.account.id ?? "guest", session.identity?.profile.id ?? "",
+                session.identity?.profile.isKids == true ? "kids" : "general", session.token ?? ""].joined(separator: ":")
+    }
+
+    private func load() async {
+        guard !session.isRestoring, session.token == nil || session.isAuthenticated else {
+            model.invalidateViewer()
+            return
+        }
+        await model.load(route, token: session.token, accountId: session.identity?.account.id,
+                         profileId: session.identity?.profile.id, isKids: session.identity?.profile.isKids == true)
+    }
 
     var body: some View {
         Group {
@@ -18,29 +34,37 @@ struct TVDetailView: View {
                         description: Text(error)
                     )
                     Button("Try Again") {
-                        Task { await model.load(route) }
+                        Task { await load() }
                     }
                 }
             } else {
                 content
             }
         }
-        .task(id: route) {
-            await model.load(route)
+        .task(id: loadIdentity) {
+            await load()
+        }
+        .onReceive(session.$identity) { identity in
+            model.viewerDidChange(token: identity == nil ? nil : session.token,
+                                  accountId: identity?.account.id, profileId: identity?.profile.id,
+                                  isKids: identity?.profile.isKids == true)
+        }
+        .onReceive(session.$isRestoring) { restoring in
+            if restoring { model.invalidateViewer() }
         }
     }
 
     @ViewBuilder
     private var content: some View {
         switch route {
-        case let .video(slug, isKids):
+        case let .video(slug, _):
             if let video = model.video {
                 hero(
                     title: video.title,
                     subtitle: video.subtitle,
                     description: video.protocolName == "HLS" ? "Adaptive HLS playback" : "Video"
                 ) {
-                    router.play(.video(slug: slug, isKids: isKids))
+                    router.play(.video(slug: slug, isKids: video.isKids))
                 }
             }
 

@@ -5,11 +5,15 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 
+import { useI18n } from "@/components/i18n/i18n-provider";
+import { formatPlayerTime, translatePlayer, type PlayerTranslationKey } from "@/lib/i18n/player";
+import { type TranslationValues } from "@/lib/i18n/translator";
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
 import { notifyNativePlaybackState, toggleShellAwareFullscreen } from "@/lib/native-shell-bridge";
 import {
@@ -24,10 +28,12 @@ import {
   type AyinPlayerAdModeState,
   type AyinPlayerAnalytics,
   type AyinPlayerChapter,
+  type AyinPlayerInitialPreferences,
   type AyinPlayerUpNext,
   noopPlayerAnalytics,
 } from "@/lib/ayin-player";
 import { type PlayerProgressPolicy } from "@/lib/player-progress";
+import type { VideoAdSlot } from "@/lib/video-ads";
 import { useWatchProgress, type PlayerProgressIdentity } from "./use-watch-progress";
 
 import styles from "./ayin-player.module.css";
@@ -42,6 +48,8 @@ export interface AyinPlayerProps {
   captions?: AyinCaptionTrack[] | undefined;
   chapters?: AyinPlayerChapter[] | undefined;
   initialPositionMs?: number | undefined;
+  initialPreferences?: AyinPlayerInitialPreferences | undefined;
+  completedAdBreaks?: Set<VideoAdSlot> | undefined;
   progressEnabled?: boolean | undefined;
   profileId?: string | undefined;
   progressIdentity?: PlayerProgressIdentity | null | undefined;
@@ -53,6 +61,8 @@ export interface AyinPlayerProps {
   adMode?: AyinPlayerAdModeState | undefined;
   onAdContainerReady?: ((element: HTMLDivElement | null) => void) | undefined;
   onPlaybackReady?: (() => void) | undefined;
+  onPlaybackReleaseReady?: ((release: (() => void) | null) => void) | undefined;
+  onPositionAuthorityReady?: ((read: (() => boolean) | null) => void) | undefined;
   autoPlay?: boolean | undefined;
   muted?: boolean | undefined;
   className?: string | undefined;
@@ -68,7 +78,8 @@ export function AyinPlayer({
   posterUrl = null,
   captions = [],
   chapters = [],
-  initialPositionMs = 0,
+  initialPositionMs,
+  initialPreferences,
   progressEnabled = true,
   progressIdentity,
   onProgressIdentityInvalid,
@@ -79,11 +90,17 @@ export function AyinPlayer({
   adMode = { active: false },
   onAdContainerReady,
   onPlaybackReady,
+  onPlaybackReleaseReady,
+  onPositionAuthorityReady,
   autoPlay = false,
   muted: initiallyMuted = false,
   className,
   footer,
 }: AyinPlayerProps) {
+  const { locale, direction, formatNumber } = useI18n();
+  const t = (key: PlayerTranslationKey, values?: TranslationValues) =>
+    translatePlayer(locale, key, values);
+  const formatTime = (milliseconds: number) => formatPlayerTime(milliseconds, locale);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const adContainerRef = useRef<HTMLDivElement | null>(null);
@@ -104,21 +121,34 @@ export function AyinPlayer({
     [captions],
   );
 
+  const initialCaptionId =
+    initialPreferences?.captionId === null
+      ? null
+      : captions.some((track) => track.id === initialPreferences?.captionId)
+        ? initialPreferences!.captionId
+        : defaultCaptionId;
+  const initialVolume = Number.isFinite(initialPreferences?.volume)
+    ? Math.min(1, Math.max(0, initialPreferences!.volume))
+    : 1;
+  const initialRate = [0.5, 0.75, 1, 1.25, 1.5, 2].includes(initialPreferences?.playbackRate ?? 1)
+    ? (initialPreferences?.playbackRate ?? 1)
+    : 1;
+  const initialMute = initialPreferences?.muted ?? initiallyMuted;
   const [playing, setPlaying] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(declaredDurationMs ?? 0);
-  const [volume, setVolume] = useState(1);
-  const [muted, setMuted] = useState(initiallyMuted);
-  const [rate, setRate] = useState(1);
+  const [volume, setVolume] = useState(initialVolume);
+  const [muted, setMuted] = useState(initialMute);
+  const [rate, setRate] = useState(initialRate);
   const [captionSelection, setCaptionSelection] = useState<{
     videoId: string;
     trackId: string | null;
-  }>({ videoId, trackId: defaultCaptionId });
+  }>({ videoId, trackId: initialCaptionId });
   const selectedCaptionId =
     captionSelection.videoId === videoId ? captionSelection.trackId : defaultCaptionId;
   const [qualities, setQualities] = useState<AyinPlaybackRendition[]>([]);
   const [selectedQuality, setSelectedQuality] = useState("AUTO");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"player.sourceError" | null>(null);
 
   const effectivePolicy = progressPolicy ?? {
     progressSaveIntervalMs: 15_000,
@@ -128,6 +158,15 @@ export function AyinPlayer({
     const ordered = [...chapters].sort((a, b) => a.startMs - b.startMs);
     return [...ordered].reverse().find((chapter) => chapter.startMs <= positionMs) ?? null;
   }, [chapters, positionMs]);
+
+  useLayoutEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.volume = initialVolume;
+    video.defaultPlaybackRate = initialRate;
+    video.playbackRate = initialRate;
+    video.muted = initialMute;
+  }, [initialMute, initialRate, initialVolume, videoId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -158,6 +197,7 @@ export function AyinPlayer({
     if (!video) return;
 
     let cancelled = false;
+    const sourceLifetime = new AbortController();
     let startupTimer: number | null = null;
     fallbackUsedRef.current = false;
     bufferingRef.current = false;
@@ -176,6 +216,17 @@ export function AyinPlayer({
         startupTimer = null;
       }
     };
+
+    const release = () => {
+      cancelled = true;
+      sourceLifetime.abort();
+      clearStartupTimer();
+      adaptiveSessionRef.current?.destroy();
+      adaptiveSessionRef.current = null;
+      if (fallbackToMp4Ref.current === fallbackToMp4) fallbackToMp4Ref.current = null;
+      releaseHtmlMediaElement(video);
+    };
+    onPlaybackReleaseReady?.(release);
 
     const fallbackToMp4 = (reason: AyinHlsFailureReason) => {
       if (cancelled || fallbackUsedRef.current || protocolRef.current !== "HLS") return;
@@ -230,11 +281,15 @@ export function AyinPlayer({
       if (video.src !== sourceUrl) {
         video.src = sourceUrl;
         video.load();
+      } else if (video.error) {
+        // A cached/fast source failure can precede hydration and its error listener.
+        // Keep that native failure visible without reloading or repeating telemetry.
+        setError("player.sourceError");
       }
       onPlaybackReady?.();
       return () => {
-        cancelled = true;
-        if (fallbackToMp4Ref.current === fallbackToMp4) fallbackToMp4Ref.current = null;
+        release();
+        onPlaybackReleaseReady?.(null);
       };
     }
 
@@ -247,6 +302,7 @@ export function AyinPlayer({
     void startAdaptiveHlsPlayback({
       video,
       hlsUrl: adaptiveSourceUrl,
+      signal: sourceLifetime.signal,
       callbacks: {
         onReady: () => {
           if (cancelled || fallbackUsedRef.current) return;
@@ -293,27 +349,31 @@ export function AyinPlayer({
       .catch(() => fallbackToMp4("OTHER"));
 
     return () => {
-      cancelled = true;
-      clearStartupTimer();
-      adaptiveSessionRef.current?.destroy();
-      adaptiveSessionRef.current = null;
-      if (fallbackToMp4Ref.current === fallbackToMp4) fallbackToMp4Ref.current = null;
+      release();
+      onPlaybackReleaseReady?.(null);
     };
-  }, [adaptiveSourceUrl, analytics, onPlaybackReady, sourceUrl, videoId]);
+  }, [adaptiveSourceUrl, analytics, onPlaybackReady, onPlaybackReleaseReady, sourceUrl, videoId]);
 
-  const { applyResume, markUserSeek, persist } = useWatchProgress({
-    videoId,
-    videoRef,
-    identity: progressIdentity,
-    enabled: progressEnabled,
-    initialPositionMs,
-    durationMs: declaredDurationMs,
-    intervalMs: effectivePolicy.progressSaveIntervalMs,
-    adActiveRef,
-    analytics,
-    onPosition: setPositionMs,
-    onIdentityInvalid: onProgressIdentityInvalid,
-  });
+  const { applyResume, markUserSeek, markUserPlay, isPositionAuthoritative, persist } =
+    useWatchProgress({
+      videoId,
+      videoRef,
+      identity: progressIdentity,
+      enabled: progressEnabled,
+      initialPositionMs: initialPositionMs ?? 0,
+      initialPositionExplicit: initialPositionMs !== undefined,
+      durationMs: declaredDurationMs,
+      intervalMs: effectivePolicy.progressSaveIntervalMs,
+      adActiveRef,
+      analytics,
+      onPosition: setPositionMs,
+      onIdentityInvalid: onProgressIdentityInvalid,
+    });
+
+  useLayoutEffect(() => {
+    onPositionAuthorityReady?.(isPositionAuthoritative);
+    return () => onPositionAuthorityReady?.(null);
+  }, [isPositionAuthoritative, onPositionAuthorityReady]);
 
   useEffect(() => {
     if (!adMode.active) applyResume();
@@ -330,9 +390,11 @@ export function AyinPlayer({
   const togglePlay = useCallback(async () => {
     const video = videoRef.current;
     if (!video || (adMode.active && adMode.controlsLocked !== false)) return;
-    if (video.paused) await video.play();
-    else video.pause();
-  }, [adMode.active, adMode.controlsLocked]);
+    if (video.paused) {
+      markUserPlay();
+      await video.play();
+    } else video.pause();
+  }, [adMode.active, adMode.controlsLocked, markUserPlay]);
 
   const seekBy = useCallback(
     (seconds: number) => {
@@ -462,7 +524,8 @@ export function AyinPlayer({
         className={styles.player}
         data-playing={playing}
         ref={rootRef}
-        aria-label={`${title} player`}
+        aria-label={t("player.label", { title })}
+        dir={direction}
       >
         <div
           className={styles.stage}
@@ -485,10 +548,12 @@ export function AyinPlayer({
           <video
             autoPlay={autoPlay}
             className={styles.video}
+            data-selected-caption-id={selectedCaptionId ?? ""}
             key={videoId}
             muted={muted}
             onCanPlay={() => {
               bufferingRef.current = false;
+              setError(null);
               applyResume();
             }}
             onEnded={() => {
@@ -506,7 +571,7 @@ export function AyinPlayer({
                 return;
               }
               const message = "AYIN could not play this MP4 source.";
-              setError(message);
+              setError("player.sourceError");
               analytics.emit({ type: "error", videoId, message });
             }}
             onLoadedMetadata={(event) => {
@@ -573,7 +638,7 @@ export function AyinPlayer({
           >
             {captions.map((track) => (
               <track
-                default={track.id === defaultCaptionId}
+                default={track.id === selectedCaptionId}
                 key={track.id}
                 kind={track.kind === "CAPTIONS" ? "captions" : "subtitles"}
                 label={track.label}
@@ -589,17 +654,16 @@ export function AyinPlayer({
             ref={adContainerRef}
             aria-hidden={!adMode.active}
           >
-            {adMode.active ? <span>{adMode.label ?? "Advertisement"}</span> : null}
+            {adMode.active ? <span>{adMode.label ?? t("player.advertisement")}</span> : null}
           </div>
 
           <div className={styles.titleBar}>
-            <strong>{title}</strong>
-            {activeChapter ? <span>{activeChapter.title}</span> : null}
+            <strong dir="auto">{title}</strong>
+            {activeChapter ? <span dir="auto">{activeChapter.title}</span> : null}
           </div>
-          {error ? <div className={styles.error}>{error}</div> : null}
           {!playing && !locked && !error ? (
             <button
-              aria-label="Play video"
+              aria-label={t("player.playVideo")}
               className={styles.centerPlay}
               onClick={(event) => {
                 event.stopPropagation();
@@ -621,15 +685,22 @@ export function AyinPlayer({
               }}
               type="button"
             >
-              Tap to unmute
+              {t("player.tapToUnmute")}
             </button>
           ) : null}
         </div>
 
-        <div className={styles.controls} aria-label="Playback controls">
+        <div
+          className={`${styles.controls} ${selectedCaptionId ? styles.controlsDetached : ""}`}
+          aria-label={t("player.controls")}
+        >
           <div className={styles.scrubberWrap}>
             <input
-              aria-label="Seek video"
+              aria-label={t("player.seek")}
+              aria-valuetext={t("player.seekPosition", {
+                position: formatTime(positionMs),
+                duration: formatTime(durationMs),
+              })}
               className={styles.scrubber}
               data-tv-focusable="true"
               data-tv-focus-id={`player-seek-${videoId}`}
@@ -641,10 +712,13 @@ export function AyinPlayer({
               value={Math.min(positionMs, Math.max(durationMs, 1))}
             />
             {durationMs > 0 && chapters.length > 0 ? (
-              <div aria-label="Chapter markers" className={styles.chapterMarkers}>
+              <div aria-label={t("player.chapterMarkers")} className={styles.chapterMarkers}>
                 {chapters.map((chapter) => (
                   <button
-                    aria-label={`Chapter ${chapter.title}, ${formatTime(chapter.startMs)}`}
+                    aria-label={t("player.chapterMarker", {
+                      title: chapter.title,
+                      time: formatTime(chapter.startMs),
+                    })}
                     className={styles.chapterMarker}
                     disabled={locked}
                     key={chapter.id}
@@ -665,13 +739,13 @@ export function AyinPlayer({
 
           <div className={styles.controlRow}>
             <button
-              aria-label={playing ? "Pause" : "Play"}
-              className={styles.iconButton}
+              aria-label={t(playing ? "player.pause" : "player.play")}
+              className={`${styles.iconButton} ${styles.playButton}`}
               data-tv-focusable="true"
               data-tv-focus-id={`player-play-${videoId}`}
               disabled={locked}
               onClick={() => void togglePlay()}
-              title={playing ? "Pause (K)" : "Play (K)"}
+              title={t(playing ? "player.pauseShortcut" : "player.playShortcut")}
               type="button"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -680,42 +754,42 @@ export function AyinPlayer({
             </button>
 
             <button
-              aria-label="Back 10 seconds"
+              aria-label={t("player.back")}
               className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-back-${videoId}`}
               disabled={locked}
               onClick={() => seekBy(-10)}
-              title="Back 10 seconds (J)"
+              title={t("player.backShortcut")}
               type="button"
             >
               <span className={styles.seekGlyph}>
-                ↶<small>10</small>
+                ↶<small>{formatNumber(10)}</small>
               </span>
             </button>
 
             <button
-              aria-label="Forward 10 seconds"
+              aria-label={t("player.forward")}
               className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-forward-${videoId}`}
               disabled={locked}
               onClick={() => seekBy(10)}
-              title="Forward 10 seconds (L)"
+              title={t("player.forwardShortcut")}
               type="button"
             >
               <span className={styles.seekGlyph}>
-                ↷<small>10</small>
+                ↷<small>{formatNumber(10)}</small>
               </span>
             </button>
 
             <button
-              aria-label={muted ? "Unmute" : "Mute"}
+              aria-label={t(muted ? "player.unmute" : "player.mute")}
               className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-mute-${videoId}`}
               onClick={toggleMute}
-              title={muted ? "Unmute (M)" : "Mute (M)"}
+              title={t(muted ? "player.unmuteShortcut" : "player.muteShortcut")}
               type="button"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -729,7 +803,7 @@ export function AyinPlayer({
             </button>
 
             <input
-              aria-label="Volume"
+              aria-label={t("player.volume")}
               className={styles.volume}
               data-tv-focusable="true"
               data-tv-focus-id={`player-volume-${videoId}`}
@@ -749,7 +823,7 @@ export function AyinPlayer({
               value={volume}
             />
 
-            <span className={styles.time}>
+            <span className={styles.time} dir="ltr">
               {formatTime(positionMs)} <i>/</i> {formatTime(durationMs)}
             </span>
 
@@ -757,7 +831,8 @@ export function AyinPlayer({
 
             {qualities.length > 0 ? (
               <select
-                aria-label="Playback quality"
+                aria-label={t("player.quality")}
+                dir={direction}
                 className={styles.compactSelect}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-quality-${videoId}`}
@@ -767,12 +842,12 @@ export function AyinPlayer({
                   setSelectedQuality(next);
                   adaptiveSessionRef.current?.setQuality(next === "AUTO" ? null : next);
                 }}
-                title="Playback quality"
+                title={t("player.quality")}
                 value={selectedQuality}
               >
-                <option value="AUTO">Auto</option>
+                <option value="AUTO">{t("player.auto")}</option>
                 {qualities.map((quality) => (
-                  <option key={quality.id} value={quality.id}>
+                  <option dir="auto" key={quality.id} value={quality.id}>
                     {quality.label}
                   </option>
                 ))}
@@ -780,7 +855,7 @@ export function AyinPlayer({
             ) : null}
 
             <select
-              aria-label="Playback speed"
+              aria-label={t("player.speed")}
               className={styles.compactSelect}
               data-tv-focusable="true"
               data-tv-focus-id={`player-speed-${videoId}`}
@@ -789,30 +864,31 @@ export function AyinPlayer({
                 setRate(next);
                 if (videoRef.current) videoRef.current.playbackRate = next;
               }}
-              title="Playback speed"
+              title={t("player.speed")}
               value={rate}
             >
               {[0.5, 0.75, 1, 1.25, 1.5, 2].map((value) => (
                 <option key={value} value={value}>
-                  {value}×
+                  {formatNumber(value)}×
                 </option>
               ))}
             </select>
 
             {captions.length > 0 ? (
               <select
-                aria-label="Captions and subtitles"
+                aria-label={t("player.captions")}
+                dir={direction}
                 className={styles.compactSelect}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-captions-${videoId}`}
                 disabled={locked}
                 onChange={(event) => selectCaption(event.currentTarget.value || null)}
-                title="Captions and subtitles (C)"
+                title={t("player.captionsShortcut")}
                 value={selectedCaptionId ?? ""}
               >
-                <option value="">Off</option>
+                <option value="">{t("player.off")}</option>
                 {captions.map((track) => (
-                  <option key={track.id} value={track.id}>
+                  <option dir="auto" key={track.id} value={track.id}>
                     {track.label}
                   </option>
                 ))}
@@ -821,7 +897,8 @@ export function AyinPlayer({
 
             {chapters.length > 0 ? (
               <select
-                aria-label="Chapters"
+                aria-label={t("player.chapters")}
+                dir={direction}
                 className={`${styles.compactSelect} ${styles.chapterSelect}`}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-chapters-${videoId}`}
@@ -835,7 +912,7 @@ export function AyinPlayer({
                 {[...chapters]
                   .sort((a, b) => a.startMs - b.startMs)
                   .map((chapter) => (
-                    <option key={chapter.id} value={chapter.startMs}>
+                    <option dir="auto" key={chapter.id} value={chapter.startMs}>
                       {chapter.title}
                     </option>
                   ))}
@@ -843,12 +920,12 @@ export function AyinPlayer({
             ) : null}
 
             <button
-              aria-label="Picture in picture"
+              aria-label={t("player.pip")}
               className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-pip-${videoId}`}
               onClick={() => void togglePip()}
-              title="Picture in picture"
+              title={t("player.pip")}
               type="button"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -858,12 +935,12 @@ export function AyinPlayer({
             </button>
 
             <button
-              aria-label="Fullscreen"
+              aria-label={t("player.fullscreen")}
               className={styles.iconButton}
               data-tv-focusable="true"
               data-tv-focus-id={`player-fullscreen-${videoId}`}
               onClick={() => void toggleFullscreen()}
-              title="Fullscreen (F)"
+              title={t("player.fullscreenShortcut")}
               type="button"
             >
               <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -873,7 +950,9 @@ export function AyinPlayer({
 
             {onNext ? (
               <button
-                aria-label={upNext ? `Next: ${upNext.title}` : "Next video"}
+                aria-label={
+                  upNext ? t("player.nextTitle", { title: upNext.title }) : t("player.nextVideo")
+                }
                 className={styles.iconButton}
                 data-tv-focusable="true"
                 data-tv-focus-id={`player-next-${videoId}`}
@@ -881,7 +960,7 @@ export function AyinPlayer({
                   analytics.emit({ type: "next", videoId });
                   onNext();
                 }}
-                title={upNext ? `Next · ${upNext.title}` : "Next"}
+                title={upNext ? t("player.nextTooltip", { title: upNext.title }) : t("player.next")}
                 type="button"
               >
                 <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -891,25 +970,20 @@ export function AyinPlayer({
             ) : null}
           </div>
         </div>
+        {error ? (
+          <div className={styles.error} role="alert">
+            {t(error)}
+          </div>
+        ) : null}
         {upNext ? (
           <div className={styles.upNext}>
-            <span>Up Next</span>
-            <strong>{upNext.title}</strong>
-            {upNext.detail ? <small>{upNext.detail}</small> : null}
+            <span>{t("player.upNext")}</span>
+            <strong dir="auto">{upNext.title}</strong>
+            {upNext.detail ? <small dir="auto">{upNext.detail}</small> : null}
           </div>
         ) : null}
         {footer}
       </section>
     </TvFocusScope>
   );
-}
-
-function formatTime(milliseconds: number): string {
-  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return hours > 0
-    ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
-    : `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }

@@ -3,10 +3,11 @@ import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../database/database.module.js";
 import { TrustedRegionService } from "./trusted-region.service.js";
 import { VideoPolicyService } from "./video-policy.service.js";
+import { ViewerPolicyContextService } from "./viewer-policy-context.service.js";
 
 @Module({
   imports: [DatabaseModule],
-  providers: [VideoPolicyService, TrustedRegionService],
-  exports: [VideoPolicyService, TrustedRegionService],
+  providers: [VideoPolicyService, TrustedRegionService, ViewerPolicyContextService],
+  exports: [VideoPolicyService, TrustedRegionService, ViewerPolicyContextService],
 })
 export class VideoPolicyModule {}

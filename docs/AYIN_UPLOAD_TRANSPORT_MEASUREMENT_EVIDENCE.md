@@ -1,0 +1,25 @@
+# Bounded synthetic browser upload measurement
+
+Status: source prepared; no successful samples claimed yet.
+
+Initial source preparation used reviewed recovery release `2c3798c3cfda05562d480092d403510dc9af838b`, without runtime samples. The consolidated tooling starts from route release `69c9cb8412b9f7032e982de02cb3919f7e7a1e2c` and reuses the accepted recovery harness from `36608d3c4832405019844f9fece83e2407ebef2c`. Actual execution awaits the final accepted application/source/build handoff. Reusing its compiled Web output requires verified application-source equivalence; the test-only API bootstrap executes the recorded final source through Nest DI. Native Watch startup and historical route samples keep their own explicit source/build identities.
+
+The stopping condition is six serialized single-object Quick Upload samples: three fresh contexts in each existing desktop/unthrottled and mobile/CPU4/150ms/200000Bps download/96000Bps upload profile. Each selects the exact accepted 343136-byte, 30-second, 96×160 VP8 WebM fixture. No multipart, concurrency, capacity or remote-provider study is included.
+
+## Transport and acceptance
+
+The guarded test-only Nest bootstrap optionally exposes a raw-byte PUT under `http://127.0.0.1:3001/_test/recovery-byte-store/`. Its signed synthetic nonce URLs, one-use/expiry checks, buffers, object metadata and HEAD results use the existing recovery provider maps and storage implementation. This route exists only in the isolated test bootstrap when `APP_ENV=test`, the exact local `ayin_e2e` database and `AYIN_LAB_DIRECT_TRANSFER=1` are present. Production AppModule/bootstrap, provider admission, CSP, origins, credentials and grants remain unchanged. It is synthetic provider plumbing, not a production API upload endpoint.
+
+The browser's ordinary XHR sends actual fixture bytes directly to the already accepted local API origin, with no Playwright interception or Node forwarding. Server records retain only fixture SHA256, actual body byte count, body receive duration and credential-presence booleans. They never retain URL nonces, object keys, cookies, account identifiers or file bodies in evidence. Playwright tracing is disabled so measured requests do not incur trace capture overhead or persist raw network payloads on failure. Existing isolated reset is used before scenarios and after completion for cleanup only. Cleanup failure is recorded without discarding collected partial samples. On upload/UI/assertion failure, already observed receiver/application state is retained, or a bounded best-effort read is made before reset; unavailable state stays null.
+
+Acceptance must happen through normal Quick Upload draft preparation, source upload completion and creator confirmation. Read-only database counts must show one actual UPLOADED source, one QUEUED processing job and one VALIDATING video with zero publication. No fixture setter marks uploads successful. No media worker runs; this measurement ends at persisted queue acknowledgment.
+
+## Timing boundaries
+
+Reports retain CDP request start, response-observed and response-finished events separately for the synthetic PUT and each application phase. The CDP response timing sendStart/sendEnd interval is reported as browser network-stack send time. `responseReceived.timestamp` is a protocol observation and can follow `loadingFinished.timestamp`; it does not establish network header arrival or a response-body interval. The synthetic receiver's onRequest-to-body interval is a separate server observation. Neither value is silently substituted for application completion. File selection to visible queued acknowledgment includes real inspection and UI work; PUT finish to creator confirmation measures the subsequent application acknowledgment boundary. CDP encoded data length is response transfer size, not uploaded bytes.
+
+A successful tiny local sample only establishes this controlled boundary. Configured CDP upload throttling must be compared with the observed send/receive intervals before interpreting a rate; flags alone do not prove an effective throughput cap. No result certifies production R2/CDN, remote TLS, large video upload behavior, provider admission, physical devices or field performance. Raw Event Timing remains distinct from field INP, and browser request counts exclude server-side API and database work.
+
+## Reproduction
+
+Use the verified frozen dependency graph and generated Prisma/compiled build handoff for the exact final application source; retain its original successful install, generation and build evidence. A fresh build is required if application-source equivalence cannot be established. Start a fresh migrated/seeded isolated local PostgreSQL database, then run `playwright test --config=playwright.upload-transport.config.ts`. Preserve exact source/tree, lock/resolved versions, build command/output hashes, raw per-profile JSON and cleanup status. Test bootstrap executes the recorded API source through Nest DI; production Web runs the recorded Next build. Stop API/Web/Chromium and PostgreSQL, verify closed ports and absent PID, then remove only that disposable stopped test cluster.

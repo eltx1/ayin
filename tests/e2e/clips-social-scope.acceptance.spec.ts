@@ -173,6 +173,115 @@ function hold() {
   return { waiting, release };
 }
 
+for (const locale of ["en", "ar"] as const) {
+  test(`pending ${locale} identity keeps Clips actions inert, then recovers one uncertain write`, async ({
+    page,
+  }) => {
+    await register(page, `pending-${locale}`);
+    const held = hold();
+    let captured = false;
+    let writes = 0;
+    await page.route(`${API}/auth/me`, async (route) => {
+      if (captured || route.request().method() !== "GET") return route.continue();
+      const response = await route.fetch();
+      expect(response.status()).toBe(200);
+      captured = true;
+      await held.waiting;
+      await route.fulfill({ response }).catch(() => undefined);
+    });
+    await page.route(`${API}/social/videos/${seeded!.firstVideoId}/reaction`, async (route) => {
+      if (route.request().method() !== "PUT") return route.continue();
+      writes++;
+      await route.abort("failed");
+    });
+    const canonicalClipsPath = `${locale === "ar" ? "/ar" : ""}/clips`;
+    const clipsPath = `${canonicalClipsPath}?lang=${locale}`;
+    try {
+      await page.goto(clipsPath);
+      // Locale selection redirects to the canonical path and removes ?lang.
+      await expect(page.locator("html")).toHaveAttribute("lang", locale);
+      await expect.poll(() => captured).toBe(true);
+      // No clip identity, title, source or clip-specific action exists until the
+      // provider verifies the audience. The old SSR buttons are now a neutral shell.
+      await expect(page.locator("[data-clip-item], video")).toHaveCount(0);
+      await expect(actions(page).like).toHaveCount(0);
+      await expect(actions(page).subscribe).toHaveCount(0);
+      await settleRender(page);
+      expect(page.url()).toBe(`${WEB}${canonicalClipsPath}`);
+      expect(writes).toBe(0);
+
+      held.release();
+      await expect(actions(page).like).toBeEnabled();
+      await actions(page).like.click();
+      await expect(
+        page.getByText(
+          locale === "ar" ? /تعذر التأكد من تنفيذ التغيير/ : /could not confirm that change/i,
+        ),
+      ).toBeVisible();
+      await expect(actions(page).like).toBeDisabled();
+      expect(writes).toBe(1);
+      expect(page.url()).toBe(`${WEB}${canonicalClipsPath}`);
+    } finally {
+      held.release();
+    }
+  });
+}
+
+test("failed initial Clips identity stays unavailable until explicit verification retry", async ({
+  page,
+}) => {
+  await register(page, "initial-identity-failure");
+  let writes = 0;
+  page.on("request", (request) => {
+    if (request.method() !== "GET" && request.url().includes("/social/")) writes++;
+  });
+  await page.route(`${API}/auth/me`, (route) => route.abort("failed"));
+  await page.goto("/clips?lang=en");
+  await expect(
+    page.getByRole("heading", { name: "Clips could not be loaded", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator("[data-clip-item], video")).toHaveCount(0);
+  await expect(actions(page).like).toHaveCount(0);
+  await expect(actions(page).subscribe).toHaveCount(0);
+  expect(writes).toBe(0);
+  expect(page.url()).toBe(`${WEB}/clips`);
+  await page.unroute(`${API}/auth/me`);
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(actions(page).like).toBeEnabled();
+  await expect(actions(page).subscribe).toBeEnabled();
+  expect(writes).toBe(0);
+});
+
+test("verified anonymous Clips actions still navigate to sign in", async ({ page }) => {
+  const held = hold();
+  let captured = false;
+  let socialRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/social/")) socialRequests++;
+  });
+  await page.route(`${API}/auth/me`, async (route) => {
+    const response = await route.fetch();
+    expect(response.status()).toBe(401);
+    captured = true;
+    await held.waiting;
+    await route.fulfill({ response }).catch(() => undefined);
+  });
+  try {
+    await page.goto("/clips?lang=en");
+    await expect.poll(() => captured).toBe(true);
+    await expect(page.locator("[data-clip-item], video")).toHaveCount(0);
+    await expect(actions(page).like).toHaveCount(0);
+    await expect(actions(page).subscribe).toHaveCount(0);
+    held.release();
+    await expect(actions(page).like).toBeEnabled();
+    await actions(page).like.click();
+    await expect(page).toHaveURL(/\/login(?:\?|$)/);
+    expect(socialRequests).toBe(0);
+  } finally {
+    held.release();
+  }
+});
+
 for (const action of ["like", "subscribe"] as const) {
   test(`late A ${action} ACK cannot change verified B or replay the command`, async ({
     page,

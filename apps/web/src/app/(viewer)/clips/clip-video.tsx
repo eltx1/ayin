@@ -7,7 +7,7 @@ import { useViewerProduct } from "@/components/viewer/viewer-product-context";
 import { releaseHtmlMediaElement } from "@/lib/adaptive-playback";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { noopPlayerAnalytics } from "@/lib/ayin-player";
-import type { ClipItem } from "@/lib/clips";
+import type { ClipItem, ClipPlaybackPosition, RegisterClipPositionAuthority } from "@/lib/clips";
 
 import styles from "./clips.module.css";
 
@@ -15,13 +15,24 @@ const ignorePosition = () => undefined;
 
 // Clips retains its native controls and feed navigation. Its progress has the
 // same owner, revision and lifecycle contract as Watch, including late replies.
-export function ClipVideo({ clip, sourceUrl }: { clip: ClipItem; sourceUrl: string }) {
+export function ClipVideo({
+  clip,
+  sourceUrl,
+  initialPlayback,
+  registerPositionAuthority,
+}: {
+  clip: ClipItem;
+  sourceUrl: string;
+  initialPlayback?: ClipPlaybackPosition | undefined;
+  registerPositionAuthority?: RegisterClipPositionAuthority | undefined;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const adActiveRef = useRef(false);
   const {
     identity,
     identityRevision,
     isIdentityCurrent,
+    isAudienceCurrent,
     onBeforeIdentitySuspend,
     retryNavigation,
   } = useViewerProduct();
@@ -48,30 +59,49 @@ export function ClipVideo({ clip, sourceUrl }: { clip: ClipItem; sourceUrl: stri
   const participate = () => {
     if (owner && isIdentityCurrent()) activity.current = { owner, participated: true };
   };
-  const { applyResume, markNativeSeek, finishNativeSeek, persist } = useWatchProgress({
-    videoId: clip.id,
-    videoRef,
-    identity: identity
-      ? {
-          accountId: identity.account.id,
-          profileId: identity.profile.id,
-          revision: identityRevision,
-          isCurrent: isIdentityCurrent,
-          onBeforeSuspend: onBeforeIdentitySuspend,
-        }
-      : null,
-    enabled: true,
-    initialPositionMs: 0,
-    durationMs: clip.durationMs,
-    intervalMs: 15_000,
-    adActiveRef,
-    analytics: noopPlayerAnalytics,
-    onPosition: ignorePosition,
-    onIdentityInvalid: retryNavigation,
-    // Metadata/resume on an untouched offscreen clip is not a new viewing.
-    // Participation belongs to the current owner, never to a prior account.
-    canPersist,
-  });
+  const { applyResume, markNativeSeek, finishNativeSeek, persist, isPositionAuthoritative } =
+    useWatchProgress({
+      videoId: clip.id,
+      videoRef,
+      identity: identity
+        ? {
+            accountId: identity.account.id,
+            profileId: identity.profile.id,
+            revision: identityRevision,
+            isCurrent: isIdentityCurrent,
+            onBeforeSuspend: onBeforeIdentitySuspend,
+          }
+        : null,
+      enabled: true,
+      initialPositionMs: initialPlayback?.positionMs ?? 0,
+      initialPositionExplicit: initialPlayback?.positionMs !== undefined,
+      durationMs: clip.durationMs,
+      intervalMs: 15_000,
+      adActiveRef,
+      analytics: noopPlayerAnalytics,
+      onPosition: ignorePosition,
+      onIdentityInvalid: retryNavigation,
+      // Metadata/resume on an untouched offscreen clip is not a new viewing.
+      // Participation belongs to the current owner, never to a prior account.
+      canPersist,
+    });
+
+  useLayoutEffect(
+    () => registerPositionAuthority?.(clip.id, isPositionAuthoritative),
+    [clip.id, isPositionAuthoritative, registerPositionAuthority],
+  );
+
+  const playbackRestored = useRef(false);
+  const ready = () => {
+    if (!isAudienceCurrent()) return;
+    applyResume();
+    const video = videoRef.current;
+    if (!video || playbackRestored.current || !initialPlayback || video.readyState < 1) return;
+    playbackRestored.current = true;
+    video.volume = initialPlayback.volume;
+    video.playbackRate = initialPlayback.playbackRate;
+    if (!initialPlayback.paused) void video.play().catch(() => undefined);
+  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -88,14 +118,18 @@ export function ClipVideo({ clip, sourceUrl }: { clip: ClipItem; sourceUrl: stri
       className={styles.video}
       src={sourceUrl}
       playsInline
-      muted
+      muted={initialPlayback?.muted ?? true}
       controls
       preload="metadata"
       data-tv-focusable="true"
       data-tv-focus-id={`clip-${clip.id}-player`}
-      onLoadedMetadata={applyResume}
-      onCanPlay={applyResume}
+      onLoadedMetadata={ready}
+      onCanPlay={ready}
       onPlay={(event) => {
+        if (!isAudienceCurrent()) {
+          releaseHtmlMediaElement(event.currentTarget);
+          return;
+        }
         if (!event.currentTarget.paused) participate();
       }}
       onTimeUpdate={(event) => {
@@ -107,6 +141,7 @@ export function ClipVideo({ clip, sourceUrl }: { clip: ClipItem; sourceUrl: stri
       onSeeked={finishNativeSeek}
       onPause={() => void persist(true)}
       onEnded={() => {
+        if (!isAudienceCurrent()) return;
         void persist(true);
         trackAnalyticsEvent("CLIP_COMPLETE", {
           videoId: clip.id,

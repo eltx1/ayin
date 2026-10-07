@@ -1,0 +1,150 @@
+$ corepack pnpm packages:build && corepack pnpm --filter @ayin/api run build && corepack pnpm --filter @ayin/web run build
+$ corepack pnpm --filter './packages/*' --workspace-concurrency=1 run build
+Scope: 6 of 9 workspace projects
+$ tsc -p tsconfig.build.json
+$ prisma generate && tsc -p tsconfig.build.json
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma.
+
+✔ Generated Prisma Client (7.10.0) to ./src/generated/prisma in 750ms
+
+$ tsc -p tsconfig.build.json
+$ tsc -p tsconfig.build.json
+$ tsc -p tsconfig.build.json
+$ next build
+▲ Next.js 16.3.6 (Turbopack)
+✓ Running next.config.ts took 50ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.4s
+  Running TypeScript ...
+  Finished TypeScript in 2.1s ...
+  Collecting page data using 8 workers ...
+  Generating static pages using 8 workers (0/66) ...
+  Generating static pages using 8 workers (16/66) 
+  Generating static pages using 8 workers (32/66) 
+  Generating static pages using 8 workers (49/66) 
+✓ Generating static pages using 8 workers (66/66) in 263ms
+Turbopack build encountered 2 warnings:
+./apps/web/src/instrumentation.ts:25:3
+Warning: A Node.js API is used (process.stderr at line: 25) which is not supported in the Edge Runtime.
+    Learn more: https://nextjs.org/docs/api-reference/edge-runtime
+  [90m23 |[0m ) {
+  [90m24 |[0m   [36mif[0m (process.env.[33mNEXT_RUNTIME[0m !== [32m"nodejs"[0m) [36mreturn[0m;
+[33m[1m>[0m [90m25 |[0m   process.stderr.write(
+  [90m   |[0m   [33m[1m^^^^^^^^^^^^^^[0m
+  [90m26 |[0m     [32m`[0m${[33mJSON[0m.stringify({
+  [90m27 |[0m       timestamp: [36mnew[0m [33mDate[0m().toISOString(),
+  [90m28 |[0m       level: [32m"error"[0m,
+
+Ecmascript file had an error
+
+
+./apps/web/src/instrumentation.ts:8:3
+Warning: A Node.js API is used (process.stdout at line: 8) which is not supported in the Edge Runtime.
+    Learn more: https://nextjs.org/docs/api-reference/edge-runtime
+  [90m 6 |[0m [36mexport[0m [36mfunction[0m register() {
+  [90m 7 |[0m   [36mif[0m (process.env.[33mNEXT_RUNTIME[0m !== [32m"nodejs"[0m) [36mreturn[0m;
+[33m[1m>[0m [90m 8 |[0m   process.stdout.write(
+  [90m   |[0m   [33m[1m^^^^^^^^^^^^^^[0m
+  [90m 9 |[0m     [32m`[0m${[33mJSON[0m.stringify({
+  [90m10 |[0m       timestamp: [36mnew[0m [33mDate[0m().toISOString(),
+  [90m11 |[0m       level: [32m"info"[0m,
+
+Ecmascript file had an error
+
+
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /[section]
+├ ƒ /account
+├ ƒ /admin
+├ ƒ /admin/advertising
+├ ƒ /admin/catalog-localizations
+├ ƒ /admin/channels
+├ ƒ /admin/content
+├ ƒ /admin/feature-flags
+├ ƒ /admin/kids
+├ ƒ /admin/moderation
+├ ƒ /admin/movies
+├ ƒ /admin/operations
+├ ƒ /admin/operations/database
+├ ƒ /admin/operations/discovery
+├ ƒ /admin/operations/media
+├ ƒ /admin/operations/observability
+├ ƒ /admin/operations/warehouse
+├ ƒ /admin/product-controls
+├ ƒ /admin/revenue
+├ ƒ /admin/revenue/payouts/[payoutId]
+├ ƒ /admin/series
+├ ƒ /admin/settings
+├ ƒ /admin/trust
+├ ƒ /admin/tv
+├ ƒ /admin/users
+├ ƒ /admin/video-ads
+├ ƒ /admin/videos
+├ ƒ /ads.txt
+├ ƒ /api/clips
+├ ƒ /api/health
+├ ƒ /app-ads.txt
+├ ƒ /browse
+├ ƒ /c/[handle]
+├ ƒ /c/[handle]/community
+├ ƒ /c/[handle]/playlists/[slug]
+├ ƒ /c/[handle]/tv
+├ ƒ /channel/edit
+├ ƒ /channel/playlists
+├ ƒ /channel/playlists/[playlistId]
+├ ƒ /channel/tv
+├ ƒ /clips
+├ ƒ /community
+├ ƒ /community-guidelines
+├ ƒ /cookies
+├ ƒ /copyright
+├ ƒ /creator-terms
+├ ƒ /forgot-password
+├ ƒ /kids
+├ ƒ /live/[slug]
+├ ƒ /login
+├ ○ /manifest.webmanifest
+├ ƒ /movies/[slug]
+├ ƒ /my-ayin
+├ ƒ /my-ayin/lens
+├ ƒ /notifications
+├ ƒ /privacy
+├ ƒ /register
+├ ƒ /reset-password
+├ ○ /robots.txt
+├ ƒ /search
+├ ƒ /series/[slug]
+├ ƒ /sitemap.xml
+├ ƒ /sitemaps/[kind]/[shard]
+├ ƒ /sitemaps/movies.xml
+├ ƒ /sitemaps/series.xml
+├ ƒ /sitemaps/static.xml
+├ ƒ /studio
+├ ƒ /studio/analytics
+├ ƒ /studio/channel
+├ ƒ /studio/comments
+├ ƒ /studio/community
+├ ƒ /studio/content
+├ ƒ /studio/live
+├ ƒ /studio/monetization
+├ ƒ /studio/playlists
+├ ƒ /studio/support
+├ ƒ /studio/trust
+├ ƒ /studio/tv
+├ ƒ /terms
+├ ƒ /upload
+└ ƒ /watch/[slug]
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

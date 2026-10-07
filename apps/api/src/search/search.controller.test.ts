@@ -10,6 +10,7 @@ import { OptionalAuthGuard } from "../auth/optional-auth.guard.js";
 import { DatabaseService } from "../database/database.service.js";
 import { TrustedRegionService } from "../video-policy/trusted-region.service.js";
 import type { VideoPolicyContext } from "../video-policy/video-policy.service.js";
+import { ViewerPolicyContextService } from "../video-policy/viewer-policy-context.service.js";
 import { LensSearchService } from "./lens-search.service.js";
 import { SearchLanguageContextService } from "./search-language-context.service.js";
 import { SearchRateLimiter } from "./search-rate-limiter.js";
@@ -48,6 +49,7 @@ describe("Search current viewer HTTP boundary", () => {
       providers: [
         OptionalAuthGuard,
         SearchViewerContextService,
+        ViewerPolicyContextService,
         SearchLanguageContextService,
         TrustedRegionService,
         { provide: AuthService, useValue: { authenticate } },

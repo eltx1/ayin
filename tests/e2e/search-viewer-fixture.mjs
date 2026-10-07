@@ -187,6 +187,30 @@ try {
           where: { id: input.alternate ? owned.alternateProfileId : owned.profileId },
           data: { isDefault: true },
         });
+      } else if (command === "swap-video-slugs") {
+        // Replace the video reached by a stable deep link using only this
+        // fixture's verified synthetic rows; preserve cleanup ownership.
+        await tx.video.update({
+          where: { id: owned.videos.adult.id },
+          data: { slug: `search-swap-${owned.fixtureId}` },
+        });
+        await tx.video.update({
+          where: { id: owned.videos.kids.id },
+          data: { slug: owned.videos.adult.slug },
+        });
+        await tx.video.update({
+          where: { id: owned.videos.adult.id },
+          data: { slug: owned.videos.kids.slug },
+        });
+        const videos = {
+          adult: { ...owned.videos.kids, slug: owned.videos.adult.slug },
+          kids: { ...owned.videos.adult, slug: owned.videos.kids.slug },
+        };
+        await tx.platformSetting.update({
+          where: markerWhere(owned.fixtureId),
+          data: { value: { ...owned, videos } },
+        });
+        return { ...owned, videos };
       } else if (command === "cleanup") {
         const videoIds = Object.values(owned.videos).map((video) => video.id);
         await tx.videoPolicy.deleteMany({ where: { videoId: { in: videoIds } } });

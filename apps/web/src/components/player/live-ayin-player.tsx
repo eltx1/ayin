@@ -38,6 +38,7 @@ export interface LiveAyinPlayerProps {
   channelId: string;
   title: string;
   playbackUrl: string;
+  playbackSignal?: AbortSignal | undefined;
   status: LivePlayerStreamStatus;
   captions?: AyinCaptionTrack[] | undefined;
   autoPlay?: boolean | undefined;
@@ -81,6 +82,7 @@ export function LiveAyinPlayer({
   channelId,
   title,
   playbackUrl,
+  playbackSignal,
   status,
   captions = [],
   autoPlay = true,
@@ -179,34 +181,44 @@ export function LiveAyinPlayer({
 
   const goLive = useCallback(async () => {
     const video = videoRef.current;
-    if (!video || status !== "LIVE") return;
+    if (!video || status !== "LIVE" || playbackSignal?.aborted) return;
     moveToLiveEdge(video);
     updateEdge();
     if (video.paused && !adActiveRef.current) {
       try {
         await video.play();
+        if (playbackSignal?.aborted) return;
         setAutoplayBlocked(false);
       } catch {
+        if (playbackSignal?.aborted) return;
         setAutoplayBlocked(true);
       }
     }
-  }, [status, updateEdge]);
+  }, [playbackSignal, status, updateEdge]);
 
   const togglePlay = useCallback(async () => {
     const video = videoRef.current;
-    if (!video || status !== "LIVE" || (adMode.active && adMode.controlsLocked !== false)) return;
+    if (
+      !video ||
+      status !== "LIVE" ||
+      playbackSignal?.aborted ||
+      (adMode.active && adMode.controlsLocked !== false)
+    )
+      return;
     if (video.paused) {
       if (!dvrWindowSeconds) moveToLiveEdge(video);
       try {
         await video.play();
+        if (playbackSignal?.aborted) return;
         setAutoplayBlocked(false);
       } catch {
+        if (playbackSignal?.aborted) return;
         setAutoplayBlocked(true);
       }
     } else {
       video.pause();
     }
-  }, [adMode.active, adMode.controlsLocked, dvrWindowSeconds, status]);
+  }, [adMode.active, adMode.controlsLocked, dvrWindowSeconds, playbackSignal, status]);
 
   const toggleMute = useCallback(() => {
     const video = videoRef.current;
@@ -266,9 +278,10 @@ export function LiveAyinPlayer({
   }, [emit, flushDuration, status]);
 
   useEffect(() => {
-    if (status !== "LIVE" || !playbackUrl) return;
+    if (status !== "LIVE" || !playbackUrl || playbackSignal?.aborted) return;
     const video = videoRef.current;
     if (!video) return;
+    video.hidden = false;
     const liveVideo: HTMLVideoElement = video;
 
     let cancelled = false;
@@ -485,12 +498,14 @@ export function LiveAyinPlayer({
       clearStableTimer();
       clearStallWatchdog();
       stableTimer = window.setTimeout(() => {
+        if (cancelled) return;
         reconnectAttemptRef.current = 0;
         fatalReportedRef.current = false;
       }, STABLE_PLAYBACK_RESET_MS);
     };
 
     const onPause = () => {
+      if (cancelled) return;
       notifyNativePlaybackState("paused");
       clearStableTimer();
       clearStallWatchdog();
@@ -500,6 +515,7 @@ export function LiveAyinPlayer({
     };
 
     const onWaiting = () => {
+      if (cancelled) return;
       clearStableTimer();
       if (startedRef.current && bufferStartedAtRef.current === null) {
         bufferStartedAtRef.current = performance.now();
@@ -507,6 +523,7 @@ export function LiveAyinPlayer({
       flushDuration(false);
       if (startedRef.current && stallWatchdog === null) {
         stallWatchdog = window.setTimeout(() => {
+          if (cancelled) return;
           stallWatchdog = null;
           attemptGuard.invalidate();
           sessionRef.current?.destroy();
@@ -520,6 +537,7 @@ export function LiveAyinPlayer({
     };
 
     const onEnded = () => {
+      if (cancelled) return;
       notifyNativePlaybackState("ended");
       clearStableTimer();
       clearStallWatchdog();
@@ -530,6 +548,7 @@ export function LiveAyinPlayer({
     };
 
     const onOffline = () => {
+      if (cancelled) return;
       clearReconnectTimer();
       clearStableTimer();
       clearStallWatchdog();
@@ -548,6 +567,7 @@ export function LiveAyinPlayer({
     };
 
     const onVisibility = () => {
+      if (cancelled) return;
       if (document.visibilityState !== "visible" || !startedRef.current) return;
       if (!dvrWindowSeconds) {
         moveToLiveEdge(video);
@@ -568,13 +588,13 @@ export function LiveAyinPlayer({
     document.addEventListener("visibilitychange", onVisibility);
 
     durationTimer = window.setInterval(() => {
-      if (!video.paused && navigator.onLine !== false) flushDuration(true);
+      if (!cancelled && !video.paused && navigator.onLine !== false) flushDuration(true);
     }, LIVE_DURATION_SAMPLE_MS);
 
-    void connect();
-
-    return () => {
+    const dispose = () => {
+      if (cancelled) return;
       cancelled = true;
+      if (playbackSignal?.aborted) liveVideo.hidden = true;
       clearReconnectTimer();
       clearStableTimer();
       clearStartupWatchdog();
@@ -598,6 +618,13 @@ export function LiveAyinPlayer({
       bufferStartedAtRef.current = null;
       flushDuration(false);
     };
+    playbackSignal?.addEventListener("abort", dispose, { once: true });
+    if (playbackSignal?.aborted) dispose();
+    else void connect();
+    return () => {
+      playbackSignal?.removeEventListener("abort", dispose);
+      dispose();
+    };
   }, [
     autoPlay,
     dvrWindowSeconds,
@@ -606,6 +633,7 @@ export function LiveAyinPlayer({
     manualRetryGeneration,
     maxReconnectAttempts,
     onFatal,
+    playbackSignal,
     playbackUrl,
     status,
     updateEdge,

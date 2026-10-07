@@ -43,9 +43,11 @@ export interface AdminScopeLease {
 }
 export type AdminScopeInvalidation = "review" | "invalidated";
 // Fixed, memory-only slots. No arbitrary key growth and no browser storage.
-export type AdminDraftKey = "direct-campaign" | "catalog-movie" | "catalog-series";
+export type AdminDraftKey =
+  "direct-campaign" | "catalog-movie" | "catalog-series" | "advertising-editor";
 export const adminDraftLimits: Record<AdminDraftKey, number> = {
   "direct-campaign": 4 * 1024 * 1024,
+  "advertising-editor": 4 * 1024 * 1024,
   "catalog-movie": 1024 * 1024,
   "catalog-series": 1024 * 1024,
 };

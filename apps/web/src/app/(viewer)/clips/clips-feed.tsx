@@ -15,10 +15,19 @@ import {
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { ActionButton, StatusNotice } from "@/components/ui/design-system";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
+import { EmptyState } from "@/components/viewer/view-states";
 import { AccountScopeError, requestAccountScope } from "@/lib/account-scope";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { mediaAssetUrl } from "@/lib/channel";
-import { mergeClipItems, parseClipsPage, type ClipItem, type ClipsPage } from "@/lib/clips";
+import {
+  createClipsAutoplayGate,
+  mergeClipItems,
+  type ClipItem,
+  type ClipPlaybackPosition,
+  type RegisterClipPositionAuthority,
+  type ClipsPage,
+} from "@/lib/clips";
+import { ClipsReadError, readClips } from "@/lib/clips-request";
 import { translateClips } from "@/lib/i18n/clips";
 import {
   parseChannelSocialState,
@@ -64,6 +73,8 @@ function ClipActions({ clip }: { clip: ClipItem }) {
     identity,
     identityRevision,
     isIdentityCurrent,
+    audienceStatus,
+    isAudienceCurrent,
     onBeforeIdentitySuspend,
     retryNavigation,
   } = useViewerProduct();
@@ -82,8 +93,19 @@ function ClipActions({ clip }: { clip: ClipItem }) {
       identityRevision,
       attempt,
       isCurrent: isIdentityCurrent,
+      audienceStatus,
+      isAudienceCurrent,
     }),
-    [accountId, profileId, clip, identityRevision, isIdentityCurrent, attempt],
+    [
+      accountId,
+      profileId,
+      clip,
+      identityRevision,
+      isIdentityCurrent,
+      audienceStatus,
+      isAudienceCurrent,
+      attempt,
+    ],
   );
   const runRef = useRef<{
     scope: typeof scope;
@@ -102,7 +124,14 @@ function ClipActions({ clip }: { clip: ClipItem }) {
       ? result.snapshot
       : {
           ...initialActions(clip),
-          mode: accountId ? ("loading" as const) : ("signedOut" as const),
+          // A null identity while its read is pending is not proof of sign-out.
+          // Keep actions inert through hydration, suspension and failed checks.
+          mode:
+            audienceStatus === "error"
+              ? ("error" as const)
+              : !accountId && audienceStatus === "ready" && isAudienceCurrent()
+                ? ("signedOut" as const)
+                : ("loading" as const),
         };
   const pending = operation?.scope === scope ? operation.action : null;
 
@@ -177,7 +206,8 @@ function ClipActions({ clip }: { clip: ClipItem }) {
     if (run?.pending) return;
     run?.controller.abort();
     if (root.current) root.current.hidden = true;
-    setAttempt((value) => value + 1);
+    if (audienceStatus === "error") retryNavigation();
+    else setAttempt((value) => value + 1);
   }
 
   async function mutate(action: "like" | "subscribe") {
@@ -191,7 +221,7 @@ function ClipActions({ clip }: { clip: ClipItem }) {
         scope.isCurrent(),
       );
     if (snapshot.mode === "signedOut") {
-      signIn();
+      if (scope.isAudienceCurrent()) signIn();
       return;
     }
     if (
@@ -358,16 +388,42 @@ function ClipActions({ clip }: { clip: ClipItem }) {
   );
 }
 
-export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
+export interface ClipsPosition {
+  scrollTop: number;
+  activeId: string | null;
+  impressedIds: string[];
+  playback: Record<string, ClipPlaybackPosition>;
+}
+
+export function ClipsFeed({
+  initialPage,
+  initialPosition,
+  onPageLoaded,
+  onFeedScroll,
+  registerPositionAuthority,
+}: {
+  initialPage: ClipsPage;
+  initialPosition?: ClipsPosition | undefined;
+  onPageLoaded?: ((cursor: string) => void) | undefined;
+  onFeedScroll?: ((scrollTop: number) => void) | undefined;
+  registerPositionAuthority?: RegisterClipPositionAuthority | undefined;
+}) {
+  const { identity, isAudienceCurrent, onAudienceInvalidated, retryNavigation } =
+    useViewerProduct();
+  const continuation = useRef<AbortController | null>(null);
+  const startingId = initialPage.items.some((item) => item.id === initialPosition?.activeId)
+    ? initialPosition!.activeId
+    : (initialPage.items[0]?.id ?? null);
   const { locale, href } = useI18n();
   const t = useCallback(
     (key: Parameters<typeof translateClips>[1]) => translateClips(locale, key),
     [locale],
   );
   const root = useRef<HTMLDivElement>(null);
-  const activeIdRef = useRef<string | null>(initialPage.items[0]?.id ?? null);
-  const impressed = useRef(new Set<string>());
-  const [activeId, setActiveId] = useState<string | null>(initialPage.items[0]?.id ?? null);
+  const activeIdRef = useRef<string | null>(startingId);
+  const impressed = useRef(new Set(initialPosition?.impressedIds));
+  const autoplayGate = useRef(createClipsAutoplayGate(initialPosition));
+  const [activeId, setActiveId] = useState<string | null>(startingId);
   const [items, setItems] = useState<ClipItem[]>(initialPage.items);
   const [nextCursor, setNextCursor] = useState(initialPage.nextCursor);
   const [autoplayEnabled, setAutoplayEnabled] = useState(initialPage.autoplayEnabled);
@@ -375,11 +431,24 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
   const [loadMorePending, setLoadMorePending] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState(false);
 
+  useLayoutEffect(() => {
+    if (root.current) {
+      root.current.scrollTop = initialPosition?.scrollTop ?? 0;
+      onFeedScroll?.(root.current.scrollTop);
+    }
+    const stop = onAudienceInvalidated(() => continuation.current?.abort());
+    return () => {
+      continuation.current?.abort();
+      stop();
+    };
+  }, [initialPosition, onAudienceInvalidated, onFeedScroll]);
+
   useEffect(() => {
     const container = root.current;
     if (!container) return;
     const observer = new IntersectionObserver(
       (entries) => {
+        if (!isAudienceCurrent()) return;
         for (const entry of entries) {
           const article = entry.target as HTMLElement;
           const video = article.querySelector("video");
@@ -399,20 +468,28 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
             setActiveId(videoId);
             if (!impressed.current.has(videoId)) {
               impressed.current.add(videoId);
+              article.dataset.clipImpressed = "true";
               trackAnalyticsEvent("CLIP_IMPRESSION", {
                 videoId,
                 ...(channelId ? { channelId } : {}),
               });
             }
-            if (autoplayEnabled && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            if (
+              autoplayGate.current(
+                videoId,
+                autoplayEnabled,
+                window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+              )
+            ) {
               void video
                 .play()
-                .then(() =>
-                  trackAnalyticsEvent("CLIP_PLAY", {
-                    videoId,
-                    ...(channelId ? { channelId } : {}),
-                  }),
-                )
+                .then(() => {
+                  if (isAudienceCurrent())
+                    trackAnalyticsEvent("CLIP_PLAY", {
+                      videoId,
+                      ...(channelId ? { channelId } : {}),
+                    });
+                })
                 .catch(() => undefined);
             }
           } else {
@@ -426,33 +503,42 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
       .querySelectorAll<HTMLElement>("[data-clip-item='true']")
       .forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [autoplayEnabled, items.length]);
+  }, [autoplayEnabled, initialPosition, isAudienceCurrent, items.length]);
 
   async function loadMore() {
-    if (!nextCursor || loadMorePending) return;
+    if (!nextCursor || continuation.current || !isAudienceCurrent()) return;
+    const cursor = nextCursor;
+    const run = new AbortController();
+    continuation.current = run;
+    const valid = () => continuation.current === run && !run.signal.aborted && isAudienceCurrent();
+    const deadline = window.setTimeout(() => run.abort(), 15000);
     setLoadMorePending(true);
     setLoadMoreError(false);
     try {
-      const response = await fetch(
-        `/api/clips?${new URLSearchParams({ cursor: nextCursor }).toString()}`,
-        { cache: "no-store" },
-      );
-      if (!response.ok) throw new Error("CLIPS_CONTINUATION_UNAVAILABLE");
-      const page = parseClipsPage(await response.json());
-      if (!page.enabled) throw new Error("CLIPS_DISABLED");
+      const page = await readClips(cursor, { identity, isCurrent: isAudienceCurrent }, run.signal);
+      if (!valid()) return;
+      if (!page.enabled || page.viewer.isKids !== initialPage.viewer.isKids)
+        throw new ClipsReadError(409);
       setItems((current) => mergeClipItems(current, page.items));
       setNextCursor(page.nextCursor);
       setAutoplayEnabled(page.autoplayEnabled);
       setAdPolicy(page.adPolicy);
-    } catch {
+      onPageLoaded?.(cursor);
+    } catch (error) {
+      if (continuation.current !== run || !isAudienceCurrent()) return;
       setLoadMoreError(true);
+      if (error instanceof ClipsReadError && [401, 409].includes(error.status)) retryNavigation();
     } finally {
-      setLoadMorePending(false);
+      window.clearTimeout(deadline);
+      if (continuation.current === run) {
+        continuation.current = null;
+        if (isAudienceCurrent()) setLoadMorePending(false);
+      }
     }
   }
 
   function moveByKeyboard(event: KeyboardEvent<HTMLElement>, index: number) {
-    if (event.target !== event.currentTarget) return;
+    if (!isAudienceCurrent() || event.target !== event.currentTarget) return;
     const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
     if (!delta) return;
     const container = root.current;
@@ -491,7 +577,19 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
 
   return (
     <section className={styles.workspace}>
-      <div ref={root} className={styles.feed} aria-label={t("clips.feed")}>
+      {!items.length ? (
+        <EmptyState title={t("clips.emptyTitle")} description={t("clips.emptyDescription")} />
+      ) : null}
+      <div
+        ref={root}
+        hidden={!items.length}
+        data-clips-feed
+        onScroll={(event) => {
+          if (isAudienceCurrent()) onFeedScroll?.(event.currentTarget.scrollTop);
+        }}
+        className={styles.feed}
+        aria-label={t("clips.feed")}
+      >
         {items.map((clip, index) => {
           const source = clip.mediaAssets.find((asset) => asset.kind === "SOURCE_VIDEO");
           const sourceUrl = mediaAssetUrl(source?.r2ObjectKey);
@@ -501,6 +599,8 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
               key={clip.id}
               data-clip-item="true"
               data-clip-index={index}
+              data-clip-active={activeId === clip.id}
+              data-clip-impressed={initialPosition?.impressedIds.includes(clip.id) ?? false}
               data-video-id={clip.id}
               data-channel-id={clip.channel.id}
               data-tv-focusable="true"
@@ -509,7 +609,12 @@ export function ClipsFeed({ initialPage }: { initialPage: ClipsPage }) {
               onKeyDown={(event) => moveByKeyboard(event, index)}
             >
               {sourceUrl ? (
-                <ClipVideo clip={clip} sourceUrl={sourceUrl} />
+                <ClipVideo
+                  clip={clip}
+                  sourceUrl={sourceUrl}
+                  initialPlayback={initialPosition?.playback[clip.id]}
+                  registerPositionAuthority={registerPositionAuthority}
+                />
               ) : (
                 <div className={styles.mediaFallback}>
                   <StatusNotice tone="danger">{t("clips.mediaUnavailable")}</StatusNotice>

@@ -113,7 +113,7 @@ export class AdminAdvertisingControlController {
     const parsed = killSwitchSchema.safeParse(body);
     if (!parsed.success) throw this.invalid("INVALID_KILL_SWITCH");
     return this.advertising.setEmergencyKillSwitch(
-      request.ayinAuth.accountId,
+      request.ayinAuth,
       parsed.data.enabled,
       parsed.data.reason,
     );
@@ -127,7 +127,7 @@ export class AdminAdvertisingControlController {
   @Post("placements")
   @RequireAdminStepUp()
   async createPlacement(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
-    return this.execute(() => this.advertising.createPlacement(request.ayinAuth.accountId, body));
+    return this.execute(() => this.advertising.createPlacement(request.ayinAuth, body));
   }
 
   @Patch("placements/:id")
@@ -138,7 +138,7 @@ export class AdminAdvertisingControlController {
     @Body() body: unknown,
   ) {
     return this.execute(() =>
-      this.advertising.updatePlacement(request.ayinAuth.accountId, this.id(idRaw), body),
+      this.advertising.updatePlacement(request.ayinAuth, this.id(idRaw), body),
     );
   }
 
@@ -255,7 +255,7 @@ export class AdminAdvertisingControlController {
   @Post("creatives")
   @RequireAdminStepUp()
   createCreative(@Req() request: AdminAuthenticatedRequest, @Body() body: unknown) {
-    return this.execute(() => this.advertising.createCreative(request.ayinAuth.accountId, body));
+    return this.execute(() => this.advertising.createCreative(request.ayinAuth, body));
   }
 
   @Patch("creatives/:id")
@@ -266,16 +266,14 @@ export class AdminAdvertisingControlController {
     @Body() body: unknown,
   ) {
     return this.execute(() =>
-      this.advertising.updateCreative(request.ayinAuth.accountId, this.id(idRaw), body),
+      this.advertising.updateCreative(request.ayinAuth, this.id(idRaw), body),
     );
   }
 
   @Delete("creatives/:id")
   @RequireAdminStepUp()
   deleteCreative(@Req() request: AdminAuthenticatedRequest, @Param("id") idRaw: string) {
-    return this.execute(() =>
-      this.advertising.deleteCreative(request.ayinAuth.accountId, this.id(idRaw)),
-    );
+    return this.execute(() => this.advertising.deleteCreative(request.ayinAuth, this.id(idRaw)));
   }
 
   private async executeWorkspace<T>(callback: () => Promise<T>) {
@@ -307,8 +305,10 @@ export class AdminAdvertisingControlController {
   private async execute<T>(callback: () => Promise<T>) {
     try {
       return await callback();
-    } catch {
-      throw this.invalid("INVALID_ADVERTISING_MUTATION");
+    } catch (error) {
+      if (error instanceof z.ZodError) throw this.invalid("INVALID_ADVERTISING_MUTATION");
+      // Preserve current-authority failures and unknown persistence outcomes.
+      throw error;
     }
   }
 

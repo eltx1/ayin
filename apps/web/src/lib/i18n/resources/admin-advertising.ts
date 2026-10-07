@@ -63,7 +63,6 @@ export const adminAdvertisingEn = {
   sellersTitle: "Authorized sellers · ads.txt / app-ads.txt",
   sellersDescription:
     "Manual seller relationships are validated before publication. Google Ad Manager rows use configured seller information.",
-  legacyEditor: "Detailed editor fields below are currently in English.",
 } as const;
 
 export const adminAdvertisingAr: Record<keyof typeof adminAdvertisingEn, string> = {
@@ -130,5 +129,4 @@ export const adminAdvertisingAr: Record<keyof typeof adminAdvertisingEn, string>
   sellersTitle: "البائعون المعتمدون · ads.txt / app-ads.txt",
   sellersDescription:
     "تُراجع علاقات البائعين المضافة يدويًا قبل النشر. تستخدم سجلات Google Ad Manager معلومات البائع المُعدّة.",
-  legacyEditor: "حقول المحرّر التفصيلية أدناه متاحة حاليًا باللغة الإنجليزية.",
 };
