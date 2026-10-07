@@ -8,6 +8,13 @@ enum HomeLoadResult: Equatable {
     case superseded
 }
 
+enum HomeContentState: Equatable {
+    case loading
+    case unavailable(String)
+    case empty
+    case content
+}
+
 @MainActor
 final class HomeViewModel: ObservableObject {
     @Published private(set) var rows: [DiscoveryRow] = []
@@ -21,6 +28,20 @@ final class HomeViewModel: ObservableObject {
 
     init(discovery: any DiscoveryServicing = DiscoveryService()) {
         self.discovery = discovery
+    }
+
+    var contentState: HomeContentState {
+        if rows.contains(where: { !$0.items.isEmpty }) { return .content }
+        if isLoading { return .loading }
+        if let errorMessage { return .unavailable(errorMessage) }
+        return .empty
+    }
+
+    func contentState(for scope: String) -> HomeContentState {
+        // SwiftUI can render the new identity before its .task begins. Conceal
+        // the previous profile's rows and errors immediately in that render.
+        guard scope == sessionScope else { return .loading }
+        return contentState
     }
 
     func prepareForSession(scope: String) {

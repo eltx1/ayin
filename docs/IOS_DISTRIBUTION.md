@@ -222,6 +222,37 @@ Task 80 implements:
 - safe-area-native SwiftUI layout;
 - Safari fallback for unsupported non-core pages.
 
+### Bounded discovery continuation
+
+The Home toolbar exposes **Search on web** through the existing AppRouter and
+SFSafariViewController at `/search`. A row with a nonempty API `nextCursor` offers
+**Browse more on web**, opening Web Home at `/`, where the existing row **Load more**
+controls remain responsible for pagination. The API does not provide a row-specific
+Web destination. This bridge does not jump to a particular row or resume its native
+page cursor.
+
+Safari verifies its own Web session. Native bearer tokens, account/profile identifiers
+and page cursors are never added to the fallback URLs; the UI explains that Web sign-in
+is separate and available rows may differ. A known Kids profile receives **Browse Kids
+on web** to the existing explicitly filtered `/kids` catalog for both entry points.
+General Web Search cannot inherit the native Kids audience, so it is not offered from
+that profile. This is a filtered entry point, not browser navigation confinement or a
+shared-session claim. Web discovery actions are unavailable while session restoration
+is unresolved or has failed.
+
+No configured rows, or rows containing no items, now produce an explicit empty Home
+with **Try again** and Web browse actions. Failed reads retain the existing retryable
+error state; refresh failures with visible items retain those items. Rendering checks
+account, profile and Kids scope before an asynchronous reload starts, concealing the
+previous scope's rows and errors immediately. Existing cancellation and request-generation
+guards remain in place. Watch/live links continue to use native playback.
+
+This continuation adds no native Search engine, endpoint, artwork, captions, translation
+system, provider configuration or signing change. Decoding, routing, empty/retry,
+scope-concealment and late-response XCTest regressions are included. Their execution
+and the SwiftUI build require the owning unsigned macOS iOS workflow; Linux source and
+fixture checks are not native acceptance.
+
 ## Verification truth
 
 Repository CI can prove source/configuration quality and simulator behavior. It cannot prove App Store approval.
