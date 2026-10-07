@@ -7,9 +7,18 @@ protocol SessionTokenStore {
     func clear() throws
 }
 
-enum KeychainStoreError: Error {
+enum KeychainStoreError: LocalizedError {
     case unexpectedStatus(OSStatus)
     case invalidData
+
+    var errorDescription: String? {
+        switch self {
+        case .unexpectedStatus:
+            return NSLocalizedString("AYIN could not access your saved session securely. Try again.", comment: "Keychain access error")
+        case .invalidData:
+            return NSLocalizedString("AYIN could not read your saved session. Sign in again.", comment: "Keychain data error")
+        }
+    }
 }
 
 struct KeychainSessionStore: SessionTokenStore {

@@ -5,8 +5,9 @@ struct RootView: View {
 
     var body: some View {
         HomeView()
-            .fullScreenCover(item: $router.player) { destination in
+            .fullScreenCover(item: $router.player, onDismiss: router.playerDidDismiss) { destination in
                 PlayerScreen(destination: destination)
+                    .id(destination.id)
             }
             .sheet(
                 isPresented: Binding(

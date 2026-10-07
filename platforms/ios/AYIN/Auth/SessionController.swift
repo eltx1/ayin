@@ -8,9 +8,9 @@ enum SessionControllerError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .restorationInProgress:
-            return "AYIN is still restoring your session. Try again in a moment."
+            return NSLocalizedString("AYIN is still restoring your session. Try again in a moment.", comment: "Session restoration error")
         case .invalidMFAInput:
-            return "Enter either an authenticator code or a recovery code."
+            return NSLocalizedString("Enter either an authenticator code or a recovery code.", comment: "MFA input error")
         }
     }
 }
