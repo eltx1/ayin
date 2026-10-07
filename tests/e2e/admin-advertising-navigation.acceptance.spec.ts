@@ -249,7 +249,15 @@ for (const locale of ["en", "ar"] as const) {
 test("Advertising initial read failure is unavailable, not ready or a fabricated zero", async ({
   page,
 }) => {
-  await seed(page, "read-failure");
+  const data = await seed(page, "read-failure");
+  let writes = 0;
+  page.on("request", (request) => {
+    if (
+      request.url().startsWith(API + "/admin/") &&
+      ["POST", "PATCH", "PUT", "DELETE"].includes(request.method())
+    )
+      writes++;
+  });
   await page.route(API + "/admin/advertising/overview", (route) => route.abort("failed"));
   await page.goto("/admin/advertising");
   await expect(page.getByText(adminAdvertisingEn.readError, { exact: true })).toBeVisible();
@@ -260,13 +268,30 @@ test("Advertising initial read failure is unavailable, not ready or a fabricated
     .locator("summary")
     .filter({ hasText: /^Emergency control$/ })
     .click();
-  await page.getByLabel("Operator reason", { exact: true }).fill("Retained reason");
-  await expect(
-    page.getByRole("button", { name: "Stop all advertising", exact: true }),
-  ).toBeDisabled();
+  const reason = page.getByLabel("Operator reason", { exact: true });
+  const stop = page.getByRole("button", { name: "Stop all advertising", exact: true });
+  await expect(reason).toBeDisabled();
+  await expect(reason).toHaveValue("");
+  await expect(stop).toBeDisabled();
   await page.unroute(API + "/admin/advertising/overview");
+  const freshOverview = page.waitForResponse(
+    (response) =>
+      response.url() === API + "/admin/advertising/overview" && response.status() === 200,
+  );
   await page.getByRole("button", { name: "Read advertising records", exact: true }).click();
+  await freshOverview;
   await expect(summary.getByText("Emergency stop off", { exact: true })).toBeVisible();
+  await expect(page.getByText(adminAdvertisingEn.readError, { exact: true })).toHaveCount(0);
+  await expect(reason).toBeEnabled();
+  await expect(reason).toHaveValue("");
+  await expect(stop).toBeDisabled();
+  await reason.fill("Reviewed reason after a fresh read");
+  await expect(reason).toHaveValue("Reviewed reason after a fresh read");
+  await expect(stop).toBeEnabled();
+  expect(writes).toBe(0);
+  const evidence = db<{ audits: unknown[]; emergencyAudits: unknown[] }>("evidence", data);
+  expect(evidence.audits).toHaveLength(0);
+  expect(evidence.emergencyAudits).toHaveLength(0);
 });
 test("Finance retains no Advertising navigation and the player API rejects direct access", async ({
   page,
