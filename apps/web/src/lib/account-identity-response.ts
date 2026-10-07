@@ -26,6 +26,14 @@ function slug(value: unknown): string {
   if (!/^[a-z0-9][a-z0-9_-]*$/i.test(result)) throw new AccountScopeError(0, "INVALID_RESPONSE");
   return result;
 }
+function channelHandle(value: unknown): string {
+  const result = text(value, 80);
+  // Match ChannelService's public handle contract. Channel handles may contain
+  // Unicode letters/numbers and interior dots; profile/TV slugs remain distinct.
+  if (!/^[\p{L}\p{N}](?:[\p{L}\p{N}._-]{0,78}[\p{L}\p{N}])?$/u.test(result))
+    throw new AccountScopeError(0, "INVALID_RESPONSE");
+  return result;
+}
 export function parseAccountIdentity(value: unknown): AyinIdentity {
   const raw = record(value),
     account = record(raw.account),
@@ -38,7 +46,11 @@ export function parseAccountIdentity(value: unknown): AyinIdentity {
       displayName: text(account.displayName),
       email: text(account.email, 320),
     },
-    channel: { id: id(channel.id), handle: slug(channel.handle), name: text(channel.name) },
+    channel: {
+      id: id(channel.id),
+      handle: channelHandle(channel.handle),
+      name: text(channel.name),
+    },
     profile: { id: id(profile.id), name: text(profile.name), slug: slug(profile.slug) },
     creatorTv: { id: id(creatorTv.id), name: text(creatorTv.name), slug: slug(creatorTv.slug) },
   };

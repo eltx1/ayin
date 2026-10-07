@@ -2,9 +2,9 @@
   align-items: end;
   display: grid;
   isolation: isolate;
-  min-height: clamp(34rem, 72vh, 52rem);
+  min-height: clamp(28rem, 64vh, 44rem);
   overflow: clip;
-  padding: clamp(5rem, 9vw, 8.5rem) var(--shell-gutter) clamp(3.5rem, 7vw, 5.5rem);
+  padding: clamp(3rem, 6vw, 5rem) var(--shell-gutter) clamp(2.5rem, 5vw, 4rem);
   position: relative;
 }
 
@@ -62,7 +62,7 @@
 
 .copy h1 {
   color: var(--text-primary);
-  font-size: clamp(3.2rem, 8vw, 7.8rem);
+  font-size: clamp(3rem, 6.4vw, 6rem);
   font-weight: 900;
   letter-spacing: -0.072em;
   line-height: 0.9;
@@ -194,8 +194,8 @@
 
 @media (max-width: 900px) {
   .hero {
-    min-height: clamp(35rem, 76vh, 46rem);
-    padding-top: 9rem;
+    min-height: 30rem;
+    padding-top: 4rem;
   }
 
   .hero::before {
@@ -215,13 +215,13 @@
 
 @media (max-width: 560px) {
   .hero {
-    min-height: 38rem;
+    min-height: 0;
     padding-bottom: 3.25rem;
-    padding-top: 9.5rem;
+    padding-top: 3rem;
   }
 
   .copy h1 {
-    font-size: clamp(3rem, 17vw, 5.25rem);
+    font-size: clamp(2.75rem, 13vw, 4rem);
   }
 
   .description {
@@ -245,7 +245,7 @@
 
 @media (min-width: 1500px) and (min-height: 800px) {
   .hero {
-    min-height: 76vh;
+    min-height: 64vh;
   }
 
   .description {
@@ -285,4 +285,14 @@
 .secondary,
 .status button {
   scroll-margin-block: calc(6rem + var(--ayin-safe-bottom));
+}
+
+.primary:hover {
+  background: var(--action-hover);
+}
+@media (max-height: 540px) {
+  .hero {
+    min-height: 0;
+    padding-block: 2rem;
+  }
 }

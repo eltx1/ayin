@@ -3,16 +3,16 @@ import { QuickUpload } from "@/components/upload/quick-upload";
 import { UploadHistory } from "@/components/upload/upload-history";
 import { UploadRecovery } from "@/components/upload/upload-recovery";
 
+import styles from "./upload.module.css";
+
 export default function UploadPage() {
   return (
-    <main
-      style={{
-        padding: "clamp(24px, 4.5vw, 64px) var(--shell-gutter) clamp(88px, 10vw, 140px)",
-      }}
-    >
-      <QuickUpload />
-      <UploadRecovery />
-      <UploadHistory />
+    <main className={styles.page}>
+      <div className={styles.workspace}>
+        <QuickUpload />
+        <UploadRecovery />
+        <UploadHistory />
+      </div>
     </main>
   );
 }

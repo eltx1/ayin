@@ -1,0 +1,16 @@
+.page {
+  min-inline-size: 0;
+  padding: clamp(24px, 4vw, 48px) var(--shell-gutter) calc(var(--space-8) + var(--ayin-safe-bottom));
+}
+
+.workspace {
+  inline-size: min(100%, 78rem);
+  margin-inline: auto;
+  min-inline-size: 0;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding-block-end: calc(96px + var(--ayin-safe-bottom));
+  }
+}

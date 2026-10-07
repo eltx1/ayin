@@ -2,9 +2,8 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
 import { I18nProvider } from "@/components/i18n/i18n-provider";
-import { NetworkStatusBanner } from "@/components/platform/network-status-banner";
+import { ViewportFeedback } from "@/components/platform/viewport-feedback";
 import { TvPlatformRuntime } from "@/components/platform/tv-platform-runtime";
-import { InstallUpdateController } from "@/components/pwa/install-update-controller";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import { getTextDirection } from "@/lib/i18n/config";
 import { getRequestLocale } from "@/lib/i18n/server";
@@ -99,9 +98,8 @@ export default async function RootLayout({ children }: RootLayoutProperties) {
             dangerouslySetInnerHTML={{ __html: serializeJsonLd(siteStructuredData) }}
           />
           <ServiceWorkerRegistration />
-          <InstallUpdateController />
+          <ViewportFeedback />
           <TvPlatformRuntime />
-          <NetworkStatusBanner />
           {children}
         </I18nProvider>
       </body>

@@ -29,6 +29,34 @@ describe("account root identity projection", () => {
     for (const raw of [null, [], {}, { ...sample(), channel: null }, { ...sample(), profile: [] }])
       expect(() => parseAccountIdentity(raw)).toThrow();
   });
+  it.each(["phase5d.creator", "صانع.المحتوى", "a", "a".repeat(80)])(
+    "preserves server-valid channel handle %s",
+    (handle) => {
+      const raw = sample();
+      raw.channel.handle = handle;
+      expect(parseAccountIdentity(raw).channel.handle).toBe(handle);
+    },
+  );
+  it.each([".creator", "creator.", "creator_", "../creator", "a/b", "a%2fb", "a".repeat(81)])(
+    "rejects channel handle outside the server contract: %s",
+    (handle) => {
+      const raw = sample();
+      raw.channel.handle = handle;
+      expect(() => parseAccountIdentity(raw)).toThrow();
+    },
+  );
+  it("does not loosen profile/TV slug or entity ID validation for dotted channel handles", () => {
+    const raw = sample();
+    raw.channel.handle = "phase5d.creator";
+    for (const invalid of [
+      { ...raw, profile: { ...raw.profile, slug: "profile.dot" } },
+      { ...raw, creatorTv: { ...raw.creatorTv, slug: "tv.dot" } },
+      { ...raw, channel: { ...raw.channel, id: "channel.dot" } },
+      { ...raw, profile: { ...raw.profile, id: "profile.dot" } },
+      { ...raw, creatorTv: { ...raw.creatorTv, id: "tv.dot" } },
+    ])
+      expect(() => parseAccountIdentity(invalid)).toThrow();
+  });
   it("rejects unsafe path handles, malformed UUIDs and control or unbounded text", () => {
     for (const raw of [
       { ...sample(), channel: { ...sample().channel, handle: "../other" } },

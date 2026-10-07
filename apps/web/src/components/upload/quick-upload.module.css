@@ -1,8 +1,7 @@
 .shell {
-  margin: 0 auto;
-  max-width: 78rem;
-  min-width: 0;
-  width: 100%;
+  min-inline-size: 0;
+  inline-size: 100%;
+  overflow-wrap: anywhere;
 }
 
 .workspace {
@@ -11,16 +10,12 @@
 }
 
 .stepCard {
-  background:
-    linear-gradient(155deg, rgb(255 255 255 / 4.2%), rgb(255 255 255 / 1.7%)) padding-box,
-    linear-gradient(130deg, rgb(255 255 255 / 13%), rgb(139 24 248 / 15%), rgb(255 255 255 / 6%))
-      border-box;
-  border: 1px solid transparent;
-  border-radius: clamp(22px, 3vw, 32px);
-  box-shadow: 0 16px 52px rgb(0 0 0 / 18%);
-  min-width: 0;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  min-inline-size: 0;
   overflow: hidden;
-  padding: clamp(1.1rem, 3vw, 2rem);
+  padding: clamp(1rem, 2.5vw, 1.5rem);
 }
 
 .stepHeading {
@@ -59,7 +54,7 @@
 }
 
 .stepHeading p {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.88rem;
   line-height: 1.55;
   margin: 0.45rem 0 0;
@@ -72,7 +67,7 @@
   background: rgb(255 255 255 / 4%);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  color: var(--muted-strong);
+  color: var(--text-secondary);
   display: inline-flex;
   flex: 0 0 auto;
   font-size: 0.72rem;
@@ -90,15 +85,15 @@
 
 .typeCard {
   align-items: center;
-  background: rgb(5 4 13 / 56%);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
-  color: var(--foreground);
+  color: var(--text-primary);
   cursor: pointer;
   display: grid;
   gap: 0.85rem;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 8rem;
+  min-block-size: 7rem;
   padding: 1rem;
   position: relative;
   text-align: start;
@@ -111,12 +106,8 @@
 }
 
 .typeCardSelected {
-  background:
-    radial-gradient(circle at 12% 0%, rgb(139 24 248 / 16%), transparent 55%), rgb(139 24 248 / 5%);
-  border-color: rgb(220 25 232 / 42%);
-  box-shadow:
-    inset 0 0 0 1px rgb(139 24 248 / 10%),
-    0 16px 38px rgb(88 8 248 / 10%);
+  background: var(--status-info-bg);
+  border-color: var(--action-outline);
 }
 
 .typeCard:disabled {
@@ -181,7 +172,7 @@
 
 .typeCopy small,
 .typeMeta {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.76rem;
   line-height: 1.45;
 }
@@ -300,14 +291,14 @@
 }
 
 .pickerCopy > span {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.86rem;
   line-height: 1.55;
 }
 
 .browseButton {
   align-items: center;
-  background: var(--foreground);
+  background: var(--text-primary);
   border-radius: 999px;
   color: #090711;
   display: inline-flex;
@@ -321,7 +312,7 @@
 
 .pickerMeta {
   bottom: 1rem;
-  color: rgb(170 164 184 / 72%);
+  color: var(--text-muted);
   font-size: 0.7rem;
   inset-inline-start: clamp(1.25rem, 3vw, 2rem);
   position: absolute;
@@ -397,7 +388,7 @@
 .titleField > span,
 .advancedGrid label > span,
 .fieldLabel {
-  color: var(--muted-strong);
+  color: var(--text-secondary);
   font-size: 0.76rem;
   font-weight: 780;
 }
@@ -408,7 +399,7 @@
   background: rgb(3 2 10 / 66%);
   border: 1px solid var(--border-strong);
   border-radius: 13px;
-  color: var(--foreground);
+  color: var(--text-primary);
   font: inherit;
   min-height: var(--control-height);
   outline: none;
@@ -450,7 +441,7 @@
 }
 
 .progressText small {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.68rem;
 }
 
@@ -515,7 +506,7 @@
 }
 
 .advanced summary small {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.72rem;
 }
 
@@ -589,7 +580,7 @@
   background: rgb(255 255 255 / 3%);
   border: 1px solid var(--border);
   border-radius: 14px;
-  color: var(--foreground);
+  color: var(--text-primary);
   cursor: pointer;
   min-width: 0;
   overflow: hidden;
@@ -624,7 +615,7 @@
 }
 
 .hint {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.8rem;
 }
 
@@ -641,7 +632,7 @@
 }
 
 .customThumbnail input {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.76rem;
   max-width: 100%;
   width: 100%;
@@ -651,11 +642,11 @@
   background: rgb(255 255 255 / 7%);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  color: var(--foreground);
+  color: var(--text-primary);
   cursor: pointer;
   font-weight: 760;
   margin-inline-end: 0.6rem;
-  min-height: 2.35rem;
+  min-block-size: var(--control-target);
   padding: 0.48rem 0.72rem;
 }
 
@@ -673,7 +664,7 @@
 
 .rights {
   align-items: center;
-  color: var(--muted-strong);
+  color: var(--text-secondary);
   font-size: 0.78rem;
   line-height: 1.5;
   padding: 0.2rem;
@@ -683,7 +674,7 @@
   align-items: flex-start;
   background: rgb(255 255 255 / 3%);
   border-color: var(--border);
-  color: var(--muted-strong);
+  color: var(--text-secondary);
   display: flex;
   gap: 0.65rem;
   margin: 1rem 0 0;
@@ -782,8 +773,7 @@
   .advanced summary,
   .advancedGrid,
   .publishDock {
-    padding-left: 0.8rem;
-    padding-right: 0.8rem;
+    padding-inline: 0.8rem;
   }
 
   .customThumbnail input::file-selector-button {
@@ -794,7 +784,7 @@
 }
 
 .publishConsent {
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 0.78rem;
   line-height: 1.55;
   margin: 0;
@@ -814,8 +804,8 @@
   min-width: 0;
 }
 .shell :focus-visible {
-  outline: 3px solid var(--brand-magenta);
-  outline-offset: 3px;
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
 .actionLayout {
@@ -824,5 +814,18 @@
 @media (max-width: 760px) {
   .actionLayout {
     width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typeCard:hover:not(:disabled),
+  .pickerActive {
+    transform: none;
+  }
+
+  .picker,
+  .progressTrack > span,
+  .summaryChevron {
+    transition: none;
   }
 }

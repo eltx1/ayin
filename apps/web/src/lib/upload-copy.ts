@@ -104,6 +104,7 @@ const arabic: Record<string, string> = {
     "تعذر التحقق من رد الرفع. راجع الفيديو في الاستوديو قبل المحاولة مجددًا.",
   "Your creator workspace could not be loaded.": "تعذر تحميل مساحة المنشئ.",
   "Retry loading workspace": "إعادة تحميل المساحة",
+  "Manage saved videos": "إدارة الفيديوهات المحفوظة",
   "Review saved uploads in Studio": "مراجعة الفيديوهات المحفوظة في الاستوديو",
   " · The last response is uncertain; further writes are paused.":
     " · لم تتأكد نتيجة الطلب الأخير؛ تم إيقاف التعديلات التالية.",

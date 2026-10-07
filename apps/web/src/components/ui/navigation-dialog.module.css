@@ -1,16 +1,21 @@
 .dialog {
-  background: var(--background);
-  border: 1px solid var(--border-strong);
+  background: var(--surface-navigation);
+  border: 1px solid var(--action-outline);
   border-radius: 20px;
   box-shadow: var(--shadow-floating);
   color: var(--foreground);
   inline-size: min(440px, calc(100vw - 32px));
-  margin-block: auto;
+  inset-block-start: calc(var(--ayin-visual-top) + var(--ayin-visual-height) / 2);
+  inset-block-end: auto;
+  margin-block: 0;
   margin-inline: auto;
-  max-block-size: calc(100dvh - 32px - var(--ayin-safe-top) - var(--ayin-safe-bottom));
+  max-block-size: calc(
+    var(--ayin-visual-height) - 32px - var(--ayin-safe-top) - var(--ayin-safe-bottom)
+  );
   overflow: auto;
   overscroll-behavior: contain;
   padding: 0;
+  transform: translateY(-50%);
 }
 
 .dialog::backdrop {
@@ -19,7 +24,7 @@
 
 .header {
   align-items: center;
-  background: var(--background);
+  background: var(--surface-navigation);
   border-block-end: 1px solid var(--border);
   display: flex;
   gap: 16px;
@@ -62,10 +67,22 @@
 @media (max-width: 600px) {
   .dialog {
     inline-size: calc(100vw - 24px);
-    max-block-size: calc(100dvh - 24px - var(--ayin-safe-top) - var(--ayin-safe-bottom));
+    max-block-size: calc(
+      var(--ayin-visual-height) - 24px - var(--ayin-safe-top) - var(--ayin-safe-bottom)
+    );
   }
 
   .content {
     padding: 16px;
+  }
+}
+
+.dialog {
+  scroll-padding-block: 6rem 1rem;
+}
+@media (forced-colors: active) {
+  .dialog,
+  .header button {
+    border-color: CanvasText;
   }
 }

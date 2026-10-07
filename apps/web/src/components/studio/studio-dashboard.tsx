@@ -46,6 +46,7 @@ export function StudioDashboard() {
   return (
     <>
       <PageHeader
+        density="compact"
         title={copy.overview}
         eyebrow={data?.channel.name ?? copy.title}
         description={copy.description}
@@ -82,38 +83,60 @@ export function StudioDashboard() {
             }))}
           />
           <div className={styles.grid}>
-            <section className={styles.panel}>
-              <h2>{copy.recent}</h2>
+            <section className={`${styles.panel} ${styles.recent}`} aria-label={copy.recent}>
+              <PageHeader
+                level={2}
+                density="compact"
+                title={copy.recent}
+                actions={<ActionLink href={href("/studio/content")}>{copy.content}</ActionLink>}
+              />
               {data.recentUploads.length ? (
                 <ul className={styles.uploads}>
                   {data.recentUploads.map((video) => (
                     <li key={video.id}>
                       <span dir="auto">{video.title}</span>
-                      <DataBadge>{label(video.status)}</DataBadge>
+                      <DataBadge
+                        tone={
+                          video.status === "PUBLISHED"
+                            ? "success"
+                            : ["UPLOADING", "VALIDATING", "SCHEDULED"].includes(video.status)
+                              ? "info"
+                              : "neutral"
+                        }
+                      >
+                        {label(video.status)}
+                      </DataBadge>
                     </li>
                   ))}
                 </ul>
               ) : (
                 <p>{copy.empty}</p>
               )}
-              <ActionLink href={href("/studio/content")}>{copy.content}</ActionLink>
             </section>
-            <section className={styles.panel}>
-              <h2>{copy.audience}</h2>
-              <p>{copy.audienceCopy}</p>
+            <section className={styles.panel} aria-label={copy.audience}>
+              <PageHeader
+                level={2}
+                density="compact"
+                title={copy.audience}
+                description={copy.audienceCopy}
+              />
               <div className={styles.actions}>
                 <ActionLink href={href("/studio/comments")}>{copy.comments}</ActionLink>
                 <ActionLink href={href("/studio/community")}>{copy.community}</ActionLink>
                 <ActionLink href={href("/studio/live")}>{copy.live}</ActionLink>
               </div>
             </section>
-            <section className={styles.panel}>
-              <h2>{copy.analytics}</h2>
-              <p>{copy.analyticsCopy}</p>
+            <section className={styles.panel} aria-label={copy.analytics}>
+              <PageHeader
+                level={2}
+                density="compact"
+                title={copy.analytics}
+                description={copy.analyticsCopy}
+              />
               <ActionLink href={href("/studio/analytics")}>{copy.analytics}</ActionLink>
             </section>
-            <section className={styles.panel}>
-              <h2>{copy.monetization}</h2>
+            <section className={styles.panel} aria-label={copy.monetization}>
+              <PageHeader level={2} density="compact" title={copy.monetization} />
               <MetricList
                 label={copy.monetization}
                 items={[

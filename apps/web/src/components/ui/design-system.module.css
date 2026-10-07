@@ -68,7 +68,7 @@
   margin-block-end: var(--space-6);
 }
 .headingRow {
-  align-items: flex-start;
+  align-items: center;
   display: flex;
   gap: var(--space-5);
   justify-content: space-between;
@@ -237,6 +237,7 @@
 @media (max-width: 640px) {
   .headingRow {
     flex-direction: column;
+    align-items: stretch;
   }
   .actions {
     inline-size: 100%;
@@ -301,4 +302,21 @@
   .sectionFields[data-layout="inline"] > button {
     flex-basis: 100%;
   }
+}
+
+.header[data-density="compact"] {
+  margin-block-end: var(--space-5);
+}
+.header[data-density="compact"] .title {
+  font-size: clamp(1.75rem, 3.5vw, 2.5rem);
+}
+.header[data-density="compact"] .description {
+  max-inline-size: 70ch;
+}
+.header[data-density="compact"] .eyebrow {
+  margin-block-end: var(--space-2);
+}
+:global([dir="rtl"]) .title {
+  letter-spacing: normal;
+  line-height: 1.4;
 }

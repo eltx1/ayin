@@ -46,6 +46,7 @@ export function PageHeader({
   actions,
   children,
   level = 1,
+  density = "comfortable",
   className,
 }: {
   title: ReactNode;
@@ -54,11 +55,12 @@ export function PageHeader({
   actions?: ReactNode;
   children?: ReactNode;
   level?: 1 | 2;
+  density?: "comfortable" | "compact";
   className?: string;
 }) {
   const Heading = level === 1 ? "h1" : "h2";
   return (
-    <header className={classes(styles.header, className)}>
+    <header className={classes(styles.header, className)} data-density={density}>
       <div className={styles.headingRow}>
         <div className={styles.headingCopy}>
           {eyebrow ? <div className={styles.eyebrow}>{eyebrow}</div> : null}

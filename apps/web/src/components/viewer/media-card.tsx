@@ -43,6 +43,7 @@ export function MediaCard({
       data-tv-focus-id={mediaFocusId(variant, href, title)}
       data-tv-focusable="true"
       href={href}
+      title={title}
     >
       <div className={styles.art} data-tone={tone}>
         <span aria-hidden="true" className={styles.signal} data-artwork-fallback="true" />
