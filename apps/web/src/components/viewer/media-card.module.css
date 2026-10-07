@@ -101,7 +101,7 @@
 
 .badge {
   backdrop-filter: blur(12px) saturate(135%);
-  background: rgb(5 3 12 / 68%);
+  background: #100d20;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
   box-shadow: 0 6px 18px rgb(0 0 0 / 20%);
@@ -129,7 +129,11 @@
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  min-block-size: 2.7em;
 }
 
 .kicker,

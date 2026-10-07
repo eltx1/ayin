@@ -1,5 +1,6 @@
 import { apiBaseUrl, type AyinIdentity, readApiError } from "./api";
 import { parseDiscoveryRow, parseMyAyinResponse } from "./my-ayin-contracts";
+import { readViewerIdentity, withViewerReadDeadline } from "./viewer-bootstrap";
 
 export type DiscoveryItemType = "VIDEO" | "CREATOR_TV" | "CHANNEL" | "PLAYLIST" | "SERIES";
 export type DiscoveryAvailability = "AVAILABLE" | "EMPTY" | "UNAVAILABLE";
@@ -43,35 +44,33 @@ export interface MyAyinResponse {
 }
 
 export async function getIdentity(signal?: AbortSignal): Promise<AyinIdentity | null> {
-  const response = await fetch(`${apiBaseUrl}/auth/me`, {
-    cache: "no-store",
-    credentials: "include",
-    signal: signal ?? null,
-  });
-  if (!response.ok) return null;
-  return (await response.json()) as AyinIdentity;
+  return readViewerIdentity(signal);
 }
 
 export async function fetchDiscoveryHome(
   authenticated: boolean,
   signal?: AbortSignal,
 ): Promise<DiscoveryHomeResponse> {
-  const response = await fetch(
-    `${apiBaseUrl}/${authenticated ? "discovery" : "public/discovery"}/home`,
-    { cache: "no-store", credentials: "include", signal: signal ?? null },
-  );
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as DiscoveryHomeResponse;
+  return withViewerReadDeadline(async (readSignal) => {
+    const response = await fetch(
+      `${apiBaseUrl}/${authenticated ? "discovery" : "public/discovery"}/home`,
+      { cache: "no-store", credentials: "include", signal: readSignal },
+    );
+    if (!response.ok) throw new Error(await readApiError(response));
+    return (await response.json()) as DiscoveryHomeResponse;
+  }, signal);
 }
 
 export async function fetchKidsDiscoveryHome(signal?: AbortSignal): Promise<DiscoveryHomeResponse> {
-  const response = await fetch(`${apiBaseUrl}/public/discovery/kids`, {
-    cache: "no-store",
-    credentials: "include",
-    signal: signal ?? null,
-  });
-  if (!response.ok) throw new Error(await readApiError(response));
-  return (await response.json()) as DiscoveryHomeResponse;
+  return withViewerReadDeadline(async (readSignal) => {
+    const response = await fetch(`${apiBaseUrl}/public/discovery/kids`, {
+      cache: "no-store",
+      credentials: "include",
+      signal: readSignal,
+    });
+    if (!response.ok) throw new Error(await readApiError(response));
+    return (await response.json()) as DiscoveryHomeResponse;
+  }, signal);
 }
 
 export async function fetchKidsDiscoveryRow(

@@ -18,10 +18,10 @@
 }
 
 .searchControls input {
-  background: rgb(3 2 10 / 70%);
-  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  border: 1px solid var(--action-outline);
   border-radius: var(--radius-sm);
-  color: #fff;
+  color: var(--text-primary);
   font: inherit;
   min-height: var(--control-height-lg);
   min-width: 0;
@@ -43,7 +43,7 @@
 }
 
 .searchControls button {
-  background: var(--brand-gradient);
+  background: var(--action-fill);
   border: 1px solid rgb(255 255 255 / 15%);
   border-radius: var(--radius-sm);
   box-shadow: 0 12px 28px rgb(88 8 248 / 20%);
@@ -67,7 +67,7 @@
 
 .suggestions {
   backdrop-filter: blur(24px) saturate(145%);
-  background: rgb(8 5 18 / 96%);
+  background: var(--surface-elevated);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   box-shadow:
@@ -115,5 +115,26 @@
 
   .suggestions {
     max-height: 45vh;
+  }
+}
+
+.searchControls button:hover {
+  background: var(--action-hover);
+}
+.searchControls input::placeholder {
+  color: var(--text-muted);
+}
+.suggestions a > span {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.suggestions small {
+  flex: 0 0 auto;
+}
+@media (forced-colors: active) {
+  .searchControls input,
+  .searchControls button,
+  .suggestions {
+    border-color: CanvasText;
   }
 }

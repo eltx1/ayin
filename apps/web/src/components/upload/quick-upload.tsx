@@ -4,7 +4,7 @@ import { uploadText } from "@/lib/upload-copy";
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ActionButton, PageHeader } from "@/components/ui/design-system";
+import { ActionButton, ActionLink, PageHeader } from "@/components/ui/design-system";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { scheduleTimestamp, uploadId, uploadRecord } from "@/lib/quick-upload-contract";
 import { UploadProtocolError } from "@/lib/upload-session";
@@ -549,6 +549,9 @@ export function QuickUpload() {
       <PageHeader
         eyebrow={copy("Creator upload")}
         title={copy("Upload a video")}
+        actions={
+          <ActionLink href={href("/studio/content")}>{copy("Manage saved videos")}</ActionLink>
+        }
         description={copy(
           "Choose a format and file, review the details, then save or publish your video.",
         )}

@@ -5,11 +5,17 @@
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   inline-size: min(480px, calc(100vw - 32px));
-  margin: auto;
-  max-block-size: calc(100dvh - 32px - var(--ayin-safe-top) - var(--ayin-safe-bottom));
+  inset-block-start: calc(var(--ayin-visual-top) + var(--ayin-visual-height) / 2);
+  inset-block-end: auto;
+  margin-block: 0;
+  margin-inline: auto;
+  max-block-size: calc(
+    var(--ayin-visual-height) - 32px - var(--ayin-safe-top) - var(--ayin-safe-bottom)
+  );
   overflow: auto;
   overscroll-behavior: contain;
   padding: 0;
+  transform: translateY(-50%);
 }
 
 .dialog::backdrop {

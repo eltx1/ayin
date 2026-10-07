@@ -52,8 +52,15 @@ describe("AYIN semantic design tokens", () => {
       "--surface",
       "--surface-raised",
       "--surface-elevated",
+      "--surface-navigation",
+      "--surface-selected",
     ]) {
-      for (const foreground of ["--text-primary", "--text-secondary", "--text-muted"]) {
+      for (const foreground of [
+        "--text-primary",
+        "--text-secondary",
+        "--text-muted",
+        "--text-accent",
+      ]) {
         expect(
           contrast(foreground, background),
           `${foreground} on ${background}`,

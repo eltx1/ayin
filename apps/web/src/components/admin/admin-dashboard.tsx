@@ -49,7 +49,12 @@ export function AdminDashboard() {
     );
   return (
     <>
-      <PageHeader title={copy.title} eyebrow={copy.eyebrow} description={copy.description} />
+      <PageHeader
+        density="compact"
+        title={copy.title}
+        eyebrow={copy.eyebrow}
+        description={copy.description}
+      />
       {loading ? (
         <StatusNotice announce="polite">{copy.loading}</StatusNotice>
       ) : (
@@ -190,6 +195,7 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
   return (
     <>
       <PageHeader
+        density="compact"
         title={copy.title}
         eyebrow={copy.eyebrow}
         description={copy.description}
@@ -216,61 +222,19 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
         }
       />
       <>
-        <section aria-label={copy.priorities} className={styles.panel}>
-          <PageHeader level={2} title={copy.priorities} />
-          <div className={styles.grid}>
-            {primary.map((group) => (
-              <article className={styles.workspace} key={group.id}>
-                <h3>{t(group.label)}</h3>
-                <div className={styles.links}>
-                  {group.items.map((item) => (
-                    <ActionLink tone="secondary" href={href(item.href)} key={item.href}>
-                      {t(item.label)}
-                    </ActionLink>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-          <details className={styles.details}>
-            <summary>{copy.tools}</summary>
-            <div className={styles.grid}>
-              {groups.map((group) => (
-                <div key={group.id}>
-                  <h3>{t(group.label)}</h3>
-                  <div className={styles.links}>
-                    {group.items.map((item) => (
-                      <ActionLink tone="quiet" href={href(item.href)} key={item.href}>
-                        {t(item.label)}
-                      </ActionLink>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </details>
-        </section>
-        <section className={styles.panel} aria-label={copy.counters}>
-          <PageHeader level={2} title={copy.counters} />
-          {state(counters)}
-          {counters && (
-            <MetricList
-              label={copy.counters}
-              items={dashboardCounterKeys.map((key) => ({
-                label: copy[key],
-                value: formatNumber(counters[key]),
-              }))}
-            />
-          )}
-          {observed && (
-            <p className={styles.muted}>
-              {copy.observed}: <time dateTime={observed}>{timestamp(observed)}</time>
-            </p>
-          )}
-        </section>
-        <section className={styles.panel} aria-label={copy.search}>
-          <PageHeader level={2} title={copy.search} description={copy.searchHint} />
-          <form className={styles.search} onSubmit={runSearch}>
+        <section className={`${styles.panel} ${styles.searchPanel}`} aria-label={copy.search}>
+          <PageHeader
+            density="compact"
+            level={2}
+            title={copy.search}
+            description={copy.searchHint}
+          />
+          <form
+            className={styles.search}
+            onSubmit={runSearch}
+            role="search"
+            aria-label={copy.search}
+          >
             <TextField
               id="admin-global-search"
               label={copy.searchLabel}
@@ -312,9 +276,61 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
               <StatusNotice announce="polite">{copy.searchEmpty}</StatusNotice>
             ))}
         </section>
+        <section aria-label={copy.priorities} className={styles.panel}>
+          <PageHeader density="compact" level={2} title={copy.priorities} />
+          <div className={styles.grid}>
+            {primary.map((group) => (
+              <article className={styles.workspace} aria-label={t(group.label)} key={group.id}>
+                <h3>{t(group.label)}</h3>
+                <div className={styles.links}>
+                  {group.items.map((item) => (
+                    <ActionLink tone="secondary" href={href(item.href)} key={item.href}>
+                      {t(item.label)}
+                    </ActionLink>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+          <details className={styles.details}>
+            <summary>{copy.tools}</summary>
+            <div className={styles.grid}>
+              {groups.map((group) => (
+                <div key={group.id}>
+                  <h3>{t(group.label)}</h3>
+                  <div className={styles.links}>
+                    {group.items.map((item) => (
+                      <ActionLink tone="quiet" href={href(item.href)} key={item.href}>
+                        {t(item.label)}
+                      </ActionLink>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </details>
+        </section>
+        <section className={styles.panel} aria-label={copy.counters}>
+          <PageHeader density="compact" level={2} title={copy.counters} />
+          {state(counters)}
+          {counters && (
+            <MetricList
+              label={copy.counters}
+              items={dashboardCounterKeys.map((key) => ({
+                label: copy[key],
+                value: formatNumber(counters[key]),
+              }))}
+            />
+          )}
+          {observed && (
+            <p className={styles.muted}>
+              {copy.observed}: <time dateTime={observed}>{timestamp(observed)}</time>
+            </p>
+          )}
+        </section>
         <div className={styles.grid}>
           <section className={styles.panel} aria-label={copy.finance}>
-            <PageHeader level={2} title={copy.finance} />
+            <PageHeader density="compact" level={2} title={copy.finance} />
             {!canReadFinance ? (
               <p className={styles.muted}>{copy.financeHidden}</p>
             ) : (
@@ -365,7 +381,7 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
             )}
           </section>
           <section className={styles.panel} aria-label={copy.health}>
-            <PageHeader level={2} title={copy.health} />
+            <PageHeader density="compact" level={2} title={copy.health} />
             {state(health)}
             {health && (
               <>
@@ -402,7 +418,12 @@ function AdminDashboardContent({ session }: { session: AdminSession }) {
           </section>
         </div>
         <section className={styles.panel} aria-label={copy.analytics}>
-          <PageHeader level={2} title={copy.analytics} description={copy.rollup} />
+          <PageHeader
+            density="compact"
+            level={2}
+            title={copy.analytics}
+            description={copy.rollup}
+          />
           {state(analytics)}
           {analytics && (
             <>

@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { MediaCard } from "@/components/viewer/media-card";
 import { useViewerProduct } from "@/components/viewer/viewer-product-context";
-import { EmptyState } from "@/components/viewer/view-states";
+import { EmptyState, ErrorState } from "@/components/viewer/view-states";
+import { ActionButton } from "@/components/ui/design-system";
 import { mediaAssetUrl } from "@/lib/channel";
 import { translatePublicDiscovery } from "@/lib/i18n/public-discovery";
 import type { SearchResponse } from "@/lib/search";
@@ -65,9 +66,14 @@ export function SearchResults({ query, cursor }: { query: string; cursor?: strin
   const current = read?.key === key && isAudienceCurrent() ? read : null;
   if (audienceStatus === "error" || current?.error)
     return (
-      <EmptyState
+      <ErrorState
         description={t("search.unavailableDescription")}
         title={t("search.unavailable")}
+        action={
+          <ActionButton onClick={retryNavigation} tone="secondary" data-tv-focusable="true">
+            {t("common.retry")}
+          </ActionButton>
+        }
       />
     );
   if (!current?.results) return <p role="status">{t("common.loading")}</p>;

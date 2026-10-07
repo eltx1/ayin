@@ -51,6 +51,10 @@
   gap: 0.65rem 1rem;
 }
 
+.sessionCard[hidden] {
+  display: none;
+}
+
 .readyMessage {
   background: rgb(104 216 165 / 10%);
   border: 1px solid rgb(104 216 165 / 22%);

@@ -7,6 +7,8 @@ import type { ReactNode } from "react";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import type { WorkspaceNavigationGroup } from "@/lib/workspace-navigation";
 
+import { ActionLink } from "./design-system";
+import { NavigationIcon } from "./navigation-icon";
 import { GroupedNavigation } from "./grouped-navigation";
 import { NavigationDialog } from "./navigation-dialog";
 import styles from "./workspace-navigation.module.css";
@@ -45,15 +47,15 @@ export function WorkspaceSidebar({
           label={t(studio ? "navigation.openStudio" : "navigation.openAdmin")}
           title={label}
           triggerClassName={`${styles.menuButton} ${styles.mobileTrigger}`}
-          trigger={<span aria-hidden="true">☰</span>}
+          trigger={<NavigationIcon name="menu" />}
         >
           <GroupedNavigation groups={groups} label={label} />
         </NavigationDialog>
       </div>
       {studio ? (
-        <Link className={styles.createAction} href={href("/upload")}>
+        <ActionLink className={styles.createAction} tone="primary" href={href("/upload")}>
           <span aria-hidden="true">＋</span> {t("shell.createUpload")}
-        </Link>
+        </ActionLink>
       ) : null}
       <div className={styles.desktopNavigation}>
         <GroupedNavigation groups={groups} label={label} />

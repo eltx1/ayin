@@ -8,6 +8,8 @@ html {
   background: var(--background);
   max-width: 100%;
   scroll-behavior: smooth;
+  scroll-padding-block-start: calc(var(--ayin-shell-top) + 1rem);
+  scroll-padding-block-end: calc(var(--ayin-shell-bottom) + var(--ayin-feedback-height) + 2rem);
   scrollbar-color: rgb(139 24 248 / 44%) rgb(255 255 255 / 3%);
   text-size-adjust: 100%;
 }
@@ -37,6 +39,8 @@ body {
   min-height: 100dvh;
   min-width: 0;
   overflow-x: hidden;
+  /* Fixed notices need real tail scroll range on Viewer, Studio and Admin alike. */
+  padding-block-end: var(--ayin-feedback-space);
   padding-inline: var(--ayin-safe-left) var(--ayin-safe-right);
   text-rendering: optimizeLegibility;
   width: 100%;
@@ -193,38 +197,69 @@ p {
   }
 }
 
+/* All global notices share one measured dock. Native dialogs remain in the top layer. */
+.ayin-feedback-dock {
+  display: grid;
+  gap: 0.625rem;
+  inset-block-end: calc(
+    max(var(--ayin-shell-bottom), var(--ayin-visual-bottom), var(--ayin-safe-bottom)) + 0.75rem
+  );
+  inset-inline: max(1rem, var(--ayin-safe-left)) max(1rem, var(--ayin-safe-right));
+  margin-inline: auto;
+  max-inline-size: 44rem;
+  max-block-size: min(
+    40dvh,
+    max(
+      0px,
+      calc(
+        var(--ayin-visual-height) - var(--ayin-shell-top) -
+          max(0px, calc(var(--ayin-shell-bottom) - var(--ayin-visual-bottom))) - 2rem
+      )
+    )
+  );
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  position: fixed;
+  z-index: var(--layer-feedback);
+}
+
+.ayin-feedback-dock:empty {
+  display: none;
+}
+
 .pwa-prompt {
   align-items: center;
-  backdrop-filter: blur(24px) saturate(135%);
-  background:
-    linear-gradient(rgb(10 7 20 / 88%), rgb(10 7 20 / 88%)) padding-box,
-    var(--brand-gradient) border-box;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  bottom: max(1rem, var(--ayin-safe-bottom));
-  box-shadow: var(--shadow-elevated), var(--brand-glow);
+  background: var(--surface-elevated);
+  border: 1px solid var(--action-outline);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-elevated);
   display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
-  inset-inline: max(1rem, var(--ayin-safe-left)) max(1rem, var(--ayin-safe-right));
-  justify-content: center;
-  margin-inline: auto;
-  max-width: 44rem;
-  padding: 0.8rem 1rem;
-  position: fixed;
-  z-index: 1000;
+  padding: 1rem;
 }
-
-html[dir="rtl"] .pwa-prompt {
-  inset-inline: max(1rem, var(--ayin-safe-right)) max(1rem, var(--ayin-safe-left));
+.pwa-prompt > span {
+  flex: 1 1 18rem;
 }
-
 .pwa-prompt button {
-  min-height: var(--control-height);
+  min-block-size: var(--control-target);
 }
 
 @media (max-width: 520px) {
   .pwa-prompt {
     align-items: stretch;
-    flex-direction: column;
+  }
+  .pwa-prompt > span {
+    flex-basis: 100%;
+  }
+  .pwa-prompt button {
+    flex: 1 1 auto;
+  }
+}
+
+@media (forced-colors: active) {
+  .pwa-prompt {
+    border-color: CanvasText;
   }
 }

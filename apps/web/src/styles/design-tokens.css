@@ -111,4 +111,23 @@
   --control-target: 44px;
   --focus-width: 3px;
   --focus-offset: 3px;
+  --surface-navigation: #0b0815;
+  --surface-selected: #25183c;
+  --text-accent: #d9bdff;
+  --layer-chrome: 40;
+  --layer-feedback: 60;
+  --ayin-shell-top: 0px;
+  --ayin-shell-bottom: 0px;
+  --ayin-feedback-height: 0px;
+  --ayin-feedback-space: 0px;
+  --ayin-visual-height: 100dvh;
+  --ayin-visual-top: 0px;
+  --ayin-visual-bottom: 0px;
+  --ayin-content-height: max(
+    0px,
+    calc(
+      var(--ayin-visual-height) - var(--ayin-shell-top) - var(--ayin-shell-bottom) -
+        var(--ayin-feedback-height)
+    )
+  );
 }

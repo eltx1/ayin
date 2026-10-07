@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
@@ -16,6 +16,7 @@ import {
   type ProductNavigationItem,
 } from "@/lib/viewer-navigation";
 import { isNavigationCurrent, navigationPath } from "@/lib/workspace-navigation";
+import { useViewportBlockSize } from "@/lib/use-viewport-block-size";
 
 import { useViewerProduct, ViewerProductProvider } from "./viewer-product-context";
 import footerStyles from "./viewer-footer.module.css";
@@ -74,8 +75,12 @@ function ProductLinks({
 }
 
 function ViewerChrome({ children }: { children: ReactNode }) {
+  const topbar = useRef<HTMLElement>(null);
+  const mobileNavigation = useRef<HTMLElement>(null);
+  useViewportBlockSize(topbar, "--ayin-shell-top");
+  useViewportBlockSize(mobileNavigation, "--ayin-shell-bottom");
   const { href, t } = useI18n();
-  const { flags, identity, controls, identityRevision } = useViewerProduct();
+  const { flags, identity, controls, identityRevision, audienceStatus } = useViewerProduct();
   const navigation = controls?.navigation;
   const model = useMemo(() => buildViewerNavigation(flags, navigation), [flags, navigation]);
   const announcement = controls?.announcement;
@@ -87,7 +92,7 @@ function ViewerChrome({ children }: { children: ReactNode }) {
       <a className={styles.skipLink} href="#ayin-content">
         {t("navigation.skipContent")}
       </a>
-      <header className={styles.topbar}>
+      <header className={styles.topbar} ref={topbar} data-ayin-shell-header>
         <Link
           aria-label={t("shell.homeAria")}
           className={styles.brand}
@@ -108,7 +113,12 @@ function ViewerChrome({ children }: { children: ReactNode }) {
         >
           <ProductLinks items={model.primary} browse={model.browse} surface="desktop" />
         </nav>
-        <div className={styles.accountActions} key={identityRevision} data-private-viewer-identity>
+        <div
+          className={styles.accountActions}
+          key={identityRevision}
+          data-private-viewer-identity
+          aria-busy={audienceStatus === "loading"}
+        >
           <Link
             className={styles.joinAction}
             data-tv-focus-id={identity ? "create-upload" : "join-ayin"}
@@ -207,6 +217,8 @@ function ViewerChrome({ children }: { children: ReactNode }) {
         aria-label={t("shell.mobileNavigation")}
         className={styles.mobileNavigation}
         data-mobile-visible={device?.mobile !== false}
+        data-ayin-bottom-navigation
+        ref={mobileNavigation}
       >
         <ProductLinks items={model.primary} browse={model.browse} surface="mobile" mobile />
       </nav>

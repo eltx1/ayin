@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { SearchBox } from "@/components/search/search-box";
 import { SearchResults } from "@/components/search/search-results";
+import { PageHeader } from "@/components/ui/design-system";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { translate } from "@/lib/i18n/translator";
 import { normalizeSearchTerm } from "@/lib/search";
@@ -31,11 +32,9 @@ export default async function SearchPage({
   // the existing viewer coordinator verifies audience before browser reads.
   return (
     <main className={styles.page}>
-      <header>
-        <p>{t("search.eyebrow")}</p>
-        <h1>{t("search.title")}</h1>
+      <PageHeader title={t("search.title")} eyebrow={t("search.eyebrow")} density="compact">
         <SearchBox key={`${query}:${params.cursor ?? ""}`} initialQuery={query} />
-      </header>
+      </PageHeader>
       <SearchResults query={query} {...(params.cursor ? { cursor: params.cursor } : {})} />
     </main>
   );

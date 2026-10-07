@@ -1,10 +1,7 @@
 .shell {
-  background:
-    radial-gradient(circle at 8% 2%, rgb(88 8 248 / 16%), transparent 34rem),
-    radial-gradient(circle at 88% 10%, rgb(220 25 232 / 9%), transparent 30rem),
-    radial-gradient(circle at 72% 90%, rgb(248 58 66 / 4%), transparent 30rem), var(--background);
-  color: var(--foreground);
-  min-height: 100dvh;
+  background: var(--background);
+  color: var(--text-primary);
+  min-block-size: 100dvh;
 }
 
 .frame {
@@ -146,10 +143,10 @@
 }
 
 .content {
+  inline-size: min(100%, var(--content-max));
   margin-inline: auto;
-  min-width: 0;
-  padding: clamp(26px, 4vw, 64px);
-  width: min(100%, var(--content-max));
+  min-inline-size: 0;
+  padding: clamp(24px, 3vw, 40px);
 }
 
 .header {

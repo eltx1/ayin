@@ -1,51 +1,86 @@
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
-  gap: var(--space-5);
-  margin-block: var(--space-6);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-block: var(--space-5);
 }
+
 .panel {
   min-inline-size: 0;
-  padding: var(--space-5);
+  padding: clamp(16px, 2vw, 24px);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-panel);
   background: var(--surface);
   overflow-wrap: anywhere;
 }
-.panel h2 {
-  margin-block: 0 var(--space-3);
+
+.recent {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
 }
+
 .panel p {
-  color: var(--muted);
-  line-height: 1.6;
+  color: var(--text-secondary);
+  line-height: var(--leading-copy);
 }
+
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3);
+  gap: var(--space-2);
   margin-block-start: var(--space-4);
 }
+
 .uploads {
   list-style: none;
   padding: 0;
-  display: grid;
-  gap: var(--space-3);
+  margin-block: 0;
 }
+
 .uploads li {
   display: flex;
   justify-content: space-between;
   align-items: start;
   gap: var(--space-3);
+  padding-block: var(--space-3);
+  border-block-start: 1px solid var(--border);
 }
+
 .uploads li > span:first-child {
   min-inline-size: 0;
+  line-height: var(--leading-copy);
+  font-weight: 600;
 }
+
+.uploads li > span:last-child {
+  flex-shrink: 0;
+  max-inline-size: 45%;
+}
+
 .panel summary {
-  min-block-size: 44px;
+  min-block-size: var(--control-target);
   cursor: pointer;
   font-weight: 700;
+  padding-block: var(--space-2);
 }
+
 .panel summary:focus-visible {
-  outline: 2px solid var(--foreground);
-  outline-offset: 4px;
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+@media (max-width: 760px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 400px) {
+  .uploads li {
+    flex-wrap: wrap;
+  }
+
+  .uploads li > span:last-child {
+    max-inline-size: 100%;
+  }
 }

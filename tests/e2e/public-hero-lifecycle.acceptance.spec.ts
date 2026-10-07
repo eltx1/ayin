@@ -548,7 +548,10 @@ for (const outcome of ["successful", "uncertain"] as const) {
       await expectFallback(page);
       const documentId = await guardStaleFrames(page, catalog.videos.primary);
       release();
-      await expect(page.locator('[data-tv-focus-id="session-sign-in"]:visible')).toBeVisible();
+      // An uncertain logout is not proof of an anonymous audience. Keep the
+      // neutral account check until foreground /auth/me actually returns 401.
+      await expect(page.locator('[data-tv-focus-id="session-sign-in"]:visible')).toHaveCount(0);
+      await expect(page.getByText("Checking your account…", { exact: true })).toBeVisible();
       await animationFrames(page);
       await expectFallback(page);
       await probe.expectReads(1);
@@ -569,6 +572,7 @@ for (const outcome of ["successful", "uncertain"] as const) {
       await current.done;
       await probe.expectReads(2);
       await expectFallback(page);
+      await expect(page.locator('[data-tv-focus-id="session-sign-in"]:visible')).toBeVisible();
       await expectNoStaleFrames(page, documentId);
     } finally {
       release();

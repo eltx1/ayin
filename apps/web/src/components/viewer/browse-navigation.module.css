@@ -6,19 +6,21 @@
 
 .categories {
   display: grid;
-  gap: 0 48px;
+  gap: var(--space-4);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .categories > a {
   align-items: center;
-  border-block-end: 1px solid var(--border);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
   color: var(--foreground);
   display: flex;
   gap: 24px;
   justify-content: space-between;
-  min-block-size: 124px;
-  padding: 24px 4px;
+  min-block-size: 148px;
+  padding: clamp(20px, 3vw, 28px);
   text-decoration: none;
 }
 
@@ -35,7 +37,7 @@
 }
 
 .categories strong + span {
-  color: var(--muted);
+  color: var(--text-secondary);
   display: block;
   font-size: 0.95rem;
   line-height: 1.65;
@@ -95,5 +97,25 @@
 
   .categories > a {
     min-block-size: 112px;
+  }
+}
+
+.categories > a:hover {
+  background: var(--surface-elevated);
+  border-color: var(--action-outline);
+}
+.arrow {
+  align-items: center;
+  background: var(--surface-selected);
+  border-radius: var(--radius-pill);
+  color: var(--text-accent);
+  display: inline-flex;
+  inline-size: 36px;
+  block-size: 36px;
+  justify-content: center;
+}
+@media (forced-colors: active) {
+  .categories > a {
+    border-color: LinkText;
   }
 }

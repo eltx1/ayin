@@ -18,6 +18,7 @@ import { apiBaseUrl, type AyinIdentity } from "@/lib/api";
 import { parseNavigationFlags, type NavigationFlagState } from "@/lib/navigation";
 import { parseResolvedHero, type ResolvedHero } from "@/lib/viewer-product";
 import type { ProductNavigationItem } from "@/lib/viewer-navigation";
+import { readViewerIdentity, withViewerReadDeadline } from "@/lib/viewer-bootstrap";
 
 interface PublicProductControls {
   resolvedHero: ResolvedHero | null;
@@ -32,6 +33,8 @@ interface ViewerProductContextValue {
   controls: PublicProductControls | null;
   navigationStatus: "loading" | "ready" | "error";
   retryNavigation: () => void;
+  bootstrapRevision: number;
+  bootstrapSuspended: boolean;
   identityRevision: number;
   isIdentityCurrent: () => boolean;
   audienceStatus: "loading" | "ready" | "error";
@@ -304,32 +307,33 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
 
     // One owner for the shell, Browse and Home. Each route activation or audience
     // restoration obtains a new policy decision; no page issues a duplicate read.
-    void Promise.all([
-      fetch(`${apiBaseUrl}/platform/navigation`, {
-        cache: "no-store",
-        signal: controller.signal,
-      }),
-      fetch(`${apiBaseUrl}/product-controls`, {
-        credentials: "include",
-        cache: "no-store",
-        signal: controller.signal,
-      }),
-    ])
-      .then(async ([flagResponse, controlResponse]) => {
-        if (!flagResponse.ok || !controlResponse.ok) throw new Error("Navigation unavailable");
-        const [rawFlags, rawControls] = (await Promise.all([
-          flagResponse.json(),
-          controlResponse.json(),
-        ])) as [unknown, PublicProductControls];
-        if (!Array.isArray(rawControls.navigation) || !rawControls.deviceVisibility) {
-          throw new Error("Invalid navigation response");
-        }
-        apply({
-          flags: parseNavigationFlags(rawFlags),
-          controls: { ...rawControls, resolvedHero: parseResolvedHero(rawControls.resolvedHero) },
-          navigationStatus: "ready",
-        });
-      })
+    void withViewerReadDeadline(async (readSignal) => {
+      const [flagResponse, controlResponse] = await Promise.all([
+        fetch(`${apiBaseUrl}/platform/navigation`, {
+          cache: "no-store",
+          signal: readSignal,
+        }),
+        fetch(`${apiBaseUrl}/product-controls`, {
+          credentials: "include",
+          cache: "no-store",
+          signal: readSignal,
+        }),
+      ]);
+      if (!flagResponse.ok || !controlResponse.ok) throw new Error("Navigation unavailable");
+      const [rawFlags, rawControls] = (await Promise.all([
+        flagResponse.json(),
+        controlResponse.json(),
+      ])) as [unknown, PublicProductControls];
+      if (!Array.isArray(rawControls.navigation) || !rawControls.deviceVisibility) {
+        throw new Error("Invalid navigation response");
+      }
+      return {
+        flags: parseNavigationFlags(rawFlags),
+        controls: { ...rawControls, resolvedHero: parseResolvedHero(rawControls.resolvedHero) },
+        navigationStatus: "ready" as const,
+      };
+    }, controller.signal)
+      .then(apply)
       .catch(() => {
         apply({ flags: {}, controls: null, navigationStatus: "error" });
       });
@@ -354,17 +358,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
         publishIdentity(next, readPath, false, status);
       }
     };
-    void fetch(`${apiBaseUrl}/auth/me`, {
-      cache: "no-store",
-      credentials: "include",
-      signal: accountRead.signal,
-    })
-      .then(async (response) => {
-        // A verified anonymous read is a usable audience for public search.
-        // Network/server failures must not silently become an adult audience.
-        if (response.ok) applyIdentity((await response.json()) as AyinIdentity, "ready");
-        else applyIdentity(null, response.status === 401 ? "ready" : "error");
-      })
+    void readViewerIdentity(accountRead.signal)
+      .then((identity) => applyIdentity(identity, "ready"))
       .catch(() => applyIdentity(null, "error"));
     return () => {
       accountRead.abort();
@@ -392,6 +387,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
       controls: state.controls,
       navigationStatus: state.navigationStatus,
       retryNavigation,
+      bootstrapRevision: state.revision,
+      bootstrapSuspended: state.suspended,
       identityRevision,
       isIdentityCurrent,
       audienceStatus,
@@ -402,6 +399,8 @@ export function ViewerProductProvider({ children }: { children: ReactNode }) {
     }),
     [
       state.flags,
+      state.revision,
+      state.suspended,
       identity,
       state.controls,
       state.navigationStatus,

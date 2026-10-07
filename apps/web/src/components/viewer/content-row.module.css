@@ -13,9 +13,7 @@
 }
 
 .heading p {
-  background: var(--brand-gradient);
-  background-clip: text;
-  color: transparent;
+  color: var(--text-accent);
   font-size: 0.68rem;
   font-weight: 850;
   letter-spacing: 0.16em;
@@ -26,7 +24,7 @@
 .heading h2 {
   font-size: clamp(1.35rem, 2.5vw, 2.2rem);
   letter-spacing: -0.035em;
-  line-height: 1.08;
+  line-height: var(--leading-heading);
   margin: 0;
 }
 
@@ -44,9 +42,9 @@
   color: var(--foreground);
   cursor: pointer;
   display: inline-flex;
-  height: 2.65rem;
+  height: var(--control-target);
   justify-content: center;
-  width: 2.65rem;
+  width: var(--control-target);
 }
 
 .controls button:hover {

@@ -1,17 +1,17 @@
 .frame {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: 248px minmax(0, 1fr);
   min-block-size: 100dvh;
 }
 
 .sidebar {
   align-self: start;
-  background: var(--background);
+  background: var(--surface);
   block-size: 100dvh;
   border-inline-end: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-4);
   inset-block-start: 0;
   min-inline-size: 0;
   overflow-y: auto;
@@ -64,10 +64,15 @@
   letter-spacing: 0.14em;
 }
 
+.brand > span:last-child {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
 .brand small {
-  color: var(--muted);
+  color: var(--text-muted);
   display: block;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   line-height: 1.5;
 }
 
@@ -89,11 +94,11 @@
   background: transparent;
   border: 0;
   border-radius: 10px;
-  color: var(--muted-strong);
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   font: inherit;
-  font-size: 0.85rem;
+  font-size: var(--text-xs);
   font-weight: 650;
   gap: 12px;
   inline-size: 100%;
@@ -106,11 +111,11 @@
 .groupToggle:hover,
 .groupToggle[data-active] {
   background: var(--surface-subtle);
-  color: var(--foreground);
+  color: var(--text-primary);
 }
 
 .chevron {
-  color: var(--muted);
+  color: var(--text-muted);
   flex: 0 0 auto;
   font-size: 1.1rem;
 }
@@ -138,9 +143,9 @@
   align-items: center;
   border: 1px solid transparent;
   border-radius: 9px;
-  color: var(--muted-strong);
+  color: var(--text-secondary);
   display: flex;
-  font-size: 0.88rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   min-block-size: 44px;
   overflow-wrap: anywhere;
@@ -150,22 +155,24 @@
 
 .groupLinks a:hover {
   background: var(--surface-hover);
-  color: var(--foreground);
+  color: var(--text-primary);
 }
 
 .groupLinks a[aria-current="page"] {
-  background: var(--brand-gradient-soft);
-  border-color: var(--border-brand);
-  color: var(--foreground);
+  background: var(--status-info-bg);
+  border-color: var(--action-outline);
+  border-inline-start: 3px solid var(--focus-ring);
+  color: var(--text-primary);
 }
 
+.brand:focus-visible,
 .groupToggle:focus-visible,
 .groupLinks a:focus-visible,
 .menuButton:focus-visible,
 .createAction:focus-visible,
 .back:focus-visible {
-  outline: 2px solid var(--foreground);
-  outline-offset: 3px;
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
 .tools {
@@ -177,7 +184,7 @@
 
 .back {
   align-items: center;
-  color: var(--muted-strong);
+  color: var(--text-secondary);
   display: inline-flex;
   font-size: 0.86rem;
   gap: 10px;
@@ -186,19 +193,7 @@
 }
 
 .createAction {
-  align-items: center;
-  background: var(--brand-gradient);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  color: white;
-  display: inline-flex;
-  font-size: 0.9rem;
-  font-weight: 700;
-  gap: 8px;
-  justify-content: center;
-  min-block-size: 44px;
-  padding: 10px 14px;
-  text-decoration: none;
+  inline-size: 100%;
 }
 
 .mobileTrigger {
@@ -209,17 +204,24 @@
   background: var(--surface-subtle);
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  color: var(--foreground);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 1.2rem;
-  block-size: 44px;
-  inline-size: 44px;
+  block-size: var(--control-target);
+  inline-size: var(--control-target);
+  flex: 0 0 var(--control-target);
+  padding: var(--space-2);
+}
+
+.menuButton svg {
+  block-size: 100%;
+  inline-size: 100%;
 }
 
 .breadcrumbs {
-  color: var(--muted);
-  font-size: 0.8rem;
-  margin-block-end: 20px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin-block-end: var(--space-3);
 }
 
 .breadcrumbs ol {
@@ -236,7 +238,8 @@
   align-items: center;
   display: flex;
   gap: 8px;
-  min-block-size: 32px;
+  min-block-size: var(--control-target);
+  min-inline-size: 0;
   overflow-wrap: anywhere;
 }
 
@@ -246,12 +249,15 @@
 }
 
 .breadcrumbs a {
+  align-items: center;
+  display: inline-flex;
+  min-block-size: var(--control-target);
   color: inherit;
   text-underline-offset: 3px;
 }
 
 .breadcrumbs [aria-current] {
-  color: var(--foreground);
+  color: var(--text-primary);
 }
 
 @media (max-width: 960px) {
@@ -288,17 +294,25 @@
 
   .createAction {
     align-self: start;
+    inline-size: auto;
+    max-inline-size: 100%;
   }
 }
 
 @media (min-width: 1600px) {
   .frame {
-    grid-template-columns: 288px minmax(0, 1fr);
+    grid-template-columns: 264px minmax(0, 1fr);
   }
 
   .groupLinks a,
   .groupToggle {
     font-size: 1rem;
     min-block-size: 48px;
+  }
+}
+
+@media (forced-colors: active) {
+  .groupLinks a[aria-current="page"] {
+    border-color: Highlight;
   }
 }
