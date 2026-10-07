@@ -316,22 +316,35 @@ final class PlayerViewModelLifecycleTests: XCTestCase {
         router.open(shareURL)
         await load(model, token: "token-a", profile: "profile-a")
         let replacement = try XCTUnwrap(model.player)
-        let unexpectedSeek = expectation(description: "Held old resume must not seek the reopened player")
+        let replacementItem = try XCTUnwrap(replacement.currentItem)
+        XCTAssertLessThan(CMTimeGetSeconds(replacement.currentTime()), 2.5)
+        let unexpectedSeek = expectation(description: "Held 40-second resume must not move the reopened player")
         unexpectedSeek.isInverted = true
         let observer = NotificationCenter.default.addObserver(
-            forName: AVPlayerItem.timeJumpedNotification, object: replacement.currentItem, queue: .main
-        ) { _ in unexpectedSeek.fulfill() }
+            forName: AVPlayerItem.timeJumpedNotification, object: replacementItem, queue: .main
+        ) { notification in
+            // A notification alone does not identify a resume seek. Inspect its
+            // position so events near the current zero baseline are not mistaken
+            // for the held response's 40-second position.
+            guard let item = notification.object as? AVPlayerItem else { return }
+            let position = CMTimeGetSeconds(item.currentTime())
+            if position.isFinite, position >= 2.5 { unexpectedSeek.fulfill() }
+        }
         defer { NotificationCenter.default.removeObserver(observer) }
         await progress.releaseRead()
+        await fulfillment(of: [progress.readReturned], timeout: 2)
         await fulfillment(of: [unexpectedSeek], timeout: 0.2)
 
         XCTAssertTrue(model.player === replacement)
+        XCTAssertTrue(replacement.currentItem === replacementItem)
         XCTAssertLessThan(CMTimeGetSeconds(replacement.currentTime()), 2.5)
         XCTAssertNil(nativePlayer.currentItem)
         let loads = await service.loadCount
         let saves = await progress.saves
+        let heldReadWasCancelled = await progress.heldReadWasCancelled
         XCTAssertEqual(loads, 2)
         XCTAssertEqual(saves, 0, "Unknown progress must not be overwritten during the transition")
+        XCTAssertEqual(heldReadWasCancelled, true, "Stop must cancel the held lookup even when its transport still returns")
         await model.stop(saveProgress: false)
     }
 
@@ -448,10 +461,12 @@ private actor DeferredLifecycleProgress: WatchProgressServicing {
 
 private actor HeldResumeLifecycleProgress: WatchProgressServicing {
     nonisolated let readStarted = XCTestExpectation(description: "Old resume response is held")
+    nonisolated let readReturned = XCTestExpectation(description: "Held resume response was delivered")
     private var continuation: CheckedContinuation<WatchProgress, Never>?
     private var heldProgress: WatchProgress?
     private(set) var reads = 0
     private(set) var saves = 0
+    private(set) var heldReadWasCancelled: Bool?
 
     func progress(videoId: String, profileId: String?, token: String) async throws -> WatchProgress {
         reads += 1
@@ -462,10 +477,13 @@ private actor HeldResumeLifecycleProgress: WatchProgressServicing {
         heldProgress = WatchProgress(profileId: profileId ?? "", videoId: videoId, positionMs: 40_000,
                                      completedAt: nil, revision: "2026-10-06T08:00:00.001Z")
         // A transport may ignore cancellation and return after Safari or a new player opens.
-        return await withCheckedContinuation {
+        let response: WatchProgress = await withCheckedContinuation {
             continuation = $0
             readStarted.fulfill()
         }
+        heldReadWasCancelled = Task.isCancelled
+        readReturned.fulfill()
+        return response
     }
 
     func releaseRead() {
