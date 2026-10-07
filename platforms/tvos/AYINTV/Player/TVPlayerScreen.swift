@@ -16,44 +16,9 @@ struct TVPlayerScreen: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if model.player != nil {
-                TVPlayerController(model: model)
-                    .ignoresSafeArea()
-            } else if model.isLoading {
-                ProgressView("Loading…")
-            } else {
-                VStack(spacing: 30) {
-                    ContentUnavailableView(
-                        "Playback unavailable",
-                        systemImage: "play.slash",
-                        description: Text(model.errorMessage ?? "AYIN could not start this title.")
-                    )
-                    Button("Try Again") {
-                        Task {
-                            guard !session.isRestoring, session.token == nil || session.isAuthenticated else { return }
-                            await model.retry(token: session.token, profileId: session.identity?.profile.id,
-                                              accountId: session.identity?.account.id,
-                                              isKids: session.identity?.profile.isKids == true)
-                        }
-                    }
-                }
-            }
-        }
+        playbackContent
         .overlay(alignment: .bottom) {
-            if model.progressNeedsReview {
-                VStack(spacing: 16) {
-                    Text("Playback continues. Review saved progress before saving more.")
-                    Button(model.isReviewingProgress ? "Reviewing…" : "Review saved progress") {
-                        model.reviewProgress()
-                    }
-                    .disabled(model.isReviewingProgress)
-                }
-                .padding(30)
-                .background(.ultraThinMaterial)
-                .padding(40)
-            }
+            progressReviewOverlay
         }
         .task(id: sessionIdentity) {
             guard !session.isRestoring, session.token == nil || session.isAuthenticated else {
@@ -80,6 +45,54 @@ struct TVPlayerScreen: View {
         }
         .onDisappear {
             Task { await model.stop() }
+        }
+    }
+
+    private var playbackContent: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            if model.player != nil {
+                TVPlayerController(model: model)
+                    .ignoresSafeArea()
+            } else if model.isLoading {
+                ProgressView("Loading…")
+            } else {
+                unavailableContent
+            }
+        }
+    }
+
+    private var unavailableContent: some View {
+        VStack(spacing: 30) {
+            ContentUnavailableView(
+                "Playback unavailable",
+                systemImage: "play.slash",
+                description: Text(model.errorMessage ?? "AYIN could not start this title.")
+            )
+            Button("Try Again") {
+                Task {
+                    guard !session.isRestoring, session.token == nil || session.isAuthenticated else { return }
+                    await model.retry(token: session.token, profileId: session.identity?.profile.id,
+                                      accountId: session.identity?.account.id,
+                                      isKids: session.identity?.profile.isKids == true)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var progressReviewOverlay: some View {
+        if model.progressNeedsReview {
+            VStack(spacing: 16) {
+                Text("Playback continues. Review saved progress before saving more.")
+                Button(model.isReviewingProgress ? "Reviewing…" : "Review saved progress") {
+                    model.reviewProgress()
+                }
+                .disabled(model.isReviewingProgress)
+            }
+            .padding(30)
+            .background(.ultraThinMaterial)
+            .padding(40)
         }
     }
 }

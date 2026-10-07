@@ -38,6 +38,54 @@ async function setup(page: Page) {
 test.afterEach(() => fixture("reset"));
 
 for (const locale of ["en", "ar"] as const) {
+  test(`product controls preserve keyboard focus when removing at the 100-category cap on ${locale}`, async ({
+    page,
+  }) => {
+    const f = await setup(page);
+    const ar = locale === "ar";
+    await page.route(`${API}/admin/product-controls`, async (route) => {
+      const response = await route.fetch();
+      expect(response.ok()).toBeTruthy();
+      const snapshot = await response.json();
+      snapshot.controls.taxonomy = Array.from({ length: 100 }, (_, index) => ({
+        key: `boundary-category-${index + 1}`,
+        label: `Category ${index + 1}`,
+        enabled: true,
+      }));
+      await route.fulfill({ response, json: snapshot });
+    });
+    await page.goto(`${ar ? "/ar" : ""}/admin/product-controls`);
+    const taxonomy = page.getByRole("region", { name: ar ? "التصنيفات" : "Taxonomy", exact: true });
+    const add = taxonomy.getByRole("button", {
+      name: ar ? "إضافة تصنيف" : "Add category",
+      exact: true,
+    });
+    const last = taxonomy.getByRole("group", {
+      name: ar ? "التصنيف 100" : "Category 100",
+      exact: true,
+    });
+    const remove = last.getByRole("button", {
+      name: ar ? "إزالة التصنيف 100" : "Remove category 100",
+      exact: true,
+    });
+    await expect(add).toBeDisabled();
+    await remove.focus();
+    await page.keyboard.press("Enter");
+    await expect(taxonomy.getByRole("group")).toHaveCount(99);
+    await expect(add).toBeEnabled();
+    await expect(add).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(taxonomy.getByRole("group")).toHaveCount(100);
+    await expect(last.getByRole("textbox")).toBeFocused();
+    await expect(add).toBeDisabled();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    await expect(remove).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(add).toBeFocused();
+    expect(fixture("evidence", f).audits).toHaveLength(0);
+  });
+
   test(`product controls retain multilingual drafts and save exact settings on ${locale} mobile`, async ({
     page,
   }, testInfo) => {

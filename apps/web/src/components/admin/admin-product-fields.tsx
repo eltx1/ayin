@@ -28,14 +28,20 @@ export function AdminProductFields({
   const id = useId();
   const taxonomyRoot = useRef<HTMLDivElement>(null);
   const addButton = useRef<HTMLDivElement>(null);
-  const focusAddedCategory = useRef(false);
+  const pendingTaxonomyFocus = useRef<"added-category" | "add-button" | null>(null);
   const announcement = controls.announcement;
   const updateAnnouncement = (patch: Partial<ProductControls["announcement"]>) =>
     onChange({ ...controls, announcement: { ...announcement, ...patch } });
 
   useLayoutEffect(() => {
-    if (!focusAddedCategory.current) return;
-    focusAddedCategory.current = false;
+    const target = pendingTaxonomyFocus.current;
+    if (!target) return;
+    pendingTaxonomyFocus.current = null;
+    if (target === "add-button") {
+      // At the category cap, Add is disabled until the removed row commits.
+      addButton.current?.querySelector("button")?.focus();
+      return;
+    }
     // Run after the new row commits. Scope to its direct fieldset so the outer
     // settings fieldset cannot make the first category match :last-child.
     taxonomyRoot.current
@@ -164,11 +170,11 @@ export function AdminProductFields({
                   type="button"
                   aria-label={copy(`Remove category ${index + 1}`, `إزالة التصنيف ${index + 1}`)}
                   onClick={() => {
+                    pendingTaxonomyFocus.current = "add-button";
                     onChange({
                       ...controls,
                       taxonomy: controls.taxonomy.filter((_, position) => position !== index),
                     });
-                    addButton.current?.querySelector("button")?.focus();
                   }}
                 >
                   {copy("Remove", "إزالة")}
@@ -183,7 +189,7 @@ export function AdminProductFields({
             type="button"
             disabled={controls.taxonomy.length >= 100}
             onClick={() => {
-              focusAddedCategory.current = true;
+              pendingTaxonomyFocus.current = "added-category";
               onChange({ ...controls, taxonomy: appendTaxonomyItem(controls.taxonomy) });
             }}
           >
