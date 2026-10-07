@@ -46,17 +46,51 @@ struct TVPlayerController: UIViewControllerRepresentable {
         controller.player = model.player
         context.coordinator.subtitleLabel?.text = model.subtitleText
         context.coordinator.subtitleLabel?.isHidden = model.subtitleText.isEmpty
-        controller.transportBarCustomMenuItems = subtitleMenus()
+        let menuState = MenuState(context: model.controlContext, playback: model.playback,
+                                  selectedCaptionId: model.selectedCaptionId)
+        // Subtitle cue updates must not rebuild a menu while the remote is navigating it.
+        if context.coordinator.menuState != menuState {
+            context.coordinator.menuState = menuState
+            controller.transportBarCustomMenuItems = transportMenus()
+        }
     }
 
-    private func subtitleMenus() -> [UIMenuElement] {
+    private func transportMenus() -> [UIMenuElement] {
+        guard let context = model.controlContext, let playback = model.playback else { return [] }
+        var menus = subtitleMenus(context: context)
+
+        if !playback.isLive, !playback.chapters.isEmpty {
+            menus.append(UIMenu(
+                title: TVStrings.text("Chapters"),
+                image: UIImage(systemName: "list.bullet"),
+                children: playback.chapters.map { chapter in
+                    UIAction(title: chapter.title) { _ in
+                        Task { @MainActor in await model.seekChapter(chapter.id, context: context) }
+                    }
+                }
+            ))
+        }
+
+        if playback.nextEpisodeDestination != nil, let next = playback.nextEpisode {
+            menus.append(UIMenu(
+                title: TVStrings.text("Next Episode"),
+                image: UIImage(systemName: "forward.end.fill"),
+                children: [UIAction(title: next.title) { _ in
+                    Task { @MainActor in await model.playNextEpisode(context: context) }
+                }]
+            ))
+        }
+        return menus
+    }
+
+    private func subtitleMenus(context: TVPlaybackControlContext) -> [UIMenuElement] {
         guard !model.captionTracks.isEmpty else { return [] }
 
         let off = UIAction(
-            title: "Off",
+            title: TVStrings.text("Off"),
             state: model.selectedCaptionId == nil ? .on : .off
         ) { _ in
-            Task { @MainActor in await model.selectCaption(nil) }
+            Task { @MainActor in await model.selectCaption(nil, context: context) }
         }
 
         let actions = model.captionTracks.map { track in
@@ -64,13 +98,13 @@ struct TVPlayerController: UIViewControllerRepresentable {
                 title: "\(track.label) · \(track.language)",
                 state: model.selectedCaptionId == track.id ? .on : .off
             ) { _ in
-                Task { @MainActor in await model.selectCaption(track.id) }
+                Task { @MainActor in await model.selectCaption(track.id, context: context) }
             }
         }
 
         return [
             UIMenu(
-                title: "Subtitles",
+                title: TVStrings.text("Subtitles"),
                 image: UIImage(systemName: "captions.bubble"),
                 options: [.singleSelection],
                 children: [off] + actions
@@ -78,10 +112,17 @@ struct TVPlayerController: UIViewControllerRepresentable {
         ]
     }
 
+    struct MenuState: Equatable {
+        let context: TVPlaybackControlContext?
+        let playback: TVPlaybackAsset?
+        let selectedCaptionId: String?
+    }
+
     @MainActor
     final class Coordinator: NSObject, AVPlayerViewControllerDelegate {
         var subtitleLabel: UILabel?
         weak var model: TVPlayerViewModel?
+        var menuState: MenuState?
 
         init(model: TVPlayerViewModel) {
             self.model = model
@@ -91,8 +132,10 @@ struct TVPlayerController: UIViewControllerRepresentable {
             _ playerViewController: AVPlayerViewController
         ) {
             let player = playerViewController.player
+            let context = model?.controlContext
             Task { @MainActor [weak self] in
-                guard let model = self?.model, model.player === player else { return }
+                guard let model = self?.model, let context,
+                      model.controlContext == context, model.player === player else { return }
                 model.setPictureInPictureActive(true)
             }
         }
@@ -101,8 +144,10 @@ struct TVPlayerController: UIViewControllerRepresentable {
             _ playerViewController: AVPlayerViewController
         ) {
             let player = playerViewController.player
+            let context = model?.controlContext
             Task { @MainActor [weak self] in
-                guard let model = self?.model, model.player === player else { return }
+                guard let model = self?.model, let context,
+                      model.controlContext == context, model.player === player else { return }
                 model.setPictureInPictureActive(false)
             }
         }
@@ -112,8 +157,10 @@ struct TVPlayerController: UIViewControllerRepresentable {
             failedToStartPictureInPictureWithError error: Error
         ) {
             let player = playerViewController.player
+            let context = model?.controlContext
             Task { @MainActor [weak self] in
-                guard let model = self?.model, model.player === player else { return }
+                guard let model = self?.model, let context,
+                      model.controlContext == context, model.player === player else { return }
                 model.setPictureInPictureActive(false)
             }
         }
@@ -125,10 +172,11 @@ struct TVPlayerController: UIViewControllerRepresentable {
         ) {
             let player = playerViewController.player
             let item = player?.currentItem
+            let context = model?.controlContext
             Task { @MainActor [weak self] in
-                guard let model = self?.model, model.player === player,
+                guard let model = self?.model, let context, model.player === player,
                       player?.currentItem === item else { return }
-                model.noteUserNavigation(to: targetTime)
+                model.noteUserNavigation(to: targetTime, context: context)
             }
         }
     }

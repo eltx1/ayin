@@ -2,6 +2,11 @@ import AVFoundation
 import Combine
 import Foundation
 
+struct TVPlaybackControlContext: Equatable {
+    let generation: UInt64
+    let item: ObjectIdentifier
+}
+
 @MainActor
 final class TVPlayerViewModel: ObservableObject {
     @Published private(set) var player: AVPlayer?
@@ -14,7 +19,12 @@ final class TVPlayerViewModel: ObservableObject {
     @Published private(set) var progressNeedsReview = false
     @Published private(set) var isReviewingProgress = false
 
-    let destination: TVPlaybackDestination
+    @Published private(set) var destination: TVPlaybackDestination
+
+    var controlContext: TVPlaybackControlContext? {
+        guard let item = player?.currentItem else { return nil }
+        return TVPlaybackControlContext(generation: loadGeneration, item: ObjectIdentifier(item))
+    }
 
     private let service: any TVPlaybackServicing
     private let progress: any WatchProgressServicing
@@ -48,6 +58,7 @@ final class TVPlayerViewModel: ObservableObject {
     private var sceneIsActive = true
     private var pictureInPictureActive = false
     private var userNavigatedDuringStartup = false
+    private var episodeTransitionID: UUID?
 
     init(
         destination: TVPlaybackDestination,
@@ -104,6 +115,7 @@ final class TVPlayerViewModel: ObservableObject {
             dispatchStartAnalytics(playback)
             playAttemptStartedAt = Date()
             player.play()
+            handleScene(active: sceneIsActive)
 
             if let defaultTrack = playback.captions.first(where: { $0.isDefault }) {
                 Task { @MainActor [weak self, weak player, weak item] in
@@ -135,6 +147,7 @@ final class TVPlayerViewModel: ObservableObject {
     // Invalidate both visible media and any held transport result in the same actor turn.
     func invalidateViewer() {
         loadGeneration &+= 1
+        episodeTransitionID = nil
         isLoading = false
         player?.pause()
         removeObservers()
@@ -174,6 +187,40 @@ final class TVPlayerViewModel: ObservableObject {
         refreshSubtitle()
     }
 
+    func selectCaption(_ id: String?, context: TVPlaybackControlContext) async {
+        guard controlContext == context else { return }
+        await selectCaption(id)
+    }
+
+    func seekChapter(_ id: String, context: TVPlaybackControlContext) async {
+        guard controlContext == context, episodeTransitionID == nil,
+              let player, let playback, !playback.isLive,
+              let chapter = playback.chapters.first(where: { $0.id == id }) else { return }
+        let target = CMTime(value: Int64(chapter.startMs), timescale: 1_000)
+        // Mark navigation before suspending so a held saved-position read cannot undo it.
+        noteUserNavigation(to: target)
+        await seek(player, toMilliseconds: chapter.startMs)
+        guard controlContext == context else { return }
+        refreshSubtitle()
+    }
+
+    func playNextEpisode(context: TVPlaybackControlContext) async {
+        guard controlContext == context, episodeTransitionID == nil,
+              let next = playback?.nextEpisodeDestination else { return }
+        let transitionID = UUID()
+        episodeTransitionID = transitionID
+        defer { if episodeTransitionID == transitionID { episodeTransitionID = nil } }
+        let token = self.token
+        let accountId = self.accountId
+        let profileId = self.profileId
+        let isKids = viewerIsKids
+
+        // Finish the current checkpoint before requesting fresh playback authorization.
+        guard await stop(), !Task.isCancelled else { return }
+        destination = next
+        await load(token: token, profileId: profileId, accountId: accountId, isKids: isKids)
+    }
+
     func handleScene(active: Bool) {
         sceneIsActive = active
         guard let player else { return }
@@ -205,12 +252,18 @@ final class TVPlayerViewModel: ObservableObject {
     }
 
     func noteUserNavigation(to time: CMTime) {
+        guard episodeTransitionID == nil else { return }
         userNavigatedDuringStartup = true
         lastAnalyticsPositionMs = positionMs(time)
         if progressState.snapshot != nil, !progressState.requiresReview, !isReviewingProgress {
             navigationSequence &+= 1
             _ = enqueueCheckpoint(time, forceProgressSave: true)
         }
+    }
+
+    func noteUserNavigation(to time: CMTime, context: TVPlaybackControlContext) {
+        guard controlContext == context else { return }
+        noteUserNavigation(to: time)
     }
 
     private func pauseForSceneDeparture(_ player: AVPlayer) {
@@ -228,7 +281,7 @@ final class TVPlayerViewModel: ObservableObject {
     func stop(saveProgress: Bool = true) async -> Bool {
         loadGeneration &+= 1
         let generation = loadGeneration
-        isLoading = false
+        isLoading = true
         resumeTask?.cancel()
         resumeTask = nil
         startupTask?.cancel()
@@ -239,6 +292,9 @@ final class TVPlayerViewModel: ObservableObject {
         if saveProgress, let player {
             _ = enqueueCheckpoint(player.currentTime(), forceProgressSave: true)
         }
+        // Detach media before checkpoint I/O: AVKit may still issue Play while it settles.
+        player?.replaceCurrentItem(with: nil)
+        player = nil
         if !saveProgress {
             checkpointTask?.cancel()
             checkpointWorkerID = nil
@@ -249,6 +305,7 @@ final class TVPlayerViewModel: ObservableObject {
         guard loadGeneration == generation else { return false }
 
         clearPlayback()
+        isLoading = false
         return true
     }
 
@@ -278,7 +335,6 @@ final class TVPlayerViewModel: ObservableObject {
         playAttemptStartedAt = nil
         startupReported = false
         sceneResumeState.reset()
-        sceneIsActive = true
         pictureInPictureActive = false
         userNavigatedDuringStartup = false
     }
@@ -594,7 +650,7 @@ final class TVPlayerViewModel: ObservableObject {
             removeObservers()
             player.replaceCurrentItem(with: nil)
             self.player = nil
-            errorMessage = "This live stream has ended."
+            errorMessage = TVStrings.text("This live stream has ended.")
         }
     }
 
@@ -675,7 +731,7 @@ final class TVPlayerViewModel: ObservableObject {
         removeObservers()
         player?.replaceCurrentItem(with: nil)
         player = nil
-        errorMessage = error?.localizedDescription ?? "Playback failed."
+        errorMessage = error?.localizedDescription ?? TVStrings.text("Playback failed.")
     }
 
     private func refreshSubtitle() {

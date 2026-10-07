@@ -21,7 +21,13 @@ final class TVPlaybackViewerPolicyTests: XCTestCase {
                               "channel":{"id":"channel","handle":"channel","name":"Channel"},
                               "source":{"objectKey":"show.mp4","mimeType":"video/mp4"},
                               "adaptiveSource":{"objectKey":"show.m3u8","mimeType":"application/vnd.apple.mpegurl"},
-                              "captions":[]}}
+                              "captions":[],"chapters":[{"id":"intro","title":"Intro","startMs":0}]},
+                             "detail":{"contentType":"SERIES_EPISODE",
+                              "seriesContext":{"series":{"title":"Series","slug":"series","href":"/series/series"},
+                               "episode":{"title":"First","episodeNumber":1,
+                                "video":{"id":"video","slug":"show","href":"/watch/show"}}},
+                              "nextEpisode":{"title":"Second","episodeNumber":2,"seasonNumber":1,
+                               "video":{"id":"next","slug":"next","href":"/watch/next"}}}}
                             """.utf8))
                         }
                         let url = try XCTUnwrap(URL(string: "ayin-tv://watch/show\(routeIsKids ? "?kids=1" : "")"))
@@ -43,6 +49,13 @@ final class TVPlaybackViewerPolicyTests: XCTestCase {
                         XCTAssertEqual(asset.isKids, effectiveKids)
                         XCTAssertEqual(asset.shareURL.query?.contains("kids=1") == true, effectiveKids)
                         XCTAssertEqual(asset.mp4Fallback()?.isKids, effectiveKids)
+                        XCTAssertEqual(asset.chapters.map(\.id), ["intro"])
+                        XCTAssertEqual(asset.nextEpisodeDestination,
+                                       effectiveKids ? nil : .video(slug: "next", isKids: false))
+                        XCTAssertEqual(asset.seriesContext == nil, effectiveKids)
+                        XCTAssertEqual(asset.nextEpisode == nil, effectiveKids)
+                        XCTAssertEqual(asset.mp4Fallback()?.chapters, asset.chapters)
+                        XCTAssertEqual(asset.mp4Fallback()?.nextEpisodeDestination, asset.nextEpisodeDestination)
                     }
                 }
             }

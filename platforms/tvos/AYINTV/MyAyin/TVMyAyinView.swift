@@ -55,7 +55,7 @@ struct TVMyAyinView: View {
                                                     VStack(spacing: 14) {
                                                         Image(systemName: "arrow.right.circle.fill")
                                                             .font(.system(size: 54))
-                                                        Text(model.isLoadingMore(section.key) ? "Loading…" : "More")
+                                                        Text(TVStrings.moreTitle(isLoading: model.isLoadingMore(section.key)))
                                                             .font(.headline)
                                                     }
                                                     .frame(width: 180, height: 202)

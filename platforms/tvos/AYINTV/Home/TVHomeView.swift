@@ -60,7 +60,7 @@ struct TVHomeView: View {
                                                     VStack(spacing: 14) {
                                                         Image(systemName: "arrow.right.circle.fill")
                                                             .font(.system(size: 54))
-                                                        Text(model.isLoadingMore(row.key) ? "Loading…" : "More")
+                                                        Text(TVStrings.moreTitle(isLoading: model.isLoadingMore(row.key)))
                                                             .font(.headline)
                                                     }
                                                     .frame(width: 180, height: 202)
