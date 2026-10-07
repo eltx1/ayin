@@ -34,7 +34,7 @@ struct TVSearchView: View {
                         VStack(spacing: 16) {
                             Image(systemName: "arrow.down.circle.fill")
                                 .font(.system(size: 56))
-                            Text(model.isLoadingMore ? "Loading…" : "More Results")
+                            Text(TVStrings.moreResultsTitle(isLoading: model.isLoadingMore))
                                 .font(.headline)
                         }
                         .frame(width: 360, height: 202)
@@ -57,7 +57,7 @@ struct TVSearchView: View {
             }
         }
         .navigationTitle("Search")
-        .searchable(text: $query, prompt: isKidsProfile ? "Search Kids on AYIN" : "Movies, series, creators, videos")
+        .searchable(text: $query, prompt: Text(TVStrings.searchPrompt(isKids: isKidsProfile)))
         .onSubmit(of: .search) {
             model.search(query, isKids: isKidsProfile)
         }

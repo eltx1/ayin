@@ -85,6 +85,14 @@ Official references:
 
 Apple TV reuses AYIN bearer authentication: email/password, MFA authenticator code, MFA recovery code, Keychain token storage, session restore and logout. No browser credential wrapper is used.
 
+## Localization
+
+The existing tvOS controls ship English and Arabic `Localizable.strings` resources and follow the system app language, with English as the development fallback. SwiftUI owns layout direction and focus behavior. There is no in-app language picker.
+
+Literal SwiftUI labels use the app resources directly. `TVStrings` resolves dynamic loading/search/review labels, UIKit player menu titles, local error fallbacks, and season/runtime/watched-time formats. Catalog titles, descriptions, captions, ratings, and server/system error messages retain their source text. Shared Foundation errors use the same tvOS resource keys as the iOS app.
+
+Run `python3 -B -m unittest discover -s platforms/tvos/tests -p 'test_*.py'` for portable catalog syntax, key/format parity, native-label coverage, UIKit lookup, shared-error coverage, and project-source checks. `TVLocalizationTests` verifies the built app's English/Arabic bundles, regional language selection, dynamic labels, formatting boundaries, and source-owned text preservation on Apple TV Simulator. The macOS workflow also lints both tables with `plutil`. Linux source checks do not establish tvOS compilation, simulator behavior, or physical-device RTL/focus acceptance.
+
 ## Deep links
 
 The target declares applinks:ayin.stream and a fallback ayin-tv:// custom scheme. Native routes include watch, live, movie, series, channel and Creator TV links. Production Universal Link verification still requires the real Apple Team ID and deployed AASA file.

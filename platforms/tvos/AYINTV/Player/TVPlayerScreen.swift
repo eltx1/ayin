@@ -83,7 +83,7 @@ struct TVPlayerScreen: View {
             ContentUnavailableView(
                 "Playback unavailable",
                 systemImage: "play.slash",
-                description: Text(model.errorMessage ?? "AYIN could not start this title.")
+                description: Text(TVStrings.playbackFailureMessage(model.errorMessage))
             )
             Button("Try Again") {
                 Task {
@@ -101,7 +101,7 @@ struct TVPlayerScreen: View {
         if model.progressNeedsReview {
             VStack(spacing: 16) {
                 Text("Playback continues. Review saved progress before saving more.")
-                Button(model.isReviewingProgress ? "Reviewing…" : "Review saved progress") {
+                Button(TVStrings.progressReviewTitle(isReviewing: model.isReviewingProgress)) {
                     model.reviewProgress()
                 }
                 .disabled(model.isReviewingProgress)

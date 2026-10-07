@@ -62,7 +62,7 @@ struct TVDetailView: View {
                 hero(
                     title: video.title,
                     subtitle: video.subtitle,
-                    description: video.protocolName == "HLS" ? "Adaptive HLS playback" : "Video"
+                    description: TVStrings.videoDescription(protocolName: video.protocolName)
                 ) {
                     router.play(.video(slug: slug, isKids: video.isKids))
                 }
@@ -117,7 +117,7 @@ struct TVDetailView: View {
                         heroHeader(
                             title: tv.tv.name,
                             subtitle: tv.channel.name,
-                            description: tv.tv.state == "ON_AIR" ? "On Air" : tv.tv.status
+                            description: TVStrings.creatorTVDescription(state: tv.tv.state, status: tv.tv.status)
                         )
 
                         Button {
@@ -128,10 +128,10 @@ struct TVDetailView: View {
                         .buttonStyle(.borderedProminent)
 
                         if let now = tv.schedule.nowPlaying {
-                            programSection("Now Playing", program: now)
+                            programSection(TVStrings.text("Now Playing"), program: now)
                         }
                         if let upNext = tv.schedule.upNext {
-                            programSection("Up Next", program: upNext)
+                            programSection(TVStrings.text("Up Next"), program: upNext)
                         }
 
                         if !tv.schedule.guide.isEmpty {
@@ -205,7 +205,8 @@ struct TVDetailView: View {
                     VStack(alignment: .leading, spacing: 32) {
                         heroHeader(
                             title: movie.title,
-                            subtitle: "\(movie.releaseYear) · \(movie.maturityRating) · \(movie.runtimeMinutes) min",
+                            subtitle: TVStrings.movieMetadata(year: movie.releaseYear, rating: movie.maturityRating,
+                                                              minutes: movie.runtimeMinutes),
                             description: movie.synopsis
                         )
 
@@ -244,7 +245,7 @@ struct TVDetailView: View {
 
                         ForEach(series.seasons) { season in
                             VStack(alignment: .leading, spacing: 20) {
-                                Text(season.title ?? "Season \(season.seasonNumber)")
+                                Text(TVStrings.seasonTitle(season.title, number: season.seasonNumber))
                                     .font(.title2.bold())
                                 ScrollView(.horizontal, showsIndicators: false) {
                                     LazyHStack(spacing: 24) {

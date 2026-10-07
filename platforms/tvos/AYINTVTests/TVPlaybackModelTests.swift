@@ -2,6 +2,32 @@ import XCTest
 @testable import AYINTV
 
 final class TVPlaybackModelTests: XCTestCase {
+    func testOlderAndStandalonePlaybackRemainCompatibleWithoutNavigationFields() throws {
+        let response = try JSONDecoder().decode(TVVideoPlaybackResponse.self, from: Data("""
+        {"video":{"id":"video","slug":"show","title":"Show","durationMs":60000,
+          "channel":{"id":"channel","handle":"channel","name":"Channel"},
+          "source":{"objectKey":"show.mp4","mimeType":"video/mp4"},"captions":[]}}
+        """.utf8))
+        XCTAssertNil(response.video.chapters)
+        XCTAssertNil(response.detail)
+    }
+
+    func testChapterChoicesAreBoundedOrderedAndWithinDuration() {
+        let chapters: [TVPlaybackChapter] = [
+            .init(id: "negative", title: "Negative", startMs: -1),
+            .init(id: "intro", title: "Intro", startMs: 0),
+            .init(id: "intro", title: "Duplicate", startMs: 1_000),
+            .init(id: "blank", title: "  ", startMs: 2_000),
+            .init(id: "middle", title: "Middle", startMs: 20_000),
+            .init(id: "backwards", title: "Earlier", startMs: 10_000),
+            .init(id: "end", title: "End", startMs: 60_000)
+        ]
+        XCTAssertEqual(TVPlaybackChapter.available(chapters, durationMs: 60_000).map(\.id),
+                       ["intro", "middle"])
+        let many = (0..<120).map { TVPlaybackChapter(id: "chapter-\($0)", title: "Title", startMs: $0 * 1_000) }
+        XCTAssertEqual(TVPlaybackChapter.available(many, durationMs: nil).count, 100)
+    }
+
     func testHLSVODKeepsMP4Fallback() throws {
         let asset = TVPlaybackAsset(
             title: "Example",
