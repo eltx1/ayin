@@ -107,6 +107,8 @@ jobs:
           bash -n deploy/ensure-ffmpeg-runtime.sh
           bash -n deploy/acquire-ssh-host-key.sh
           node --test deploy/test-ssh-host-key.mjs
+          node --test deploy/test-web-build-artifact.mjs deploy/test-release-web-artifact.mjs
+          node --check deploy/smoke-web-build-artifact.mjs
           node --check deploy/admin/bootstrap-first-superadmin.mjs
           node --check deploy/media/requeue-missing-content-length.mjs
           node --check deploy/security/generate-sbom.mjs
@@ -165,4 +167,29 @@ jobs:
         run: pnpm test:integration
 
       - name: Build production packages and applications
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_API_BASE_URL: https://api.ayin.stream
+          NEXT_PUBLIC_MEDIA_BASE_URL: https://media.ayin.stream
         run: pnpm build
+
+      - name: Package and smoke-test the exact production Web build
+        env:
+          NODE_ENV: production
+          NEXT_PUBLIC_API_BASE_URL: https://api.ayin.stream
+          NEXT_PUBLIC_MEDIA_BASE_URL: https://media.ayin.stream
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/ayin-web-build"
+          install -d -m 700 "$artifact_dir"
+          node deploy/web-build-artifact.mjs create "$GITHUB_WORKSPACE" "$GITHUB_SHA" "$artifact_dir/ayin-web-build.tar.gz"
+          node deploy/smoke-web-build-artifact.mjs "$GITHUB_SHA" "$artifact_dir/ayin-web-build.tar.gz"
+
+      - name: Retain the verified production Web build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ayin-web-build-${{ github.sha }}
+          path: ${{ runner.temp }}/ayin-web-build/ayin-web-build.tar.gz
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error

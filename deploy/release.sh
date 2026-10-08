@@ -2,12 +2,18 @@
 set -euo pipefail
 umask 027
 
-if [[ $# -ne 1 ]]; then
-  echo "usage: $0 <git-sha>" >&2
+if [[ $# -ne 3 ]]; then
+  echo "usage: $0 <git-sha> <verified-web-archive> <sha256>" >&2
   exit 64
 fi
 
 GIT_SHA="$1"
+WEB_BUILD_ARCHIVE="$2"
+WEB_BUILD_SHA256="$3"
+if [[ "$WEB_BUILD_ARCHIVE" != /* || ! "$WEB_BUILD_SHA256" =~ ^[0-9a-f]{64}$ || ! -f "$WEB_BUILD_ARCHIVE" ]]; then
+  echo "error: an absolute verified Web build archive path and SHA256 are required" >&2
+  exit 64
+fi
 if [[ ! "$GIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
   echo "error: git-sha must be a full 40-character hexadecimal commit id" >&2
   exit 64
@@ -204,10 +210,12 @@ pnpm install --frozen-lockfile
 pnpm db:generate
 pnpm packages:build
 
-# Build API and Web with isolated environment files. In particular, this prevents API secrets from
-# entering the Next.js build environment while ensuring NEXT_PUBLIC_* values are embedded correctly.
+# Build the API with its isolated environment. Web was built in CI without production API secrets;
+# installing its artifact checks that its frozen NEXT_PUBLIC_* values still match web.env.
 node deploy/run-with-env.cjs "$AYIN_API_ENV_FILE" corepack pnpm --filter @ayin/api run build
-node deploy/run-with-env.cjs "$AYIN_WEB_ENV_FILE" corepack pnpm --filter @ayin/web run build
+# Never compile Next.js on the shared production host. Install only the immutable artifact from the
+# exact successful quality run; checksum, source/runtime, build environment and safe paths fail closed.
+node deploy/web-build-artifact.mjs install "$release_dir" "$GIT_SHA" "$WEB_BUILD_ARCHIVE" "$WEB_BUILD_SHA256" "$AYIN_WEB_ENV_FILE"
 
 # Apply forward-only migrations only after the exact release candidate has built successfully.
 node deploy/run-with-env.cjs "$AYIN_API_ENV_FILE" corepack pnpm db:migrate:deploy

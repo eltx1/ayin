@@ -1,4 +1,4 @@
-name: AYIN Cloudflare production sync
+name: AYIN public edge verification
 
 on:
   workflow_dispatch:
@@ -12,11 +12,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: ayin-cloudflare-production-sync
+  group: ayin-public-edge-verification
   cancel-in-progress: false
 
 jobs:
-  sync:
+  verify:
     if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
@@ -24,37 +24,27 @@ jobs:
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: production
+    environment:
+      name: production
+      deployment: false
     env:
-      AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
       AYIN_ORIGIN_IPV4: 13.52.116.200
       AYIN_R2_BUCKET_NAME: ayin-production-media
       DEPLOY_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || 'manual' }}
-      RELEASE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      DEPLOYMENT_WORKFLOW_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
     steps:
-      - name: Checkout AYIN production edge tooling
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ env.RELEASE_SHA }}
-
-      - name: Validate isolated Cloudflare configuration
+      - name: Validate isolated edge verification targets
         shell: bash
         run: |
           set -euo pipefail
-          test -n "$AYIN_CLOUDFLARE_API_TOKEN"
           [[ "$AYIN_ORIGIN_IPV4" == '13.52.116.200' ]]
           [[ "$AYIN_R2_BUCKET_NAME" == 'ayin-production-media' ]]
-          bash -n deploy/cloudflare/sync-production-edge.sh
-          bash -n deploy/cloudflare/bootstrap-r2-production.sh
+          [[ "$DEPLOYMENT_WORKFLOW_SHA" =~ ^[0-9a-fA-F]{40}$ ]]
 
-      - name: Synchronize AYIN application edge
-        shell: bash
-        run: bash deploy/cloudflare/sync-production-edge.sh
-
-      - name: Synchronize AYIN R2 media layer
-        shell: bash
-        run: bash deploy/cloudflare/bootstrap-r2-production.sh
+      # Cloudflare rules/settings and existing DNS/R2 configuration are managed
+      # separately. Releases verify delivery without reapplying security,
+      # CORS, lifecycle, DNS, TLS or bot settings over operator changes.
 
       - name: Verify public production endpoints
         shell: bash
@@ -68,28 +58,29 @@ jobs:
           [[ "$media_status" =~ ^[1-5][0-9][0-9]$ ]]
           echo "AYIN public web, API, and media HTTPS endpoints are reachable."
 
-      - name: Record Cloudflare production proof
+      - name: Record public edge verification proof
         shell: bash
         run: |
           set -euo pipefail
-          proof_dir="$RUNNER_TEMP/ayin-cloudflare-sync-proof"
+          proof_dir="$RUNNER_TEMP/ayin-public-edge-verification-proof"
           install -d -m 700 "$proof_dir"
-          cat > "$proof_dir/cloudflare-sync-proof.env" <<EOF
-          schema_version=3
+          cat > "$proof_dir/public-edge-verification-proof.env" <<EOF
+          schema_version=4
+          verification_mode=read_only_public_endpoints
           zone=ayin.stream
           media_domain=media.ayin.stream
           r2_bucket=$AYIN_R2_BUCKET_NAME
           origin_ipv4=$AYIN_ORIGIN_IPV4
-          release_sha=$RELEASE_SHA
+          deployment_workflow_sha=$DEPLOYMENT_WORKFLOW_SHA
           deploy_run_id=$DEPLOY_RUN_ID
-          sync_run_id=$GITHUB_RUN_ID
-          sync_run_attempt=$GITHUB_RUN_ATTEMPT
+          verification_run_id=$GITHUB_RUN_ID
+          verification_run_attempt=$GITHUB_RUN_ATTEMPT
           EOF
 
-      - name: Upload Cloudflare production proof
+      - name: Upload public edge verification proof
         uses: actions/upload-artifact@v7
         with:
-          name: ayin-cloudflare-production-sync-proof
-          path: ${{ runner.temp }}/ayin-cloudflare-sync-proof/cloudflare-sync-proof.env
+          name: ayin-public-edge-verification-proof
+          path: ${{ runner.temp }}/ayin-public-edge-verification-proof/public-edge-verification-proof.env
           retention-days: 90
           if-no-files-found: error
