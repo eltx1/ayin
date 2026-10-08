@@ -137,6 +137,7 @@ jobs:
           echo '=== bounded readiness projection and failed-build process lineage ==='
           node <<'NODE'
           const fs = require("node:fs");
+          const {execFileSync} = require("node:child_process");
           const ownUid = process.getuid();
           const failedRelease = "/home/ayin/htdocs/releases/20261008T193523Z-654092a7a0bc";
           const safeNumber = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
@@ -243,6 +244,72 @@ jobs:
               }));
             }
           }
+          async function targetUidAttribution() {
+            const targetUid = 1004;
+            let account = "unavailable";
+            let knownHorus = false;
+            try {
+              const entry = execFileSync("getent", ["passwd", String(targetUid)], {encoding: "utf8", timeout: 2000, maxBuffer: 4096, stdio: ["ignore", "pipe", "ignore"]}).trim().split(":");
+              if (entry[2] === String(targetUid)) account = ["horusapp", "ayin", "lordai", "www-data", "nginx", "apache", "mysql", "postgres"].includes(entry[0]) ? entry[0] : "other-service-account";
+              knownHorus = account === "horusapp";
+            } catch {}
+            console.log(JSON.stringify({kind: "target_uid_mapping", uid: targetUid, account, verifiedHorusAccount: knownHorus}));
+            const ticksPerSecond = Number(execFileSync("getconf", ["CLK_TCK"], {encoding: "utf8", timeout: 2000, maxBuffer: 64, stdio: ["ignore", "pipe", "ignore"]}).trim());
+            if (!Number.isFinite(ticksPerSecond) || ticksPerSecond < 1 || ticksPerSecond > 10000) return;
+            function sample() {
+              const rows = [];
+              let examined = 0;
+              for (const entry of fs.readdirSync("/proc")) {
+                if (!/^[0-9]+$/.test(entry) || ++examined > 4096) continue;
+                try {
+                  const pid = Number(entry);
+                  const dir = `/proc/${pid}`;
+                  if (fs.statSync(dir).uid !== targetUid) continue;
+                  if (rows.length >= 256) break;
+                  const initial = fs.readFileSync(`${dir}/stat`, "utf8");
+                  const fields = initial.slice(initial.lastIndexOf(")") + 2).split(" ");
+                  const startTicks = Number(fields[19]);
+                  const cpuTicks = Number(fields[11]) + Number(fields[12]);
+                  const state = /^[RSDTtXZPI]$/.test(fields[0]) ? fields[0] : "?";
+                  const status = fs.readFileSync(`${dir}/status`, "utf8");
+                  if (numericField(status, "Uid") !== targetUid) continue;
+                  const name = fs.readFileSync(`${dir}/comm`, "utf8").trim().slice(0,15).replace(/[^A-Za-z0-9_.(): -]/g, "?");
+                  const verified = fs.readFileSync(`${dir}/stat`, "utf8");
+                  const finalFields = verified.slice(verified.lastIndexOf(")") + 2).split(" ");
+                  if (fs.statSync(dir).uid !== targetUid || Number(finalFields[19]) !== startTicks) continue;
+                  if (!Number.isSafeInteger(cpuTicks) || !Number.isSafeInteger(startTicks)) continue;
+                  rows.push({pid, startTicks, cpuTicks, state, name, rssKiB: numericField(status, "VmRSS"), swapKiB: numericField(status, "VmSwap"), threads: numericField(status, "Threads")});
+                } catch {}
+              }
+              return rows;
+            }
+            const began = performance.now();
+            const before = sample();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const after = sample();
+            const intervalMs = performance.now() - began;
+            const matched = [];
+            for (const current of after) {
+              const old = before.find(item => item.pid === current.pid && item.startTicks === current.startTicks);
+              if (!old || current.cpuTicks < old.cpuTicks) continue;
+              matched.push({...current, cpuPercentOfOneCore: Math.round((current.cpuTicks - old.cpuTicks) * 10000000 / ticksPerSecond / intervalMs) / 100});
+            }
+            const states = {};
+            for (const row of after) states[row.state] = (states[row.state] ?? 0) + 1;
+            console.log(JSON.stringify({kind: "target_uid_cpu", uid: targetUid, at: new Date().toISOString(), intervalMs: Math.round(intervalMs), sampledBefore: before.length, sampledAfter: after.length, matched: matched.length, states, cpuPercentOfOneCore: Math.round(matched.reduce((sum,row) => sum + row.cpuPercentOfOneCore,0) * 100) / 100, possiblyTruncated: after.length >= 256}));
+            const groups = new Map();
+            for (const row of matched) {
+              const group = groups.get(row.name) ?? {name: row.name, processes: 0, cpuPercentOfOneCore: 0, rssKiB: 0, swapKiB: 0, runnable: 0, blocked: 0};
+              group.processes++; group.cpuPercentOfOneCore += row.cpuPercentOfOneCore;
+              group.rssKiB += row.rssKiB; group.swapKiB += row.swapKiB;
+              group.runnable += row.state === "R" ? 1 : 0; group.blocked += row.state === "D" ? 1 : 0;
+              groups.set(row.name, group);
+            }
+            for (const group of [...groups.values()].sort((a,b) => b.cpuPercentOfOneCore - a.cpuPercentOfOneCore).slice(0,10)) {
+              group.cpuPercentOfOneCore = Math.round(group.cpuPercentOfOneCore * 100) / 100;
+              console.log(JSON.stringify({kind: "target_uid_command_group", uid: targetUid, ...group}));
+            }
+          }
           let matches = 0;
           let inspected = 0;
           for (const entry of fs.readdirSync("/proc")) {
@@ -271,7 +338,7 @@ jobs:
             } catch {}
           }
           console.log(JSON.stringify({kind: "failed_release_process_summary", matches, ownProcessesInspected: inspected, truncated: inspected > 256}));
-          void Promise.all([readiness(), resourceAttribution()]);
+          void Promise.all([readiness(), resourceAttribution(), targetUidAttribution()]).catch(() => console.log("bounded resource projection unavailable"));
           NODE
           echo '=== readable kernel OOM evidence (allowlisted fields only) ==='
           if command -v journalctl >/dev/null 2>&1; then
