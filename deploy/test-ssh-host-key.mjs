@@ -36,7 +36,7 @@ function stepScript(name) {
   assert.ok(step, `Missing workflow step: ${name}`);
   const script = step.split("        run: |\n")[1];
   assert.ok(script, `Missing workflow script: ${name}`);
-  return script.replace(/^          /gm, "");
+  return script.replace(/^ {10}/gm, "");
 }
 
 const stepNames = [
@@ -63,7 +63,7 @@ test("workflow preserves production trust inputs and stops downstream steps on f
   assert.ok(workflow.includes("ref: ${{ env.RELEASE_SHA }}"));
   for (const name of stepNames) {
     const step = workflow.split(`      - name: ${name}\n`)[1].split("\n      - name: ")[0];
-    assert.doesNotMatch(step, /continue-on-error:|^        if:/m);
+    assert.doesNotMatch(step, /continue-on-error:|^ {8}if:/m);
   }
   const stepOffsets = stepNames.map((name) => workflow.indexOf(`      - name: ${name}\n`));
   assert.deepEqual(
@@ -174,6 +174,9 @@ printf '%s\\n' "$*" >> "$TEST_DIR/ssh-calls"
         SSH_PORT: port,
         REMOTE_HOME: "/home/ayin",
         RELEASE_SHA: "1".repeat(40),
+        WEB_BUILD_SHA256: "2".repeat(64),
+        WEB_BUILD_REMOTE: "/home/ayin/.deploy-bootstrap/web-123-1.tar.gz",
+        RUNNER_TEMP: directory,
         PINNED_SSH_HOST_FINGERPRINT: fixtureFingerprint,
         TEST_DIR: directory,
         TEST_MODES: modes,
@@ -213,7 +216,7 @@ printf '%s\\n' "$*" >> "$TEST_DIR/ssh-calls"
       assert.equal(count("backoffs"), scans - 1, diagnostic);
       assert.equal(count("promotions"), success ? 1 : 0, diagnostic);
       assert.equal(count("ssh-calls"), success ? 5 : 0, diagnostic);
-      assert.equal(count("scp-calls"), success ? 1 : 0, diagnostic);
+      assert.equal(count("scp-calls"), success ? 2 : 0, diagnostic);
       assert.equal(
         readFileSync(knownHosts, "utf8"),
         success ? fixtureKey : "existing trusted keys\n",

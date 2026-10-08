@@ -196,14 +196,54 @@ Deploy only an exact reviewed Git commit SHA. GitHub Actions bootstraps the trus
 7. installs the frozen lockfile and generates Prisma;
 8. builds shared packages;
 9. builds the API using only `api.env`;
-10. builds Web using only `web.env`;
-11. applies forward PostgreSQL migrations only after the release candidate built successfully;
+10. verifies and installs the exact quality-run Web artifact, including SHA256, source SHA, runtime/lockfile identity, and public build settings from `web.env`;
+11. applies forward PostgreSQL migrations only after the API build and Web artifact validation succeed;
 12. atomically switches `/home/ayin/htdocs/current`;
 13. starts/reloads PM2;
 14. checks web liveness and database-backed API readiness;
 15. restores the previous application release automatically if activation/health checks fail.
 
 Application rollback never automatically reverses database migrations.
+
+### CI-built Web releases
+
+Next.js compilation runs in the quality-gate runner, never on the shared production host.
+The quality workflow builds with `NODE_ENV=production`,
+`NEXT_PUBLIC_API_BASE_URL=https://api.ayin.stream`, and
+`NEXT_PUBLIC_MEDIA_BASE_URL=https://media.ayin.stream`. It packages the complete `.next` runtime
+output (excluding build cache), installs it into a separate exact-SHA checkout, and checks startup,
+representative routes, production headers and a built static asset. Only then does it retain
+`ayin-web-build-<sha>` for 30 days.
+
+The deployment workflow downloads only that artifact from the successful main-push quality run
+already bound to the requested SHA. GitHub artifact digest verification is fail-closed; a second
+SHA256 binds the runner-to-host transfer. The installer rejects invalid archives, paths outside
+`.next`, links/special files, duplicate or missing members, oversized content, different source SHA,
+Node/Next/platform/architecture/lockfile, dirty checkouts, and mismatched public build settings.
+It refuses to overwrite an existing `.next` directory. API compilation, Prisma generation and
+frozen target-side dependency installation remain unchanged, avoiding native dependency transfers.
+
+The required release invocation is now:
+
+```bash
+bash deploy/release.sh <full-git-sha> </absolute/path/web-build.tar.gz> <sha256>
+```
+
+There is no server-build fallback. Missing/expired artifacts require a new successful quality run
+for the exact main SHA. Do not promote an older test-origin build or compensate by recompiling Web
+on an overloaded production host.
+
+The manifest also compares optional `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_WEB_BASE_URL`, and
+`NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION` settings. They are currently absent from the CI build profile;
+a configured target-side value fails closed rather than silently changing SEO or verification.
+If these settings are intentionally configured later, update and test the CI profile and smoke env
+together. Unknown `NEXT_PUBLIC_*` inputs are rejected. Production API secrets are never needed by
+the CI Web build or artifact.
+
+Resource incidents are independent operational gates: investigate degraded readiness or memory/I/O
+pressure before activating another release. Exit 137 indicates a killed process but does not itself
+identify an OOM victim. Never alter shared-host memory, swap, other applications or security settings
+as an implicit deployment workaround.
 
 ## PM2 process isolation
 
@@ -287,8 +327,8 @@ When enabling it:
 
 `.github/workflows/database.yml` validates deployment helpers, local-PostgreSQL bootstrap syntax and a production-env preflight fixture in addition to formatting, audit, lint, typecheck, tests, integration tests, migrations and production builds.
 
-`.github/workflows/deploy.yml` is intentionally manual for the first production deployment. It accepts only an exact SHA that is proven to have a successful `Task quality gates` run on `main`, uses the dedicated AYIN SSH key, verifies the pinned server fingerprint and refuses a deployment account that can write to `/home/horusapp`.
+`.github/workflows/deploy.yml` runs after a successful main-push quality gate or an explicit dispatch. It accepts only an exact SHA that is proven to have a successful `Task quality gates` run on `main` and its retained production Web artifact, uses the dedicated AYIN SSH key, verifies the pinned server fingerprint and refuses a deployment account that can write to `/home/horusapp`.
 
-`.github/workflows/cloudflare-production.yml` is also manual initially. It is scoped to the `ayin.stream` zone and synchronizes only `ayin.stream` and `api.ayin.stream`; `media.ayin.stream` is intentionally excluded because R2 owns it.
+`.github/workflows/cloudflare-production.yml` performs read-only public web, API health/readiness and media HTTPS verification after successful production deployment or manual dispatch. It has no Cloudflare API token and does not invoke the historical edge-sync or R2-bootstrap scripts. Existing operator-managed security, bot, DNS, TLS, CORS and lifecycle settings are therefore preserved during releases. Its version 4 proof records endpoint verification only, not configuration synchronization. Initial provisioning or later configuration changes remain separate explicitly authorized operations; `media.ayin.stream` belongs to R2 and must never be pointed at the application host.
 
 After the first controlled deployment, end-to-end verification and rollback test succeed, automation may be enabled without changing the application architecture.
