@@ -9,16 +9,13 @@ import { HLS_PLAYLIST_CONTENT_TYPE, HLS_SEGMENT_CONTENT_TYPE } from "./media-hls
 import { outputAttemptAddresses, type MediaClaimIdentity } from "./media-output-attempt.js";
 import { lockOwnedMediaJob } from "./media-processing-integrity-fence.js";
 import { cleanupRetentionDeadline } from "./media-upload-cleanup.js";
-import { MEDIA_STORAGE_CONFIG } from "./media-storage.adapter.js";
-import type { MediaStorageConfig } from "./media-storage.config.js";
 import {
   assertChannelMediaOwners,
   lockChannelMediaAccounts,
   observeChannelMediaOwners,
 } from "./media-privacy-account-fence.js";
 import {
-  assertUploadDebtByteCapacity,
-  DEFAULT_UPLOAD_DEBT_BYTE_LIMITS,
+  assertOutputEnvelopeRemaining,
   lockUploadAccountAdmission,
   lockUploadAdmission,
 } from "./media-upload-admission.js";
@@ -89,10 +86,7 @@ export async function freezeOutputAttempts(
  * deletion authority. Missing acknowledgements remain physical-cleanup debt. */
 @Injectable()
 export class MediaOutputWriteJournalService {
-  constructor(
-    @Inject(DatabaseService) private readonly database: DatabaseService,
-    @Inject(MEDIA_STORAGE_CONFIG) private readonly config?: MediaStorageConfig,
-  ) {}
+  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
 
   async dispatch(
     input: MediaOutputWriteContext & {
@@ -128,19 +122,6 @@ export class MediaOutputWriteJournalService {
       if (observed.outputProtocolVersion !== 1) {
         await lockUploadAccountAdmission(tx, owners);
         await lockUploadAdmission(tx, channelId);
-        for (const owner of owners.length ? owners : ["00000000-0000-0000-0000-000000000000"])
-          await assertUploadDebtByteCapacity(
-            tx,
-            owner,
-            channelId,
-            BigInt(input.expectedSizeBytes),
-            {
-              account:
-                this.config?.recoveryDebtAccountBytes ?? DEFAULT_UPLOAD_DEBT_BYTE_LIMITS.account,
-              channel:
-                this.config?.recoveryDebtChannelBytes ?? DEFAULT_UPLOAD_DEBT_BYTE_LIMITS.channel,
-            },
-          );
       }
       const job = await lockOwnedMediaJob(tx, input.jobId, input.workerId, {
         attempt: input.attempt,
@@ -195,6 +176,16 @@ export class MediaOutputWriteJournalService {
       // verifying the exact persisted V1 job and current V1 attempt; callers
       // cannot bypass the V2 ledger through a supplied flag or a namespace.
       if (job.outputProtocolVersion === 1) return null;
+      const reservation = await tx.mediaProcessingOutputReservation.findUnique({
+        where: { processingJobId: job.id },
+      });
+      if (!reservation) throw new Error("The accepted job has no pre-reserved output allowance.");
+      if (reservation.channelId !== channelId)
+        throw new Error("The output reservation does not belong to this channel.");
+      // The current job/attempt and channel-admission locks serialize dispatches.
+      // The database insert trigger consumes the exact bytes with the journal
+      // row in one transaction, including writes from fresh retry namespaces.
+      assertOutputEnvelopeRemaining(reservation, BigInt(input.expectedSizeBytes));
       const receipt: MediaOutputWriteDispatch = {
         id: randomUUID(),
         outputAttemptId: attempt.id,

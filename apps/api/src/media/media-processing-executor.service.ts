@@ -1,3 +1,4 @@
+import { MediaUploadError } from "./media-upload-error.js";
 import { capturedMediaClaim } from "./media-output-attempt.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -387,6 +388,8 @@ function isVerifiedCanonical(
 }
 
 function classifyProcessingError(error: unknown): string {
+  if (error instanceof MediaUploadError && error.code === "MEDIA_OUTPUT_ENVELOPE_EXCEEDED")
+    return error.code;
   const message = errorMessage(error).toLowerCase();
   if (message.includes("worker shutdown") || message.includes("aborted")) {
     return "MEDIA_WORKER_SHUTDOWN";

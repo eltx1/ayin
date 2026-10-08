@@ -5,6 +5,8 @@ import {
   assertUploadDebtByteCapacity,
   assertUploadSessionCapacity,
   conservativeMultipartExposure,
+  reserveSourceOutputEnvelope,
+  assertOutputEnvelopeRemaining,
   lockUploadAccountAdmission,
   UPLOAD_ADMISSION_LIMITS,
 } from "./media-upload-admission.js";
@@ -14,14 +16,17 @@ function fixture() {
   const query = vi.fn();
   const aggregate = vi.fn().mockResolvedValue({ _sum: { sizeBytes: 0n } });
   const execute = vi.fn().mockResolvedValue(0);
+  const reservations = { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn() };
   return {
     query,
+    reservations,
     aggregate,
     execute,
     tx: {
       $queryRaw: query,
       $executeRaw: execute,
       mediaAsset: { aggregate },
+      mediaProcessingOutputReservation: reservations,
     } as unknown as Prisma.TransactionClient,
   };
 }
@@ -146,5 +151,65 @@ describe("ordinary channel quota compatibility", () => {
         }),
       }),
     );
+  });
+});
+
+describe("fixed output drain reservation", () => {
+  const input = {
+    sessionId: "session",
+    accountId: "account",
+    channelId: "channel",
+    envelopeBytes: 1024,
+    additionalSourceBytes: 5n * BigInt(GiB),
+    limits: { account: 5 * GiB + 1024, channel: 5 * GiB + 1024 },
+  };
+  it("rejects source-only headroom instead of admitting a source that cannot drain", async () => {
+    const f = fixture();
+    f.query.mockResolvedValue([{ accountBytes: 0n, channelBytes: 0n, unaccounted: 0n }]);
+    await expect(
+      reserveSourceOutputEnvelope(f.tx, {
+        ...input,
+        limits: { account: 5 * GiB, channel: 5 * GiB },
+      }),
+    ).rejects.toMatchObject({ code: "UPLOAD_PHYSICAL_DEBT_LIMIT" });
+    expect(f.reservations.create).not.toHaveBeenCalled();
+  });
+  it("reserves full source exposure plus fixed output envelope before the first grant", async () => {
+    const f = fixture();
+    f.query.mockResolvedValue([{ accountBytes: 0n, channelBytes: 0n, unaccounted: 0n }]);
+    await reserveSourceOutputEnvelope(f.tx, input);
+    expect(f.reservations.create).toHaveBeenCalledWith({
+      data: {
+        uploadSessionId: "session",
+        accountId: "account",
+        channelId: "channel",
+        envelopeBytes: 1024n,
+      },
+    });
+  });
+  it("never resizes or double charges an existing reservation after config changes", async () => {
+    const f = fixture();
+    f.reservations.findUnique.mockResolvedValue({ ...input, envelopeBytes: 1024n } as never);
+    f.query.mockResolvedValue([
+      {
+        accountBytes: BigInt(input.limits.account),
+        channelBytes: BigInt(input.limits.channel),
+        unaccounted: 0n,
+      },
+    ]);
+    await reserveSourceOutputEnvelope(f.tx, {
+      ...input,
+      envelopeBytes: 0,
+      additionalSourceBytes: 0n,
+    });
+    expect(f.reservations.create).not.toHaveBeenCalled();
+  });
+  it("retains cumulative retry/UNKNOWN consumption and rejects over-envelope measured bytes", () => {
+    expect(() =>
+      assertOutputEnvelopeRemaining({ envelopeBytes: 100n, dispatchedBytes: 90n }, 10n),
+    ).not.toThrow();
+    expect(() =>
+      assertOutputEnvelopeRemaining({ envelopeBytes: 100n, dispatchedBytes: 90n }, 11n),
+    ).toThrowError(expect.objectContaining({ code: "MEDIA_OUTPUT_ENVELOPE_EXCEEDED" }));
   });
 });

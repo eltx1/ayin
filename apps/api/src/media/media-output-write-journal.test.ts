@@ -1,8 +1,10 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import type * as Admission from "./media-upload-admission.js";
 import { outputAttemptAddresses } from "./media-output-attempt.js";
 import { lockOwnedMediaJob } from "./media-processing-integrity-fence.js";
 import {
   assertUploadDebtByteCapacity,
+  assertOutputEnvelopeRemaining,
   lockUploadAccountAdmission,
   lockUploadAdmission,
 } from "./media-upload-admission.js";
@@ -17,7 +19,8 @@ vi.mock("./media-privacy-account-fence.js", () => ({
   lockChannelMediaAccounts: vi.fn(),
   assertChannelMediaOwners: vi.fn(),
 }));
-vi.mock("./media-upload-admission.js", () => ({
+vi.mock("./media-upload-admission.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof Admission>()),
   assertUploadDebtByteCapacity: vi.fn(),
   lockUploadAccountAdmission: vi.fn(),
   lockUploadAdmission: vi.fn(),
@@ -59,10 +62,22 @@ function fixture() {
     writesFrozenAt: null as Date | null,
     ...addresses,
   };
+  const reservation = {
+    id: "reservation",
+    processingJobId: "job",
+    channelId: "channel",
+    accountId: "owner",
+    envelopeBytes: 1024n,
+    dispatchedBytes: 0n,
+  };
   const writes = new Map<string, Record<string, unknown>>();
   const tx = {
     $executeRaw: vi.fn().mockResolvedValue(0),
     $queryRaw: vi.fn().mockResolvedValue([{ id: "job" }]),
+    mediaProcessingOutputReservation: {
+      findUnique: vi.fn(async () => reservation),
+      create: vi.fn(async ({ data }) => Object.assign(reservation, data)),
+    },
     mediaProcessingJob: { findUnique: vi.fn(async () => job) },
     mediaProcessingOutputAttempt: {
       findUnique: vi.fn(async () => attempt),
@@ -79,6 +94,8 @@ function fixture() {
     mediaProcessingOutputWrite: {
       create: vi.fn(async ({ data }) => {
         if (writes.has(data.objectKey)) throw new Error("unique objectKey prohibits redispatch");
+        assertOutputEnvelopeRemaining(reservation, data.expectedSizeBytes);
+        reservation.dispatchedBytes += data.expectedSizeBytes;
         writes.set(data.objectKey, { ...data });
         return data;
       }),
@@ -99,6 +116,7 @@ function fixture() {
   const database = { client: { ...tx, $transaction: vi.fn(async (fn) => fn(tx)) } };
   return {
     attempt,
+    reservation,
     writes,
     tx,
     database,
@@ -138,19 +156,75 @@ it("journals immutable exact byte/key/claim evidence only after the ordered owne
   );
 });
 
-it("reserves measured output exposure under admission locks before publishing a dispatch", async () => {
+it("drains a reserved job even if issuance and new byte budgets are disabled", async () => {
   const f = fixture();
-  vi.mocked(assertUploadDebtByteCapacity).mockRejectedValueOnce(new Error("debt limit"));
-  await expect(f.service.dispatch(canonical)).rejects.toThrow("debt limit");
+  vi.mocked(assertUploadDebtByteCapacity).mockRejectedValue(new Error("new issuance disabled"));
+  const dispatch = await f.service.dispatch(canonical);
+  expect(dispatch?.expectedSizeBytes).toBe(123n);
+  expect(f.reservation.dispatchedBytes).toBe(123n);
   expect(lockUploadAccountAdmission).toHaveBeenCalledWith(f.tx, ["owner"]);
   expect(lockUploadAdmission).toHaveBeenCalledWith(f.tx, "channel");
-  expect(assertUploadDebtByteCapacity).toHaveBeenCalledWith(
-    f.tx,
-    "owner",
-    "channel",
-    123n,
-    expect.any(Object),
-  );
+  expect(assertUploadDebtByteCapacity).not.toHaveBeenCalled();
+});
+
+it("rejects measured over-envelope writes before journal commit or provider dispatch", async () => {
+  const f = fixture();
+  f.reservation.envelopeBytes = 122n;
+  await expect(f.service.dispatch(canonical)).rejects.toMatchObject({
+    code: "MEDIA_OUTPUT_ENVELOPE_EXCEEDED",
+  });
+  expect(f.reservation.dispatchedBytes).toBe(0n);
+  expect(f.tx.mediaProcessingOutputWrite.create).not.toHaveBeenCalled();
+});
+
+it("does not refund UNKNOWN or acknowledged writes before a fresh output address", async () => {
+  const f = fixture();
+  f.reservation.envelopeBytes = 200n;
+  const dispatch = (await f.service.dispatch(canonical))!;
+  await f.service.markUnknown(dispatch);
+  const thumbnail = {
+    ...canonical,
+    objectKey: addresses.thumbnailR2ObjectKey,
+    contentType: "image/jpeg",
+  };
+  await expect(f.service.dispatch(thumbnail)).rejects.toMatchObject({
+    code: "MEDIA_OUTPUT_ENVELOPE_EXCEEDED",
+  });
+  await f.service.acknowledge(dispatch);
+  await expect(f.service.dispatch(thumbnail)).rejects.toMatchObject({
+    code: "MEDIA_OUTPUT_ENVELOPE_EXCEEDED",
+  });
+  expect(f.reservation.dispatchedBytes).toBe(123n);
+});
+
+it("refuses an original source job missing its pre-grant reservation", async () => {
+  const f = fixture();
+  f.tx.mediaProcessingOutputReservation.findUnique.mockResolvedValue(null as never);
+  await expect(f.service.dispatch(canonical)).rejects.toThrow(/pre-reserved output allowance/);
+  expect(f.tx.mediaProcessingOutputWrite.create).not.toHaveBeenCalled();
+  expect(assertUploadDebtByteCapacity).not.toHaveBeenCalled();
+});
+
+it("consumes a canonical-derived job's existing reservation without fresh admission", async () => {
+  const f = fixture();
+  vi.mocked(lockOwnedMediaJob).mockResolvedValue({
+    ...job,
+    inputIntegrityParentJobId: "producer",
+  } as never);
+  await f.service.dispatch(canonical);
+  expect(assertUploadDebtByteCapacity).not.toHaveBeenCalled();
+  expect(f.tx.mediaProcessingOutputReservation.create).not.toHaveBeenCalled();
+  expect(f.reservation.dispatchedBytes).toBe(123n);
+});
+
+it("refuses a canonical-derived job that was not reserved at acceptance", async () => {
+  const f = fixture();
+  f.tx.mediaProcessingOutputReservation.findUnique.mockResolvedValue(null as never);
+  vi.mocked(lockOwnedMediaJob).mockResolvedValue({
+    ...job,
+    inputIntegrityParentJobId: "producer",
+  } as never);
+  await expect(f.service.dispatch(canonical)).rejects.toThrow(/pre-reserved output allowance/);
   expect(f.tx.mediaProcessingOutputWrite.create).not.toHaveBeenCalled();
 });
 

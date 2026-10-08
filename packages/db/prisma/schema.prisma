@@ -594,6 +594,22 @@ enum MediaProcessingOutputWriteStatus {
   UNKNOWN
 }
 
+// Fixed lifetime output budget. The source reservation exists before a part
+// grant and is bound once to its original processing job. Identity snapshots
+// intentionally survive source/job detachment; UNKNOWN never refunds spend.
+model MediaProcessingOutputReservation {
+  id String @id @default(uuid()) @db.Uuid
+  uploadSessionId String? @unique @db.Uuid
+  processingJobId String? @unique @db.Uuid
+  accountId String @db.Uuid
+  channelId String @db.Uuid
+  envelopeBytes BigInt
+  dispatchedBytes BigInt @default(0)
+  createdAt DateTime @default(now())
+  @@index([accountId])
+  @@index([channelId])
+}
+
 model MediaProcessingOutputWrite {
   id String @id @default(uuid()) @db.Uuid
   outputAttemptId String @db.Uuid

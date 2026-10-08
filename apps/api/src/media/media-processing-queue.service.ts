@@ -369,7 +369,10 @@ export class MediaProcessingQueueService {
       if (!job) return null;
 
       const superseded = await hasNewerMediaGeneration(tx, job);
-      const terminal = superseded || job.attempt >= retryLimit;
+      const terminal =
+        superseded ||
+        job.attempt >= retryLimit ||
+        input.errorCode === "MEDIA_OUTPUT_ENVELOPE_EXCEEDED";
       const backoffSeconds = Math.min(60, 2 ** Math.max(0, job.attempt));
       const changed = await tx.mediaProcessingJob.updateMany({
         where: {

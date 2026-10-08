@@ -1,3 +1,9 @@
+import {
+  configuredUploadCanary,
+  requireUploadCanary,
+  lockUploadCanary,
+  assertUploadCanarySlot,
+} from "./media-upload-canary.js";
 import { UploadRateLimiter } from "./upload-rate-limiter.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { MediaUploadOperation, MediaUploadSession, Prisma } from "@ayin/db";
@@ -16,6 +22,7 @@ import { DatabaseService } from "../database/database.service.js";
 import { PlatformSettingsService } from "../platform-config/platform-settings.service.js";
 import {
   DURABLE_UPLOAD_SETTLEMENT,
+  FiniteMultipartDurableUploadSettlement,
   requireDurableUploadSettlement,
   readDurableUploadCapability,
   type DurableUploadSettlementProvider,
@@ -39,6 +46,7 @@ import type { MediaStorageConfig } from "./media-storage.config.js";
 import {
   assertUploadByteQuota,
   assertUploadDebtByteCapacity,
+  reserveSourceOutputEnvelope,
   DEFAULT_UPLOAD_DEBT_BYTE_LIMITS,
   lockUploadAccountAdmission,
   assertUploadSessionCapacity,
@@ -134,7 +142,14 @@ export class MediaUploadRecoveryCommandsService {
     @Inject(MediaProcessingLifecycleService)
     private readonly lifecycle: MediaProcessingLifecycleService,
   ) {}
-  private gate(session?: MediaUploadSession) {
+  private gate(session?: MediaUploadSession, drain = false) {
+    if (drain && session?.sourceProtocolVersion === 2)
+      return requireDurableUploadSettlement(
+        new FiniteMultipartDurableUploadSettlement(),
+        this.storage,
+        new Date(),
+        true,
+      );
     const version = requireDurableUploadSettlement(
       this.settlement,
       this.storage,
@@ -150,6 +165,7 @@ export class MediaUploadRecoveryCommandsService {
     const limits = this.debtByteLimits();
     return (
       this.config.recoveryV2Enabled === true &&
+      configuredUploadCanary(this.config) !== null &&
       Number.isSafeInteger(limits.account) &&
       limits.account > 0 &&
       Number.isSafeInteger(limits.channel) &&
@@ -164,7 +180,21 @@ export class MediaUploadRecoveryCommandsService {
     };
   }
 
-  capability() {
+  async capability(actor: UploadActor, channelId?: string) {
+    const finite =
+      this.settlement.admissionEvidence()?.version === "AYIN_DURABLE_UPLOAD_ADMISSION_V2";
+    if (finite) {
+      try {
+        if (!channelId) throw new Error("A workspace is required.");
+        requireUploadCanary(this.config, actor.accountId, channelId);
+        await this.transaction(async (tx) => {
+          await this.authority(tx, actor, channelId);
+          await this.lockChannel(tx, channelId);
+        });
+      } catch {
+        return { protocolVersion: 1 as const, supported: false, reason: "UNSUPPORTED" as const };
+      }
+    }
     return readDurableUploadCapability(
       this.settlement,
       this.storage,
@@ -232,6 +262,8 @@ export class MediaUploadRecoveryCommandsService {
     if (!parsed.success)
       error("INVALID_RECOVERABLE_DRAFT", "Check the recoverable upload request.", 400);
     const input = parsed.data;
+    if (sourceProtocolVersion === 2)
+      requireUploadCanary(this.config, actor.accountId, input.channelId, input.sizeBytes);
     this.rateLimiter.consume(`recovery-create:${actor.accountId}`);
     const title = input.title.replace(/\s+/g, " ");
     const mimeType = normalizeVideoMimeType(input.mimeType);
@@ -253,6 +285,7 @@ export class MediaUploadRecoveryCommandsService {
         },
       });
       await this.authority(tx, actor, previousHint?.channelId ?? input.channelId);
+      if (sourceProtocolVersion === 2) await lockUploadCanary(tx);
       await lockUploadAccountAdmission(tx, [actor.accountId]);
       await lockUploadAdmission(tx, input.channelId);
       const previous = await tx.mediaUploadSession.findUnique({
@@ -275,6 +308,10 @@ export class MediaUploadRecoveryCommandsService {
         });
         return { session: current, operation, replayed: true };
       }
+      if (sourceProtocolVersion === 2) {
+        requireUploadCanary(this.config, actor.accountId, input.channelId, input.sizeBytes);
+        await assertUploadCanarySlot(tx);
+      }
       if (input.sizeBytes > Number(maximum))
         error("VIDEO_TOO_LARGE", "This video exceeds the upload limit.", 413);
       if (Math.ceil(input.sizeBytes / this.config.partSizeBytes) > 10_000)
@@ -293,7 +330,8 @@ export class MediaUploadRecoveryCommandsService {
           tx,
           actor.accountId,
           input.channelId,
-          0n,
+          conservativeMultipartExposure(input.sizeBytes, this.config.partSizeBytes) +
+            BigInt(this.config.recoveryOutputEnvelopeBytes!),
           this.debtByteLimits(),
         );
       await this.lockChannel(tx, input.channelId);
@@ -473,6 +511,8 @@ export class MediaUploadRecoveryCommandsService {
       if (hint?.sourceProtocolVersion === 2 && hint.initiatingAccountId === actor.accountId) {
         // Keep the authority -> admission -> generation/source/session lock order.
         await this.authority(tx, actor, hint.channelId);
+        requireUploadCanary(this.config, actor.accountId, hint.channelId, Number(hint.sizeBytes));
+        await lockUploadCanary(tx);
         await lockUploadAccountAdmission(tx, [actor.accountId]);
         await lockUploadAdmission(tx, hint.channelId);
       }
@@ -482,6 +522,13 @@ export class MediaUploadRecoveryCommandsService {
       if (current.state !== "OPEN")
         error("UPLOAD_STATE_CHANGED", "This upload is not open for new grants.");
       if (current.sourceProtocolVersion === 2) {
+        requireUploadCanary(
+          this.config,
+          actor.accountId,
+          current.channelId,
+          Number(current.sizeBytes),
+        );
+        await assertUploadCanarySlot(tx, current.id);
         const creation = await tx.mediaUploadOperation.findUnique({
           where: {
             sessionId_requestId: { sessionId: current.id, requestId: current.creationRequestId! },
@@ -533,15 +580,17 @@ export class MediaUploadRecoveryCommandsService {
             : 0,
           quota,
         );
-        await assertUploadDebtByteCapacity(
-          tx,
-          actor.accountId,
-          current.channelId,
-          providerExposureBytes > current.providerExposureBytes
-            ? providerExposureBytes - current.providerExposureBytes
-            : 0n,
-          this.debtByteLimits(),
-        );
+        await reserveSourceOutputEnvelope(tx, {
+          sessionId: current.id,
+          accountId: actor.accountId,
+          channelId: current.channelId,
+          envelopeBytes: this.config.recoveryOutputEnvelopeBytes!,
+          additionalSourceBytes:
+            providerExposureBytes > current.providerExposureBytes
+              ? providerExposureBytes - current.providerExposureBytes
+              : 0n,
+          limits: this.debtByteLimits(),
+        });
       }
       const session = await tx.mediaUploadSession.update({
         where: { id: current.id },
@@ -633,10 +682,17 @@ export class MediaUploadRecoveryCommandsService {
     sessionId: string,
     raw: UploadRecoveryCommandRequest,
   ): Promise<UploadRecoveryCommandResponse> {
-    this.gate();
     const parsed = uploadRecoveryCommandSchema.safeParse(raw);
     if (!parsed.success)
       error("INVALID_UPLOAD_COMMAND", "Check the upload completion request.", 400);
+    const initial = await this.transaction(async (tx) => {
+      const session = await this.lockSession(tx, actor, sessionId, true, true);
+      this.gate(session, session.sourceProtocolVersion === 2);
+      return session;
+    });
+    if (initial.sourceProtocolVersion === 2)
+      return this.completeFinite(actor, initial, parsed.data);
+    this.gate();
     const reserved = await this.transaction(async (tx) => {
       const current = await this.lockSession(tx, actor, sessionId, true);
       const value = await this.reserve(tx, current, "COMPLETE", parsed.data);
@@ -729,6 +785,115 @@ export class MediaUploadRecoveryCommandsService {
     }
   }
 
+  private async completeFinite(
+    actor: UploadActor,
+    initial: MediaUploadSession,
+    input: UploadRecoveryCommandRequest,
+  ): Promise<UploadRecoveryCommandResponse> {
+    const prior = await this.database.client.mediaUploadOperation.findUnique({
+      where: { sessionId_requestId: { sessionId: initial.id, requestId: input.requestId } },
+    });
+    if (prior) {
+      if (
+        prior.kind !== "COMPLETE" ||
+        prior.requestDigest !== digest({ kind: "COMPLETE", ...input })
+      )
+        error("UPLOAD_REQUEST_CONFLICT", "This request ID belongs to a different command.");
+      return response(actor, { session: initial, operation: prior, replayed: true });
+    }
+    if (
+      initial.revision !== input.expectedRevision ||
+      initial.state !== "OPEN" ||
+      initial.grantsRevokedAt ||
+      initial.cleanupRequestedAt ||
+      !initial.providerUploadId ||
+      initial.mode !== "MULTIPART"
+    )
+      error("UPLOAD_RECOVERY_CHANGED", "Inspect the current upload before completing it.");
+    if (initial.hardExpiresAt.getTime() <= Date.now())
+      error("UPLOAD_RECOVERY_EXPIRED", "This saved upload has expired.", 410);
+
+    if (
+      initial.grantReservationCount < 1 ||
+      !(await this.database.client.mediaProcessingOutputReservation.findUnique({
+        where: { uploadSessionId: initial.id },
+      }))
+    )
+      error(
+        "UPLOAD_COMPLETE_PREFLIGHT",
+        "A source grant and reserved processing allowance are required before completion.",
+        409,
+      );
+
+    // This bounded provider observation creates no objects. A failure leaves
+    // the OPEN session and operation journal untouched and can safely retry.
+    let parts: ExistingUploadPart[];
+    try {
+      parts = await this.storage.listParts({
+        key: initial.objectKey,
+        uploadId: initial.providerUploadId,
+      });
+      this.parts(initial, parts);
+    } catch {
+      error(
+        "UPLOAD_COMPLETE_PREFLIGHT",
+        "Uploaded parts could not be verified. Check the upload and try again.",
+        503,
+      );
+    }
+
+    const reserved = await this.transaction(async (tx) => {
+      const current = await this.lockSession(tx, actor, initial.id);
+      const value = await this.reserve(tx, current, "COMPLETE", input);
+      if (value.replayed) return value;
+      this.unchanged(current, initial, "OPEN");
+      this.gate(current, true);
+      if (
+        current.grantsRevokedAt ||
+        current.cleanupRequestedAt ||
+        (await tx.mediaUploadOperation.count({
+          where: { sessionId: current.id, kind: "COMPLETE", dispatchStartedAt: { not: null } },
+        })) > 0
+      )
+        error("UPLOAD_STATE_CHANGED", "This multipart completion cannot be dispatched again.");
+      const session = await tx.mediaUploadSession.update({
+        where: { id: current.id },
+        data: { state: "FINALIZING", revision: { increment: 1 } },
+      });
+      const operation = await tx.mediaUploadOperation.update({
+        where: { id: value.operation.id },
+        data: {
+          status: "DISPATCHED",
+          dispatchStartedAt: new Date(),
+          providerOutcome: "UNKNOWN",
+          providerUploadId: current.providerUploadId,
+        },
+      });
+      return { session, operation, replayed: false };
+    });
+    if (reserved.replayed) return response(actor, reserved);
+    try {
+      // Reservation committed. From here a lost response is genuine creating
+      // uncertainty; do not repeat COMPLETE or retroactively clear its journal.
+      await this.storage.completeMultipartUpload({
+        key: reserved.session.objectKey,
+        uploadId: reserved.session.providerUploadId!,
+        parts: parts.map(({ partNumber, etag }) => ({ partNumber, etag })),
+      });
+      await this.providerAcknowledged(reserved, reserved.session.providerUploadId!);
+      const observed = await this.storage.observeUploadCompletion!(
+        this.completionObservation(reserved.session),
+      );
+      if (observed.status !== "OBJECT_VERIFIED")
+        throw new Error("The source completion could not be verified.");
+      return await this.finish(actor, reserved, "FINALIZING", (tx, current) =>
+        this.acceptCompletedSource(tx, current),
+      );
+    } catch (failure) {
+      return this.unknown(actor, reserved, failure);
+    }
+  }
+
   /** Explicit reconciliation of one existing COMPLETE. Provider calls are read-only;
    * no POST/PUT/abort is replayed, and GET outcomes remain strictly observational.
    */
@@ -738,7 +903,6 @@ export class MediaUploadRecoveryCommandsService {
     requestId: string,
     expectedRevision: number,
   ): Promise<UploadRecoveryOutcomeResponse> {
-    this.gate();
     const initial = await this.transaction(async (tx) => {
       const session = await this.lockSession(tx, actor, sessionId, true);
       const operation = await tx.mediaUploadOperation.findUnique({
@@ -759,7 +923,7 @@ export class MediaUploadRecoveryCommandsService {
       error("UPLOAD_RECOVERY_UNSUPPORTED", "Storage completion verification is unavailable.", 503);
     let verified = false;
     try {
-      this.gate(initial.session);
+      this.gate(initial.session, true);
       verified =
         (await this.storage.observeUploadCompletion(this.completionObservation(initial.session)))
           .status === "OBJECT_VERIFIED";
@@ -776,7 +940,7 @@ export class MediaUploadRecoveryCommandsService {
         return response(actor, { session: current, operation, replayed: true });
       this.unchanged(current, initial.session, initial.session.state);
       this.reconcilable(current, operation);
-      this.gate(current);
+      this.gate(current, true);
       if (!verified) return response(actor, { session: current, operation, replayed: true });
       const session = await this.acceptCompletedSource(tx, current);
       const done = await tx.mediaUploadOperation.update({
@@ -927,7 +1091,7 @@ export class MediaUploadRecoveryCommandsService {
       if (journal.status === "SUCCEEDED")
         return response(actor, { session: current, operation: journal, replayed: true });
       this.unchanged(current, reserved.session, state);
-      this.gate(current);
+      this.gate(current, journal.kind === "COMPLETE");
       if (journal.grantExpiresAt && journal.grantExpiresAt.getTime() <= Date.now())
         error(
           "UPLOAD_GRANT_EXPIRED",

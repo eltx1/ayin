@@ -107,8 +107,7 @@ export function UploadRecovery() {
   const reconcilable = Boolean(
     session &&
     !expired &&
-    view?.supported &&
-    view.saved?.pending?.kind === "COMPLETE" &&
+    view?.saved?.pending?.kind === "COMPLETE" &&
     ["FINALIZING", "UNRESOLVED"].includes(session.state),
   );
   const observation = view?.inspection?.observation;
@@ -118,6 +117,14 @@ export function UploadRecovery() {
       (observation?.kind === "PARTS_OBSERVED" && observation.parts.length === session.partCount)),
   );
   const messages: Record<string, string> = {
+    UPLOAD_COMPLETE_PREFLIGHT: copy(
+      "Uploaded parts could not be verified. Check the upload and try finishing again.",
+      "تعذر التحقق من الأجزاء المرفوعة. تحقق من الرفع ثم حاول إنهاءه مجددًا.",
+    ),
+    UPLOAD_CANARY_BUSY: copy(
+      "Finish the existing upload and its cleanup before starting another.",
+      "أكمل الرفع الحالي وتنظيفه قبل بدء رفع آخر.",
+    ),
     UPLOADING: copy("Uploading your video…", "جارٍ رفع الفيديو…"),
     READY_COMPLETE: copy(
       "Your upload is ready to finish. AYIN will then check and prepare your video.",
@@ -330,15 +337,24 @@ export function UploadRecovery() {
                       >
                         {copy("Continue upload", "متابعة الرفع")}
                       </ActionButton>
+                      {!view.supported ? (
+                        <ActionButton
+                          type="button"
+                          disabled={
+                            view.busy ||
+                            !mutable ||
+                            !view.fileName ||
+                            view.fileMatched ||
+                            !view.inspection
+                          }
+                          onClick={() => void client.current?.resume()}
+                        >
+                          {copy("Verify original file", "التحقق من الملف الأصلي")}
+                        </ActionButton>
+                      ) : null}
                       <ActionButton
                         type="button"
-                        disabled={
-                          view.busy ||
-                          !mutable ||
-                          !view.supported ||
-                          !view.fileMatched ||
-                          !readyToFinish
-                        }
+                        disabled={view.busy || !mutable || !view.fileMatched || !readyToFinish}
                         onClick={() => void client.current?.complete()}
                       >
                         {copy("Finish upload", "إنهاء الرفع")}

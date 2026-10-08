@@ -207,13 +207,35 @@ export async function assertUploadDebtByteCapacity(
           SELECT 1 FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id
             AND o.kind IN ('CREATE','COMPLETE') AND o."providerOutcome"='UNKNOWN'
         ))
+    ), output_envelopes AS (
+      SELECT r.*, CASE WHEN r."processingJobId" IS NOT NULL THEN
+        j.id IS NOT NULL AND j.status NOT IN ('READY','CANCELLED')
+        ELSE s.id IS NOT NULL AND (NOT EXISTS (
+          SELECT 1 FROM "PrivacyMediaDeletionJob" d WHERE d."uploadSessionId"=s.id
+        ) OR EXISTS (
+          SELECT 1 FROM "PrivacyMediaDeletionJob" d WHERE d."uploadSessionId"=s.id AND d.status <> 'DONE'
+        )) END AS active,
+        (r."accountId"=${accountId}::uuid OR EXISTS (
+          SELECT 1 FROM "ChannelMember" m WHERE m."channelId"=r."channelId"
+            AND m."accountId"=${accountId}::uuid AND m.role='OWNER'
+        )) AS account_owned
+      FROM "MediaProcessingOutputReservation" r
+      LEFT JOIN "MediaProcessingJob" j ON j.id=r."processingJobId"
+      LEFT JOIN "MediaUploadSession" s ON s.id=r."uploadSessionId"
+      WHERE r."accountId"=${accountId}::uuid OR r."channelId"=${channelId}::uuid OR EXISTS (
+        SELECT 1 FROM "ChannelMember" m WHERE m."channelId"=r."channelId"
+          AND m."accountId"=${accountId}::uuid AND m.role='OWNER'
+      )
     ), output_exposure AS (
       SELECT a."channelId", w."expectedSizeBytes" AS bytes,
-        EXISTS (SELECT 1 FROM "ChannelMember" m WHERE m."channelId"=a."channelId"
-          AND m."accountId"=${accountId}::uuid AND m.role='OWNER') AS account_owned
+        (r."accountId"=${accountId}::uuid OR EXISTS (SELECT 1 FROM "ChannelMember" m WHERE m."channelId"=a."channelId"
+          AND m."accountId"=${accountId}::uuid AND m.role='OWNER')) AS account_owned
       FROM "MediaProcessingOutputWrite" w
       JOIN "MediaProcessingOutputAttempt" a ON a.id=w."outputAttemptId"
-      WHERE (a."channelId"=${channelId}::uuid OR EXISTS (
+      LEFT JOIN "MediaProcessingOutputReservation" r ON r."processingJobId"=a."processingJobId"
+      WHERE NOT EXISTS (
+        SELECT 1 FROM output_envelopes e WHERE e."processingJobId"=a."processingJobId" AND e.active
+      ) AND (r."accountId"=${accountId}::uuid OR a."channelId"=${channelId}::uuid OR EXISTS (
         SELECT 1 FROM "ChannelMember" m WHERE m."channelId"=a."channelId"
           AND m."accountId"=${accountId}::uuid AND m.role='OWNER'
       )) AND (w.status <> 'ACKNOWLEDGED' OR EXISTS (
@@ -230,9 +252,11 @@ export async function assertUploadDebtByteCapacity(
     )
     SELECT
       ((SELECT COALESCE(SUM(bytes),0) FROM source_exposure WHERE "initiatingAccountId"=${accountId}::uuid) +
-      (SELECT COALESCE(SUM(bytes),0) FROM output_exposure WHERE account_owned))::bigint AS "accountBytes",
+      (SELECT COALESCE(SUM(bytes),0) FROM output_exposure WHERE account_owned) +
+      (SELECT COALESCE(SUM("envelopeBytes"),0) FROM output_envelopes WHERE active AND account_owned))::bigint AS "accountBytes",
       ((SELECT COALESCE(SUM(bytes),0) FROM source_exposure WHERE "channelId"=${channelId}::uuid) +
-      (SELECT COALESCE(SUM(bytes),0) FROM output_exposure WHERE "channelId"=${channelId}::uuid))::bigint AS "channelBytes",
+      (SELECT COALESCE(SUM(bytes),0) FROM output_exposure WHERE "channelId"=${channelId}::uuid) +
+      (SELECT COALESCE(SUM("envelopeBytes"),0) FROM output_envelopes WHERE active AND "channelId"=${channelId}::uuid))::bigint AS "channelBytes",
       (SELECT COUNT(*) FROM source_exposure WHERE bytes IS NULL)::bigint AS unaccounted`;
   if (
     !debt ||
@@ -249,5 +273,78 @@ export async function assertUploadDebtByteCapacity(
       "UPLOAD_PHYSICAL_DEBT_LIMIT",
       "Resolve existing physical upload or cleanup obligations before granting more storage.",
       429,
+    );
+}
+
+/** Reserve source exposure and output drain room in the SAME first-grant
+ * transaction. Existing envelopes are immutable and survive config changes.
+ * Caller holds the account/channel admission locks and exact source fence. */
+export async function reserveSourceOutputEnvelope(
+  tx: Prisma.TransactionClient,
+  input: {
+    sessionId: string;
+    accountId: string;
+    channelId: string;
+    envelopeBytes: number;
+    additionalSourceBytes: bigint;
+    limits: { account: number; channel: number };
+  },
+): Promise<void> {
+  const existing = await tx.mediaProcessingOutputReservation.findUnique({
+    where: { uploadSessionId: input.sessionId },
+  });
+  if (
+    existing &&
+    (existing.accountId !== input.accountId || existing.channelId !== input.channelId)
+  )
+    throw new MediaUploadError(
+      "UPLOAD_OUTPUT_RESERVATION_INVALID",
+      "The output reservation requires review.",
+      409,
+    );
+  if (!existing) assertConfiguredOutputEnvelope(input.envelopeBytes);
+  await assertUploadDebtByteCapacity(
+    tx,
+    input.accountId,
+    input.channelId,
+    input.additionalSourceBytes + (existing ? 0n : BigInt(input.envelopeBytes)),
+    input.limits,
+  );
+  if (!existing)
+    await tx.mediaProcessingOutputReservation.create({
+      data: {
+        uploadSessionId: input.sessionId,
+        accountId: input.accountId,
+        channelId: input.channelId,
+        envelopeBytes: BigInt(input.envelopeBytes),
+      },
+    });
+}
+
+export function assertConfiguredOutputEnvelope(bytes: number): void {
+  if (!Number.isSafeInteger(bytes) || bytes < 1)
+    throw new MediaUploadError(
+      "UPLOAD_OUTPUT_ENVELOPE_UNAVAILABLE",
+      "A finite output allowance must be reserved before this upload can proceed.",
+      503,
+    );
+}
+
+/** The complete measured write set, across all attempts of one job, fits in a
+ * fixed lifetime envelope. Cleanup/ACK/retry never refills it. The SQL journal
+ * insert trigger increments this same counter atomically with the new write. */
+export function assertOutputEnvelopeRemaining(
+  reservation: { envelopeBytes: bigint; dispatchedBytes: bigint },
+  bytes: bigint,
+): void {
+  if (
+    bytes < 1n ||
+    reservation.dispatchedBytes < 0n ||
+    reservation.dispatchedBytes + bytes > reservation.envelopeBytes
+  )
+    throw new MediaUploadError(
+      "MEDIA_OUTPUT_ENVELOPE_EXCEEDED",
+      "The measured output exceeds this job's reserved output allowance.",
+      413,
     );
 }

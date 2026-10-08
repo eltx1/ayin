@@ -127,6 +127,8 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
       .useValue({
         ...loadMediaStorageConfig({ APP_ENV: "test" }),
         recoveryV2Enabled: true,
+        recoveryCanarySourceMaxBytes: bytes,
+        recoveryOutputEnvelopeBytes: 1024 * 1024,
         recoveryDebtAccountBytes: 10 * 1024 ** 4,
         recoveryDebtChannelBytes: 50 * 1024 ** 4,
         multipartThresholdBytes: 64 * 1024 * 1024,
@@ -147,6 +149,15 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     grantSeconds = 900;
+    Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+      recoveryV2Enabled: true,
+      recoveryCanaryAccountId: undefined,
+      recoveryCanaryChannelId: undefined,
+      recoveryCanarySourceMaxBytes: bytes,
+      recoveryOutputEnvelopeBytes: 1024 * 1024,
+      recoveryDebtAccountBytes: 10 * 1024 ** 4,
+      recoveryDebtChannelBytes: 50 * 1024 ** 4,
+    });
     for (const operation of Object.values(storage))
       if (vi.isMockFunction(operation)) operation.mockReset();
     allocations.clear();
@@ -239,7 +250,7 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
       Error("V2 cleanup must use exact journal addresses"),
     );
     await db.$executeRawUnsafe(
-      'TRUNCATE TABLE "Account", "Channel", "MediaUploadSession", "AccountDeletionRequest", "PrivacyMediaDeletionJob", "MediaProcessingOutputAttempt", "PlatformSetting" CASCADE',
+      'TRUNCATE TABLE "Account", "Channel", "MediaUploadSession", "AccountDeletionRequest", "PrivacyMediaDeletionJob", "MediaProcessingOutputAttempt", "MediaProcessingOutputReservation", "PlatformSetting" CASCADE',
     );
   });
   afterAll(async () => {
@@ -264,11 +275,18 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     const raw = response.headers["set-cookie"];
     const cookie = (Array.isArray(raw) ? raw[0] : raw)?.split(";", 1)[0];
     if (!cookie) throw Error("Authenticated fixture cookie missing");
-    return {
+    const actor = {
       cookie,
       accountId: response.json().user.account.id as string,
       channelId: response.json().user.channel.id as string,
     };
+    const config = app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG);
+    if (!config.recoveryCanaryAccountId)
+      Object.assign(config, {
+        recoveryCanaryAccountId: actor.accountId,
+        recoveryCanaryChannelId: actor.channelId,
+      });
+    return actor;
   }
   type Actor = Awaited<ReturnType<typeof register>>;
   function draft(actor: Actor): CreateRecoverableDraftRequest {
@@ -330,15 +348,15 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     allocation.parts = [{ partNumber: 1, sizeBytes: bytes, etag: '"part-v2"' }];
     return saved;
   }
-  async function accepted() {
-    const f = await fixture();
+  async function accepted(actor?: Actor) {
+    const f = await fixture(actor);
     await storeParts(f.session, f.actor);
     f.session = success(await command(f.actor, f.session, "complete")).session;
     expect(f.session.state).toBe("COMPLETED");
     return f;
   }
-  async function claimed() {
-    const f = await accepted();
+  async function claimed(actor?: Actor) {
+    const f = await accepted(actor);
     const job = await app.get(MediaProcessingQueueService).claimNext("finite-v2-worker");
     expect(job).not.toBeNull();
     expect(
@@ -366,6 +384,33 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     });
     expect(receipt).not.toBeNull();
     return receipt!;
+  }
+  async function finalize(job: MediaProcessingJob) {
+    const journal = app.get(MediaOutputWriteJournalService);
+    const receipt = await dispatch(job);
+    objects.set(job.outputR2ObjectKey, {
+      sizeBytes: bytes,
+      contentType: "video/mp4",
+      etag: '"winner"',
+    });
+    await journal.acknowledge(receipt);
+    const lifecycle = app.get(MediaProcessingLifecycleService);
+    expect(
+      await lifecycle.recordCanonicalVerification({
+        jobId: job.id,
+        workerId: job.leaseOwner!,
+        ...capturedMediaClaim(job),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    const result = await lifecycle.finalizeReady({
+      jobId: job.id,
+      workerId: job.leaseOwner!,
+      ...capturedMediaClaim(job),
+      metadata: { sizeBytes: bytes, durationMs: 1000, width: 640, height: 360 },
+    });
+    expect(result?.job.status).toBe("READY");
+    return result!;
   }
   async function freeze(job: MediaProcessingJob) {
     await db.$transaction((tx) => freezeOutputAttempts(tx, [job.id]));
@@ -669,35 +714,47 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     expect(storage.createMultipartUpload).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts more than fifty sequential source transfers without active-slot lockout", async () => {
+  it("accepts more than fifty completed source/output/cleanup turnovers without active-slot lockout", async () => {
+    grantSeconds = 2;
     const actor = await register();
     for (let index = 0; index < 51; index++) {
-      const f = await fixture(actor);
-      await storeParts(f.session, f.actor);
-      expect(success(await command(actor, f.session, "complete")).session.state).toBe("COMPLETED");
+      const f = await claimed(actor);
+      await finalize(f.job);
+      const saved = await source(f.session);
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.max(0, saved.lastGrantExpiresAt!.getTime() - Date.now() + 5)),
+      );
+      await cleanup();
+      await due();
+      await cleanup();
+      expect(
+        await db.privacyMediaDeletionJob.count({
+          where: { uploadSessionId: saved.id, status: { not: "DONE" } },
+        }),
+      ).toBe(0);
     }
     expect(await db.mediaUploadSession.count({ where: { state: "COMPLETED" } })).toBe(51);
-    expect(await db.mediaProcessingJob.count()).toBe(51);
+    expect(await db.mediaProcessingJob.count({ where: { status: "READY" } })).toBe(51);
     expect((await fixture(actor)).session.state).toBe("OPEN");
-  }, 60_000);
+  }, 180_000);
 
-  it("bounds uncertain allocation backlog independently of freed active upload slots", async () => {
+  it("blocks further canary allocation on one unknown CREATE even after rotating the allowed tuple", async () => {
     const actor = await register();
     vi.mocked(storage.createMultipartUpload).mockRejectedValue(
       Error("Synthetic unknown allocation"),
     );
-    for (let index = 0; index < 10; index++)
-      expect(success(await create(actor)).session.state).toBe("UNRESOLVED");
+    expect(success(await create(actor)).session.state).toBe("UNRESOLVED");
     await expect(
       db.$transaction((tx) => assertUploadSessionCapacity(tx, actor.accountId, actor.channelId)),
-    ).rejects.toMatchObject({ code: "UPLOAD_ADMISSION_LIMIT" });
+    ).resolves.toBeUndefined();
     expect((await create(actor)).statusCode).toBe(429);
-    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(10);
-    expect(
-      await db.mediaUploadSession.count({
-        where: { state: { in: ["PREPARING", "OPEN", "FINALIZING"] } },
-      }),
-    ).toBe(0);
+    const other = await register();
+    Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+      recoveryCanaryAccountId: other.accountId,
+      recoveryCanaryChannelId: other.channelId,
+    });
+    expect((await create(other)).statusCode).toBe(429);
+    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(1);
   });
 
   it("journals one immutable dispatch, rejects duplicate/foreign/frozen writes, and preserves a delayed acknowledgement", async () => {
@@ -1520,6 +1577,9 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
       });
       await expect(rawDone(claim, evidence), target).rejects.toThrow(/Unaccounted source writes/);
     }
+  });
+
+  it("rejects missing or mismatched output rows rather than treating null lookups as settled", async () => {
     const output = await claimed();
     const receipt = await dispatch(output.job);
     await app.get(MediaOutputWriteJournalService).acknowledge(receipt);
@@ -1639,8 +1699,8 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
   });
 
   it("cannot restore a cancelled source's grant authority or rebind its retained custody references", async () => {
-    const f = await fixture(),
-      other = await fixture();
+    const f = await fixture();
+    const other = { actor: await register(), session: { assetId: randomUUID() } };
     success(await command(f.actor, f.session, "cancel"));
     const saved = await source(f.session);
     for (const data of [
@@ -1699,6 +1759,15 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
         },
       }),
     ).rejects.toThrow();
+    await expect(
+      db.mediaUploadSession.update({
+        where: { id: f.session.sessionId },
+        data: { sourceProtocolVersion: 1 },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects an old cleanup worker's DELETE-only DONE update for V2 output obligations", async () => {
     const output = await claimed();
     await freeze(output.job);
     await expect(
@@ -1707,11 +1776,507 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
         data: { status: "DONE", completedAt: new Date() },
       }),
     ).rejects.toThrow();
+  });
+
+  it("rejects source-only capacity and reserves exact source plus output drain headroom atomically", async () => {
+    const actor = await register();
+    const config = app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG);
+    const sourceBytes = Number(conservativeMultipartExposure(bytes, partSizeBytes));
+    Object.assign(config, {
+      recoveryOutputEnvelopeBytes: bytes,
+      recoveryDebtAccountBytes: sourceBytes,
+      recoveryDebtChannelBytes: sourceBytes,
+    });
+    expect((await create(actor)).statusCode).toBe(503);
+    expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+    Object.assign(config, {
+      recoveryDebtAccountBytes: sourceBytes + bytes,
+      recoveryDebtChannelBytes: sourceBytes + bytes,
+    });
+    const f = await claimed(actor);
+    const reservation = await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+      where: { processingJobId: f.job.id },
+    });
+    expect(reservation).toMatchObject({
+      uploadSessionId: f.session.sessionId,
+      accountId: actor.accountId,
+      channelId: actor.channelId,
+      envelopeBytes: BigInt(bytes),
+      dispatchedBytes: 0n,
+    });
+    await dispatch(f.job);
+    await expect(
+      db.$transaction((tx) =>
+        assertUploadDebtByteCapacity(tx, actor.accountId, actor.channelId, 0n, {
+          account: sourceBytes + bytes,
+          channel: sourceBytes + bytes,
+        }),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      db.$transaction((tx) =>
+        assertUploadDebtByteCapacity(tx, actor.accountId, actor.channelId, 1n, {
+          account: sourceBytes + bytes,
+          channel: sourceBytes + bytes,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: "UPLOAD_PHYSICAL_DEBT_LIMIT" });
+    expect((await create(actor)).statusCode).toBe(429);
+  });
+
+  it("drains a previously reserved job to READY after the source kill switch and new budgets turn off", async () => {
+    const f = await claimed();
+    Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+      recoveryV2Enabled: false,
+      recoveryDebtAccountBytes: 0,
+      recoveryDebtChannelBytes: 0,
+      recoveryOutputEnvelopeBytes: 0,
+    });
+    expect((await finalize(f.job)).job.status).toBe("READY");
+    expect((await create(f.actor)).statusCode).toBe(503);
+    expect(
+      await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+        where: { processingJobId: f.job.id },
+      }),
+    ).toMatchObject({ envelopeBytes: 1024n * 1024n, dispatchedBytes: BigInt(bytes) });
+  });
+
+  it("rejects missing reservation, immutable-envelope edits and a direct SQL overspend before any new output dispatch", async () => {
+    const f = await fixture();
     await expect(
       db.mediaUploadSession.update({
         where: { id: f.session.sessionId },
-        data: { sourceProtocolVersion: 1 },
+        data: { grantReservationCount: { increment: 1 } },
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/output drain reservation/);
+    const config = app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG);
+    config.recoveryOutputEnvelopeBytes = bytes;
+    await storeParts(f.session, f.actor);
+    success(await command(f.actor, f.session, "complete"));
+    const job = (await app.get(MediaProcessingQueueService).claimNext("envelope-sql-worker"))!;
+    expect(
+      await app.get(MediaProcessingLifecycleService).recordInputVerification({
+        jobId: job.id,
+        workerId: job.leaseOwner!,
+        ...capturedMediaClaim(job),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    await dispatch(job);
+    const reservation = await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+      where: { processingJobId: job.id },
+    });
+    await expect(
+      db.mediaProcessingOutputReservation.update({
+        where: { id: reservation.id },
+        data: { dispatchedBytes: 0n },
+      }),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      db.mediaProcessingOutputReservation.update({
+        where: { id: reservation.id },
+        data: { envelopeBytes: BigInt(bytes * 2) },
+      }),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('ayin.media_output_write_version', '2', true)`;
+        await tx.mediaProcessingOutputWrite.create({
+          data: {
+            outputAttemptId: job.currentOutputAttemptId!,
+            processingJobId: job.id,
+            claimToken: job.leaseOwner!,
+            attempt: job.attempt,
+            objectKey: job.outputR2ObjectKey.replace(/canonical\.mp4$/, "thumbnail.jpg"),
+            expectedSizeBytes: 1n,
+            contentType: "image/jpeg",
+          },
+        });
+      }),
+    ).rejects.toThrow(/fixed job envelope/);
+    expect(await db.mediaProcessingOutputWrite.count()).toBe(1);
+    expect(
+      (
+        await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+          where: { id: reservation.id },
+        })
+      ).dispatchedBytes,
+    ).toBe(BigInt(bytes));
   });
+
+  it("keeps UNKNOWN spend across fresh attempt namespaces and terminates an exhausted-envelope retry explicitly", async () => {
+    app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG).recoveryOutputEnvelopeBytes = bytes;
+    const f = await claimed();
+    const receipt = await dispatch(f.job);
+    await app.get(MediaOutputWriteJournalService).markUnknown(receipt);
+    await db.mediaProcessingJob.update({
+      where: { id: f.job.id },
+      data: { leaseExpiresAt: new Date(0) },
+    });
+    const retry = (await app.get(MediaProcessingQueueService).claimNext("envelope-retry-worker"))!;
+    expect(retry.currentOutputAttemptId).not.toBe(f.job.currentOutputAttemptId);
+    expect(
+      await app.get(MediaProcessingLifecycleService).recordInputVerification({
+        jobId: retry.id,
+        workerId: retry.leaseOwner!,
+        ...capturedMediaClaim(retry),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    await expect(dispatch(retry)).rejects.toMatchObject({ code: "MEDIA_OUTPUT_ENVELOPE_EXCEEDED" });
+    await app.get(MediaProcessingQueueService).requeueAfterFailure({
+      jobId: retry.id,
+      leaseToken: retry.leaseOwner!,
+      errorCode: "MEDIA_OUTPUT_ENVELOPE_EXCEEDED",
+      errorMessage: "Measured output exceeds the fixed reservation.",
+    });
+    expect(
+      (await db.mediaProcessingJob.findUniqueOrThrow({ where: { id: retry.id } })).status,
+    ).toBe("FAILED");
+    expect(
+      await db.mediaProcessingOutputWrite.findUniqueOrThrow({ where: { id: receipt.id } }),
+    ).toMatchObject({ status: "UNKNOWN" });
+    expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
+  });
+
+  it("releases only unused terminal headroom while retaining UNKNOWN measured output and conservative source exposure", async () => {
+    app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG).recoveryOutputEnvelopeBytes = bytes * 2;
+    const f = await claimed();
+    const receipt = await dispatch(f.job);
+    await app.get(MediaOutputWriteJournalService).markUnknown(receipt);
+    await freeze(f.job);
+    await db.mediaProcessingJob.update({
+      where: { id: f.job.id },
+      data: {
+        status: "CANCELLED",
+        leaseOwner: null,
+        leaseWorkerId: null,
+        leaseExpiresAt: null,
+      },
+    });
+    const limits = {
+      account: Number(conservativeMultipartExposure(bytes, partSizeBytes)) + bytes,
+      channel: Number(conservativeMultipartExposure(bytes, partSizeBytes)) + bytes,
+    };
+    await expect(
+      db.$transaction((tx) =>
+        assertUploadDebtByteCapacity(tx, f.actor.accountId, f.actor.channelId, 0n, limits),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      db.$transaction((tx) =>
+        assertUploadDebtByteCapacity(tx, f.actor.accountId, f.actor.channelId, 1n, limits),
+      ),
+    ).rejects.toMatchObject({ code: "UPLOAD_PHYSICAL_DEBT_LIMIT" });
+  });
+
+  it("gives canonical-derived generations independent envelopes without stealing the source job reservation", async () => {
+    const f = await claimed();
+    await finalize(f.job);
+    const derived = await db.$transaction((tx) =>
+      app.get(MediaProcessingLifecycleService).createReprocessJob(tx, f.job.videoId),
+    );
+    expect(derived?.inputIntegrityParentJobId).toBe(f.job.id);
+    expect(await db.mediaProcessingOutputReservation.count()).toBe(2);
+    Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+      recoveryV2Enabled: false,
+      recoveryDebtAccountBytes: 0,
+      recoveryDebtChannelBytes: 0,
+      recoveryOutputEnvelopeBytes: 0,
+    });
+    const job = (await app.get(MediaProcessingQueueService).claimNext("envelope-derived-worker"))!;
+    expect(job.id).toBe(derived?.id);
+    expect(
+      await app.get(MediaProcessingLifecycleService).recordInputVerification({
+        jobId: job.id,
+        workerId: job.leaseOwner!,
+        ...capturedMediaClaim(job),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    await dispatch(job);
+    const reservations = await db.mediaProcessingOutputReservation.findMany({
+      orderBy: { createdAt: "asc" },
+    });
+    expect(reservations).toHaveLength(2);
+    expect(reservations[0]).toMatchObject({
+      processingJobId: f.job.id,
+      uploadSessionId: f.session.sessionId,
+      dispatchedBytes: BigInt(bytes),
+    });
+    expect(reservations[1]).toMatchObject({
+      processingJobId: job.id,
+      uploadSessionId: null,
+      dispatchedBytes: BigInt(bytes),
+    });
+  });
+
+  it("rejects non-canary accounts, foreign channels and oversize sources without allocating provider storage", async () => {
+    const actor = await register(),
+      other = await register();
+    expect((await create(other)).statusCode).toBe(503);
+    const wrongChannel = await db.channel.create({
+      data: { handle: `outside-canary-${randomUUID()}`, name: "Outside canary" },
+    });
+    expect((await create(actor, { ...draft(actor), channelId: wrongChannel.id })).statusCode).toBe(
+      503,
+    );
+    expect(
+      (
+        await create(actor, {
+          ...draft(actor),
+          sizeBytes: bytes + 1,
+          fileIdentity: identity(bytes + 1),
+        })
+      ).statusCode,
+    ).toBe(503);
+    expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+    expect(await db.mediaUploadSession.count()).toBe(0);
+  });
+
+  it("serializes concurrent measured writes so only one can spend the last reserved bytes", async () => {
+    app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG).recoveryOutputEnvelopeBytes = bytes * 2;
+    const f = await claimed();
+    const canonical = await dispatch(f.job);
+    await app.get(MediaOutputWriteJournalService).acknowledge(canonical);
+    expect(
+      await app.get(MediaProcessingLifecycleService).recordCanonicalVerification({
+        jobId: f.job.id,
+        workerId: f.job.leaseOwner!,
+        ...capturedMediaClaim(f.job),
+        identity: identity(),
+      }),
+    ).toBe(true);
+    const results = await Promise.allSettled([
+      dispatch(f.job, "hls/360p/segment-000001.ts", "video/mp2t"),
+      dispatch(f.job, "hls/360p/segment-000002.ts", "video/mp2t"),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toMatchObject({ code: "MEDIA_OUTPUT_ENVELOPE_EXCEEDED" });
+    expect(await db.mediaProcessingOutputWrite.count()).toBe(2);
+    expect(
+      (
+        await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+          where: { processingJobId: f.job.id },
+        })
+      ).dispatchedBytes,
+    ).toBe(BigInt(bytes * 2));
+  });
+
+  it.each(["read timeout", "invalid part size"])(
+    "keeps COMPLETE undispatched after %s preflight and permits the same request retry",
+    async (failure) => {
+      const f = await fixture();
+      await storeParts(f.session, f.actor);
+      const before = await source(f.session),
+        requestId = randomUUID();
+      if (failure === "read timeout")
+        vi.mocked(storage.listParts).mockRejectedValueOnce(
+          new Error("Synthetic read-only ListParts timeout"),
+        );
+      else
+        vi.mocked(storage.listParts).mockResolvedValueOnce([
+          { partNumber: 1, sizeBytes: bytes + 1, etag: '"oversize"' },
+        ]);
+      const result = await command(f.actor, f.session, "complete", { requestId });
+      expect(result.statusCode, result.body).toBe(503);
+      expect(result.json()).toMatchObject({ error: { code: "UPLOAD_COMPLETE_PREFLIGHT" } });
+      expect(await source(f.session)).toMatchObject({ state: "OPEN", revision: before.revision });
+      expect(
+        await db.mediaUploadOperation.count({
+          where: { sessionId: f.session.sessionId, kind: "COMPLETE" },
+        }),
+      ).toBe(0);
+      expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
+      expect(
+        success(await command(f.actor, f.session, "complete", { requestId })).session.state,
+      ).toBe("COMPLETED");
+      expect(storage.completeMultipartUpload).toHaveBeenCalledTimes(1);
+      expect(
+        await db.mediaUploadOperation.count({
+          where: { sessionId: f.session.sessionId, kind: "COMPLETE" },
+        }),
+      ).toBe(1);
+    },
+  );
+
+  it("lets cancellation win while COMPLETE performs a read-only ListParts preflight", async () => {
+    const f = await fixture();
+    await storeParts(f.session, f.actor);
+    const entered = deferred(),
+      release = deferred();
+    const list = vi.mocked(storage.listParts).getMockImplementation()!;
+    vi.mocked(storage.listParts).mockImplementationOnce(async (input) => {
+      const result = await list(input);
+      entered.resolve();
+      await release.promise;
+      return result;
+    });
+    const completion = Promise.resolve(command(f.actor, f.session, "complete"));
+    await entered.promise;
+    try {
+      expect(success(await command(f.actor, f.session, "cancel")).session.state).toBe("ABORTED");
+    } finally {
+      release.resolve();
+    }
+    expect((await completion).statusCode).not.toBe(201);
+    expect(
+      await db.mediaUploadOperation.count({
+        where: { sessionId: f.session.sessionId, kind: "COMPLETE" },
+      }),
+    ).toBe(0);
+    expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
+  });
+
+  it("rejects derived acceptance atomically when the canary mutex is busy", async () => {
+    const f = await claimed();
+    await finalize(f.job);
+    const entered = deferred(),
+      release = deferred();
+    const blocker = db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(86192046, 0)`;
+      entered.resolve();
+      await release.promise;
+    });
+    await entered.promise;
+    try {
+      await expect(
+        db.$transaction((tx) =>
+          app.get(MediaProcessingLifecycleService).createReprocessJob(tx, f.job.videoId),
+        ),
+      ).rejects.toMatchObject({ code: "UPLOAD_OUTPUT_ADMISSION_BUSY" });
+      expect(await db.mediaProcessingJob.count()).toBe(1);
+      expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
+    } finally {
+      release.resolve();
+      await blocker;
+    }
+    const derived = await db.$transaction((tx) =>
+      app.get(MediaProcessingLifecycleService).createReprocessJob(tx, f.job.videoId),
+    );
+    expect(derived).not.toBeNull();
+    expect(await db.mediaProcessingOutputReservation.count()).toBe(2);
+  });
+
+  it("retains a no-output source reservation until final source minimization then permits identity cleanup", async () => {
+    grantSeconds = 2;
+    const f = await fixture();
+    success(await command(f.actor, f.session, "authorize", { partNumber: 1 }));
+    const reservation = await db.mediaProcessingOutputReservation.findUniqueOrThrow({
+      where: { uploadSessionId: f.session.sessionId },
+    });
+    const retainUntil = new Date(Date.now() + 2500);
+    await db.mediaUploadSession.update({
+      where: { id: f.session.sessionId },
+      data: { cleanupRetainUntil: retainUntil },
+    });
+    success(await command(f.actor, f.session, "cancel"));
+    await expect(
+      db.mediaProcessingOutputReservation.delete({ where: { id: reservation.id } }),
+    ).rejects.toThrow(/must be retained/);
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, retainUntil.getTime() - Date.now()) + 30),
+    );
+    await due();
+    await cleanup();
+    await due();
+    await cleanup();
+    expect(
+      await db.mediaUploadSession.findUnique({ where: { id: f.session.sessionId } }),
+    ).toBeNull();
+    // The bounded sweeper may already have removed the eligible metadata.
+    if (await db.mediaProcessingOutputReservation.findUnique({ where: { id: reservation.id } }))
+      await db.mediaProcessingOutputReservation.delete({ where: { id: reservation.id } });
+    expect(
+      await db.mediaProcessingOutputReservation.findUnique({ where: { id: reservation.id } }),
+    ).toBeNull();
+  });
+
+  it.each(["canary busy", "outside canary"])(
+    "keeps earlier V1/V2 work in a mixed backfill transaction when a later candidate is %s",
+    async (reason) => {
+      grantSeconds = 2;
+      const first = await claimed();
+      await finalize(first.job);
+      const firstSource = await source(first.session);
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          Math.max(0, firstSource.lastGrantExpiresAt!.getTime() - Date.now() + 5),
+        ),
+      );
+      await due();
+      await cleanup();
+      await due();
+      await cleanup();
+      let secondActor = first.actor;
+      const config = app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG);
+      if (reason === "outside canary") {
+        secondActor = await register();
+        Object.assign(config, {
+          recoveryCanaryAccountId: secondActor.accountId,
+          recoveryCanaryChannelId: secondActor.channelId,
+        });
+      }
+      const second = await claimed(secondActor);
+      await finalize(second.job);
+      const secondSource = await source(second.session);
+      await new Promise((resolve) =>
+        setTimeout(
+          resolve,
+          Math.max(0, secondSource.lastGrantExpiresAt!.getTime() - Date.now() + 5),
+        ),
+      );
+      await due();
+      await cleanup();
+      await due();
+      await cleanup();
+      Object.assign(config, {
+        recoveryCanaryAccountId: first.actor.accountId,
+        recoveryCanaryChannelId: first.actor.channelId,
+      });
+      await db.video.updateMany({
+        where: { id: { in: [first.job.videoId, second.job.videoId] } },
+        data: { status: "PUBLISHED" },
+      });
+      async function legacyVideo() {
+        return db.video.create({
+          data: {
+            channelId: first.actor.channelId,
+            slug: `mixed-legacy-${randomUUID()}`,
+            title: "Legacy mixed candidate",
+            status: "PUBLISHED",
+            mediaAssets: {
+              create: {
+                channelId: first.actor.channelId,
+                kind: "SOURCE_VIDEO",
+                status: "VALIDATED",
+                mimeType: "video/mp4",
+                sizeBytes: BigInt(bytes),
+                r2ObjectKey: `synthetic-legacy/${randomUUID()}.mp4`,
+              },
+            },
+          },
+        });
+      }
+      const before = await legacyVideo(),
+        after = await legacyVideo();
+      const result = await db.$transaction(async (tx) => {
+        const jobs = [];
+        for (const videoId of [before.id, first.job.videoId, second.job.videoId, after.id])
+          jobs.push(
+            await app.get(MediaProcessingLifecycleService).createAdaptiveBackfillJob(tx, videoId),
+          );
+        return jobs;
+      });
+      expect(result.map((job) => job?.outputProtocolVersion ?? null)).toEqual([1, 2, null, 1]);
+      expect(
+        await db.mediaProcessingJob.count({
+          where: { id: { in: result.flatMap((job) => (job ? [job.id] : [])) } },
+        }),
+      ).toBe(3);
+      expect(await db.mediaProcessingOutputReservation.count()).toBe(3);
+    },
+  );
 });

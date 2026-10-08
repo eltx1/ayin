@@ -1067,6 +1067,20 @@ export async function minimizeCompletedOutputCleanup(db: PrismaClient, now: Date
   }
 }
 
+export async function minimizeCompletedOutputReservations(db: PrismaClient, limit: number) {
+  if (!Number.isSafeInteger(limit) || limit < 1) return 0;
+  // All state is local. The database repeats the exact final-retention predicate
+  // in its DELETE guard; no live, retryable or uncertain counter can be reset.
+  return db.$executeRaw`
+    WITH candidate AS (
+      SELECT id FROM "MediaProcessingOutputReservation"
+      WHERE ayin_output_reservation_minimizable(id)
+      ORDER BY "createdAt", id FOR UPDATE SKIP LOCKED LIMIT ${Math.min(limit, 100)}
+    )
+    DELETE FROM "MediaProcessingOutputReservation" r USING candidate
+      WHERE r.id=candidate.id AND ayin_output_reservation_minimizable(r.id)`;
+}
+
 export async function processPrivacyMediaDeletionBatch(
   db: PrismaClient,
   storage: MediaStorageAdapter,
@@ -1120,6 +1134,7 @@ export async function processPrivacyMediaDeletionBatch(
   await expireUploadSessions(db, new Date(), limit);
   await minimizeCompletedUploadCleanup(db, new Date(), limit);
   await minimizeCompletedOutputCleanup(db, new Date(), limit);
+  await minimizeCompletedOutputReservations(db, limit);
   const requests = await db.accountDeletionRequest.findMany({
     where: {
       state: "ANONYMIZED",

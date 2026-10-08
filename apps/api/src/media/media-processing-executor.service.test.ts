@@ -6,6 +6,7 @@ import { hashUploadFileIdentity } from "@ayin/types";
 import type { MediaProcessingJob } from "@ayin/db";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { MediaUploadError } from "./media-upload-error.js";
 import { MediaProcessingExecutorService } from "./media-processing-executor.service.js";
 import type { MediaProbeMetadata } from "./media-probe.js";
 
@@ -263,4 +264,23 @@ it("keeps retained source when a crash/fence loss prevents READY, then verifies 
   expect(f.storage.uploadFile).toHaveBeenCalledTimes(2);
   expect(f.lifecycle.finalizeReady).toHaveBeenCalledTimes(2);
   expect(f.objects.has(f.sourceKey)).toBe(true);
+});
+
+it("reports the explicit output-envelope failure without publishing or deleting source", async () => {
+  const f = await requiredFixture();
+  f.storage.uploadFile.mockRejectedValueOnce(
+    new MediaUploadError(
+      "MEDIA_OUTPUT_ENVELOPE_EXCEEDED",
+      "The measured output exceeds this job's reserved output allowance.",
+      413,
+    ),
+  );
+  await f.subject.process(f.job, "claim");
+  expect(f.queue.requeueAfterFailure).toHaveBeenCalledWith(
+    expect.objectContaining({
+      errorCode: "MEDIA_OUTPUT_ENVELOPE_EXCEEDED",
+    }),
+  );
+  expect(f.lifecycle.finalizeReady).not.toHaveBeenCalled();
+  expect(f.storage.deleteObject).not.toHaveBeenCalled();
 });

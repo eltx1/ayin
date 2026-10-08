@@ -35,10 +35,10 @@ export class MediaUploadRecoveryController {
 
   @Get("capability")
   @Header("Cache-Control", "private, no-store")
-  capability(@Query() query: unknown) {
-    if (!z.object({}).strict().safeParse(query).success)
-      throw new HttpException("Invalid upload capability request.", 400);
-    return this.commands.capability();
+  capability(@Req() request: AuthenticatedRequest, @Query() query: unknown) {
+    const parsed = z.object({ channelId: z.string().uuid().optional() }).strict().safeParse(query);
+    if (!parsed.success) throw new HttpException("Invalid upload capability request.", 400);
+    return this.commands.capability(request.ayinAuth, parsed.data.channelId?.toLowerCase());
   }
 
   @Get(":sessionId/operations/:requestId")
