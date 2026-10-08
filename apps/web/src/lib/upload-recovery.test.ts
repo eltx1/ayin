@@ -271,7 +271,7 @@ describe("explicit recoverable upload controller", () => {
           channel: { id: identityScope.channelId },
           profile: { id: identityScope.profileId },
         });
-      if (path.endsWith("/capability"))
+      if (path.includes("/capability"))
         return response({ protocolVersion: 1, supported: true, reason: null });
       if (path.endsWith("/auth/sessions"))
         return response({ sessions: [{ id: scope.profileId, current: true }] });
@@ -506,7 +506,10 @@ describe("explicit recoverable upload controller", () => {
       if (failure === "unsupported") {
         expect(view.supported).toBe(false);
         await value.reconcileCompletion();
-        expect(writes()).toHaveLength(1);
+        // Another explicit read-only reconciliation remains available for an
+        // admitted upload while new issuance is disabled. Never replay COMPLETE.
+        expect(writes()).toHaveLength(2);
+        expect(writes().every(([url]) => String(url).endsWith("/reconcile"))).toBe(true);
       }
     },
   );
@@ -547,7 +550,7 @@ describe("explicit recoverable upload controller", () => {
     expect(writes()).toHaveLength(0);
     const normal = fetcher.getMockImplementation()!;
     fetcher.mockImplementation((url, init) =>
-      String(url).endsWith("/capability")
+      String(url).includes("/capability")
         ? Promise.resolve(response({ protocolVersion: 1, supported: false, reason: "UNSUPPORTED" }))
         : normal(url, init),
     );
@@ -922,7 +925,7 @@ describe("explicit recoverable upload controller", () => {
     expect(published.every((entry) => entry.scope === null && entry.saved === null)).toBe(true);
     expect(view.message).toBe("AUTHORITY_CHANGED");
     expect(storage.length).toBe(0);
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/capability"))).toBe(false);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("/capability"))).toBe(false);
     expect(writes()).toHaveLength(0);
   });
   it("the final initial-identity read rejects a same-account profile change before loading saved facts", async () => {
@@ -1115,13 +1118,13 @@ describe("explicit recoverable upload controller", () => {
   it("serializes repeated clicks and disables unavailable admission without V1 fallback", async () => {
     const normal = fetcher.getMockImplementation()!;
     fetcher.mockImplementation((url, init) =>
-      String(url).endsWith("/capability")
+      String(url).includes("/capability")
         ? Promise.resolve(response({ protocolVersion: 1, supported: false, reason: "UNSUPPORTED" }))
         : normal(url, init),
     );
     const value = client();
     await Promise.all([value.open(), value.open()]);
-    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/capability"))).toHaveLength(
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/capability"))).toHaveLength(
       1,
     );
     await value.choose(file());

@@ -97,6 +97,43 @@ async function reopen(page: Page) {
   await button(page, "Check saved upload").click();
   await expect(button(page, "Check saved upload")).toBeEnabled();
 }
+// This changes only the browser's issuance-capability response. The synthetic V1
+// provider stays available to drain previously authorized bytes. Actual V2 kill
+// switch behavior is covered by API integration tests, not this browser fixture.
+async function disableBrowserIssuance(page: Page) {
+  await page.route(
+    (url) => url.origin === API && url.pathname === "/media/uploads/sessions/capability",
+    async (route) => {
+      expect(new URL(route.request().url()).searchParams.get("channelId")).toBeTruthy();
+      const response = await route.fetch();
+      expect(response.ok()).toBe(true);
+      expect(await response.json()).toMatchObject({
+        protocolVersion: 1,
+        supported: true,
+        reason: null,
+      });
+      await route.fulfill({
+        response,
+        json: { protocolVersion: 1, supported: false, reason: "UNSUPPORTED" },
+      });
+    },
+  );
+}
+function observeUploadWrites(page: Page) {
+  const writes = { creates: 0, authorizations: 0, puts: 0, completes: 0, reconciliations: 0 };
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "PUT" && url.origin === "https://recovery-provider.invalid")
+      writes.puts++;
+    if (request.method() !== "POST" || url.origin !== API) return;
+    if (url.pathname === "/creator/videos/recoverable-drafts") writes.creates++;
+    if (!url.pathname.startsWith("/media/uploads/sessions/")) return;
+    if (url.pathname.endsWith("/authorize")) writes.authorizations++;
+    if (url.pathname.endsWith("/complete")) writes.completes++;
+    if (url.pathname.endsWith("/reconcile")) writes.reconciliations++;
+  });
+  return writes;
+}
 test.beforeEach(async ({ page }) => {
   const url = new URL(process.env.TEST_DATABASE_URL ?? "http://invalid");
   if (!["localhost", "127.0.0.1"].includes(url.hostname) || url.pathname !== "/ayin_e2e")
@@ -386,10 +423,13 @@ for (const locale of ["en", "ar"])
     }
     expect(writes.filter((write) => write.url.endsWith("/reconcile"))).toHaveLength(0);
     expect(await stats(page)).toEqual(before);
+    const writesBeforeUnsupported = [...writes];
     await page.request.post(`${PROVIDER}/control`, { data: { supported: false } });
     await check.click();
     await expect(check).toBeEnabled();
-    await expect(verify).toHaveCount(0);
+    await expect(verify).toBeEnabled();
+    expect(writes).toEqual(writesBeforeUnsupported);
+    expect(await stats(page)).toEqual(before);
     await page.request.post(`${PROVIDER}/control`, { data: { supported: true } });
     await page.reload();
     await workspace.locator("summary").click();
@@ -447,6 +487,246 @@ for (const locale of ["en", "ar"])
     expect(writes.filter((write) => write.url.endsWith("/reconcile"))).toHaveLength(1);
     expect((await stats(page)).queued).toBe(1);
   });
+
+for (const locale of ["en", "ar"]) {
+  test(`browser issuance capability off still verifies the original file and finishes uploaded multipart bytes after reload ${locale}`, async ({
+    page,
+  }, info) => {
+    await setup(page, locale);
+    const workspace = region(page, locale);
+    const action = (en: string, ar: string) =>
+      workspace.getByRole("button", { name: text(locale, en, ar), exact: true });
+    const check = action("Check saved upload", "التحقق من الرفع المحفوظ");
+    const proceed = action("Continue upload", "متابعة الرفع");
+    const finish = action("Finish upload", "إنهاء الرفع");
+    const verifyFile = action("Verify original file", "التحقق من الملف الأصلي");
+    const picker = workspace.getByLabel(
+      text(locale, "Choose original video", "اختيار الفيديو الأصلي"),
+    );
+    const original = { ...file, buffer: Buffer.alloc(5 * 1024 * 1024 + 137, 31) };
+    const writes = observeUploadWrites(page);
+    await picker.setInputFiles(original);
+    await action("Save draft", "حفظ المسودة").click();
+    await expect(check).toBeEnabled();
+    await proceed.click();
+    await expect(finish).toBeEnabled();
+    const before = await stats(page);
+    expect(before).toMatchObject({
+      allocations: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 0,
+      sessions: 1,
+      queued: 0,
+      published: 0,
+    });
+
+    await disableBrowserIssuance(page);
+    await page.reload();
+    await workspace.locator("summary").click();
+    await check.click();
+    await expect(check).toBeEnabled();
+    await expect(
+      workspace.getByText(
+        text(
+          locale,
+          "Upload recovery is not available yet. You can use the standard upload above.",
+          "استئناف الرفع غير متاح بعد. يمكنك استخدام الرفع المعتاد أعلاه.",
+        ),
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(await picker.inputValue()).toBe("");
+    await expect(proceed).toBeDisabled();
+    await expect(finish).toBeDisabled();
+    await expect(verifyFile).toBeDisabled();
+    expect(await stats(page)).toEqual(before);
+
+    // Same metadata is insufficient even when only an already-uploaded source
+    // needs draining. Verify must compare the actual original byte identity.
+    const changed = Buffer.from(original.buffer);
+    changed[3 * 1024 * 1024 + 71]! ^= 1;
+    await picker.setInputFiles({ ...original, buffer: changed });
+    await verifyFile.click();
+    await expect(
+      workspace.getByText(
+        text(
+          locale,
+          "This is not the original file. Select the exact original file and inspect again.",
+          "هذا ليس الملف الأصلي. اختر الملف الأصلي المطابق وافحص الرفع مجددًا.",
+        ),
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(finish).toBeDisabled();
+    await expect(proceed).toBeDisabled();
+
+    await picker.setInputFiles(original);
+    await check.click();
+    await expect(verifyFile).toBeEnabled();
+    await verifyFile.click();
+    await expect(
+      workspace.getByText(text(locale, "Original file verified.", "تم التحقق من الملف الأصلي."), {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(finish).toBeEnabled();
+    await expect(proceed).toBeDisabled();
+    await expect(verifyFile).toBeDisabled();
+    expect(await stats(page)).toMatchObject({
+      allocations: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 0,
+      sessions: 1,
+      queued: 0,
+      published: 0,
+    });
+    expect(writes).toEqual({
+      creates: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 0,
+      reconciliations: 0,
+    });
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await finish.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: info.outputPath(`recovery-issuance-off-finish-${locale}-${width}.png`),
+      });
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
+      ).toBe(true);
+    }
+    await finish.click();
+    await expect(
+      workspace.getByText(
+        text(
+          locale,
+          "Upload accepted. AYIN is checking and preparing your video. Follow its progress in Studio before publishing.",
+          "تم قبول الرفع. يتحقق AYIN من الفيديو ويجهزه. تابع تقدمه في الاستوديو قبل النشر.",
+        ),
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await check.click();
+    await expect(check).toBeEnabled();
+    expect(writes).toEqual({
+      creates: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 1,
+      reconciliations: 0,
+    });
+    expect(await stats(page)).toMatchObject({
+      allocations: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 1,
+      sessions: 1,
+      queued: 1,
+      published: 0,
+    });
+  });
+
+  test(`browser issuance capability off preserves pending COMPLETE verification after reload without replay ${locale}`, async ({
+    page,
+  }) => {
+    await setup(page, locale);
+    const workspace = region(page, locale);
+    const action = (en: string, ar: string) =>
+      workspace.getByRole("button", { name: text(locale, en, ar), exact: true });
+    const check = action("Check saved upload", "التحقق من الرفع المحفوظ");
+    const verify = action("Verify upload completion", "التحقق من اكتمال الرفع");
+    const writes = observeUploadWrites(page);
+    await workspace
+      .getByLabel(text(locale, "Choose original video", "اختيار الفيديو الأصلي"))
+      .setInputFiles({ ...file, buffer: Buffer.alloc(5 * 1024 * 1024 + 137, 37) });
+    await action("Save draft", "حفظ المسودة").click();
+    await expect(check).toBeEnabled();
+    await action("Continue upload", "متابعة الرفع").click();
+    await expect(action("Finish upload", "إنهاء الرفع")).toBeEnabled();
+    expect(
+      (
+        await page.request.post(`${PROVIDER}/control`, { data: { failCompleteAfterStore: true } })
+      ).ok(),
+    ).toBe(true);
+    await action("Finish upload", "إنهاء الرفع").click();
+    await expect(verify).toBeEnabled();
+    const before = await stats(page);
+    expect(before).toMatchObject({
+      allocations: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 1,
+      sessions: 1,
+      queued: 0,
+      published: 0,
+    });
+    const savedBefore = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), key);
+    expect(savedBefore.pending.kind).toBe("COMPLETE");
+    expect(savedBefore.session.state).toBe("UNRESOLVED");
+
+    await disableBrowserIssuance(page);
+    await page.reload();
+    await workspace.locator("summary").click();
+    for (let count = 0; count < 2; count++) {
+      await check.click();
+      await expect(verify).toBeEnabled();
+    }
+    await expect(action("Continue upload", "متابعة الرفع")).toBeDisabled();
+    await expect(action("Finish upload", "إنهاء الرفع")).toBeDisabled();
+    await expect(action("Verify original file", "التحقق من الملف الأصلي")).toBeDisabled();
+    expect(
+      await workspace
+        .getByLabel(text(locale, "Choose original video", "اختيار الفيديو الأصلي"))
+        .inputValue(),
+    ).toBe("");
+    expect(await stats(page)).toEqual(before);
+    expect(writes).toEqual({
+      creates: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 1,
+      reconciliations: 0,
+    });
+
+    await verify.click();
+    await expect(
+      workspace.getByText(
+        text(
+          locale,
+          "Upload accepted. AYIN is checking and preparing your video. Follow its progress in Studio before publishing.",
+          "تم قبول الرفع. يتحقق AYIN من الفيديو ويجهزه. تابع تقدمه في الاستوديو قبل النشر.",
+        ),
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(verify).toHaveCount(0);
+    const savedAfter = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), key);
+    expect(savedAfter.pending).toBeNull();
+    expect(savedAfter.session.state).toBe("COMPLETED");
+    await check.click();
+    await expect(check).toBeEnabled();
+    expect(writes).toEqual({
+      creates: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 1,
+      reconciliations: 1,
+    });
+    expect(await stats(page)).toMatchObject({
+      allocations: 1,
+      authorizations: 2,
+      puts: 2,
+      completes: 1,
+      sessions: 1,
+      queued: 1,
+      published: 0,
+    });
+  });
+}
 
 test("lost completion-verification response is resolved by a read without repeating verification or provider completion", async ({
   page,

@@ -1,9 +1,20 @@
+import { MediaUploadError } from "../media/media-upload-error.js";
 import {
   publicMediaProcessingJob,
   publicMediaProcessingStatus,
 } from "../media/media-processing-status.js";
 import type { MediaProcessingJob } from "@ayin/db";
-import { Body, Controller, Get, Inject, Param, Post, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpException,
+  Inject,
+  Param,
+  Post,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { z } from "zod";
 
 import { AuthGuard } from "../auth/auth.guard.js";
@@ -218,30 +229,39 @@ export class AdminMediaProcessingController {
   @RequireAdminStepUp()
   async reprocess(@Req() request: AdminAuthenticatedRequest, @Param("videoId") videoIdRaw: string) {
     const videoId = this.uuid(videoIdRaw, "INVALID_VIDEO_ID");
-    return this.database.client.$transaction(async (tx) => {
-      await lockMediaGeneration(tx, videoId);
-      if (await hasActiveMediaJob(tx, videoId)) {
-        throw adminBadRequest(
-          "MEDIA_PROCESSING_ALREADY_ACTIVE",
-          "This video already has an active or queued processing generation.",
-        );
-      }
-      const job = await this.lifecycle.createReprocessJob(tx, videoId);
-      if (!job) {
-        throw adminBadRequest(
-          "REPROCESS_SOURCE_UNAVAILABLE",
-          "A validated playback source is required before this video can be reprocessed.",
-        );
-      }
-      await this.audit.recordInTransaction(tx, {
-        actorAccountId: request.ayinAuth.accountId,
-        action: "media_processing.reprocess",
-        entityType: "Video",
-        entityId: videoId,
-        metadata: { jobId: job.id, generation: job.generation },
+    return this.database.client
+      .$transaction(async (tx) => {
+        await lockMediaGeneration(tx, videoId);
+        if (await hasActiveMediaJob(tx, videoId)) {
+          throw adminBadRequest(
+            "MEDIA_PROCESSING_ALREADY_ACTIVE",
+            "This video already has an active or queued processing generation.",
+          );
+        }
+        const job = await this.lifecycle.createReprocessJob(tx, videoId);
+        if (!job) {
+          throw adminBadRequest(
+            "REPROCESS_SOURCE_UNAVAILABLE",
+            "A validated playback source is required before this video can be reprocessed.",
+          );
+        }
+        await this.audit.recordInTransaction(tx, {
+          actorAccountId: request.ayinAuth.accountId,
+          action: "media_processing.reprocess",
+          entityType: "Video",
+          entityId: videoId,
+          metadata: { jobId: job.id, generation: job.generation },
+        });
+        return mediaJobMutationResponse(job);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof MediaUploadError)
+          throw new HttpException(
+            { error: { code: error.code, message: error.message } },
+            error.statusCode,
+          );
+        throw error;
       });
-      return mediaJobMutationResponse(job);
-    });
   }
 
   private uuid(value: string, code: string): string {

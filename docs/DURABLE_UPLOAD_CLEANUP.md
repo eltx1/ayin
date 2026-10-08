@@ -1,5 +1,7 @@
 # Durable upload cleanup prerequisite
 
+Historical V1 contract: its evidence and unresolved obligations remain unchanged. New explicitly admitted V2 sessions and outputs use the separately versioned [finite cleanup protocol](FINITE_MEDIA_CLEANUP_V2.md) and ADR-017; V2 does not synthesize the V1 future-absence proof described below.
+
 Status: additive prerequisite; durable upload issuance remains disabled. This change extends `PrivacyMediaDeletionJob` and the existing privacy worker. It does not create a second queue, enable recovery commands, change production configuration or certify real R2 behavior.
 
 ## Obligations and ownership

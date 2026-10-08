@@ -13,6 +13,7 @@ import {
 
 export async function declareCompatibleIntegrityWorker(tx: Prisma.TransactionClient) {
   await tx.$executeRaw`SELECT set_config('ayin.media_integrity_worker_version', '2', true)`;
+  await tx.$executeRaw`SELECT set_config('ayin.media_output_write_version', '2', true)`;
 }
 
 type OwnedFenceOptions = MediaClaimIdentity & {
@@ -144,6 +145,7 @@ async function lockEligibleMediaJob(
       });
       if (
         !outputAttempt ||
+        outputAttempt.writesFrozenAt ||
         outputAttempt.processingJobId !== job.id ||
         outputAttempt.claimToken !== workerId ||
         outputAttempt.attempt !== job.attempt ||

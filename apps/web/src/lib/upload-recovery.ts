@@ -47,6 +47,10 @@ type RecoveryDependencies = {
   changed: (view: RecoveryView) => void;
 };
 const rejectedBeforeDispatch = new Set([
+  "UPLOAD_COMPLETE_PREFLIGHT",
+  "UPLOAD_CANARY_BUSY",
+  "UPLOAD_OUTPUT_ENVELOPE_UNAVAILABLE",
+  "UPLOAD_PHYSICAL_DEBT_LIMIT",
   "UPLOAD_FILE_CHANGED",
   "UPLOAD_STATE_CHANGED",
   "UPLOAD_REQUEST_CONFLICT",
@@ -298,7 +302,12 @@ export class UploadRecoveryClient {
     this.view.inspection = null;
     const scope = await this.scope(signal);
     const capability = uploadRecord(
-      await this.request("/media/uploads/sessions/capability", signal, undefined, scope),
+      await this.request(
+        `/media/uploads/sessions/capability?channelId=${encodeURIComponent(scope.channelId)}`,
+        signal,
+        undefined,
+        scope,
+      ),
     );
     if (
       capability.protocolVersion !== 1 ||
@@ -695,8 +704,7 @@ export class UploadRecoveryClient {
   }
   async complete() {
     await this.run(async (signal) => {
-      if (!this.view.fileMatched || !this.view.supported || !this.canComplete())
-        throw new RecoveryError("NOT_READY");
+      if (!this.view.fileMatched || !this.canComplete()) throw new RecoveryError("NOT_READY");
       await this.command("COMPLETE", signal);
       this.file = null;
       this.identity = null;
@@ -709,7 +717,6 @@ export class UploadRecoveryClient {
       const saved = this.view.saved;
       if (
         !this.view.scope ||
-        !this.view.supported ||
         !saved?.session ||
         saved.pending?.kind !== "COMPLETE" ||
         !["FINALIZING", "UNRESOLVED"].includes(saved.session.state)

@@ -9,6 +9,7 @@ import {
   ADAPTIVE_BACKFILL_HARD_BATCH_MAX,
 } from "./media-adaptive-rollout.js";
 import { outputAttemptAddresses } from "./media-output-attempt.js";
+import { freezeOutputAttempts } from "./media-output-write-journal.js";
 import {
   hlsMasterObjectKey,
   hlsRenditionPlaylistObjectKey,
@@ -217,6 +218,7 @@ export class MediaProcessingQueueService {
         let attemptNamespace: MediaGenerationNamespace | null = null;
         if (candidate.inputIntegrityVersion === 1) {
           if (!(await lockQueuedIntegrityJob(tx, candidate.id, candidate.attempt))) return null;
+          await freezeOutputAttempts(tx, [candidate.id]);
           const video = await tx.video.findUniqueOrThrow({
             where: { id: candidate.videoId },
             select: { channelId: true },
@@ -232,6 +234,7 @@ export class MediaProcessingQueueService {
           outputAttempt = await tx.mediaProcessingOutputAttempt.create({
             data: {
               id,
+              protocolVersion: candidate.outputProtocolVersion,
               processingJobId: candidate.id,
               channelId: video.channelId,
               videoId: candidate.videoId,
@@ -366,7 +369,10 @@ export class MediaProcessingQueueService {
       if (!job) return null;
 
       const superseded = await hasNewerMediaGeneration(tx, job);
-      const terminal = superseded || job.attempt >= retryLimit;
+      const terminal =
+        superseded ||
+        job.attempt >= retryLimit ||
+        input.errorCode === "MEDIA_OUTPUT_ENVELOPE_EXCEEDED";
       const backoffSeconds = Math.min(60, 2 ** Math.max(0, job.attempt));
       const changed = await tx.mediaProcessingJob.updateMany({
         where: {
@@ -398,6 +404,8 @@ export class MediaProcessingQueueService {
               errorMessage: input.errorMessage,
             },
       });
+      if (changed.count === 1 && job.inputIntegrityVersion === 1)
+        await freezeOutputAttempts(tx, [job.id], now);
       return changed.count === 1
         ? tx.mediaProcessingJob.findUnique({ where: { id: job.id } })
         : null;
@@ -550,6 +558,8 @@ export class MediaProcessingQueueService {
               errorMessage: "The media worker stopped heartbeating; AYIN recovered the job safely.",
             },
       });
+      if (changed.count === 1 && job.inputIntegrityVersion === 1)
+        await freezeOutputAttempts(tx, [job.id], now);
       if (terminal) failed += changed.count;
       else requeued += changed.count;
     }

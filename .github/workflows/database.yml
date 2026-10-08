@@ -107,6 +107,8 @@ jobs:
           bash -n deploy/ensure-ffmpeg-runtime.sh
           bash -n deploy/acquire-ssh-host-key.sh
           node --test deploy/test-ssh-host-key.mjs
+          # Offline transport/provider fixtures only; never dispatch the live proof here.
+          node --test deploy/media/r2-owned-fixture-provider.test.mjs deploy/media/r2-owned-fixture-browser.test.mjs
           node --test deploy/test-web-build-artifact.mjs deploy/test-release-web-artifact.mjs
           node --check deploy/smoke-web-build-artifact.mjs
           node --check deploy/admin/bootstrap-first-superadmin.mjs
@@ -173,6 +175,8 @@ jobs:
           NEXT_PUBLIC_MEDIA_BASE_URL: https://media.ayin.stream
         run: pnpm build
 
+      - name: Verify compiled media import entry points
+        run: node --test deploy/media/media-compiled-imports.test.mjs
       - name: Package and smoke-test the exact production Web build
         env:
           NODE_ENV: production

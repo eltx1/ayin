@@ -1,3 +1,10 @@
+import { MEDIA_STORAGE_CONFIG } from "./media-storage.adapter.js";
+import type { MediaStorageConfig } from "./media-storage.config.js";
+import {
+  isOutputAdmissionPolicyError,
+  prepareDerivedOutputReservation,
+} from "./media-output-reservation.js";
+import { freezeOutputAttempts } from "./media-output-write-journal.js";
 import type { MediaClaimIdentity } from "./media-output-attempt.js";
 import type { MediaProcessingJobStatus, Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
@@ -22,7 +29,10 @@ export interface CanonicalMediaMetadata {
 
 @Injectable()
 export class MediaProcessingLifecycleService {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(MEDIA_STORAGE_CONFIG) private readonly config?: MediaStorageConfig,
+  ) {}
 
   async enqueueUploadedAsset(assetId: string) {
     return this.database.client.$transaction((tx) =>
@@ -110,6 +120,7 @@ export class MediaProcessingLifecycleService {
         ...(session
           ? {
               inputIntegrityVersion: 1,
+              outputProtocolVersion: session.sourceProtocolVersion,
               inputIntegritySessionId: session.id,
               inputIntegritySourceAssetId: asset.id,
               inputIntegrityAccountId: session.initiatingAccountId!,
@@ -124,6 +135,19 @@ export class MediaProcessingLifecycleService {
         stage: session ? "INTEGRITY_QUEUED" : "QUEUED",
       },
     });
+    if (session?.sourceProtocolVersion === 2) {
+      const bound = await tx.mediaProcessingOutputReservation.updateMany({
+        where: {
+          uploadSessionId: session.id,
+          processingJobId: null,
+          accountId: session.initiatingAccountId!,
+          channelId,
+        },
+        data: { processingJobId: job.id },
+      });
+      if (bound.count !== 1)
+        throw new Error("The source cannot enqueue without its pre-grant output reservation.");
+    }
     await tx.video.updateMany({
       where: { id: asset.videoId, status: { in: ["UPLOADING", "DRAFT"] } },
       data: { status: "VALIDATING" },
@@ -315,6 +339,13 @@ export class MediaProcessingLifecycleService {
           },
         });
         if (readyChanged.count !== 1) throw new MediaProcessingLeaseLostError();
+        if (job.inputIntegrityVersion === 1) {
+          // No further object writes belong to an accepted winning attempt.
+          // Keep it live; only retired losing namespaces enter cleanup here.
+          await freezeOutputAttempts(tx, [job.id], completedAt, [job.currentOutputAttemptId!]);
+          if (job.inputIntegrityParentJobId)
+            await freezeOutputAttempts(tx, [job.inputIntegrityParentJobId], completedAt);
+        }
         const ready = await tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
         if (
           job.inputIntegrityVersion === 1 &&
@@ -428,7 +459,22 @@ export class MediaProcessingLifecycleService {
     const generation =
       Math.max(video.mediaProcessingJobs[0]?.generation ?? 0, latestAdaptive?.generation ?? 0) + 1;
     const integrity = await this.transformedInputIntegrity(tx, source);
-    return tx.mediaProcessingJob.create({
+    let reservation: Awaited<ReturnType<typeof prepareDerivedOutputReservation>>;
+    try {
+      reservation = await prepareDerivedOutputReservation(
+        tx,
+        this.config,
+        video.channelId,
+        integrity,
+      );
+    } catch (error) {
+      // Backfill/recovery batches share a transaction across mixed V1/V2
+      // candidates. A bounded V2 policy refusal must not undo earlier work.
+      // The preparation helper has made no writes; SQL failures still escape.
+      if (isOutputAdmissionPolicyError(error)) return null;
+      throw error;
+    }
+    const job = await tx.mediaProcessingJob.create({
       data: {
         ...integrity,
         videoId,
@@ -444,6 +490,11 @@ export class MediaProcessingLifecycleService {
         priority: -10,
       },
     });
+    if (reservation)
+      await tx.mediaProcessingOutputReservation.create({
+        data: { ...reservation, processingJobId: job.id },
+      });
+    return job;
   }
 
   async createReprocessJob(tx: Prisma.TransactionClient, videoId: string) {
@@ -472,7 +523,13 @@ export class MediaProcessingLifecycleService {
     const generation =
       Math.max(video.mediaProcessingJobs[0]?.generation ?? 0, latestPlayback?.generation ?? 0) + 1;
     const integrity = await this.transformedInputIntegrity(tx, source);
-    return tx.mediaProcessingJob.create({
+    const reservation = await prepareDerivedOutputReservation(
+      tx,
+      this.config,
+      video.channelId,
+      integrity,
+    );
+    const job = await tx.mediaProcessingJob.create({
       data: {
         ...integrity,
         videoId,
@@ -487,6 +544,11 @@ export class MediaProcessingLifecycleService {
         stage: integrity.inputIntegrityVersion ? "INTEGRITY_QUEUED" : "REPROCESS_QUEUED",
       },
     });
+    if (reservation)
+      await tx.mediaProcessingOutputReservation.create({
+        data: { ...reservation, processingJobId: job.id },
+      });
+    return job;
   }
   private async transformedInputIntegrity(
     tx: Prisma.TransactionClient,
@@ -524,6 +586,7 @@ export class MediaProcessingLifecycleService {
       throw new Error("Trusted canonical input lineage is unavailable.");
     return {
       inputIntegrityVersion: 1,
+      outputProtocolVersion: producer.outputProtocolVersion,
       inputIntegritySessionId: producer.inputIntegritySessionId,
       inputIntegrityAccountId: producer.inputIntegrityAccountId,
       inputIntegritySourceAssetId: source.id,

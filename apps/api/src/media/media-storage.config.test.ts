@@ -4,6 +4,33 @@ import { loadMediaStorageConfig } from "./media-storage.config.js";
 import { R2SigV4 } from "./r2-sigv4.js";
 
 describe("media storage configuration", () => {
+  it("requires an explicit default-off V2 recovery rollout switch", () => {
+    expect(loadMediaStorageConfig({ APP_ENV: "test" }).recoveryV2Enabled).toBe(false);
+    expect(
+      loadMediaStorageConfig({ APP_ENV: "test", AYIN_UPLOAD_RECOVERY_V2_ENABLED: "0" })
+        .recoveryV2Enabled,
+    ).toBe(false);
+    expect(
+      loadMediaStorageConfig({ APP_ENV: "test", AYIN_UPLOAD_RECOVERY_V2_ENABLED: "1" })
+        .recoveryV2Enabled,
+    ).toBe(true);
+    expect(() =>
+      loadMediaStorageConfig({ APP_ENV: "test", AYIN_UPLOAD_RECOVERY_V2_ENABLED: "true" }),
+    ).toThrow();
+  });
+  it("separately validates conservative debt byte admission budgets", () => {
+    const config = loadMediaStorageConfig({ APP_ENV: "test" });
+    expect(config.recoveryDebtAccountBytes).toBe(0);
+    expect(config.recoveryDebtChannelBytes).toBe(0);
+    expect(
+      loadMediaStorageConfig({ APP_ENV: "test", AYIN_UPLOAD_RECOVERY_DEBT_ACCOUNT_BYTES: "123" })
+        .recoveryDebtAccountBytes,
+    ).toBe(123);
+    for (const value of ["-1", "Infinity", "1.5", "9007199254740992"])
+      expect(() =>
+        loadMediaStorageConfig({ APP_ENV: "test", AYIN_UPLOAD_RECOVERY_DEBT_CHANNEL_BYTES: value }),
+      ).toThrow();
+  });
   it("fails closed to the development adapter when R2 credentials are absent outside production", () => {
     const config = loadMediaStorageConfig({ APP_ENV: "test" } as NodeJS.ProcessEnv);
 

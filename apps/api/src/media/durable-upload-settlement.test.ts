@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   requireDurableUploadSettlement,
+  FiniteMultipartDurableUploadSettlement,
   readDurableUploadCapability,
   UnsupportedDurableUploadSettlement,
   type DurableUploadSettlementEvidence,
@@ -109,4 +110,39 @@ describe("read-only durable upload capability", () => {
     });
     expect(storage.verifyUploadCleanupSettlement).not.toHaveBeenCalled();
   });
+});
+
+describe("finite multipart V2 admission", () => {
+  const provider = new FiniteMultipartDurableUploadSettlement();
+  const finiteStorage = { ...storage, observeUploadCompletion: vi.fn() };
+  it("stays disabled unless the explicit switch is true", () => {
+    expect(() => requireDurableUploadSettlement(provider, finiteStorage, now)).toThrowError(
+      expect.objectContaining({ code: "UPLOAD_RECOVERY_UNSUPPORTED" }),
+    );
+    expect(readDurableUploadCapability(provider, finiteStorage, now, false).supported).toBe(false);
+    expect(requireDurableUploadSettlement(provider, finiteStorage, now, true)).toBe(2);
+    expect(readDurableUploadCapability(provider, finiteStorage, now, true).supported).toBe(true);
+    expect(readDurableUploadCapability(provider, finiteStorage, now, false).supported).toBe(false);
+  });
+  it("does not fabricate V1 settlement or require an impossible provider no-future proof", () => {
+    const adapter = { ...finiteStorage };
+    Reflect.deleteProperty(adapter, "verifyUploadCleanupSettlement");
+    expect(requireDurableUploadSettlement(provider, adapter, now, true)).toBe(2);
+    expect(JSON.stringify(provider.admissionEvidence())).not.toMatch(/NO_FUTURE|NO_LATE/);
+    expect(adapter.observeUploadCompletion).not.toHaveBeenCalled();
+  });
+  it.each(["development", "missing-observer", "unavailable", "wrong-policy"])(
+    "rejects %s",
+    (kind) => {
+      const adapter = { ...finiteStorage };
+      const evidence = provider.admissionEvidence();
+      if (kind === "development") Reflect.set(adapter, "kind", "development");
+      if (kind === "missing-observer") Reflect.deleteProperty(adapter, "observeUploadCompletion");
+      if (kind === "unavailable") Reflect.set(adapter, "available", false);
+      if (kind === "wrong-policy") Reflect.set(evidence, "uncertaintyPolicy", "DROP_UNKNOWN");
+      expect(() =>
+        requireDurableUploadSettlement({ admissionEvidence: () => evidence }, adapter, now, true),
+      ).toThrowError(expect.objectContaining({ code: "UPLOAD_RECOVERY_UNSUPPORTED" }));
+    },
+  );
 });

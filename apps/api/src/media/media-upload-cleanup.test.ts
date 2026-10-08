@@ -1,14 +1,17 @@
-import { describe, expect, it } from "vitest";
-import type { MediaUploadSession } from "@ayin/db";
+import { describe, expect, it, vi } from "vitest";
+import type { MediaUploadSession, Prisma } from "@ayin/db";
 import {
   cleanupOperationKey,
   uploadCleanupJobData,
   uploadCleanupRetentionDays,
+  registerUploadCleanupInTransaction,
+  registerProcessingSourceCleanup,
 } from "./media-upload-cleanup.js";
 
 const now = new Date("2026-10-05T00:00:00.000Z");
 const session = {
   id: "session",
+  sourceProtocolVersion: 1,
   channelId: "channel",
   objectKey: "channels/one/unique-source.mp4",
   revision: 4,
@@ -52,6 +55,53 @@ describe("Durable upload cleanup contracts", () => {
         (job) => job.kind,
       ),
     ).toEqual(["OBJECT"]);
+  });
+  it("propagates the source contract without rewriting historical V1", () => {
+    expect(
+      uploadCleanupJobData(session, "account", null, now).every(
+        (job) => job.cleanupContractVersion === 1,
+      ),
+    ).toBe(true);
+    expect(
+      uploadCleanupJobData(
+        { ...session, sourceProtocolVersion: 2, providerUploadId: "upload" },
+        "account",
+        null,
+        now,
+      ).every((job) => job.cleanupContractVersion === 2),
+    ).toBe(true);
+  });
+  it("refuses cancellation or processing cleanup if existing evidence uses another contract", async () => {
+    const current = { ...session, sourceProtocolVersion: 2, state: "COMPLETED" };
+    const write = vi.fn();
+    const tx = {
+      $queryRaw: vi.fn().mockResolvedValue([]),
+      mediaUploadSession: { findUnique: vi.fn().mockResolvedValue(current), update: write },
+      privacyMediaDeletionJob: {
+        findFirst: vi.fn().mockResolvedValue({ id: "v1-history" }),
+        createMany: write,
+      },
+    } as unknown as Prisma.TransactionClient;
+    await expect(
+      registerUploadCleanupInTransaction(tx, {
+        sessionId: session.id,
+        accountId: null,
+        requestId: "privacy",
+        state: "REVOKED",
+        now,
+      }),
+    ).rejects.toThrow("cleanup contract requires review");
+    await expect(
+      registerProcessingSourceCleanup(tx, {
+        jobId: "job",
+        accountId: "account",
+        sessionId: session.id,
+        sourceAssetId: "source",
+        stagingKey: session.objectKey,
+        now,
+      }),
+    ).rejects.toThrow("cleanup contract requires review");
+    expect(write).not.toHaveBeenCalled();
   });
   it("bounds configurable retention and rejects non-finite or fractional values", () => {
     expect(uploadCleanupRetentionDays("1")).toBe(1);

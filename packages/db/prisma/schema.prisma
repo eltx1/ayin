@@ -543,6 +543,7 @@ model MediaProcessingJob {
   outputR2ObjectKey String                   @unique @db.VarChar(1024)
   outputSizeBytes   BigInt?
   currentOutputAttemptId String? @db.Uuid
+  outputProtocolVersion Int @default(1)
   // 0 explicitly preserves pre-protocol jobs; no legacy identities are backfilled.
   inputIntegrityVersion       Int       @default(0)
   inputIntegritySessionId     String?   @db.Uuid
@@ -587,6 +588,45 @@ model MediaProcessingJob {
 
 // Address/claim ledger only, not another work queue. Never discard losing
 // attempts merely because a later claim became READY or a remote key is absent.
+enum MediaProcessingOutputWriteStatus {
+  DISPATCHED
+  ACKNOWLEDGED
+  UNKNOWN
+}
+
+// Fixed lifetime output budget. The source reservation exists before a part
+// grant and is bound once to its original processing job. Identity snapshots
+// intentionally survive source/job detachment; UNKNOWN never refunds spend.
+model MediaProcessingOutputReservation {
+  id String @id @default(uuid()) @db.Uuid
+  uploadSessionId String? @unique @db.Uuid
+  processingJobId String? @unique @db.Uuid
+  accountId String @db.Uuid
+  channelId String @db.Uuid
+  envelopeBytes BigInt
+  dispatchedBytes BigInt @default(0)
+  createdAt DateTime @default(now())
+  @@index([accountId])
+  @@index([channelId])
+}
+
+model MediaProcessingOutputWrite {
+  id String @id @default(uuid()) @db.Uuid
+  outputAttemptId String @db.Uuid
+  processingJobId String @db.Uuid
+  claimToken String @db.VarChar(255)
+  attempt Int
+  objectKey String @unique @db.VarChar(1024)
+  expectedSizeBytes BigInt
+  contentType String @db.VarChar(255)
+  status MediaProcessingOutputWriteStatus @default(DISPATCHED)
+  dispatchedAt DateTime @default(now())
+  acknowledgedAt DateTime?
+  outcomeUnknownAt DateTime?
+  outputAttempt MediaProcessingOutputAttempt @relation(fields: [outputAttemptId], references: [id], onDelete: Restrict)
+  @@index([outputAttemptId, status])
+}
+
 model MediaProcessingOutputAttempt {
   channelId String @db.Uuid
   videoId String @db.Uuid
@@ -599,6 +639,9 @@ model MediaProcessingOutputAttempt {
   canonicalR2ObjectKey String @unique @db.VarChar(1024)
   hlsR2Prefix String @unique @db.VarChar(1024)
   thumbnailR2ObjectKey String @unique @db.VarChar(1024)
+  protocolVersion Int @default(1)
+  writesFrozenAt DateTime?
+  writes MediaProcessingOutputWrite[]
   createdAt DateTime @default(now())
   @@unique([processingJobId, claimToken])
   @@index([processingJobId, createdAt])

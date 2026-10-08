@@ -48,3 +48,6 @@ platforms/ios/DerivedData/
 platforms/tvos/AYINTV.xcodeproj/
 platforms/tvos/Config/Local.xcconfig
 platforms/tvos/DerivedData/
+
+# Isolated browser signature acceptance
+test-results-r2-length/

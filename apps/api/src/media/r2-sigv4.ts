@@ -136,9 +136,15 @@ export class R2SigV4 {
     query?: Array<[string, string]>;
     expiresInSeconds: number;
     contentType?: string;
+    contentLength?: number;
     metadataHeaders?: Record<string, string>;
     now?: Date;
   }): { url: string; expiresAt: Date } {
+    if (
+      input.contentLength !== undefined &&
+      (!Number.isSafeInteger(input.contentLength) || input.contentLength < 1)
+    )
+      throw new Error("Invalid exact upload body length.");
     const now = input.now ?? new Date();
     const amzDate = formatAmzDate(now);
     const dateStamp = amzDate.slice(0, 8);
@@ -146,6 +152,9 @@ export class R2SigV4 {
     const headers = signedHeaders(
       {
         host: this.endpoint.host,
+        ...(input.contentLength !== undefined
+          ? { "content-length": String(input.contentLength) }
+          : {}),
         ...(input.contentType ? { "content-type": input.contentType } : {}),
       },
       input.metadataHeaders,

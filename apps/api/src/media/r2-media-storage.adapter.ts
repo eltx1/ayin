@@ -142,9 +142,17 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
     key: string;
     uploadId: string;
     partNumber: number;
+    expectedSizeBytes?: number;
     expiresInSeconds: number;
     now?: Date;
   }): Promise<{ url: string; expiresAt: Date }> {
+    if (
+      input.expectedSizeBytes !== undefined &&
+      (!Number.isSafeInteger(input.expectedSizeBytes) ||
+        input.expectedSizeBytes < 1 ||
+        input.expectedSizeBytes > 5 * 1024 ** 3)
+    )
+      throw new Error("Invalid exact multipart body length.");
     return this.signer.presign({
       method: "PUT",
       key: input.key,
@@ -152,6 +160,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
         ["partNumber", String(input.partNumber)],
         ["uploadId", input.uploadId],
       ],
+      ...(input.expectedSizeBytes !== undefined ? { contentLength: input.expectedSizeBytes } : {}),
       expiresInSeconds: input.expiresInSeconds,
       ...(input.now ? { now: input.now } : {}),
     });
