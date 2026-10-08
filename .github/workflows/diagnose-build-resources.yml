@@ -1,5 +1,5 @@
 name: Diagnose AYIN deployment resources
-# Read-only owned acceptance manifest and environment preconditions; no provider calls.
+# Read-only SSH boundary and deployed-module initialization; provider methods forbidden.
 
 on:
   push:
@@ -60,7 +60,7 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           echo "Pinned AYIN SSH host fingerprint verified."
 
-      - name: Read owned acceptance state without provider calls
+      - name: Read SSH boundary and initialize modules without provider methods
         shell: bash
         run: |
           set -euo pipefail
@@ -70,90 +70,66 @@ jobs:
           set -euo pipefail
           [[ "$(id -un)" == 'ayin' && "$HOME" == '/home/ayin' ]]
           test ! -w /home/horusapp
+          bool() { if "$@"; then printf true; else printf false; fi; }
+          current="$(readlink -f /home/ayin/htdocs/current)"
           cd /home/ayin/htdocs/current
+          printf '{"boundary":{"envDirectoryWritable":%s,"releasesDirectoryWritable":%s,"apiEnvReadable":%s,"nonRoot":%s,"expectedHome":%s,"currentRealpathMatchesRelease":%s,"releaseShaMatches":%s}}\n' \
+            "$(bool test -w /home/ayin/env)" "$(bool test -w /home/ayin/htdocs/releases)" \
+            "$(bool test -r /home/ayin/env/api.env)" "$(bool test "$(id -u)" != 0)" \
+            "$(bool test "$HOME" = /home/ayin)" \
+            "$(bool bash -c '[[ "$1" == /home/ayin/htdocs/releases/* && "$1" == "$2" ]]' _ "$current" "$(pwd -P)")" \
+            "$(bool test "$(git rev-parse HEAD)" = a6c15842bd2cf6990715f18d58a550a5929d8d41)"
+          [[ "$current" == /home/ayin/htdocs/releases/* ]]
           [[ "$(git rev-parse HEAD)" == 'a6c15842bd2cf6990715f18d58a550a5929d8d41' ]]
-          python3 - <<'PYTHON'
-          import json, os, stat
-          
-          RUN_ID = '34c4947c-ba13-4fc9-9087-0d1db8cc4d28'
-          PREFIX = 'ayin-recovery-acceptance/' + RUN_ID + '/'
-          RELEASE = 'a6c15842bd2cf6990715f18d58a550a5929d8d41'
-          DIRECTORY = '/home/ayin/.r2-acceptance-manifests'
-          NAMES = ['small.bin', 'multipart.bin', 'abort.bin']
-          STATES = {'not-dispatched', 'dispatched-unknown', 'acknowledged', 'acknowledged-receipt-discarded'}
-          STAGES = {'reserved', 'signature-capability-verified', 'all-exact-keys-clear', 'wrong-length-put-dispatched', 'part-1-put-dispatched', 'part-2-put-dispatched', 'wrong-length-provider-rejected-with-no-part', 'resume-authoritative-part-one-observed', 'direct-get-sha256-and-ayin-root-verified', 'abort-and-absence-observed', 'owned-object-deletion-and-absence-observed'}
-          CODES = set('ALREADY_DEPLOYED_RELEASE_REQUIRED AUTHORITATIVE_PARTS_MISMATCH BOUNDED_TIMEOUT BROWSER_PUT_NOT_ACCEPTED CLEANUP_OWNERSHIP_NOT_VERIFIED COLLISION_CHECK_STATUS_INVALID COMPLETION_OBSERVATION_MISMATCH CREATE_ID_INVALID_OR_UNKNOWN DEFAULT_OFF_RELEASE_REQUIRED DEPLOYED_ADAPTER_CAPABILITY_MISSING DEPLOYED_EXACT_LENGTH_SIGNING_MISSING DEPLOYED_EXACT_LENGTH_VALIDATION_MISSING DEPLOYED_IDENTITY_ALGORITHM_MISMATCH DEPLOYED_RELEASE_SHA_MISMATCH DIRECT_GET_BINDING_MISMATCH DIRECT_GET_LENGTH_MISMATCH DIRECT_GET_STATUS_INVALID DIRECT_READBACK_IDENTITY_MISMATCH DIRTY_DEPLOYED_RELEASE EXACT_CLEANUP_APPROVAL_REQUIRED EXACT_LENGTH_GRANT_REQUIRED EXACT_LENGTH_REJECTION_NOT_PROVEN EXACT_RELEASE_REQUIRED EXPLICIT_APPROVAL_REQUIRED FIXED_PRODUCTION_BUCKET_REQUIRED FIXED_SCOPE_REQUIRED INVALID_ARGUMENTS INVALID_BROWSER_REPLY INVALID_FIXTURE_BYTES INVALID_PROVIDER_ORIGIN ISOLATED_PRODUCTION_ENV_REQUIRED MULTIPART_STILL_OBSERVED PREEXISTING_OR_RESIDUAL_OBJECT PREEXISTING_OR_UNCERTAIN_ALLOCATION PRODUCTION_CONFIG_MISMATCH PROVIDER_OR_PROTOCOL_FAILURE PROVIDER_REQUEST_LIMIT PROVIDER_TARGET_OUT_OF_SCOPE PROVIDER_TOTAL_RESPONSE_LIMIT RESPONSE_BODY_REQUIRED RESPONSE_BYTE_LIMIT RETAINED_UNCERTAINTY_DEBT RUN_ID_ALREADY_RESERVED_OR_UNWRITABLE STDIO_LINE_LIMIT STDIO_PROTOCOL_FAILED UNSAFE_MANIFEST_DIRECTORY UNSAFE_MANIFEST_PARENT'.split())
-          
-          def project(document):
-              assert type(document) is dict
-              assert document.get('schema') == 1
-              assert document.get('runId') == RUN_ID
-              assert document.get('bucket') == 'ayin-production-media'
-              assert document.get('prefix') == PREFIX
-              assert document.get('releaseSha') == RELEASE
-              assert document.get('status') in {'RESERVED', 'OBSERVATIONS_PASSED', 'FAILED'}
-              assert document.get('stage') in STAGES
-              assert document.get('code') is None or document.get('code') in CODES
-              fixtures = document.get('fixtures')
-              assert type(fixtures) is list and len(fixtures) == 3
-              assert [item.get('name') for item in fixtures] == NAMES
-              result = []
-              for item, name in zip(fixtures, NAMES):
-                  assert item.get('key') == PREFIX + name
-                  assert all(item.get(field) in STATES for field in ['create', 'complete', 'abort', 'deletion'])
-                  assert type(item.get('debt')) is bool
-                  assert item.get('uploadId') is None or (type(item.get('uploadId')) is str and 0 < len(item['uploadId']) <= 1024)
-                  assert type(item.get('stages')) is list and len(item['stages']) <= 256
-                  result.append({'name':name, **{field:item[field] for field in ['create','complete','abort','deletion']}, 'uploadIdPresent':bool(item.get('uploadId')), 'debt':item['debt'], 'stageCount':len(item['stages'])})
-              return {'manifestExists':True, 'validation':'valid', 'status':document['status'], 'stage':document['stage'], 'code':document['code'], 'fixtures':result}
-          
-          def read_projection():
-              directory_fd = file_fd = None
-              exists = None
-              try:
-                  assert os.path.realpath(DIRECTORY) == DIRECTORY
-                  directory_fd = os.open(DIRECTORY, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-                  directory_stat = os.fstat(directory_fd)
-                  assert directory_stat.st_uid == os.getuid() and directory_stat.st_mode & 0o077 == 0
-                  filename = RUN_ID + '.json'
-                  info = os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
-                  exists = True
-                  assert stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_mode & 0o077 == 0
-                  assert 0 < info.st_size <= 65536
-                  file_fd = os.open(filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
-                  opened = os.fstat(file_fd)
-                  assert stat.S_ISREG(opened.st_mode) and opened.st_dev == info.st_dev and opened.st_ino == info.st_ino
-                  assert opened.st_uid == os.getuid() and opened.st_mode & 0o077 == 0 and 0 < opened.st_size <= 65536
-                  raw = os.read(file_fd, 65537)
-                  assert len(raw) <= 65536
-                  return project(json.loads(raw))
-              except FileNotFoundError:
-                  return {'manifestExists':False, 'validation':'absent'}
-              except Exception:
-                  return {'manifestExists':exists, 'validation':'unavailable_or_invalid'}
-              finally:
-                  if file_fd is not None: os.close(file_fd)
-                  if directory_fd is not None: os.close(directory_fd)
-          
-          if __name__ == '__main__':
-              print(json.dumps(read_projection()), flush=True)
-          PYTHON
-          if ! timeout 10s node deploy/run-with-env.cjs /home/ayin/env/api.env node - 2>/dev/null <<'JAVASCRIPT'
-          const env = process.env;
-          const result = {
-            appEnvProduction: env.APP_ENV === 'production',
-            nodeEnvProduction: env.NODE_ENV === 'production',
-            bucketMatches: env.R2_BUCKET === 'ayin-production-media',
-            accountIdHas32Hex: /^[a-f0-9]{32}$/.test(env.R2_ACCOUNT_ID ?? ''),
-            recoveryV2DefaultOff: env.AYIN_UPLOAD_RECOVERY_V2_ENABLED === undefined || env.AYIN_UPLOAD_RECOVERY_V2_ENABLED === '0',
-          };
-          for (const [key, field] of [['R2_PART_SIZE_BYTES', 'partSizeBytes'], ['R2_UPLOAD_URL_TTL_SECONDS', 'uploadUrlTtlSeconds']]) {
-            const value = env[key];
-            if (/^[0-9]{1,16}$/.test(value ?? '') && Number.isSafeInteger(Number(value))) result[field] = Number(value);
-          }
-          process.stdout.write(JSON.stringify({runtime: result}) + '\n');
+          if ! timeout 20s node deploy/run-with-env.cjs /home/ayin/env/api.env node - 2>/dev/null <<'JAVASCRIPT'
+          globalThis.fetch = () => { throw new Error('DIAGNOSTIC_NETWORK_FORBIDDEN'); };
+          const { pathToFileURL } = require('node:url');
+          const { resolve } = require('node:path');
+          const emit = (value) => process.stdout.write(JSON.stringify(value) + '\n');
+          const errorClass = (error) => ['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'ZodError'].includes(error?.name) ? error.name : 'OtherError';
+          const specs = [
+            ['config', 'apps/api/dist/media/media-storage.config.js', ['loadMediaStorageConfig']],
+            ['adapter', 'apps/api/dist/media/r2-media-storage.adapter.js', ['R2MediaStorageAdapter']],
+            ['signer', 'apps/api/dist/media/r2-sigv4.js', ['R2SigV4']],
+            ['xml', 'apps/api/dist/media/r2-xml.js', ['parseR2Xml', 'readR2XmlText', 'xmlField']],
+            ['metadata', 'apps/api/dist/media/r2-upload-completion.js', ['matchUploadCompletionObject', 'objectMetadataFromHeaders']],
+            ['identity', 'packages/types/dist/upload-file-identity.js', ['hashUploadFileIdentity']],
+          ];
+          (async () => {
+            const modules = {};
+            const outcomes = await Promise.all(specs.map(async ([label, path, required]) => {
+              try {
+                const module = await import(pathToFileURL(resolve(process.cwd(), path)).href);
+                return {label, module, imported: true, exportsPresent: required.every((key) => typeof module[key] === 'function')};
+              } catch {
+                return {label, imported: false, exportsPresent: false};
+              }
+            }));
+            for (const outcome of outcomes) {
+              emit({module: outcome.label, imported: outcome.imported, requiredExportsPresent: outcome.exportsPresent});
+              if (outcome.exportsPresent) modules[outcome.label] = outcome.module;
+            }
+            if (!modules.config) return;
+            let config;
+            try {
+              config = modules.config.loadMediaStorageConfig(process.env);
+              emit({config: {loaded: true, mode: ['r2', 'development', 'e2e'].includes(config.mode) ? config.mode : 'unknown', bucketMatches: config.bucket === 'ayin-production-media', endpointShapeMatches: /^https:\/\/[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(config.endpoint ?? ''), credentialsComplete: [config.accountId, config.bucket, config.accessKeyId, config.secretAccessKey].every((value) => typeof value === 'string' && value.length > 0), recoveryV2Off: config.recoveryV2Enabled === false}});
+            } catch (error) {
+              emit({config: {loaded: false, errorClass: errorClass(error)}});
+              return;
+            }
+            for (const [label, key] of [['adapter', 'R2MediaStorageAdapter'], ['signer', 'R2SigV4']]) {
+              if (!modules[label]) continue;
+              try {
+                new modules[label][key](config);
+                emit({constructor: label, constructed: true});
+              } catch (error) {
+                emit({constructor: label, constructed: false, errorClass: errorClass(error)});
+              }
+            }
+          })().catch(() => emit({initializationProjection: 'unavailable'}));
           JAVASCRIPT
           then
-            echo '{"runtime":"unavailable"}'
+            echo '{"initializationProjection":"unavailable"}'
           fi
           REMOTE
