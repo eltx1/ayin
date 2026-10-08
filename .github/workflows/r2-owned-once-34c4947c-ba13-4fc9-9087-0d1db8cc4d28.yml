@@ -1,19 +1,18 @@
 name: Owned R2 one-time invocation 34c4947c-ba13-4fc9-9087-0d1db8cc4d28
 
-# LOCAL REVIEW TEMPLATE ONLY. Inert until the reviewed, deployed current-main
-# SHA replaces the invalid placeholder AND an operator explicitly advances the
-# precreated exact invocation branch from that SHA to its single-file child.
-# Precreate at RELEASE_SHA, verify its head, then use update_ref with
-# force=false and expected_sha=RELEASE_SHA. Branch creation is not invocation.
-# Never merge this invocation into main. Never rerun or recreate its branch.
-# MANDATORY EXTERNAL PRECONDITION, currently unfulfilled: before filling the SHA
-# or publishing, select the exact successful Production deployment run ID;
-# download its immutable deploy-proof.env artifact and verify the artifact digest.
-# Require proof release_sha=pinned current main, deploy_run_id=selected run ID,
-# deployed_as=ayin, and validation_run_id=successful main-push quality run for
-# that same SHA. Record both exact run IDs and the verified artifact digest in
-# the final invocation review record. API head_sha alone does not bind the
-# separate release_sha input of a manual deployment and is insufficient proof.
+# LOCAL REVIEW ONLY: bounded recovery from bootstrap failure in run 37858547088.
+# No GitHub rerun, branch recreation, history deletion, or manifest reset.
+# After independent review and fresh prerequisite verification, the sole allowed
+# source invocation is a nonforced expected-head update on the existing branch:
+# parent/before/expected_sha=dbcca97054e25a2eb7f74366ffa8256143091036.
+# The single child commit may modify only this workflow. RELEASE_SHA and the
+# provider/browser driver remain pinned to the already-deployed main release.
+# The exact failed run, attempt, job and complete pre-provider step record are
+# revalidated below. No other failed run, retry, or execution outcome is exempt.
+# Preserve the mandatory deployment-provenance record: immutable deploy-proof.env,
+# verified artifact digest, release_sha=current main, deployed_as=ayin, exact
+# deploy_run_id and successful same-SHA main-push validation_run_id. API head_sha
+# alone cannot prove a manual deployment's separate release_sha input.
 # Exact active remote SHA and healthy-host verification remain mandatory.
 on:
   push:
@@ -74,7 +73,7 @@ jobs:
           [[ "$GITHUB_WORKFLOW_REF" == "eltx1/ayin/$INVOCATION_PATH@refs/heads/$INVOCATION_BRANCH" ]]
           [[ "$INVOCATION_WORKFLOW_SHA" == "$GITHUB_SHA" ]]
 
-      - name: Require first exact invocation and reviewed deployed current main
+      - name: Require the exact bootstrap exception and reviewed deployed current main
         uses: actions/github-script@v8
         with:
           script: |
@@ -83,30 +82,87 @@ jobs:
             const branchName = process.env.INVOCATION_BRANCH;
             const workflowPath = process.env.INVOCATION_PATH;
             const payload = context.payload;
+            const failedSha = 'dbcca97054e25a2eb7f74366ffa8256143091036';
+            const failedRunId = 37858547088;
+            const failedJobId = 113588502016;
+            const workflowId = 379112770;
             if (context.eventName !== 'push' || context.repo.owner !== repo.owner || context.repo.repo !== repo.repo ||
                 context.ref !== `refs/heads/${branchName}` || payload.repository?.fork !== false ||
                 payload.repository?.default_branch !== 'main' || payload.created !== false ||
                 payload.deleted !== false || payload.forced !== false ||
-                payload.before !== sha ||
+                payload.before !== failedSha ||
                 payload.after !== context.sha || payload.head_commit?.id !== context.sha ||
                 process.env.GITHUB_RUN_ATTEMPT !== '1') {
-              throw new Error('Only the explicit first invocation branch update from the reviewed release is eligible.');
+              throw new Error('Only the reviewed recovery update from the exact bootstrap-failed commit is eligible.');
             }
             const { data: invocationBranch } = await github.rest.repos.getBranch({ ...repo, branch: branchName });
             if (invocationBranch.commit.sha !== context.sha) throw new Error('Invocation branch changed.');
             const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: context.sha });
-            if (commit.sha !== context.sha || commit.parents.length !== 1 || commit.parents[0].sha !== sha ||
+            if (commit.sha !== context.sha || commit.parents.length !== 1 || commit.parents[0].sha !== failedSha ||
                 commit.files?.length !== 1 || commit.files[0].filename !== workflowPath ||
-                commit.files[0].status !== 'added' || commit.files[0].previous_filename) {
-              throw new Error('Invocation must add only the reviewed workflow directly on the exact release.');
+                commit.files[0].status !== 'modified' || commit.files[0].previous_filename) {
+              throw new Error('Recovery must modify only this workflow directly on the exact failed invocation.');
+            }
+            const { data: failed } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: failedRunId });
+            const matchesRun = (run, id, head, number) => run?.id === id && run.head_sha === head &&
+              run.path === workflowPath && run.workflow_id === workflowId && run.head_branch === branchName &&
+              run.event === 'push' && run.run_attempt === 1 && run.run_number === number &&
+              run.name === 'Owned R2 one-time invocation 34c4947c-ba13-4fc9-9087-0d1db8cc4d28';
+            if (!matchesRun(failed, failedRunId, failedSha, 1) || failed.status !== 'completed' || failed.conclusion !== 'failure') {
+              throw new Error('The exact original attempt must remain the known completed bootstrap failure.');
             }
             const { data: runs } = await github.rest.actions.listWorkflowRuns({
-              ...repo, workflow_id: workflowPath.split('/').at(-1), branch: branchName, event: 'push', per_page: 100,
+              ...repo, workflow_id: workflowId, per_page: 100,
             });
-            if (runs.total_count !== 1 || runs.workflow_runs.length !== 1 ||
-                String(runs.workflow_runs[0].id) !== String(context.runId) ||
-                runs.workflow_runs[0].head_sha !== context.sha || runs.workflow_runs[0].run_attempt !== 1) {
-              throw new Error('An earlier or ambiguous invocation exists; do not replay.');
+            const prior = runs.workflow_runs.filter(run => run.id === failedRunId);
+            const current = runs.workflow_runs.filter(run => run.id === context.runId);
+            if (context.runId === failedRunId || runs.total_count !== 2 || runs.workflow_runs.length !== 2 ||
+                prior.length !== 1 || current.length !== 1 ||
+                !matchesRun(prior[0], failedRunId, failedSha, 1) || prior[0].status !== 'completed' || prior[0].conclusion !== 'failure' ||
+                !matchesRun(current[0], context.runId, context.sha, 2) || current[0].status !== 'in_progress' || current[0].conclusion !== null) {
+              throw new Error('Only the exact failed first run plus this first-attempt recovery run may exist.');
+            }
+            const { data: source } = await github.rest.repos.getContent({ ...repo, path: workflowPath, ref: failedSha });
+            if (source.type !== 'file' || source.encoding !== 'base64' ||
+                require('node:crypto').createHash('sha256').update(Buffer.from(source.content, 'base64')).digest('hex') !==
+                '95a978fe106ed25768995d3c834e6758430e3cbd8bd05d2c46c92ff75e0e2fad') {
+              throw new Error('Original failed workflow source does not match the reviewed bootstrap-only evidence.');
+            }
+            const { data: jobs } = await github.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/jobs', {
+              ...repo, run_id: failedRunId, attempt_number: 1, per_page: 100,
+            });
+            const job = jobs.jobs?.[0];
+            if (jobs.total_count !== 1 || jobs.jobs.length !== 1 || job.id !== failedJobId || job.run_id !== failedRunId ||
+                job.run_attempt !== 1 || job.head_sha !== failedSha || job.head_branch !== branchName ||
+                job.name !== 'acceptance' || job.status !== 'completed' || job.conclusion !== 'failure') {
+              throw new Error('Original bootstrap job identity or attempt is ambiguous.');
+            }
+            const expectedSteps = [
+              [1, 'Set up job', 'success'],
+              [2, 'Refuse placeholder and require the fixed approved scope', 'success'],
+              [3, 'Require first exact invocation and reviewed deployed current main', 'success'],
+              [4, 'Checkout exact already-deployed main tooling', 'success'],
+              [5, 'Set up pinned Node', 'failure'],
+              [6, 'Verify the unchanged exact fixture plan and all 38 offline guards', 'skipped'],
+              [7, 'Configure existing pinned AYIN SSH trust', 'skipped'],
+              [8, 'Require healthy exact active release without provider calls', 'skipped'],
+              [9, 'Recheck current main and successful deployment immediately before execution', 'skipped'],
+              [10, 'Invoke the unchanged approved driver exactly once', 'skipped'],
+              [11, 'Upload only allowlisted observations', 'success'],
+              [12, 'Remove ephemeral runner SSH material', 'success'],
+              [23, 'Post Set up pinned Node', 'skipped'],
+              [24, 'Post Checkout exact already-deployed main tooling', 'success'],
+              [25, 'Complete job', 'success'],
+            ];
+            if (!Array.isArray(job.steps) || job.steps.length !== expectedSteps.length ||
+                job.steps.some((step, index) => step.status !== 'completed' ||
+                  step.number !== expectedSteps[index][0] || step.name !== expectedSteps[index][1] ||
+                  step.conclusion !== expectedSteps[index][2])) {
+              throw new Error('Original run must have only the known Node bootstrap failure with every SSH/provider step skipped.');
+            }
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({ ...repo, run_id: failedRunId, per_page: 100 });
+            if (artifacts.total_count !== 0 || artifacts.artifacts.length !== 0) {
+              throw new Error('Unexpected original-run artifacts make the bootstrap exception inconclusive.');
             }
             const { data: branch } = await github.rest.repos.getBranch({ ...repo, branch: 'main' });
             if (branch.commit.sha !== sha) throw new Error('Acceptance requires current main.');
@@ -126,6 +182,7 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Verify the unchanged exact fixture plan and all 38 offline guards
         shell: bash
