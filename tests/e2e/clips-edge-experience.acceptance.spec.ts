@@ -525,7 +525,7 @@ for (const locale of ["en", "ar"] as const) {
   });
 }
 
-test("a valid same-video200 with a newly Kids audience conceals adult cards and revalidates a Kids-only feed", async ({
+test("a valid same-video200 with a newer source and newly Kids audience conceals adult cards and revalidates a Kids-only feed", async ({
   page,
 }) => {
   const catalog = fixture<Catalog>("seed");
@@ -565,13 +565,14 @@ test("a valid same-video200 with a newly Kids audience conceals adult cards and 
         capabilityHeld = true;
         await capabilityGate;
         // The actual isolated API reads the same profile after its kind changed.
-        // This eligible video remains the same; only the authoritative audience
-        // narrows. The response body is not fabricated or rewritten.
+        // This eligible video remains the same while its source and audience
+        // change. The response body is not fabricated or rewritten.
         const actual = await route.fetch();
         expect(actual.status()).toBe(200);
         const body = await actual.json();
         narrowerResponse = { id: body.video.id, isKids: body.viewer.isKids };
         expect(narrowerResponse).toEqual({ id: catalog.videos[1]!.id, isKids: true });
+        expect(body.video.source.objectKey).toContain("/refreshed/canonical.mp4");
         await route.fulfill({ response: actual });
       },
     );
@@ -584,6 +585,10 @@ test("a valid same-video200 with a newly Kids audience conceals adult cards and 
       page.locator(`[data-clip-item][data-video-id="${catalog.videos[0]!.id}"]`),
     ).toHaveCount(1);
     fixture("default-kids", { fixtureId: catalog.fixtureId, isKids: true });
+    fixture("refresh-source", {
+      fixtureId: catalog.fixtureId,
+      videoId: catalog.videos[1]!.id,
+    });
     holdIdentity = true;
     releaseCapability();
     await expect.poll(() => identityHeld).toBe(true);

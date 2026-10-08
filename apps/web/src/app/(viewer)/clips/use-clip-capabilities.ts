@@ -67,19 +67,20 @@ export async function readClipCapabilities(
     );
     controller.signal.throwIfAborted();
     signal.throwIfAborted();
-    if (
-      !audience.isCurrent() ||
-      data.video.id !== target.id ||
-      data.video.slug !== target.slug ||
-      data.video.source.objectKey !== target.sourceObjectKey ||
-      data.video.source.mimeType !== "video/mp4" ||
-      (target.expectedKids && data.detail.commentsSlot.enabled)
-    )
+    if (!audience.isCurrent() || data.video.id !== target.id || data.video.slug !== target.slug)
       throw new PlaybackReadError(409);
     // The same profile can become Kids before this request starts. A verified
     // narrower audience is policy evidence, not an optional caption failure.
     // Retire the old feed through the existing bounded Viewer boundary.
     if (data.viewer.isKids !== target.expectedKids) throw new PlaybackReadError(409, true);
+    // A newer ready generation may select another source for the same video.
+    // Optional source compatibility must not hide verified audience narrowing.
+    if (
+      data.video.source.objectKey !== target.sourceObjectKey ||
+      data.video.source.mimeType !== "video/mp4" ||
+      (target.expectedKids && data.detail.commentsSlot.enabled)
+    )
+      throw new PlaybackReadError(409);
 
     // Keep track/option DOM bounded even if a valid catalog grows many tracks.
     // The unavailable state offers a truthful retry/Watch fallback, not a

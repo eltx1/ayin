@@ -112,6 +112,17 @@ describe("selected Clip capability lease", () => {
     ).rejects.toMatchObject({ status: 409, identityInvalid: true });
   });
 
+  it("preserves verified Kids narrowing when the same video selects a newer source", async () => {
+    const body = playback();
+    body.viewer.isKids = true;
+    body.detail.commentsSlot.enabled = false;
+    body.video.source.objectKey = "playback/new-generation/fallback.mp4";
+    vi.stubGlobal("fetch", async () => Response.json(body));
+    await expect(
+      readClipCapabilities(target, audience, new AbortController().signal),
+    ).rejects.toMatchObject({ status: 409, identityInvalid: true });
+  });
+
   it("does not read before a current audience lease or for an invalid feed target", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);

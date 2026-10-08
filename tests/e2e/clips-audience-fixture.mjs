@@ -149,6 +149,16 @@ try {
           where: { id: owned.profileId },
           data: { isKids: input.isKids },
         });
+      } else if (command === "refresh-source") {
+        const index = owned.videos.findIndex((video) => video.id === input.videoId);
+        if (index < 0) throw new Error("Owned video required.");
+        const updated = await tx.mediaAsset.updateMany({
+          where: { videoId: input.videoId, channelId: channel.id, kind: "SOURCE_VIDEO" },
+          data: {
+            r2ObjectKey: `e2e/clips-audience/${input.fixtureId}/${index}/refreshed/canonical.mp4`,
+          },
+        });
+        if (updated.count !== 1) throw new Error("Exactly one owned source required.");
       } else if (command === "switch-default") {
         await tx.viewerProfile.updateMany({
           where: { id: { in: [owned.profileId, owned.alternateProfileId] } },

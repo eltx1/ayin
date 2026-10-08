@@ -1,8 +1,10 @@
 # AYIN Clips Web/PWA experience evidence
 
-Prepared 7 October 2026. This record describes the pre-publication source, browser
-and laboratory acceptance. Exact pull-request CI, merge and deployment proofs are
-separate release gates; local results do not establish that production is running them.
+Prepared 7 October 2026, with the release dependency refresh recorded on 8 October.
+The browser and laboratory results below describe the original Clips candidate
+before that refresh. Exact pull-request CI, refreshed-runtime validation, merge and
+deployment proofs are separate release gates; these local results do not establish
+that production is running them.
 
 ## Source and scope
 
@@ -14,13 +16,36 @@ separate release gates; local results do not establish that production is runnin
 - Production-build ID: `G5EuxOFxMPBMDSPMlA9bN`. All 1,973 tracked source files in
   that archive were byte-verified. This validation document is added afterward;
   the application and test files are unchanged from the measured implementation.
-- No dependency, backend, schema, durable-media transport, service-worker cache,
-  provider, credential, access, historical accounting or native/store change.
+- The original measured candidate added no dependency changes. The release refresh
+  below updates the existing Next.js patch version. There is no backend, schema,
+  durable-media transport, service-worker cache, provider, credential, access,
+  historical accounting or native/store change.
 
 The implementation and bounded-session contract are described in [CLIPS.md](CLIPS.md).
 Important changes are measured viewport geometry, one active media owner, three
 resident articles, authored controls/native fallback, identity-safe optional capabilities,
 full Details, EN/AR input/focus behavior and bounded in-memory return state.
+
+## Release dependency refresh: 8 October
+
+The first exact-head production audit rejected the existing Next.js 16.3.6 pin for
+[GHSA-cjq9-62q9-8jv4](https://github.com/advisories/GHSA-cjq9-62q9-8jv4), an image
+optimization SSRF advisory. The minimal release patch moves Next.js and its ESLint
+configuration to the patched 16.3.8 release and preserves the existing sharp 0.35.5
+override under the new Next.js selector. It does not suppress the audit or broaden
+image origins, permissions or security settings.
+
+The final independent review also found that optional source-key compatibility
+could mask verified Kids narrowing when Watch selected a newer source for the same
+video. The release orders the authoritative audience check before optional source
+checks. A focused regression combines both changes, and the actual-API browser
+journey now changes the owned fixture source while narrowing its profile to Kids.
+
+The original 16.3.6 measurements remain historical evidence for the Clips changes;
+they are not exact-runtime performance claims for the patched release. The patched
+head must pass fresh frozen-lock, audit, quality and full browser checks, with its
+own runtime measurements, before merge. PR release evidence records those results
+separately from the distributions below.
 
 ## Automated acceptance
 
