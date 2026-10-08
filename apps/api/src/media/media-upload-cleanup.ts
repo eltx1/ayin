@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { MediaUploadSession, Prisma } from "@ayin/db";
+import { Prisma, type MediaUploadSession } from "@ayin/db";
 
 export const MAX_MEDIA_CLEANUP_ATTEMPTS = 5;
 
@@ -27,6 +27,7 @@ export function uploadCleanupJobData(
   const shared = {
     accountId,
     requestId,
+    cleanupContractVersion: session.sourceProtocolVersion === 2 ? 2 : 1,
     scope: "UPLOAD_SESSION" as const,
     channelId: session.channelId,
     uploadSessionId: session.id,
@@ -65,6 +66,23 @@ export function uploadCleanupJobData(
   ];
 }
 
+/** Existing evidence retains the lane in which it was created. A mismatch
+ * cannot be repaired by silently upgrading a V1 row or skipping its duplicate.
+ */
+async function assertUploadCleanupContract(
+  tx: Prisma.TransactionClient,
+  session: MediaUploadSession,
+) {
+  const incompatible = await tx.privacyMediaDeletionJob.findFirst({
+    where: {
+      uploadSessionId: session.id,
+      cleanupContractVersion: { not: session.sourceProtocolVersion === 2 ? 2 : 1 },
+    },
+    select: { id: true },
+  });
+  if (incompatible) throw new Error("The source cleanup contract requires review.");
+}
+
 // Caller owns sorted Account locks and exact-set source locks before this helper.
 // Revoke, snapshot cleanup addresses and adopt ALL prior obligations atomically.
 // No provider operation or grant is made while the transaction is open.
@@ -81,6 +99,7 @@ export async function registerUploadCleanupInTransaction(
   await tx.$queryRaw`SELECT id FROM "MediaUploadSession" WHERE id=${input.sessionId}::uuid FOR UPDATE /* ayin-upload-cleanup-session-lock */`;
   const previous = await tx.mediaUploadSession.findUnique({ where: { id: input.sessionId } });
   if (!previous) return false;
+  await assertUploadCleanupContract(tx, previous);
   // Transfer acceptance is a boundary. Cancelling a completed processing job
   // needs output-write cleanup, not just this original-upload obligation.
   if (previous.state === "COMPLETED" && !input.requestId)
@@ -100,6 +119,23 @@ export async function registerUploadCleanupInTransaction(
     data: uploadCleanupJobData(session, input.accountId, input.requestId ?? null, input.now),
     skipDuplicates: true,
   });
+  if (session.sourceProtocolVersion === 2)
+    await tx.privacyMediaDeletionJob.updateMany({
+      where: { uploadSessionId: session.id, cleanupContractVersion: 2, status: "DONE" },
+      data: {
+        status: "PENDING",
+        availableAt: input.now,
+        sessionRevision: session.revision,
+        leaseToken: null,
+        leaseExpiresAt: null,
+        completedAt: null,
+        observedAbsentAt: null,
+        settlementVerifiedAt: null,
+        settlementLeaseToken: null,
+        cleanupEvidence: Prisma.DbNull,
+        recheckAt: null,
+      },
+    });
   // A worker holding an older lease cannot finish after this revision/adoption.
   // FAILED stays visible for operator review; privacy never drops its obligations.
   await tx.privacyMediaDeletionJob.updateMany({
@@ -172,11 +208,13 @@ export async function registerProcessingSourceCleanup(
     (session.sourceAssetId !== null && session.sourceAssetId !== input.sourceAssetId)
   )
     throw new Error("The durable source cleanup identity changed before READY.");
+  await assertUploadCleanupContract(tx, session);
   const retainUntil = session.cleanupRetainUntil ?? cleanupRetentionDeadline(input.now);
   await tx.privacyMediaDeletionJob.createMany({
     data: [
       {
         operationKey: `processing-source:${input.jobId}`,
+        cleanupContractVersion: session.sourceProtocolVersion === 2 ? 2 : 1,
         scope: "PROCESSING_SOURCE",
         // Accepted media belongs to the channel, not its initiating uploader.
         accountId: null,

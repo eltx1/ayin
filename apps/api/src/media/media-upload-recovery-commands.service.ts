@@ -36,7 +36,15 @@ import {
 } from "./media-storage.adapter.js";
 import { uploadBindingHeaders } from "./r2-upload-completion.js";
 import type { MediaStorageConfig } from "./media-storage.config.js";
-import { assertUploadByteQuota, lockUploadAdmission } from "./media-upload-admission.js";
+import {
+  assertUploadByteQuota,
+  assertUploadDebtByteCapacity,
+  DEFAULT_UPLOAD_DEBT_BYTE_LIMITS,
+  lockUploadAccountAdmission,
+  assertUploadSessionCapacity,
+  conservativeMultipartExposure,
+  lockUploadAdmission,
+} from "./media-upload-admission.js";
 import { registerUploadCleanupInTransaction } from "./media-upload-cleanup.js";
 import {
   MediaUploadError,
@@ -54,8 +62,6 @@ import {
 // Protocol safety ceilings, separate from administrator-configurable byte quotas.
 // Covers all 10,000 parts plus one replacement grant per part and recovery.
 const MAX_OPERATIONS = 20_050;
-const MAX_ACCOUNT_OBLIGATIONS = 10;
-const MAX_CHANNEL_OBLIGATIONS = 50;
 const HARD_TTL_MS = 24 * 60 * 60 * 1000;
 const terminal = new Set(["ABORTED", "REVOKED", "EXPIRED"]);
 type Kind = "CREATE" | "RESUME" | "AUTHORIZE" | "COMPLETE" | "CANCEL";
@@ -128,12 +134,43 @@ export class MediaUploadRecoveryCommandsService {
     @Inject(MediaProcessingLifecycleService)
     private readonly lifecycle: MediaProcessingLifecycleService,
   ) {}
-  private gate() {
-    requireDurableUploadSettlement(this.settlement, this.storage);
+  private gate(session?: MediaUploadSession) {
+    const version = requireDurableUploadSettlement(
+      this.settlement,
+      this.storage,
+      new Date(),
+      this.v2AdmissionEnabled(),
+    );
+    if (session && session.sourceProtocolVersion !== version)
+      error("UPLOAD_RECOVERY_UNSUPPORTED", "This upload protocol is not currently enabled.", 503);
+    return version;
+  }
+
+  private v2AdmissionEnabled() {
+    const limits = this.debtByteLimits();
+    return (
+      this.config.recoveryV2Enabled === true &&
+      Number.isSafeInteger(limits.account) &&
+      limits.account > 0 &&
+      Number.isSafeInteger(limits.channel) &&
+      limits.channel > 0
+    );
+  }
+
+  private debtByteLimits() {
+    return {
+      account: this.config.recoveryDebtAccountBytes ?? DEFAULT_UPLOAD_DEBT_BYTE_LIMITS.account,
+      channel: this.config.recoveryDebtChannelBytes ?? DEFAULT_UPLOAD_DEBT_BYTE_LIMITS.channel,
+    };
   }
 
   capability() {
-    return readDurableUploadCapability(this.settlement, this.storage);
+    return readDurableUploadCapability(
+      this.settlement,
+      this.storage,
+      new Date(),
+      this.v2AdmissionEnabled(),
+    );
   }
 
   async creationOutcome(
@@ -188,9 +225,9 @@ export class MediaUploadRecoveryCommandsService {
     actor: UploadActor,
     raw: CreateRecoverableDraftRequest,
   ): Promise<UploadRecoveryCommandResponse> {
-    // This precedes settings, DB reads/writes, allocation and signing. No switch,
-    // HTTP field, operator override or partial settlement adapter can bypass it.
-    this.gate();
+    // The default-off V2 switch and protocol gate precede every reservation.
+    // Legacy synthetic/provider V1 evidence preserves the historical path only.
+    const sourceProtocolVersion = this.gate();
     const parsed = createRecoverableDraftSchema.safeParse(raw);
     if (!parsed.success)
       error("INVALID_RECOVERABLE_DRAFT", "Check the recoverable upload request.", 400);
@@ -216,7 +253,7 @@ export class MediaUploadRecoveryCommandsService {
         },
       });
       await this.authority(tx, actor, previousHint?.channelId ?? input.channelId);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(86192045, hashtext(${actor.accountId}))`;
+      await lockUploadAccountAdmission(tx, [actor.accountId]);
       await lockUploadAdmission(tx, input.channelId);
       const previous = await tx.mediaUploadSession.findUnique({
         where: {
@@ -246,30 +283,31 @@ export class MediaUploadRecoveryCommandsService {
         error("CLIPS_DISABLED", "AYIN Clips uploads are disabled.");
       if (input.videoForm === "CLIP" && input.durationMs && input.durationMs > Number(clipsMaximum))
         error("CLIP_TOO_LONG", "This clip exceeds the duration limit.", 400);
-      const counts = await tx.$queryRaw<Array<{ account: bigint; channel: bigint }>>`
-        SELECT COUNT(*) FILTER (WHERE s."initiatingAccountId" = ${actor.accountId}::uuid)::bigint AS account,
-               COUNT(*) FILTER (WHERE s."channelId" = ${input.channelId}::uuid)::bigint AS channel
-        FROM "MediaUploadSession" s WHERE (s."initiatingAccountId" = ${actor.accountId}::uuid OR s."channelId" = ${input.channelId}::uuid)
-          AND (s.state IN ('PREPARING','OPEN','FINALIZING','CANCELLING','UNRESOLVED') OR EXISTS (
-            SELECT 1 FROM "PrivacyMediaDeletionJob" j WHERE j."uploadSessionId" = s.id AND j.status <> 'DONE'))`;
-      if (
-        Number(counts[0]?.account ?? 0) >= MAX_ACCOUNT_OBLIGATIONS ||
-        Number(counts[0]?.channel ?? 0) >= MAX_CHANNEL_OBLIGATIONS
-      )
-        error(
-          "UPLOAD_ADMISSION_LIMIT",
-          "Resolve existing upload or cleanup obligations before starting another.",
-          429,
-        );
+      await assertUploadSessionCapacity(tx, actor.accountId, input.channelId);
+      // CREATE alone permits allocation, not browser bytes. Its uncertainty is
+      // bounded by the separate allocation/debt count; grants reserve exposure.
+      const providerExposureBytes = sourceProtocolVersion === 2 ? 0n : null;
       await assertUploadByteQuota(tx, input.channelId, input.sizeBytes, Number(quota));
+      if (sourceProtocolVersion === 2)
+        await assertUploadDebtByteCapacity(
+          tx,
+          actor.accountId,
+          input.channelId,
+          0n,
+          this.debtByteLimits(),
+        );
       await this.lockChannel(tx, input.channelId);
       await this.authority(tx, actor, input.channelId);
-      this.gate();
+      if (this.gate() !== sourceProtocolVersion)
+        error("UPLOAD_RECOVERY_UNSUPPORTED", "The upload protocol changed during admission.", 503);
       const now = new Date(),
         sessionId = randomUUID(),
         assetId = randomUUID(),
         videoId = randomUUID();
-      const mode = input.sizeBytes >= this.config.multipartThresholdBytes ? "MULTIPART" : "SINGLE";
+      const mode =
+        sourceProtocolVersion === 2 || input.sizeBytes >= this.config.multipartThresholdBytes
+          ? "MULTIPART"
+          : "SINGLE";
       const channelSettings = await tx.channelSettings.findUnique({
         where: { channelId: input.channelId },
         select: { defaultCommentsEnabled: true, defaultVideoVisibility: true },
@@ -310,6 +348,8 @@ export class MediaUploadRecoveryCommandsService {
           videoId,
           authority: "OWNER",
           mode,
+          sourceProtocolVersion,
+          providerExposureBytes,
           objectKey,
           sizeBytes: BigInt(input.sizeBytes),
           mimeType,
@@ -333,6 +373,7 @@ export class MediaUploadRecoveryCommandsService {
           expectedRevision: 1,
           status: mode === "MULTIPART" ? "DISPATCHED" : "RESERVED",
           ...(mode === "MULTIPART" ? { dispatchStartedAt: now } : {}),
+          ...(sourceProtocolVersion === 2 ? { providerOutcome: "UNKNOWN" } : {}),
         },
       });
       return { session, operation, replayed: false };
@@ -340,7 +381,7 @@ export class MediaUploadRecoveryCommandsService {
     if (reserved.replayed) return response(actor, reserved);
     let uploadId: string | null = null;
     try {
-      this.gate();
+      this.gate(reserved.session);
       if (reserved.session.mode === "MULTIPART") {
         uploadId = (
           await this.storage.createMultipartUpload({
@@ -351,6 +392,12 @@ export class MediaUploadRecoveryCommandsService {
         ).uploadId;
         if (typeof uploadId !== "string" || !uploadId.trim() || Buffer.byteLength(uploadId) > 1024)
           throw new Error("Invalid multipart allocation response.");
+        if (reserved.session.sourceProtocolVersion === 2) {
+          // Preserve the terminal provider ACK/address even if user authority
+          // was revoked while CREATE was in flight. This never opens a session.
+          await this.providerAcknowledged(reserved, uploadId);
+          reserved.session = { ...reserved.session, providerUploadId: uploadId };
+        }
       }
       return await this.finish(actor, reserved, "PREPARING", async (tx, current) => {
         const session = await tx.mediaUploadSession.update({
@@ -420,19 +467,43 @@ export class MediaUploadRecoveryCommandsService {
     if (!parsed.success)
       error("INVALID_UPLOAD_COMMAND", "Check the upload authorization request.", 400);
     const input = parsed.data;
+    const quota = Number(await this.settings.get("uploadChannelQuotaBytes"));
     const reserved = await this.transaction(async (tx) => {
+      const hint = await tx.mediaUploadSession.findUnique({ where: { id: sessionId } });
+      if (hint?.sourceProtocolVersion === 2 && hint.initiatingAccountId === actor.accountId) {
+        // Keep the authority -> admission -> generation/source/session lock order.
+        await this.authority(tx, actor, hint.channelId);
+        await lockUploadAccountAdmission(tx, [actor.accountId]);
+        await lockUploadAdmission(tx, hint.channelId);
+      }
       const current = await this.lockSession(tx, actor, sessionId, true);
       const value = await this.reserve(tx, current, "AUTHORIZE", input);
       if (value.replayed) return value;
       if (current.state !== "OPEN")
         error("UPLOAD_STATE_CHANGED", "This upload is not open for new grants.");
+      if (current.sourceProtocolVersion === 2) {
+        const creation = await tx.mediaUploadOperation.findUnique({
+          where: {
+            sessionId_requestId: { sessionId: current.id, requestId: current.creationRequestId! },
+          },
+        });
+        if (
+          current.mode !== "MULTIPART" ||
+          !current.providerUploadId ||
+          creation?.kind !== "CREATE" ||
+          creation.providerOutcome !== "ACKNOWLEDGED" ||
+          !creation.providerTerminalAt ||
+          creation.providerUploadId !== current.providerUploadId
+        )
+          error("UPLOAD_STATE_CHANGED", "The multipart allocation is not durably acknowledged.");
+      }
       const count =
         current.mode === "SINGLE"
           ? 1
           : Number((current.sizeBytes + current.partSizeBytes - 1n) / current.partSizeBytes);
       if (input.partNumber > count)
         error("INVALID_PART", "This upload part is outside the expected range.", 400);
-      this.gate();
+      this.gate(current);
       // Whole-second signing clock is reserved in the DB before any signer sees
       // the address. Returned expiry must exactly match this upper bound.
       const issued = new Date(Math.floor(Date.now() / 1000) * 1000);
@@ -442,9 +513,40 @@ export class MediaUploadRecoveryCommandsService {
       );
       if (seconds < 1) error("UPLOAD_RECOVERY_EXPIRED", "This upload has expired.", 410);
       const expires = new Date(issued.getTime() + seconds * 1000);
+      let providerExposureBytes = current.providerExposureBytes;
+      if (current.sourceProtocolVersion === 2) {
+        providerExposureBytes = conservativeMultipartExposure(
+          Number(current.sizeBytes),
+          Number(current.partSizeBytes),
+        );
+        if (current.providerExposureBytes === null)
+          error("UPLOAD_PHYSICAL_DEBT_LIMIT", "The saved upload capacity needs review.", 429);
+        if (current.providerExposureBytes > providerExposureBytes)
+          providerExposureBytes = current.providerExposureBytes;
+        await assertUploadByteQuota(
+          tx,
+          current.channelId,
+          current.grantReservationCount === 0 &&
+            current.lastGrantExpiresAt === null &&
+            current.providerExposureBytes === 0n
+            ? Number(current.sizeBytes)
+            : 0,
+          quota,
+        );
+        await assertUploadDebtByteCapacity(
+          tx,
+          actor.accountId,
+          current.channelId,
+          providerExposureBytes > current.providerExposureBytes
+            ? providerExposureBytes - current.providerExposureBytes
+            : 0n,
+          this.debtByteLimits(),
+        );
+      }
       const session = await tx.mediaUploadSession.update({
         where: { id: current.id },
         data: {
+          providerExposureBytes,
           lastGrantExpiresAt:
             current.lastGrantExpiresAt && current.lastGrantExpiresAt > expires
               ? current.lastGrantExpiresAt
@@ -465,7 +567,7 @@ export class MediaUploadRecoveryCommandsService {
     });
     if (reserved.replayed) return response(actor, reserved);
     try {
-      this.gate();
+      this.gate(reserved.session);
       const now = reserved.operation.grantIssuedAt!,
         expiresInSeconds = (reserved.operation.grantExpiresAt!.getTime() - now.getTime()) / 1000;
       const authorization =
@@ -481,6 +583,18 @@ export class MediaUploadRecoveryCommandsService {
               key: reserved.session.objectKey,
               uploadId: reserved.session.providerUploadId!,
               partNumber: input.partNumber,
+              ...(reserved.session.sourceProtocolVersion === 2
+                ? {
+                    expectedSizeBytes: Number(
+                      reserved.session.sizeBytes -
+                        reserved.session.partSizeBytes * BigInt(input.partNumber - 1) <
+                        reserved.session.partSizeBytes
+                        ? reserved.session.sizeBytes -
+                            reserved.session.partSizeBytes * BigInt(input.partNumber - 1)
+                        : reserved.session.partSizeBytes,
+                    ),
+                  }
+                : {}),
               expiresInSeconds,
               now,
             });
@@ -529,7 +643,20 @@ export class MediaUploadRecoveryCommandsService {
       if (value.replayed) return value;
       if (current.state !== "OPEN")
         error("UPLOAD_STATE_CHANGED", "This upload is not open for completion.");
-      this.gate();
+      if (
+        current.sourceProtocolVersion === 2 &&
+        (current.mode !== "MULTIPART" ||
+          !current.providerUploadId ||
+          (await tx.mediaUploadOperation.count({
+            where: {
+              sessionId: current.id,
+              kind: "COMPLETE",
+              dispatchStartedAt: { not: null },
+            },
+          })) > 0)
+      )
+        error("UPLOAD_STATE_CHANGED", "This multipart completion cannot be dispatched again.");
+      this.gate(current);
       const session = await tx.mediaUploadSession.update({
         where: { id: current.id },
         data: { state: "FINALIZING", revision: { increment: 1 } },
@@ -538,13 +665,22 @@ export class MediaUploadRecoveryCommandsService {
       // attempt is never permission to blindly replay multipart completion.
       const operation = await tx.mediaUploadOperation.update({
         where: { id: value.operation.id },
-        data: { status: "DISPATCHED", dispatchStartedAt: new Date() },
+        data: {
+          status: "DISPATCHED",
+          dispatchStartedAt: new Date(),
+          ...(current.sourceProtocolVersion === 2
+            ? {
+                providerOutcome: "UNKNOWN",
+                providerUploadId: current.providerUploadId,
+              }
+            : {}),
+        },
       });
       return { session, operation, replayed: false };
     });
     if (reserved.replayed) return response(actor, reserved);
     try {
-      this.gate();
+      this.gate(reserved.session);
       if (reserved.session.mode === "MULTIPART") {
         const parts = await this.storage.listParts({
           key: reserved.session.objectKey,
@@ -556,13 +692,15 @@ export class MediaUploadRecoveryCommandsService {
         await this.transaction(async (tx) => {
           const current = await this.lockSession(tx, actor, sessionId);
           this.unchanged(current, reserved.session, "FINALIZING");
-          this.gate();
+          this.gate(current);
         });
         await this.storage.completeMultipartUpload({
           key: reserved.session.objectKey,
           uploadId: reserved.session.providerUploadId!,
           parts: parts.map(({ partNumber, etag }) => ({ partNumber, etag })),
         });
+        if (reserved.session.sourceProtocolVersion === 2)
+          await this.providerAcknowledged(reserved, reserved.session.providerUploadId!);
       }
       if (this.storage.observeUploadCompletion) {
         const observation = await this.storage.observeUploadCompletion(
@@ -621,7 +759,7 @@ export class MediaUploadRecoveryCommandsService {
       error("UPLOAD_RECOVERY_UNSUPPORTED", "Storage completion verification is unavailable.", 503);
     let verified = false;
     try {
-      this.gate();
+      this.gate(initial.session);
       verified =
         (await this.storage.observeUploadCompletion(this.completionObservation(initial.session)))
           .status === "OBJECT_VERIFIED";
@@ -638,7 +776,7 @@ export class MediaUploadRecoveryCommandsService {
         return response(actor, { session: current, operation, replayed: true });
       this.unchanged(current, initial.session, initial.session.state);
       this.reconcilable(current, operation);
-      this.gate();
+      this.gate(current);
       if (!verified) return response(actor, { session: current, operation, replayed: true });
       const session = await this.acceptCompletedSource(tx, current);
       const done = await tx.mediaUploadOperation.update({
@@ -789,7 +927,7 @@ export class MediaUploadRecoveryCommandsService {
       if (journal.status === "SUCCEEDED")
         return response(actor, { session: current, operation: journal, replayed: true });
       this.unchanged(current, reserved.session, state);
-      this.gate();
+      this.gate(current);
       if (journal.grantExpiresAt && journal.grantExpiresAt.getTime() <= Date.now())
         error(
           "UPLOAD_GRANT_EXPIRED",
@@ -804,6 +942,51 @@ export class MediaUploadRecoveryCommandsService {
         data: { status: "SUCCEEDED" },
       });
       return response(actor, { session, operation: done, replayed: false });
+    });
+  }
+  /** Save provider facts independently from logical source acceptance. No
+   * account/authority lock is required: revocation cannot erase an in-flight
+   * CREATE's address or a COMPLETE's terminal ACK. Cleanup reads this journal.
+   */
+  private async providerAcknowledged(reserved: Reserved, uploadId: string) {
+    await this.transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "MediaUploadSession" WHERE id=${reserved.session.id}::uuid FOR UPDATE`;
+      const journal = await tx.mediaUploadOperation.findUniqueOrThrow({
+        where: { id: reserved.operation.id },
+      });
+      if (
+        reserved.session.sourceProtocolVersion !== 2 ||
+        journal.sessionId !== reserved.session.id ||
+        journal.requestId !== reserved.operation.requestId ||
+        journal.kind !== reserved.operation.kind ||
+        journal.requestDigest !== reserved.operation.requestDigest ||
+        journal.expectedRevision !== reserved.operation.expectedRevision ||
+        !journal.dispatchStartedAt ||
+        !["CREATE", "COMPLETE"].includes(journal.kind) ||
+        (journal.providerUploadId !== null && journal.providerUploadId !== uploadId)
+      )
+        throw new Error("Multipart provider outcome does not match its dispatch.");
+      if (journal.providerOutcome === "ACKNOWLEDGED") return;
+      if (journal.providerOutcome !== "UNKNOWN")
+        throw new Error("Multipart provider dispatch was not reserved.");
+      await tx.mediaUploadOperation.update({
+        where: { id: journal.id },
+        data: {
+          providerOutcome: "ACKNOWLEDGED",
+          providerTerminalAt: new Date(),
+          providerUploadId: uploadId,
+        },
+      });
+      if (journal.kind === "CREATE")
+        await tx.mediaUploadSession.updateMany({
+          where: {
+            id: reserved.session.id,
+            state: "PREPARING",
+            revision: reserved.session.revision,
+            providerUploadId: null,
+          },
+          data: { providerUploadId: uploadId },
+        });
     });
   }
   private async unknown(

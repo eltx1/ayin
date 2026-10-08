@@ -210,6 +210,12 @@ it("regenerates unproven canonical, hashes source and remote canonical, and pres
     f.outputKey,
   ]);
   expect(f.objects.get(f.outputKey)?.equals(f.bytes)).toBe(true);
+  expect(f.storage.uploadFile).toHaveBeenCalledWith(f.outputKey, expect.any(String), "video/mp4", {
+    jobId: f.job.id,
+    workerId: "claim",
+    attempt: 1,
+    outputAttemptId: f.job.currentOutputAttemptId,
+  });
   expect(f.lifecycle.recordInputVerification).toHaveBeenCalledWith({
     jobId: f.job.id,
     workerId: "claim",

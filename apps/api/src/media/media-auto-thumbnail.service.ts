@@ -121,7 +121,13 @@ export class MediaAutoThumbnailService {
       });
       // This durable non-eligible address precedes provider I/O, so privacy's
       // exact asset snapshot includes even an interrupted thumbnail upload.
-      return { existing: false as const, assetId: asset.id, objectKey, losingKeys };
+      return {
+        existing: false as const,
+        assetId: asset.id,
+        objectKey,
+        losingKeys,
+        requiredWrite: job.inputIntegrityVersion === 1,
+      };
     });
     if (reservation.existing) return reservation;
 
@@ -145,7 +151,21 @@ export class MediaAutoThumbnailService {
       if (changed.count !== 1)
         throw new Error("The automatic thumbnail reservation changed before upload.");
     });
-    await this.storage.uploadFile(reservation.objectKey, thumbnailPath, "image/jpeg");
+    await this.storage.uploadFile(
+      reservation.objectKey,
+      thumbnailPath,
+      "image/jpeg",
+      ...(reservation.requiredWrite
+        ? [
+            {
+              jobId: input.jobId,
+              workerId: input.workerId,
+              attempt: input.attempt,
+              outputAttemptId: input.outputAttemptId,
+            },
+          ]
+        : []),
+    );
 
     return this.database.client.$transaction(async (tx) => {
       await owned(tx);

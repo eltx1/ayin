@@ -52,6 +52,9 @@ export class MediaAdaptiveProcessingService {
   }): Promise<boolean> {
     input.signal?.throwIfAborted();
     const requiredIntegrity = assertJobInputIntegrity(input.job);
+    const writeContext = requiredIntegrity
+      ? [{ jobId: input.job.id, workerId: input.workerId, ...capturedMediaClaim(input.job) }]
+      : [];
     const settings = await this.settings.resolve(input.job);
     if (!settings.enabled) return false;
     const { width, height, durationMs } = input.canonicalMetadata;
@@ -179,12 +182,18 @@ export class MediaAdaptiveProcessingService {
               rendition.identity,
               segment.sequence,
             );
-            await this.storage.uploadFile(key, segment.filePath, HLS_SEGMENT_CONTENT_TYPE);
+            await this.storage.uploadFile(
+              key,
+              segment.filePath,
+              HLS_SEGMENT_CONTENT_TYPE,
+              ...writeContext,
+            );
           }
           await this.storage.uploadFile(
             rendition.playlistR2ObjectKey,
             packaged.playlistPath,
             HLS_PLAYLIST_CONTENT_TYPE,
+            ...writeContext,
           );
 
           await this.requireOwnedStage(
@@ -235,6 +244,7 @@ export class MediaAdaptiveProcessingService {
         generation.hlsMasterR2ObjectKey,
         masterPath,
         HLS_PLAYLIST_CONTENT_TYPE,
+        ...writeContext,
       );
 
       await this.requireOwnedStage(input.job, input.workerId, "HLS_MASTER_VERIFYING", 99);

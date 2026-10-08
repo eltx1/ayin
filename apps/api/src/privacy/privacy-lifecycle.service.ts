@@ -1,4 +1,5 @@
 import { redactCancelledInputIntegrityInTransaction } from "../media/media-processing-integrity.js";
+import { freezeOutputAttempts } from "../media/media-output-write-journal.js";
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 
@@ -625,6 +626,7 @@ export class PrivacyLifecycleService {
           videoId: true,
           generation: true,
           inputIntegrityVersion: true,
+          outputProtocolVersion: true,
           video: { select: { channelId: true } },
           stagingKey: true,
           inputR2ObjectKey: true,
@@ -687,6 +689,19 @@ export class PrivacyLifecycleService {
         now,
       });
 
+    // The account-first privacy fence excludes fresh claims/dispatches. Cancel
+    // the jobs before freezing their exact immutable write sets, including
+    // orphan attempts whose original job has already been detached.
+    await tx.mediaProcessingJob.updateMany({
+      where: { videoId: { in: videoIds } },
+      data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null },
+    });
+    await freezeOutputAttempts(
+      tx,
+      [...new Set(outputAttempts.map((attempt) => attempt.processingJobId))].sort(),
+      now,
+    );
+
     // Preserve orphaned cleanup snapshots too: removing a source/session FK is
     // not provider cleanup, and previous expiry/processing work remains owed.
     await tx.privacyMediaDeletionJob.updateMany({
@@ -719,10 +734,32 @@ export class PrivacyLifecycleService {
       }
     }
     for (const attempt of outputAttempts) {
+      if (attempt.protocolVersion === 2) continue;
       objectTargets.add(attempt.canonicalR2ObjectKey);
       objectTargets.add(attempt.thumbnailR2ObjectKey);
       objectTargets.add(`${attempt.hlsR2Prefix}master.m3u8`);
       prefixTargets.add(attempt.prefix);
+    }
+    // V2 addresses are owned by their obligation-aware jobs. Do not create an
+    // older DELETE-only lane for those same source/attempt addresses.
+    for (const target of objectTargets) {
+      if (
+        uploadSessions.some(
+          (session) => session.sourceProtocolVersion === 2 && session.objectKey === target,
+        ) ||
+        outputAttempts.some(
+          (attempt) => attempt.protocolVersion === 2 && target.startsWith(attempt.prefix),
+        )
+      )
+        objectTargets.delete(target);
+    }
+    for (const target of prefixTargets) {
+      if (
+        outputAttempts.some(
+          (attempt) => attempt.protocolVersion === 2 && target.startsWith(attempt.prefix),
+        )
+      )
+        prefixTargets.delete(target);
     }
     const jobs = [
       ...[...objectTargets].map((target) => ({
@@ -744,8 +781,12 @@ export class PrivacyLifecycleService {
       await tx.privacyMediaDeletionJob.createMany({ data: jobs, skipDuplicates: true });
     }
     const outputJobIds = new Set([
-      ...processingJobs.filter((job) => job.inputIntegrityVersion !== 0).map((job) => job.id),
-      ...outputAttempts.map((attempt) => attempt.processingJobId),
+      ...processingJobs
+        .filter((job) => job.inputIntegrityVersion !== 0 && job.outputProtocolVersion !== 2)
+        .map((job) => job.id),
+      ...outputAttempts
+        .filter((attempt) => attempt.protocolVersion !== 2)
+        .map((attempt) => attempt.processingJobId),
     ]);
     const outputBarriers = [...outputJobIds].map((jobId) => {
       const job = processingJobs.find((job) => job.id === jobId);
@@ -820,10 +861,6 @@ export class PrivacyLifecycleService {
     await tx.mediaAsset.updateMany({
       where: { id: { in: cleanupAssetIds } },
       data: { status: "REMOVED", removedAt: now },
-    });
-    await tx.mediaProcessingJob.updateMany({
-      where: { videoId: { in: videoIds } },
-      data: { status: "CANCELLED", leaseOwner: null, leaseExpiresAt: null },
     });
     await redactCancelledInputIntegrityInTransaction(tx, videoIds, now);
     await tx.mediaPlaybackGeneration.updateMany({

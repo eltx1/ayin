@@ -5,6 +5,19 @@ const GIB = 1024 * MIB;
 
 const environmentSchema = z.object({
   APP_ENV: z.enum(["development", "test", "staging", "production"]).default("development"),
+  AYIN_UPLOAD_RECOVERY_DEBT_ACCOUNT_BYTES: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .default(0),
+  AYIN_UPLOAD_RECOVERY_DEBT_CHANNEL_BYTES: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .default(0),
+  AYIN_UPLOAD_RECOVERY_V2_ENABLED: z.enum(["0", "1"]).default("0"),
   AYIN_E2E_STORAGE: z.enum(["0", "1"]).default("0"),
   R2_ACCOUNT_ID: z.string().trim().min(1).optional(),
   R2_BUCKET: z.string().trim().min(1).optional(),
@@ -40,6 +53,10 @@ export interface MediaStorageConfig {
   partSizeBytes: number;
   multipartThresholdBytes: number;
   uploadSessionSecret: string;
+  /** Default-off deployment switch; does not attest provider/browser validation. */
+  recoveryV2Enabled?: boolean;
+  recoveryDebtAccountBytes?: number;
+  recoveryDebtChannelBytes?: number;
 }
 
 export function loadMediaStorageConfig(
@@ -85,6 +102,9 @@ export function loadMediaStorageConfig(
   return {
     mode: e2eMode ? "e2e" : hasR2 ? "r2" : "development",
     appEnv: parsed.APP_ENV,
+    recoveryDebtAccountBytes: parsed.AYIN_UPLOAD_RECOVERY_DEBT_ACCOUNT_BYTES,
+    recoveryDebtChannelBytes: parsed.AYIN_UPLOAD_RECOVERY_DEBT_CHANNEL_BYTES,
+    recoveryV2Enabled: parsed.AYIN_UPLOAD_RECOVERY_V2_ENABLED === "1",
     accountId: parsed.R2_ACCOUNT_ID ?? null,
     bucket: parsed.R2_BUCKET ?? null,
     accessKeyId: parsed.R2_ACCESS_KEY_ID ?? null,

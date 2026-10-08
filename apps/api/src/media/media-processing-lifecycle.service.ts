@@ -1,3 +1,4 @@
+import { freezeOutputAttempts } from "./media-output-write-journal.js";
 import type { MediaClaimIdentity } from "./media-output-attempt.js";
 import type { MediaProcessingJobStatus, Prisma } from "@ayin/db";
 import { Inject, Injectable } from "@nestjs/common";
@@ -110,6 +111,7 @@ export class MediaProcessingLifecycleService {
         ...(session
           ? {
               inputIntegrityVersion: 1,
+              outputProtocolVersion: session.sourceProtocolVersion,
               inputIntegritySessionId: session.id,
               inputIntegritySourceAssetId: asset.id,
               inputIntegrityAccountId: session.initiatingAccountId!,
@@ -315,6 +317,13 @@ export class MediaProcessingLifecycleService {
           },
         });
         if (readyChanged.count !== 1) throw new MediaProcessingLeaseLostError();
+        if (job.inputIntegrityVersion === 1) {
+          // No further object writes belong to an accepted winning attempt.
+          // Keep it live; only retired losing namespaces enter cleanup here.
+          await freezeOutputAttempts(tx, [job.id], completedAt, [job.currentOutputAttemptId!]);
+          if (job.inputIntegrityParentJobId)
+            await freezeOutputAttempts(tx, [job.inputIntegrityParentJobId], completedAt);
+        }
         const ready = await tx.mediaProcessingJob.findUniqueOrThrow({ where: { id: job.id } });
         if (
           job.inputIntegrityVersion === 1 &&
@@ -524,6 +533,7 @@ export class MediaProcessingLifecycleService {
       throw new Error("Trusted canonical input lineage is unavailable.");
     return {
       inputIntegrityVersion: 1,
+      outputProtocolVersion: producer.outputProtocolVersion,
       inputIntegritySessionId: producer.inputIntegritySessionId,
       inputIntegrityAccountId: producer.inputIntegrityAccountId,
       inputIntegritySourceAssetId: source.id,

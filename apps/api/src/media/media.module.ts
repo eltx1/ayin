@@ -1,5 +1,6 @@
 import {
   DURABLE_UPLOAD_SETTLEMENT,
+  FiniteMultipartDurableUploadSettlement,
   UnsupportedDurableUploadSettlement,
 } from "./durable-upload-settlement.js";
 import { MediaUploadRecoveryCommandsService } from "./media-upload-recovery-commands.service.js";
@@ -26,6 +27,7 @@ import { MediaProcessingExecutorService } from "./media-processing-executor.serv
 import { MediaProcessingLifecycleService } from "./media-processing-lifecycle.service.js";
 import { MediaProcessingQueueService } from "./media-processing-queue.service.js";
 import { MediaProcessingStorageService } from "./media-processing-storage.service.js";
+import { MediaOutputWriteJournalService } from "./media-output-write-journal.js";
 import { MediaProcessingWorkerService } from "./media-processing-worker.service.js";
 import { MediaUploadController } from "./media-upload.controller.js";
 import { MediaUploadService } from "./media-upload.service.js";
@@ -54,10 +56,18 @@ import { UploadSessionTokenService } from "./upload-session-token.service.js";
     MediaUploadService,
     MediaUploadRecoveryService,
     MediaUploadRecoveryCommandsService,
-    { provide: DURABLE_UPLOAD_SETTLEMENT, useClass: UnsupportedDurableUploadSettlement },
+    {
+      provide: DURABLE_UPLOAD_SETTLEMENT,
+      inject: [MEDIA_STORAGE_CONFIG],
+      useFactory: (config: MediaStorageConfig) =>
+        config.recoveryV2Enabled === true
+          ? new FiniteMultipartDurableUploadSettlement()
+          : new UnsupportedDurableUploadSettlement(),
+    },
     MediaProcessingQueueService,
     MediaProcessingLifecycleService,
     MediaProcessingStorageService,
+    MediaOutputWriteJournalService,
     MediaAdaptiveLifecycleService,
     MediaHlsSettingsService,
     MediaHlsTranscoderService,

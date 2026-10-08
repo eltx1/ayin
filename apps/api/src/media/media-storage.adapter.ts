@@ -115,6 +115,9 @@ export interface MediaStorageAdapter {
     key: string;
     uploadId: string;
     partNumber: number;
+    // V2 only. The user agent supplies Content-Length for the File/Blob body;
+    // never return it as a JavaScript-controlled grant header.
+    expectedSizeBytes?: number;
     expiresInSeconds: number;
     now?: Date;
   }): Promise<{ url: string; expiresAt: Date }>;

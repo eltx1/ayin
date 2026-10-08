@@ -9,6 +9,7 @@ on:
       - "tests/performance-media/**"
       - "tests/performance-upload/**"
       - "tests/recovery/**"
+      - "tests/r2-length/**"
       - "tests/player-localization/**"
       - "tests/pwa/**"
       - "tests/captions/**"
@@ -18,6 +19,7 @@ on:
       - "playwright.changed-routes.config.ts"
       - "playwright.upload-transport.config.ts"
       - "playwright.recovery.config.ts"
+      - "playwright.r2-length.config.ts"
       - "playwright.player-localization.config.ts"
       - "playwright.pwa.config.ts"
       - "playwright.captions.config.ts"
@@ -91,6 +93,8 @@ jobs:
         run: pnpm exec playwright test --config playwright.pwa.config.ts
       - name: Run dormant upload recovery against synthetic provider and PostgreSQL
         run: pnpm test:e2e:recovery
+      - name: Verify browser automatic length with independent local SigV4 verifier
+        run: pnpm exec playwright test --config playwright.r2-length.config.ts
       - name: Preserve upload recovery evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -16,6 +16,10 @@ import {
 } from "./media-storage.adapter.js";
 import type { MediaStorageConfig } from "./media-storage.config.js";
 import { resolveMediaProcessingTimeouts } from "./media-processing-timeouts.js";
+import {
+  MediaOutputWriteJournalService,
+  type MediaOutputWriteContext,
+} from "./media-output-write-journal.js";
 import { R2SigV4 } from "./r2-sigv4.js";
 
 @Injectable()
@@ -26,6 +30,8 @@ export class MediaProcessingStorageService {
   constructor(
     @Inject(MEDIA_STORAGE_ADAPTER) private readonly storage: MediaStorageAdapter,
     @Inject(MEDIA_STORAGE_CONFIG) private readonly config: MediaStorageConfig,
+    @Inject(MediaOutputWriteJournalService)
+    private readonly outputWrites?: MediaOutputWriteJournalService,
   ) {
     const timeouts = resolveMediaProcessingTimeouts();
     this.r2MetadataTimeoutMs = timeouts.r2MetadataMs;
@@ -81,41 +87,76 @@ export class MediaProcessingStorageService {
     });
   }
 
-  async uploadFile(key: string, filePath: string, contentType = "video/mp4"): Promise<void> {
+  async uploadFile(
+    key: string,
+    filePath: string,
+    contentType = "video/mp4",
+    context?: MediaOutputWriteContext,
+  ): Promise<void> {
     this.assertR2();
+    // Required output namespaces may never use the legacy unjournaled path.
+    // Dependency injection requires the journal in production; the optional TS
+    // parameter only preserves direct legacy service/test construction.
+    if (
+      (!context && /\/playback\/g[1-9][0-9]*\/attempts\//.test(key)) ||
+      (context && !this.outputWrites)
+    )
+      throw new Error("The immutable output PUT requires its write-ahead journal and claim.");
     const fileMetadata = await stat(filePath);
-    if (!fileMetadata.isFile() || fileMetadata.size <= 0) {
+    if (
+      !fileMetadata.isFile() ||
+      !Number.isSafeInteger(fileMetadata.size) ||
+      fileMetadata.size <= 0
+    ) {
       throw new Error("The canonical media file is empty or unreadable before R2 upload.");
     }
 
-    const authorization = await this.storage.authorizeSinglePut({
-      key,
-      contentType,
-      expiresInSeconds: Math.max(300, this.config.uploadUrlTtlSeconds),
-    });
+    const dispatch = context
+      ? await this.outputWrites!.dispatch({
+          ...context,
+          objectKey: key,
+          expectedSizeBytes: fileMetadata.size,
+          contentType,
+        })
+      : null;
+    try {
+      const authorization = await this.storage.authorizeSinglePut({
+        key,
+        contentType,
+        expiresInSeconds: Math.max(300, this.config.uploadUrlTtlSeconds),
+      });
 
-    await this.withDeadline("upload", this.r2TransferTimeoutMs, async (signal) => {
-      const source = createReadStream(filePath);
-      try {
-        const uploadBody = Readable.toWeb(source) as unknown as BodyInit;
-        const response = await fetch(authorization.url, {
-          method: "PUT",
-          headers: {
-            "content-type": contentType,
-            "content-length": String(fileMetadata.size),
-          },
-          body: uploadBody,
-          duplex: "half",
-          signal,
-        } as RequestInit & { duplex: "half" });
-        if (!response.ok) {
-          const detail = await response.text().catch(() => "");
-          throw new Error(`R2 worker upload failed (${response.status}). ${detail}`.trim());
+      await this.withDeadline("upload", this.r2TransferTimeoutMs, async (signal) => {
+        const source = createReadStream(filePath);
+        try {
+          const uploadBody = Readable.toWeb(source) as unknown as BodyInit;
+          const response = await fetch(authorization.url, {
+            method: "PUT",
+            headers: {
+              "content-type": contentType,
+              "content-length": String(fileMetadata.size),
+            },
+            body: uploadBody,
+            duplex: "half",
+            signal,
+          } as RequestInit & { duplex: "half" });
+          if (response.status !== 200) {
+            const detail = await response.text().catch(() => "");
+            throw new Error(`R2 worker upload failed (${response.status}). ${detail}`.trim());
+          }
+        } finally {
+          source.destroy();
         }
-      } finally {
-        source.destroy();
-      }
-    });
+      });
+      // Only this exact PUT's successful provider response is evidence. A HEAD,
+      // local timeout, abort, retry or missing object is not an acknowledgement.
+      if (dispatch) await this.outputWrites!.acknowledge(dispatch);
+    } catch (error) {
+      // If the database is unavailable, the original DISPATCHED row survives
+      // as debt. Neither this method nor the journal retries the provider PUT.
+      if (dispatch) await this.outputWrites!.markUnknown(dispatch).catch(() => undefined);
+      throw error;
+    }
   }
 
   async headObject(key: string): Promise<StoredObjectMetadata> {

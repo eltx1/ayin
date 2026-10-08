@@ -1,4 +1,5 @@
 import { assertUploadByteQuota, lockUploadAdmission } from "./media-upload-admission.js";
+import { MediaUploadError } from "./media-upload-error.js";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@ayin/db";
 import type { AuthenticatedRequest } from "../auth/auth.guard.js";
@@ -88,16 +89,8 @@ export function sourceExtension(mimeType: SupportedVideoMimeType): string {
   return extensions[mimeType];
 }
 
-export class MediaUploadError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly statusCode = 400,
-  ) {
-    super(message);
-    this.name = "MediaUploadError";
-  }
-}
+// Preserve existing callers' import and instanceof identity.
+export { MediaUploadError } from "./media-upload-error.js";
 
 export interface CreateUploadSessionInput {
   channelId: string;

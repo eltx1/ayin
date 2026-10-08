@@ -141,6 +141,47 @@ describe("R2 upload identity metadata signing", () => {
     expect(verifies(new URL(part.url), "PUT", {})).toBe(true);
   });
 
+  it.each([5 * 1024 ** 2, 42])(
+    "authenticates the exact V2 part body length including a short last part: %s",
+    async (size) => {
+      const storage = new R2MediaStorageAdapter(config);
+      const signed = await storage.authorizeMultipartPart({
+        key,
+        uploadId: "finite-upload",
+        partNumber: 2,
+        expectedSizeBytes: size,
+        expiresInSeconds: 60,
+        now,
+      });
+      const url = new URL(signed.url);
+      expect(url.searchParams.get("X-Amz-SignedHeaders")).toBe("content-length;host");
+      expect(verifies(url, "PUT", { "content-length": String(size) })).toBe(true);
+      expect(verifies(url, "PUT", { "content-length": String(size + 1) })).toBe(false);
+      expect(verifies(url, "PUT", { "content-length": String(size - 1) })).toBe(false);
+      expect(verifies(url, "PUT", {})).toBe(false);
+      // A correctly sized replay still authenticates; this is not a one-use URL.
+      expect(verifies(url, "PUT", { "content-length": String(size) })).toBe(true);
+      expect(Object.keys(signed).sort()).toEqual(["expiresAt", "url"]);
+    },
+  );
+
+  it.each([0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, 5 * 1024 ** 3 + 1])(
+    "rejects an invalid exact V2 part size before signing: %s",
+    async (size) => {
+      const storage = new R2MediaStorageAdapter(config);
+      await expect(
+        storage.authorizeMultipartPart({
+          key,
+          uploadId: "finite-upload",
+          partNumber: 1,
+          expectedSizeBytes: size,
+          expiresInSeconds: 60,
+          now,
+        }),
+      ).rejects.toThrow("Invalid exact multipart body length");
+    },
+  );
+
   it.each([true, false])(
     "binds multipart metadata at creation only when requested: %s",
     async (bound) => {

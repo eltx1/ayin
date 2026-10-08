@@ -107,6 +107,8 @@ jobs:
           bash -n deploy/ensure-ffmpeg-runtime.sh
           bash -n deploy/acquire-ssh-host-key.sh
           node --test deploy/test-ssh-host-key.mjs
+          # Offline transport/provider fixtures only; never dispatch the live proof here.
+          node --test deploy/media/r2-owned-fixture-provider.test.mjs deploy/media/r2-owned-fixture-browser.test.mjs
           node --check deploy/admin/bootstrap-first-superadmin.mjs
           node --check deploy/media/requeue-missing-content-length.mjs
           node --check deploy/security/generate-sbom.mjs
@@ -166,3 +168,6 @@ jobs:
 
       - name: Build production packages and applications
         run: pnpm build
+
+      - name: Verify compiled media import entry points
+        run: node --test deploy/media/media-compiled-imports.test.mjs

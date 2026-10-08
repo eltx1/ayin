@@ -18,6 +18,7 @@ enum PrivacyMediaDeletionScope {
   PRIVACY
   UPLOAD_SESSION
   PROCESSING_SOURCE
+  PROCESSING_OUTPUT
 }
 
 enum PrivacyMediaDeletionStatus {
@@ -66,6 +67,7 @@ model PrivacyMediaDeletionJob {
   sessionRevision Int?
   sourceAssetId String?                  @db.Uuid
   processingJobId String?                @db.Uuid
+  outputAttemptId String?                @db.Uuid
   providerUploadId String?               @db.VarChar(1024)
   leaseToken String?                     @db.Uuid
   leaseExpiresAt DateTime?
@@ -74,6 +76,14 @@ model PrivacyMediaDeletionJob {
   settlementProofReference String?       @db.VarChar(200)
   settlementVerifiedAt DateTime?
   settlementLeaseToken String?           @db.Uuid
+  // V1 evidence retains its original meaning; V2 records finite app settlement.
+  cleanupContractVersion Int             @default(1)
+  cleanupEvidence Json?
+  observedAbsentAt DateTime?
+  debtKind String?                      @db.VarChar(32)
+  debtSince DateTime?
+  recheckAt DateTime?
+  recheckCount Int                       @default(0)
   retainUntil DateTime?
   status      PrivacyMediaDeletionStatus @default(PENDING)
   attempts    Int                        @default(0)

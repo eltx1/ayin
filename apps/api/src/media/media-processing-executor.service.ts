@@ -185,7 +185,12 @@ export class MediaProcessingExecutorService {
         }
 
         await this.requireOwnedStage(job, workerId, "UPLOADING", "UPLOADING_CANONICAL", 80);
-        await this.storage.uploadFile(job.outputR2ObjectKey, outputPath, "video/mp4");
+        await this.storage.uploadFile(
+          job.outputR2ObjectKey,
+          outputPath,
+          "video/mp4",
+          ...(requiredIntegrity ? [{ jobId: job.id, workerId, ...capturedMediaClaim(job) }] : []),
+        );
       }
 
       await this.requireOwnedStage(job, workerId, "VERIFYING", "VERIFYING_R2_OBJECT", 92);
