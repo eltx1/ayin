@@ -41,6 +41,12 @@ video. The release orders the authoritative audience check before optional sourc
 checks. A focused regression combines both changes, and the actual-API browser
 journey now changes the owned fixture source while narrowing its profile to Kids.
 
+Full CI also exposed a platform-font-sensitive shared-header overflow at 320px
+with 200% text. The release reserves space for the brand and menu, bounds the
+action column, and permits the Create / Upload label to wrap. EN/AR regression
+checks require all three header targets to remain reachable at normal and enlarged
+text sizes; hiding overflow is not the remedy.
+
 The original 16.3.6 measurements remain historical evidence for the Clips changes;
 they are not exact-runtime performance claims for the patched release. The patched
 head must pass fresh frozen-lock, audit, quality and full browser checks, with its

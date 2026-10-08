@@ -22,7 +22,12 @@ function fixture<T = { ok: boolean }>(command: string, input: object = {}): T {
 }
 const active = (page: Page) => page.locator("[data-clip-active='true']");
 const video = (page: Page) => active(page).locator("video");
-async function open(page: Page, catalog: Catalog, available: () => boolean = () => true) {
+async function open(
+  page: Page,
+  catalog: Catalog,
+  available: () => boolean = () => true,
+  locale: "en" | "ar" = "en",
+) {
   expect(
     (
       await page.request.post(`${API}/auth/login`, {
@@ -50,7 +55,7 @@ async function open(page: Page, catalog: Catalog, available: () => boolean = () 
       body: bytes.subarray(start, end + 1),
     });
   });
-  await page.goto("/clips?lang=en");
+  await page.goto("/clips?lang=" + locale);
   await expect
     .poll(() =>
       video(page).evaluate(
@@ -75,12 +80,19 @@ test.use({
   viewport: { width: 390, height: 844 },
 });
 
-for (const scale of [1, 2]) {
-  test(`320px authored control reflow at ${scale * 100}% text size`, async ({ page }, testInfo) => {
+for (const { locale, scale } of [
+  { locale: "en", scale: 1 },
+  { locale: "en", scale: 2 },
+  { locale: "ar", scale: 1 },
+  { locale: "ar", scale: 2 },
+] as const) {
+  test(`${locale} 320px authored control reflow at ${scale * 100}% text size`, async ({
+    page,
+  }, testInfo) => {
     const catalog = fixture<Catalog>("seed", { longText: true });
     try {
       await page.setViewportSize({ width: 320, height: 844 });
-      await open(page, catalog);
+      await open(page, catalog, () => true, locale);
       if (scale === 2) await page.addStyleTag({ content: "html { font-size: 200% !important; }" });
       await page.evaluate(async () => {
         await document.fonts.ready;
@@ -88,10 +100,38 @@ for (const scale of [1, 2]) {
           requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
         );
       });
-      await capture(page, testInfo, `clips-320-text-${scale * 100}`);
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
-      ).toBe(true);
+      await capture(page, testInfo, `clips-320-${locale}-text-${scale * 100}`);
+      const viewport = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        innerWidth,
+      }));
+      expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.innerWidth + 1);
+      const headerControls = page.locator(
+        '[data-ayin-shell-header] [data-tv-focus-id="brand-home"], [data-ayin-shell-header] [data-tv-focus-id="create-upload"], [data-ayin-shell-header] button[aria-haspopup="dialog"]',
+      );
+      await expect(headerControls).toHaveCount(3);
+      for (const control of await headerControls.all()) {
+        await control.focus();
+        const state = await control.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+          return {
+            label: node.getAttribute("aria-label") ?? node.textContent,
+            left: box.left,
+            right: box.right,
+            width: box.width,
+            height: box.height,
+            focused: document.activeElement === node,
+            hit: !!hit && (hit === node || node.contains(hit)),
+          };
+        });
+        expect(state.focused, state.label ?? "header control").toBe(true);
+        expect(state.hit, state.label ?? "header control").toBe(true);
+        expect(state.left).toBeGreaterThanOrEqual(-1);
+        expect(state.right).toBeLessThanOrEqual(viewport.innerWidth + 1);
+        expect(state.width).toBeGreaterThanOrEqual(44);
+        expect(state.height).toBeGreaterThanOrEqual(44);
+      }
       const controls = active(page).locator("[data-clip-player] button, [data-clip-player] input");
       for (const control of await controls.all()) {
         await control.focus();
