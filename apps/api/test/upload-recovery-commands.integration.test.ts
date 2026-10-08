@@ -244,10 +244,15 @@ databaseDescribe("Creator recoverable upload commands", () => {
     await db.$disconnect();
   });
 
+  let registrationAddress = 0;
   async function register() {
+    // Independent synthetic creators do not share one burst-limited IP. Keep
+    // the real production limiter enabled while the expanded suite grows.
+    registrationAddress++;
     const response = await app.inject({
       method: "POST",
       url: "/auth/register",
+      remoteAddress: `198.18.${Math.floor(registrationAddress / 250)}.${(registrationAddress % 250) + 1}`,
       payload: {
         name: "Synthetic recovery creator",
         email: `recovery-command-${randomUUID()}@example.com`,

@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "proof:live-provider": "tsx src/live/mux-live-provider-proof-cli.ts",
     "start:analytics-worker": "node dist/analytics-worker.js",
-    "start:warehouse-worker": "node dist/warehouse-worker.js"
+    "start:warehouse-worker": "node dist/warehouse-worker.js",
+    "proof:r2-recovery": "node --import tsx src/media/r2-recovery-acceptance-cli.ts"
   },
   "dependencies": {
     "@ayin/config": "workspace:*",
