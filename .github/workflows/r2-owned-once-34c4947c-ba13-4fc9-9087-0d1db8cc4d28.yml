@@ -1,0 +1,240 @@
+name: Owned R2 one-time invocation 34c4947c-ba13-4fc9-9087-0d1db8cc4d28
+
+# LOCAL REVIEW TEMPLATE ONLY. Inert until the reviewed, deployed current-main
+# SHA replaces the invalid placeholder AND an operator explicitly advances the
+# precreated exact invocation branch from that SHA to its single-file child.
+# Precreate at RELEASE_SHA, verify its head, then use update_ref with
+# force=false and expected_sha=RELEASE_SHA. Branch creation is not invocation.
+# Never merge this invocation into main. Never rerun or recreate its branch.
+# MANDATORY EXTERNAL PRECONDITION, currently unfulfilled: before filling the SHA
+# or publishing, select the exact successful Production deployment run ID;
+# download its immutable deploy-proof.env artifact and verify the artifact digest.
+# Require proof release_sha=pinned current main, deploy_run_id=selected run ID,
+# deployed_as=ayin, and validation_run_id=successful main-push quality run for
+# that same SHA. Record both exact run IDs and the verified artifact digest in
+# the final invocation review record. API head_sha alone does not bind the
+# separate release_sha input of a manual deployment and is insufficient proof.
+# Exact active remote SHA and healthy-host verification remain mandatory.
+on:
+  push:
+    branches:
+      - ops/r2-owned-once-34c4947c-ba13-4fc9-9087-0d1db8cc4d28
+    paths:
+      - .github/workflows/r2-owned-once-34c4947c-ba13-4fc9-9087-0d1db8cc4d28.yml
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ayin-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    if: >-
+      ${{
+        github.repository == 'eltx1/ayin' &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/ops/r2-owned-once-34c4947c-ba13-4fc9-9087-0d1db8cc4d28' &&
+        github.event.created == false &&
+        github.event.deleted == false &&
+        github.event.forced == false &&
+        github.run_attempt == 1
+      }}
+    runs-on: ubuntu-latest
+    # Preserve all existing production protections. GitHub will record this
+    # acceptance job as an environment deployment metadata event, not application
+    # activation. Do not set deployment:false to bypass custom protection rules.
+    environment: production
+    timeout-minutes: 20
+    env:
+      RELEASE_SHA: a6c15842bd2cf6990715f18d58a550a5929d8d41
+      FIXTURE_RUN_ID: 34c4947c-ba13-4fc9-9087-0d1db8cc4d28
+      CONFIRM_PREFIX: ayin-recovery-acceptance/34c4947c-ba13-4fc9-9087-0d1db8cc4d28/
+      CLEANUP_ACK: DELETE_ONLY_CREATED_FIXTURES
+      INVOCATION_BRANCH: ops/r2-owned-once-34c4947c-ba13-4fc9-9087-0d1db8cc4d28
+      INVOCATION_PATH: .github/workflows/r2-owned-once-34c4947c-ba13-4fc9-9087-0d1db8cc4d28.yml
+      INVOCATION_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      REMOTE_HOME: /home/ayin
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+    steps:
+      - name: Refuse placeholder and require the fixed approved scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$FIXTURE_RUN_ID" == '34c4947c-ba13-4fc9-9087-0d1db8cc4d28' ]]
+          [[ "$CONFIRM_PREFIX" == 'ayin-recovery-acceptance/34c4947c-ba13-4fc9-9087-0d1db8cc4d28/' ]]
+          [[ "$CLEANUP_ACK" == 'DELETE_ONLY_CREATED_FIXTURES' ]]
+          [[ "$GITHUB_WORKFLOW_REF" == "eltx1/ayin/$INVOCATION_PATH@refs/heads/$INVOCATION_BRANCH" ]]
+          [[ "$INVOCATION_WORKFLOW_SHA" == "$GITHUB_SHA" ]]
+
+      - name: Require first exact invocation and reviewed deployed current main
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const repo = { owner: 'eltx1', repo: 'ayin' };
+            const sha = process.env.RELEASE_SHA;
+            const branchName = process.env.INVOCATION_BRANCH;
+            const workflowPath = process.env.INVOCATION_PATH;
+            const payload = context.payload;
+            if (context.eventName !== 'push' || context.repo.owner !== repo.owner || context.repo.repo !== repo.repo ||
+                context.ref !== `refs/heads/${branchName}` || payload.repository?.fork !== false ||
+                payload.repository?.default_branch !== 'main' || payload.created !== false ||
+                payload.deleted !== false || payload.forced !== false ||
+                payload.before !== sha ||
+                payload.after !== context.sha || payload.head_commit?.id !== context.sha ||
+                process.env.GITHUB_RUN_ATTEMPT !== '1') {
+              throw new Error('Only the explicit first invocation branch update from the reviewed release is eligible.');
+            }
+            const { data: invocationBranch } = await github.rest.repos.getBranch({ ...repo, branch: branchName });
+            if (invocationBranch.commit.sha !== context.sha) throw new Error('Invocation branch changed.');
+            const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: context.sha });
+            if (commit.sha !== context.sha || commit.parents.length !== 1 || commit.parents[0].sha !== sha ||
+                commit.files?.length !== 1 || commit.files[0].filename !== workflowPath ||
+                commit.files[0].status !== 'added' || commit.files[0].previous_filename) {
+              throw new Error('Invocation must add only the reviewed workflow directly on the exact release.');
+            }
+            const { data: runs } = await github.rest.actions.listWorkflowRuns({
+              ...repo, workflow_id: workflowPath.split('/').at(-1), branch: branchName, event: 'push', per_page: 100,
+            });
+            if (runs.total_count !== 1 || runs.workflow_runs.length !== 1 ||
+                String(runs.workflow_runs[0].id) !== String(context.runId) ||
+                runs.workflow_runs[0].head_sha !== context.sha || runs.workflow_runs[0].run_attempt !== 1) {
+              throw new Error('An earlier or ambiguous invocation exists; do not replay.');
+            }
+            const { data: branch } = await github.rest.repos.getBranch({ ...repo, branch: 'main' });
+            if (branch.commit.sha !== sha) throw new Error('Acceptance requires current main.');
+            for (const [workflow, name] of [['deploy.yml', 'Production deployment'], ['database.yml', 'Task quality gates']]) {
+              const { data } = await github.rest.actions.listWorkflowRuns({ ...repo, workflow_id: workflow, head_sha: sha, status: 'success', per_page: 100 });
+              const valid = data.workflow_runs.some(run => run.name === name && run.head_sha === sha && run.head_branch === 'main' && run.conclusion === 'success' && (workflow !== 'database.yml' || run.event === 'push'));
+              if (!valid) throw new Error('The exact main release needs successful quality gates and production deployment.');
+            }
+
+      - name: Checkout exact already-deployed main tooling
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+
+      - name: Set up pinned Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Verify the unchanged exact fixture plan and all 38 offline guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]]
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { RUN_ID, PREFIX, BUCKET, CLEANUP_ACK, FIXTURES, MAX_RETAINED_BYTES } from './deploy/media/r2-owned-fixture-provider.mjs';
+          import { PLAN } from './deploy/media/r2-owned-fixture-browser.mjs';
+          assert.equal(RUN_ID, '34c4947c-ba13-4fc9-9087-0d1db8cc4d28');
+          assert.equal(PREFIX, 'ayin-recovery-acceptance/34c4947c-ba13-4fc9-9087-0d1db8cc4d28/');
+          assert.equal(BUCKET, 'ayin-production-media');
+          assert.equal(CLEANUP_ACK, 'DELETE_ONLY_CREATED_FIXTURES');
+          assert.equal(MAX_RETAINED_BYTES, 10485815);
+          assert.deepEqual(FIXTURES, [
+            { name: 'small.bin', size: 38 },
+            { name: 'multipart.bin', size: 5242897 },
+            { name: 'abort.bin', size: 5242880 },
+          ]);
+          assert.deepEqual(PLAN, [
+            { fixture: 'small.bin', partNumber: 1, expectedSizeBytes: 38, payloadSizeBytes: 39, offset: 0 },
+            { fixture: 'small.bin', partNumber: 1, expectedSizeBytes: 38, payloadSizeBytes: 38, offset: 0 },
+            { fixture: 'multipart.bin', partNumber: 1, expectedSizeBytes: 5242880, payloadSizeBytes: 5242880, offset: 0 },
+            { fixture: 'multipart.bin', partNumber: 2, expectedSizeBytes: 17, payloadSizeBytes: 17, offset: 5242880 },
+            { fixture: 'abort.bin', partNumber: 1, expectedSizeBytes: 5242880, payloadSizeBytes: 5242880, offset: 0 },
+          ]);
+          NODE
+          node --test --test-reporter=tap deploy/media/r2-owned-fixture-provider.test.mjs deploy/media/r2-owned-fixture-browser.test.mjs > "$RUNNER_TEMP/owned-r2-offline-guards.tap"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const report = readFileSync(`${process.env.RUNNER_TEMP}/owned-r2-offline-guards.tap`, 'utf8');
+          for (const line of ['# tests 38', '# pass 38', '# fail 0', '# cancelled 0', '# skipped 0', '# todo 0']) {
+            assert.equal(report.split('\n').filter(value => value === line).length, 1, 'All 38 offline guards must pass without skips.');
+          }
+          NODE
+          corepack pnpm exec playwright install --with-deps chromium
+
+      - name: Configure existing pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          bash deploy/acquire-ssh-host-key.sh "$candidate"
+          test -s "$candidate"
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          [[ "$actual_fingerprint" == "$PINNED_SSH_HOST_FINGERPRINT" ]]
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Require healthy exact active release without provider calls
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! timeout 75s ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o "IdentityFile=$HOME/.ssh/id_ed25519" -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -p 22 ayin@13.52.116.200 \
+            "set -eu; test \"\$(whoami)\" = ayin; test \"\$HOME\" = /home/ayin; test ! -w /home/horusapp; cd /home/ayin/htdocs/current; test \"\$(git rev-parse HEAD)\" = '$RELEASE_SHA'; test -z \"\$(git status --porcelain --untracked-files=no)\"; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/ >/dev/null; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/health >/dev/null; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/ready >/dev/null" \
+            >/dev/null 2>&1; then
+            echo 'Exact active release or direct-origin health could not be verified; fixture execution refused.' >&2
+            exit 1
+          fi
+
+      - name: Recheck current main and successful deployment immediately before execution
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const repo = { owner: 'eltx1', repo: 'ayin' };
+            const sha = process.env.RELEASE_SHA;
+            const { data: branch } = await github.rest.repos.getBranch({ ...repo, branch: 'main' });
+            if (branch.commit.sha !== sha) throw new Error('Acceptance requires current main.');
+            const { data: invocation } = await github.rest.repos.getBranch({ ...repo, branch: process.env.INVOCATION_BRANCH });
+            if (invocation.commit.sha !== context.sha) throw new Error('Invocation branch changed.');
+            for (const [workflow, name] of [['deploy.yml', 'Production deployment'], ['database.yml', 'Task quality gates']]) {
+              const { data } = await github.rest.actions.listWorkflowRuns({ ...repo, workflow_id: workflow, head_sha: sha, status: 'success', per_page: 100 });
+              const valid = data.workflow_runs.some(run => run.name === name && run.head_sha === sha && run.head_branch === 'main' && run.conclusion === 'success' && (workflow !== 'database.yml' || run.event === 'push'));
+              if (!valid) throw new Error('The exact main release needs successful quality gates and production deployment.');
+            }
+
+      - name: Invoke the unchanged approved driver exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          node deploy/media/r2-owned-fixture-browser.mjs \
+            --execute-approved --release-sha "$RELEASE_SHA" \
+            --run-id "$FIXTURE_RUN_ID" --confirm-prefix "$CONFIRM_PREFIX" \
+            --ack-cleanup "$CLEANUP_ACK"
+
+      - name: Upload only allowlisted observations
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: owned-r2-fixture-proof-34c4947c-ba13-4fc9-9087-0d1db8cc4d28
+          path: owned-r2-proof.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Remove ephemeral runner SSH material
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          rm -f "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts" "$HOME/.ssh/known_hosts.candidate"
