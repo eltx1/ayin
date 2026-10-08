@@ -7,8 +7,18 @@ import {
   type ExistingUploadPart,
   type MediaStorageAdapter,
   type StoredObjectMetadata,
+  type UploadCompletionObservation,
+  type UploadCompletionObservationInput,
+  type UploadObjectBinding,
 } from "./media-storage.adapter.js";
 import { R2HttpError, R2SigV4 } from "./r2-sigv4.js";
+import {
+  matchUploadCompletionObject,
+  objectMetadataFromHeaders,
+  R2UploadMetadataError,
+  uploadBindingHeaders,
+  validateUploadCompletionExpectation,
+} from "./r2-upload-completion.js";
 import {
   parseR2Xml,
   readR2XmlText,
@@ -109,12 +119,16 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   async createMultipartUpload(input: {
     key: string;
     contentType: string;
+    uploadBinding?: UploadObjectBinding;
   }): Promise<{ uploadId: string }> {
     boundedText(input.key, 1024);
     const root = await this.requestMultipartXml({
       key: input.key,
       query: [["uploads", ""]],
       contentType: input.contentType,
+      ...(input.uploadBinding
+        ? { metadataHeaders: uploadBindingHeaders(input.uploadBinding) }
+        : {}),
     });
     if (root.name !== "InitiateMultipartUploadResult") throw new R2XmlError();
     xmlFields(root, ["Bucket", "Key", "UploadId"]);
@@ -146,6 +160,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   async authorizeSinglePut(input: {
     key: string;
     contentType: string;
+    uploadBinding?: UploadObjectBinding;
     expiresInSeconds: number;
     now?: Date;
   }): Promise<{ url: string; expiresAt: Date }> {
@@ -153,84 +168,92 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
       method: "PUT",
       key: input.key,
       contentType: input.contentType,
+      ...(input.uploadBinding
+        ? { metadataHeaders: uploadBindingHeaders(input.uploadBinding) }
+        : {}),
       expiresInSeconds: input.expiresInSeconds,
       ...(input.now ? { now: input.now } : {}),
     });
   }
 
   async listParts(input: { key: string; uploadId: string }): Promise<ExistingUploadPart[]> {
-    return this.observe("listParts", async (page) => {
-      boundedText(input.key, 1024);
-      boundedText(input.uploadId, 1024);
-      const parts: ExistingUploadPart[] = [];
-      let marker = 0;
-      for (let index = 0; index < MAX_LIST_PAGES; index++) {
-        const query: Array<[string, string]> = [
-          ["uploadId", input.uploadId],
-          ["max-parts", String(LIST_PAGE_SIZE)],
-        ];
-        if (marker) query.push(["part-number-marker", String(marker)]);
-        const root = await page({ key: input.key, query });
-        if (root.name !== "ListPartsResult") throw new R2XmlError();
-        xmlFields(root, [
-          "Bucket",
-          "Key",
-          "UploadId",
-          "PartNumberMarker",
-          "NextPartNumberMarker",
-          "MaxParts",
-          "IsTruncated",
-          "Part",
-          "Initiator",
-          "Owner",
-          "StorageClass",
-          "ChecksumAlgorithm",
-          "ChecksumType",
+    return this.observe("listParts", (page) => this.readParts(input, page));
+  }
+
+  private async readParts(
+    input: { key: string; uploadId: string },
+    page: (input: { key?: string; query: Array<[string, string]> }) => Promise<R2XmlNode>,
+  ): Promise<ExistingUploadPart[]> {
+    boundedText(input.key, 1024);
+    boundedText(input.uploadId, 1024);
+    const parts: ExistingUploadPart[] = [];
+    let marker = 0;
+    for (let index = 0; index < MAX_LIST_PAGES; index++) {
+      const query: Array<[string, string]> = [
+        ["uploadId", input.uploadId],
+        ["max-parts", String(LIST_PAGE_SIZE)],
+      ];
+      if (marker) query.push(["part-number-marker", String(marker)]);
+      const root = await page({ key: input.key, query });
+      if (root.name !== "ListPartsResult") throw new R2XmlError();
+      xmlFields(root, [
+        "Bucket",
+        "Key",
+        "UploadId",
+        "PartNumberMarker",
+        "NextPartNumberMarker",
+        "MaxParts",
+        "IsTruncated",
+        "Part",
+        "Initiator",
+        "Owner",
+        "StorageClass",
+        "ChecksumAlgorithm",
+        "ChecksumType",
+      ]);
+      if (
+        xmlField(root, "Bucket") !== this.config.bucket ||
+        xmlField(root, "Key") !== input.key ||
+        xmlField(root, "UploadId") !== input.uploadId ||
+        integerField(root, "PartNumberMarker", 0, MAX_LIST_ITEMS) !== marker
+      )
+        throw new R2XmlError();
+      const limit = integerField(root, "MaxParts", 1, LIST_PAGE_SIZE);
+      const rows = root.children.filter((child) => child.name === "Part");
+      if (rows.length > limit) throw new R2XmlError();
+      let last = marker;
+      for (const row of rows) {
+        xmlFields(row, [
+          "PartNumber",
+          "ETag",
+          "Size",
+          "LastModified",
+          "ChecksumCRC32",
+          "ChecksumCRC32C",
+          "ChecksumCRC64NVME",
+          "ChecksumMD5",
+          "ChecksumSHA1",
+          "ChecksumSHA256",
         ]);
-        if (
-          xmlField(root, "Bucket") !== this.config.bucket ||
-          xmlField(root, "Key") !== input.key ||
-          xmlField(root, "UploadId") !== input.uploadId ||
-          integerField(root, "PartNumberMarker", 0, MAX_LIST_ITEMS) !== marker
-        )
-          throw new R2XmlError();
-        const limit = integerField(root, "MaxParts", 1, LIST_PAGE_SIZE);
-        const rows = root.children.filter((child) => child.name === "Part");
-        if (rows.length > limit) throw new R2XmlError();
-        let last = marker;
-        for (const row of rows) {
-          xmlFields(row, [
-            "PartNumber",
-            "ETag",
-            "Size",
-            "LastModified",
-            "ChecksumCRC32",
-            "ChecksumCRC32C",
-            "ChecksumCRC64NVME",
-            "ChecksumMD5",
-            "ChecksumSHA1",
-            "ChecksumSHA256",
-          ]);
-          const partNumber = integerField(row, "PartNumber", 1, MAX_LIST_ITEMS);
-          if (partNumber <= last) throw new R2XmlError();
-          last = partNumber;
-          parts.push({
-            partNumber,
-            etag: boundedText(xmlField(row, "ETag"), 256),
-            sizeBytes: integerField(row, "Size", 0, 5 * 1024 ** 3),
-          });
-        }
-        const more = truncated(root);
-        const next = xmlField(root, "NextPartNumberMarker", false);
-        if (next !== null) integerField(root, "NextPartNumberMarker", 0, MAX_LIST_ITEMS);
-        if (!more) return parts;
-        if (!rows.length || next === null || Number(next) !== last || last <= marker)
-          throw new R2XmlError();
-        if (parts.length >= MAX_LIST_ITEMS || last >= MAX_LIST_ITEMS) throw new R2XmlError(true);
-        marker = last;
+        const partNumber = integerField(row, "PartNumber", 1, MAX_LIST_ITEMS);
+        if (partNumber <= last) throw new R2XmlError();
+        last = partNumber;
+        parts.push({
+          partNumber,
+          etag: boundedText(xmlField(row, "ETag"), 256),
+          sizeBytes: integerField(row, "Size", 0, 5 * 1024 ** 3),
+        });
       }
-      throw new R2XmlError(true);
-    });
+      const more = truncated(root);
+      const next = xmlField(root, "NextPartNumberMarker", false);
+      if (next !== null) integerField(root, "NextPartNumberMarker", 0, MAX_LIST_ITEMS);
+      if (!more) return parts;
+      if (!rows.length || next === null || Number(next) !== last || last <= marker)
+        throw new R2XmlError();
+      if (parts.length >= MAX_LIST_ITEMS || last >= MAX_LIST_ITEMS) throw new R2XmlError(true);
+      marker = last;
+    }
+    throw new R2XmlError(true);
   }
 
   async completeMultipartUpload(input: {
@@ -294,16 +317,50 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   }
 
   async headObject(key: string): Promise<StoredObjectMetadata> {
-    const response = await this.signer.request({
-      method: "HEAD",
-      key,
-      signal: AbortSignal.timeout(LIST_DEADLINE_MS),
+    return this.readHeadObject(key, AbortSignal.timeout(LIST_DEADLINE_MS));
+  }
+
+  private async readHeadObject(key: string, signal: AbortSignal): Promise<StoredObjectMetadata> {
+    signal.throwIfAborted();
+    const response = await this.signer.request({ method: "HEAD", key, signal });
+    if (signal.aborted) void response.body?.cancel().catch(() => undefined);
+    signal.throwIfAborted();
+    if (response.status !== 200) throw new R2UploadMetadataError();
+    return objectMetadataFromHeaders(response.headers);
+  }
+
+  async observeUploadCompletion(
+    input: UploadCompletionObservationInput,
+  ): Promise<UploadCompletionObservation> {
+    // One deadline covers all ListParts pages, their bodies and the final HEAD.
+    // This never replays Complete, aborts, deletes or asserts write settlement.
+    return this.observe("observeUploadCompletion", async (page, signal) => {
+      boundedText(input.key, 1024);
+      validateUploadCompletionExpectation(input);
+      if (input.uploadId !== null) {
+        multipartToken(input.uploadId, 1024);
+        try {
+          await this.readParts({ key: input.key, uploadId: input.uploadId }, page);
+          return { status: "MULTIPART_PRESENT" };
+        } catch (error) {
+          if (
+            !(error instanceof R2HttpError) ||
+            error.status !== 404 ||
+            error.providerCode !== "NoSuchUpload"
+          )
+            throw error;
+        }
+      }
+      signal.throwIfAborted();
+      try {
+        const metadata = await this.readHeadObject(input.key, signal);
+        return matchUploadCompletionObject(metadata, input.expected);
+      } catch (error) {
+        if (error instanceof R2HttpError && error.method === "HEAD" && error.status === 404)
+          return { status: "OBJECT_ABSENT" };
+        throw error;
+      }
     });
-    return {
-      sizeBytes: Number(response.headers.get("content-length") ?? "0"),
-      contentType: response.headers.get("content-type"),
-      etag: response.headers.get("etag"),
-    };
   }
 
   async readObject(key: string, maxBytes: number): Promise<Uint8Array> {
@@ -487,6 +544,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
     key: string;
     query: Array<[string, string]>;
     contentType: string;
+    metadataHeaders?: Record<string, string>;
     body?: string;
   }): Promise<R2XmlNode> {
     const controller = new AbortController();
@@ -521,7 +579,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
   }
 
   private async observe<T>(
-    operation: "listParts" | "listMultipartUploads" | "deletePrefix",
+    operation: "listParts" | "listMultipartUploads" | "deletePrefix" | "observeUploadCompletion",
     work: (
       page: (input: { key?: string; query: Array<[string, string]> }) => Promise<R2XmlNode>,
       signal: AbortSignal,
@@ -565,6 +623,7 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
       if (controller.signal.aborted) code = "OBSERVATION_TIMEOUT";
       else if (error instanceof R2XmlError)
         code = error.limitExceeded ? "OBSERVATION_LIMIT_EXCEEDED" : "INVALID_RESPONSE";
+      else if (error instanceof R2UploadMetadataError) code = "INVALID_RESPONSE";
       else if (
         error instanceof R2HttpError &&
         error.status === 404 &&

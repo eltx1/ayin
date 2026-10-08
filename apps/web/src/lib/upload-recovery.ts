@@ -704,6 +704,61 @@ export class UploadRecoveryClient {
       this.view.fileMatched = false;
     });
   }
+  async reconcileCompletion() {
+    await this.run(async (signal) => {
+      const saved = this.view.saved;
+      if (
+        !this.view.scope ||
+        !this.view.supported ||
+        !saved?.session ||
+        saved.pending?.kind !== "COMPLETE" ||
+        !["FINALIZING", "UNRESOLVED"].includes(saved.session.state)
+      )
+        throw new RecoveryError("NOT_READY");
+      if (Date.parse(saved.session.expiresAt) <= Date.now()) throw new RecoveryError("EXPIRED");
+      await this.scope(signal, saved.scope);
+      let raw: unknown;
+      try {
+        // Verify the original COMPLETE outcome without replaying that command,
+        // minting another request UUID, obtaining a grant or sending file bytes.
+        raw = await this.request(
+          `/media/uploads/sessions/${saved.session.sessionId}/operations/${saved.pending.requestId}/reconcile`,
+          signal,
+          { expectedRevision: saved.session.revision },
+          saved.scope,
+        );
+      } catch (error) {
+        if (error instanceof RecoveryError && error.code === "UPLOAD_RECOVERY_UNSUPPORTED")
+          this.view.supported = false;
+        // Even a definitive rejection of this verification attempt says nothing
+        // about whether the original COMPLETE reached storage. Keep its marker.
+        throw error;
+      }
+      const response = parseRecoveryResponse(
+        raw,
+        saved.scope,
+        saved.pending.requestId,
+        saved.session,
+      );
+      if (
+        !response.operation.replayed ||
+        response.cleanup ||
+        (response.operation.status === "SUCCEEDED"
+          ? response.session.state !== "COMPLETED"
+          : !["FINALIZING", "UNRESOLVED"].includes(response.session.state))
+      )
+        throw new UploadProtocolError();
+      await this.scope(signal, saved.scope);
+      signal.throwIfAborted();
+      this.accept(response, saved);
+      if (response.operation.status === "SUCCEEDED") {
+        this.file = null;
+        this.identity = null;
+        this.view.fileName = null;
+        this.view.fileMatched = false;
+      }
+    });
+  }
   async cancel() {
     await this.run(async (signal) => {
       if (

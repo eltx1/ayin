@@ -104,6 +104,13 @@ export function UploadRecovery() {
   const mutable = Boolean(
     session && !expired && ["OPEN", "PREPARING"].includes(session.state) && !view?.saved?.pending,
   );
+  const reconcilable = Boolean(
+    session &&
+    !expired &&
+    view?.supported &&
+    view.saved?.pending?.kind === "COMPLETE" &&
+    ["FINALIZING", "UNRESOLVED"].includes(session.state),
+  );
   const observation = view?.inspection?.observation;
   const readyToFinish = Boolean(
     session?.state === "OPEN" &&
@@ -336,6 +343,15 @@ export function UploadRecovery() {
                       >
                         {copy("Finish upload", "إنهاء الرفع")}
                       </ActionButton>
+                      {reconcilable ? (
+                        <ActionButton
+                          type="button"
+                          disabled={view.busy}
+                          onClick={() => void client.current?.reconcileCompletion()}
+                        >
+                          {copy("Verify upload completion", "التحقق من اكتمال الرفع")}
+                        </ActionButton>
+                      ) : null}
                       <ActionButton
                         type="button"
                         tone="danger"
@@ -347,6 +363,14 @@ export function UploadRecovery() {
                         {copy("Cancel upload", "إلغاء الرفع")}
                       </ActionButton>
                     </div>
+                    {reconcilable ? (
+                      <p>
+                        {copy(
+                          "Verify whether storage received your completed upload. This does not upload the file again. AYIN still checks and processes accepted uploads before publication.",
+                          "تحقق مما إذا كان التخزين قد استلم الرفع المكتمل. لا يؤدي ذلك إلى رفع الملف مجددًا. يظل AYIN يتحقق من ملفات الرفع المقبولة ويعالجها قبل النشر.",
+                        )}
+                      </p>
+                    ) : null}
                     <Disclosure summary={copy("Upload details", "تفاصيل الرفع")}>
                       <p>
                         {copy("Expires", "تنتهي في")}:{" "}

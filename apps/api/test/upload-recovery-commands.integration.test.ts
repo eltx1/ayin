@@ -26,6 +26,7 @@ import {
   type ExistingUploadPart,
   type MediaStorageAdapter,
   type StoredObjectMetadata,
+  type UploadObjectBinding,
 } from "../src/media/media-storage.adapter.js";
 import { loadMediaStorageConfig } from "../src/media/media-storage.config.js";
 import { MediaUploadService } from "../src/media/media-upload.service.js";
@@ -84,7 +85,12 @@ databaseDescribe("Creator recoverable upload commands", () => {
   let probe: ((operation: string, key: string) => Promise<void>) | undefined;
   const allocations = new Map<
     string,
-    { key: string; contentType: string; parts: ExistingUploadPart[] }
+    {
+      key: string;
+      contentType: string;
+      uploadBinding?: UploadObjectBinding;
+      parts: ExistingUploadPart[];
+    }
   >();
   const objects = new Map<string, StoredObjectMetadata>();
   const trustedSettlement = { admissionEvidence: vi.fn(() => evidence) };
@@ -139,6 +145,7 @@ databaseDescribe("Creator recoverable upload commands", () => {
     vi.clearAllMocks();
     for (const operation of Object.values(storage))
       if (vi.isMockFunction(operation)) operation.mockReset();
+    delete storage.observeUploadCompletion;
     probe = undefined;
     allocations.clear();
     objects.clear();
@@ -157,12 +164,19 @@ databaseDescribe("Creator recoverable upload commands", () => {
       validUntil: new Date(Date.now() + 3600000),
     };
     vi.mocked(storage.verifyUploadCleanupSettlement!).mockResolvedValue(null);
-    vi.mocked(storage.createMultipartUpload).mockImplementation(async ({ key, contentType }) => {
-      await probe?.("create", key);
-      const uploadId = `${providerId}-${randomUUID()}`;
-      allocations.set(uploadId, { key, contentType, parts: [] });
-      return { uploadId };
-    });
+    vi.mocked(storage.createMultipartUpload).mockImplementation(
+      async ({ key, contentType, uploadBinding }) => {
+        await probe?.("create", key);
+        const uploadId = `${providerId}-${randomUUID()}`;
+        allocations.set(uploadId, {
+          key,
+          contentType,
+          ...(uploadBinding ? { uploadBinding } : {}),
+          parts: [],
+        });
+        return { uploadId };
+      },
+    );
     vi.mocked(storage.authorizeMultipartPart).mockImplementation(
       async ({ key, uploadId, now, expiresInSeconds }) => {
         await probe?.("authorizeMultipart", key);
@@ -202,6 +216,7 @@ databaseDescribe("Creator recoverable upload commands", () => {
         objects.set(key, {
           sizeBytes: allocation.parts.reduce((sum, part) => sum + part.sizeBytes, 0),
           contentType: allocation.contentType,
+          ...(allocation.uploadBinding ? { uploadBinding: allocation.uploadBinding } : {}),
           etag: privateEtag,
         });
         allocations.delete(uploadId);
@@ -229,10 +244,15 @@ databaseDescribe("Creator recoverable upload commands", () => {
     await db.$disconnect();
   });
 
+  let registrationAddress = 0;
   async function register() {
+    // Independent synthetic creators do not share one burst-limited IP. Keep
+    // the real production limiter enabled while the expanded suite grows.
+    registrationAddress++;
     const response = await app.inject({
       method: "POST",
       url: "/auth/register",
+      remoteAddress: `198.18.${Math.floor(registrationAddress / 250)}.${(registrationAddress % 250) + 1}`,
       payload: {
         name: "Synthetic recovery creator",
         email: `recovery-command-${randomUUID()}@example.com`,
@@ -1133,6 +1153,351 @@ databaseDescribe("Creator recoverable upload commands", () => {
       }),
     ).toMatchObject({ status: "UNKNOWN", dispatchStartedAt: expect.any(Date) });
     expect(first.body).not.toContain("synthetic completion response lost");
+  });
+
+  function enableBoundObservation() {
+    storage.observeUploadCompletion = vi.fn<
+      NonNullable<MediaStorageAdapter["observeUploadCompletion"]>
+    >(async ({ key, uploadId, expected }) => {
+      await probe?.("observeCompletion", key);
+      if (uploadId && allocations.has(uploadId)) return { status: "MULTIPART_PRESENT" };
+      const object = objects.get(key);
+      if (!object) return { status: "OBJECT_ABSENT" };
+      const binding = object.uploadBinding;
+      if (
+        !binding ||
+        !object.etag ||
+        object.sizeBytes !== expected.sizeBytes ||
+        object.contentType !== expected.contentType ||
+        binding.sessionId !== expected.binding.sessionId ||
+        binding.sourceAssetId !== expected.binding.sourceAssetId ||
+        binding.contentIdentityDigest !== expected.binding.contentIdentityDigest
+      )
+        return { status: "OBJECT_MISMATCH" };
+      return {
+        status: "OBJECT_VERIFIED",
+        metadata: { ...object, etag: object.etag, uploadBinding: binding },
+      };
+    });
+  }
+  function reconcile(
+    actor: Actor,
+    sessionId: string,
+    requestId: string,
+    expectedRevision: number,
+    instance = app,
+  ) {
+    return instance.inject({
+      method: "POST",
+      url: `/media/uploads/sessions/${sessionId}/operations/${requestId}/reconcile`,
+      headers: { cookie: actor.cookie, "x-ayin-expected-account": actor.accountId },
+      payload: { expectedRevision },
+    });
+  }
+  async function lostCompletion(bytes = multipartBytes) {
+    const f = await fixture(bytes);
+    const saved = await source(f.session);
+    const body = request(f.session);
+    if (bytes === multipartBytes) {
+      await storeParts(f.session);
+      const complete = vi.mocked(storage.completeMultipartUpload).getMockImplementation()!;
+      vi.mocked(storage.completeMultipartUpload).mockImplementationOnce(async (input) => {
+        await complete(input);
+        throw Error("synthetic provider response lost after storage");
+      });
+    } else {
+      objects.set(saved.objectKey, {
+        sizeBytes: bytes,
+        contentType: saved.mimeType,
+        etag: privateEtag,
+        uploadBinding: {
+          sessionId: saved.id,
+          sourceAssetId: saved.sourceAssetId!,
+          contentIdentityDigest: saved.contentIdentityDigest!,
+        },
+      });
+      vi.mocked(storage.headObject).mockRejectedValueOnce(Error("synthetic HEAD response lost"));
+    }
+    expect(
+      success(await command(f.actor, f.session.sessionId, "complete", body)).operation.status,
+    ).toBe("UNKNOWN");
+    enableBoundObservation();
+    const unknown = await source(f.session);
+    vi.clearAllMocks();
+    return { ...f, body, saved: unknown };
+  }
+
+  it.each([1024, multipartBytes])(
+    "reconciles a lost %i-byte completion from bound provider evidence, without redispatch or premature publication",
+    async (bytes) => {
+      const f = await lostCompletion(bytes);
+      probe = async (operation, key) => {
+        if (operation === "observeCompletion") await assertNoHeldLocks(f.actor, key);
+      };
+      const result = await reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision);
+      expect(result.headers["cache-control"]).toBe("private, no-store");
+      expect(success(result)).toMatchObject({
+        session: { state: "COMPLETED" },
+        operation: { requestId: f.body.requestId, status: "SUCCEEDED", replayed: true },
+      });
+      expect(await db.mediaProcessingJob.count()).toBe(1);
+      expect(await db.mediaProcessingJob.findFirstOrThrow()).toMatchObject({
+        status: "INTEGRITY_QUEUED",
+        inputIntegrityDigest: f.request.fileIdentity.rootSha256,
+      });
+      expect(await db.video.findUniqueOrThrow({ where: { id: f.session.videoId! } })).toMatchObject(
+        { status: "VALIDATING" },
+      );
+      expect(storage.observeUploadCompletion).toHaveBeenCalledOnce();
+      noProviderMutation();
+      noPrivateState(result.body, f.saved.objectKey);
+      const repeat = await reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision);
+      expect(success(repeat).operation.status).toBe("SUCCEEDED");
+      expect(storage.observeUploadCompletion).toHaveBeenCalledOnce();
+      expect(await db.mediaProcessingJob.count()).toBe(1);
+    },
+  );
+
+  it.each([
+    "absent",
+    "size",
+    "mime",
+    "session",
+    "source",
+    "digest",
+    "no-binding",
+    "etag",
+    "active",
+    "provider-error",
+  ] as const)(
+    "leaves %s provider evidence unresolved with reservation and journal intact",
+    async (kind) => {
+      const f = await lostCompletion();
+      const object = objects.get(f.saved.objectKey)!;
+      if (kind === "absent") objects.delete(f.saved.objectKey);
+      if (kind === "size") object.sizeBytes++;
+      if (kind === "mime") object.contentType = "video/webm";
+      if (kind === "session") object.uploadBinding!.sessionId = randomUUID();
+      if (kind === "source") object.uploadBinding!.sourceAssetId = randomUUID();
+      if (kind === "digest") object.uploadBinding!.contentIdentityDigest = "b".repeat(64);
+      if (kind === "no-binding") delete object.uploadBinding;
+      if (kind === "etag") object.etag = null;
+      if (kind === "active")
+        allocations.set(f.saved.providerUploadId!, {
+          key: f.saved.objectKey,
+          contentType: "video/mp4",
+          parts: [],
+        });
+      if (kind === "provider-error")
+        vi.mocked(storage.observeUploadCompletion!).mockRejectedValueOnce(
+          Error("private provider failure"),
+        );
+      const before = await counts();
+      const result = await reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision);
+      expect(success(result).operation).toMatchObject({ status: "UNKNOWN", replayed: true });
+      expect(await source(f.session)).toEqual(f.saved);
+      expect(await counts()).toEqual(before);
+      expect(result.body).not.toContain("private provider failure");
+      noProviderMutation();
+    },
+  );
+
+  it.each(["owner", "login", "cancel", "expiry", "gate", "source"] as const)(
+    "rechecks %s after provider observation and cannot resurrect the source",
+    async (change) => {
+      const f = await lostCompletion();
+      probe = async (operation) => {
+        if (operation !== "observeCompletion") return;
+        if (change === "owner")
+          await db.channelMember.deleteMany({
+            where: { accountId: f.actor.accountId, channelId: f.actor.channelId },
+          });
+        if (change === "login")
+          await db.accountSession.updateMany({
+            where: { accountId: f.actor.accountId },
+            data: { revokedAt: new Date() },
+          });
+        if (change === "cancel")
+          success(
+            await command(
+              f.actor,
+              f.saved.id,
+              "cancel",
+              request({ ...f.session, revision: f.saved.revision }),
+            ),
+          );
+        if (change === "expiry")
+          await db.mediaUploadSession.update({
+            where: { id: f.saved.id },
+            data: { hardExpiresAt: new Date(Date.now() - 1) },
+          });
+        if (change === "gate") evidence = null;
+        if (change === "source")
+          await db.mediaAsset.update({
+            where: { id: f.saved.sourceAssetId! },
+            data: { removedAt: new Date() },
+          });
+      };
+      const result = await reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision);
+      expect(result.statusCode).toBe(
+        change === "owner"
+          ? 403
+          : change === "login"
+            ? 401
+            : change === "expiry"
+              ? 410
+              : change === "gate"
+                ? 503
+                : 409,
+      );
+      expect(await db.mediaProcessingJob.count()).toBe(0);
+      expect((await source(f.session)).state).not.toBe("COMPLETED");
+      noProviderMutation();
+    },
+  );
+
+  it("coalesces concurrent reconciliation into one integrity enqueue", async () => {
+    const f = await lostCompletion();
+    const entered = deferred(),
+      release = deferred();
+    let observed = 0;
+    probe = async (operation) => {
+      if (operation !== "observeCompletion") return;
+      if (++observed === 2) entered.resolve();
+      await release.promise;
+    };
+    const first = Promise.resolve(
+      reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision),
+    );
+    const second = Promise.resolve(
+      reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision),
+    );
+    await within(entered.promise, "Concurrent observations did not run");
+    release.resolve();
+    expect(success(await first).operation.status).toBe("SUCCEEDED");
+    expect(success(await second).operation.status).toBe("SUCCEEDED");
+    expect(await db.mediaProcessingJob.count()).toBe(1);
+    noProviderMutation();
+  });
+
+  it.each(["success", "lost-response"] as const)(
+    "reconciles DISPATCHED/FINALIZING before the original COMPLETE returns %s",
+    async (outcome) => {
+      const f = await fixture();
+      await storeParts(f.session);
+      enableBoundObservation();
+      const complete = vi.mocked(storage.completeMultipartUpload).getMockImplementation()!;
+      const stored = deferred(),
+        release = deferred();
+      vi.mocked(storage.completeMultipartUpload).mockImplementationOnce(async (input) => {
+        const result = await complete(input);
+        stored.resolve();
+        await release.promise;
+        if (outcome === "lost-response") throw Error("synthetic delayed response lost");
+        return result;
+      });
+      const body = request(f.session);
+      const original = Promise.resolve(command(f.actor, f.session.sessionId, "complete", body));
+      await within(stored.promise, "Original completion did not store its object");
+      try {
+        const finalizing = await source(f.session);
+        expect(finalizing.state).toBe("FINALIZING");
+        expect(
+          success(await reconcile(f.actor, finalizing.id, body.requestId, finalizing.revision))
+            .operation.status,
+        ).toBe("SUCCEEDED");
+      } finally {
+        release.resolve();
+      }
+      expect(success(await original).operation.status).toBe("SUCCEEDED");
+      expect((await source(f.session)).state).toBe("COMPLETED");
+      expect(await db.mediaProcessingJob.count()).toBe(1);
+      expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("requires a fresh revision when original UNKNOWN wins during reconciliation observation", async () => {
+    const f = await fixture();
+    await storeParts(f.session);
+    enableBoundObservation();
+    const complete = vi.mocked(storage.completeMultipartUpload).getMockImplementation()!;
+    const stored = deferred(),
+      releaseOriginal = deferred(),
+      observing = deferred(),
+      releaseObservation = deferred();
+    vi.mocked(storage.completeMultipartUpload).mockImplementationOnce(async (input) => {
+      await complete(input);
+      stored.resolve();
+      await releaseOriginal.promise;
+      throw Error("synthetic response lost");
+    });
+    const body = request(f.session);
+    const original = Promise.resolve(command(f.actor, f.session.sessionId, "complete", body));
+    await within(stored.promise, "Original completion did not store");
+    const finalizing = await source(f.session);
+    probe = async (operation) => {
+      if (operation !== "observeCompletion") return;
+      observing.resolve();
+      await releaseObservation.promise;
+    };
+    const reconciliation = Promise.resolve(
+      reconcile(f.actor, finalizing.id, body.requestId, finalizing.revision),
+    );
+    await within(observing.promise, "Reconciliation did not observe");
+    releaseOriginal.resolve();
+    expect(success(await original).operation.status).toBe("UNKNOWN");
+    releaseObservation.resolve();
+    expect((await reconciliation).statusCode).toBe(409);
+    expect(await db.mediaProcessingJob.count()).toBe(0);
+    const unknown = await source(f.session);
+    expect(unknown.state).toBe("UNRESOLVED");
+    expect(
+      success(await reconcile(f.actor, unknown.id, body.requestId, unknown.revision)).operation
+        .status,
+    ).toBe("SUCCEEDED");
+    expect(await db.mediaProcessingJob.count()).toBe(1);
+    expect(storage.completeMultipartUpload).toHaveBeenCalledOnce();
+  });
+
+  it("rolls back reconciliation when enqueue fails, and permits another explicit observation", async () => {
+    const f = await lostCompletion();
+    const lifecycle = app.get(MediaProcessingLifecycleService);
+    vi.spyOn(lifecycle, "enqueueUploadedAssetInTransaction").mockRejectedValueOnce(
+      Error("synthetic enqueue failure"),
+    );
+    expect(
+      (await reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision)).statusCode,
+    ).toBe(500);
+    expect(await source(f.session)).toEqual(f.saved);
+    expect(await db.mediaProcessingJob.count()).toBe(0);
+    expect(
+      success(await reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision)).operation
+        .status,
+    ).toBe("SUCCEEDED");
+    expect(await db.mediaProcessingJob.count()).toBe(1);
+    noProviderMutation();
+  });
+
+  it("rejects stale revision, wrong operation, foreign owner and disabled provider before storage observation", async () => {
+    const f = await lostCompletion();
+    const other = await register();
+    expect(
+      (await reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision - 1)).statusCode,
+    ).toBe(409);
+    expect(
+      (await reconcile(f.actor, f.saved.id, f.request.requestId, f.saved.revision)).statusCode,
+    ).toBe(404);
+    expect(
+      (await reconcile(other, f.saved.id, f.body.requestId, f.saved.revision)).statusCode,
+    ).toBe(404);
+    expect((await reconcile(f.actor, f.saved.id, randomUUID(), f.saved.revision)).statusCode).toBe(
+      404,
+    );
+    evidence = null;
+    expect(
+      (await reconcile(f.actor, f.saved.id, f.body.requestId, f.saved.revision)).statusCode,
+    ).toBe(503);
+    noProvider();
   });
 
   it("coalesces concurrent completion requests during provider dispatch", async () => {

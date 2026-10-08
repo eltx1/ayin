@@ -15,6 +15,7 @@ import {
   MEDIA_STORAGE_ADAPTER,
   MEDIA_STORAGE_CONFIG,
   type MediaStorageAdapter,
+  type UploadObjectBinding,
 } from "../../src/media/media-storage.adapter.js";
 import { loadMediaStorageConfig } from "../../src/media/media-storage.config.js";
 import {
@@ -45,10 +46,22 @@ const received: Array<{
 }> = [];
 const requestStarts = new WeakMap<object, number>();
 let supported = true,
-  failAuthorize = false;
+  failAuthorize = false,
+  failCompleteAfterStore = false;
 let counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
-const uploads = new Map<string, { key: string; contentType: string; parts: Map<number, Buffer> }>();
-const objects = new Map<string, { contentType: string; bytes: Buffer }>();
+const uploads = new Map<
+  string,
+  {
+    key: string;
+    contentType: string;
+    uploadBinding?: UploadObjectBinding;
+    parts: Map<number, Buffer>;
+  }
+>();
+const objects = new Map<
+  string,
+  { contentType: string; bytes: Buffer; uploadBinding?: UploadObjectBinding }
+>();
 const grants = new Map<
   string,
   {
@@ -58,6 +71,7 @@ const grants = new Map<
     partNumber?: number;
     expiresAt: Date;
     used: boolean;
+    uploadBinding?: UploadObjectBinding;
   }
 >();
 function evidence(): DurableUploadSettlementEvidence | null {
@@ -81,6 +95,7 @@ function evidence(): DurableUploadSettlementEvidence | null {
 function authorize(input: {
   key: string;
   contentType: string;
+  uploadBinding?: UploadObjectBinding;
   uploadId?: string;
   partNumber?: number;
   expiresInSeconds: number;
@@ -111,16 +126,26 @@ function storeGrantedBytes(token: string, body: Buffer) {
     const upload = uploads.get(grant.uploadId);
     if (!upload || !grant.partNumber) throw Error("Unknown synthetic upload");
     upload.parts.set(grant.partNumber, body);
-  } else objects.set(grant.key, { bytes: body, contentType: grant.contentType });
+  } else
+    objects.set(grant.key, {
+      bytes: body,
+      contentType: grant.contentType,
+      ...(grant.uploadBinding ? { uploadBinding: grant.uploadBinding } : {}),
+    });
 }
 const storage: MediaStorageAdapter = {
   kind: "r2",
   available: true,
   verifyUploadCleanupSettlement: async () => null,
-  createMultipartUpload: async ({ key, contentType }) => {
+  createMultipartUpload: async ({ key, contentType, uploadBinding }) => {
     counters.allocations++;
     const uploadId = randomUUID();
-    uploads.set(uploadId, { key, contentType, parts: new Map() });
+    uploads.set(uploadId, {
+      key,
+      contentType,
+      ...(uploadBinding ? { uploadBinding } : {}),
+      parts: new Map(),
+    });
     return { uploadId };
   },
   authorizeSinglePut: async (input) => authorize(input),
@@ -150,8 +175,16 @@ const storage: MediaStorageAdapter = {
         throw Error("Bad synthetic part");
       return bytes;
     });
-    objects.set(key, { bytes: Buffer.concat(bytes), contentType: upload.contentType });
+    objects.set(key, {
+      bytes: Buffer.concat(bytes),
+      contentType: upload.contentType,
+      ...(upload.uploadBinding ? { uploadBinding: upload.uploadBinding } : {}),
+    });
     uploads.delete(uploadId);
+    if (failCompleteAfterStore) {
+      failCompleteAfterStore = false;
+      throw Error("Synthetic provider completion response lost after storage");
+    }
     return { etag: '"synthetic-complete"' };
   },
   abortMultipartUpload: async ({ uploadId }) => {
@@ -164,6 +197,31 @@ const storage: MediaStorageAdapter = {
       sizeBytes: object.bytes.length,
       contentType: object.contentType,
       etag: '"synthetic-object"',
+      ...(object.uploadBinding ? { uploadBinding: object.uploadBinding } : {}),
+    };
+  },
+  observeUploadCompletion: async ({ key, uploadId, expected }) => {
+    if (uploadId && uploads.has(uploadId)) return { status: "MULTIPART_PRESENT" };
+    const object = objects.get(key);
+    if (!object) return { status: "OBJECT_ABSENT" };
+    const binding = object.uploadBinding;
+    if (
+      !binding ||
+      object.bytes.length !== expected.sizeBytes ||
+      object.contentType !== expected.contentType ||
+      binding.sessionId !== expected.binding.sessionId ||
+      binding.sourceAssetId !== expected.binding.sourceAssetId ||
+      binding.contentIdentityDigest !== expected.binding.contentIdentityDigest
+    )
+      return { status: "OBJECT_MISMATCH" };
+    return {
+      status: "OBJECT_VERIFIED",
+      metadata: {
+        sizeBytes: object.bytes.length,
+        contentType: object.contentType,
+        etag: '"synthetic-object"',
+        uploadBinding: binding,
+      },
     };
   },
   deleteObject: async (key) => {
@@ -285,6 +343,7 @@ const provider = createServer(async (request, reply) => {
         reset?: boolean;
         supported?: boolean;
         failAuthorize?: boolean;
+        failCompleteAfterStore?: boolean;
       };
       if (input.reset) {
         await db.$executeRawUnsafe(
@@ -296,10 +355,13 @@ const provider = createServer(async (request, reply) => {
         grants.clear();
         supported = true;
         failAuthorize = false;
+        failCompleteAfterStore = false;
         counters = { allocations: 0, authorizations: 0, puts: 0, completes: 0 };
       }
       if (typeof input.supported === "boolean") supported = input.supported;
       if (typeof input.failAuthorize === "boolean") failAuthorize = input.failAuthorize;
+      if (typeof input.failCompleteAfterStore === "boolean")
+        failCompleteAfterStore = input.failCompleteAfterStore;
       reply.end('{"ok":true}');
       return;
     }
