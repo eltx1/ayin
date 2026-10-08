@@ -82,9 +82,11 @@ jobs:
         # Separate server processes keep independent fixture registration bursts
         # from exhausting the real test-mode limiter; every ordinary test runs once.
         run: |
-          for shard in 1 2 3 4 5 6; do
-            PLAYWRIGHT_HTML_OUTPUT_DIR="playwright-report/shard-${shard}" pnpm test:e2e --shard="${shard}/6" --output="test-results/shard-${shard}"
+          status=0
+          for shard in 1 2 3 4 5 6 7 8; do
+            PLAYWRIGHT_HTML_OUTPUT_DIR="playwright-report/shard-${shard}" pnpm test:e2e --shard="${shard}/8" --output="test-results/shard-${shard}" || status=1
           done
+          exit "$status"
       - name: Run real PWA lifecycle acceptance
         run: pnpm exec playwright test --config playwright.pwa.config.ts
       - name: Run dormant upload recovery against synthetic provider and PostgreSQL

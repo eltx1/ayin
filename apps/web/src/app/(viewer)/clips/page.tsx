@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/ui/design-system";
 import { getRequestLocale } from "@/lib/i18n/server";
 import { translateClips } from "@/lib/i18n/clips";
 import { absoluteUrl, metadataRobots } from "@/lib/seo";
@@ -33,12 +32,7 @@ export default async function ClipsPage() {
 
   return (
     <main className={styles.page}>
-      <PageHeader
-        className={styles.header ?? ""}
-        eyebrow={t("clips.eyebrow")}
-        title={t("clips.title")}
-        description={t("clips.description")}
-      />
+      <h1 className={styles.routeHeading}>{t("clips.title")}</h1>
       <ClipsClient />
     </main>
   );

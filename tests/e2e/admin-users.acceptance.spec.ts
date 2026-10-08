@@ -160,6 +160,15 @@ for (const locale of ["en", "ar"] as const)
           exact: true,
         })
         .click();
+      await expect(
+        main.getByText(
+          copy(
+            "Current records could not be verified. Read them again.",
+            "تعذر التحقق من السجلات الحالية. اقرأها مجددًا.",
+          ),
+          { exact: true },
+        ),
+      ).toBeVisible();
       await expect(main.locator("article")).toHaveCount(0);
       await expect(main.getByTestId("account-ack")).toContainText("Actual acknowledged account");
       expect(reads).toBe(beforeFailure + 1);

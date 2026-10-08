@@ -20,7 +20,8 @@ import { AccountScopeError, requestAccountScope } from "@/lib/account-scope";
 import { trackAnalyticsEvent } from "@/lib/analytics";
 import { mediaAssetUrl } from "@/lib/channel";
 import {
-  createClipsAutoplayGate,
+  captureClipPlaybackPosition,
+  CLIPS_SESSION_LIMIT,
   mergeClipItems,
   type ClipItem,
   type ClipPlaybackPosition,
@@ -40,6 +41,9 @@ import {
 
 import styles from "./clips.module.css";
 import { ClipVideo } from "./clip-video";
+import { ClipDetails } from "./clip-details";
+import { useClipCapabilities } from "./use-clip-capabilities";
+import { useClipsViewport, useClipsModalOpen } from "./use-clips-viewport";
 
 type ActionMode = "loading" | "ready" | "signedOut" | "error" | "uncertain";
 
@@ -62,7 +66,15 @@ function initialActions(clip: ClipItem): ActionSnapshot {
   };
 }
 
-function ClipActions({ clip }: { clip: ClipItem }) {
+function ClipActions({
+  clip,
+  onShareActive,
+  isKids,
+}: {
+  isKids: boolean;
+  clip: ClipItem;
+  onShareActive: (value: boolean) => void;
+}) {
   const router = useRouter();
   const { locale, href, formatNumber } = useI18n();
   const t = useCallback(
@@ -80,6 +92,8 @@ function ClipActions({ clip }: { clip: ClipItem }) {
   } = useViewerProduct();
   const root = useRef<HTMLDivElement>(null);
   const [attempt, setAttempt] = useState(0);
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  const sharing = useRef(false);
   const accountId = identity?.account.id;
   const profileId = identity?.profile.id;
   // This component owns only its request lifetime. The existing viewer provider
@@ -293,14 +307,27 @@ function ClipActions({ clip }: { clip: ClipItem }) {
   }
 
   async function share() {
-    const url = `${window.location.origin}${href(`/watch/${clip.slug}`)}`;
+    if (sharing.current || !isAudienceCurrent()) return;
+    sharing.current = true;
+    setShareFeedback(null);
+    const current = isAudienceCurrent;
+    const url = `${window.location.origin}${href(`/watch/${clip.slug}${isKids ? "?kids=1" : ""}`)}`;
+    onShareActive(true);
     try {
-      if (navigator.share) await navigator.share({ title: clip.title, url });
-      else await navigator.clipboard.writeText(url);
+      const native = Boolean(navigator.share);
+      if (native) await navigator.share({ title: clip.title, url });
+      else if (navigator.clipboard) await navigator.clipboard.writeText(url);
+      else throw new Error("Clipboard unavailable");
+      if (!current()) return;
+      setShareFeedback(native ? t("clips.shareOpened") : t("clips.copied"));
       trackAnalyticsEvent("CLIP_SHARE", { videoId: clip.id, channelId: clip.channel.id });
       trackAnalyticsEvent("SHARE", { videoId: clip.id, channelId: clip.channel.id });
-    } catch {
-      // Closing a share sheet or unavailable clipboard is a normal non-mutation outcome.
+    } catch (error) {
+      if (current() && !(error instanceof DOMException && error.name === "AbortError"))
+        setShareFeedback(t("clips.shareFailed"));
+    } finally {
+      sharing.current = false;
+      onShareActive(false);
     }
   }
 
@@ -356,6 +383,11 @@ function ClipActions({ clip }: { clip: ClipItem }) {
           {t("clips.share")}
         </ActionButton>
       </nav>
+      {shareFeedback ? (
+        <p className={styles.actionFeedback} role="status">
+          {shareFeedback}
+        </p>
+      ) : null}
       {feedback ? (
         <StatusNotice
           className={styles.actionFeedback ?? ""}
@@ -393,6 +425,7 @@ export interface ClipsPosition {
   activeId: string | null;
   impressedIds: string[];
   playback: Record<string, ClipPlaybackPosition>;
+  dataSaving?: boolean;
 }
 
 export function ClipsFeed({
@@ -401,112 +434,253 @@ export function ClipsFeed({
   onPageLoaded,
   onFeedScroll,
   registerPositionAuthority,
+  registerSnapshot,
+  onStartFresh,
+  capabilityBlocked = false,
+  onCapabilityIdentityInvalid,
+  onRetryCapabilities,
 }: {
   initialPage: ClipsPage;
+  capabilityBlocked?: boolean;
+  onCapabilityIdentityInvalid?: (() => void) | undefined;
+  onRetryCapabilities?: (() => void) | undefined;
   initialPosition?: ClipsPosition | undefined;
   onPageLoaded?: ((cursor: string) => void) | undefined;
   onFeedScroll?: ((scrollTop: number) => void) | undefined;
   registerPositionAuthority?: RegisterClipPositionAuthority | undefined;
+  registerSnapshot?: ((read: () => ClipsPosition) => () => void) | undefined;
+  onStartFresh?: (() => void) | undefined;
 }) {
   const { identity, isAudienceCurrent, onAudienceInvalidated, retryNavigation } =
     useViewerProduct();
+  const { locale, href, formatNumber } = useI18n();
+  const t = useCallback(
+    (key: Parameters<typeof translateClips>[1], values = {}) => translateClips(locale, key, values),
+    [locale],
+  );
   const continuation = useRef<AbortController | null>(null);
   const startingId = initialPage.items.some((item) => item.id === initialPosition?.activeId)
     ? initialPosition!.activeId
     : (initialPage.items[0]?.id ?? null);
-  const { locale, href } = useI18n();
-  const t = useCallback(
-    (key: Parameters<typeof translateClips>[1]) => translateClips(locale, key),
-    [locale],
-  );
   const root = useRef<HTMLDivElement>(null);
+  const deactivate = useRef<(() => void) | null>(null);
+  const registerDeactivate = useCallback((stop: () => void) => {
+    deactivate.current = stop;
+    return () => {
+      if (deactivate.current === stop) deactivate.current = null;
+    };
+  }, []);
   const activeIdRef = useRef<string | null>(startingId);
+  const focusSelection = useRef(false);
   const impressed = useRef(new Set(initialPosition?.impressedIds));
-  const autoplayGate = useRef(createClipsAutoplayGate(initialPosition));
+  const positions = useRef<Record<string, ClipPlaybackPosition>>({ ...initialPosition?.playback });
+  const authorities = useRef(new Map<string, () => boolean>());
+  const [restoredPauseId, setRestoredPauseId] = useState(
+    startingId &&
+      (initialPosition?.playback[startingId]?.paused ||
+        initialPosition?.playback[startingId]?.ended)
+      ? startingId
+      : null,
+  );
+  const [selectedPlayback, setSelectedPlayback] = useState(
+    startingId ? initialPosition?.playback[startingId] : undefined,
+  );
+  const [viewportVisible, setViewportVisible] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(startingId);
-  const [items, setItems] = useState<ClipItem[]>(initialPage.items);
+  const [items, setItems] = useState<ClipItem[]>(initialPage.items.slice(0, CLIPS_SESSION_LIMIT));
   const [nextCursor, setNextCursor] = useState(initialPage.nextCursor);
   const [autoplayEnabled, setAutoplayEnabled] = useState(initialPage.autoplayEnabled);
   const [adPolicy, setAdPolicy] = useState(initialPage.adPolicy);
   const [loadMorePending, setLoadMorePending] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [shareActive, setShareActive] = useState(false);
+  const [dataSaving, setDataSaving] = useState(() => {
+    const connection =
+      typeof navigator === "undefined"
+        ? undefined
+        : (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } })
+            .connection;
+    return (
+      initialPosition?.dataSaving ??
+      Boolean(connection?.saveData || ["slow-2g", "2g"].includes(connection?.effectiveType ?? ""))
+    );
+  });
+  const [reducedMotion, setReducedMotion] = useState(
+    () =>
+      typeof window === "undefined" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  const anyModalOpen = useClipsModalOpen();
+  const pausedForPanel = sheetOpen || shareActive || anyModalOpen;
+  const stageHeight = useClipsViewport(root);
+  const activeIndex = Math.max(
+    0,
+    items.findIndex((item) => item.id === activeId),
+  );
+  const activeClip = items[activeIndex] ?? null;
+  const capabilities = useClipCapabilities(
+    capabilityBlocked ? null : activeClip,
+    initialPage.viewer.isKids,
+    onCapabilityIdentityInvalid ?? retryNavigation,
+  );
+  const capabilityStatus = capabilityBlocked ? "unavailable" : capabilities.status;
+  const retryCapabilities = () => {
+    if (capabilityBlocked) onRetryCapabilities?.();
+    else capabilities.retry();
+  };
+  const windowStart = Math.max(0, activeIndex - 1);
+  const windowEnd = Math.min(items.length, activeIndex + 2);
+  const sessionFull = items.length >= CLIPS_SESSION_LIMIT && Boolean(nextCursor);
+  const visible = viewportVisible && stageHeight > 0;
+  const allowAutoplay = Boolean(
+    activeId &&
+    activeId !== restoredPauseId &&
+    autoplayEnabled &&
+    !reducedMotion &&
+    !dataSaving &&
+    visible,
+  );
 
+  useEffect(() => {
+    const node = root.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      ([entry]) =>
+        setViewportVisible(Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.5)),
+      { threshold: [0, 0.5] },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const registerAuthority = useCallback<RegisterClipPositionAuthority>(
+    (id, check) => {
+      authorities.current.set(id, check);
+      const remove = registerPositionAuthority?.(id, check);
+      return () => {
+        if (authorities.current.get(id) === check) authorities.current.delete(id);
+        remove?.();
+      };
+    },
+    [registerPositionAuthority],
+  );
+
+  const snapshot = useCallback((): ClipsPosition => {
+    const node = root.current;
+    node?.querySelectorAll<HTMLVideoElement>("video").forEach((video) => {
+      const id = video.closest<HTMLElement>("[data-video-id]")?.dataset.videoId;
+      if (id)
+        positions.current[id] = captureClipPlaybackPosition(
+          video,
+          authorities.current.get(id)?.() === true,
+          positions.current[id]?.positionMs,
+        );
+    });
+    return {
+      activeId: activeIdRef.current,
+      scrollTop: node?.scrollTop ?? 0,
+      impressedIds: [...impressed.current],
+      playback: { ...positions.current },
+      dataSaving,
+    };
+  }, [dataSaving]);
+  useLayoutEffect(() => registerSnapshot?.(snapshot), [registerSnapshot, snapshot]);
   useLayoutEffect(() => {
-    if (root.current) {
-      root.current.scrollTop = initialPosition?.scrollTop ?? 0;
-      onFeedScroll?.(root.current.scrollTop);
-    }
     const stop = onAudienceInvalidated(() => continuation.current?.abort());
     return () => {
       continuation.current?.abort();
       stop();
     };
-  }, [initialPosition, onAudienceInvalidated, onFeedScroll]);
+  }, [onAudienceInvalidated]);
 
   useEffect(() => {
-    const container = root.current;
-    if (!container) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!isAudienceCurrent()) return;
-        for (const entry of entries) {
-          const article = entry.target as HTMLElement;
-          const video = article.querySelector("video");
-          const videoId = article.dataset.videoId;
-          const channelId = article.dataset.channelId;
-          if (!video || !videoId) continue;
+    const motion = matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(motion.matches);
+    motion.addEventListener("change", update);
+    type Connection = EventTarget & { saveData?: boolean; effectiveType?: string };
+    const connection = (navigator as Navigator & { connection?: Connection }).connection;
+    const updateConnection = () => {
+      // Optional hints only. The active-only source policy applies even without them.
+      if (connection?.saveData || ["slow-2g", "2g"].includes(connection?.effectiveType ?? ""))
+        setDataSaving(true);
+    };
+    connection?.addEventListener("change", updateConnection);
+    return () => {
+      motion.removeEventListener("change", update);
+      connection?.removeEventListener("change", updateConnection);
+    };
+  }, []);
 
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.7) {
-            if (activeIdRef.current && activeIdRef.current !== videoId) {
-              trackAnalyticsEvent("CLIP_SWIPE", {
-                videoId,
-                ...(channelId ? { channelId } : {}),
-                metadata: { fromVideoId: activeIdRef.current },
-              });
-            }
-            activeIdRef.current = videoId;
-            setActiveId(videoId);
-            if (!impressed.current.has(videoId)) {
-              impressed.current.add(videoId);
-              article.dataset.clipImpressed = "true";
-              trackAnalyticsEvent("CLIP_IMPRESSION", {
-                videoId,
-                ...(channelId ? { channelId } : {}),
-              });
-            }
-            if (
-              autoplayGate.current(
-                videoId,
-                autoplayEnabled,
-                window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-              )
-            ) {
-              void video
-                .play()
-                .then(() => {
-                  if (isAudienceCurrent())
-                    trackAnalyticsEvent("CLIP_PLAY", {
-                      videoId,
-                      ...(channelId ? { channelId } : {}),
-                    });
-                })
-                .catch(() => undefined);
-            }
-          } else {
-            video.pause();
-          }
-        }
-      },
-      { root: container, threshold: [0.7] },
+  useLayoutEffect(() => {
+    if (!root.current || !stageHeight) return;
+    // Resize retains the selected item rather than the previous pixel offset.
+    const index = Number(
+      root.current.querySelector<HTMLElement>("[data-clip-active='true']")?.dataset.clipIndex ?? 0,
     );
-    container
-      .querySelectorAll<HTMLElement>("[data-clip-item='true']")
-      .forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
-  }, [autoplayEnabled, initialPosition, isAudienceCurrent, items.length]);
+    root.current.scrollTop = index * root.current.clientHeight;
+    onFeedScroll?.(root.current.scrollTop);
+    // Selection changes scroll through move()/native input; only geometry changes realign.
+  }, [stageHeight, onFeedScroll]);
+
+  useEffect(() => {
+    if (!activeClip || !visible || !isAudienceCurrent() || impressed.current.has(activeClip.id))
+      return;
+    impressed.current.add(activeClip.id);
+    trackAnalyticsEvent("CLIP_IMPRESSION", {
+      videoId: activeClip.id,
+      channelId: activeClip.channel.id,
+    });
+  }, [activeClip, isAudienceCurrent, visible]);
+
+  useLayoutEffect(() => {
+    if (!focusSelection.current) return;
+    focusSelection.current = false;
+    root.current
+      ?.querySelector<HTMLElement>("[data-clip-active='true']")
+      ?.focus({ preventScroll: true });
+  }, [activeId]);
+
+  function select(index: number, focus = false) {
+    const clip = items[index];
+    if (!clip || !isAudienceCurrent() || pausedForPanel || clip.id === activeIdRef.current) return;
+    const previous = activeIdRef.current;
+    snapshot();
+    // Retire the old decoder synchronously before a new one can be mounted.
+    deactivate.current?.();
+    const focused = root.current?.contains(document.activeElement);
+    focusSelection.current = Boolean(focus || focused);
+    activeIdRef.current = clip.id;
+    const retained = positions.current[clip.id];
+    // Re-entering a completed Clip is a replay, not a new completion after
+    // useWatchProgress safely clamps an end-position to the final250ms.
+    const playback = retained?.ended
+      ? { ...retained, positionMs: 0, paused: true, ended: false }
+      : retained;
+    if (playback) positions.current[clip.id] = playback;
+    setSelectedPlayback(playback);
+    setRestoredPauseId(null);
+    setActiveId(clip.id);
+    setSheetOpen(false);
+    if (previous)
+      trackAnalyticsEvent("CLIP_SWIPE", {
+        videoId: clip.id,
+        channelId: clip.channel.id,
+        metadata: { fromVideoId: previous },
+      });
+  }
+
+  function move(delta: number) {
+    const index = items.findIndex((item) => item.id === activeIdRef.current) + delta;
+    if (!root.current || !items[index] || pausedForPanel) return;
+    // One deterministic intent. Native touch scrolling remains native; buttons
+    // and arrows never queue overlapping smooth-scroll animations.
+    select(index, true);
+    root.current.scrollTo({ top: index * root.current.clientHeight, behavior: "instant" });
+  }
 
   async function loadMore() {
-    if (!nextCursor || continuation.current || !isAudienceCurrent()) return;
+    if (!nextCursor || continuation.current || !isAudienceCurrent() || sessionFull) return;
     const cursor = nextCursor;
     const run = new AbortController();
     continuation.current = run;
@@ -519,10 +693,14 @@ export function ClipsFeed({
       if (!valid()) return;
       if (!page.enabled || page.viewer.isKids !== initialPage.viewer.isKids)
         throw new ClipsReadError(409);
-      setItems((current) => mergeClipItems(current, page.items));
+      setItems((current) => mergeClipItems(current, page.items).slice(0, CLIPS_SESSION_LIMIT));
       setNextCursor(page.nextCursor);
       setAutoplayEnabled(page.autoplayEnabled);
       setAdPolicy(page.adPolicy);
+      if (!activeIdRef.current && page.items[0]) {
+        activeIdRef.current = page.items[0].id;
+        setActiveId(page.items[0].id);
+      }
       onPageLoaded?.(cursor);
     } catch (error) {
       if (continuation.current !== run || !isAudienceCurrent()) return;
@@ -537,46 +715,62 @@ export function ClipsFeed({
     }
   }
 
-  function moveByKeyboard(event: KeyboardEvent<HTMLElement>, index: number) {
-    if (!isAudienceCurrent() || event.target !== event.currentTarget) return;
+  function keyboard(event: KeyboardEvent<HTMLElement>) {
+    if (event.target !== event.currentTarget || event.altKey || event.ctrlKey || event.metaKey)
+      return;
     const delta = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-    if (!delta) return;
-    const container = root.current;
-    const target = container?.querySelector<HTMLElement>(`[data-clip-index='${index + delta}']`);
-    if (!container || !target) return;
+    if (!delta || !items[activeIndex + delta]) return;
     event.preventDefault();
     event.stopPropagation();
-    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? "instant"
-      : "smooth";
-    // Scroll the feed itself; scrollIntoView also moves the document and can
-    // align the selected clip underneath the sticky shell header.
-    const feedBounds = container.getBoundingClientRect();
-    container.scrollTo({
-      top:
-        container.scrollTop +
-        target.getBoundingClientRect().top -
-        feedBounds.top -
-        container.clientTop,
-      behavior,
-    });
-    const header = document
-      .querySelector<HTMLElement>("[data-tv-focus-id='brand-home']")
-      ?.closest("header");
-    const bottomNavigation = [...document.querySelectorAll<HTMLElement>("nav[data-mobile-visible]")]
-      .filter((element) => getComputedStyle(element).position === "fixed")
-      .find((element) => element.getBoundingClientRect().height > 0);
-    const visibleTop = Math.max(0, header?.getBoundingClientRect().bottom ?? 0);
-    const visibleBottom = bottomNavigation?.getBoundingClientRect().top ?? window.innerHeight;
-    window.scrollBy({
-      top: (feedBounds.top + feedBounds.bottom - visibleTop - visibleBottom) / 2,
-      behavior,
-    });
-    target.focus({ preventScroll: true });
+    move(delta);
   }
 
   return (
-    <section className={styles.workspace}>
+    <section className={styles.workspace} aria-label={t("clips.feed")}>
+      <div className={styles.toolbar}>
+        <span className={styles.wordmark} aria-hidden="true">
+          {t("clips.title")}
+        </span>
+        <nav className={styles.stepControls} aria-label={t("clips.navigation")}>
+          <ActionButton
+            tone="quiet"
+            type="button"
+            aria-label={t("clips.previous")}
+            disabled={!activeIndex || pausedForPanel}
+            onClick={() => move(-1)}
+          >
+            <span aria-hidden="true">↑</span>
+          </ActionButton>
+          <span className={styles.position}>
+            {t("clips.position", {
+              current: formatNumber(items.length ? activeIndex + 1 : 0),
+              total: formatNumber(items.length),
+            })}
+          </span>
+          <ActionButton
+            tone="quiet"
+            type="button"
+            aria-label={t("clips.next")}
+            disabled={activeIndex >= items.length - 1 || pausedForPanel}
+            onClick={() => move(1)}
+          >
+            <span aria-hidden="true">↓</span>
+          </ActionButton>
+        </nav>
+        <ActionButton
+          className={styles.dataSaving}
+          tone="quiet"
+          type="button"
+          aria-pressed={dataSaving}
+          title={t("clips.saveDataHint")}
+          onClick={() => setDataSaving((value) => !value)}
+        >
+          {t("clips.saveData")}
+        </ActionButton>
+      </div>
+      <p className={styles.srOnly} id="clips-feed-help">
+        {t("clips.feedHelp")}
+      </p>
       {!items.length ? (
         <EmptyState title={t("clips.emptyTitle")} description={t("clips.emptyDescription")} />
       ) : null}
@@ -584,51 +778,134 @@ export function ClipsFeed({
         ref={root}
         hidden={!items.length}
         data-clips-feed
-        onScroll={(event) => {
-          if (isAudienceCurrent()) onFeedScroll?.(event.currentTarget.scrollTop);
-        }}
+        data-clips-loaded-count={items.length}
+        role="feed"
+        aria-busy={loadMorePending}
         className={styles.feed}
         aria-label={t("clips.feed")}
+        aria-describedby="clips-feed-help"
+        onScroll={(event) => {
+          if (
+            !isAudienceCurrent() ||
+            pausedForPanel ||
+            !stageHeight ||
+            event.currentTarget.clientHeight !== stageHeight
+          )
+            return;
+          const node = event.currentTarget;
+          onFeedScroll?.(node.scrollTop);
+          const index = Math.max(
+            0,
+            Math.min(items.length - 1, Math.round(node.scrollTop / node.clientHeight)),
+          );
+          // Wait until one card owns at least70% of the viewport.
+          if (Math.abs(node.scrollTop / node.clientHeight - index) <= 0.3) select(index);
+        }}
       >
-        {items.map((clip, index) => {
-          const source = clip.mediaAssets.find((asset) => asset.kind === "SOURCE_VIDEO");
-          const sourceUrl = mediaAssetUrl(source?.r2ObjectKey);
+        {windowStart > 0 && (
+          <div
+            aria-hidden="true"
+            className={styles.spacer}
+            style={{ height: `calc(var(--clip-stage-height) * ${windowStart})` }}
+          />
+        )}
+        {items.slice(windowStart, windowEnd).map((clip, offset) => {
+          const index = windowStart + offset;
+          const active = activeId === clip.id;
+          const sourceUrl = mediaAssetUrl(
+            clip.mediaAssets.find((asset) => asset.kind === "SOURCE_VIDEO")?.r2ObjectKey,
+          );
+          const posterUrl = mediaAssetUrl(
+            clip.mediaAssets.find((asset) => asset.kind === "THUMBNAIL")?.r2ObjectKey,
+          );
           return (
             <article
               className={styles.clip}
               key={clip.id}
               data-clip-item="true"
+              aria-labelledby={`clip-title-${clip.id}`}
+              aria-posinset={index + 1}
+              aria-setsize={nextCursor ? -1 : items.length}
               data-clip-index={index}
-              data-clip-active={activeId === clip.id}
-              data-clip-impressed={initialPosition?.impressedIds.includes(clip.id) ?? false}
+              data-clip-active={active}
+              data-clip-impressed={
+                (visible && active) || initialPosition?.impressedIds.includes(clip.id) || false
+              }
               data-video-id={clip.id}
               data-channel-id={clip.channel.id}
               data-tv-focusable="true"
               data-tv-focus-id={`clip-${clip.id}-surface`}
-              tabIndex={0}
-              onKeyDown={(event) => moveByKeyboard(event, index)}
+              tabIndex={active ? 0 : -1}
+              onKeyDown={keyboard}
             >
-              {sourceUrl ? (
+              {active && sourceUrl ? (
                 <ClipVideo
+                  key={clip.id}
                   clip={clip}
                   sourceUrl={sourceUrl}
-                  initialPlayback={initialPosition?.playback[clip.id]}
-                  registerPositionAuthority={registerPositionAuthority}
+                  posterUrl={posterUrl ?? undefined}
+                  initialPlayback={selectedPlayback}
+                  registerPositionAuthority={registerAuthority}
+                  registerDeactivate={registerDeactivate}
+                  autoPlayAllowed={allowAutoplay}
+                  pausedForPanel={pausedForPanel}
+                  dataSaving={dataSaving}
+                  viewportVisible={visible}
+                  captions={capabilities.status === "ready" ? capabilities.captions : undefined}
+                  isKids={initialPage.viewer.isKids}
                 />
               ) : (
                 <div className={styles.mediaFallback}>
-                  <StatusNotice tone="danger">{t("clips.mediaUnavailable")}</StatusNotice>
+                  {posterUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={posterUrl} alt="" loading="lazy" className={styles.poster} />
+                  ) : null}
+                  {!sourceUrl ? (
+                    <StatusNotice tone="danger">{t("clips.mediaUnavailable")}</StatusNotice>
+                  ) : null}
                 </div>
               )}
-              <div className={styles.overlay}>
+              <div className={styles.overlay} data-clip-metadata>
                 <div className={styles.copy}>
-                  <Link className={styles.channelLink} href={href(`/c/${clip.channel.handle}`)}>
-                    @{clip.channel.handle}
+                  <Link
+                    className={styles.channelLink}
+                    tabIndex={active ? 0 : -1}
+                    href={href(
+                      `/c/${clip.channel.handle}${initialPage.viewer.isKids ? "?kids=1" : ""}`,
+                    )}
+                  >
+                    <bdi>@{clip.channel.handle}</bdi>
                   </Link>
-                  <h2 dir="auto">{clip.title}</h2>
-                  {clip.description ? <p dir="auto">{clip.description}</p> : null}
+                  <h2 id={`clip-title-${clip.id}`} dir="auto">
+                    {clip.title}
+                  </h2>
+                  {active && (
+                    <div className={styles.detailActions}>
+                      <ClipDetails
+                        clip={clip}
+                        onOpenChange={setSheetOpen}
+                        capabilityStatus={capabilityStatus}
+                        onRetryCapabilities={retryCapabilities}
+                      />
+                      <Link
+                        className={styles.watchLink}
+                        href={href(
+                          `/watch/${clip.slug}${initialPage.viewer.isKids ? "?kids=1" : ""}`,
+                        )}
+                      >
+                        {t("clips.watch")}
+                      </Link>
+                    </div>
+                  )}
                 </div>
-                {activeId === clip.id ? <ClipActions key={clip.id} clip={clip} /> : null}
+                {active ? (
+                  <ClipActions
+                    key={clip.id}
+                    clip={clip}
+                    onShareActive={setShareActive}
+                    isKids={initialPage.viewer.isKids}
+                  />
+                ) : null}
               </div>
               {adPolicy.enabled &&
               adPolicy.minimumOrganicClips > 0 &&
@@ -642,10 +919,16 @@ export function ClipsFeed({
             </article>
           );
         })}
+        {windowEnd < items.length && (
+          <div
+            aria-hidden="true"
+            className={styles.spacer}
+            style={{ height: `calc(var(--clip-stage-height) * ${items.length - windowEnd})` }}
+          />
+        )}
       </div>
-
       <div className={styles.more}>
-        {nextCursor ? (
+        {nextCursor && !sessionFull ? (
           <ActionButton
             type="button"
             tone="secondary"
@@ -657,6 +940,16 @@ export function ClipsFeed({
           >
             {loadMorePending ? t("clips.loadingMore") : t("clips.loadMore")}
           </ActionButton>
+        ) : null}
+        {sessionFull ? (
+          <>
+            <p>{t("clips.sessionEnd")}</p>
+            <ActionButton type="button" tone="secondary" onClick={onStartFresh}>
+              {t("clips.startFresh")}
+            </ActionButton>
+          </>
+        ) : !nextCursor && items.length > 0 ? (
+          <p>{t("clips.end")}</p>
         ) : null}
         {loadMoreError ? (
           <StatusNotice tone="warning" announce="polite">

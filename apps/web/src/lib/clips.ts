@@ -1,3 +1,8 @@
+// A finite session bounds retained data independently of the three article window.
+// Reaching the limit offers an explicit fresh feed, never silent eviction.
+export const CLIPS_SESSION_LIMIT = 120;
+export const CLIPS_PAGE_LIMIT = 30;
+
 export interface ClipAsset {
   kind: "SOURCE_VIDEO" | "THUMBNAIL";
   r2ObjectKey: string;
@@ -57,7 +62,10 @@ function parseItem(value: unknown): ClipItem {
   if (!isClipCursor(item.id) || !isClipCursor(channel.id)) {
     throw new Error("INVALID_CLIPS_RESPONSE");
   }
-  if (item.description !== null && typeof item.description !== "string") {
+  if (
+    item.description !== null &&
+    (typeof item.description !== "string" || item.description.length > 20_000)
+  ) {
     throw new Error("INVALID_CLIPS_RESPONSE");
   }
   if (
@@ -167,6 +175,8 @@ export function createClipsAutoplayGate(restored?: {
 }
 
 export interface ClipPlaybackPosition {
+  ended?: boolean;
+  captionId?: string | null;
   positionMs: number | undefined;
   paused: boolean;
   muted: boolean;
@@ -183,7 +193,8 @@ export function captureClipPlaybackPosition(
   media: Pick<
     HTMLVideoElement,
     "readyState" | "currentTime" | "paused" | "muted" | "volume" | "playbackRate"
-  >,
+  > &
+    Partial<Pick<HTMLVideoElement, "ended" | "dataset">>,
   positionAuthoritative: boolean,
   previousPositionMs?: number,
 ): ClipPlaybackPosition {
@@ -198,5 +209,11 @@ export function captureClipPlaybackPosition(
     muted: media.muted,
     volume: media.volume,
     playbackRate: media.playbackRate,
+    ...(media.ended !== undefined || media.dataset?.clipEnded !== undefined
+      ? { ended: media.ended === true || media.dataset?.clipEnded === "true" }
+      : {}),
+    ...("dataset" in media && (media as HTMLVideoElement).dataset.clipCaptionId !== undefined
+      ? { captionId: (media as HTMLVideoElement).dataset.clipCaptionId || null }
+      : {}),
   };
 }

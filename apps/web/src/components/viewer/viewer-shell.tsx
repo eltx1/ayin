@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useRef, type ReactNode } from "react";
 
+import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
 import { useI18n } from "@/components/i18n/i18n-provider";
 import { TvFocusScope } from "@/components/tv/tv-focus-scope";
 import { NavigationDialog } from "@/components/ui/navigation-dialog";
@@ -184,6 +185,7 @@ function ViewerChrome({ children }: { children: ReactNode }) {
             >
               <ProductLinks items={model.primary} browse={model.browse} surface="menu" />
             </nav>
+            <LocaleSwitcher placement="menu" />
           </NavigationDialog>
         </div>
       </header>

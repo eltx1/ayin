@@ -154,3 +154,26 @@ it("preserves a prior verified Clip position while replacement media awaits resu
   expect(captureClipPlaybackPosition(media, false, 7_000).positionMs).toBe(7_000);
   expect(captureClipPlaybackPosition(media, true, 7_000).positionMs).toBe(0);
 });
+
+it("retains logical completion after lifecycle remount even when native ended is false", () => {
+  const media = {
+    readyState: 4,
+    currentTime: 29.75,
+    paused: true,
+    muted: true,
+    volume: 1,
+    playbackRate: 1,
+    ended: false,
+    dataset: { clipEnded: "true" },
+  };
+  expect(captureClipPlaybackPosition(media, true)).toMatchObject({
+    ended: true,
+    positionMs: 29_750,
+  });
+  expect(
+    captureClipPlaybackPosition({ ...media, dataset: { clipEnded: "false" } }, true).ended,
+  ).toBe(false);
+  expect(captureClipPlaybackPosition({ ...media, ended: true, dataset: {} }, true).ended).toBe(
+    true,
+  );
+});
