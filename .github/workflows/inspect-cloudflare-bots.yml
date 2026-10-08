@@ -1,0 +1,168 @@
+name: Inspect AYIN Cloudflare bot traffic
+
+on:
+  push:
+    branches: [ops/ayin-cloudflare-bot-inspect-20261008]
+    paths: [.github/workflows/inspect-cloudflare-bots.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-cloudflare-readonly-bot-inspection
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: production
+      deployment: false
+    env:
+      CF_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Read AYIN-only rules and bounded traffic aggregates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.request
+
+          TOKEN = os.environ['CF_TOKEN']
+          ROOT = 'https://api.cloudflare.com/client/v4'
+          CALLS = 0
+          MAX_CALLS = 28
+
+          def clean(value):
+              if isinstance(value, dict):
+                  return {k: ('[redacted]' if re.search(r'token|password|secret|authorization', k, re.I) else clean(v)) for k, v in value.items()}
+              if isinstance(value, list):
+                  return [clean(v) for v in value]
+              if isinstance(value, str):
+                  value = value.replace(TOKEN, '[redacted]')
+                  value = re.sub(r'(?i)(bearer\s+)[^\s"\\]+', r'\1[redacted]', value)
+                  value = re.sub(r'(?<![\w:])(?:\d{1,3}\.){3}\d{1,3}(?:/\d+)?', '[ip-range]', value)
+                  value = re.sub(r'(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', '[uuid]', value)
+                  return value
+              return value
+
+          def out(label, value):
+              print(label + ' ' + json.dumps(clean(value), separators=(',', ':')), flush=True)
+
+          def call(path, query=None):
+              global CALLS
+              CALLS += 1
+              if CALLS > MAX_CALLS:
+                  raise RuntimeError('bounded request budget exceeded')
+              assert path.startswith('/zones') or path == '/graphql'
+              data = json.dumps({'query': query}).encode() if query is not None else None
+              req = urllib.request.Request(ROOT + path, data=data, headers={'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'}, method='POST' if data else 'GET')
+              try:
+                  with urllib.request.urlopen(req, timeout=15) as resp:
+                      body = resp.read(2_000_001)
+                      if len(body) > 2_000_000:
+                          return {'errors': [{'message': 'response exceeds bounded size'}]}
+                      return json.loads(body)
+              except urllib.error.HTTPError as exc:
+                  try:
+                      detail = json.loads(exc.read(8000))
+                  except (ValueError, UnicodeError):
+                      detail = {'message': 'non-JSON error body withheld'}
+                  return {'http_status': exc.code, 'errors': detail.get('errors', detail)}
+              except Exception as exc:
+                  return {'errors': [{'message': type(exc).__name__}]}
+
+          def gql(query):
+              return call('/graphql', query)
+
+          zone_result = call('/zones?name=ayin.stream&status=active&per_page=1')
+          zones = [z for z in zone_result.get('result', []) if z.get('name') == 'ayin.stream']
+          if len(zones) != 1:
+              out('zone_lookup_error', zone_result.get('errors', []))
+              raise SystemExit(1)
+          zone = zones[0]
+          zid = zone['id']
+          assert re.fullmatch(r'[0-9a-f]{32}', zid)
+          out('zone', {'name': zone['name'], 'plan': zone.get('plan', {}).get('name'), 'status': zone['status']})
+          for setting in ['security_level', 'browser_check']:
+              result = call(f'/zones/{zid}/settings/{setting}')
+              out('setting', {'name': setting, 'result': result.get('result'), 'errors': result.get('errors')})
+          out('bot_management', call(f'/zones/{zid}/bot_management'))
+          rs = call(f'/zones/{zid}/rulesets')
+          rows = rs.get('result', [])
+          out('rulesets_summary', [{k: r.get(k) for k in ['id', 'name', 'kind', 'phase']} for r in rows])
+          if rs.get('errors'):
+              out('rulesets_errors', rs['errors'])
+          # Read only zone entrypoint/custom configuration, never execute or replace it.
+          selected = [r for r in rows if r.get('kind') in ['zone', 'custom'] and r.get('phase') in ['http_request_firewall_custom', 'http_ratelimit', 'http_request_sbfm', 'http_request_cache_settings', 'http_request_firewall_managed']]
+          for r in selected[:6]:
+              rid = r['id']
+              assert re.fullmatch(r'[0-9a-f]{32}', rid)
+              result = call(f'/zones/{zid}/rulesets/{rid}')
+              rules = result.get('result', {}).get('rules', [])
+              out('ruleset_detail', {'id': rid, 'phase': r.get('phase'), 'rules': [{**{k: rule.get(k) for k in ['id', 'description', 'enabled', 'action', 'expression', 'action_parameters', 'logging', 'ratelimit']}, 'position': i + 1} for i, rule in enumerate(rules[:100])], 'total_rules': len(rules), 'errors': result.get('errors')})
+          if len(selected) > 6:
+              out('ruleset_limit', {'selected': len(selected), 'read': 6})
+          end = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+          start = end - dt.timedelta(hours=2)
+          time_filter = f'datetime_geq: "{start.isoformat().replace("+00:00", "Z")}", datetime_lt: "{end.isoformat().replace("+00:00", "Z")}"'
+          out('analytics_window', {'start_utc': start.isoformat(), 'end_utc': end.isoformat(), 'note': 'Adaptive aggregate estimates, not unsampled raw logs. Origin-host scope excludes R2 media host except host overview.'})
+          # Discover live schema to avoid guessing plan-specific bot fields.
+          schema = gql('{__schema {types {name}}}')
+          types = [x['name'] for x in ((schema.get('data') or {}).get('__schema') or {}).get('types', [])]
+          lookups = {}
+          for suffix in ['HttpRequestsAdaptiveGroupsDimensions', 'HttpRequestsAdaptiveGroupsAvg', 'FirewallEventsAdaptiveGroupsDimensions']:
+              candidates = [n for n in types if n.lower() == ('Zone' + suffix).lower()]
+              if candidates:
+                  result = gql('{__type(name: ' + json.dumps(candidates[0]) + ') {fields {name}}}')
+                  lookups[suffix] = {x['name'] for x in ((result.get('data') or {}).get('__type') or {}).get('fields', [])}
+          if not lookups:
+              out('schema_unavailable', schema.get('errors', [{'message': 'expected dataset type names unavailable'}]))
+              out('read_requests', CALLS)
+              raise SystemExit(0)
+          dims = lookups.get('HttpRequestsAdaptiveGroupsDimensions', set())
+          avgs = lookups.get('HttpRequestsAdaptiveGroupsAvg', set())
+          fwdims = lookups.get('FirewallEventsAdaptiveGroupsDimensions', set())
+          out('available_diagnostic_fields', sorted(dims & {'clientRequestHTTPHost', 'clientRequestPath', 'datetimeFiveMinutes', 'datetimeMinute', 'cacheStatus', 'originResponseStatus', 'edgeResponseStatus', 'botManagementDecision', 'botDetectionIds', 'verifiedBotCategory', 'userAgent'}))
+          base = time_filter + ', requestSource: "eyeball"'
+          origin = base + ', clientRequestHTTPHost_in: ["ayin.stream", "api.ayin.stream"]'
+          avg = ' avg {sampleInterval}' if 'sampleInterval' in avgs else ''
+
+          def aggregate(label, dimensions, filter_text=origin, limit=30):
+              fields = [x for x in dimensions if x in dims]
+              if not fields:
+                  out(label, {'unavailable_dimensions': dimensions})
+                  return
+              query = '{viewer {zones(filter: {zoneTag: ' + json.dumps(zid) + '}) {httpRequestsAdaptiveGroups(limit: ' + str(limit) + ', orderBy: [count_DESC], filter: {' + filter_text + '}) {count' + avg + ' dimensions {' + ' '.join(fields) + '}}}}}'
+              result = gql(query)
+              rows = (result.get('data', {}).get('viewer', {}).get('zones') or [{}])[0].get('httpRequestsAdaptiveGroups', []) if result.get('data') else []
+              for row in rows:
+                  d = row.get('dimensions', {})
+                  if 'userAgent' in d:
+                      ua = d.pop('userAgent')
+                      labels = [name for name in ['Googlebot', 'AdsBot-Google', 'Mediapartners-Google', 'Google-InspectionTool', 'GoogleOther', 'bingbot', 'BingPreview', 'YandexBot', 'Applebot', 'AhrefsBot', 'SemrushBot', 'DotBot', 'MJ12bot', 'PetalBot', 'GPTBot', 'OAI-SearchBot', 'ChatGPT-User', 'ClaudeBot', 'Claude-User', 'CCBot', 'Bytespider', 'Amazonbot', 'meta-externalagent', 'facebookexternalhit', 'TikTokSpider'] if name.lower() in ua.lower()]
+                      d['claimed_bot_ua_label'] = ','.join(labels) or ('other crawler-like UA' if re.search(r'bot|crawl|spider|fetch', ua, re.I) else 'browser/other UA')
+                  if 'clientRequestPath' in d:
+                      d['clientRequestPath'] = re.sub(r'/[A-Za-z0-9_-]{20,}(?=/|$)', '/[opaque-id]', d['clientRequestPath'].split('?')[0])[:200]
+              out(label, {'rows': rows, 'errors': result.get('errors'), 'limit': limit, 'note': 'UA labels are claims, not identity verification.' if 'userAgent' in fields else None})
+
+          aggregate('host_overview', ['clientRequestHTTPHost'], base, 10)
+          aggregate('origin_cache_status', ['cacheStatus', 'originResponseStatus', 'edgeResponseStatus'])
+          aggregate('origin_timeseries', ['datetimeFiveMinutes' if 'datetimeFiveMinutes' in dims else 'datetimeMinute'], limit=120)
+          aggregate('origin_top_paths', ['clientRequestPath', 'cacheStatus', 'originResponseStatus'])
+          bot_fields = [x for x in ['botManagementDecision', 'botDetectionIds', 'verifiedBotCategory'] if x in dims]
+          if bot_fields:
+              aggregate('origin_bot_identity', bot_fields + ['cacheStatus', 'originResponseStatus'])
+          aggregate('origin_top_claimed_bots', ['userAgent'] + bot_fields)
+          fields = [x for x in ['action', 'ruleId', 'source'] if x in fwdims]
+          if fields:
+              query = '{viewer {zones(filter: {zoneTag: ' + json.dumps(zid) + '}) {firewallEventsAdaptiveGroups(limit: 30, orderBy: [count_DESC], filter: {' + time_filter + '}) {count dimensions {' + ' '.join(fields) + '}}}}}'
+              out('security_action_rule_counts', gql(query))
+          out('read_requests', CALLS)
+          PY
