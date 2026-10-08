@@ -1,5 +1,5 @@
 name: Diagnose AYIN deployment resources
-# Post-release verification for 83faf1a249dfd083458a9c25646dc2fe6982b7db on 2026-10-08.
+# Pre-PR274 readiness verification after shared-host deployment on 2026-10-08 at 22:48 UTC.
 
 on:
   push:
