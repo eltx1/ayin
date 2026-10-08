@@ -1,5 +1,5 @@
 name: Diagnose AYIN deployment resources
-# Read-only manifest directory metadata; no file or provider operations.
+# Read-only exact parent permission mode and named-access-ACL count.
 
 on:
   push:
@@ -60,7 +60,7 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           echo "Pinned AYIN SSH host fingerprint verified."
 
-      - name: Read manifest directory metadata only
+      - name: Read exact parent permission metadata only
         shell: bash
         run: |
           set -euo pipefail
@@ -75,19 +75,29 @@ jobs:
           cd /home/ayin/htdocs/current
           [[ "$(git rev-parse HEAD)" == 'a6c15842bd2cf6990715f18d58a550a5929d8d41' ]]
           python3 - <<'PYTHON'
-          import json, os, stat
-          for label, path in [('parent', '/home/ayin'), ('child', '/home/ayin/.r2-acceptance-manifests')]:
-              try:
-                  info = os.lstat(path)
-                  result = {'directory':label, 'exists':True, 'isDirectory':stat.S_ISDIR(info.st_mode), 'isSymlink':stat.S_ISLNK(info.st_mode), 'ownerMatchesCurrentUid':info.st_uid == os.getuid(), 'realpathMatches':os.path.realpath(path) == path}
-                  if label == 'parent':
-                      result['noGroupOrWorldWrite'] = info.st_mode & 0o022 == 0
-                  else:
-                      result['privateMode077Zero'] = info.st_mode & 0o077 == 0
-              except FileNotFoundError:
-                  result = {'directory':label, 'exists':False}
-              except Exception:
-                  result = {'directory':label, 'exists':None}
+          import json, os, re, shutil, stat, subprocess
+          path = '/home/ayin'
+          try:
+              info = os.lstat(path)
+              if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or os.path.realpath(path) != path:
+                  raise ValueError()
+              result = {'mode':format(stat.S_IMODE(info.st_mode), '04o'), 'groupWritable':bool(info.st_mode & stat.S_IWGRP), 'worldWritable':bool(info.st_mode & stat.S_IWOTH), 'sticky':bool(info.st_mode & stat.S_ISVTX), 'ownerMatchesCurrentUid':info.st_uid == os.getuid()}
+              tool = shutil.which('getfacl')
+              result['aclToolAvailable'] = tool is not None
+              if tool:
+                  result['namedAccessAclEntryCount'] = None
+                  result['hasNamedAccessAclEntries'] = None
+                  try:
+                      completed = subprocess.run([tool, '-c', '-n', '-p', '-a', '--', path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3, check=False)
+                      if completed.returncode == 0 and len(completed.stdout) <= 16384:
+                          lines = completed.stdout.decode('ascii', errors='strict').splitlines()
+                          count = sum(bool(re.fullmatch(r'(?:user|group):[0-9]+:[rwx-]{3}(?:\s+#effective:[rwx-]{3})?', line)) for line in lines)
+                          result['namedAccessAclEntryCount'] = count
+                          result['hasNamedAccessAclEntries'] = count > 0
+                  except Exception:
+                      pass
               print(json.dumps(result), flush=True)
+          except Exception:
+              print(json.dumps({'metadataAvailable':False}), flush=True)
           PYTHON
           REMOTE
