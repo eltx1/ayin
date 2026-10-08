@@ -1,0 +1,56 @@
+import type { Locale } from "@/lib/i18n/config";
+
+const english = {
+  controls: "Clip playback controls",
+  play: "Play",
+  replay: "Replay",
+  pause: "Pause",
+  mute: "Mute",
+  unmute: "Unmute",
+  seek: "Playback position",
+  of: "of",
+  loading: "Loading video…",
+  buffering: "Buffering…",
+  unavailable: "This video couldn’t load.",
+  retry: "Retry video",
+  blocked: "Playback didn’t start. Select Play to try again.",
+  dataSaving: "Data saving is on. Select Play to load this video.",
+  native: "Native controls",
+  authored: "AYIN controls",
+  fullscreen: "Fullscreen",
+  exitFullscreen: "Exit fullscreen",
+  captions: "Captions",
+  captionsOff: "Off",
+  captionsTransportUnavailable: "Some captions aren’t available in this player.",
+  openFullVideo: "Open full video",
+  captionsUnavailable: "These captions couldn’t load. Try another language or turn them off.",
+};
+const arabic: typeof english = {
+  controls: "عناصر التحكم في تشغيل المقطع",
+  play: "تشغيل",
+  replay: "إعادة التشغيل",
+  pause: "إيقاف مؤقت",
+  mute: "كتم الصوت",
+  unmute: "تشغيل الصوت",
+  seek: "موضع التشغيل",
+  of: "من",
+  loading: "جارٍ تحميل الفيديو…",
+  buffering: "جارٍ التخزين المؤقت…",
+  unavailable: "تعذّر تحميل هذا الفيديو.",
+  retry: "إعادة تحميل الفيديو",
+  blocked: "لم يبدأ التشغيل. اختر تشغيل للمحاولة مجددًا.",
+  dataSaving: "توفير البيانات مفعّل. اختر تشغيل لتحميل هذا الفيديو.",
+  native: "عناصر التحكم الأصلية",
+  authored: "عناصر تحكم AYIN",
+  fullscreen: "ملء الشاشة",
+  exitFullscreen: "الخروج من ملء الشاشة",
+  captions: "الترجمة",
+  captionsOff: "إيقاف",
+  captionsTransportUnavailable: "بعض الترجمات غير متاحة في هذا المشغّل.",
+  openFullVideo: "فتح الفيديو الكامل",
+  captionsUnavailable: "تعذّر تحميل هذه الترجمة. جرّب لغة أخرى أو أوقف الترجمة.",
+};
+
+export function clipPlayerCopy(locale: Locale) {
+  return locale === "ar" ? arabic : english;
+}

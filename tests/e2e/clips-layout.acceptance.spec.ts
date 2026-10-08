@@ -130,6 +130,7 @@ async function installDecodedMedia(page: Page) {
 async function pauseDecodedFrame(page: Page, id: string) {
   const video = article(page, id).locator("video");
   await expect.poll(() => video.evaluate((media: HTMLVideoElement) => media.readyState)).toBe(4);
+  await enableNativeControls(page, id);
   await video.evaluate(async (media: HTMLVideoElement) => {
     await media.play();
   });
@@ -212,43 +213,48 @@ async function geometry(page: Page, id: string) {
         videoHeight: video.videoHeight,
         decodedFrames: video.getVideoPlaybackQuality().totalVideoFrames,
       },
-      controls: [...element.querySelectorAll("button,a,h2,p")].map((control) => {
-        const box = rect(control);
-        const fragments = [...control.getClientRects()]
-          .filter((fragment) => fragment.width > 0 && fragment.height > 0)
-          .map((fragment) => ({
-            left: fragment.left,
-            top: fragment.top,
-            right: fragment.right,
-            bottom: fragment.bottom,
-            width: fragment.width,
-            height: fragment.height,
-          }));
-        // A wrapped inline link's union box includes the gap between lines.
-        // Hit-test every rendered fragment, retaining the union for containment.
-        const points = fragments.flatMap((fragment) =>
-          [0.25, 0.5, 0.75].map((fraction) => ({
-            x: fragment.left + fragment.width * fraction,
-            y: fragment.top + fragment.height / 2,
-          })),
-        );
-        return {
-          tag: control.tagName,
-          label: control.textContent?.trim().slice(0, 160) ?? "",
-          box,
-          fragments,
-          hitTests: control.matches("button,a")
-            ? points.map((point) => {
-                const hit = document.elementFromPoint(point.x, point.y);
-                return {
-                  ...point,
-                  hit: hit?.tagName ?? null,
-                  passes: Boolean(hit && (hit === control || control.contains(hit))),
-                };
-              })
-            : [],
-        };
-      }),
+      controls: [...element.querySelectorAll("button,a,h2,p")]
+        .filter(
+          (control) =>
+            control.getBoundingClientRect().width > 0 && control.getBoundingClientRect().height > 0,
+        )
+        .map((control) => {
+          const box = rect(control);
+          const fragments = [...control.getClientRects()]
+            .filter((fragment) => fragment.width > 0 && fragment.height > 0)
+            .map((fragment) => ({
+              left: fragment.left,
+              top: fragment.top,
+              right: fragment.right,
+              bottom: fragment.bottom,
+              width: fragment.width,
+              height: fragment.height,
+            }));
+          // A wrapped inline link's union box includes the gap between lines.
+          // Hit-test every rendered fragment, retaining the union for containment.
+          const points = fragments.flatMap((fragment) =>
+            [0.25, 0.5, 0.75].map((fraction) => ({
+              x: fragment.left + fragment.width * fraction,
+              y: fragment.top + fragment.height / 2,
+            })),
+          );
+          return {
+            tag: control.tagName,
+            label: control.textContent?.trim().slice(0, 160) ?? "",
+            box,
+            fragments,
+            hitTests: control.matches("button,a")
+              ? points.map((point) => {
+                  const hit = document.elementFromPoint(point.x, point.y);
+                  return {
+                    ...point,
+                    hit: hit?.tagName ?? null,
+                    passes: Boolean(hit && (hit === control || control.contains(hit))),
+                  };
+                })
+              : [],
+          };
+        }),
     };
   });
 }
@@ -368,7 +374,9 @@ function assertLayout(
   expect(bounds.media.videoWidth).toBeGreaterThan(0);
   expect(bounds.media.videoHeight).toBeGreaterThan(0);
   expect(bounds.media.decodedFrames).toBeGreaterThan(0);
-  expect(bounds.controls.filter((control) => control.tag === "BUTTON")).toHaveLength(3);
+  expect(
+    bounds.controls.filter((control) => control.tag === "BUTTON").length,
+  ).toBeGreaterThanOrEqual(6);
   for (const control of bounds.controls) {
     if (longDescription && control.tag === "P") continue;
     expect(fits(control.box, bounds.usable), control.label).toBe(true);
@@ -399,7 +407,14 @@ function assertLayout(
   }
 }
 
+async function enableNativeControls(page: Page, id: string) {
+  const native = article(page, id).locator(`[data-tv-focus-id="clip-${id}-native"]`);
+  if (await native.count()) await native.click();
+  await expect(article(page, id).locator("video")).toHaveAttribute("controls", "");
+}
+
 async function revealNativeControls(page: Page, id: string) {
+  await enableNativeControls(page, id);
   const box = await article(page, id).locator("video").boundingBox();
   if (!box) throw new Error("The real video has no bounds.");
   await page.mouse.move(box.x + box.width / 2, box.y + box.height - 12);
@@ -495,9 +510,15 @@ async function exerciseNativeControls(page: Page, id: string, label: string, tes
 }
 
 async function navigate(page: Page, id: string, key: "ArrowDown" | "ArrowUp") {
+  // Native-control interaction owns keyboard focus. Explicitly return to the
+  // article surface before testing its arrow navigation; never scroll either
+  // viewport here. Uninterrupted keyboard focus is covered separately.
+  await page
+    .locator("[data-clip-active='true']")
+    .evaluate((node: HTMLElement) => node.focus({ preventScroll: true }));
   await page.keyboard.press(key);
   await expect(article(page, id)).toBeFocused();
-  await expect(article(page, id).getByRole("button")).toHaveCount(3);
+  await expect(article(page, id).locator(`[data-tv-focus-id="clip-${id}-like"]`)).toBeEnabled();
   await expect(article(page, id).getByRole("button").first()).toBeEnabled();
   // Observe the application's scroll result, including smooth completion.
   // Never scrollIntoView, locator.click, or manually repair either scrollport.
@@ -514,64 +535,55 @@ async function navigate(page: Page, id: string, key: "ArrowDown" | "ArrowUp") {
 }
 
 async function longDescription(page: Page, id: string, testInfo: TestInfo) {
-  const end = "End of the creator's complete recording notes.";
-  const text = `${"These recording notes explain the camera position, natural light, location sound, and editing choices for this short film. ".repeat(200).slice(0, 20_000 - end.length)}${end}`;
+  const end = "نهاية الوصف الكامل. End of the complete recording notes.";
+  const text = `${"ملاحظات التصوير العربية Arabic camera and sound notes. ".repeat(500).slice(0, 20_000 - end.length)}${end}`;
   expect(text).toHaveLength(20_000);
-  // This is a content-only DOM seam at the supported description limit. It
-  // does not replace API data, media behavior, layout styles or event handlers.
-  await article(page, id)
-    .locator("p")
-    .evaluate((paragraph, description) => {
-      paragraph.textContent = description;
-    }, text);
-  await pauseDecodedFrame(page, id);
-  const initial = await capture(page, id, "ar-390-long-description-top", testInfo);
-  assertLayout(initial.bounds, initial.native, true);
-  expect(initial.bounds.panel.scrollHeight).toBeGreaterThan(initial.bounds.panel.clientHeight);
-  await page.mouse.move(
-    initial.bounds.panel.left + initial.bounds.panel.width / 3,
-    initial.bounds.panel.top + initial.bounds.panel.height / 2,
-  );
-  await page.mouse.wheel(0, initial.bounds.panel.scrollHeight);
+  const trigger = article(page, id).getByRole("button", { name: "التفاصيل", exact: true });
+  const initial = await geometry(page, id);
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "التفاصيل", exact: true });
+  // Content-only seam at the supported limit. The real dialog, scrolling,
+  // focus, media and layout handlers stay in control.
+  const description = dialog.locator("p[dir='auto']");
+  await description.evaluate((paragraph, value) => {
+    paragraph.textContent = value;
+  }, text);
   await expect
-    .poll(async () => {
-      const bounds = await geometry(page, id);
-      return bounds.panel.scrollTop + bounds.panel.clientHeight >= bounds.panel.scrollHeight - 1;
-    })
+    .poll(() => dialog.evaluate((node) => node.scrollHeight > node.clientHeight))
     .toBe(true);
-  const lastLine = await article(page, id)
-    .locator("p")
-    .evaluate((paragraph) => {
-      const textNode = paragraph.firstChild;
-      if (!textNode) throw new Error("The description text is missing.");
-      const range = document.createRange();
-      range.setStart(textNode, textNode.textContent!.length - 1);
-      range.setEnd(textNode, textNode.textContent!.length);
-      const box = range.getBoundingClientRect();
-      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-      return {
-        left: box.left,
-        right: box.right,
-        top: box.top,
-        bottom: box.bottom,
-        width: box.width,
-        height: box.height,
-        hit: Boolean(hit && (hit === paragraph || paragraph.contains(hit))),
-      };
-    });
-  const bottom = await capture(page, id, "ar-390-long-description-end", testInfo);
-  expect(fits(lastLine, bottom.bounds.panel), "The end of the full description is reachable").toBe(
-    true,
-  );
-  expect(fits(lastLine, bottom.bounds.usable)).toBe(true);
-  expect(lastLine.hit).toBe(true);
-  expect(bottom.bounds.scrollY).toBe(initial.bounds.scrollY);
-  expect(bottom.bounds.feedScrollTop).toBe(initial.bounds.feedScrollTop);
-  expect(bottom.bounds.video).toEqual(initial.bounds.video);
-  for (const control of bottom.native.controls) {
-    expect(fits(control.box, bottom.bounds.video), control.pseudo).toBe(true);
-    expect(overlaps(control.box, bottom.bounds.panel), control.pseudo).toBe(false);
-  }
+  const box = await dialog.boundingBox();
+  if (!box) throw new Error("Description dialog missing bounds.");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.7);
+  await page.mouse.wheel(0, 100000);
+  await expect
+    .poll(() =>
+      dialog.evaluate((node) => node.scrollTop + node.clientHeight >= node.scrollHeight - 1),
+    )
+    .toBe(true);
+  const lastLine = await description.evaluate((paragraph) => {
+    const textNode = paragraph.firstChild!;
+    const range = document.createRange();
+    range.setStart(textNode, textNode.textContent!.length - 1);
+    range.setEnd(textNode, textNode.textContent!.length);
+    const rect = range.getBoundingClientRect();
+    return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+  });
+  expect(lastLine.top).toBeGreaterThanOrEqual(0);
+  expect(lastLine.bottom).toBeLessThanOrEqual(844);
+  expect(await article(page, id).getAttribute("data-clip-active")).toBe("true");
+  const screenshot = testInfo.outputPath("clips-layout-ar-390-long-description-sheet.png");
+  await page.screenshot({ path: screenshot, fullPage: false });
+  await testInfo.attach("ar-390-full-description-sheet", {
+    path: screenshot,
+    contentType: "image/png",
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await expect(trigger).toBeFocused();
+  const after = await geometry(page, id);
+  expect(after.feedScrollTop).toBe(initial.feedScrollTop);
+  expect(after.scrollY).toBe(initial.scrollY);
+  expect(after.video).toEqual(initial.video);
   await exerciseNativeControls(page, id, "ar-390-long-description", testInfo);
 }
 

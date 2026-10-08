@@ -15,7 +15,7 @@ const seededClipIds = new Set<string>();
 
 test.use({
   serviceWorkers: "block",
-  reducedMotion: "reduce",
+  contextOptions: { reducedMotion: "reduce" },
   viewport: { width: 1440, height: 900 },
 });
 
@@ -241,8 +241,11 @@ async function position(page: Page, clip: Clip, value?: number, event?: string) 
   // A nonzero test checkpoint represents actual viewing by the current owner,
   // not metadata-only resume on an offscreen element. Pure native seek tests
   // assign currentTime directly below so they prove the seek-only path too.
-  if (value !== undefined)
-    await media(page, clip).evaluate((video: HTMLVideoElement) => video.play());
+  if (
+    value !== undefined &&
+    (await media(page, clip).evaluate((video: HTMLVideoElement) => video.paused))
+  )
+    await page.locator(`[data-tv-focus-id="clip-${clip.id}-play"]`).click();
   return media(page, clip).evaluate(
     (video: HTMLVideoElement, input) => {
       if (input.value !== undefined) video.currentTime = input.value;
@@ -898,9 +901,10 @@ test("Clips keyboard navigation and real pagination preserve independent progres
   await openClips(page, clip);
   await settle(page);
   const articles = page.locator("[data-clip-item='true']");
-  await expect(articles).toHaveCount(20);
-  const first = articles.first();
-  const second = articles.nth(1);
+  await expect(page.locator("[data-clips-feed]")).toHaveAttribute("data-clips-loaded-count", "20");
+  await expect(articles).toHaveCount(2);
+  const first = page.locator(`[data-clip-item][data-video-id="${clip.id}"]`);
+  const second = page.locator(`[data-clip-item][data-video-id="${clips[1].id}"]`);
   const secondId = await second.getAttribute("data-video-id");
   expect(secondId).toBeTruthy();
   const secondClip = { id: secondId!, slug: "", title: "" };
@@ -917,24 +921,43 @@ test("Clips keyboard navigation and real pagination preserve independent progres
   await settle(page);
   expect(rows(clip).progress[0]?.positionMs).toBe(13_000);
   expect(rows(secondClip).progress[0]?.positionMs).toBe(7_000);
+  await second.focus();
   await page.keyboard.press("ArrowUp");
   await expect(first).toBeFocused();
+  // The active-only window mounts a fresh decoder on return; the controlled
+  // media harness must deliver its metadata event before resume can apply.
+  await ready(page, clip);
   await expect.poll(() => position(page, clip)).toBe(13);
+  await page.locator(`[data-tv-focus-id="clip-${clip.id}-native"]`).click();
   await expect(media(page, clip)).toHaveAttribute("controls", "");
   await expect(media(page, clip)).toHaveAttribute("playsinline", "");
   expect(await media(page, clip).evaluate((video: HTMLVideoElement) => video.muted)).toBe(true);
   // Seeds from other independent tests may remain in this disposable database.
   // Verify the real cursor adds unique rows without assuming the global total.
-  const before = await articles.evaluateAll((elements) =>
-    elements.map((element) => (element as HTMLElement).dataset.videoId),
-  );
+  const before = await page.locator("[data-clips-feed]").getAttribute("data-clips-loaded-count");
+  let continuationPage: { items: { id: string }[] } | null = null;
+  await page.route(`${API}/public/clips?*`, async (route) => {
+    if (!new URL(route.request().url()).searchParams.has("cursor")) return route.continue();
+    // Capture the real API response before delivery. Reading Chromium's body
+    // again afterward can race CDP response-body eviction during source teardown.
+    const response = await route.fetch();
+    expect(response.status()).toBe(200);
+    continuationPage = await response.json();
+    await route.fulfill({ response });
+  });
   await page.getByRole("button", { name: "Load more Clips", exact: true }).click();
-  await expect.poll(() => articles.count()).toBeGreaterThan(20);
-  const after = await articles.evaluateAll((elements) =>
-    elements.map((element) => (element as HTMLElement).dataset.videoId),
+  await expect.poll(() => continuationPage !== null).toBe(true);
+  const nextPage = continuationPage!;
+  await expect
+    .poll(async () =>
+      Number(await page.locator("[data-clips-feed]").getAttribute("data-clips-loaded-count")),
+    )
+    .toBe(Number(before) + nextPage.items.length);
+  expect(new Set(nextPage.items.map((item: { id: string }) => item.id)).size).toBe(
+    nextPage.items.length,
   );
-  expect(after.slice(0, before.length)).toEqual(before);
-  expect(new Set(after).size).toBe(after.length);
+  await expect(articles).toHaveCount(2);
+  await expect(first).toHaveAttribute("data-clip-active", "true");
   expect(rows(clip).progress[0]?.positionMs).toBe(13_000);
   expect(rows(secondClip).progress[0]?.positionMs).toBe(7_000);
 });
@@ -1096,15 +1119,26 @@ for (const event of ["metadata-only", "queued-paused-play"] as const) {
     await openClips(page, active, false, true);
     await settle(page);
     await ready(page, active);
-    await ready(page, offscreen);
+    // An untouched offscreen item has no media element, no read, and no write.
+    await expect(media(page, offscreen)).toHaveCount(0);
+    expect(
+      (await requestLog(page)).filter(
+        (item) => item.profileId === a.profile.id && item.method === "PUT",
+      ),
+    ).toEqual([]);
     if (event === "queued-paused-play") {
       // A real play();pause() sequence can dispatch its queued play event after
       // the element is paused again. Replay that callback state without playing.
+      // Detached browser callbacks cannot acquire the active owner's progress
+      // authority. This covers the old offscreen callback without creating a
+      // resident player that the windowing contract deliberately forbids.
       expect(
-        await media(page, offscreen).evaluate((video: HTMLVideoElement) => {
-          if (!video.paused) throw new Error("Offscreen fixture must remain paused.");
-          video.dispatchEvent(new Event("play"));
-          return video.paused;
+        await page.evaluate(() => {
+          const detached = document.createElement("video");
+          detached.dispatchEvent(new Event("loadedmetadata"));
+          detached.dispatchEvent(new Event("play"));
+          detached.dispatchEvent(new Event("pause"));
+          return detached.paused && !detached.isConnected;
         }),
       ).toBe(true);
     }

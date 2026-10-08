@@ -33,3 +33,9 @@
   border-color: var(--border-strong);
   color: var(--foreground);
 }
+
+.menu {
+  justify-content: flex-start;
+  margin-block-start: var(--space-4);
+  padding: 0;
+}

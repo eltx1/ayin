@@ -1,4 +1,29 @@
 export const clipsEn = {
+  "clips.optionsUnavailable":
+    "Additional viewing options could not be checked. Try again or open in Watch.",
+  "clips.optionsLoading": "Checking viewing options…",
+  "clips.previous": "Previous Clip",
+  "clips.next": "Next Clip",
+  "clips.navigation": "Clip navigation",
+  "clips.details": "Details",
+  "clips.close": "Close",
+  "clips.noDescription": "No description provided.",
+  "clips.watch": "Open in Watch",
+  "clips.watchCapabilities":
+    "Comments and additional viewing options are available in Watch when enabled by the creator.",
+  "clips.saveData": "Save data",
+  "clips.saveDataHint": "Videos start only when you press Play. No videos are loaded ahead.",
+  "clips.end": "You’re all caught up.",
+  "clips.sessionEnd":
+    "You’ve reached the end of this viewing session. Start fresh to discover more Clips.",
+  "clips.startFresh": "Start a fresh feed",
+  "clips.copied": "Link copied.",
+  "clips.shareOpened": "Share sheet completed.",
+  "clips.shareFailed": "The link could not be shared. Open in Watch and copy its address.",
+  "clips.position": "{current} of {total}",
+  "clips.feedHelp": "Swipe vertically, use the arrow keys on a Clip, or choose Previous and Next.",
+  "clips.nativeShare": "Sharing…",
+
   "clips.metaTitle": "Clips",
   "clips.metaDescription": "Watch short videos from AYIN creators.",
   "clips.eyebrow": "Short-form on AYIN",
@@ -30,6 +55,30 @@ export const clipsEn = {
 } as const;
 
 export const clipsAr: Record<keyof typeof clipsEn, string> = {
+  "clips.optionsUnavailable":
+    "تعذر التحقق من خيارات المشاهدة الإضافية. أعد المحاولة أو افتح صفحة المشاهدة.",
+  "clips.optionsLoading": "جارٍ التحقق من خيارات المشاهدة…",
+  "clips.previous": "المقطع السابق",
+  "clips.next": "المقطع التالي",
+  "clips.navigation": "التنقل بين المقاطع",
+  "clips.details": "التفاصيل",
+  "clips.close": "إغلاق",
+  "clips.noDescription": "لم يُضف وصف.",
+  "clips.watch": "فتح في صفحة المشاهدة",
+  "clips.watchCapabilities":
+    "تتوفر التعليقات وخيارات المشاهدة الإضافية في صفحة المشاهدة عندما يتيحها صانع المحتوى.",
+  "clips.saveData": "توفير البيانات",
+  "clips.saveDataHint": "تبدأ الفيديوهات عند الضغط على تشغيل فقط. لا تُحمّل فيديوهات مسبقًا.",
+  "clips.end": "شاهدت كل المقاطع المتاحة.",
+  "clips.sessionEnd": "وصلت إلى نهاية جلسة المشاهدة. ابدأ جلسة جديدة لاكتشاف المزيد.",
+  "clips.startFresh": "بدء جلسة جديدة",
+  "clips.copied": "تم نسخ الرابط.",
+  "clips.shareOpened": "اكتملت نافذة المشاركة.",
+  "clips.shareFailed": "تعذرت مشاركة الرابط. افتح صفحة المشاهدة وانسخ عنوانها.",
+  "clips.position": "{current} من {total}",
+  "clips.feedHelp": "مرّر رأسيًا أو استخدم مفاتيح الأسهم على المقطع أو اختر السابق والتالي.",
+  "clips.nativeShare": "جارٍ المشاركة…",
+
   "clips.metaTitle": "المقاطع",
   "clips.metaDescription": "شاهد فيديوهات قصيرة من صنّاع المحتوى على AYIN.",
   "clips.eyebrow": "فيديوهات قصيرة على AYIN",

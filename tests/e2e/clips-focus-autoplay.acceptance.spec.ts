@@ -83,10 +83,8 @@ test("focus preserves the current deliberate pause, then scrolling resumes norma
           .evaluate((video: HTMLVideoElement) => !video.paused && video.readyState >= 2),
       )
       .toBe(true);
-    await current.locator("video").evaluate((video: HTMLVideoElement) => video.pause());
-    await expect
-      .poll(() => next.locator("video").evaluate((video: HTMLVideoElement) => video.paused))
-      .toBe(true);
+    await current.locator(`[data-tv-focus-id="clip-${catalog.videos[0]!.id}-play"]`).click();
+    await expect(next.locator("video")).toHaveCount(0);
     const revoked = await page.evaluate(() => {
       const videos = [...document.querySelectorAll("video")];
       window.dispatchEvent(new Event("blur"));

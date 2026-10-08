@@ -16,7 +16,7 @@ interface Fixture {
 let seeded: Fixture | undefined;
 test.use({
   serviceWorkers: "block",
-  reducedMotion: "reduce",
+  contextOptions: { reducedMotion: "reduce" },
   viewport: { width: 1440, height: 900 },
 });
 function fixture<T>(file: string, command: string, input: object = {}): T {

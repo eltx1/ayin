@@ -19,6 +19,9 @@ const marker = (fixtureId) => ({
 });
 try {
   if (command === "seed") {
+    const count = input.count ?? 25;
+    if (!Number.isInteger(count) || count < 2 || count > 130)
+      throw new Error("Fixture count must be between 2 and 130.");
     const fixtureId = randomUUID();
     const password = "Clips-audience-fixture-only-2026!";
     const passwordHash = await new PasswordService().hash(password);
@@ -54,13 +57,22 @@ try {
       await tx.channel.update({ where: { id: channel.id }, data: { primaryTvChannelId: tv.id } });
       const videos = [];
       const now = Date.now();
-      for (let index = 0; index < 25; index++) {
+      for (let index = 0; index < count; index++) {
         const isKids = index !== 0;
         const video = await tx.video.create({
           data: {
             channelId: channel.id,
             slug: `clips-audience-${fixtureId}-${index}`,
-            title: `Clips ${fixtureId} ${isKids ? `Kids ${index}` : "Adult"}`,
+            title:
+              index === 0 && input.longText
+                ? "مقطع AYIN Arabic title ".repeat(12).slice(0, 200)
+                : `Clips ${fixtureId} ${isKids ? `Kids ${index}` : "Adult"}`,
+            description:
+              index === 0 && input.longText
+                ? "وصف التصوير كامل باللغة العربية. English recording notes. "
+                    .repeat(500)
+                    .slice(0, 19_970) + "END OF COMPLETE DESCRIPTION."
+                : "Synthetic local Clips acceptance fixture.",
             videoForm: "CLIP",
             status: "PUBLISHED",
             visibility: "PUBLIC",

@@ -4,7 +4,10 @@ import type { PublicPlaybackResponse } from "./ayin-player";
 import type { SearchAudience } from "./search-request";
 
 export class PlaybackReadError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly identityInvalid = false,
+  ) {
     super("Playback could not be verified for the current viewer.");
   }
 }
@@ -33,7 +36,25 @@ export async function readPlayback(
     },
   );
   assertCurrent();
-  if (!response.ok) throw new PlaybackReadError(response.status);
+  if (!response.ok) {
+    // Status 409 also represents ordinary unavailable media. Only the server's
+    // exact account/profile conflict codes revoke a still-current Viewer lease;
+    // local contract errors never receive this classification.
+    let identityInvalid = response.status === 401;
+    if (response.status === 409) {
+      try {
+        const failure = await readBoundedAccountJson(response, signal, 16 * 1024);
+        assertCurrent();
+        const code = object(object(failure).error).code;
+        identityInvalid = code === "ACCOUNT_CHANGED" || code === "PLAYBACK_VIEWER_CHANGED";
+      } catch {
+        // Preserve the HTTP failure for malformed/oversized error bodies, but
+        // never swallow cancellation or an audience revoked during body reads.
+        assertCurrent();
+      }
+    }
+    throw new PlaybackReadError(response.status, identityInvalid);
+  }
   const body = await readBoundedAccountJson(response, signal, 512 * 1024);
   assertCurrent();
   const result = object(body);

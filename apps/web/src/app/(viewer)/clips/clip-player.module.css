@@ -1,0 +1,149 @@
+.player {
+  background: #000;
+  block-size: 100%;
+  color: #fff;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  inline-size: 100%;
+  min-block-size: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+}
+
+.video {
+  background: #000;
+  block-size: 100%;
+  display: block;
+  inline-size: 100%;
+  min-block-size: 0;
+  object-fit: contain;
+}
+
+.controls {
+  background: #101017;
+  border-block-start: 1px solid rgb(255 255 255 / 18%);
+  padding: 0 var(--space-3) var(--space-1);
+}
+
+.row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.button,
+.captionSelect {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 1 auto;
+  max-inline-size: 100%;
+  overflow-wrap: anywhere;
+  font: inherit;
+  justify-content: center;
+  min-block-size: 44px;
+  min-inline-size: 44px;
+  padding: 0.5rem;
+}
+
+.button:hover,
+.captionSelect:hover {
+  background: #292834;
+}
+
+.button:focus-visible,
+.captionSelect:focus-visible,
+.seek:focus-visible {
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: -3px;
+}
+
+.button:disabled,
+.seek:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.button svg {
+  block-size: 21px;
+  inline-size: 21px;
+}
+
+.time {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  margin-inline-end: auto;
+  white-space: nowrap;
+}
+
+.seek {
+  accent-color: var(--action-fill);
+  block-size: 44px;
+  cursor: pointer;
+  direction: ltr;
+  display: block;
+  inline-size: 100%;
+  margin: 0;
+  min-inline-size: 0;
+  touch-action: pan-x;
+}
+
+.captionRow {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: var(--space-2);
+}
+
+.captionSelect {
+  background: #191820;
+  border-color: rgb(255 255 255 / 36%);
+  flex: 1 1 10rem;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.captionSelect option {
+  background: #191820;
+}
+
+.feedback {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  gap: var(--space-2);
+  line-height: 1.4;
+  margin: 0;
+  padding-block: var(--space-2);
+}
+
+.feedback button {
+  border-color: rgb(255 255 255 / 45%);
+}
+
+.nativeRow {
+  justify-content: space-between;
+  padding-block-start: var(--space-1);
+}
+
+.player:fullscreen {
+  block-size: 100%;
+  inline-size: 100%;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+@media (forced-colors: active) {
+  .button,
+  .captionSelect {
+    border-color: ButtonText;
+  }
+}

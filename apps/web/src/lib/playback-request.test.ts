@@ -130,8 +130,79 @@ describe("Watch audience-scoped playback", () => {
     vi.stubGlobal("fetch", async () => Response.json(body, { status }));
     await expect(
       readPlayback(params, audience, new AbortController().signal),
-    ).rejects.toMatchObject({ status });
+    ).rejects.toMatchObject({ status, identityInvalid: status === 401 });
   });
+  it.each([
+    ["ACCOUNT_CHANGED", true],
+    ["PLAYBACK_VIEWER_CHANGED", true],
+    ["VIDEO_NOT_PLAYABLE", false],
+    ["UNAUTHORIZED", false],
+    ["PROFILE_CHANGED", false],
+    ["account_changed", false],
+    ["ACCOUNT_CHANGED_EXTRA", false],
+  ])(
+    "classifies server 409 %s without conflating media and viewer failures",
+    async (code, identityInvalid) => {
+      vi.stubGlobal("fetch", async () => Response.json({ error: { code } }, { status: 409 }));
+      await expect(
+        readPlayback(params, audience, new AbortController().signal),
+      ).rejects.toMatchObject({ status: 409, identityInvalid });
+    },
+  );
+  it.each([
+    { error: null },
+    { error: { code: ["ACCOUNT_CHANGED"] } },
+    { code: "ACCOUNT_CHANGED" },
+    { error: { code: "ACCOUNT_CHANGED" }, extra: "x".repeat(16 * 1024) },
+  ])("does not trust malformed or oversized conflict envelopes", async (failure) => {
+    vi.stubGlobal("fetch", async () => Response.json(failure, { status: 409 }));
+    await expect(
+      readPlayback(params, audience, new AbortController().signal),
+    ).rejects.toMatchObject({ status: 409, identityInvalid: false });
+  });
+  it("retains non-JSON HTTP conflicts as unclassified failures", async () => {
+    vi.stubGlobal("fetch", async () => new Response("not json", { status: 409 }));
+    await expect(
+      readPlayback(params, audience, new AbortController().signal),
+    ).rejects.toMatchObject({ status: 409, identityInvalid: false });
+  });
+  it.each(["abort", "audience"])(
+    "fences a held conflict body after %s invalidation",
+    async (kind) => {
+      let stream!: ReadableStreamDefaultController<Uint8Array>;
+      let current = true;
+      vi.stubGlobal(
+        "fetch",
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(value) {
+                stream = value;
+              },
+            }),
+            { status: 409 },
+          ),
+      );
+      const controller = new AbortController();
+      const read = readPlayback(
+        params,
+        { ...audience, isCurrent: () => current },
+        controller.signal,
+      );
+      await Promise.resolve();
+      if (kind === "abort") controller.abort();
+      else {
+        current = false;
+        stream.enqueue(
+          new TextEncoder().encode(JSON.stringify({ error: { code: "ACCOUNT_CHANGED" } })),
+        );
+        stream.close();
+      }
+      await expect(read).rejects.toMatchObject(
+        kind === "abort" ? { name: "AbortError" } : { status: 409, identityInvalid: false },
+      );
+    },
+  );
   it.each([
     {},
     { ...body, viewer: {} },

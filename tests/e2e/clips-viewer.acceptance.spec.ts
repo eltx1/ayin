@@ -55,9 +55,7 @@ async function captureViewport(page: Page, videoId: string, name: string, testIn
   await expect
     .poll(() => video.evaluate((media: HTMLVideoElement) => media.readyState))
     .toBeGreaterThanOrEqual(2);
-  await video.evaluate(async (media: HTMLVideoElement) => {
-    await media.play();
-  });
+  await article.locator(`[data-tv-focus-id="clip-${videoId}-play"]`).click();
   await expect
     .poll(() =>
       video.evaluate((media: HTMLVideoElement) => media.getVideoPlaybackQuality().totalVideoFrames),
@@ -119,46 +117,51 @@ async function captureViewport(page: Page, videoId: string, name: string, testIn
         decodedFrames: media.getVideoPlaybackQuality().totalVideoFrames,
         error: media.error?.code ?? null,
       },
-      controls: [...element.querySelectorAll("button,a,h2,p")].map((control) => {
-        const r = box(control);
-        const fragments = [...control.getClientRects()]
-          .filter((fragment) => fragment.width > 0 && fragment.height > 0)
-          .map((fragment) => ({
-            left: fragment.left,
-            right: fragment.right,
-            top: fragment.top,
-            bottom: fragment.bottom,
-            width: fragment.width,
-            height: fragment.height,
-          }));
-        // Wrapped inline links have whitespace inside their union box.
-        const hitTests = control.matches("button,a")
-          ? fragments.flatMap((fragment) =>
-              [0.25, 0.5, 0.75].map((fraction) => {
-                const point = {
-                  x: fragment.left + fragment.width * fraction,
-                  y: fragment.top + fragment.height / 2,
-                };
-                const hit = document.elementFromPoint(point.x, point.y);
-                return {
-                  ...point,
-                  hit: hit?.tagName ?? null,
-                  passes: Boolean(hit && (hit === control || control.contains(hit))),
-                };
-              }),
-            )
-          : [];
-        return {
-          label: control.textContent?.trim(),
-          tag: control.tagName,
-          box: r,
-          fragments,
-          hitTests,
-          hit:
-            !control.matches("button,a") ||
-            (hitTests.length > 0 && hitTests.every((hit) => hit.passes)),
-        };
-      }),
+      controls: [...element.querySelectorAll("button,a,h2,p")]
+        .filter(
+          (control) =>
+            control.getBoundingClientRect().width > 0 && control.getBoundingClientRect().height > 0,
+        )
+        .map((control) => {
+          const r = box(control);
+          const fragments = [...control.getClientRects()]
+            .filter((fragment) => fragment.width > 0 && fragment.height > 0)
+            .map((fragment) => ({
+              left: fragment.left,
+              right: fragment.right,
+              top: fragment.top,
+              bottom: fragment.bottom,
+              width: fragment.width,
+              height: fragment.height,
+            }));
+          // Wrapped inline links have whitespace inside their union box.
+          const hitTests = control.matches("button,a")
+            ? fragments.flatMap((fragment) =>
+                [0.25, 0.5, 0.75].map((fraction) => {
+                  const point = {
+                    x: fragment.left + fragment.width * fraction,
+                    y: fragment.top + fragment.height / 2,
+                  };
+                  const hit = document.elementFromPoint(point.x, point.y);
+                  return {
+                    ...point,
+                    hit: hit?.tagName ?? null,
+                    passes: Boolean(hit && (hit === control || control.contains(hit))),
+                  };
+                }),
+              )
+            : [];
+          return {
+            label: control.textContent?.trim(),
+            tag: control.tagName,
+            box: r,
+            fragments,
+            hitTests,
+            hit:
+              !control.matches("button,a") ||
+              (hitTests.length > 0 && hitTests.every((hit) => hit.passes)),
+          };
+        }),
     };
   });
   // These are custom-control and shell bounds. The native layout suite also
@@ -227,7 +230,8 @@ test("Clips paginate real rows and recover uncertain social writes in EN/AR", as
   await page.goto("/clips?lang=en");
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { level: 1, name: "AYIN Clips" })).toBeVisible();
-  await expect(main.getByRole("article")).toHaveCount(20);
+  await expect(page.locator("[data-clips-feed]")).toHaveAttribute("data-clips-loaded-count", "20");
+  await expect(main.getByRole("article")).toHaveCount(2);
   await expect(main.getByText("Clip 01", { exact: true })).toBeVisible();
   await expect(main.locator('a[href*="#comments"]')).toHaveCount(0);
   await expect(main.getByText("Ad opportunity", { exact: true })).toHaveCount(0);
@@ -277,7 +281,8 @@ test("Clips paginate real rows and recover uncertain social writes in EN/AR", as
   ).toMatchObject({ reactions: 1, subscriptions: 1 });
 
   await main.getByRole("button", { name: "Load more Clips", exact: true }).click();
-  await expect(main.getByRole("article")).toHaveCount(22);
+  await expect(page.locator("[data-clips-feed]")).toHaveAttribute("data-clips-loaded-count", "22");
+  await expect(main.getByRole("article")).toHaveCount(2);
   await expect(main.getByRole("button", { name: "Load more Clips", exact: true })).toHaveCount(0);
 
   await captureViewport(page, fixture.firstVideoId, "design-clips-1440-en", testInfo);
@@ -286,7 +291,8 @@ test("Clips paginate real rows and recover uncertain social writes in EN/AR", as
   await page.goto("/ar/clips?lang=ar");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
   await expect(main.getByRole("heading", { level: 1, name: "مقاطع AYIN" })).toBeVisible();
-  await expect(main.getByRole("article")).toHaveCount(20);
+  await expect(page.locator("[data-clips-feed]")).toHaveAttribute("data-clips-loaded-count", "20");
+  await expect(main.getByRole("article")).toHaveCount(2);
   await expect(main.getByRole("button", { name: /^تم الإعجاب ·/ })).toBeVisible();
   await expect(main.getByRole("button", { name: "مشترك", exact: true })).toBeVisible();
   await expect

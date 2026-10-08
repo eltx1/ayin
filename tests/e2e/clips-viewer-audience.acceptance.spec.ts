@@ -129,6 +129,17 @@ const change = (catalog: Catalog, command: string, extra: object = {}) =>
   fixture(command, { fixtureId: catalog.fixtureId, ...extra });
 const article = (page: Page, id: string) =>
   page.locator(`[data-clip-item='true'][data-video-id='${id}']`);
+async function selectIndex(page: Page, index: number) {
+  const active = page.locator("[data-clip-active='true']");
+  let current = Number(await active.getAttribute("data-clip-index"));
+  while (current !== index) {
+    const delta = index > current ? 1 : -1;
+    await active.focus();
+    await page.keyboard.press(delta > 0 ? "ArrowDown" : "ArrowUp");
+    current += delta;
+    await expect(active).toHaveAttribute("data-clip-index", String(current));
+  }
+}
 async function refocus(page: Page) {
   await page.bringToFront();
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -196,7 +207,11 @@ for (const locale of ["en", "ar"] as const) {
       await page.goto(route);
       await expect(article(page, catalog.videos[1]!.id)).toBeVisible();
       await expect(article(page, catalog.videos[0]!.id)).toHaveCount(0);
-      await expect(page.locator("[data-clip-item]")).toHaveCount(20);
+      await expect(page.locator("[data-clips-feed]")).toHaveAttribute(
+        "data-clips-loaded-count",
+        "20",
+      );
+      await expect(page.locator("[data-clip-item]")).toHaveCount(2);
       await expect
         .poll(() =>
           article(page, catalog.videos[1]!.id)
@@ -206,7 +221,15 @@ for (const locale of ["en", "ar"] as const) {
         .toBeGreaterThanOrEqual(2);
       await captureAudience(page, testInfo, `kids-${locale}-${width}`);
       await page.locator('[data-tv-focus-id="clips-load-more"]').click();
-      await expect(article(page, catalog.videos[24]!.id)).toBeAttached();
+      await expect(page.locator("[data-clips-feed]")).toHaveAttribute(
+        "data-clips-loaded-count",
+        "24",
+      );
+      await selectIndex(page, 23);
+      await expect(article(page, catalog.videos[24]!.id)).toHaveAttribute(
+        "data-clip-active",
+        "true",
+      );
       await expect(article(page, catalog.videos[0]!.id)).toHaveCount(0);
       await expect(page.locator("[data-clip-ad-boundary]")).toHaveCount(0);
       expect(sourceRequests.some((url) => url.includes(`/${catalog.fixtureId}/0/`))).toBe(false);
@@ -288,7 +311,11 @@ for (const phase of ["initial", "continuation"] as const) {
           ),
       );
       await expect(article(page, catalog.videos[0]!.id)).toHaveCount(0);
-      await expect(page.locator("[data-clip-item]")).toHaveCount(20);
+      await expect(page.locator("[data-clips-feed]")).toHaveAttribute(
+        "data-clips-loaded-count",
+        "20",
+      );
+      await expect(page.locator("[data-clip-item]")).toHaveCount(2);
     } finally {
       gate.release();
     }
@@ -305,8 +332,8 @@ test("same verified viewer retains native controls, position, active Clip and lo
   await expect(article(page, catalog.videos[0]!.id)).toBeVisible();
   await page.locator('[data-tv-focus-id="clips-load-more"]').click();
   const target = article(page, catalog.videos[21]!.id);
-  await expect(target).toBeAttached();
-  await target.evaluate((node) => node.scrollIntoView({ block: "center", behavior: "instant" }));
+  await expect(page.locator("[data-clips-feed]")).toHaveAttribute("data-clips-loaded-count", "25");
+  await selectIndex(page, 21);
   await expect(target).toHaveAttribute("data-clip-active", "true");
   const video = target.locator("video");
   await expect
@@ -344,7 +371,7 @@ test("same verified viewer retains native controls, position, active Clip and lo
     .toBe(suspended.before);
   await expect(target).toBeInViewport({ ratio: 0.7 });
   await expect(target).toHaveAttribute("data-clip-active", "true");
-  await expect(article(page, catalog.videos[24]!.id)).toBeAttached();
+  await expect(page.locator("[data-clips-feed]")).toHaveAttribute("data-clips-loaded-count", "25");
   await expect
     .poll(() =>
       video.evaluate((media: HTMLVideoElement) => ({
@@ -378,11 +405,12 @@ test("changed default profile cannot inherit adult media or prior pagination", a
   await page.goto("/clips?lang=en");
   await expect(article(page, catalog.videos[0]!.id)).toBeVisible();
   await page.locator('[data-tv-focus-id="clips-load-more"]').click();
-  await expect(article(page, catalog.videos[24]!.id)).toBeAttached();
+  await expect(page.locator("[data-clips-feed]")).toHaveAttribute("data-clips-loaded-count", "25");
   change(catalog, "switch-default");
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await refocus(page);
   await expect(article(page, catalog.videos[1]!.id)).toBeVisible();
   await expect(article(page, catalog.videos[0]!.id)).toHaveCount(0);
-  await expect(page.locator("[data-clip-item]")).toHaveCount(20);
+  await expect(page.locator("[data-clips-feed]")).toHaveAttribute("data-clips-loaded-count", "20");
+  await expect(page.locator("[data-clip-item]")).toHaveCount(2);
 });
