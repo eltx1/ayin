@@ -93,7 +93,7 @@ jobs:
           df -k /home/ayin/htdocs/releases
           echo '=== AYIN process names and RSS KiB only ==='
           ps -u "$(id -u)" -o pid=,ppid=,comm=,state=,etimes=,pcpu=,rss= --sort=-rss | awk 'NR <= 30'
-          echo '=== aggregate process states (no other-user process details) ==='
+          echo '=== aggregate process states (no other-user process details) ===' 
           ps -e -o state= | awk '{state[$1]++} END {for (s in state) if (s ~ /^[RSDTtXZPI]$/) print s, state[s]}'
           echo '=== aggregate pressure counters ==='
           for resource in cpu memory io; do
@@ -183,7 +183,65 @@ jobs:
             const startTicks = Number(fields[19]);
             if (!Number.isSafeInteger(ppid) || !Number.isSafeInteger(startTicks)) return null;
             const name = fs.readFileSync(`${dir}/comm`, "utf8").trim().slice(0, 15).replace(/[^A-Za-z0-9 _./():-]/g, "?");
+            if (fs.statSync(dir).uid !== ownUid) return null;
+            const verified = fs.readFileSync(`${dir}/stat`, "utf8");
+            const verifiedFields = verified.slice(verified.lastIndexOf(")") + 2).split(" ");
+            if (Number(verifiedFields[19]) !== startTicks || Number(verifiedFields[1]) !== ppid) return null;
             return {pid, ppid, name, startTicks};
+          }
+          const numericField = (data, field) => {
+            const value = data.match(new RegExp(`^${field}:\\s+([0-9]+)(?:\\s|$)`, "m"));
+            return value ? Number(value[1]) : 0;
+          };
+          function resourceSnapshot() {
+            const byUid = new Map();
+            const own = [];
+            let examined = 0;
+            for (const entry of fs.readdirSync("/proc")) {
+              if (!/^[0-9]+$/.test(entry)) continue;
+              try {
+                if (++examined > 4096) break;
+                const pid = Number(entry);
+                const beforeIdentity = fs.statSync(`/proc/${pid}`).uid === ownUid ? processIdentity(pid) : null;
+                const status = fs.readFileSync(`/proc/${pid}/status`, "utf8");
+                const uid = numericField(status, "Uid");
+                const rssKiB = numericField(status, "VmRSS");
+                const swapKiB = numericField(status, "VmSwap");
+                const threads = numericField(status, "Threads");
+                const stateMatch = status.match(/^State:\s+([A-Zt])/m);
+                const state = stateMatch ? stateMatch[1] : "?";
+                const aggregate = byUid.get(uid) ?? {uid, processes: 0, rssKiB: 0, swapKiB: 0, threads: 0, blocked: 0};
+                aggregate.processes++; aggregate.rssKiB += rssKiB; aggregate.swapKiB += swapKiB;
+                aggregate.threads += threads; aggregate.blocked += state === "D" ? 1 : 0;
+                byUid.set(uid, aggregate);
+                if (uid !== ownUid || own.length >= 64) continue;
+                const identity = processIdentity(pid);
+                if (!identity || !beforeIdentity || identity.startTicks !== beforeIdentity.startTicks || identity.ppid !== beforeIdentity.ppid) continue;
+                let readBytes = null; let writeBytes = null;
+                try {
+                  const io = fs.readFileSync(`/proc/${pid}/io`, "utf8");
+                  readBytes = numericField(io, "read_bytes"); writeBytes = numericField(io, "write_bytes");
+                } catch {}
+                const afterIdentity = processIdentity(pid);
+                if (!afterIdentity || afterIdentity.startTicks !== identity.startTicks || afterIdentity.ppid !== identity.ppid) continue;
+                own.push({...identity, state, rssKiB, swapKiB, threads, readBytes, writeBytes});
+              } catch {}
+            }
+            return {byUid: [...byUid.values()].sort((a,b) => b.rssKiB - a.rssKiB).slice(0,8), own, truncated: examined > 4096};
+          }
+          async function resourceAttribution() {
+            const started = performance.now();
+            const before = resourceSnapshot();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const after = resourceSnapshot();
+            console.log(JSON.stringify({kind: "per_uid_resource_totals", at: new Date().toISOString(), aggregates: after.byUid, truncated: after.truncated, intervalMs: Math.round(performance.now() - started), note: "RSS sums include shared pages; these are not PSS totals."}));
+            for (const process of after.own) {
+              const old = before.own.find(item => item.pid === process.pid && item.startTicks === process.startTicks);
+              console.log(JSON.stringify({kind: "own_process_resources", ...process,
+                readBytesDelta: old && old.readBytes !== null && process.readBytes !== null ? safeNumber(process.readBytes - old.readBytes) : null,
+                writeBytesDelta: old && old.writeBytes !== null && process.writeBytes !== null ? safeNumber(process.writeBytes - old.writeBytes) : null,
+              }));
+            }
           }
           let matches = 0;
           let inspected = 0;
@@ -193,6 +251,8 @@ jobs:
               const pid = Number(entry);
               if (fs.statSync(`/proc/${pid}`).uid !== ownUid) continue;
               if (++inspected > 256) break;
+              const initialIdentity = processIdentity(pid);
+              if (!initialIdentity) continue;
               const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
               if (cwd !== failedRelease && !cwd.startsWith(`${failedRelease}/`)) continue;
               const lineage = [];
@@ -204,12 +264,14 @@ jobs:
                 if (identity.ppid === ancestor) break;
                 ancestor = identity.ppid;
               }
+              const finalIdentity = processIdentity(pid);
+              if (!finalIdentity || finalIdentity.startTicks !== initialIdentity.startTicks || finalIdentity.ppid !== initialIdentity.ppid) continue;
               matches++;
               console.log(JSON.stringify({kind: "failed_release_process", matchesFailedRelease: true, lineage}));
             } catch {}
           }
           console.log(JSON.stringify({kind: "failed_release_process_summary", matches, ownProcessesInspected: inspected, truncated: inspected > 256}));
-          void readiness();
+          void Promise.all([readiness(), resourceAttribution()]);
           NODE
           echo '=== readable kernel OOM evidence (allowlisted fields only) ==='
           if command -v journalctl >/dev/null 2>&1; then
