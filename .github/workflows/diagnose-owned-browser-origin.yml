@@ -1,0 +1,85 @@
+name: Diagnose AYIN owned browser origin
+
+on:
+  push:
+    branches:
+      - diagnose/ayin-owned-browser-origin-20261008
+    paths:
+      - .github/workflows/diagnose-owned-browser-origin.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: ${{ github.repository == 'eltx1/ayin' && github.event_name == 'push' && github.ref == 'refs/heads/diagnose/ayin-owned-browser-origin-20261008' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact already-deployed browser tooling
+        uses: actions/checkout@v7
+        with:
+          ref: a6c15842bd2cf6990715f18d58a550a5929d8d41
+          persist-credentials: false
+
+      - name: Set up pinned Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install locked official browser tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm exec playwright install --with-deps chromium
+
+      - name: Observe public origin with fresh standard Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          const expectedOrigin = "https://ayin.stream";
+          let browser;
+          let page;
+          let started = performance.now();
+          let status = null;
+          let errorCode;
+          const knownOriginMatches = () => {
+            try {
+              return new URL(page.url()).origin === expectedOrigin;
+            } catch {
+              return false;
+            }
+          };
+          try {
+            const { chromium } = await import("@playwright/test");
+            browser = await chromium.launch({ headless: true });
+            const context = await browser.newContext({ serviceWorkers: "block" });
+            page = await context.newPage();
+            started = performance.now();
+            const response = await page.goto("https://ayin.stream/", {
+              waitUntil: "domcontentloaded",
+              timeout: 20_000,
+            });
+            status = response?.status() ?? null;
+            if (status !== 200 || !knownOriginMatches()) process.exitCode = 1;
+          } catch (error) {
+            const match = typeof error?.message === "string"
+              ? error.message.match(/\bnet::ERR_[A-Z0-9_]{1,80}\b/)
+              : null;
+            if (match) errorCode = match[0];
+            else if (error?.name === "TimeoutError") errorCode = "TimeoutError";
+            process.exitCode = 1;
+          } finally {
+            console.log(JSON.stringify({
+              status,
+              finalOriginMatches: knownOriginMatches(),
+              elapsedMs: Math.round(performance.now() - started),
+              ...(errorCode ? { errorCode } : {}),
+            }));
+            if (browser) await browser.close().catch(() => { process.exitCode = 1; });
+          }
+          NODE
