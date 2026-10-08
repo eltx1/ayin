@@ -1,0 +1,147 @@
+name: Diagnose AYIN deployment resources
+
+on:
+  push:
+    branches:
+      - diagnose/ayin-build-resources-20261008
+    paths:
+      - .github/workflows/diagnose-build-resources.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-readonly-build-diagnostic-20261008
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production
+      deployment: false
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      REMOTE_HOME: /home/ayin
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+    steps:
+      - name: Checkout resource diagnostics
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          bash deploy/acquire-ssh-host-key.sh "$candidate"
+          test -s "$candidate"
+
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          if [[ "$actual_fingerprint" != "$PINNED_SSH_HOST_FINGERPRINT" ]]; then
+            echo "SSH host fingerprint mismatch. Expected $PINNED_SSH_HOST_FINGERPRINT, got $actual_fingerprint" >&2
+            rm -f "$candidate"
+            exit 1
+          fi
+
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          echo "Pinned AYIN SSH host fingerprint verified."
+
+      - name: Verify isolated AYIN account
+        id: verify_isolated_account
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_user="$(ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'whoami')"
+          [[ "$remote_user" == 'ayin' ]]
+          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "set -e; test \"\$HOME\" = '/home/ayin'; test -w /home/ayin/htdocs/releases; test -w /home/ayin/env; test ! -w /home/horusapp"
+
+      - name: Read isolated resource and health snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --kill-after=5s 90s ssh -o BatchMode=yes \
+            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+            -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          [[ "$(id -un)" == 'ayin' && "$HOME" == '/home/ayin' ]]
+          test ! -w /home/horusapp
+          echo '=== snapshot timestamp ==='
+          date -u '+%Y-%m-%dT%H:%M:%SZ'
+          uptime
+          echo '=== memory and swap KiB ==='
+          free -k
+          echo '=== aggregate kernel OOM counter (not attribution) ==='
+          awk '$1 == "oom_kill" {print}' /proc/vmstat
+          echo '=== CPU architecture/count ==='
+          uname -m
+          getconf _NPROCESSORS_ONLN
+          echo '=== release filesystem capacity ==='
+          df -k /home/ayin/htdocs/releases
+          echo '=== AYIN process names and RSS KiB only ==='
+          ps -u "$(id -u)" -o pid=,comm=,rss= --sort=-rss | awk 'NR <= 20'
+          echo '=== readable cgroup memory counters ==='
+          cgroup_path="$(awk -F: '$1 == "0" {print $3}' /proc/self/cgroup)"
+          if [[ "$cgroup_path" == /* && "$cgroup_path" != *..* ]]; then
+            relative="$cgroup_path"
+            while :; do
+              for counter in memory.current memory.peak memory.max memory.events memory.swap.current memory.swap.max; do
+                file="/sys/fs/cgroup${relative}/$counter"
+                if [[ -r "$file" ]]; then
+                  printf '%s: ' "$file"
+                  tr '\n' ' ' < "$file"
+                  printf '\n'
+                fi
+              done
+              [[ -n "$relative" ]] || break
+              relative="${relative%/*}"
+            done
+          fi
+          echo '=== currently selected AYIN release ==='
+          current="$(readlink -f /home/ayin/htdocs/current || true)"
+          case "$current" in
+            /home/ayin/htdocs/releases/*)
+              git -C "$current" rev-parse HEAD
+              ;;
+            *) echo 'current_release_unavailable' ;;
+          esac
+          echo '=== direct-origin health HTTP status only ==='
+          for route in 'http://127.0.0.1:3000/' 'http://127.0.0.1:4000/health' 'http://127.0.0.1:4000/ready'; do
+            code="$(curl --silent --output /dev/null --max-time 10 --write-out '%{http_code}' "$route" || true)"
+            printf '%s %s\n' "$route" "$code"
+          done
+          echo '=== readable kernel OOM evidence (allowlisted fields only) ==='
+          if command -v journalctl >/dev/null 2>&1; then
+            uid="$(id -u)"
+            journalctl --kernel --since '2026-10-08 19:30:00 UTC' --until '2026-10-08 20:10:00 UTC' \
+              --no-pager --quiet --output=short-iso 2>/dev/null | \
+              awk -v uid="$uid" '
+                /Out of memory: Killed process|Memory cgroup out of memory: Killed process/ && $0 ~ "(^|[[:space:]])UID:" uid "([[:space:]]|$)" {
+                  for (i=1;i<=NF;i++) {
+                    if ($1 ~ /^[0-9T:+.-]+$/ && $i == "Killed" && $(i+1) == "process" && $(i+2) ~ /^[0-9]+$/ && $(i+3) ~ /^\((node|next-server|next-build|pnpm|npm)\)$/) {
+                      printf "timestamp=%s process=%s pid=%s", $1, $(i+3), $(i+2);
+                      for (j=i+4;j<=NF;j++) if ($j ~ /^((total-vm|anon-rss|file-rss|shmem-rss):[0-9]+kB,?|UID:[0-9]+|oom_score_adj:-?[0-9]+)$/) printf " %s", $j;
+                      printf "\n";
+                      matches++;
+                    }
+                  }
+                }
+                END {if (!matches) print "No matching readable AYIN Node OOM evidence (not proof of absence)."}
+              ' || echo 'Kernel evidence unavailable to the AYIN account.'
+          else
+            echo 'Kernel journal unavailable.'
+          fi
+          REMOTE
