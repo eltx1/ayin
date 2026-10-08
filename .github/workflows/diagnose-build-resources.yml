@@ -1,5 +1,5 @@
 name: Diagnose AYIN deployment resources
-# Read-only SSH boundary and deployed-module initialization; provider methods forbidden.
+# Read-only manifest directory metadata; no file or provider operations.
 
 on:
   push:
@@ -60,7 +60,7 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           echo "Pinned AYIN SSH host fingerprint verified."
 
-      - name: Read SSH boundary and initialize modules without provider methods
+      - name: Read manifest directory metadata only
         shell: bash
         run: |
           set -euo pipefail
@@ -70,66 +70,24 @@ jobs:
           set -euo pipefail
           [[ "$(id -un)" == 'ayin' && "$HOME" == '/home/ayin' ]]
           test ! -w /home/horusapp
-          bool() { if "$@"; then printf true; else printf false; fi; }
           current="$(readlink -f /home/ayin/htdocs/current)"
-          cd /home/ayin/htdocs/current
-          printf '{"boundary":{"envDirectoryWritable":%s,"releasesDirectoryWritable":%s,"apiEnvReadable":%s,"nonRoot":%s,"expectedHome":%s,"currentRealpathMatchesRelease":%s,"releaseShaMatches":%s}}\n' \
-            "$(bool test -w /home/ayin/env)" "$(bool test -w /home/ayin/htdocs/releases)" \
-            "$(bool test -r /home/ayin/env/api.env)" "$(bool test "$(id -u)" != 0)" \
-            "$(bool test "$HOME" = /home/ayin)" \
-            "$(bool bash -c '[[ "$1" == /home/ayin/htdocs/releases/* && "$1" == "$2" ]]' _ "$current" "$(pwd -P)")" \
-            "$(bool test "$(git rev-parse HEAD)" = a6c15842bd2cf6990715f18d58a550a5929d8d41)"
           [[ "$current" == /home/ayin/htdocs/releases/* ]]
+          cd /home/ayin/htdocs/current
           [[ "$(git rev-parse HEAD)" == 'a6c15842bd2cf6990715f18d58a550a5929d8d41' ]]
-          if ! timeout 20s node deploy/run-with-env.cjs /home/ayin/env/api.env node - 2>/dev/null <<'JAVASCRIPT'
-          globalThis.fetch = () => { throw new Error('DIAGNOSTIC_NETWORK_FORBIDDEN'); };
-          const { pathToFileURL } = require('node:url');
-          const { resolve } = require('node:path');
-          const emit = (value) => process.stdout.write(JSON.stringify(value) + '\n');
-          const errorClass = (error) => ['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'ZodError'].includes(error?.name) ? error.name : 'OtherError';
-          const specs = [
-            ['config', 'apps/api/dist/media/media-storage.config.js', ['loadMediaStorageConfig']],
-            ['adapter', 'apps/api/dist/media/r2-media-storage.adapter.js', ['R2MediaStorageAdapter']],
-            ['signer', 'apps/api/dist/media/r2-sigv4.js', ['R2SigV4']],
-            ['xml', 'apps/api/dist/media/r2-xml.js', ['parseR2Xml', 'readR2XmlText', 'xmlField']],
-            ['metadata', 'apps/api/dist/media/r2-upload-completion.js', ['matchUploadCompletionObject', 'objectMetadataFromHeaders']],
-            ['identity', 'packages/types/dist/upload-file-identity.js', ['hashUploadFileIdentity']],
-          ];
-          (async () => {
-            const modules = {};
-            const outcomes = await Promise.all(specs.map(async ([label, path, required]) => {
-              try {
-                const module = await import(pathToFileURL(resolve(process.cwd(), path)).href);
-                return {label, module, imported: true, exportsPresent: required.every((key) => typeof module[key] === 'function')};
-              } catch {
-                return {label, imported: false, exportsPresent: false};
-              }
-            }));
-            for (const outcome of outcomes) {
-              emit({module: outcome.label, imported: outcome.imported, requiredExportsPresent: outcome.exportsPresent});
-              if (outcome.exportsPresent) modules[outcome.label] = outcome.module;
-            }
-            if (!modules.config) return;
-            let config;
-            try {
-              config = modules.config.loadMediaStorageConfig(process.env);
-              emit({config: {loaded: true, mode: ['r2', 'development', 'e2e'].includes(config.mode) ? config.mode : 'unknown', bucketMatches: config.bucket === 'ayin-production-media', endpointShapeMatches: /^https:\/\/[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(config.endpoint ?? ''), credentialsComplete: [config.accountId, config.bucket, config.accessKeyId, config.secretAccessKey].every((value) => typeof value === 'string' && value.length > 0), recoveryV2Off: config.recoveryV2Enabled === false}});
-            } catch (error) {
-              emit({config: {loaded: false, errorClass: errorClass(error)}});
-              return;
-            }
-            for (const [label, key] of [['adapter', 'R2MediaStorageAdapter'], ['signer', 'R2SigV4']]) {
-              if (!modules[label]) continue;
-              try {
-                new modules[label][key](config);
-                emit({constructor: label, constructed: true});
-              } catch (error) {
-                emit({constructor: label, constructed: false, errorClass: errorClass(error)});
-              }
-            }
-          })().catch(() => emit({initializationProjection: 'unavailable'}));
-          JAVASCRIPT
-          then
-            echo '{"initializationProjection":"unavailable"}'
-          fi
+          python3 - <<'PYTHON'
+          import json, os, stat
+          for label, path in [('parent', '/home/ayin'), ('child', '/home/ayin/.r2-acceptance-manifests')]:
+              try:
+                  info = os.lstat(path)
+                  result = {'directory':label, 'exists':True, 'isDirectory':stat.S_ISDIR(info.st_mode), 'isSymlink':stat.S_ISLNK(info.st_mode), 'ownerMatchesCurrentUid':info.st_uid == os.getuid(), 'realpathMatches':os.path.realpath(path) == path}
+                  if label == 'parent':
+                      result['noGroupOrWorldWrite'] = info.st_mode & 0o022 == 0
+                  else:
+                      result['privateMode077Zero'] = info.st_mode & 0o077 == 0
+              except FileNotFoundError:
+                  result = {'directory':label, 'exists':False}
+              except Exception:
+                  result = {'directory':label, 'exists':None}
+              print(json.dumps(result), flush=True)
+          PYTHON
           REMOTE
