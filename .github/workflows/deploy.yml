@@ -73,6 +73,7 @@ jobs:
 
             const failures = [];
             if (data.name !== 'Task quality gates') failures.push(`workflow=${data.name}`);
+            if (data.path !== '.github/workflows/database.yml') failures.push(`workflowPath=${data.path}`);
             if (data.conclusion !== 'success') failures.push(`conclusion=${data.conclusion}`);
             if (data.event !== 'push') failures.push(`event=${data.event}`);
             if (data.head_branch !== 'main') failures.push(`branch=${data.head_branch}`);
@@ -104,6 +105,26 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_SHA }}
+
+      - name: Download the Web build from the exact successful quality run
+        uses: actions/download-artifact@v8
+        with:
+          name: ayin-web-build-${{ env.RELEASE_SHA }}
+          path: ${{ runner.temp }}/ayin-web-build
+          github-token: ${{ github.token }}
+          run-id: ${{ env.VALIDATION_RUN_ID }}
+          digest-mismatch: error
+
+      - name: Bind the transferred Web archive checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/ayin-web-build/ayin-web-build.tar.gz"
+          test -f "$archive"
+          checksum="$(sha256sum "$archive" | awk '{print $1}')"
+          [[ "$checksum" =~ ^[0-9a-f]{64}$ ]]
+          echo "WEB_BUILD_SHA256=$checksum" >> "$GITHUB_ENV"
+          echo "WEB_BUILD_REMOTE=$REMOTE_HOME/.deploy-bootstrap/web-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.tar.gz" >> "$GITHUB_ENV"
 
       - name: Configure pinned AYIN SSH trust
         shell: bash
@@ -149,6 +170,8 @@ jobs:
             "install -d -m 700 '$REMOTE_HOME/.deploy-bootstrap'"
           scp -P "$SSH_PORT" deploy/release.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$REMOTE_HOME/.deploy-bootstrap/release.sh"
+          scp -P "$SSH_PORT" "$RUNNER_TEMP/ayin-web-build/ayin-web-build.tar.gz" \
+            "$DEPLOY_USER@$DEPLOY_HOST:$WEB_BUILD_REMOTE"
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
             "chmod 700 '$REMOTE_HOME/.deploy-bootstrap/release.sh'"
 
@@ -156,14 +179,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Next.js/TypeScript can be quiet for several minutes on the production host.
-          # SSH-level keepalives prevent intermediary idle timeouts from killing a healthy build.
+          # Web was built and smoke-tested in the exact successful quality run.
+          # Keep the existing SSH keepalives for target dependency/API preparation.
           ssh -o BatchMode=yes \
             -o ServerAliveInterval=30 \
             -o ServerAliveCountMax=20 \
             -o TCPKeepAlive=yes \
             -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "'$REMOTE_HOME/.deploy-bootstrap/release.sh' '$RELEASE_SHA'"
+            "'$REMOTE_HOME/.deploy-bootstrap/release.sh' '$RELEASE_SHA' '$WEB_BUILD_REMOTE' '$WEB_BUILD_SHA256'"
 
       - name: Verify direct-origin application health
         shell: bash
@@ -192,6 +215,7 @@ jobs:
           deploy_run_id=$GITHUB_RUN_ID
           deploy_run_attempt=$GITHUB_RUN_ATTEMPT
           deployed_as=ayin
+          web_build_sha256=$WEB_BUILD_SHA256
           EOF
 
       - name: Upload deployment proof
@@ -207,4 +231,4 @@ jobs:
         shell: bash
         run: |
           ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "rm -f '$REMOTE_HOME/.deploy-bootstrap/release.sh'" || true
+            "rm -f '$REMOTE_HOME/.deploy-bootstrap/release.sh' '$WEB_BUILD_REMOTE'" || true

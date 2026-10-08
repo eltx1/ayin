@@ -1,6 +1,6 @@
 # Finite media cleanup V2 (implementation checkpoint)
 
-Status: in implementation and review. Production durable upload rollout remains disabled. This document replaces neither historical V1 evidence nor outstanding V1 debt.
+Status: implemented and independently reviewed; local aggregate checks pass. Exact-head remote CI and live-provider acceptance remain separate gates. Production durable upload rollout remains disabled. This document replaces neither historical V1 evidence nor outstanding V1 debt.
 
 ## Contract
 
