@@ -32,7 +32,9 @@ import {
   MEDIA_STORAGE_CONFIG,
   type ExistingUploadPart,
   type MediaStorageAdapter,
+  type UploadObjectBinding,
 } from "./media-storage.adapter.js";
+import { uploadBindingHeaders } from "./r2-upload-completion.js";
 import type { MediaStorageConfig } from "./media-storage.config.js";
 import { assertUploadByteQuota, lockUploadAdmission } from "./media-upload-admission.js";
 import { registerUploadCleanupInTransaction } from "./media-upload-cleanup.js";
@@ -344,6 +346,7 @@ export class MediaUploadRecoveryCommandsService {
           await this.storage.createMultipartUpload({
             key: reserved.session.objectKey,
             contentType: reserved.session.mimeType,
+            uploadBinding: this.objectBinding(reserved.session),
           })
         ).uploadId;
         if (typeof uploadId !== "string" || !uploadId.trim() || Buffer.byteLength(uploadId) > 1024)
@@ -470,6 +473,7 @@ export class MediaUploadRecoveryCommandsService {
           ? await this.storage.authorizeSinglePut({
               key: reserved.session.objectKey,
               contentType: reserved.session.mimeType,
+              uploadBinding: this.objectBinding(reserved.session),
               expiresInSeconds,
               now,
             })
@@ -495,7 +499,12 @@ export class MediaUploadRecoveryCommandsService {
           url: authorization.url,
           method: "PUT",
           headers:
-            reserved.session.mode === "SINGLE" ? { "content-type": reserved.session.mimeType } : {},
+            reserved.session.mode === "SINGLE"
+              ? {
+                  "content-type": reserved.session.mimeType,
+                  ...uploadBindingHeaders(this.objectBinding(reserved.session)),
+                }
+              : {},
           expiresAt: authorization.expiresAt.toISOString(),
           partNumber: input.partNumber,
         },
@@ -555,38 +564,148 @@ export class MediaUploadRecoveryCommandsService {
           parts: parts.map(({ partNumber, etag }) => ({ partNumber, etag })),
         });
       }
-      const metadata = await this.storage.headObject(reserved.session.objectKey);
-      if (
-        !Number.isSafeInteger(metadata.sizeBytes) ||
-        BigInt(metadata.sizeBytes) !== reserved.session.sizeBytes ||
-        (metadata.contentType &&
-          normalizeVideoMimeType(metadata.contentType) !== reserved.session.mimeType)
-      )
-        throw new Error("Stored metadata does not match the reserved source.");
-      return await this.finish(actor, reserved, "FINALIZING", async (tx, current) => {
-        await tx.mediaAsset.update({
-          where: { id: current.sourceAssetId! },
-          data: { status: "UPLOADED" },
-        });
-        const session = await tx.mediaUploadSession.update({
-          where: { id: current.id },
-          data: { state: "COMPLETED", revision: { increment: 1 }, grantsRevokedAt: new Date() },
-        });
-        const queued = await this.lifecycle.enqueueUploadedAssetInTransaction(
-          tx,
-          current.sourceAssetId!,
+      if (this.storage.observeUploadCompletion) {
+        const observation = await this.storage.observeUploadCompletion(
+          this.completionObservation(reserved.session),
         );
+        if (observation.status !== "OBJECT_VERIFIED")
+          throw new Error("The reserved source completion could not be verified.");
+      } else {
+        // Compatibility for existing provider contracts. The shipped R2 adapter
+        // always uses its identity-bound observation above; this fallback cannot
+        // reconcile a lost outcome and does not grant admission to any provider.
+        const metadata = await this.storage.headObject(reserved.session.objectKey);
         if (
-          !queued ||
-          queued.status !== "INTEGRITY_QUEUED" ||
-          queued.inputIntegritySessionId !== current.id
+          !Number.isSafeInteger(metadata.sizeBytes) ||
+          BigInt(metadata.sizeBytes) !== reserved.session.sizeBytes ||
+          (metadata.contentType &&
+            normalizeVideoMimeType(metadata.contentType) !== reserved.session.mimeType)
         )
-          throw new Error("Durable upload integrity enqueue was not established.");
-        return session;
-      });
+          throw new Error("Stored metadata does not match the reserved source.");
+      }
+      return await this.finish(actor, reserved, "FINALIZING", (tx, current) =>
+        this.acceptCompletedSource(tx, current),
+      );
     } catch (failure) {
       return this.unknown(actor, reserved, failure);
     }
+  }
+
+  /** Explicit reconciliation of one existing COMPLETE. Provider calls are read-only;
+   * no POST/PUT/abort is replayed, and GET outcomes remain strictly observational.
+   */
+  async reconcileCompletion(
+    actor: UploadActor,
+    sessionId: string,
+    requestId: string,
+    expectedRevision: number,
+  ): Promise<UploadRecoveryOutcomeResponse> {
+    this.gate();
+    const initial = await this.transaction(async (tx) => {
+      const session = await this.lockSession(tx, actor, sessionId, true);
+      const operation = await tx.mediaUploadOperation.findUnique({
+        where: { sessionId_requestId: { sessionId, requestId } },
+      });
+      if (!operation || operation.kind !== "COMPLETE")
+        error("UPLOAD_RECOVERY_NOT_FOUND", "No matching upload completion could be found.", 404);
+      if (operation.status === "SUCCEEDED") return { session, operation, replayed: true };
+      if (session.hardExpiresAt.getTime() <= Date.now())
+        error("UPLOAD_RECOVERY_EXPIRED", "This saved upload has expired.", 410);
+      if (session.revision !== expectedRevision)
+        error("UPLOAD_RECOVERY_CHANGED", "The saved upload changed. Check it before retrying.");
+      this.reconcilable(session, operation);
+      return { session, operation, replayed: true };
+    });
+    if (initial.operation.status === "SUCCEEDED") return response(actor, initial);
+    if (!this.storage.observeUploadCompletion)
+      error("UPLOAD_RECOVERY_UNSUPPORTED", "Storage completion verification is unavailable.", 503);
+    let verified = false;
+    try {
+      this.gate();
+      verified =
+        (await this.storage.observeUploadCompletion(this.completionObservation(initial.session)))
+          .status === "OBJECT_VERIFIED";
+    } catch {
+      // Provider errors, absence and mismatches retain the original obligation.
+      // Never persist private provider text or infer that a write did not occur.
+    }
+    return this.transaction(async (tx) => {
+      const current = await this.lockSession(tx, actor, sessionId);
+      const operation = await tx.mediaUploadOperation.findUniqueOrThrow({
+        where: { id: initial.operation.id },
+      });
+      if (operation.status === "SUCCEEDED")
+        return response(actor, { session: current, operation, replayed: true });
+      this.unchanged(current, initial.session, initial.session.state);
+      this.reconcilable(current, operation);
+      this.gate();
+      if (!verified) return response(actor, { session: current, operation, replayed: true });
+      const session = await this.acceptCompletedSource(tx, current);
+      const done = await tx.mediaUploadOperation.update({
+        where: { id: operation.id },
+        data: { status: "SUCCEEDED" },
+      });
+      return response(actor, { session, operation: done, replayed: true });
+    });
+  }
+
+  private reconcilable(session: MediaUploadSession, operation: MediaUploadOperation) {
+    const revision = operation.expectedRevision + (session.state === "FINALIZING" ? 1 : 2);
+    if (
+      operation.kind !== "COMPLETE" ||
+      !["DISPATCHED", "UNKNOWN"].includes(operation.status) ||
+      !operation.dispatchStartedAt ||
+      !["FINALIZING", "UNRESOLVED"].includes(session.state) ||
+      session.revision !== revision ||
+      session.grantsRevokedAt ||
+      session.cleanupRequestedAt ||
+      (session.mode === "MULTIPART" && !session.providerUploadId)
+    )
+      error("UPLOAD_STATE_CHANGED", "This completion cannot be reconciled in its current state.");
+  }
+
+  private objectBinding(session: MediaUploadSession): UploadObjectBinding {
+    if (!session.sourceAssetId || !session.contentIdentityDigest)
+      error("UPLOAD_RECOVERY_CHANGED", "The saved source identity is unavailable.");
+    return {
+      sessionId: session.id,
+      sourceAssetId: session.sourceAssetId,
+      contentIdentityDigest: session.contentIdentityDigest,
+    };
+  }
+
+  private completionObservation(session: MediaUploadSession) {
+    return {
+      key: session.objectKey,
+      uploadId: session.mode === "MULTIPART" ? session.providerUploadId : null,
+      expected: {
+        sizeBytes: Number(session.sizeBytes),
+        contentType: session.mimeType,
+        binding: this.objectBinding(session),
+      },
+    };
+  }
+
+  private async acceptCompletedSource(tx: Prisma.TransactionClient, current: MediaUploadSession) {
+    await tx.mediaAsset.update({
+      where: { id: current.sourceAssetId! },
+      data: { status: "UPLOADED" },
+    });
+    const session = await tx.mediaUploadSession.update({
+      where: { id: current.id },
+      data: { state: "COMPLETED", revision: { increment: 1 }, grantsRevokedAt: new Date() },
+    });
+    const queued = await this.lifecycle.enqueueUploadedAssetInTransaction(
+      tx,
+      current.sourceAssetId!,
+    );
+    if (
+      !queued ||
+      queued.status !== "INTEGRITY_QUEUED" ||
+      queued.inputIntegritySessionId !== current.id
+    )
+      throw new Error("Durable upload integrity enqueue was not established.");
+    return session;
   }
 
   async cancel(actor: UploadActor, sessionId: string, raw: UploadRecoveryCommandRequest) {

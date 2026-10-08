@@ -38,14 +38,19 @@ Example:
   {
     "AllowedOrigins": ["https://ayin.stream"],
     "AllowedMethods": ["PUT"],
-    "AllowedHeaders": ["Content-Type"],
+    "AllowedHeaders": [
+      "Content-Type",
+      "x-amz-meta-ayin-upload-session",
+      "x-amz-meta-ayin-source-asset",
+      "x-amz-meta-ayin-identity-root"
+    ],
     "ExposeHeaders": ["ETag"],
     "MaxAgeSeconds": 3600
   }
 ]
 ```
 
-Use exact production/staging origins rather than `*`.
+Use exact production/staging origins rather than `*`. The three metadata headers are required by the new identity-bound recoverable SINGLE PUT contract; multipart metadata is set server-side during initiation. This example is documentation only and does not change a bucket policy. Keep recovery disabled until the actual bucket preflight and browser transfer have been verified. See [the provider reconciliation contract](AYIN_R2_PROVIDER_RECONCILIATION.md).
 
 ## Current source upload keys
 

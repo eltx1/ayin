@@ -18,11 +18,17 @@ function encodeRfc3986(value: string): string {
   );
 }
 
+function compareEncoded(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function canonicalQuery(parameters: Array<[string, string]>): string {
   return parameters
     .map(([key, value]) => [encodeRfc3986(key), encodeRfc3986(value)] as const)
     .sort(([leftKey, leftValue], [rightKey, rightValue]) =>
-      leftKey === rightKey ? leftValue.localeCompare(rightValue) : leftKey.localeCompare(rightKey),
+      leftKey === rightKey
+        ? compareEncoded(leftValue, rightValue)
+        : compareEncoded(leftKey, rightKey),
     )
     .map(([key, value]) => `${key}=${value}`)
     .join("&");
@@ -40,6 +46,34 @@ function canonicalPath(bucket: string, key?: string): string {
         .join("/")}`
     : "";
   return `/${encodeRfc3986(bucket)}${suffix}`;
+}
+
+function signedHeaders(
+  base: Record<string, string>,
+  metadata: Record<string, string> = {},
+): { values: Record<string, string>; names: string; canonical: string } {
+  for (const [name, value] of Object.entries(metadata)) {
+    if (
+      !/^x-amz-meta-[a-z0-9-]+$/.test(name) ||
+      Array.from(value).some((character) => {
+        const code = character.charCodeAt(0);
+        return code < 0x20 || code === 0x7f;
+      })
+    )
+      throw new Error("Invalid R2 metadata signing header.");
+  }
+  const values = Object.fromEntries(
+    Object.entries({ ...base, ...metadata }).map(([name, value]) => [
+      name,
+      value.trim().replace(/ +/g, " "),
+    ]),
+  );
+  const names = Object.keys(values).sort();
+  return {
+    values,
+    names: names.join(";"),
+    canonical: names.map((name) => `${name}:${values[name]}\n`).join(""),
+  };
 }
 
 export class R2HttpError extends Error {
@@ -102,31 +136,35 @@ export class R2SigV4 {
     query?: Array<[string, string]>;
     expiresInSeconds: number;
     contentType?: string;
+    metadataHeaders?: Record<string, string>;
     now?: Date;
   }): { url: string; expiresAt: Date } {
     const now = input.now ?? new Date();
     const amzDate = formatAmzDate(now);
     const dateStamp = amzDate.slice(0, 8);
     const scope = `${dateStamp}/${this.region}/s3/aws4_request`;
-    const signedHeaders = input.contentType ? "content-type;host" : "host";
-    const headers = input.contentType
-      ? `content-type:${input.contentType}\nhost:${this.endpoint.host}\n`
-      : `host:${this.endpoint.host}\n`;
+    const headers = signedHeaders(
+      {
+        host: this.endpoint.host,
+        ...(input.contentType ? { "content-type": input.contentType } : {}),
+      },
+      input.metadataHeaders,
+    );
     const parameters: Array<[string, string]> = [
       ...(input.query ?? []),
       ["X-Amz-Algorithm", "AWS4-HMAC-SHA256"],
       ["X-Amz-Credential", `${this.accessKeyId}/${scope}`],
       ["X-Amz-Date", amzDate],
       ["X-Amz-Expires", String(input.expiresInSeconds)],
-      ["X-Amz-SignedHeaders", signedHeaders],
+      ["X-Amz-SignedHeaders", headers.names],
     ];
     const query = canonicalQuery(parameters);
     const canonicalRequest = [
       input.method,
       canonicalPath(this.bucket, input.key),
       query,
-      headers,
-      signedHeaders,
+      headers.canonical,
+      headers.names,
       "UNSIGNED-PAYLOAD",
     ].join("\n");
     const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
@@ -145,6 +183,7 @@ export class R2SigV4 {
     query?: Array<[string, string]>;
     body?: string;
     contentType?: string;
+    metadataHeaders?: Record<string, string>;
     signal?: AbortSignal;
   }): Promise<Response> {
     const now = new Date();
@@ -153,38 +192,35 @@ export class R2SigV4 {
     const body = input.body ?? "";
     const payloadHash = sha256(body);
     const scope = `${dateStamp}/${this.region}/s3/aws4_request`;
-    const signedHeaderNames = input.contentType
-      ? "content-type;host;x-amz-content-sha256;x-amz-date"
-      : "host;x-amz-content-sha256;x-amz-date";
-    const canonicalHeaders = input.contentType
-      ? `content-type:${input.contentType}\nhost:${this.endpoint.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`
-      : `host:${this.endpoint.host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
+    const signed = signedHeaders(
+      {
+        host: this.endpoint.host,
+        "x-amz-content-sha256": payloadHash,
+        "x-amz-date": amzDate,
+        ...(input.contentType ? { "content-type": input.contentType } : {}),
+      },
+      input.metadataHeaders,
+    );
     const query = canonicalQuery(input.query ?? []);
     const canonicalRequest = [
       input.method,
       canonicalPath(this.bucket, input.key),
       query,
-      canonicalHeaders,
-      signedHeaderNames,
+      signed.canonical,
+      signed.names,
       payloadHash,
     ].join("\n");
     const stringToSign = ["AWS4-HMAC-SHA256", amzDate, scope, sha256(canonicalRequest)].join("\n");
     const signature = this.signature(dateStamp, stringToSign);
     const authorization =
       `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${scope}, ` +
-      `SignedHeaders=${signedHeaderNames}, Signature=${signature}`;
+      `SignedHeaders=${signed.names}, Signature=${signature}`;
     const url = new URL(canonicalPath(this.bucket, input.key), this.endpoint);
     if (query) {
       url.search = query;
     }
-    const headers: Record<string, string> = {
-      authorization,
-      "x-amz-content-sha256": payloadHash,
-      "x-amz-date": amzDate,
-    };
-    if (input.contentType) {
-      headers["content-type"] = input.contentType;
-    }
+    const headers: Record<string, string> = { ...signed.values, authorization };
+    delete headers.host;
     const request: RequestInit = { method: input.method, headers };
     if (input.method === "POST") {
       request.body = body;

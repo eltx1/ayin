@@ -11,7 +11,32 @@ export interface StoredObjectMetadata {
   sizeBytes: number;
   contentType: string | null;
   etag: string | null;
+  uploadBinding?: UploadObjectBinding;
 }
+
+export interface UploadObjectBinding {
+  sessionId: string;
+  sourceAssetId: string;
+  contentIdentityDigest: string;
+}
+
+export interface UploadCompletionObservationInput {
+  key: string;
+  uploadId: string | null;
+  expected: {
+    sizeBytes: number;
+    contentType: string;
+    binding: UploadObjectBinding;
+  };
+}
+
+// A point-in-time identity observation, never write-settlement or cleanup proof.
+export type UploadCompletionObservation =
+  | {
+      status: "OBJECT_VERIFIED";
+      metadata: StoredObjectMetadata & { etag: string; uploadBinding: UploadObjectBinding };
+    }
+  | { status: "OBJECT_ABSENT" | "OBJECT_MISMATCH" | "MULTIPART_PRESENT" };
 
 export interface AbandonedMultipartUpload {
   key: string;
@@ -31,7 +56,8 @@ export type MediaStorageObservationCode =
 export class MediaStorageObservationError extends Error {
   constructor(
     readonly code: MediaStorageObservationCode,
-    readonly operation: "listParts" | "listMultipartUploads" | "deletePrefix",
+    readonly operation:
+      "listParts" | "listMultipartUploads" | "deletePrefix" | "observeUploadCompletion",
     readonly providerStatus?: number,
   ) {
     super(`The media storage observation could not be verified (${code}).`);
@@ -80,7 +106,11 @@ export interface MediaStorageAdapter {
     binding: UploadCleanupSettlementBinding,
   ): Promise<UploadCleanupSettlementEvidence | null>;
 
-  createMultipartUpload(input: { key: string; contentType: string }): Promise<{ uploadId: string }>;
+  createMultipartUpload(input: {
+    key: string;
+    contentType: string;
+    uploadBinding?: UploadObjectBinding;
+  }): Promise<{ uploadId: string }>;
   authorizeMultipartPart(input: {
     key: string;
     uploadId: string;
@@ -91,6 +121,7 @@ export interface MediaStorageAdapter {
   authorizeSinglePut(input: {
     key: string;
     contentType: string;
+    uploadBinding?: UploadObjectBinding;
     expiresInSeconds: number;
     now?: Date;
   }): Promise<{ url: string; expiresAt: Date }>;
@@ -104,6 +135,11 @@ export interface MediaStorageAdapter {
   }): Promise<{ etag: string | null }>;
   abortMultipartUpload(input: { key: string; uploadId: string }): Promise<void>;
   headObject(key: string): Promise<StoredObjectMetadata>;
+  // Read-only; multipart HEAD is permitted only after a verified NoSuchUpload.
+  // Absence/expiry and all results here are insufficient to settle future writes.
+  observeUploadCompletion?(
+    input: UploadCompletionObservationInput,
+  ): Promise<UploadCompletionObservation>;
   readObject?(key: string, maxBytes: number): Promise<Uint8Array>;
   deleteObject(key: string): Promise<void>;
   deletePrefix(prefix: string): Promise<void>;

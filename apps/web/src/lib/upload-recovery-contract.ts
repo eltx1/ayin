@@ -191,10 +191,7 @@ export function parseRecoveryResponse(
       session.state !== "OPEN" ||
       Date.parse(expiresAt) <= Date.now() ||
       Date.parse(expiresAt) > Date.parse(session.expiresAt) ||
-      Object.keys(headers).some((name) => name.toLowerCase() !== "content-type") ||
-      Object.values(headers).some(
-        (header) => typeof header !== "string" || header !== session.mimeType,
-      )
+      !validGrantHeaders(headers, session)
     )
       throw new UploadProtocolError();
     result.grant = {
@@ -208,6 +205,28 @@ export function parseRecoveryResponse(
     };
   }
   return result;
+}
+function validGrantHeaders(headers: Record<string, unknown>, session: RecoverableUploadSession) {
+  const normalized = new Map<string, unknown>();
+  for (const [name, value] of Object.entries(headers)) {
+    const key = name.toLowerCase();
+    if (normalized.has(key) || typeof value !== "string") return false;
+    normalized.set(key, value);
+    if (key === "content-type") {
+      if (value !== session.mimeType) return false;
+    } else if (session.mode !== "SINGLE") return false;
+    else if (key === "x-amz-meta-ayin-upload-session") {
+      if (value !== session.sessionId) return false;
+    } else if (key === "x-amz-meta-ayin-source-asset") {
+      if (value !== session.assetId) return false;
+    } else if (key === "x-amz-meta-ayin-identity-root") {
+      if (!/^[a-f0-9]{64}$/.test(value)) return false;
+    } else return false;
+  }
+  const metadataCount = [...normalized.keys()].filter((key) => key !== "content-type").length;
+  // Dormant adapters may issue content-type-only grants. Provider identity
+  // metadata, when present, must be the complete exact-bound SINGLE triplet.
+  return metadataCount === 0 || metadataCount === 3;
 }
 export function parseRecoveryInspection(
   value: unknown,

@@ -188,6 +188,69 @@ describe("recovery boundary and persistence", () => {
         ),
       ).toThrow();
   });
+  it("accepts only complete session-bound SINGLE metadata headers and never persists them", () => {
+    const requestId = randomUUID();
+    const headers = {
+      "content-type": session.mimeType,
+      "x-amz-meta-ayin-upload-session": session.sessionId,
+      "x-amz-meta-ayin-source-asset": session.assetId,
+      "x-amz-meta-ayin-identity-root": fileIdentity.rootSha256,
+    };
+    const grant = {
+      url: "https://provider.invalid/signed",
+      method: "PUT",
+      headers,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      partNumber: 1,
+    };
+    expect(
+      parseRecoveryResponse(envelope(requestId, { grant }), scope, requestId, session, 1).grant
+        ?.headers,
+    ).toEqual(headers);
+    const storage = new MemoryStorage();
+    saveRecovery(storage, { ...saved(), ...envelope(requestId, { grant }) });
+    expect(storage.getItem(RECOVERY_STORAGE_KEY)).not.toContain("x-amz");
+    expect(storage.getItem(RECOVERY_STORAGE_KEY)).not.toContain(fileIdentity.rootSha256);
+    for (const changed of [
+      { ...headers, "x-amz-meta-ayin-upload-session": randomUUID() },
+      { ...headers, "x-amz-meta-ayin-source-asset": randomUUID() },
+      { ...headers, "x-amz-meta-ayin-identity-root": "A".repeat(64) },
+      { ...headers, "x-amz-meta-ayin-identity-root": "a".repeat(63) },
+      { ...headers, "x-amz-meta-ayin-identity-root": "a".repeat(65) },
+      { ...headers, "x-amz-meta-ayin-identity-root": `${"a".repeat(64)}\r\nsecret` },
+      { ...headers, "x-amz-meta-ayin-identity-root": 123 },
+      { ...headers, "x-amz-security-token": "token" },
+      { ...headers, "x-amz-meta-other": "metadata" },
+      { ...headers, authorization: "credential" },
+      { ...headers, "content-type": "text/plain" },
+      { ...headers, "Content-Type": session.mimeType },
+      { ...headers, "X-Amz-Meta-Ayin-Upload-Session": session.sessionId },
+      { "x-amz-meta-ayin-upload-session": session.sessionId },
+      {
+        "x-amz-meta-ayin-upload-session": session.sessionId,
+        "x-amz-meta-ayin-source-asset": session.assetId,
+      },
+    ])
+      expect(() =>
+        parseRecoveryResponse(
+          envelope(requestId, { grant: { ...grant, headers: changed } }),
+          scope,
+          requestId,
+          session,
+          1,
+        ),
+      ).toThrow();
+    const multipart = { ...session, mode: "MULTIPART" as const };
+    expect(() =>
+      parseRecoveryResponse(
+        { ...envelope(requestId, { grant }), session: multipart },
+        scope,
+        requestId,
+        multipart,
+        1,
+      ),
+    ).toThrow();
+  });
 });
 
 describe("explicit recoverable upload controller", () => {
@@ -273,6 +336,336 @@ describe("explicit recoverable upload controller", () => {
     await value.create();
     await value.inspect();
   }
+  async function pendingCompletion(
+    responseStatus: "SUCCEEDED" | "PENDING" | "UNKNOWN" = "SUCCEEDED",
+  ) {
+    state = { ...state, state: "UNRESOLVED", revision: 3 };
+    const requestId = randomUUID();
+    saveRecovery(storage, saved({ session: state, pending: { kind: "COMPLETE", requestId } }));
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (url, init) => {
+      if (String(url).endsWith(`/operations/${requestId}/reconcile`)) {
+        state = {
+          ...state,
+          state: responseStatus === "SUCCEEDED" ? "COMPLETED" : "UNRESOLVED",
+          revision: state.revision + 1,
+        };
+        return response(
+          envelope(requestId, {
+            session: state,
+            operation: { requestId, status: responseStatus, replayed: true },
+          }),
+          201,
+        );
+      }
+      if (String(url).endsWith(`/operations/${requestId}`))
+        return response(
+          envelope(requestId, {
+            session: state,
+            operation: {
+              requestId,
+              status: state.state === "COMPLETED" ? "SUCCEEDED" : "UNKNOWN",
+              replayed: true,
+            },
+          }),
+        );
+      return normal(url, init);
+    });
+    const value = client();
+    await value.open();
+    return { value, requestId };
+  }
+  it("only explicit completion verification posts the original request ID and exact revision without file bytes or another UUID", async () => {
+    const { value, requestId } = await pendingCompletion();
+    await value.check();
+    await value.inspect();
+    expect(writes()).toHaveLength(0);
+    expect(view.saved?.pending).toEqual({ kind: "COMPLETE", requestId });
+    const before = fetcher.mock.calls.length;
+    const id = vi.spyOn(crypto, "randomUUID");
+    try {
+      await value.reconcileCompletion();
+      expect(id).not.toHaveBeenCalled();
+    } finally {
+      id.mockRestore();
+    }
+    expect(writes()).toHaveLength(1);
+    const [url, init] = writes()[0]!;
+    expect(
+      String(url).endsWith(
+        `/media/uploads/sessions/${session.sessionId}/operations/${requestId}/reconcile`,
+      ),
+    ).toBe(true);
+    expect(JSON.parse(String(init?.body))).toEqual({ expectedRevision: 3 });
+    expect(new Headers(init?.headers).get("x-ayin-expected-account")).toBe(scope.accountId);
+    expect(new Headers(init?.headers).get("x-ayin-expected-session")).toBe(scope.profileId);
+    expect(init).toMatchObject({ method: "POST", credentials: "include", cache: "no-store" });
+    expect(fetcher.mock.calls.slice(before).map(([url]) => String(url).split("/").at(-1))).toEqual([
+      "me",
+      "reconcile",
+      "me",
+    ]);
+    expect(view.message).toBe("COMPLETED");
+    expect(view.saved?.session?.state).toBe("COMPLETED");
+    expect(view.saved?.pending).toBeNull();
+    expect(loadSavedRecovery(storage, scope)?.pending).toBeNull();
+    await value.reconcileCompletion();
+    expect(writes()).toHaveLength(1);
+  });
+  it.each(["PENDING", "UNKNOWN"] as const)(
+    "%s verification preserves the original COMPLETE marker and accepts only the fresh revision",
+    async (status) => {
+      const { value, requestId } = await pendingCompletion(status);
+      await value.reconcileCompletion();
+      expect(view.message).toBe("UNCERTAIN");
+      expect(view.saved?.pending).toEqual({ kind: "COMPLETE", requestId });
+      expect(view.saved?.session?.revision).toBe(4);
+      await value.check();
+      expect(writes()).toHaveLength(1);
+      await value.reconcileCompletion();
+      expect(writes()).toHaveLength(2);
+      expect(JSON.parse(String(writes()[1]![1]?.body))).toEqual({ expectedRevision: 4 });
+      expect(String(writes()[1]![0]).endsWith(`/operations/${requestId}/reconcile`)).toBe(true);
+      expect(loadSavedRecovery(storage, scope)?.pending).toEqual({ kind: "COMPLETE", requestId });
+    },
+  );
+  it.each([
+    "wrong-request",
+    "not-replayed",
+    "success-not-completed",
+    "unknown-completed",
+    "grant",
+    "cleanup",
+    "stale-revision",
+    "changed-session",
+    "changed-asset",
+    "changed-account",
+    "wrong-http-status",
+  ])(
+    "rejects %s verification responses without erasing the original COMPLETE marker",
+    async (bad) => {
+      const { value, requestId } = await pendingCompletion();
+      const normal = fetcher.getMockImplementation()!;
+      fetcher.mockImplementation((url, init) => {
+        if (!String(url).endsWith("/reconcile")) return normal(url, init);
+        const result = envelope(requestId, {
+          session: {
+            ...state,
+            state: bad === "success-not-completed" ? "UNRESOLVED" : "COMPLETED",
+            revision: bad === "stale-revision" ? 2 : 4,
+            ...(bad === "changed-session" ? { sessionId: randomUUID() } : {}),
+            ...(bad === "changed-asset" ? { assetId: randomUUID() } : {}),
+            ...(bad === "changed-account" ? { actorAccountId: randomUUID() } : {}),
+          },
+          operation: {
+            requestId: bad === "wrong-request" ? randomUUID() : requestId,
+            status: bad === "unknown-completed" ? "UNKNOWN" : "SUCCEEDED",
+            replayed: bad !== "not-replayed",
+          },
+          ...(bad === "grant" ? { grant: {} } : {}),
+          ...(bad === "cleanup"
+            ? { cleanup: { authorityRevoked: true, settlement: "PENDING" } }
+            : {}),
+        });
+        return Promise.resolve(response(result, bad === "wrong-http-status" ? 200 : 201));
+      });
+      await value.reconcileCompletion();
+      expect(view.message).toBe("INVALID_RESPONSE");
+      expect(view.saved?.session?.revision).toBe(3);
+      expect(view.saved?.pending).toEqual({ kind: "COMPLETE", requestId });
+      expect(loadSavedRecovery(storage, scope)?.pending).toEqual({ kind: "COMPLETE", requestId });
+      expect(writes()).toHaveLength(1);
+    },
+  );
+  it.each(["lost", "not-found", "changed", "unsupported"])(
+    "%s reconciliation retains the original pending marker without automatic retries",
+    async (failure) => {
+      const { value, requestId } = await pendingCompletion();
+      const normal = fetcher.getMockImplementation()!;
+      fetcher.mockImplementation(async (url, init) => {
+        if (!String(url).endsWith("/reconcile")) return normal(url, init);
+        if (failure === "lost") throw Error("Synthetic lost response");
+        return response(
+          {
+            error: {
+              code:
+                failure === "unsupported"
+                  ? "UPLOAD_RECOVERY_UNSUPPORTED"
+                  : failure === "changed"
+                    ? "UPLOAD_STATE_CHANGED"
+                    : "UPLOAD_RECOVERY_NOT_FOUND",
+            },
+          },
+          failure === "unsupported" ? 503 : failure === "changed" ? 409 : 404,
+        );
+      });
+      await value.reconcileCompletion();
+      expect(view.saved?.pending).toEqual({ kind: "COMPLETE", requestId });
+      expect(writes()).toHaveLength(1);
+      expect(view.message).not.toBe("COMPLETED");
+      if (failure === "unsupported") {
+        expect(view.supported).toBe(false);
+        await value.reconcileCompletion();
+        expect(writes()).toHaveLength(1);
+      }
+    },
+  );
+  it.each([
+    "OPEN",
+    "PREPARING",
+    "COMPLETED",
+    "ABORTED",
+    "REVOKED",
+    "EXPIRED",
+    "CANCELLING",
+  ] as const)("never verifies a COMPLETE marker in %s", async (sessionState) => {
+    const { value } = await pendingCompletion();
+    saveRecovery(storage, { ...view.saved!, session: { ...state, state: sessionState } });
+    await value.open();
+    await value.reconcileCompletion();
+    expect(writes()).toHaveLength(0);
+  });
+  it.each(["CREATE", "RESUME", "AUTHORIZE", "CANCEL", null] as const)(
+    "never verifies a %s marker",
+    async (kind) => {
+      const { value, requestId } = await pendingCompletion();
+      saveRecovery(storage, { ...view.saved!, pending: kind ? { kind, requestId } : null });
+      await value.open();
+      await value.reconcileCompletion();
+      expect(writes()).toHaveLength(0);
+    },
+  );
+  it("blocks expired or unsupported completion verification before dispatch", async () => {
+    const { value } = await pendingCompletion();
+    saveRecovery(storage, {
+      ...view.saved!,
+      session: { ...state, expiresAt: new Date(Date.now() - 1000).toISOString() },
+    });
+    await value.open();
+    await value.reconcileCompletion();
+    expect(view.message).toBe("EXPIRED");
+    expect(writes()).toHaveLength(0);
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) =>
+      String(url).endsWith("/capability")
+        ? Promise.resolve(response({ protocolVersion: 1, supported: false, reason: "UNSUPPORTED" }))
+        : normal(url, init),
+    );
+    await value.open();
+    await value.reconcileCompletion();
+    expect(view.supported).toBe(false);
+    expect(writes()).toHaveLength(0);
+  });
+  it("serializes repeated verification clicks and retains the COMPLETE marker after Stop", async () => {
+    const { value, requestId } = await pendingCompletion();
+    const normal = fetcher.getMockImplementation()!;
+    let entered = false;
+    fetcher.mockImplementation((url, init) => {
+      if (!String(url).endsWith("/reconcile")) return normal(url, init);
+      entered = true;
+      return new Promise((_resolve, reject) => {
+        init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason), { once: true });
+      });
+    });
+    const verification = value.reconcileCompletion();
+    await vi.waitFor(() => expect(entered).toBe(true));
+    await value.reconcileCompletion();
+    expect(writes()).toHaveLength(1);
+    value.stop();
+    await verification;
+    expect(view.busy).toBe(false);
+    expect(view.message).toBe("STOPPED");
+    expect(loadSavedRecovery(storage, scope)?.pending).toEqual({ kind: "COMPLETE", requestId });
+  });
+  it("bounds verification to 15 seconds while keeping the original COMPLETE recoverable", async () => {
+    const { value, requestId } = await pendingCompletion();
+    const normal = fetcher.getMockImplementation()!;
+    let entered = false;
+    fetcher.mockImplementation((url, init) => {
+      if (!String(url).endsWith("/reconcile")) return normal(url, init);
+      entered = true;
+      return new Promise((_resolve, reject) => {
+        init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason), { once: true });
+      });
+    });
+    vi.useFakeTimers();
+    try {
+      const verification = value.reconcileCompletion();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(entered).toBe(true);
+      await vi.advanceTimersByTimeAsync(15000);
+      await verification;
+      expect(view.message).toBe("UNCERTAIN");
+      expect(view.busy).toBe(false);
+      expect(loadSavedRecovery(storage, scope)?.pending).toEqual({ kind: "COMPLETE", requestId });
+      expect(writes()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it("suspension discards late verification results without restoring hidden facts or clearing the marker", async () => {
+    const { value, requestId } = await pendingCompletion();
+    const normal = fetcher.getMockImplementation()!;
+    let release!: () => void,
+      entered = false;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fetcher.mockImplementation(async (url, init) => {
+      if (!String(url).endsWith("/reconcile")) return normal(url, init);
+      entered = true;
+      const result = await normal(url, init);
+      await held;
+      return result;
+    });
+    const verification = value.reconcileCompletion();
+    await vi.waitFor(() => expect(entered).toBe(true));
+    value.suspend();
+    release();
+    await verification;
+    expect(view.scope).toBeNull();
+    expect(view.saved).toBeNull();
+    expect(view.message).toBe("INITIAL");
+    expect(loadSavedRecovery(storage, scope)?.pending).toEqual({ kind: "COMPLETE", requestId });
+    expect(writes()).toHaveLength(1);
+  });
+  it.each(["before", "after"])(
+    "fresh %s verification authority checks reject a profile switch",
+    async (when) => {
+      const { value } = await pendingCompletion();
+      const normal = fetcher.getMockImplementation()!;
+      fetcher.mockImplementation(async (url, init) => {
+        const result = await normal(url, init);
+        if (String(url).endsWith("/reconcile")) identityScope.profileId = randomUUID();
+        return result;
+      });
+      if (when === "before") identityScope.profileId = randomUUID();
+      await value.reconcileCompletion();
+      expect(view.scope).toBeNull();
+      expect(view.saved).toBeNull();
+      expect(view.message).toBe("AUTHORITY_CHANGED");
+      expect(storage.length).toBe(0);
+      expect(writes()).toHaveLength(when === "before" ? 0 : 1);
+    },
+  );
+  it("an unverifiable post-verification identity hides facts but retains the safe COMPLETE marker", async () => {
+    const { value, requestId } = await pendingCompletion();
+    const normal = fetcher.getMockImplementation()!;
+    let verified = false;
+    fetcher.mockImplementation(async (url, init) => {
+      if (verified && String(url).endsWith("/auth/me"))
+        return response({ error: { code: "TEMPORARILY_UNAVAILABLE" } }, 503);
+      const result = await normal(url, init);
+      if (String(url).endsWith("/reconcile")) verified = true;
+      return result;
+    });
+    await value.reconcileCompletion();
+    expect(view.scope).toBeNull();
+    expect(view.saved).toBeNull();
+    expect(view.message).toBe("AUTHORITY_UNVERIFIED");
+    expect(loadSavedRecovery(storage, scope)?.pending).toEqual({ kind: "COMPLETE", requestId });
+    expect(writes()).toHaveLength(1);
+  });
   async function multipartFixture(
     options: {
       observe?: boolean;

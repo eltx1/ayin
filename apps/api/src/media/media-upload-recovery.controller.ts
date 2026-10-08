@@ -72,6 +72,51 @@ export class MediaUploadRecoveryController {
     }
   }
 
+  @Post(":sessionId/operations/:requestId/reconcile")
+  @Header("Cache-Control", "private, no-store")
+  async reconcileCompletion(
+    @Req() request: AuthenticatedRequest,
+    @Param("sessionId") sessionId: string,
+    @Param("requestId") requestId: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = z
+      .object({ expectedRevision: z.number().int().min(1).max(2_147_483_647) })
+      .strict()
+      .safeParse(body);
+    if (
+      !z.string().uuid().safeParse(sessionId).success ||
+      !z.string().uuid().safeParse(requestId).success ||
+      !parsed.success ||
+      !z.object({}).strict().safeParse(request.query).success
+    )
+      throw new HttpException(
+        {
+          error: {
+            code: "INVALID_UPLOAD_COMMAND",
+            message: "Check the upload completion verification request.",
+          },
+        },
+        400,
+      );
+    try {
+      this.rateLimiter.consume(`recovery-command:${request.ayinAuth.accountId}`);
+      return await this.commands.reconcileCompletion(
+        request.ayinAuth,
+        sessionId.toLowerCase(),
+        requestId.toLowerCase(),
+        parsed.data.expectedRevision,
+      );
+    } catch (failure) {
+      if (failure instanceof MediaUploadError)
+        throw new HttpException(
+          { error: { code: failure.code, message: failure.message } },
+          failure.statusCode,
+        );
+      throw failure;
+    }
+  }
+
   @Post(":sessionId/resume")
   @Header("Cache-Control", "private, no-store")
   resume(
