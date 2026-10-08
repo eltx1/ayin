@@ -59,306 +59,36 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           echo "Pinned AYIN SSH host fingerprint verified."
 
-      - name: Verify isolated AYIN account
-        id: verify_isolated_account
+      - name: Minimal one-connection resource attribution
         shell: bash
         run: |
           set -euo pipefail
-          remote_user="$(ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'whoami')"
-          [[ "$remote_user" == 'ayin' ]]
-          ssh -o BatchMode=yes -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
-            "set -e; test \"\$HOME\" = '/home/ayin'; test -w /home/ayin/htdocs/releases; test -w /home/ayin/env; test ! -w /home/horusapp"
-
-      - name: Read isolated resource and health snapshot
-        shell: bash
-        run: |
-          set -euo pipefail
-          timeout --kill-after=5s 90s ssh -o BatchMode=yes \
-            -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+          timeout --kill-after=2s 20s ssh -o BatchMode=yes \
+            -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 \
             -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
+          export LC_ALL=C
           [[ "$(id -un)" == 'ayin' && "$HOME" == '/home/ayin' ]]
           test ! -w /home/horusapp
-          echo '=== snapshot timestamp ==='
-          date -u '+%Y-%m-%dT%H:%M:%SZ'
+          date -u '+snapshot=%Y-%m-%dT%H:%M:%SZ'
+          getent passwd 1004 | awk -F: '
+            $3 == 1004 {
+              name=$1;
+              if (name !~ /^(horusapp|ayin|lordai|www-data|nginx|apache|mysql|postgres)$/) name="other-service-account";
+              print "uid=1004 account=" name;
+            }
+          ' || echo 'uid1004_account_unavailable'
+          echo 'UID1004 groups: lifetime_CPU_percent_sum RSS_KiB_sum processes runnable blocked command_name'
+          ps -u 1004 -o comm:20=,state=,pcpu=,rss= | awk '
+            {
+              name=substr($0,1,20); sub(/ +$/, "", name); gsub(/[^A-Za-z0-9_.(): -]/,"?",name);
+              rest=substr($0,21); sub(/^[[:space:]]+/,"",rest); split(rest,f,/[[:space:]]+/);
+              if (f[1] !~ /^[RSDTtXZPI]$/ || f[2] !~ /^[0-9.]+$/ || f[3] !~ /^[0-9]+$/) next;
+              cpu[name]+=f[2]; rss[name]+=f[3]; n[name]++; run[name]+=(f[1]=="R"); blocked[name]+=(f[1]=="D");
+            }
+            END {for(name in n) printf "%.1f %d %d %d %d %s\n",cpu[name],rss[name],n[name],run[name],blocked[name],name}
+          ' | sort -k1,1nr | awk 'NR <= 10'
+          echo 'RSS sums include shared pages; CPU is process-lifetime average, not interval utilization.'
           uptime
-          echo '=== memory and swap KiB ==='
           free -k
-          echo '=== aggregate kernel OOM counter (not attribution) ==='
-          awk '$1 == "oom_kill" {print}' /proc/vmstat
-          echo '=== CPU architecture/count ==='
-          uname -m
-          getconf _NPROCESSORS_ONLN
-          echo '=== release filesystem capacity ==='
-          df -k /home/ayin/htdocs/releases
-          echo '=== AYIN process names and RSS KiB only ==='
-          ps -u "$(id -u)" -o pid=,ppid=,comm=,state=,etimes=,pcpu=,rss= --sort=-rss | awk 'NR <= 30'
-          echo '=== aggregate process states (no other-user process details) ===' 
-          ps -e -o state= | awk '{state[$1]++} END {for (s in state) if (s ~ /^[RSDTtXZPI]$/) print s, state[s]}'
-          echo '=== aggregate pressure counters ==='
-          for resource in cpu memory io; do
-            if [[ -r "/proc/pressure/$resource" ]]; then
-              printf '%s: ' "$resource"
-              tr '\n' ' ' < "/proc/pressure/$resource"
-              printf '\n'
-            fi
-          done
-          if command -v vmstat >/dev/null 2>&1; then vmstat 1 3; fi
-          echo '=== readable cgroup memory counters ==='
-          cgroup_path="$(awk -F: '$1 == "0" {print $3}' /proc/self/cgroup)"
-          if [[ "$cgroup_path" == /* && "$cgroup_path" != *..* ]]; then
-            relative="$cgroup_path"
-            while :; do
-              for counter in memory.current memory.peak memory.max memory.events memory.swap.current memory.swap.max; do
-                file="/sys/fs/cgroup${relative}/$counter"
-                if [[ -r "$file" ]]; then
-                  printf '%s: ' "$file"
-                  tr '\n' ' ' < "$file"
-                  printf '\n'
-                fi
-              done
-              [[ -n "$relative" ]] || break
-              relative="${relative%/*}"
-            done
-          fi
-          echo '=== currently selected AYIN release ==='
-          current="$(readlink -f /home/ayin/htdocs/current || true)"
-          case "$current" in
-            /home/ayin/htdocs/releases/*)
-              git -C "$current" rev-parse HEAD
-              ;;
-            *) echo 'current_release_unavailable' ;;
-          esac
-          echo '=== direct-origin health HTTP status only ==='
-          for route in 'http://127.0.0.1:3000/' 'http://127.0.0.1:4000/health' 'http://127.0.0.1:4000/ready'; do
-            code="$(curl --silent --output /dev/null --max-time 10 --write-out '%{http_code}' "$route" || true)"
-            printf '%s %s\n' "$route" "$code"
-          done
-          echo '=== bounded readiness projection and failed-build process lineage ==='
-          node <<'NODE'
-          const fs = require("node:fs");
-          const {execFileSync} = require("node:child_process");
-          const ownUid = process.getuid();
-          const failedRelease = "/home/ayin/htdocs/releases/20261008T193523Z-654092a7a0bc";
-          const safeNumber = (n) => typeof n === "number" && Number.isFinite(n) && n >= 0 ? n : null;
-          const safeStatus = (s) => ["ready", "not_ready", "ok", "unhealthy", "unknown", "disabled"].includes(s) ? s : "unavailable";
-          const sha = (s) => typeof s === "string" && /^[0-9a-f]{40}$/i.test(s) ? s : "unknown";
-          async function readiness() {
-            try {
-              const response = await fetch("http://127.0.0.1:4000/ready", {signal: AbortSignal.timeout(10000)});
-              const reader = response.body.getReader();
-              let size = 0;
-              const chunks = [];
-              while (true) {
-                const {done, value} = await reader.read();
-                if (done) break;
-                size += value.length;
-                if (size > 16384) {await reader.cancel(); throw new Error("size");}
-                chunks.push(Buffer.from(value));
-              }
-              const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-              const checks = body.checks ?? {};
-              const worker = checks.worker ?? {};
-              console.log(JSON.stringify({
-                kind: "readiness", httpStatus: response.status,
-                status: safeStatus(body.status), releaseSha: sha(body.releaseSha),
-                database: {status: safeStatus(checks.database?.status), latencyMs: safeNumber(checks.database?.latencyMs)},
-                configuration: {status: safeStatus(checks.configuration?.status)},
-                worker: {
-                  status: safeStatus(worker.status), ageSeconds: safeNumber(worker.ageSeconds),
-                  releaseMatchesApi: typeof worker.releaseMatchesApi === "boolean" ? worker.releaseMatchesApi : null,
-                  activeJobs: safeNumber(worker.activeJobs),
-                  reason: ["settings_unavailable", "heartbeat_missing"].includes(worker.reason) ? worker.reason : null,
-                },
-              }));
-            } catch {
-              console.log(JSON.stringify({kind: "readiness", status: "unavailable"}));
-            }
-          }
-          function processIdentity(pid) {
-            const dir = `/proc/${pid}`;
-            if (fs.statSync(dir).uid !== ownUid) return null;
-            const data = fs.readFileSync(`${dir}/stat`, "utf8");
-            const fields = data.slice(data.lastIndexOf(")") + 2).split(" ");
-            const ppid = Number(fields[1]);
-            const startTicks = Number(fields[19]);
-            if (!Number.isSafeInteger(ppid) || !Number.isSafeInteger(startTicks)) return null;
-            const name = fs.readFileSync(`${dir}/comm`, "utf8").trim().slice(0, 15).replace(/[^A-Za-z0-9 _./():-]/g, "?");
-            if (fs.statSync(dir).uid !== ownUid) return null;
-            const verified = fs.readFileSync(`${dir}/stat`, "utf8");
-            const verifiedFields = verified.slice(verified.lastIndexOf(")") + 2).split(" ");
-            if (Number(verifiedFields[19]) !== startTicks || Number(verifiedFields[1]) !== ppid) return null;
-            return {pid, ppid, name, startTicks};
-          }
-          const numericField = (data, field) => {
-            const value = data.match(new RegExp(`^${field}:\\s+([0-9]+)(?:\\s|$)`, "m"));
-            return value ? Number(value[1]) : 0;
-          };
-          function resourceSnapshot() {
-            const byUid = new Map();
-            const own = [];
-            let examined = 0;
-            for (const entry of fs.readdirSync("/proc")) {
-              if (!/^[0-9]+$/.test(entry)) continue;
-              try {
-                if (++examined > 4096) break;
-                const pid = Number(entry);
-                const beforeIdentity = fs.statSync(`/proc/${pid}`).uid === ownUid ? processIdentity(pid) : null;
-                const status = fs.readFileSync(`/proc/${pid}/status`, "utf8");
-                const uid = numericField(status, "Uid");
-                const rssKiB = numericField(status, "VmRSS");
-                const swapKiB = numericField(status, "VmSwap");
-                const threads = numericField(status, "Threads");
-                const stateMatch = status.match(/^State:\s+([A-Zt])/m);
-                const state = stateMatch ? stateMatch[1] : "?";
-                const aggregate = byUid.get(uid) ?? {uid, processes: 0, rssKiB: 0, swapKiB: 0, threads: 0, blocked: 0};
-                aggregate.processes++; aggregate.rssKiB += rssKiB; aggregate.swapKiB += swapKiB;
-                aggregate.threads += threads; aggregate.blocked += state === "D" ? 1 : 0;
-                byUid.set(uid, aggregate);
-                if (uid !== ownUid || own.length >= 64) continue;
-                const identity = processIdentity(pid);
-                if (!identity || !beforeIdentity || identity.startTicks !== beforeIdentity.startTicks || identity.ppid !== beforeIdentity.ppid) continue;
-                let readBytes = null; let writeBytes = null;
-                try {
-                  const io = fs.readFileSync(`/proc/${pid}/io`, "utf8");
-                  readBytes = numericField(io, "read_bytes"); writeBytes = numericField(io, "write_bytes");
-                } catch {}
-                const afterIdentity = processIdentity(pid);
-                if (!afterIdentity || afterIdentity.startTicks !== identity.startTicks || afterIdentity.ppid !== identity.ppid) continue;
-                own.push({...identity, state, rssKiB, swapKiB, threads, readBytes, writeBytes});
-              } catch {}
-            }
-            return {byUid: [...byUid.values()].sort((a,b) => b.rssKiB - a.rssKiB).slice(0,8), own, truncated: examined > 4096};
-          }
-          async function resourceAttribution() {
-            const started = performance.now();
-            const before = resourceSnapshot();
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const after = resourceSnapshot();
-            console.log(JSON.stringify({kind: "per_uid_resource_totals", at: new Date().toISOString(), aggregates: after.byUid, truncated: after.truncated, intervalMs: Math.round(performance.now() - started), note: "RSS sums include shared pages; these are not PSS totals."}));
-            for (const process of after.own) {
-              const old = before.own.find(item => item.pid === process.pid && item.startTicks === process.startTicks);
-              console.log(JSON.stringify({kind: "own_process_resources", ...process,
-                readBytesDelta: old && old.readBytes !== null && process.readBytes !== null ? safeNumber(process.readBytes - old.readBytes) : null,
-                writeBytesDelta: old && old.writeBytes !== null && process.writeBytes !== null ? safeNumber(process.writeBytes - old.writeBytes) : null,
-              }));
-            }
-          }
-          async function targetUidAttribution() {
-            const targetUid = 1004;
-            let account = "unavailable";
-            let knownHorus = false;
-            try {
-              const entry = execFileSync("getent", ["passwd", String(targetUid)], {encoding: "utf8", timeout: 2000, maxBuffer: 4096, stdio: ["ignore", "pipe", "ignore"]}).trim().split(":");
-              if (entry[2] === String(targetUid)) account = ["horusapp", "ayin", "lordai", "www-data", "nginx", "apache", "mysql", "postgres"].includes(entry[0]) ? entry[0] : "other-service-account";
-              knownHorus = account === "horusapp";
-            } catch {}
-            console.log(JSON.stringify({kind: "target_uid_mapping", uid: targetUid, account, verifiedHorusAccount: knownHorus}));
-            const ticksPerSecond = Number(execFileSync("getconf", ["CLK_TCK"], {encoding: "utf8", timeout: 2000, maxBuffer: 64, stdio: ["ignore", "pipe", "ignore"]}).trim());
-            if (!Number.isFinite(ticksPerSecond) || ticksPerSecond < 1 || ticksPerSecond > 10000) return;
-            function sample() {
-              const rows = [];
-              let examined = 0;
-              for (const entry of fs.readdirSync("/proc")) {
-                if (!/^[0-9]+$/.test(entry) || ++examined > 4096) continue;
-                try {
-                  const pid = Number(entry);
-                  const dir = `/proc/${pid}`;
-                  if (fs.statSync(dir).uid !== targetUid) continue;
-                  if (rows.length >= 256) break;
-                  const initial = fs.readFileSync(`${dir}/stat`, "utf8");
-                  const fields = initial.slice(initial.lastIndexOf(")") + 2).split(" ");
-                  const startTicks = Number(fields[19]);
-                  const cpuTicks = Number(fields[11]) + Number(fields[12]);
-                  const state = /^[RSDTtXZPI]$/.test(fields[0]) ? fields[0] : "?";
-                  const status = fs.readFileSync(`${dir}/status`, "utf8");
-                  if (numericField(status, "Uid") !== targetUid) continue;
-                  const name = fs.readFileSync(`${dir}/comm`, "utf8").trim().slice(0,15).replace(/[^A-Za-z0-9_.(): -]/g, "?");
-                  const verified = fs.readFileSync(`${dir}/stat`, "utf8");
-                  const finalFields = verified.slice(verified.lastIndexOf(")") + 2).split(" ");
-                  if (fs.statSync(dir).uid !== targetUid || Number(finalFields[19]) !== startTicks) continue;
-                  if (!Number.isSafeInteger(cpuTicks) || !Number.isSafeInteger(startTicks)) continue;
-                  rows.push({pid, startTicks, cpuTicks, state, name, rssKiB: numericField(status, "VmRSS"), swapKiB: numericField(status, "VmSwap"), threads: numericField(status, "Threads")});
-                } catch {}
-              }
-              return rows;
-            }
-            const began = performance.now();
-            const before = sample();
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const after = sample();
-            const intervalMs = performance.now() - began;
-            const matched = [];
-            for (const current of after) {
-              const old = before.find(item => item.pid === current.pid && item.startTicks === current.startTicks);
-              if (!old || current.cpuTicks < old.cpuTicks) continue;
-              matched.push({...current, cpuPercentOfOneCore: Math.round((current.cpuTicks - old.cpuTicks) * 10000000 / ticksPerSecond / intervalMs) / 100});
-            }
-            const states = {};
-            for (const row of after) states[row.state] = (states[row.state] ?? 0) + 1;
-            console.log(JSON.stringify({kind: "target_uid_cpu", uid: targetUid, at: new Date().toISOString(), intervalMs: Math.round(intervalMs), sampledBefore: before.length, sampledAfter: after.length, matched: matched.length, states, cpuPercentOfOneCore: Math.round(matched.reduce((sum,row) => sum + row.cpuPercentOfOneCore,0) * 100) / 100, possiblyTruncated: after.length >= 256}));
-            const groups = new Map();
-            for (const row of matched) {
-              const group = groups.get(row.name) ?? {name: row.name, processes: 0, cpuPercentOfOneCore: 0, rssKiB: 0, swapKiB: 0, runnable: 0, blocked: 0};
-              group.processes++; group.cpuPercentOfOneCore += row.cpuPercentOfOneCore;
-              group.rssKiB += row.rssKiB; group.swapKiB += row.swapKiB;
-              group.runnable += row.state === "R" ? 1 : 0; group.blocked += row.state === "D" ? 1 : 0;
-              groups.set(row.name, group);
-            }
-            for (const group of [...groups.values()].sort((a,b) => b.cpuPercentOfOneCore - a.cpuPercentOfOneCore).slice(0,10)) {
-              group.cpuPercentOfOneCore = Math.round(group.cpuPercentOfOneCore * 100) / 100;
-              console.log(JSON.stringify({kind: "target_uid_command_group", uid: targetUid, ...group}));
-            }
-          }
-          let matches = 0;
-          let inspected = 0;
-          for (const entry of fs.readdirSync("/proc")) {
-            if (!/^[0-9]+$/.test(entry)) continue;
-            try {
-              const pid = Number(entry);
-              if (fs.statSync(`/proc/${pid}`).uid !== ownUid) continue;
-              if (++inspected > 256) break;
-              const initialIdentity = processIdentity(pid);
-              if (!initialIdentity) continue;
-              const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
-              if (cwd !== failedRelease && !cwd.startsWith(`${failedRelease}/`)) continue;
-              const lineage = [];
-              let ancestor = pid;
-              for (let i = 0; i < 8 && ancestor > 1; i++) {
-                const identity = processIdentity(ancestor);
-                if (!identity) break;
-                lineage.push(identity);
-                if (identity.ppid === ancestor) break;
-                ancestor = identity.ppid;
-              }
-              const finalIdentity = processIdentity(pid);
-              if (!finalIdentity || finalIdentity.startTicks !== initialIdentity.startTicks || finalIdentity.ppid !== initialIdentity.ppid) continue;
-              matches++;
-              console.log(JSON.stringify({kind: "failed_release_process", matchesFailedRelease: true, lineage}));
-            } catch {}
-          }
-          console.log(JSON.stringify({kind: "failed_release_process_summary", matches, ownProcessesInspected: inspected, truncated: inspected > 256}));
-          void Promise.all([readiness(), resourceAttribution(), targetUidAttribution()]).catch(() => console.log("bounded resource projection unavailable"));
-          NODE
-          echo '=== readable kernel OOM evidence (allowlisted fields only) ==='
-          if command -v journalctl >/dev/null 2>&1; then
-            uid="$(id -u)"
-            journalctl --kernel --since '2026-10-08 19:30:00 UTC' --until '2026-10-08 20:10:00 UTC' \
-              --no-pager --quiet --output=short-iso 2>/dev/null | \
-              awk -v uid="$uid" '
-                /Out of memory: Killed process|Memory cgroup out of memory: Killed process/ && $0 ~ "(^|[[:space:]])UID:" uid "([[:space:]]|$)" {
-                  for (i=1;i<=NF;i++) {
-                    if ($1 ~ /^[0-9T:+.-]+$/ && $i == "Killed" && $(i+1) == "process" && $(i+2) ~ /^[0-9]+$/ && $(i+3) ~ /^\((node|next-server|next-build|pnpm|npm)\)$/) {
-                      printf "timestamp=%s process=%s pid=%s", $1, $(i+3), $(i+2);
-                      for (j=i+4;j<=NF;j++) if ($j ~ /^((total-vm|anon-rss|file-rss|shmem-rss):[0-9]+kB,?|UID:[0-9]+|oom_score_adj:-?[0-9]+)$/) printf " %s", $j;
-                      printf "\n";
-                      matches++;
-                    }
-                  }
-                }
-                END {if (!matches) print "No matching readable AYIN Node OOM evidence (not proof of absence)."}
-              ' || echo 'Kernel evidence unavailable to the AYIN account.'
-          else
-            echo 'Kernel journal unavailable.'
-          fi
           REMOTE
