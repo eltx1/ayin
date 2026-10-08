@@ -112,12 +112,13 @@ try {
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
   }
   assert.ok(ready, `Relocated Web artifact did not start: ${logs}`);
+  // Explicit Kids mode returns neutral watch metadata without a production SEO API request.
   for (const route of [
     "/",
     "/clips",
     "/upload",
     "/studio",
-    "/watch/artifact-smoke",
+    "/watch/artifact-smoke?kids=1",
     "/manifest.webmanifest",
   ]) {
     const response = await fetch(`${origin}${route}`, {
