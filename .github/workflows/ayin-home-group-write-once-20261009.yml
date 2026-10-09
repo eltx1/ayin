@@ -1,0 +1,258 @@
+name: AYIN home group-write removal once 20261009
+# LOCAL REVIEW ONLY. Do not publish until exact per-action approval and code review.
+# Create the dedicated branch at RELEASE_SHA without adding a workflow, then make
+# exactly one nonforced child commit adding only INVOCATION_PATH. Never recreate,
+# reset, rerun, or edit the published invocation to retry it. No automatic rollback.
+on:
+  push:
+    branches:
+      - ops/ayin-home-group-write-once-20261009
+    paths:
+      - .github/workflows/ayin-home-group-write-once-20261009.yml
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ayin-production-deploy
+  cancel-in-progress: false
+jobs:
+  remove-group-write:
+    if: >-
+      ${{ github.repository == 'eltx1/ayin' && github.event_name == 'push' &&
+          github.ref == 'refs/heads/ops/ayin-home-group-write-once-20261009' &&
+          github.event.created == false && github.event.deleted == false &&
+          github.event.forced == false && github.run_attempt == 1 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Preserve all existing production environment protections.
+    environment: production
+    env:
+      RELEASE_SHA: a6c15842bd2cf6990715f18d58a550a5929d8d41
+      INVOCATION_BRANCH: ops/ayin-home-group-write-once-20261009
+      INVOCATION_PATH: .github/workflows/ayin-home-group-write-once-20261009.yml
+      INVOCATION_WORKFLOW_SHA: ${{ github.workflow_sha }}
+      HOME_PERMISSION_APPROVAL: REMOVE_ONLY_GROUP_WRITE_HOME_AYIN_0770_TO_0750
+      DEPLOY_HOST: 13.52.116.200
+      DEPLOY_USER: ayin
+      SSH_PORT: "22"
+      REMOTE_HOME: /home/ayin
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+    steps:
+      - name: Require exact approved action before credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HOME_PERMISSION_APPROVAL" == 'REMOVE_ONLY_GROUP_WRITE_HOME_AYIN_0770_TO_0750' ]]
+          [[ "$RELEASE_SHA" == 'a6c15842bd2cf6990715f18d58a550a5929d8d41' ]]
+          [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$GITHUB_WORKFLOW_REF" == "eltx1/ayin/$INVOCATION_PATH@refs/heads/$INVOCATION_BRANCH" ]]
+          [[ "$INVOCATION_WORKFLOW_SHA" == "$GITHUB_SHA" ]]
+
+      - name: Require one exact first push from the pinned release
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const repo = { owner: 'eltx1', repo: 'ayin' };
+            const expected = 'a6c15842bd2cf6990715f18d58a550a5929d8d41';
+            const branch = 'ops/ayin-home-group-write-once-20261009';
+            const path = '.github/workflows/ayin-home-group-write-once-20261009.yml';
+            const p = context.payload;
+            if (context.eventName !== 'push' || context.repo.owner !== repo.owner || context.repo.repo !== repo.repo ||
+                context.ref !== `refs/heads/${branch}` || p.repository?.fork !== false || p.repository?.default_branch !== 'main' ||
+                p.created !== false || p.deleted !== false || p.forced !== false || p.before !== expected ||
+                p.after !== context.sha || p.head_commit?.id !== context.sha || process.env.GITHUB_RUN_ATTEMPT !== '1') {
+              throw new Error('Only the exact first nonforced expected-parent push is eligible.');
+            }
+            for (const [name, sha] of [[branch, context.sha], ['main', expected]]) {
+              const { data } = await github.rest.repos.getBranch({ ...repo, branch: name });
+              if (data.commit.sha !== sha) throw new Error('Invocation or main branch changed.');
+            }
+            const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: context.sha });
+            if (commit.sha !== context.sha || commit.parents.length !== 1 || commit.parents[0].sha !== expected ||
+                commit.files?.length !== 1 || commit.files[0].filename !== path || commit.files[0].status !== 'added' ||
+                commit.files[0].previous_filename) throw new Error('Commit must add only this workflow directly on the pinned release.');
+            const { data: current } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: context.runId });
+            const { data: history } = await github.rest.actions.listWorkflowRuns({ ...repo, workflow_id: current.workflow_id, per_page: 100 });
+            const valid = run => run.id === context.runId && run.head_sha === context.sha && run.path === path &&
+              run.head_branch === branch && run.event === 'push' && run.run_attempt === 1 && run.run_number === 1 &&
+              run.status === 'in_progress' && run.conclusion === null;
+            if (!valid(current) || history.total_count !== 1 || history.workflow_runs.length !== 1 ||
+                !valid(history.workflow_runs[0])) throw new Error('Reruns and additional workflow runs are forbidden.');
+
+      - name: Checkout pinned source for existing SSH trust helper
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+
+      - name: Configure existing pinned AYIN SSH trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          bash deploy/acquire-ssh-host-key.sh "$candidate"
+          test -s "$candidate"
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          [[ "$actual_fingerprint" == "$PINNED_SSH_HOST_FINGERPRINT" ]]
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Remove only group-write and check direct application health
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$HOME_PERMISSION_APPROVAL" == 'REMOVE_ONLY_GROUP_WRITE_HOME_AYIN_0770_TO_0750' ]]
+          timeout --kill-after=2s 100s ssh -F /dev/null -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o IdentitiesOnly=yes -o IdentityFile="$HOME/.ssh/id_ed25519" \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 \
+            -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash -s -- '$HOME_PERMISSION_APPROVAL'" <<'REMOTE'
+          set -euo pipefail
+          [[ "$1" == 'REMOVE_ONLY_GROUP_WRITE_HOME_AYIN_0770_TO_0750' ]]
+          [[ "$(id -un)" == 'ayin' && "$(id -u)" != 0 && "$HOME" == '/home/ayin' ]]
+          test ! -w /home/horusapp
+          check_release() {
+            local current worktree_status
+            current="$(readlink -f /home/ayin/htdocs/current)"
+            [[ "$current" == /home/ayin/htdocs/releases/* ]]
+            cd /home/ayin/htdocs/current
+            [[ "$(pwd -P)" == "$current" ]]
+            [[ "$(git rev-parse HEAD)" == 'a6c15842bd2cf6990715f18d58a550a5929d8d41' ]]
+            worktree_status="$(git --no-optional-locks status --porcelain --untracked-files=no)"
+            test -z "$worktree_status"
+          }
+          check_release
+          for check in web:3000/ api:4000/health ready:4000/ready; do
+            label="${check%%:*}"
+            endpoint="${check#*:}"
+            if curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:$endpoint" >/dev/null; then
+              printf '{"baselineDirectHealth":"%s","passed":true}\n' "$label"
+            else
+              printf '{"baselineDirectHealth":"%s","passed":false,"permissionChangeAttempted":false}\n' "$label"
+              exit 1
+            fi
+          done
+          python3 - "$1" <<'PYTHON'
+          #!/usr/bin/env python3
+          """One exact, approval-gated change. No rollback or provider operations."""
+          import errno
+          import json
+          import os
+          import pwd
+          import stat
+          import sys
+          
+          HOME_PATH = '/home/ayin'
+          APPROVAL = 'REMOVE_ONLY_GROUP_WRITE_HOME_AYIN_0770_TO_0750'
+          OLD_MODE = 0o770
+          NEW_MODE = OLD_MODE & ~0o020
+          
+          
+          def require(condition, reason):
+              if not condition:
+                  raise RuntimeError(reason)
+          
+          
+          def identity(info):
+              return (info.st_dev, info.st_ino, info.st_uid, info.st_gid)
+          
+          
+          def require_no_acl(fd):
+              # Chmod can affect an access ACL mask. Unknown/unreadable ACLs fail closed.
+              # A default ACL is not modified, but unexpected inheritance also needs review.
+              for name in ('system.posix_acl_access', 'system.posix_acl_default'):
+                  try:
+                      os.getxattr(fd, name)
+                  except OSError as error:
+                      require(error.errno == errno.ENODATA, 'acl_state_unavailable')
+                  else:
+                      raise RuntimeError('unexpected_acl_present')
+          
+          
+          def check_path(fd, original, mode):
+              current = os.fstat(fd)
+              path = os.lstat(HOME_PATH)
+              require(stat.S_ISDIR(current.st_mode) and stat.S_ISDIR(path.st_mode), 'not_real_directory')
+              require(identity(current) == identity(original) == identity(path), 'identity_changed')
+              require(stat.S_IMODE(current.st_mode) == mode == stat.S_IMODE(path.st_mode), 'mode_changed')
+              require(os.path.realpath(HOME_PATH) == HOME_PATH, 'symlinked_ancestor')
+              return current
+          
+          
+          def main():
+              require(sys.argv[1:] == [APPROVAL], 'per_action_approval_missing')
+              uid = os.geteuid()
+              require(uid != 0 and os.getuid() == uid, 'expected_nonroot_role')
+              account = pwd.getpwuid(uid)
+              require(account.pw_name == 'ayin' and account.pw_dir == HOME_PATH, 'unexpected_account')
+              require(os.environ.get('HOME') == HOME_PATH, 'unexpected_home')
+              parent = os.lstat('/home')
+              require(stat.S_ISDIR(parent.st_mode) and parent.st_uid == 0 and
+                      stat.S_IMODE(parent.st_mode) & 0o022 == 0, 'unsafe_home_parent')
+              require(os.path.realpath(HOME_PATH) == HOME_PATH, 'symlinked_home')
+              fd = os.open(HOME_PATH, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+              try:
+                  original = os.fstat(fd)
+                  require(stat.S_ISDIR(original.st_mode), 'not_directory')
+                  require(original.st_uid == uid, 'unexpected_owner')
+                  mode = stat.S_IMODE(original.st_mode)
+                  require(mode in (OLD_MODE, NEW_MODE), 'unexpected_original_mode')
+                  check_path(fd, original, mode)
+                  require_no_acl(fd)
+                  check_path(fd, original, mode)
+                  if mode == NEW_MODE:
+                      print(json.dumps({'action': 'none', 'state': 'already_desired', 'path': HOME_PATH,
+                                        'mode': '0750', 'ownershipUnchanged': True}), flush=True)
+                      return
+                  # These sanitized logs are metadata only; they do not authorize rollback.
+                  print(json.dumps({'action': 'prepared', 'path': HOME_PATH, 'originalMode': '0770',
+                                    'targetMode': '0750', 'automaticRollbackEnabled': False}), flush=True)
+                  require_no_acl(fd)
+                  check_path(fd, original, OLD_MODE)
+                  os.fchmod(fd, mode & ~0o020)
+                  check_path(fd, original, NEW_MODE)
+                  require_no_acl(fd)
+                  print(json.dumps({'action': 'changed', 'path': HOME_PATH, 'originalMode': '0770',
+                                    'mode': '0750', 'sameInode': True, 'ownershipUnchanged': True,
+                                    'removedOnlyGroupWrite': True, 'automaticRollbackEnabled': False}), flush=True)
+              finally:
+                  os.close(fd)
+          
+          
+          if __name__ == '__main__':
+              try:
+                  main()
+              except Exception as error:
+                  # Do not expose account, filesystem, or exception payloads in failure logs.
+                  reason = str(error) if type(error) is RuntimeError else 'os_check_or_change_failed'
+                  print(json.dumps({'action': 'failed', 'reason': reason,
+                                    'automaticRollbackAttempted': False}), flush=True)
+                  raise SystemExit(1)
+          PYTHON
+          check_release
+          health_status=0
+          for check in web:3000/ api:4000/health ready:4000/ready; do
+            label="${check%%:*}"
+            endpoint="${check#*:}"
+            if curl --fail --silent --show-error --max-time 15 "http://127.0.0.1:$endpoint" >/dev/null; then
+              printf '{"directHealth":"%s","passed":true}\n' "$label"
+            else
+              printf '{"directHealth":"%s","passed":false,"automaticRollbackAttempted":false}\n' "$label"
+              health_status=1
+            fi
+          done
+          exit "$health_status"
+          REMOTE
+
+      - name: Remove ephemeral runner SSH material
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts" "$HOME/.ssh/known_hosts.candidate"
