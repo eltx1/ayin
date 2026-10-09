@@ -72,6 +72,10 @@ Each provider request/body is time- and byte-bounded, with a whole-run request/r
 
 Only `owned-r2-proof.json`, reconstructed from allowlisted fields, is uploaded as a 30-day artifact. It includes fixture addresses, release SHA, sanitized stage/state observations and debt booleans. Upload IDs, configured account/host, credentials, private source details, URLs, request headers and raw errors remain absent. If the pipe fails before a valid proof arrives, there may be no artifact; inspect the retained host manifest rather than repeating the test.
 
+Driver failure logs include only a fixed local phase and sanitized code. The exact `UNSAFE_MANIFEST_PARENT` startup diagnostic is accepted only after the trusted ready message and before any grant; all other remote failure messages are rejected by the existing protocol validation. A phase or error code does not establish absence of provider writes, remove a reservation, or authorize replay or cleanup.
+
+Browser failure diagnostics may also include the fixed page outcome, HTTP status integers, and whether an observed response's allow-origin header matches AYIN or `*`; unavailable values are `null`. This header observation alone does not prove CORS acceptance. These diagnostics never include header values, URLs, response bodies, or credentials, and cannot replace the required browser-visible 403 `SignatureDoesNotMatch` negative control.
+
 ## Offline validation
 
 Run without any live account or provider credentials:
