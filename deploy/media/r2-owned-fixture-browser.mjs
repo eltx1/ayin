@@ -14,12 +14,72 @@ import {
   PART_BYTES,
   LINE_BYTES,
   CLEANUP_ACK,
+  ProofFailure,
   checked,
   bounded,
   parseArguments,
   validateApproval,
   safeCode,
 } from "./r2-owned-fixture-provider.mjs";
+
+const FAILURE_PHASES = new Set([
+  "approval",
+  "browser-startup",
+  "browser-origin",
+  "ssh",
+  "remote-ready",
+  "remote-startup",
+  "protocol-input",
+  "protocol-completion",
+  "grant-validation",
+  "browser-put",
+  "browser-request",
+  "browser-headers",
+  "browser-response",
+  "browser-reply",
+  "proof-validation",
+  "proof-artifact",
+  "browser-close",
+]);
+class DriverFailure extends ProofFailure {
+  constructor(phase, error, observations) {
+    super(safeCode(error));
+    this.phase = FAILURE_PHASES.has(phase) ? phase : "driver";
+    if (observations) this.browser = safeBrowserObservations(observations);
+  }
+}
+function safeBrowserObservations(observations) {
+  const status = (value) =>
+    Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
+  return {
+    outcome: ["http", "timeout", "network-error"].includes(observations.outcome)
+      ? observations.outcome
+      : null,
+    pageStatus: status(observations.pageStatus),
+    networkStatus: status(observations.networkStatus),
+    corsOriginHeaderMatches:
+      typeof observations.corsOriginHeaderMatches === "boolean"
+        ? observations.corsOriginHeaderMatches
+        : null,
+  };
+}
+async function inPhase(phase, work, observations) {
+  try {
+    return await work();
+  } catch (error) {
+    throw error instanceof DriverFailure ? error : new DriverFailure(phase, error, observations);
+  }
+}
+export function driverFailureSummary(error) {
+  const summary = {
+    phase:
+      error instanceof DriverFailure && FAILURE_PHASES.has(error.phase) ? error.phase : "driver",
+    code: safeCode(error),
+  };
+  if (error instanceof DriverFailure && error.browser)
+    summary.browser = safeBrowserObservations(error.browser);
+  return summary;
+}
 
 export const PLAN = Object.freeze([
   { fixture: "small.bin", partNumber: 1, expectedSizeBytes: 38, payloadSizeBytes: 39, offset: 0 },
@@ -123,6 +183,7 @@ export function validateGrant(grant, sequence, origin, now = Date.now()) {
 }
 export async function performBrowserPut(page, grant) {
   checked(new URL(page.url()).origin === "https://ayin.stream", "AYIN_ORIGIN_REQUIRED");
+  const observations = {};
   const requestPromise = page.waitForRequest(
     (request) => request.url() === grant.url && request.method() === "PUT",
     { timeout: 45_000 },
@@ -190,25 +251,51 @@ export async function performBrowserPut(page, grant) {
         }
       }, grant),
     45_000,
+  ).catch((error) => {
+    throw new DriverFailure("browser-put", error, observations);
+  });
+  observations.outcome = result.outcome;
+  observations.pageStatus = result.status;
+  const request = await inPhase("browser-request", () => requestPromise, observations);
+  await inPhase(
+    "browser-headers",
+    async () => {
+      const headers = await bounded(() => request.allHeaders(), 5000);
+      checked(
+        headers["content-length"] === String(grant.payloadSizeBytes) &&
+          headers.origin === "https://ayin.stream" &&
+          !headers.authorization &&
+          !headers.cookie &&
+          request.resourceType() === "fetch" &&
+          !request.redirectedFrom(),
+        "BROWSER_NETWORK_HEADERS_NOT_VERIFIED",
+      );
+    },
+    observations,
   );
-  const request = await requestPromise;
-  const headers = await bounded(() => request.allHeaders(), 5000);
-  checked(
-    headers["content-length"] === String(grant.payloadSizeBytes) &&
-      headers.origin === "https://ayin.stream" &&
-      !headers.authorization &&
-      !headers.cookie &&
-      request.resourceType() === "fetch" &&
-      !request.redirectedFrom(),
-    "BROWSER_NETWORK_HEADERS_NOT_VERIFIED",
-  );
-  const response = await bounded(() => request.response(), 5000);
-  checked(
-    response &&
-      !response.fromServiceWorker() &&
-      response.status() === result.status &&
-      response.url() === grant.url,
-    "BROWSER_NETWORK_RESPONSE_NOT_VERIFIED",
+  await inPhase(
+    "browser-response",
+    async () => {
+      const response = await bounded(() => request.response(), 5000);
+      if (response) {
+        observations.networkStatus = response.status();
+        try {
+          const allowOrigin = response.headers()["access-control-allow-origin"];
+          observations.corsOriginHeaderMatches =
+            allowOrigin === "*" || allowOrigin === "https://ayin.stream";
+        } catch {
+          // Missing diagnostic headers are inconclusive and never replace validation.
+        }
+      }
+      checked(
+        response &&
+          !response.fromServiceWorker() &&
+          response.status() === result.status &&
+          response.url() === grant.url,
+        "BROWSER_NETWORK_RESPONSE_NOT_VERIFIED",
+      );
+    },
+    observations,
   );
   // Only this allowlisted result crosses back to the credential-bearing server.
   return result;
@@ -366,28 +453,36 @@ export async function driveProtocol(child, options, put, { timeoutMs = 600_000 }
     stderrBytes = 0;
   let closed = false,
     closeCode,
-    outstandingGrants = 0;
+    outstandingGrants = 0,
+    phase = "remote-ready";
   const queue = [];
   let rejectProtocol, resolveProtocol;
   const result = new Promise((resolveResult, reject) => {
     resolveProtocol = resolveResult;
     rejectProtocol = reject;
   });
-  const fail = () => {
+  const fail = (error, failedPhase = phase) => {
     if (failure) return;
     failure = true;
     child.kill("SIGTERM");
-    rejectProtocol(new Error("REMOTE_ACCEPTANCE_FAILED"));
+    rejectProtocol(error instanceof DriverFailure ? error : new DriverFailure(failedPhase, error));
   };
   const finish = () => {
     if (!closed || processing || queue.length || failure) return;
+    if (buffer.length || !origin || !proof) {
+      const code = buffer.length
+        ? "STDIO_TRUNCATED_LINE"
+        : !origin
+          ? "REMOTE_CLOSED_BEFORE_READY"
+          : "REMOTE_CLOSED_WITHOUT_PROOF";
+      fail(new ProofFailure(code));
+      return;
+    }
     if (
-      buffer.length ||
-      !proof ||
       (closeCode === 0) !== (proof.status === "OBSERVATIONS_PASSED") ||
       (closeCode === 0 && seq !== PLAN.length)
     ) {
-      fail();
+      fail(new ProofFailure("REMOTE_EXIT_PROOF_MISMATCH"), "protocol-completion");
       return;
     }
     resolveProtocol(proof);
@@ -398,39 +493,59 @@ export async function driveProtocol(child, options, put, { timeoutMs = 600_000 }
     try {
       while (queue.length) {
         const message = queue.shift();
+        // This fixed startup diagnostic is not absence evidence or permission to replay.
+        if (
+          origin &&
+          seq === 0 &&
+          !proof &&
+          !closed &&
+          outstandingGrants === 0 &&
+          message?.type === "failure" &&
+          message.code === "UNSAFE_MANIFEST_PARENT" &&
+          Object.keys(message).sort().join(",") === "code,type"
+        ) {
+          fail(new ProofFailure("UNSAFE_MANIFEST_PARENT"), "remote-startup");
+          return;
+        }
         if (!origin) {
           origin = validateReady(message, options.releaseSha);
+          phase = "remote-startup";
           continue;
         }
         if (message.type === "grant") {
+          phase = "grant-validation";
           checked(!proof && !closed, "GRANT_AFTER_PROOF_OR_EOF");
           validateGrant(message, ++seq, origin);
+          phase = "browser-put";
           const reply = await put(message);
+          phase = "browser-reply";
           checked(child.stdin.writable && !failure && !closed, "REMOTE_PIPE_CLOSED");
           outstandingGrants--;
           child.stdin.write(JSON.stringify(reply) + "\n");
+          phase = "protocol-input";
         } else {
+          phase = "proof-validation";
           checked(!proof, "DUPLICATE_PROOF");
           proof = validatePublicProof(message, options.releaseSha);
         }
       }
-    } catch {
-      fail();
+    } catch (error) {
+      fail(error);
     } finally {
       processing = false;
       finish();
     }
   };
-  child.on("error", fail);
+  child.on("error", (error) => fail(error, "ssh"));
   child.stderr.on("data", (chunk) => {
     stderrBytes += chunk.length;
-    if (stderrBytes > LINE_BYTES) fail();
+    if (stderrBytes > LINE_BYTES) fail(new ProofFailure("STDIO_STDERR_LIMIT"), "protocol-input");
   });
   child.stdout.on("data", (chunk) => {
     if (failure) return;
     buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
     if (buffer.length > LINE_BYTES * 3) {
-      fail();
+      fail(new ProofFailure("STDIO_BUFFER_LIMIT"), "protocol-input");
       return;
     }
     try {
@@ -448,8 +563,8 @@ export async function driveProtocol(child, options, put, { timeoutMs = 600_000 }
       }
       checked(buffer.length <= LINE_BYTES, "STDIO_LINE_LIMIT");
       void pump();
-    } catch {
-      fail();
+    } catch (error) {
+      fail(error, "protocol-input");
     }
   });
   child.on("close", (code) => {
@@ -457,57 +572,75 @@ export async function driveProtocol(child, options, put, { timeoutMs = 600_000 }
     closeCode = code;
     finish();
   });
-  return bounded(() => result, timeoutMs).finally(() => {
+  try {
+    return await bounded(() => result, timeoutMs);
+  } catch (error) {
+    throw error instanceof DriverFailure ? error : new DriverFailure(phase, error);
+  } finally {
     if (child.exitCode === null) child.kill("SIGTERM");
-  });
+  }
 }
 
-async function main() {
-  const options = parseArguments(process.argv.slice(2));
-  // Import/start Chromium only after exact approval/scope checks. No storage state.
-  const { chromium } = await import("@playwright/test");
-  const browser = await chromium.launch({ headless: true });
-  let context, page;
-  const freshOrigin = async () => {
-    if (context) await context.close();
-    context = await browser.newContext({ serviceWorkers: "block" });
-    page = await context.newPage();
-    const response = await page.goto("https://ayin.stream/", {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
-    checked(
-      response?.status() === 200 && new URL(page.url()).origin === "https://ayin.stream",
-      "AYIN_ORIGIN_NOT_REACHABLE",
-    );
-  };
+export async function driveSsh(options, put, spawnProcess = spawn) {
   try {
-    await freshOrigin();
-    const child = spawn("ssh", sshArguments(options), {
+    // Attach error/protocol handlers synchronously before yielding after spawn.
+    const child = spawnProcess("ssh", sshArguments(options), {
       env: { PATH: process.env.PATH, HOME: homedir(), LANG: "C.UTF-8" },
       stdio: ["pipe", "pipe", "pipe"],
     });
     child.stdin.on("error", () => undefined);
-    const proof = await driveProtocol(child, options, async (grant) => {
+    return await driveProtocol(child, options, put);
+  } catch (error) {
+    throw error instanceof DriverFailure ? error : new DriverFailure("ssh", error);
+  }
+}
+
+async function main() {
+  const options = await inPhase("approval", () => parseArguments(process.argv.slice(2)));
+  // Import/start Chromium only after exact approval/scope checks. No storage state.
+  const { chromium } = await inPhase("browser-startup", () => import("@playwright/test"));
+  const browser = await inPhase("browser-startup", () => chromium.launch({ headless: true }));
+  let context, page;
+  const freshOrigin = () =>
+    inPhase("browser-origin", async () => {
+      if (context) await context.close();
+      context = await browser.newContext({ serviceWorkers: "block" });
+      page = await context.newPage();
+      const response = await page.goto("https://ayin.stream/", {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
+      checked(
+        response?.status() === 200 && new URL(page.url()).origin === "https://ayin.stream",
+        "AYIN_ORIGIN_NOT_REACHABLE",
+      );
+    });
+  try {
+    await freshOrigin();
+    const proof = await driveSsh(options, async (grant) => {
       if (grant.seq === 4) await freshOrigin();
       return performBrowserPut(page, grant);
     });
-    writeFileSync("owned-r2-proof.json", JSON.stringify(proof, null, 2) + "\n", {
-      mode: 0o600,
-      flag: "wx",
-    });
+    await inPhase("proof-artifact", () =>
+      writeFileSync("owned-r2-proof.json", JSON.stringify(proof, null, 2) + "\n", {
+        mode: 0o600,
+        flag: "wx",
+      }),
+    );
     process.stdout.write(
       `Owned-fixture observations: ${proof.status}. See sanitized proof artifact.\n`,
     );
     process.exitCode = proof.status === "OBSERVATIONS_PASSED" ? 0 : 1;
   } finally {
-    await browser.close();
+    await inPhase("browser-close", () => browser.close());
   }
 }
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   main().catch((error) => {
+    const failure = driverFailureSummary(error);
+    const browser = failure.browser ? ` browser=${JSON.stringify(failure.browser)}` : "";
     process.stdout.write(
-      `Owned-fixture acceptance stopped: ${safeCode(error)}. Review the retained remote manifest before any further action.\n`,
+      `Owned-fixture acceptance stopped: phase=${failure.phase} code=${failure.code}${browser}. Review the retained remote manifest before any further action.\n`,
     );
     process.exitCode = 1;
   });
