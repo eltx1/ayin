@@ -1,0 +1,137 @@
+name: Inspect AYIN zone plan
+
+on:
+  push:
+    branches:
+      - diagnose/ayin-zone-plan-20261009
+    paths:
+      - .github/workflows/inspect-ayin-zone-plan.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: >-
+      github.repository == 'eltx1/ayin' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/diagnose/ayin-zone-plan-20261009' &&
+      github.event.forced == false &&
+      github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    environment:
+      name: production
+      deployment: false
+    steps:
+      - name: Read only the AYIN zone plan
+        timeout-minutes: 1
+        shell: bash
+        env:
+          AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 -I - <<'PY'
+          import datetime
+          import http.client
+          import json
+          import os
+          import signal
+          import sys
+
+          MAX_BYTES = 65536
+          PLAN_NAMES = {
+              name: tier
+              for tier in ("Free", "Pro", "Business", "Enterprise")
+              for name in (tier, tier + " Plan", tier + " Website")
+          }
+          PLAN_NAMES["Professional Website"] = "Pro"
+          PLAN_IDS = {tier.lower(): tier for tier in ("Free", "Pro", "Business", "Enterprise")}
+          ZONE_STATUSES = {"initializing", "pending", "active", "moved", "deleted", "deactivated"}
+
+          def deadline(_signum, _frame):
+              raise TimeoutError()
+
+          def main():
+              output = {
+                  "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                  "http_status": None,
+                  "exact_single_zone": False,
+                  "plan_name": None,
+                  "zone_status": None,
+                  "error_codes": [],
+              }
+              connection = None
+              exit_code = 1
+              try:
+                  signal.signal(signal.SIGALRM, deadline)
+                  signal.alarm(20)
+                  token = os.environ.get("AYIN_CLOUDFLARE_API_TOKEN", "")
+                  if not token or len(token) > 4096 or not token.isascii() or any(c.isspace() for c in token):
+                      raise ValueError()
+                  # Direct HTTPS, one request, no redirects, proxies, or retries.
+                  connection = http.client.HTTPSConnection("api.cloudflare.com", timeout=10)
+                  connection.request(
+                      "GET",
+                      "/client/v4/zones?name=ayin.stream&status=active&per_page=1",
+                      headers={"Authorization": "Bearer " + token, "Accept": "application/json", "Accept-Encoding": "identity"},
+                  )
+                  response = connection.getresponse()
+                  output["http_status"] = response.status
+                  body = response.read(MAX_BYTES + 1)
+                  if len(body) > MAX_BYTES:
+                      raise ValueError()
+                  payload = json.loads(body)
+                  if not isinstance(payload, dict):
+                      raise ValueError()
+                  errors = payload.get("errors", [])
+                  if isinstance(errors, list):
+                      output["error_codes"] = sorted({
+                          error["code"] for error in errors
+                          if isinstance(error, dict)
+                          and type(error.get("code")) is int
+                          and 0 <= error["code"] <= 999999
+                      })[:16]
+                  result = payload.get("result")
+                  info = payload.get("result_info")
+                  exact = (
+                      response.status == 200
+                      and payload.get("success") is True
+                      and errors == []
+                      and isinstance(result, list)
+                      and len(result) == 1
+                      and isinstance(result[0], dict)
+                      and result[0].get("name") == "ayin.stream"
+                      and isinstance(info, dict)
+                      and type(info.get("total_count")) is int
+                      and info["total_count"] == 1
+                  )
+                  output["exact_single_zone"] = exact
+                  if exact:
+                      zone = result[0]
+                      status = zone.get("status")
+                      output["zone_status"] = status if isinstance(status, str) and status in ZONE_STATUSES else None
+                      plan = zone.get("plan")
+                      name = plan.get("name") if isinstance(plan, dict) else None
+                      legacy_id = plan.get("legacy_id") if isinstance(plan, dict) else None
+                      named_tier = PLAN_NAMES.get(name) if isinstance(name, str) else None
+                      id_tier = PLAN_IDS.get(legacy_id) if isinstance(legacy_id, str) else None
+                      output["plan_name"] = named_tier if named_tier == id_tier else None
+                      if output["zone_status"] == "active" and output["plan_name"] is not None:
+                          exit_code = 0
+              except Exception as error:
+                  output["error_type"] = type(error).__name__
+              finally:
+                  signal.alarm(0)
+                  if connection is not None:
+                      try:
+                          connection.close()
+                      except Exception as error:
+                          output["error_type"] = type(error).__name__
+                          exit_code = 1
+              print(json.dumps(output, sort_keys=True, separators=(",", ":")))
+              return exit_code
+
+          sys.exit(main())
+          PY
