@@ -1,0 +1,73 @@
+name: Inspect AYIN R2 canary runtime
+
+on:
+  push:
+    branches:
+      - diagnose/ayin-r2-canary-runtime-20261009
+    paths:
+      - .github/workflows/inspect-r2-canary-runtime.yml
+      - .github/scripts/r2-canary-preflight/*.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: >-
+      github.repository == 'eltx1/ayin' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/diagnose/ayin-r2-canary-runtime-20261009' &&
+      github.event.forced == false &&
+      github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: production
+      deployment: false
+    env:
+      DEPLOY_HOST: 13.52.116.200
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+    steps:
+      - name: Check out exact reviewed diagnostic
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up pinned Node without dependency installation
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Check probe syntax
+        run: |
+          node --check .github/scripts/r2-canary-preflight/read-preflight.mjs
+          node --check .github/scripts/r2-canary-preflight/run-reviewed-read.mjs
+      - name: Use existing AYIN deployment identity with pinned host trust
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          bash deploy/acquire-ssh-host-key.sh "$candidate"
+          test -s "$candidate"
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          [[ "$actual_fingerprint" == "$PINNED_SSH_HOST_FINGERPRINT" ]]
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+      - name: Observe only sanitized runtime and read-only database counts
+        run: node .github/scripts/r2-canary-preflight/run-reviewed-read.mjs --execute-readonly
+      - name: Remove ephemeral runner SSH material
+        if: ${{ always() }}
+        shell: bash
+        run: rm -f "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts" "$HOME/.ssh/known_hosts.candidate"
