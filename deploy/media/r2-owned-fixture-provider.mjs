@@ -32,6 +32,10 @@ export const FIXTURES = Object.freeze([
 ]);
 export const REQUEST_MS = 30_000;
 export const LINE_BYTES = 16_384;
+export const CONTINUATION_ID = "remaining-fixtures-v1";
+export const ORIGINAL_RELEASE_SHA = "a6c15842bd2cf6990715f18d58a550a5929d8d41";
+export const ORIGINAL_MANIFEST_SHA256 =
+  "c53016b757a13409abaebc0063779f2eae4722ca59fd692e9c67562471e2df6f";
 
 export class ProofFailure extends Error {
   constructor(code) {
@@ -169,6 +173,39 @@ const manifestIo = {
   writeFileSync,
 };
 export function createManifest(options, directory = MANIFEST_DIRECTORY, io = manifestIo) {
+  validateApproval(options);
+  const document = {
+    schema: 1,
+    runId: RUN_ID,
+    releaseSha: options.releaseSha,
+    bucket: BUCKET,
+    prefix: PREFIX,
+    createdAt: new Date().toISOString(),
+    status: "RESERVED",
+    stage: "reserved",
+    code: null,
+    maxRetainedBytes: MAX_RETAINED_BYTES,
+    observationsOnly: true,
+    fixtures: FIXTURES.map((fixture) => ({
+      ...fixture,
+      key: PREFIX + fixture.name,
+      create: "not-dispatched",
+      uploadId: null,
+      complete: "not-dispatched",
+      abort: "not-dispatched",
+      deletion: "not-dispatched",
+      debt: false,
+      stages: [],
+    })),
+  };
+  return reserveManifest(document, RUN_ID + ".json", directory, io);
+}
+export function reserveManifest(
+  document,
+  filename,
+  directory = MANIFEST_DIRECTORY,
+  io = manifestIo,
+) {
   const {
     constants,
     closeSync,
@@ -182,7 +219,10 @@ export function createManifest(options, directory = MANIFEST_DIRECTORY, io = man
     renameSync,
     writeFileSync,
   } = io;
-  validateApproval(options);
+  checked(
+    [RUN_ID + ".json", RUN_ID + "." + CONTINUATION_ID + ".json"].includes(filename),
+    "FIXED_MANIFEST_PATH_REQUIRED",
+  );
   const parentPath = dirname(resolve(directory));
   const parentStat = lstatSync(parentPath);
   checked(
@@ -219,31 +259,7 @@ export function createManifest(options, directory = MANIFEST_DIRECTORY, io = man
     "UNSAFE_MANIFEST_DIRECTORY",
   );
   checked(realpathSync(directory) === resolve(directory), "UNSAFE_MANIFEST_DIRECTORY");
-  const path = resolve(directory, `${RUN_ID}.json`);
-  const document = {
-    schema: 1,
-    runId: RUN_ID,
-    releaseSha: options.releaseSha,
-    bucket: BUCKET,
-    prefix: PREFIX,
-    createdAt: new Date().toISOString(),
-    status: "RESERVED",
-    stage: "reserved",
-    code: null,
-    maxRetainedBytes: MAX_RETAINED_BYTES,
-    observationsOnly: true,
-    fixtures: FIXTURES.map((fixture) => ({
-      ...fixture,
-      key: PREFIX + fixture.name,
-      create: "not-dispatched",
-      uploadId: null,
-      complete: "not-dispatched",
-      abort: "not-dispatched",
-      deletion: "not-dispatched",
-      debt: false,
-      stages: [],
-    })),
-  };
+  const path = resolve(directory, filename);
   let fd;
   try {
     fd = openSync(
@@ -331,7 +347,7 @@ function isMissingUpload(error) {
     (error?.status === 404 && error?.method === "GET" && error?.providerCode === "NoSuchUpload")
   );
 }
-async function assertAbsent(runtime, key) {
+export async function assertAbsent(runtime, key) {
   try {
     await runtime.storage.headObject(key);
   } catch (error) {
@@ -340,7 +356,7 @@ async function assertAbsent(runtime, key) {
   }
   throw new ProofFailure("PREEXISTING_OR_RESIDUAL_OBJECT");
 }
-async function assertNoParts(runtime, record) {
+export async function assertNoParts(runtime, record) {
   try {
     await runtime.storage.listParts({ key: record.key, uploadId: record.uploadId });
   } catch (error) {
@@ -380,19 +396,56 @@ export async function verifySignatureCapability(storage) {
   checked(rejected, "DEPLOYED_EXACT_LENGTH_VALIDATION_MISSING");
 }
 
-export async function runAcceptance(
+export async function runAcceptance(options, dependencies) {
+  validateApproval(options);
+  const journal = createManifest(options, dependencies.directory);
+  return runReservedAcceptance(options, { ...dependencies, journal });
+}
+
+export async function runReservedAcceptance(
   options,
   {
     runtime,
     browser,
-    directory = MANIFEST_DIRECTORY,
+    journal,
+    continuation = false,
     timeoutMs = REQUEST_MS,
     dispatchSpacingMs = 1100,
   },
 ) {
   validateApproval(options);
-  const journal = createManifest(options, directory);
   const m = journal.document;
+  const expectedFixtures = continuation ? FIXTURES.slice(1) : FIXTURES;
+  checked(
+    m.runId === RUN_ID &&
+      m.prefix === PREFIX &&
+      m.bucket === BUCKET &&
+      m.releaseSha === options.releaseSha &&
+      m.status === "RESERVED" &&
+      (continuation
+        ? options.executeContinuationApproved === true &&
+          options.releaseSha === ORIGINAL_RELEASE_SHA &&
+          /^[a-f0-9]{40}$/.test(options.toolingSha ?? "") &&
+          m.toolingSha === options.toolingSha &&
+          m.continuationId === CONTINUATION_ID &&
+          m.originalManifestSha256 === ORIGINAL_MANIFEST_SHA256 &&
+          m.originalStatus === "FAILED"
+        : !m.continuationId) &&
+      m.fixtures.length === expectedFixtures.length &&
+      m.fixtures.every(
+        (record, i) =>
+          record.name === expectedFixtures[i].name &&
+          record.key === PREFIX + record.name &&
+          record.size === expectedFixtures[i].size &&
+          record.create === "not-dispatched" &&
+          record.uploadId === null &&
+          record.complete === "not-dispatched" &&
+          record.abort === "not-dispatched" &&
+          record.deletion === "not-dispatched" &&
+          record.debt === false,
+      ),
+    "INVALID_RESERVED_FIXTURE_SCOPE",
+  );
   let sequence = 0;
   const call = (work) => bounded(work, timeoutMs);
   const beforeMutation = async (record) => {
@@ -419,7 +472,16 @@ export async function runAcceptance(
       "EXACT_LENGTH_GRANT_REQUIRED",
     );
     await beforeMutation(record);
-    sequence++;
+    const directNegative = continuation && wrongLength;
+    if (!directNegative) sequence++;
+    if (continuation) {
+      const expiresAt = signed.expiresAt.getTime();
+      checked(
+        Number.isFinite(expiresAt) && expiresAt > Date.now() && expiresAt <= Date.now() + 100_000,
+        "INVALID_CONTINUATION_GRANT_EXPIRY",
+      );
+      m.latestGrantExpiresAt = Math.max(m.latestGrantExpiresAt ?? 0, expiresAt);
+    }
     stage(
       record,
       wrongLength ? "wrong-length-put-dispatched" : `part-${partNumber}-put-dispatched`,
@@ -428,7 +490,7 @@ export async function runAcceptance(
     try {
       reply = await bounded(
         () =>
-          browser({
+          (directNegative ? (grant) => runtime.directNegativeProbe(record, grant) : browser)({
             type: "grant",
             seq: sequence,
             fixture: record.name,
@@ -528,6 +590,11 @@ export async function runAcceptance(
       record.uploadId = allocation.uploadId;
       record.create = "acknowledged";
       journal.save();
+      if (continuation && record.name === "multipart.bin") {
+        await put(record, 1, 38, 0, true);
+        await parts(record, []);
+        stage(record, "wrong-length-provider-rejected-with-no-part");
+      }
       if (record.name === "small.bin") {
         await put(record, 1, 38, 0, true);
         await parts(record, []);
@@ -586,7 +653,7 @@ export async function runAcceptance(
       );
       stage(record, "direct-get-sha256-and-ayin-root-verified");
     }
-    m.status = "OBSERVATIONS_PASSED";
+    m.status = continuation ? "AWAITING_POST_CUTOFF_OBSERVATIONS" : "OBSERVATIONS_PASSED";
   } catch (error) {
     m.status = "FAILED";
     m.code = safeCode(error);
@@ -745,7 +812,7 @@ export function createBoundedProviderFetch(origin, originalFetch) {
   };
 }
 
-async function productionRuntime(options) {
+export async function productionRuntime(options, { activeRelease = false } = {}) {
   checked(
     process.env.APP_ENV === "production" &&
       process.env.NODE_ENV === "production" &&
@@ -758,7 +825,11 @@ async function productionRuntime(options) {
     "FIXED_PRODUCTION_BUCKET_REQUIRED",
   );
   checked(process.env.AYIN_UPLOAD_RECOVERY_V2_ENABLED !== "1", "DEFAULT_OFF_RELEASE_REQUIRED");
-  const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), "../.."));
+  const root = realpathSync(
+    activeRelease
+      ? "/home/ayin/htdocs/current"
+      : resolve(dirname(fileURLToPath(import.meta.url)), "../.."),
+  );
   checked(
     root.startsWith("/home/ayin/htdocs/releases/") &&
       realpathSync("/home/ayin/htdocs/current") === root &&
@@ -791,12 +862,12 @@ async function productionRuntime(options) {
     metadata,
     identity,
   ] = await Promise.all([
-    import("../../apps/api/dist/media/media-storage.config.js"),
-    import("../../apps/api/dist/media/r2-media-storage.adapter.js"),
-    import("../../apps/api/dist/media/r2-sigv4.js"),
-    import("../../apps/api/dist/media/r2-xml.js"),
-    import("../../apps/api/dist/media/r2-upload-completion.js"),
-    import("../../packages/types/dist/upload-file-identity.js"),
+    import(pathToFileURL(resolve(root, "apps/api/dist/media/media-storage.config.js")).href),
+    import(pathToFileURL(resolve(root, "apps/api/dist/media/r2-media-storage.adapter.js")).href),
+    import(pathToFileURL(resolve(root, "apps/api/dist/media/r2-sigv4.js")).href),
+    import(pathToFileURL(resolve(root, "apps/api/dist/media/r2-xml.js")).href),
+    import(pathToFileURL(resolve(root, "apps/api/dist/media/r2-upload-completion.js")).href),
+    import(pathToFileURL(resolve(root, "packages/types/dist/upload-file-identity.js")).href),
   ]);
   const config = loadMediaStorageConfig(process.env);
   checked(
