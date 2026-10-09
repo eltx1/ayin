@@ -1,6 +1,6 @@
 # Fixed continuation of the retained owned-fixture attempt
 
-Status: reviewed source and offline tests are separate from live acceptance. This tooling never enables recovery issuance or certifies an application upload flow.
+Status: real provider/browser observations passed on 2026-10-09. This tooling did not enable recovery issuance or certify an application upload flow.
 
 The original attempt remains FAILED/STDIO_PROTOCOL_FAILED. Its small.bin allocation was created, aborted and observed absent; it did not complete a single-part upload. Preserve that original journal unchanged. The continuation accepts only its pinned SHA256 `c53016b757a13409abaebc0063779f2eae4722ca59fd692e9c67562471e2df6f`, exact state, original deployed release and recorded dispatch timestamp. No caller-supplied predecessor digest is accepted.
 
@@ -44,3 +44,21 @@ node --test deploy/media/r2-owned-fixture-provider.test.mjs deploy/media/r2-owne
 ```
 
 Existing tests retain the original acceptance behavior. Continuation tests use synthetic predecessor records and an injected read-only fixture reader; separate tests verify that the production reader rejects nonmatching bytes and symlinks. Tests cover exactly two remaining CREATEs, direct-negative scope and one-use behavior, three positive browser grants and context recreation, interruption/replay refusal, unknown debt, cutoff failure, tool hash binding and redaction. They do not execute R2 or copy the original private journal off the host.
+
+## Verified live result, 2026-10-09
+
+[Invocation 37870328279](https://github.com/eltx1/ayin/actions/runs/37870328279), job `113626691648`, completed successfully. All 65 offline fixture tests and 17 staging tests passed before execution. The browser driver, exact staged-source cleanup and reconstructed proof validation also passed.
+
+- Invocation commit: `390a2992121ab554109683a6952297dea5af0bd1`.
+- Reviewed tooling commit: `b75b1ec4e9f4b7493879b2555ef786a9fe2ad761`.
+- Actual deployed adapter release: `a6c15842bd2cf6990715f18d58a550a5929d8d41`.
+- Artifact: `11590645540`, `r2-remaining-fixtures-proof-34c4947c-ba13-4fc9-9087-0d1db8cc4d28`.
+- Artifact ZIP SHA256: `dabea6dcfcbc04aa594250bd151a92c647ad7a63b0a55d560584b7b445aaf95f`.
+- Provider source SHA256: `9e5ada8ecaf0d255e0f37a7eb7d75d88f41ab5f50c5a19076dc5ae4d51f6c5d5`.
+- Continuation source SHA256: `9af65e1b139cebb29554dc2f2ccd7f9dafee3b247b980c8662111532e9b8ba16`.
+
+The downloaded ZIP digest and its sole JSON member were independently checked; the proof exactly round-tripped through the reviewed validator. It reports `OBSERVATIONS_PASSED`, `post-grant-cutoff-absence-observed`, no remaining fixture debt, and `activationEnabled=false`.
+
+Observed coverage: a direct wrong-length request was rejected with authoritative empty parts; actual browser PUTs uploaded 5 MiB plus 17 bytes across a fresh-context resume; completion binding, metadata, full SHA256 and AYIN identity were independently read back; a separate actual 5 MiB browser part was uploaded and then aborted. The completed owned object was deleted, and all exact keys and known allocations were observed absent after grant expiry.
+
+The original attempt remains failed and its journal remains reserved. Discarding an acknowledged completion receipt models receipt loss; it does not establish an unknown provider outcome. Single-part completion, application ownership/private delivery, processing, accounting and full application activation are not certified by this provider run. Both permanent journals must remain intact. Do not rerun the original or continuation commands.

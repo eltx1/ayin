@@ -108,7 +108,7 @@ jobs:
           bash -n deploy/acquire-ssh-host-key.sh
           node --test deploy/test-ssh-host-key.mjs
           # Offline transport/provider fixtures only; never dispatch the live proof here.
-          node --test deploy/media/r2-owned-fixture-provider.test.mjs deploy/media/r2-owned-fixture-browser.test.mjs
+          node --test deploy/media/r2-owned-fixture-provider.test.mjs deploy/media/r2-owned-fixture-browser.test.mjs deploy/media/r2-owned-continuation-browser.test.mjs
           node --test deploy/test-web-build-artifact.mjs deploy/test-release-web-artifact.mjs
           node --check deploy/smoke-web-build-artifact.mjs
           node --check deploy/admin/bootstrap-first-superadmin.mjs
