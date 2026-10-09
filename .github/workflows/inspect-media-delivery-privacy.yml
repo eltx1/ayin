@@ -1,0 +1,45 @@
+name: Inspect AYIN media delivery privacy (read only)
+
+on:
+  push:
+    branches:
+      - diagnose/ayin-media-privacy-20261009
+    paths:
+      - .github/workflows/inspect-media-delivery-privacy.yml
+      - .github/scripts/inspect-media-delivery-privacy.py
+      - .github/scripts/test-inspect-media-delivery-privacy.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ayin-media-delivery-privacy-read-only
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: >-
+      ${{
+        github.repository == 'eltx1/ayin' &&
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/diagnose/ayin-media-privacy-20261009' &&
+        github.event.forced == false &&
+        github.event.deleted == false
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment:
+      name: production
+      deployment: false
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check diagnostic safety with offline fixtures
+        run: python3 .github/scripts/test-inspect-media-delivery-privacy.py
+      - name: Read AYIN media configuration without requesting any object
+        env:
+          AYIN_CLOUDFLARE_API_TOKEN: ${{ secrets.AYIN_CLOUDFLARE_API_TOKEN }}
+        run: python3 .github/scripts/inspect-media-delivery-privacy.py
