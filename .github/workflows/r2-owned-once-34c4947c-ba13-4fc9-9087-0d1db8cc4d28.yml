@@ -1,19 +1,22 @@
 name: Owned R2 one-time invocation 34c4947c-ba13-4fc9-9087-0d1db8cc4d28
 
-# LOCAL REVIEW ONLY: bounded recovery from bootstrap failure in run 37858547088.
-# No GitHub rerun, branch recreation, history deletion, or manifest reset.
-# After independent review and fresh prerequisite verification, the sole allowed
-# source invocation is a nonforced expected-head update on the existing branch:
-# parent/before/expected_sha=dbcca97054e25a2eb7f74366ffa8256143091036.
-# The single child commit may modify only this workflow. RELEASE_SHA and the
-# provider/browser driver remain pinned to the already-deployed main release.
-# The exact failed run, attempt, job and complete pre-provider step record are
-# revalidated below. No other failed run, retry, or execution outcome is exempt.
-# Preserve the mandatory deployment-provenance record: immutable deploy-proof.env,
-# verified artifact digest, release_sha=current main, deployed_as=ayin, exact
-# deploy_run_id and successful same-SHA main-push validation_run_id. API head_sha
-# alone cannot prove a manual deployment's separate release_sha input.
-# Exact active remote SHA and healthy-host verification remain mandatory.
+# LOCAL REVIEW ONLY: final bounded invocation after verified unsafe-parent refusal.
+# HELD: permission repair has not been executed or established by this template.
+# Replace the invalid PERMISSION_REPAIR_PROOF_SHA256 only after independent review
+# of the exact successful 0770-to-0750 repair evidence and its final review record.
+# That record must bind the target/owner, before/after modes, unchanged ACLs,
+# successful operation run/job IDs, fresh absent manifest, healthy active a6c15842,
+# and diagnostic evidence: ACL/mode/ctime run 37862702086 (job 113601966929),
+# absent-manifest run 37860910607, modules run 37861518489, browser run 37861667516.
+# Driver failure alone never authorizes this exception. The 0770 mode existed
+# before attempt 2 and createManifest refuses it before reservation/provider I/O.
+# Sole permitted publication: same branch/path, one modified file, single child
+# of 301937cca45f32cfae281371182309e46a7aa127, nonforce expected-head update.
+# Preserve both failed runs, the complete three-run history, and any O_EXCL host
+# manifest. No GitHub rerun, branch recreation, history/manifest deletion, flags,
+# provider changes, CORS, access or permission changes are performed here.
+# Existing immutable deployment-proof IDs/digest and exact current-main/active-SHA
+# health preconditions remain mandatory; API head_sha alone is insufficient.
 on:
   push:
     branches:
@@ -49,6 +52,7 @@ jobs:
     timeout-minutes: 20
     env:
       RELEASE_SHA: a6c15842bd2cf6990715f18d58a550a5929d8d41
+      PERMISSION_REPAIR_PROOF_SHA256: 8e287e885b9957713ca911d9131e96dd43cd33bb8ab61f282cd6843ae7a62383
       FIXTURE_RUN_ID: 34c4947c-ba13-4fc9-9087-0d1db8cc4d28
       CONFIRM_PREFIX: ayin-recovery-acceptance/34c4947c-ba13-4fc9-9087-0d1db8cc4d28/
       CLEANUP_ACK: DELETE_ONLY_CREATED_FIXTURES
@@ -67,13 +71,14 @@ jobs:
           set -euo pipefail
           [[ "$GITHUB_RUN_ATTEMPT" == 1 ]]
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$PERMISSION_REPAIR_PROOF_SHA256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$FIXTURE_RUN_ID" == '34c4947c-ba13-4fc9-9087-0d1db8cc4d28' ]]
           [[ "$CONFIRM_PREFIX" == 'ayin-recovery-acceptance/34c4947c-ba13-4fc9-9087-0d1db8cc4d28/' ]]
           [[ "$CLEANUP_ACK" == 'DELETE_ONLY_CREATED_FIXTURES' ]]
           [[ "$GITHUB_WORKFLOW_REF" == "eltx1/ayin/$INVOCATION_PATH@refs/heads/$INVOCATION_BRANCH" ]]
           [[ "$INVOCATION_WORKFLOW_SHA" == "$GITHUB_SHA" ]]
 
-      - name: Require the exact bootstrap exception and reviewed deployed current main
+      - name: Require both exact prior failures and reviewed deployed current main
         uses: actions/github-script@v8
         with:
           script: |
@@ -85,23 +90,26 @@ jobs:
             const failedSha = 'dbcca97054e25a2eb7f74366ffa8256143091036';
             const failedRunId = 37858547088;
             const failedJobId = 113588502016;
+            const parentRefusalSha = '301937cca45f32cfae281371182309e46a7aa127';
+            const parentRefusalRunId = 37860166953;
+            const parentRefusalJobId = 113593725609;
             const workflowId = 379112770;
             if (context.eventName !== 'push' || context.repo.owner !== repo.owner || context.repo.repo !== repo.repo ||
                 context.ref !== `refs/heads/${branchName}` || payload.repository?.fork !== false ||
                 payload.repository?.default_branch !== 'main' || payload.created !== false ||
                 payload.deleted !== false || payload.forced !== false ||
-                payload.before !== failedSha ||
+                payload.before !== parentRefusalSha ||
                 payload.after !== context.sha || payload.head_commit?.id !== context.sha ||
                 process.env.GITHUB_RUN_ATTEMPT !== '1') {
-              throw new Error('Only the reviewed recovery update from the exact bootstrap-failed commit is eligible.');
+              throw new Error('Only the reviewed final update from the exact unsafe-parent refusal commit is eligible.');
             }
             const { data: invocationBranch } = await github.rest.repos.getBranch({ ...repo, branch: branchName });
             if (invocationBranch.commit.sha !== context.sha) throw new Error('Invocation branch changed.');
             const { data: commit } = await github.rest.repos.getCommit({ ...repo, ref: context.sha });
-            if (commit.sha !== context.sha || commit.parents.length !== 1 || commit.parents[0].sha !== failedSha ||
+            if (commit.sha !== context.sha || commit.parents.length !== 1 || commit.parents[0].sha !== parentRefusalSha ||
                 commit.files?.length !== 1 || commit.files[0].filename !== workflowPath ||
                 commit.files[0].status !== 'modified' || commit.files[0].previous_filename) {
-              throw new Error('Recovery must modify only this workflow directly on the exact failed invocation.');
+              throw new Error('Final invocation must modify only this workflow directly on the second failed invocation.');
             }
             const { data: failed } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: failedRunId });
             const matchesRun = (run, id, head, number) => run?.id === id && run.head_sha === head &&
@@ -111,16 +119,24 @@ jobs:
             if (!matchesRun(failed, failedRunId, failedSha, 1) || failed.status !== 'completed' || failed.conclusion !== 'failure') {
               throw new Error('The exact original attempt must remain the known completed bootstrap failure.');
             }
+            const { data: parentRefusal } = await github.rest.actions.getWorkflowRun({ ...repo, run_id: parentRefusalRunId });
+            if (!matchesRun(parentRefusal, parentRefusalRunId, parentRefusalSha, 2) ||
+                parentRefusal.status !== 'completed' || parentRefusal.conclusion !== 'failure') {
+              throw new Error('The exact second attempt must remain the independently reviewed unsafe-parent refusal.');
+            }
             const { data: runs } = await github.rest.actions.listWorkflowRuns({
               ...repo, workflow_id: workflowId, per_page: 100,
             });
             const prior = runs.workflow_runs.filter(run => run.id === failedRunId);
+            const second = runs.workflow_runs.filter(run => run.id === parentRefusalRunId);
             const current = runs.workflow_runs.filter(run => run.id === context.runId);
-            if (context.runId === failedRunId || runs.total_count !== 2 || runs.workflow_runs.length !== 2 ||
-                prior.length !== 1 || current.length !== 1 ||
+            if (context.runId === failedRunId || context.runId === parentRefusalRunId ||
+                runs.total_count !== 3 || runs.workflow_runs.length !== 3 ||
+                prior.length !== 1 || second.length !== 1 || current.length !== 1 ||
                 !matchesRun(prior[0], failedRunId, failedSha, 1) || prior[0].status !== 'completed' || prior[0].conclusion !== 'failure' ||
-                !matchesRun(current[0], context.runId, context.sha, 2) || current[0].status !== 'in_progress' || current[0].conclusion !== null) {
-              throw new Error('Only the exact failed first run plus this first-attempt recovery run may exist.');
+                !matchesRun(second[0], parentRefusalRunId, parentRefusalSha, 2) || second[0].status !== 'completed' || second[0].conclusion !== 'failure' ||
+                !matchesRun(current[0], context.runId, context.sha, 3) || current[0].status !== 'in_progress' || current[0].conclusion !== null) {
+              throw new Error('Only both exact failed runs and this first-attempt final invocation may exist.');
             }
             const { data: source } = await github.rest.repos.getContent({ ...repo, path: workflowPath, ref: failedSha });
             if (source.type !== 'file' || source.encoding !== 'base64' ||
@@ -163,6 +179,49 @@ jobs:
             const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({ ...repo, run_id: failedRunId, per_page: 100 });
             if (artifacts.total_count !== 0 || artifacts.artifacts.length !== 0) {
               throw new Error('Unexpected original-run artifacts make the bootstrap exception inconclusive.');
+            }
+            const { data: secondSource } = await github.rest.repos.getContent({ ...repo, path: workflowPath, ref: parentRefusalSha });
+            if (secondSource.type !== 'file' || secondSource.encoding !== 'base64' ||
+                require('node:crypto').createHash('sha256').update(Buffer.from(secondSource.content, 'base64')).digest('hex') !==
+                'b84206d7d8494c86e4e5050127a89e626570940173675968cb84a5edc7cc03a2') {
+              throw new Error('Second failed workflow source does not match the reviewed parent-refusal evidence.');
+            }
+            const { data: secondJobs } = await github.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}/attempts/{attempt_number}/jobs', {
+              ...repo, run_id: parentRefusalRunId, attempt_number: 1, per_page: 100,
+            });
+            const secondJob = secondJobs.jobs?.[0];
+            if (secondJobs.total_count !== 1 || secondJobs.jobs.length !== 1 || secondJob.id !== parentRefusalJobId ||
+                secondJob.run_id !== parentRefusalRunId || secondJob.run_attempt !== 1 || secondJob.head_sha !== parentRefusalSha ||
+                secondJob.head_branch !== branchName || secondJob.name !== 'acceptance' ||
+                secondJob.status !== 'completed' || secondJob.conclusion !== 'failure') {
+              throw new Error('Second failed job identity or attempt is ambiguous.');
+            }
+            const expectedSecondSteps = [
+              [1, "Set up job", "success"],
+              [2, "Refuse placeholder and require the fixed approved scope", "success"],
+              [3, "Require the exact bootstrap exception and reviewed deployed current main", "success"],
+              [4, "Checkout exact already-deployed main tooling", "success"],
+              [5, "Set up pinned Node", "success"],
+              [6, "Verify the unchanged exact fixture plan and all 38 offline guards", "success"],
+              [7, "Configure existing pinned AYIN SSH trust", "success"],
+              [8, "Require healthy exact active release without provider calls", "success"],
+              [9, "Recheck current main and successful deployment immediately before execution", "success"],
+              [10, "Invoke the unchanged approved driver exactly once", "failure"],
+              [11, "Upload only allowlisted observations", "success"],
+              [12, "Remove ephemeral runner SSH material", "success"],
+              [23, "Post Set up pinned Node", "skipped"],
+              [24, "Post Checkout exact already-deployed main tooling", "success"],
+              [25, "Complete job", "success"],
+            ];
+            if (!Array.isArray(secondJob.steps) || secondJob.steps.length !== expectedSecondSteps.length ||
+                secondJob.steps.some((step, index) => step.status !== 'completed' ||
+                  step.number !== expectedSecondSteps[index][0] || step.name !== expectedSecondSteps[index][1] ||
+                  step.conclusion !== expectedSecondSteps[index][2])) {
+              throw new Error('Second attempt differs from the exact independently reviewed parent-refusal record.');
+            }
+            const { data: secondArtifacts } = await github.rest.actions.listWorkflowRunArtifacts({ ...repo, run_id: parentRefusalRunId, per_page: 100 });
+            if (secondArtifacts.total_count !== 0 || secondArtifacts.artifacts.length !== 0) {
+              throw new Error('Unexpected second-run artifacts require separate review.');
             }
             const { data: branch } = await github.rest.repos.getBranch({ ...repo, branch: 'main' });
             if (branch.commit.sha !== sha) throw new Error('Acceptance requires current main.');
@@ -253,6 +312,49 @@ jobs:
             "set -eu; test \"\$(whoami)\" = ayin; test \"\$HOME\" = /home/ayin; test ! -w /home/horusapp; cd /home/ayin/htdocs/current; test \"\$(git rev-parse HEAD)\" = '$RELEASE_SHA'; test -z \"\$(git status --porcelain --untracked-files=no)\"; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:3000/ >/dev/null; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/health >/dev/null; curl --fail --silent --show-error --max-time 15 http://127.0.0.1:4000/ready >/dev/null" \
             >/dev/null 2>&1; then
             echo 'Exact active release or direct-origin health could not be verified; fixture execution refused.' >&2
+            exit 1
+          fi
+
+      - name: Verify repaired parent and absent manifest without writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! timeout --kill-after=2s 35s ssh -F /dev/null -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o "IdentityFile=$HOME/.ssh/id_ed25519" -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" -o ConnectTimeout=15 \
+            -o ServerAliveInterval=5 -o ServerAliveCountMax=3 -p 22 ayin@13.52.116.200 \
+            'python3 -' >/dev/null 2>&1 <<'PYTHON'
+          import errno, os, pwd, stat
+          parent = '/home/ayin'
+          assert pwd.getpwuid(os.getuid()).pw_name == 'ayin' and os.environ.get('HOME') == parent
+          info = os.lstat(parent)
+          assert stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+          assert os.path.realpath(parent) == parent and info.st_uid == os.getuid()
+          assert stat.S_IMODE(info.st_mode) == 0o750
+          fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+          try:
+              opened = os.fstat(fd)
+              assert stat.S_ISDIR(opened.st_mode) and opened.st_uid == os.getuid()
+              assert stat.S_IMODE(opened.st_mode) == 0o750 and (opened.st_dev, opened.st_ino) == (info.st_dev, info.st_ino)
+              for name in ('system.posix_acl_access', 'system.posix_acl_default'):
+                  try:
+                      os.getxattr(fd, name)
+                  except OSError as error:
+                      if error.errno != errno.ENODATA:
+                          raise
+                  else:
+                      raise AssertionError('Unexpected ACL')
+              try:
+                  os.stat('.r2-acceptance-manifests', dir_fd=fd, follow_symlinks=False)
+              except FileNotFoundError:
+                  pass
+              else:
+                  raise AssertionError('Existing manifest directory requires review')
+          finally:
+              os.close(fd)
+          PYTHON
+          then
+            echo 'Secure repaired parent and absent manifest could not be verified; invocation refused.' >&2
             exit 1
           fi
 
