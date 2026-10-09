@@ -1,5 +1,5 @@
 name: Diagnose AYIN deployment resources
-# Read-only in-memory reconstruction of the retained first grant; network forbidden.
+# One bounded GET-only signature-negative CORS probe; preserve all retained state.
 
 on:
   push:
@@ -18,7 +18,8 @@ concurrency:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    if: github.run_attempt == 1
     environment:
       name: production
       deployment: false
@@ -32,7 +33,23 @@ jobs:
       - name: Checkout resource diagnostics
         uses: actions/checkout@v7
         with:
+          ref: a6c15842bd2cf6990715f18d58a550a5929d8d41
           persist-credentials: false
+
+      - name: Set up pinned Node
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Install locked Chromium tooling on GitHub runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == 'a6c15842bd2cf6990715f18d58a550a5929d8d41' ]]
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm exec playwright install --with-deps chromium
 
       - name: Configure pinned AYIN SSH trust
         shell: bash
@@ -60,26 +77,16 @@ jobs:
           chmod 600 "$HOME/.ssh/known_hosts"
           echo "Pinned AYIN SSH host fingerprint verified."
 
-      - name: Reconstruct retained first grant in memory without provider network
+      - name: Observe GET-only authentication failure from fresh Chromium
         shell: bash
         run: |
           set -euo pipefail
-          timeout --kill-after=2s 35s ssh -o BatchMode=yes \
-            -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3 \
-            -p "$SSH_PORT" "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          [[ "$(id -un)" == 'ayin' && "$HOME" == '/home/ayin' ]]
-          test ! -w /home/horusapp
-          current="$(readlink -f /home/ayin/htdocs/current)"
-          [[ "$current" == /home/ayin/htdocs/releases/* ]]
-          cd /home/ayin/htdocs/current
-          [[ "$(git rev-parse HEAD)" == 'a6c15842bd2cf6990715f18d58a550a5929d8d41' ]]
-          if ! timeout 20s node deploy/run-with-env.cjs /home/ayin/env/api.env node - 2>/dev/null <<'JAVASCRIPT'
+          cat > private-retained-grant.cjs <<'PRIVATE_SOURCE'
           globalThis.fetch = () => { throw new Error('DIAGNOSTIC_NETWORK_FORBIDDEN'); };
           const fs = require('node:fs');
           const { resolve } = require('node:path');
           const { pathToFileURL } = require('node:url');
-          const emit = (value) => process.stdout.write(JSON.stringify(value) + '\n');
+          const emit = () => {};
           const expectedRelease = 'a6c15842bd2cf6990715f18d58a550a5929d8d41';
           const expectedRun = '34c4947c-ba13-4fc9-9087-0d1db8cc4d28';
           const directory = '/home/ayin/.r2-acceptance-manifests';
@@ -125,7 +132,7 @@ jobs:
               assert(Array.isArray(item.stages) && item.stages.length <= 256 && item.stages.every((stage) => stages.has(stage)));
             }
             const small = document.fixtures[0];
-            assert(small.name === 'small.bin' && small.create === 'acknowledged' && typeof small.uploadId === 'string');
+            assert(small.name === 'small.bin' && small.create === 'acknowledged' && small.abort === 'acknowledged' && small.complete === 'not-dispatched' && small.debt === false && typeof small.uploadId === 'string');
             emit({phase, result:'pass', smallFixtureStages:small.stages});
             phase = 'config-and-adapter';
             const config = configModule.loadMediaStorageConfig(process.env);
@@ -137,21 +144,131 @@ jobs:
             phase = 'local-signing';
             const signed = await adapter.authorizeMultipartPart({key:small.key, uploadId:small.uploadId, partNumber:1, expectedSizeBytes:38, expiresInSeconds:90});
             const grant = {type:'grant', seq:1, fixture:'small.bin', partNumber:1, expectedSizeBytes:38, payloadSizeBytes:39, offset:0, url:signed.url, expiresAt:signed.expiresAt.toISOString()};
-            phase = 'validate-grant';
-            const url = new URL(grant.url), query = url.searchParams;
-            const expectedQuery = ['X-Amz-Algorithm','X-Amz-Credential','X-Amz-Date','X-Amz-Expires','X-Amz-Signature','X-Amz-SignedHeaders','partNumber','uploadId'].sort().join(',');
-            emit({phase:'grant-predicates', originMatches:url.origin === origin, pathMatches:url.pathname === `/${provider.BUCKET}/${small.key}`, queryNamesMatch:[...query.keys()].sort().join(',') === expectedQuery, partMatches:query.get('partNumber') === '1', uploadIdShape:/^[\x21-\x7e]{1,1024}$/.test(query.get('uploadId') ?? ''), algorithmExpected:query.get('X-Amz-Algorithm') === 'AWS4-HMAC-SHA256', signedHeadersExpected:query.get('X-Amz-SignedHeaders') === 'content-length;host', expires90:query.get('X-Amz-Expires') === '90', signatureShape:/^[a-f0-9]{64}$/.test(query.get('X-Amz-Signature') ?? ''), credentialShape:/^[A-Za-z0-9]{16,128}\/\d{8}\/auto\/s3\/aws4_request$/.test(query.get('X-Amz-Credential') ?? ''), dateShape:/^\d{8}T\d{6}Z$/.test(query.get('X-Amz-Date') ?? '')});
-            const stamp = query.get('X-Amz-Date') ?? '';
-            const issued = /^\d{8}T\d{6}Z$/.test(stamp) ? Date.parse(`${stamp.slice(0,4)}-${stamp.slice(4,6)}-${stamp.slice(6,8)}T${stamp.slice(9,11)}:${stamp.slice(11,13)}:${stamp.slice(13,15)}Z`) : NaN;
-            const expires = Date.parse(grant.expiresAt), now = Date.now();
-            emit({phase:'grant-time', originNowUtc:new Date(now).toISOString(), issuedAtUtc:Number.isFinite(issued) ? new Date(issued).toISOString() : null, expiresAtUtc:Number.isFinite(expires) ? new Date(expires).toISOString() : null, expiryWindowMatches:Number.isFinite(expires) && expires > now + 5000 && expires <= now + 100000, expiryMatchesIssued:Number.isFinite(issued) && Math.abs(expires - issued - 90000) < 1000});
             browser.validateGrant(grant, 1, origin);
-            emit({phase, result:'pass'});
-          })().catch((error) => {
-            emit({phase, result:'failed', code:provider ? provider.safeCode(error) : 'PROVIDER_OR_PROTOCOL_FAILURE'});
-          });
-          JAVASCRIPT
-          then
-            echo '{"phase":"diagnostic-runtime","result":"unavailable"}'
-          fi
-          REMOTE
+            // Private SSH stdout only: the GitHub controller never logs or persists this message.
+            process.stdout.write(JSON.stringify({ready:{type:'ready',r2Origin:origin,releaseSha:expectedRelease}, grant}) + '\n');
+          })().catch(() => { process.exitCode = 1; });
+          PRIVATE_SOURCE
+          cat > readonly-get-probe.mjs <<'GET_DRIVER'
+          import { spawnSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
+          import { homedir } from 'node:os';
+          import { chromium } from '@playwright/test';
+          import { validateReady, validateGrant } from './deploy/media/r2-owned-fixture-browser.mjs';
+          
+          const release = 'a6c15842bd2cf6990715f18d58a550a5929d8d41';
+          const webOrigin = 'https://ayin.stream';
+          const emit = (value) => process.stdout.write(JSON.stringify(value) + '\n');
+          const check = (value) => { if (!value) throw new Error('READ_ONLY_PROBE_GUARD'); };
+          const allowedCodes = new Set(['SignatureDoesNotMatch','AccessDenied','InvalidRequest','InvalidArgument','NoSuchUpload','NoSuchKey','RequestTimeTooSkewed','ExpiredToken']);
+          const header = (headers, name) => Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === name)?.[1];
+          const status = (value) => Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
+          let phase = 'browser-start', browser;
+          try {
+            browser = await chromium.launch({headless:true});
+            const context = await browser.newContext({serviceWorkers:'block'});
+            let grant, navigationCount = 0, browserGetCount = 0, blockedTargetMutation = false;
+            await context.route('**/*', async (route) => {
+              const request = route.request();
+              if (!grant && request.isNavigationRequest() && request.url() === `${webOrigin}/` && request.method() === 'GET' && navigationCount++ === 0) return route.continue();
+              if (grant && request.url() === grant.url) {
+                if (request.method() === 'GET' && request.postData() === null && browserGetCount++ === 0) return route.continue();
+                blockedTargetMutation = true;
+              }
+              return route.abort('blockedbyclient');
+            });
+            const page = await context.newPage();
+            phase = 'fresh-origin';
+            const navigation = await page.goto(`${webOrigin}/`, {waitUntil:'domcontentloaded',timeout:20000});
+            check(navigation?.status() === 200 && new URL(page.url()).origin === webOrigin);
+            phase = 'private-grant';
+            const source = readFileSync('private-retained-grant.cjs','utf8');
+            const remote = `set -eu\ntest "$(id -un)" = ayin\ntest "$HOME" = /home/ayin\ntest ! -w /home/horusapp\ncd /home/ayin/htdocs/current\ntest "$(git rev-parse HEAD)" = '${release}'\nexec node deploy/run-with-env.cjs /home/ayin/env/api.env node - 2>/dev/null <<'PRIVATE_GRANT'\n${source}\nPRIVATE_GRANT\n`;
+            const ssh = spawnSync('ssh', ['-F','/dev/null','-o','BatchMode=yes','-o','IdentitiesOnly=yes','-o',`IdentityFile=${homedir()}/.ssh/id_ed25519`,'-o','StrictHostKeyChecking=yes','-o',`UserKnownHostsFile=${homedir()}/.ssh/known_hosts`,'-o','ConnectTimeout=10','-o','ServerAliveInterval=5','-o','ServerAliveCountMax=3','-p','22','ayin@13.52.116.200','bash -s'], {input:remote,encoding:'utf8',timeout:35000,maxBuffer:16384,stdio:['pipe','pipe','pipe']});
+            check(!ssh.error && ssh.status === 0 && Buffer.byteLength(ssh.stdout) <= 16384);
+            const envelope = JSON.parse(ssh.stdout);
+            check(Object.keys(envelope).sort().join(',') === 'grant,ready');
+            const origin = validateReady(envelope.ready, release);
+            grant = validateGrant(envelope.grant,1,origin);
+            check(grant.fixture === 'small.bin' && grant.expectedSizeBytes === 38 && grant.payloadSizeBytes === 39);
+            // Only the GET below consumes this PUT signature. No provider mutation is reachable.
+            phase = 'browser-get';
+            const client = await context.newCDPSession(page);
+            await client.send('Network.enable');
+            const targetIds = new Set(), extra = new Map(), requestExtra = new Map();
+            const network = {httpStatus:null,acaoMatches:null,corsFailure:false,originMatches:null,noCookieOrAuthorization:null};
+            const applyExtra = (event) => {
+              network.httpStatus = event.httpStatus ?? network.httpStatus;
+              network.acaoMatches = event.acaoMatches;
+            };
+            client.on('Network.requestWillBeSent', (event) => {
+              if (event.request.url !== grant.url) return;
+              targetIds.add(event.requestId);
+              if (event.request.method !== 'GET' || event.request.hasPostData) blockedTargetMutation = true;
+              if (extra.has(event.requestId)) applyExtra(extra.get(event.requestId));
+              if (requestExtra.has(event.requestId)) Object.assign(network,requestExtra.get(event.requestId));
+            });
+            client.on('Network.requestWillBeSentExtraInfo', (event) => {
+              const projected = {originMatches:header(event.headers,'origin') === webOrigin,noCookieOrAuthorization:!header(event.headers,'cookie') && !header(event.headers,'authorization')};
+              if (targetIds.has(event.requestId)) Object.assign(network,projected);
+              else if (requestExtra.size < 8) requestExtra.set(event.requestId,projected);
+            });
+            client.on('Network.responseReceived', (event) => {
+              if (!targetIds.has(event.requestId)) return;
+              network.httpStatus = status(event.response.status);
+              network.acaoMatches = header(event.response.headers,'access-control-allow-origin') === webOrigin;
+            });
+            client.on('Network.responseReceivedExtraInfo', (event) => {
+              const projected = {httpStatus:status(event.statusCode),acaoMatches:header(event.headers,'access-control-allow-origin') === webOrigin};
+              if (targetIds.has(event.requestId)) applyExtra(projected);
+              else if (extra.size < 8) extra.set(event.requestId,projected);
+            });
+            client.on('Network.loadingFailed', (event) => {
+              if (targetIds.has(event.requestId)) network.corsFailure = Boolean(event.corsErrorStatus);
+            });
+            const js = await page.evaluate(async (url) => {
+              const controller = new AbortController();
+              const timer = setTimeout(() => controller.abort(),15000);
+              try {
+                const response = await fetch(url,{method:'GET',mode:'cors',credentials:'omit',redirect:'error',signal:controller.signal});
+                if (response.body) await response.body.cancel();
+                return {outcome:'http',httpStatus:response.status};
+              } catch { return {outcome:controller.signal.aborted ? 'timeout' : 'network-error',httpStatus:null}; }
+              finally { clearTimeout(timer); }
+            },grant.url);
+            await page.waitForTimeout(250);
+            emit({phase:'browser-get',methodGetOnly:browserGetCount === 1 && !blockedTargetMutation,jsOutcome:js.outcome,jsHttpStatus:status(js.httpStatus),networkHttpStatus:network.httpStatus,acaoMatches:network.acaoMatches,corsFailure:network.corsFailure,originMatches:network.originMatches,noCookieOrAuthorization:network.noCookieOrAuthorization});
+            check(browserGetCount === 1 && !blockedTargetMutation && !(js.httpStatus >= 200 && js.httpStatus < 300));
+            phase = 'node-get';
+            validateGrant(grant,1,origin);
+            const controller = new AbortController(), timer = setTimeout(() => controller.abort(),10000);
+            try {
+              const response = await fetch(grant.url,{method:'GET',headers:{Origin:webOrigin},redirect:'error',signal:controller.signal});
+              let size = 0, text = '', code = 'unavailable';
+              const reader = response.body?.getReader();
+              try {
+                if (reader) while (true) {
+                  const part = await reader.read();
+                  if (part.done) break;
+                  size += part.value.byteLength;
+                  if (size > 16384) break;
+                  text += new TextDecoder().decode(part.value);
+                }
+                if (size <= 16384) {
+                  const candidate = /<Code>([A-Za-z]{1,60})<\/Code>/.exec(text)?.[1];
+                  code = allowedCodes.has(candidate) ? candidate : 'unrecognized';
+                }
+              } finally { if (reader) await reader.cancel().catch(() => {}); }
+              emit({phase:'node-get',methodGetOnly:true,httpStatus:response.status,acaoMatches:response.headers.get('access-control-allow-origin') === webOrigin,bodyWithinLimit:size <= 16384,providerCode:code});
+              check(response.status === 401 || response.status === 403);
+            } finally { clearTimeout(timer); controller.abort(); }
+          } catch {
+            emit({phase,result:'failed',code:'READ_ONLY_PROBE_FAILED'});
+            process.exitCode = 1;
+          } finally {
+            if (browser) await browser.close().catch(() => {});
+          }
+          GET_DRIVER
+          node --check private-retained-grant.cjs
+          node --check readonly-get-probe.mjs
+          timeout --kill-after=2s 100s node readonly-get-probe.mjs
