@@ -1,6 +1,6 @@
-# R2 application canary — deployed, published and original source settled
+# R2 application canary — published, cancellation settled, issuance closed
 
-Checkpoint: 2026-10-10 UTC. This section supersedes the historical checkpoints below.
+Final checkpoint: 2026-10-10 02:24 UTC. This section supersedes the historical checkpoints below.
 
 [PR 277](https://github.com/eltx1/ayin/pull/277) merged to `8badd33265e09662c6727f7c8d454cf50f99719c`. [Production deployment 38015250853](https://github.com/eltx1/ayin/actions/runs/38015250853) succeeded and live inspection verified that exact release in both API and media worker. The fixes add guarded Studio publication for ready recoverable uploads and accept omitted empty R2 first-page marker echoes without weakening continuation validation.
 
@@ -8,9 +8,42 @@ Real authenticated browser actions: Finish upload, processed READY, Studio Publi
 
 [Post-fix verification 38015517224](https://github.com/eltx1/ayin/actions/runs/38015517224) confirmed all three original cleanup obligations DONE, zero retained/uncertain/unaccounted debt, source absent, PUBLISHED status, canonical readback integrity, and thumbnail present. Channel quota counts 521,854 bytes once. The same CREATE/AUTHORIZE/RESUME/COMPLETE counts remain one each. Four read-only provider requests; no provider writes/deletions or database writes in this verifier. [One-time retry 38015441556](https://github.com/eltx1/ayin/actions/runs/38015441556) advanced only the original ALLOCATION due time after the parser fix; ordinary worker cleanup supplied the settlement evidence.
 
-Validation completed: exact-dependency PR and main quality gates, security/source inventory, focused content-editor browser suite (7 passed, run 38014169092), and full V1 browser acceptance (run 38013142339). Local 77 R2 observation tests, 15 related web tests, typecheck/lint/build also passed; local cached Next differed from the pinned version, so CI is the authoritative pinned build.
+Validation completed: exact-dependency PR and main quality gates, security/source inventory, focused content-editor browser suite (7 passed, run 38014169092), and full V1 browser acceptance (run 38013142339: 642 passed and 3 skipped across the reported suites). Local 77 R2 observation tests, 15 related web tests, typecheck/lint/build also passed; local cached Next differed from the pinned version, so CI is the authoritative pinned build.
 
-A separately journaled cancellation fixture used the same 478,196-byte synthetic bytes under `ayin-cancel-test-20261010.mp4`. Activation 38015758167 required the predecessor fully settled and respected the same source/envelope/debt limits. Browser Save draft and Continue upload reached 100%. [Closure 38015882823](https://github.com/eltx1/ayin/actions/runs/38015882823) verified issuance disabled again in API and worker, one active source, CREATE=1, AUTHORIZE=1, grant=1, COMPLETE=0, CANCEL=0, and zero UNKNOWN outcomes. Cancellation session fingerprint: `617d3eedbeaba057c4685e1c504871598c9e8899317585305c3d0927a108773b`. It is waiting for the unchanged grant expiry before the UI Cancel action so cleanup can run normally without rescheduling its obligations. Cancellation/settlement are not yet claimed complete.
+A separately journaled cancellation fixture used the same 478,196-byte synthetic bytes under `ayin-cancel-test-20261010.mp4`. Activation 38015758167 required the predecessor fully settled and respected the same source/envelope/debt limits. Browser Save draft and Continue upload reached 100%. [Closure 38015882823](https://github.com/eltx1/ayin/actions/runs/38015882823) verified issuance disabled again in API and worker, one active source, CREATE=1, AUTHORIZE=1, grant=1, COMPLETE=0, CANCEL=0, and zero UNKNOWN outcomes. Cancellation session fingerprint: `617d3eedbeaba057c4685e1c504871598c9e8899317585305c3d0927a108773b`. After the unchanged grant expired, Cancel upload was pressed through the real UI at approximately 02:23:45 UTC. The UI acknowledged cancellation. No cancellation cleanup obligation was manually rescheduled.
+
+[Final cancellation verification 38016827050](https://github.com/eltx1/ayin/actions/runs/38016827050), tooling commit `14d4edaffc52bceec78c88d05a9165d94da0d76d`, succeeded on the deployed application SHA. It enforced the exact cancellation fingerprint, owner/channel and activation journal before three bounded GET/HEAD provider observations. It performed zero database writes or direct provider deletions.
+
+| Final cancellation check                          | Result                                 |
+| ------------------------------------------------- | -------------------------------------- |
+| Session / revision                                | ABORTED / 3                            |
+| CREATE / AUTHORIZE / CANCEL                       | 1 / 1 / 1                              |
+| RESUME / COMPLETE / UNKNOWN                       | 0 / 0 / 0                              |
+| Grant reservations / remaining validity           | 1 / 0 seconds                          |
+| Source removed / grants revoked                   | true / true                            |
+| Processing jobs / output bytes dispatched         | 0 / 0                                  |
+| Cleanup obligations / outstanding                 | 3 / 0                                  |
+| Valid finite cleanup evidence / retained rechecks | 3 / 3                                  |
+| Source HEAD                                       | 404, absent                            |
+| Exact allocation ListParts                        | 404 NoSuchUpload, absent               |
+| Exact source-key multipart prefix                 | zero allocations                       |
+| Active account/channel sessions                   | 0 / 0                                  |
+| Retained/uncertain/unaccounted debt               | all zero                               |
+| Account/channel retained exposure                 | 0 / 0 bytes                            |
+| Channel live source quota                         | 521,854 bytes, original canonical only |
+| New V2 issuance in API and worker                 | disabled, before and after             |
+
+Remaining records are deliberate history: two upload sessions, two 32 MiB output-envelope records, immutable activation/retry journals, and finite cleanup evidence with scheduled rechecks. The canceled video's metadata still has UPLOADING status, while its source asset is removed; it has no processing job, output writes, live quota or active source debt. No broad metadata deletion was performed. The published original canonical and thumbnail remain available.
+
+The browser acknowledgment says “Upload canceled. Cleanup is pending.” This is the existing provisional command message, not an authoritative settlement display. The subsequent runtime/provider verifier above established all three DONE obligations, absence and released accounting. The explicit saved-upload history read displayed only the published original video.
+
+Evidence images: `ayin-published-video-proof-20261010.jpg` shows the original on Mr Lord's Videos page; `ayin-cancel-accepted-proof-20261010.jpg` records the UI cancellation acknowledgment. The earlier screenshot showing only the channel banner was superseded by the visible-video proof. Ten guarded operational tests passed in the final verification workflow. Supplemental broad quality gates triggered by the operations/report commit are not needed to infer application deployment or provider settlement; app PR/main gates and the scoped workflow are the completed evidence above.
+
+Important changed application paths: `apps/web/src/components/studio/studio-video-editor.tsx`, `apps/web/src/lib/i18n/resources/content-editor.ts`, `tests/e2e/content-editor.acceptance.spec.ts`, `apps/api/src/media/r2-media-storage.adapter.ts`, and `apps/api/src/media/r2-upload-observations.test.ts`. Operational changes remain isolated under `.github/scripts/r2-app-canary/` and the dated canary/regression workflows.
+
+No further configuration is required for this closed canary. The exact owner tuple and positive bounds remain for safe draining, with `AYIN_UPLOAD_RECOVERY_V2_ENABLED=0`. Do not replay enable/resume/cancel_enable/retry_cleanup or remove their exclusive journals. Read-only cancellation verification is the final workflow mode.
+
+This completes the available browser upload/reload/finish/processing/publication/cancellation cycle. Real network-loss and multiple-part recovery remain acceptance gaps in Task 06; no unsupported result is claimed. The next roadmap task is Task 07 (Quick Upload and one-click publishing); no additional roadmap scope was started.
 
 Original journals, cancellation journal and cleanup-retry journal remain immutable. No provider acceptance fixture commands, Cloudflare settings/permissions, signed-link/protection behavior or Horus changes occurred. No real offline outage, interrupted PUT, multiple-part or byte-offset resume has been proven; the demonstrated recovery is reload/reselect of one completed part.
 
