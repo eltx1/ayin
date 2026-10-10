@@ -401,8 +401,11 @@ async function execute(mode) {
           report.outputVerified = !!verifiedFixture.outputVerifiedAt;
           report.inputMatchesFixture =
             verifiedFixture.inputIntegrityDigest ===
-              "cb4c9d221282c056fe9ad2ff587bba9d884461e202e8c34cb11bd766e73c3ab1" &&
-            verifiedFixture.contentIdentityDigest === verifiedFixture.inputIntegrityDigest;
+              "cb4c9d221282c056fe9ad2ff587bba9d884461e202e8c34cb11bd766e73c3ab1";
+          // READY transfers the identity proof to the job and retires the
+          // upload-session digest when source cleanup is registered.
+          report.sessionDigestRetired =
+            report.cleanupRequested && verifiedFixture.contentIdentityDigest === null;
           for (const key of [
             "attempt",
             "outputBytes",
@@ -497,6 +500,7 @@ async function execute(mode) {
           verifiedFixture &&
             report.jobStatus === "READY" &&
             report.inputMatchesFixture &&
+            report.sessionDigestRetired &&
             report.inputVerified &&
             report.outputVerified,
           "FIXTURE_NOT_READY",
