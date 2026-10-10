@@ -88,6 +88,35 @@ describe("bounded, complete R2 upload observations", () => {
     expect(await storage.listMultipartUploads("channels/")).toEqual([]);
   });
 
+  it.each(["KeyMarker", "UploadIdMarker", "both"])(
+    "accepts R2 first-page omission of empty %s echoes",
+    async (missing) => {
+      let xml = uploads();
+      for (const name of ["KeyMarker", "UploadIdMarker"])
+        if (missing === name || missing === "both") xml = xml.replace(`<${name}></${name}>`, "");
+      const { storage, fetch } = fixture(response(xml));
+      expect(await storage.listMultipartUploads("channels/")).toEqual([]);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0]![1].method).toBe("GET");
+    },
+  );
+
+  it.each(["KeyMarker", "UploadIdMarker"])(
+    "still rejects missing %s on a subsequent multipart page",
+    async (missing) => {
+      const first = uploads(upload(), true, "", "", key, uploadId);
+      const second = uploads("", false, key, uploadId).replace(
+        new RegExp(`<${missing}>[^<]*</${missing}>`),
+        "",
+      );
+      const { storage, fetch } = fixture(response(first), response(second));
+      await expect(storage.listMultipartUploads("channels/")).rejects.toMatchObject({
+        code: "INVALID_RESPONSE",
+      });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it.each([
     ["unclosed XML", parts(part(1)).replace("</ListPartsResult>", "")],
     ["wrong root", "<Other><IsTruncated>false</IsTruncated></Other>"],
