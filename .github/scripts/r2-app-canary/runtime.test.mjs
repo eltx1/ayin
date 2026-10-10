@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { patchEnv, validateResume } from "./runtime.mjs";
+import {
+  patchEnv,
+  validateResume,
+  validateCleanupRetry,
+  validateCancellationSlot,
+} from "./runtime.mjs";
 import { createHash } from "node:crypto";
 test("adds only the selected flags and preserves existing credentials and comments", () => {
   const input = '# existing\nDATABASE_URL="untouched"\nR2_SECRET_ACCESS_KEY=untouched\n';
@@ -101,4 +106,68 @@ test("resume refuses changed ownership, bounds, fixture and deletion scope", () 
     mutation(p);
     assert.throws(() => validateResume(p.journal, p.backup, p.disabled, p.values, false));
   }
+});
+
+function settledFixture() {
+  return {
+    newIssuanceBefore: false,
+    v2SessionCount: 1,
+    channelSessionCount: 1,
+    sessionFingerprint: "d88f09decfb9c8be70902626236a92dec4578ee52d6b778f85b6ca2ab59868fc",
+    sessionState: "COMPLETED",
+    jobStatus: "READY",
+    inputMatchesFixture: true,
+    inputVerified: true,
+    outputVerified: true,
+    cleanupOutstandingCount: 1,
+    cleanupOutstandingKind: "ALLOCATION",
+    cleanupOutstandingStatus: "PENDING",
+    cleanupCode: "INVALID_RESPONSE",
+    cleanupAttempts: 5,
+  };
+}
+test("cleanup retry admits only the exact closed, verified fixture's parser failure", () => {
+  validateCleanupRetry(settledFixture(), false);
+  assert.throws(() => validateCleanupRetry(settledFixture(), true), /ALREADY_RESERVED/);
+  for (const patch of [
+    { newIssuanceBefore: true },
+    { v2SessionCount: 2 },
+    { sessionFingerprint: "other" },
+    { jobStatus: "QUEUED" },
+    { inputMatchesFixture: false },
+    { outputVerified: false },
+    { cleanupOutstandingCount: 2 },
+    { cleanupOutstandingKind: "OBJECT" },
+    { cleanupOutstandingStatus: "PROCESSING" },
+    { cleanupCode: "PROVIDER_ERROR" },
+    { cleanupAttempts: 6 },
+  ])
+    assert.throws(() => validateCleanupRetry({ ...settledFixture(), ...patch }, false));
+});
+
+test("cancellation activation requires a fully retired predecessor and refuses replay", () => {
+  const ready = {
+    ...settledFixture(),
+    outputReservationCount: 1,
+    activeProcessingJobs: 0,
+    cleanupOutstandingCount: 0,
+    fixtureCleanupJobs: 3,
+    cleanupDone: 3,
+    unknownOperations: 0,
+    unacknowledgedWrites: 0,
+  };
+  validateCancellationSlot(ready, false);
+  assert.throws(() => validateCancellationSlot(ready, true), /ALREADY_RESERVED/);
+  for (const patch of [
+    { cleanupOutstandingCount: 1 },
+    { cleanupDone: 2 },
+    { v2SessionCount: 2 },
+    { activeProcessingJobs: 1 },
+    { outputReservationCount: 2 },
+    { unknownOperations: 1 },
+    { unacknowledgedWrites: 1 },
+    { inputMatchesFixture: false },
+    { newIssuanceBefore: true },
+  ])
+    assert.throws(() => validateCancellationSlot({ ...ready, ...patch }, false));
 });

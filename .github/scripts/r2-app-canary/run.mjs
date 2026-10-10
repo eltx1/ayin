@@ -5,7 +5,18 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 const mode = process.argv[2];
-if (!["enable", "resume", "disable", "inspect", "verify", "observe"].includes(mode))
+if (
+  ![
+    "enable",
+    "resume",
+    "disable",
+    "inspect",
+    "verify",
+    "observe",
+    "retry_cleanup",
+    "cancel_enable",
+  ].includes(mode)
+)
   throw new Error("Explicit canary mode required");
 const dir = dirname(fileURLToPath(import.meta.url));
 const key = join(homedir(), ".ssh/id_ed25519");
@@ -97,7 +108,7 @@ if (
     ? proof.providerRequests < 0 || proof.providerRequests > (mode === "observe" ? 1 : 6)
     : proof.providerRequests !== 0) ||
   proof.deletions !== 0 ||
-  proof.databaseWrites !== 0
+  (mode === "retry_cleanup" ? ![0, 1].includes(proof.databaseWrites) : proof.databaseWrites !== 0)
 )
   throw new Error("Unexpected result; inspect before continuing");
 process.stdout.write(JSON.stringify(proof, null, 2) + "\n");

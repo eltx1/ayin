@@ -1,3 +1,34 @@
+# R2 application canary — processing verified; two fixes in CI
+
+Current checkpoint: 2026-10-10 UTC. Following the user's explicit approval of source cleanup, Finish upload completed through the real UI and the worker produced a ready draft. New V2 issuance remains disabled. The original release is still `ab8355f3c45e5208ef9fe6477666b8f834c231b4`.
+
+## Verified application and provider results
+
+- Same session fingerprint: `d88f09decfb9c8be70902626236a92dec4578ee52d6b778f85b6ca2ab59868fc`.
+- One CREATE, AUTHORIZE, RESUME and COMPLETE; zero UNKNOWN outcomes; one session, one processing job, one output reservation and one output attempt.
+- Source size 478,196 bytes. Its independent AYIN chunk-root `cb4c9d221282c056fe9ad2ff587bba9d884461e202e8c34cb11bd766e73c3ab1` matches the retained processing-job proof.
+- The source-session digest is intentionally retired by source cleanup registration. Initial audit run 38012439051 blocked on an incorrect comparison to that retired digest and made zero provider requests; corrected readback run 38012667861 succeeded.
+- Canonical output: 521,854 bytes, independently read back with matching stored integrity digest and length. SHA256: `757b9f09ff9d1184d3a900bd94e4dedf2f1f78b015f24c6801c8c4f3fbce3569`.
+- Thumbnail: 19,136 bytes and present. Exact source HEAD returned 404. Channel quota counts the canonical SOURCE_VIDEO once: 521,854 bytes.
+- Two cleanup jobs DONE; one ALLOCATION PENDING after five INVALID_RESPONSE observations and a six-hour retry delay. No cleanup evidence was discarded or manually marked settled.
+
+[Readback 38012667861](https://github.com/eltx1/ayin/actions/runs/38012667861): four GET/HEAD requests, zero database writes/deletions. [Cleanup inspection 38012949948](https://github.com/eltx1/ayin/actions/runs/38012949948): zero provider requests/writes/deletions.
+
+## Proven defects and pending correction
+
+[PR 277](https://github.com/eltx1/ayin/pull/277), head `295c9bb4fc92f1a5df7be7435d3fa4e306549129`, fixes two actual blockers:
+
+1. Studio lacked Publish for the processed recoverable-upload draft. The patch uses existing processing/publish APIs, readiness and saved-details guards, rights confirmation, pending latching and uncertain-result protection; English and Arabic labels are included.
+2. R2 omitted empty KeyMarker and UploadIdMarker echoes from a valid empty initial multipart listing. The adapter required them and rejected it. [One-request observation 38013033007](https://github.com/eltx1/ayin/actions/runs/38013033007) confirmed HTTP 200, correct bucket/prefix/encoding, MaxUploads=1000, IsTruncated=false, zero Upload rows and absent empty markers. No provider XML or sensitive identifiers were logged. The patch only allows omitted empty initial markers; subsequent pages still require exact paired echoes.
+
+Local validation: 77 R2 observation tests (five new cases), 15 relevant web tests, targeted lint/format checks, web typecheck and production build with cached dependencies. Pinned-dependency CI and two new browser journeys are pending. No corrective application version is yet verified live.
+
+The original activation/continuation journals remain intact. Local guarded tooling for a one-shot exact ALLOCATION retry and a later single cancellation fixture is prepared but not executed. Retry only advances the existing obligation's due time; it does not alter cleanup status/evidence or directly delete objects. Cancellation activation requires the completed predecessor's three cleanup obligations to be DONE.
+
+Still pending: deploy and live publication, channel appearance, normal cleanup settlement/debt release, separate cancellation with concrete cleanup confirmation. Actual offline interruption, interrupted PUT, multiple-part and byte-offset recovery remain unproven. Prior browser reload/reselection evidence is limited to a single uploaded part.
+
+## Earlier checkpoints (historical)
+
 # Authenticated R2 application canary: upload and reload recovery observed
 
 Latest checkpoint: 2026-10-10 UTC. This is partial live application acceptance; completion, processing and cleanup remain pending explicit owned-source deletion approval.
@@ -16,19 +47,19 @@ Production and main remained `ab8355f3c45e5208ef9fe6477666b8f834c231b4`. No appl
 - The available browser API has no documented offline/fault-injection control. Actual network disconnection, stopping an in-flight PUT, multiple-part recovery and byte-offset recovery were not established.
 - [Pre-reload accounting 38008213392](https://github.com/eltx1/ayin/actions/runs/38008213392) and [verified closure 38008331587](https://github.com/eltx1/ayin/actions/runs/38008331587) independently observed the same source session with the following counters.
 
-| Measurement | Before reload | After reload/reselect/resume |
-| --- | ---: | ---: |
-| V2/channel sessions | 1 / 1 | 1 / 1 |
-| CREATE operations | 1 | 1 |
-| AUTHORIZE operations / grant reservations | 1 / 1 | 1 / 1 |
-| RESUME operations | 0 | 1 |
-| COMPLETE operations | 0 | 0 |
-| UNKNOWN provider outcomes | 0 | 0 |
-| Source declared / quota-counted bytes | 478,196 | 478,196 |
-| Output envelope reservations | 1 | 1 |
-| Output envelope bytes | 33,554,432 | 33,554,432 |
-| Conservative source exposure bytes | 5,368,709,120 | 5,368,709,120 |
-| Processing / cleanup jobs for fixture | 0 / 0 | 0 / 0 |
+| Measurement                               | Before reload | After reload/reselect/resume |
+| ----------------------------------------- | ------------: | ---------------------------: |
+| V2/channel sessions                       |         1 / 1 |                        1 / 1 |
+| CREATE operations                         |             1 |                            1 |
+| AUTHORIZE operations / grant reservations |         1 / 1 |                        1 / 1 |
+| RESUME operations                         |             0 |                            1 |
+| COMPLETE operations                       |             0 |                            0 |
+| UNKNOWN provider outcomes                 |             0 |                            0 |
+| Source declared / quota-counted bytes     |       478,196 |                      478,196 |
+| Output envelope reservations              |             1 |                            1 |
+| Output envelope bytes                     |    33,554,432 |                   33,554,432 |
+| Conservative source exposure bytes        | 5,368,709,120 |                5,368,709,120 |
+| Processing / cleanup jobs for fixture     |         0 / 0 |                        0 / 0 |
 
 Session fingerprint (SHA256 of internal session ID):
 `d88f09decfb9c8be70902626236a92dec4578ee52d6b778f85b6ca2ab59868fc`.
