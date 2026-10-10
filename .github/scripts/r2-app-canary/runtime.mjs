@@ -166,10 +166,12 @@ async function execute(mode) {
     currentText,
     values,
     predecessorText,
+    verifiedFixture,
+    providerEnv,
     client;
   const report = { mode, releaseSha: SHA, providerRequests: 0, deletions: 0, databaseWrites: 0 };
   try {
-    check(["enable", "resume", "disable", "inspect"].includes(mode), "MODE_INVALID");
+    check(["enable", "resume", "disable", "inspect", "verify"].includes(mode), "MODE_INVALID");
     check(process.env.USER === "ayin" && process.env.HOME === "/home/ayin", "HOST_IDENTITY");
     const root = fs.realpathSync(CURRENT);
     check(root.startsWith("/home/ayin/htdocs/releases/"), "RELEASE_PATH");
@@ -187,6 +189,7 @@ async function execute(mode) {
     const require = createRequire(`${root}/deploy/env-file.cjs`);
     const { parseEnvText } = require(`${root}/deploy/env-file.cjs`);
     const env = parseEnvText(currentText);
+    providerEnv = env;
     const moduleAt = (rel) => import(pathToFileURL(`${root}/apps/api/dist/${rel}.js`).href);
     const [{ loadMediaStorageConfig }, canary, admission, { platformSettingCatalog: catalog }] =
       await Promise.all([
@@ -367,6 +370,50 @@ async function execute(mode) {
         }
         report.allocationRecorded = row.allocationRecorded;
         report.cleanupRequested = row.cleanupRequested;
+        if (mode === "verify") {
+          check(
+            report.sessionFingerprint ===
+              "d88f09decfb9c8be70902626236a92dec4578ee52d6b778f85b6ca2ab59868fc",
+            "FIXTURE_CHANGED",
+          );
+          const detail = (
+            await client.query(
+              `SELECT s."objectKey", s."providerUploadId", s."contentIdentityDigest",
+            j.id AS "jobId", j.status AS "jobStatus", j."inputVerifiedAt", j."outputVerifiedAt",
+            j."inputIntegrityDigest", j."outputIntegrityDigest", j."outputIntegritySizeBytes"::text AS "outputBytes",
+            j."outputR2ObjectKey", j.attempt, a."thumbnailR2ObjectKey", v.status AS "videoStatus",
+            (SELECT COUNT(*)::int FROM "MediaProcessingOutputAttempt" a2 WHERE a2."processingJobId"=j.id) AS "outputAttempts",
+            (SELECT COUNT(*)::int FROM "MediaProcessingOutputWrite" w WHERE w."processingJobId"=j.id) AS "outputWrites",
+            (SELECT COUNT(*)::int FROM "MediaProcessingOutputWrite" w WHERE w."processingJobId"=j.id AND w.status <> 'ACKNOWLEDGED') AS "unacknowledgedWrites",
+            (SELECT COUNT(*)::int FROM "PrivacyMediaDeletionJob" d WHERE d."uploadSessionId"=s.id AND d.status='DONE') AS "cleanupDone",
+            (SELECT COUNT(*)::int FROM "PrivacyMediaDeletionJob" d WHERE d."uploadSessionId"=s.id AND d.status <> 'DONE') AS "cleanupPending"
+            FROM "MediaUploadSession" s JOIN "MediaProcessingJob" j ON j."inputIntegritySessionId"=s.id
+            JOIN "MediaProcessingOutputAttempt" a ON a.id=j."currentOutputAttemptId"
+            JOIN "Video" v ON v.id=s."videoId" WHERE s.id=$1::uuid`,
+              [row.id],
+            )
+          ).rows;
+          check(detail.length === 1, "FIXTURE_JOB_COUNT");
+          verifiedFixture = detail[0];
+          report.jobStatus = verifiedFixture.jobStatus;
+          report.videoStatus = verifiedFixture.videoStatus;
+          report.inputVerified = !!verifiedFixture.inputVerifiedAt;
+          report.outputVerified = !!verifiedFixture.outputVerifiedAt;
+          report.inputMatchesFixture =
+            verifiedFixture.inputIntegrityDigest ===
+              "cb4c9d221282c056fe9ad2ff587bba9d884461e202e8c34cb11bd766e73c3ab1" &&
+            verifiedFixture.contentIdentityDigest === verifiedFixture.inputIntegrityDigest;
+          for (const key of [
+            "attempt",
+            "outputBytes",
+            "outputAttempts",
+            "outputWrites",
+            "unacknowledgedWrites",
+            "cleanupDone",
+            "cleanupPending",
+          ])
+            report[key] = Number(verifiedFixture[key]);
+        }
       }
     }
     if (["enable", "resume"].includes(mode)) {
@@ -441,10 +488,72 @@ async function execute(mode) {
     await client.end();
     client = null;
     check(fs.realpathSync(CURRENT) === root, "RELEASE_CHANGED");
-    if (mode === "inspect") {
+    if (mode === "inspect" || mode === "verify") {
       report.newIssuanceAfter = report.newIssuanceBefore;
       for (const name of ["ayin-api", "ayin-media-worker"])
         live(name, { ...values, [prefix + "V2_ENABLED"]: env[prefix + "V2_ENABLED"] });
+      if (mode === "verify") {
+        check(
+          verifiedFixture &&
+            report.jobStatus === "READY" &&
+            report.inputMatchesFixture &&
+            report.inputVerified &&
+            report.outputVerified,
+          "FIXTURE_NOT_READY",
+        );
+        const { R2MediaStorageAdapter } = await moduleAt("media/r2-media-storage.adapter");
+        const { R2HttpError } = await moduleAt("media/r2-sigv4");
+        const { hashUploadFileIdentity } = await import(
+          pathToFileURL(`${root}/packages/types/dist/upload-file-identity.js`).href
+        );
+        const adapter = new R2MediaStorageAdapter(loadMediaStorageConfig(providerEnv));
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = async (url, init) => {
+          check(
+            ["GET", "HEAD"].includes(init?.method) && report.providerRequests < 6,
+            "READ_ONLY_PROVIDER_LIMIT",
+          );
+          report.providerRequests++;
+          return originalFetch(url, {
+            ...init,
+            signal: AbortSignal.any([
+              AbortSignal.timeout(15000),
+              ...(init.signal ? [init.signal] : []),
+            ]),
+          });
+        };
+        try {
+          try {
+            await adapter.headObject(verifiedFixture.objectKey);
+            report.sourceAbsent = false;
+          } catch (error) {
+            check(
+              error instanceof R2HttpError && error.status === 404,
+              "SOURCE_OBSERVATION_FAILED",
+            );
+            report.sourceAbsent = true;
+          }
+          const bytes = await adapter.readObject(verifiedFixture.outputR2ObjectKey, 33554432);
+          const identity = await hashUploadFileIdentity(
+            (async function* () {
+              yield bytes;
+            })(),
+            bytes.length,
+          );
+          check(
+            identity.rootSha256 === verifiedFixture.outputIntegrityDigest &&
+              bytes.length === report.outputBytes,
+            "OUTPUT_READBACK_MISMATCH",
+          );
+          report.outputReadbackMatches = true;
+          report.outputSha256 = digest(bytes);
+          const thumbnail = await adapter.headObject(verifiedFixture.thumbnailR2ObjectKey);
+          report.thumbnailBytes = thumbnail.sizeBytes;
+          report.thumbnailPresent = thumbnail.sizeBytes > 0;
+        } finally {
+          globalThis.fetch = originalFetch;
+        }
+      }
     } else {
       stage = "CONFIG_WRITE";
       const desired = patchEnv(currentText, values),

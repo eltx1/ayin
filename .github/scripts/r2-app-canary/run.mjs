@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 const mode = process.argv[2];
-if (!["enable", "resume", "disable", "inspect"].includes(mode))
+if (!["enable", "resume", "disable", "inspect", "verify"].includes(mode))
   throw new Error("Explicit canary mode required");
 const dir = dirname(fileURLToPath(import.meta.url));
 const key = join(homedir(), ".ssh/id_ed25519");
@@ -91,7 +91,14 @@ const safe = Object.entries(proof).every(
       (typeof value === "number" && Number.isSafeInteger(value)) ||
       (typeof value === "string" && /^[a-zA-Z0-9_]{1,70}$/.test(value))),
 );
-if (!safe || proof.providerRequests !== 0 || proof.deletions !== 0 || proof.databaseWrites !== 0)
+if (
+  !safe ||
+  (mode === "verify"
+    ? proof.providerRequests < 0 || proof.providerRequests > 6
+    : proof.providerRequests !== 0) ||
+  proof.deletions !== 0 ||
+  proof.databaseWrites !== 0
+)
   throw new Error("Unexpected result; inspect before continuing");
 process.stdout.write(JSON.stringify(proof, null, 2) + "\n");
 if (result.status !== 0 || proof.status !== "VERIFIED") process.exitCode = 2;
