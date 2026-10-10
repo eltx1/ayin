@@ -370,6 +370,22 @@ async function execute(mode) {
         }
         report.allocationRecorded = row.allocationRecorded;
         report.cleanupRequested = row.cleanupRequested;
+        const outstanding = (
+          await client.query(
+            `SELECT kind, status, attempts,
+          CEIL(EXTRACT(EPOCH FROM ("availableAt" - NOW())))::int AS "nextSeconds"
+          FROM "PrivacyMediaDeletionJob" WHERE "uploadSessionId"=$1::uuid AND status <> 'DONE'
+          ORDER BY "createdAt" LIMIT 4`,
+            [row.id],
+          )
+        ).rows;
+        report.cleanupOutstandingCount = outstanding.length;
+        if (outstanding.length === 1) {
+          report.cleanupOutstandingKind = outstanding[0].kind;
+          report.cleanupOutstandingStatus = outstanding[0].status;
+          report.cleanupAttempts = outstanding[0].attempts;
+          report.cleanupNextSeconds = outstanding[0].nextSeconds;
+        }
         if (mode === "verify") {
           check(
             report.sessionFingerprint ===
@@ -401,7 +417,7 @@ async function execute(mode) {
           report.outputVerified = !!verifiedFixture.outputVerifiedAt;
           report.inputMatchesFixture =
             verifiedFixture.inputIntegrityDigest ===
-              "cb4c9d221282c056fe9ad2ff587bba9d884461e202e8c34cb11bd766e73c3ab1";
+            "cb4c9d221282c056fe9ad2ff587bba9d884461e202e8c34cb11bd766e73c3ab1";
           // READY transfers the identity proof to the job and retires the
           // upload-session digest when source cleanup is registered.
           report.sessionDigestRetired =
