@@ -322,6 +322,53 @@ async function execute(mode) {
     ).rows[0];
     Object.assign(report, counts);
     await readTx.mediaAsset.aggregate();
+    if (report.channelSessionCount === 1) {
+      const rows = (
+        await client.query(
+          `SELECT s.id, s.state, s.revision, s."sourceProtocolVersion",
+        s."sizeBytes"::text AS "sizeBytes", s."grantReservationCount",
+        s."providerExposureBytes"::text AS "sourceExposureBytes",
+        s."providerUploadId" IS NOT NULL AS "allocationRecorded",
+        s."cleanupRequestedAt" IS NOT NULL AS "cleanupRequested",
+        (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind='CREATE') AS "createOperations",
+        (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind='AUTHORIZE') AS "authorizeOperations",
+        (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind='RESUME') AS "resumeOperations",
+        (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind='COMPLETE') AS "completeOperations",
+        (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o."providerOutcome"='UNKNOWN') AS "unknownOperations",
+        (SELECT COUNT(*)::int FROM "MediaProcessingJob" j WHERE j."videoId"=s."videoId") AS "fixtureProcessingJobs",
+        (SELECT COUNT(*)::int FROM "PrivacyMediaDeletionJob" d WHERE d."uploadSessionId"=s.id) AS "fixtureCleanupJobs",
+        (SELECT COALESCE(SUM(r."envelopeBytes"),0)::text FROM "MediaProcessingOutputReservation" r WHERE r."uploadSessionId"=s.id) AS "fixtureOutputReservedBytes"
+        FROM "MediaUploadSession" s WHERE s."channelId"=$1::uuid AND s."initiatingAccountId"=$2::uuid
+          AND s."sourceProtocolVersion"=2`,
+          [channelId, accountId],
+        )
+      ).rows;
+      if (rows.length === 1) {
+        const row = rows[0];
+        report.sessionFingerprint = digest(row.id);
+        report.sessionState = row.state;
+        for (const key of [
+          "revision",
+          "sourceProtocolVersion",
+          "sizeBytes",
+          "grantReservationCount",
+          "sourceExposureBytes",
+          "createOperations",
+          "authorizeOperations",
+          "resumeOperations",
+          "completeOperations",
+          "unknownOperations",
+          "fixtureProcessingJobs",
+          "fixtureCleanupJobs",
+          "fixtureOutputReservedBytes",
+        ]) {
+          check(row[key] !== null && Number.isSafeInteger(Number(row[key])), "SNAPSHOT_INVALID");
+          report[key] = Number(row[key]);
+        }
+        report.allocationRecorded = row.allocationRecorded;
+        report.cleanupRequested = row.cleanupRequested;
+      }
+    }
     if (["enable", "resume"].includes(mode)) {
       if (mode === "enable") {
         check(

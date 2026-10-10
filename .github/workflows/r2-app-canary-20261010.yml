@@ -24,7 +24,7 @@ jobs:
       name: production
       deployment: false
     env:
-      CANARY_MODE: resume
+      CANARY_MODE: inspect
       DEPLOY_HOST: 13.52.116.200
       SSH_PORT: "22"
       PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
