@@ -40,7 +40,7 @@ const fingerprint =
     .replace(/=+$/, "");
 if (fingerprint !== "SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y")
   throw new Error("Pinned identity mismatch");
-const remote = `set -eu; test "$(whoami)" = ayin; test "$HOME" = /home/ayin; cd /home/ayin/htdocs/current; test "$(git rev-parse HEAD)" = ab8355f3c45e5208ef9fe6477666b8f834c231b4; exec flock -w 5 /home/ayin/.deploy.lock timeout --kill-after=5s 250s node --input-type=module - ${mode}`;
+const remote = `set -eu; test "$(whoami)" = ayin; test "$HOME" = /home/ayin; cd /home/ayin/htdocs/current; test "$(git rev-parse HEAD)" = 8badd33265e09662c6727f7c8d454cf50f99719c; exec flock -w 5 /home/ayin/.deploy.lock timeout --kill-after=5s 250s node --input-type=module - ${mode}`;
 const result = spawnSync(
   "ssh",
   [

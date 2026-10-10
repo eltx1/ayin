@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-const SHA = "ab8355f3c45e5208ef9fe6477666b8f834c231b4";
+const SHA = "8badd33265e09662c6727f7c8d454cf50f99719c";
 const INITIAL_SHA = "ab8355f3c45e5208ef9fe6477666b8f834c231b4";
 const EMAIL_HASH = "cf5d0dadb387594ca389641b3f17371712c6d27dca8e0a33e2e6c0f3177beb6d";
 const CURRENT = "/home/ayin/htdocs/current";
@@ -405,11 +405,12 @@ async function execute(mode) {
         channel: 5402263552,
       });
     }
-    if (report.channelSessionCount === 1) {
+    if (report.channelSessionCount >= 1 && report.channelSessionCount <= 2) {
       const rows = (
         await client.query(
           `SELECT s.id, s.state, s.revision, s."sourceProtocolVersion",
         s."sizeBytes"::text AS "sizeBytes", s."grantReservationCount",
+        GREATEST(0, CEIL(EXTRACT(EPOCH FROM (s."lastGrantExpiresAt"-NOW()))))::int AS "grantWaitSeconds",
         s."providerExposureBytes"::text AS "sourceExposureBytes",
         s."providerUploadId" IS NOT NULL AS "allocationRecorded",
         s."cleanupRequestedAt" IS NOT NULL AS "cleanupRequested",
@@ -417,12 +418,13 @@ async function execute(mode) {
         (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind='AUTHORIZE') AS "authorizeOperations",
         (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind='RESUME') AS "resumeOperations",
         (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind='COMPLETE') AS "completeOperations",
+        (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind='CANCEL') AS "cancelOperations",
         (SELECT COUNT(*)::int FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o."providerOutcome"='UNKNOWN') AS "unknownOperations",
         (SELECT COUNT(*)::int FROM "MediaProcessingJob" j WHERE j."videoId"=s."videoId") AS "fixtureProcessingJobs",
         (SELECT COUNT(*)::int FROM "PrivacyMediaDeletionJob" d WHERE d."uploadSessionId"=s.id) AS "fixtureCleanupJobs",
         (SELECT COALESCE(SUM(r."envelopeBytes"),0)::text FROM "MediaProcessingOutputReservation" r WHERE r."uploadSessionId"=s.id) AS "fixtureOutputReservedBytes"
         FROM "MediaUploadSession" s WHERE s."channelId"=$1::uuid AND s."initiatingAccountId"=$2::uuid
-          AND s."sourceProtocolVersion"=2`,
+          AND s."sourceProtocolVersion"=2 ORDER BY s."createdAt" DESC LIMIT 1`,
           [channelId, accountId],
         )
       ).rows;
@@ -435,11 +437,13 @@ async function execute(mode) {
           "sourceProtocolVersion",
           "sizeBytes",
           "grantReservationCount",
+          "grantWaitSeconds",
           "sourceExposureBytes",
           "createOperations",
           "authorizeOperations",
           "resumeOperations",
           "completeOperations",
+          "cancelOperations",
           "unknownOperations",
           "fixtureProcessingJobs",
           "fixtureCleanupJobs",
