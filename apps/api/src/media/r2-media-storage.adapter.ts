@@ -506,8 +506,10 @@ export class R2MediaStorageAdapter implements MediaStorageAdapter {
           xmlField(root, "Bucket") !== this.config.bucket ||
           xmlField(root, "EncodingType") !== "url" ||
           decodedKey(xmlField(root, "Prefix"), true) !== prefix ||
-          decodedKey(xmlField(root, "KeyMarker"), true) !== keyMarker ||
-          xmlField(root, "UploadIdMarker") !== uploadMarker
+          // R2 omits empty request-marker echoes on the first page. Later
+          // pages must still echo both exact cursors; absence is not evidence.
+          decodedKey(xmlField(root, "KeyMarker", keyMarker !== "") ?? "", true) !== keyMarker ||
+          (xmlField(root, "UploadIdMarker", uploadMarker !== "") ?? "") !== uploadMarker
         )
           throw new R2XmlError();
         const limit = integerField(root, "MaxUploads", 1, LIST_PAGE_SIZE);

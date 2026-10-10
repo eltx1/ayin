@@ -55,6 +55,16 @@ export const contentEditorEn = {
   "content.save": "Save changes",
   "content.saving": "Saving…",
   "content.saved": "Your changes were saved. The library is being refreshed.",
+  "content.publish": "Publish video",
+  "content.publicationSaved": "Publication was confirmed. Your videos are being refreshed.",
+  "content.readyToPublish": "Your video is ready to publish.",
+  "content.checkingProcessing": "Checking whether your video is ready…",
+  "content.processingNotReady":
+    "Your video is not ready to publish yet. Check again after uploading and processing finish.",
+  "content.processingCheckError": "We could not check whether your video is ready. Try again.",
+  "content.checkProcessing": "Check processing status",
+  "content.confirmPublish":
+    "Publish “{title}” with its saved visibility and schedule? By publishing, you confirm that you own this video or have all rights and permissions required to publish it.",
   "content.unpublish": "Unpublish",
   "content.unpublished": "The video was unpublished. The library is being refreshed.",
   "content.remove": "Remove video",
@@ -71,7 +81,8 @@ export const contentEditorEn = {
   "content.metadataError": "Check the advanced fields before saving.",
   "content.readOnly": "This video is removed and cannot be edited here.",
   "content.advancedHint": "Optional. Existing metadata and chapter controls remain available here.",
-  "content.saveFirst": "Save or discard your changes before unpublishing or removing a video.",
+  "content.saveFirst":
+    "Save or discard your changes before publishing, unpublishing or removing a video.",
   "content.captionLeave": "Discard the selected caption file and leave this editor?",
 } as const;
 
@@ -131,6 +142,16 @@ export const contentEditorAr: Record<keyof typeof contentEditorEn, string> = {
   "content.save": "حفظ التغييرات",
   "content.saving": "جارٍ الحفظ…",
   "content.saved": "تم حفظ التغييرات. جارٍ تحديث المكتبة.",
+  "content.publish": "نشر الفيديو",
+  "content.publicationSaved": "تم تأكيد النشر. جارٍ تحديث فيديوهاتك.",
+  "content.readyToPublish": "الفيديو جاهز للنشر.",
+  "content.checkingProcessing": "جارٍ التحقق من جاهزية الفيديو…",
+  "content.processingNotReady":
+    "الفيديو غير جاهز للنشر بعد. تحقق مجددًا بعد اكتمال الرفع والمعالجة.",
+  "content.processingCheckError": "تعذر التحقق من جاهزية الفيديو. أعد المحاولة.",
+  "content.checkProcessing": "التحقق من حالة المعالجة",
+  "content.confirmPublish":
+    "هل تريد نشر «{title}» بإعدادات الخصوصية والجدولة المحفوظة؟ بالنشر، تؤكد أنك تملك الفيديو أو لديك جميع الحقوق والأذونات اللازمة لنشره.",
   "content.unpublish": "إلغاء النشر",
   "content.unpublished": "تم إلغاء نشر الفيديو. جارٍ تحديث المكتبة.",
   "content.remove": "حذف الفيديو",
@@ -146,6 +167,6 @@ export const contentEditorAr: Record<keyof typeof contentEditorEn, string> = {
   "content.metadataError": "راجع الحقول المتقدمة قبل الحفظ.",
   "content.readOnly": "هذا الفيديو محذوف ولا يمكن تعديله هنا.",
   "content.advancedHint": "اختياري. بيانات الفيديو وأدوات تقسيم الفصول متاحة هنا.",
-  "content.saveFirst": "احفظ التغييرات أو تخلَّ عنها قبل إلغاء النشر أو حذف الفيديو.",
+  "content.saveFirst": "احفظ التغييرات أو تخلَّ عنها قبل نشر الفيديو أو إلغاء نشره أو حذفه.",
   "content.captionLeave": "هل تريد التخلي عن ملف الترجمة المحدد ومغادرة المحرر؟",
 };

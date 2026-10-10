@@ -29,11 +29,12 @@ import {
   type StudioVideo,
 } from "@/lib/studio";
 import type { ContentTranslationKey } from "@/lib/i18n/content-copy";
+import { getQuickProcessingStatus, publishQuickVideo } from "@/lib/quick-upload";
 
 import { StudioCaptionManager } from "./studio-caption-manager";
 import styles from "./studio-content.module.css";
 
-type ConfirmationIntent = "close" | "unpublish" | "remove" | { href: string };
+type ConfirmationIntent = "close" | "publish" | "unpublish" | "remove" | { href: string };
 
 export function StudioVideoEditor({
   video,
@@ -111,6 +112,26 @@ export function StudioVideoEditor({
   const dirty = JSON.stringify(draft) !== baseline;
   const disabled = busy || captionBusy || uncertain || video.status === "REMOVED";
   const heading = useRef<HTMLDivElement>(null);
+  const canPublish = ["DRAFT", "UPLOADING", "VALIDATING"].includes(video.status);
+  const [readiness, setReadiness] = useState<"checking" | "ready" | "waiting" | "error">(
+    "checking",
+  );
+  const [readinessCheck, setReadinessCheck] = useState(0);
+
+  useEffect(() => {
+    if (!canPublish || captionConcealed) return;
+    const controller = new AbortController();
+    void getQuickProcessingStatus(video.id, controller.signal).then(
+      (result) => {
+        if (!controller.signal.aborted && !captionScopeClosed.current)
+          setReadiness(result.ready ? "ready" : "waiting");
+      },
+      () => {
+        if (!controller.signal.aborted && !captionScopeClosed.current) setReadiness("error");
+      },
+    );
+    return () => controller.abort();
+  }, [video.id, canPublish, captionConcealed, readinessCheck]);
 
   const captionActivity = useCallback((value: boolean) => {
     captionPending.current = value;
@@ -236,7 +257,7 @@ export function StudioVideoEditor({
     setError(null);
   }
 
-  async function commit(kind: "save" | "unpublish" | "remove") {
+  async function commit(kind: "save" | "publish" | "unpublish" | "remove") {
     if (
       pending.current ||
       captionPending.current ||
@@ -259,11 +280,13 @@ export function StudioVideoEditor({
     } else {
       if (dirty || captionDraft) return;
     }
+    if (kind === "publish" && (!canPublish || readiness !== "ready")) return;
     pending.current = true;
     setBusy(true);
     setError(null);
     try {
       if (kind === "save") await updateStudioVideo(video.id, payload!);
+      else if (kind === "publish") await publishQuickVideo(video.id, { rightsConfirmed: true });
       else if (kind === "unpublish") await unpublishStudioVideo(video.id);
       else await removeStudioVideo(video.id);
       if (!mounted.current || captionScopeClosed.current || captionReview.current) return;
@@ -273,7 +296,9 @@ export function StudioVideoEditor({
           ? "content.saved"
           : kind === "remove"
             ? "content.deleted"
-            : "content.unpublished",
+            : kind === "publish"
+              ? "content.publicationSaved"
+              : "content.unpublished",
       );
     } catch {
       // The existing controller applies basic/advanced changes in two stages. Even
@@ -430,6 +455,33 @@ export function StudioVideoEditor({
           },
         ]}
       />
+      {canPublish && !captionConcealed ? (
+        <div data-caption-parent-private>
+          <StatusNotice tone={readiness === "error" ? "warning" : "info"}>
+            {t(
+              readiness === "ready"
+                ? "content.readyToPublish"
+                : readiness === "checking"
+                  ? "content.checkingProcessing"
+                  : readiness === "error"
+                    ? "content.processingCheckError"
+                    : "content.processingNotReady",
+            )}
+          </StatusNotice>
+          {readiness !== "ready" ? (
+            <ActionButton
+              tone="secondary"
+              disabled={disabled || readiness === "checking" || captionReviewRequired}
+              onClick={() => {
+                setReadiness("checking");
+                setReadinessCheck((value) => value + 1);
+              }}
+            >
+              {t("content.checkProcessing")}
+            </ActionButton>
+          ) : null}
+        </div>
+      ) : null}
       <div className={styles.actions} data-caption-parent-private hidden={captionConcealed}>
         <ActionButton
           disabled={disabled || !dirty || captionDraft}
@@ -438,6 +490,16 @@ export function StudioVideoEditor({
         >
           {t(busy ? "content.saving" : "content.save")}
         </ActionButton>
+        {canPublish ? (
+          <ActionButton
+            disabled={
+              disabled || dirty || captionDraft || captionReviewRequired || readiness !== "ready"
+            }
+            onClick={() => ask("publish")}
+          >
+            {t("content.publish")}
+          </ActionButton>
+        ) : null}
         {video.status === "PUBLISHED" ? (
           <ActionButton
             tone="secondary"
@@ -465,14 +527,18 @@ export function StudioVideoEditor({
             ? "content.remove"
             : confirmation === "unpublish"
               ? "content.unpublish"
-              : "content.leaveTitle",
+              : confirmation === "publish"
+                ? "content.publish"
+                : "content.leaveTitle",
         )}
         description={t(
           confirmation === "remove"
             ? "content.confirmRemove"
             : confirmation === "unpublish"
               ? "content.confirmUnpublish"
-              : "content.discard",
+              : confirmation === "publish"
+                ? "content.confirmPublish"
+                : "content.discard",
           { title: video.title },
         )}
         confirmLabel={t(
@@ -480,7 +546,9 @@ export function StudioVideoEditor({
             ? "content.remove"
             : confirmation === "unpublish"
               ? "content.unpublish"
-              : "content.leaveConfirm",
+              : confirmation === "publish"
+                ? "content.publish"
+                : "content.leaveConfirm",
         )}
         cancelLabel={t("content.keepEditing")}
         onConfirm={acceptConfirmation}

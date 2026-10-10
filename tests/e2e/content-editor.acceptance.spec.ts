@@ -23,7 +23,7 @@ test.beforeEach(() => {
   });
 });
 
-async function seed(page: Page, publishFirst = false) {
+async function seed(page: Page, publishFirst = false, readyFirst = false) {
   const registration = await page.request.post(`${API}/auth/register`, {
     headers: { origin: WEB },
     data: {
@@ -41,7 +41,7 @@ async function seed(page: Page, publishFirst = false) {
       data: {
         channelId: identity.user.channel.id,
         title: `Editor video ${i}`,
-        sizeBytes: publishFirst && i === 0 ? 70 * 1024 * 1024 : 1024 * 1024,
+        sizeBytes: (publishFirst || readyFirst) && i === 0 ? 70 * 1024 * 1024 : 1024 * 1024,
         mimeType: "video/mp4",
         durationMs: 60_000,
       },
@@ -49,7 +49,7 @@ async function seed(page: Page, publishFirst = false) {
     expect(response.ok()).toBe(true);
     const draft = await response.json();
     ids.push(draft.video.id);
-    if (publishFirst && i === 0) {
+    if ((publishFirst || readyFirst) && i === 0) {
       const headers = { origin: WEB };
       const complete = await page.request.post(`${API}/media/uploads/sessions/complete`, {
         headers,
@@ -81,14 +81,15 @@ async function seed(page: Page, publishFirst = false) {
         ],
         { env: process.env },
       );
-      expect(
-        (
-          await page.request.post(`${API}/creator/videos/${draft.video.id}/publish`, {
-            headers,
-            data: { rightsConfirmed: true, title: `Editor video ${i}` },
-          })
-        ).ok(),
-      ).toBe(true);
+      if (publishFirst)
+        expect(
+          (
+            await page.request.post(`${API}/creator/videos/${draft.video.id}/publish`, {
+              headers,
+              data: { rightsConfirmed: true, title: `Editor video ${i}` },
+            })
+          ).ok(),
+        ).toBe(true);
     }
   }
   return ids;
@@ -564,4 +565,65 @@ test("confirmed navigation leaves once without saving or replaying link handlers
   await expect(page).toHaveURL(/\/upload$/);
   await expect(page.getByRole("heading", { name: "Upload a video" })).toBeVisible();
   expect(writes).toBe(0);
+});
+
+test("Studio publishes a ready upload only after saved details and explicit rights confirmation", async ({
+  page,
+}) => {
+  const ids = await seed(page, false, true);
+  let publications = 0;
+  page.on("request", (req) => {
+    if (req.method() === "POST" && req.url() === `${API}/creator/videos/${ids[0]}/publish`) {
+      publications++;
+      expect(req.postDataJSON()).toEqual({ rightsConfirmed: true });
+    }
+  });
+  await page.goto("/studio/content?lang=en");
+  await openFirst(page);
+  const publish = page.getByRole("button", { name: "Publish video", exact: true });
+  await expect(publish).toBeEnabled();
+  await page.getByLabel("Title", { exact: true }).fill("Unsaved title");
+  await expect(publish).toBeDisabled();
+  await page.getByLabel("Title", { exact: true }).fill("Editor video 0");
+  await publish.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("all rights and permissions");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(publications).toBe(0);
+  await publish.click();
+  await dialog.getByRole("button", { name: "Publish video", exact: true }).click();
+  await expect(page.getByRole("row", { name: /Editor video 0/ })).toContainText("Published");
+  expect(publications).toBe(1);
+});
+
+test("Studio blocks unfinished uploads and does not replay an uncertain publication", async ({
+  page,
+}) => {
+  const ids = await seed(page, false, true);
+  await page.goto("/studio/content?lang=en");
+  await openFirst(page, "Editor video 1");
+  const publish = page.getByRole("button", { name: "Publish video", exact: true });
+  await expect(
+    page.getByText("Your video is not ready to publish yet.", { exact: false }),
+  ).toBeVisible();
+  await expect(publish).toBeDisabled();
+  await page.getByRole("button", { name: "Back to videos", exact: true }).click();
+  await openFirst(page);
+  let publications = 0;
+  await page.route(`${API}/creator/videos/${ids[0]}/publish`, async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    publications++;
+    await route.fulfill(failure);
+  });
+  await expect(publish).toBeEnabled();
+  await publish.click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Publish video", exact: true })
+    .click();
+  await expect(
+    page.getByText("We could not confirm the complete update.", { exact: false }),
+  ).toBeVisible();
+  await expect(publish).toBeDisabled();
+  expect(publications).toBe(1);
 });
