@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 const mode = process.argv[2];
-if (!["enable", "disable", "inspect"].includes(mode))
+if (!["enable", "resume", "disable", "inspect"].includes(mode))
   throw new Error("Explicit canary mode required");
 const dir = dirname(fileURLToPath(import.meta.url));
 const key = join(homedir(), ".ssh/id_ed25519");

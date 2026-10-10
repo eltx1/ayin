@@ -12,6 +12,7 @@ const CURRENT = "/home/ayin/htdocs/current";
 const ENV = "/home/ayin/env/api.env";
 const JOURNAL = "/home/ayin/env/r2-app-canary-20261010.json";
 const BACKUP = "/home/ayin/env/r2-app-canary-20261010.env.backup";
+const RESUME_JOURNAL = "/home/ayin/env/r2-app-canary-20261010.resume-1.json";
 const prefix = "AYIN_UPLOAD_RECOVERY_";
 const bounds = {
   CANARY_SOURCE_MAX_BYTES: "1048576",
@@ -35,6 +36,28 @@ export function patchEnv(text, values) {
   });
   for (const key of keys) if (!seen.has(key)) lines.push(`${key}=${values[key]}`);
   return lines.join("\n").replace(/\n*$/, "\n");
+}
+export function validateResume(journal, backupText, currentText, values, exists) {
+  check(!exists, "RESUME_ALREADY_RESERVED");
+  check(journal.releaseSha === SHA && journal.cleanupApproved === false, "PREDECESSOR_INVALID");
+  check(
+    journal.accountId === values[prefix + "CANARY_ACCOUNT_ID"] &&
+      journal.channelId === values[prefix + "CANARY_CHANNEL_ID"],
+    "PREDECESSOR_SCOPE",
+  );
+  check(
+    Object.entries(bounds).every(([key, value]) => journal.approvedBounds?.[key] === value),
+    "PREDECESSOR_BOUNDS",
+  );
+  check(
+    journal.fixtureBytes === 478196 &&
+      journal.fixtureSha256 === "184bb9e5d9ad3218af8c4f4552558c24c506d166c293dbbc83becd810e4db98c",
+    "PREDECESSOR_FIXTURE",
+  );
+  check(digest(backupText) === journal.originalEnvSha256, "BACKUP_CHANGED");
+  const enabled = patchEnv(backupText, values);
+  check(digest(enabled) === journal.enabledEnvSha256, "PREDECESSOR_CONFIG");
+  check(currentText === patchEnv(enabled, { [prefix + "V2_ENABLED"]: "0" }), "CLOSURE_CHANGED");
 }
 function privateFile(file) {
   const st = fs.lstatSync(file);
@@ -142,10 +165,11 @@ async function execute(mode) {
     changed = false,
     currentText,
     values,
+    predecessorText,
     client;
   const report = { mode, releaseSha: SHA, providerRequests: 0, deletions: 0, databaseWrites: 0 };
   try {
-    check(["enable", "disable", "inspect"].includes(mode), "MODE_INVALID");
+    check(["enable", "resume", "disable", "inspect"].includes(mode), "MODE_INVALID");
     check(process.env.USER === "ayin" && process.env.HOME === "/home/ayin", "HOST_IDENTITY");
     const root = fs.realpathSync(CURRENT);
     check(root.startsWith("/home/ayin/htdocs/releases/"), "RELEASE_PATH");
@@ -199,7 +223,7 @@ async function execute(mode) {
     const { accountId, channelId } = owner[0];
     values = Object.fromEntries(
       Object.entries({
-        V2_ENABLED: mode === "enable" ? "1" : "0",
+        V2_ENABLED: ["enable", "resume"].includes(mode) ? "1" : "0",
         CANARY_ACCOUNT_ID: accountId,
         CANARY_CHANNEL_ID: channelId,
         ...bounds,
@@ -245,7 +269,25 @@ async function execute(mode) {
             !/\b(INSERT|UPDATE|DELETE|CALL|COPY|pg_\w*lock)\b/i.test(sql),
           "READ_ONLY_QUERY_REQUIRED",
         );
-        return (await client.query(sql, params)).rows;
+        const rows = (await client.query(sql, params)).rows;
+        if (rows.length === 1) {
+          for (const key of [
+            "activeAccount",
+            "activeChannel",
+            "retainedDebtAccount",
+            "retainedDebtChannel",
+            "uncertainAccount",
+            "uncertainChannel",
+            "accountBytes",
+            "channelBytes",
+            "unaccounted",
+          ])
+            if (typeof rows[0][key] === "bigint") {
+              check(Number.isSafeInteger(Number(rows[0][key])), "COUNT_TOO_LARGE");
+              report[key] = Number(rows[0][key]);
+            }
+        }
+        return rows;
       },
       mediaAsset: {
         aggregate: async () => {
@@ -267,13 +309,47 @@ async function execute(mode) {
     };
     report.channelQuotaBytes = setting("uploadChannelQuotaBytes");
     report.newIssuanceBefore = loadMediaStorageConfig(env).recoveryV2Enabled;
-    if (mode === "enable") {
-      check(
-        !report.newIssuanceBefore && !fs.existsSync(JOURNAL) && !fs.existsSync(BACKUP),
-        "ALREADY_ACTIVATED",
-      );
-      for (const key of Object.keys(values))
-        check(env[key] === undefined || env[key] === "0", "CONFIG_ALREADY_SCOPED");
+    const counts = (
+      await client.query(
+        `SELECT
+      (SELECT COUNT(*)::int FROM "MediaUploadSession" WHERE "sourceProtocolVersion"=2) AS "v2SessionCount",
+      (SELECT COUNT(*)::int FROM "MediaUploadSession" WHERE "channelId"=$1::uuid) AS "channelSessionCount",
+      (SELECT COUNT(*)::int FROM "MediaProcessingOutputReservation" WHERE "channelId"=$1::uuid) AS "outputReservationCount",
+      (SELECT COUNT(*)::int FROM "MediaProcessingJob" WHERE status IN
+        ('PROCESSING','UPLOADING','VERIFYING','QUEUED','INTEGRITY_QUEUED','INGESTING')) AS "activeProcessingJobs"`,
+        [channelId],
+      )
+    ).rows[0];
+    Object.assign(report, counts);
+    await readTx.mediaAsset.aggregate();
+    if (["enable", "resume"].includes(mode)) {
+      if (mode === "enable") {
+        check(
+          !report.newIssuanceBefore && !fs.existsSync(JOURNAL) && !fs.existsSync(BACKUP),
+          "ALREADY_ACTIVATED",
+        );
+        for (const key of Object.keys(values))
+          check(env[key] === undefined || env[key] === "0", "CONFIG_ALREADY_SCOPED");
+      } else {
+        check(!report.newIssuanceBefore, "PREVIOUS_NOT_CLOSED");
+        privateFile(JOURNAL);
+        privateFile(BACKUP);
+        predecessorText = fs.readFileSync(JOURNAL, "utf8");
+        validateResume(
+          JSON.parse(predecessorText),
+          fs.readFileSync(BACKUP, "utf8"),
+          currentText,
+          values,
+          fs.existsSync(RESUME_JOURNAL),
+        );
+        check(
+          report.v2SessionCount === 0 && report.outputReservationCount === 0,
+          "PREVIOUS_WORK_EXISTS",
+        );
+        for (const name of ["ayin-api", "ayin-media-worker"])
+          live(name, { ...values, [prefix + "V2_ENABLED"]: "0" });
+        report.previousClosureVerified = true;
+      }
       await canary.assertUploadCanarySlot(readTx);
       await admission.assertUploadSessionCapacity(readTx, accountId, channelId);
       await admission.assertUploadDebtByteCapacity(
@@ -352,6 +428,35 @@ async function execute(mode) {
           ) + "\n",
         );
       }
+      if (mode === "resume") {
+        check(fs.readFileSync(JOURNAL, "utf8") === predecessorText, "PREDECESSOR_CHANGED");
+        exclusive(
+          RESUME_JOURNAL,
+          JSON.stringify(
+            {
+              releaseSha: SHA,
+              accountId,
+              channelId,
+              approvedBounds: bounds,
+              predecessorSha256: digest(predecessorText),
+              disabledEnvSha256: digest(currentText),
+              enabledEnvSha256: digest(desired),
+              startedAt: new Date().toISOString(),
+              cleanupApproved: false,
+              baseline: report,
+            },
+            null,
+            2,
+          ) + "\n",
+        );
+        const journalDir = fs.openSync("/home/ayin/env", "r");
+        try {
+          fs.fsyncSync(journalDir);
+        } finally {
+          fs.closeSync(journalDir);
+        }
+        report.resumeJournalReserved = true;
+      }
       replaceEnv(currentText, desired);
       currentText = desired;
       changed = true;
@@ -360,13 +465,13 @@ async function execute(mode) {
       stage = "VERIFY";
       await healthy();
       for (const name of ["ayin-api", "ayin-media-worker"]) live(name, values);
-      report.newIssuanceAfter = mode === "enable";
+      report.newIssuanceAfter = ["enable", "resume"].includes(mode);
       report.runtimeSettingsMatch = true;
     }
     output(JSON.stringify({ ...report, status: "VERIFIED" }) + "\n");
   } catch (error) {
     if (client) await client.end().catch(() => {});
-    if (changed && mode === "enable") {
+    if (changed && ["enable", "resume"].includes(mode)) {
       try {
         const disabled = patchEnv(currentText, { [prefix + "V2_ENABLED"]: "0" });
         replaceEnv(currentText, disabled);
