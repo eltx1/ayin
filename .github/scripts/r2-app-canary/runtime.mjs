@@ -372,7 +372,7 @@ async function execute(mode) {
         report.cleanupRequested = row.cleanupRequested;
         const outstanding = (
           await client.query(
-            `SELECT kind, status, attempts,
+            `SELECT kind, status, attempts, "lastError",
           CEIL(EXTRACT(EPOCH FROM ("availableAt" - NOW())))::int AS "nextSeconds"
           FROM "PrivacyMediaDeletionJob" WHERE "uploadSessionId"=$1::uuid AND status <> 'DONE'
           ORDER BY "createdAt" LIMIT 4`,
@@ -385,6 +385,9 @@ async function execute(mode) {
           report.cleanupOutstandingStatus = outstanding[0].status;
           report.cleanupAttempts = outstanding[0].attempts;
           report.cleanupNextSeconds = outstanding[0].nextSeconds;
+          report.cleanupCode = /^[A-Z0-9_]{1,70}$/.test(outstanding[0].lastError ?? "")
+            ? outstanding[0].lastError
+            : "REDACTED";
         }
         if (mode === "verify") {
           check(
