@@ -1,4 +1,61 @@
-# Authenticated R2 application canary: blocked before file selection
+# Authenticated R2 application canary: upload and reload recovery observed
+
+Latest checkpoint: 2026-10-10 UTC. This is partial live application acceptance; completion, processing and cleanup remain pending explicit owned-source deletion approval.
+
+## Latest continuation result
+
+Production and main remained `ab8355f3c45e5208ef9fe6477666b8f834c231b4`. No application code was changed and no application release was deployed.
+
+- [Read-only runtime inspection 38007377942](https://github.com/eltx1/ayin/actions/runs/38007377942) verified the exact owner tuple, current release, health and closed issuance.
+- [Bounded continuation 38007498234](https://github.com/eltx1/ayin/actions/runs/38007498234), tooling commit `23e8ef1e525f1bd2ad0d708a9327c8c6f71ae68f`, verified the prior closed environment and unchanged backup/journal, zero V2/channel sessions, zero output reservations, zero active processing and zero retained/unknown debt before opening the same approved scope.
+- The new exclusive host journal is `/home/ayin/env/r2-app-canary-20261010.resume-1.json`. The original journal and backup were preserved. Resume refuses replay, changed ownership/bounds/fixture/backup, an open predecessor, or unresolved work. Do not rerun enable or resume.
+- Browser navigation and the ordinary existing signed-in Mr Lord session worked. The exact synthetic fixture was selected through **Choose original video**, followed by **Save draft** and **Continue upload** in Recoverable uploads.
+- The live application reached **100%**, **Parts received: 1 / 1**, and **Your upload is ready to finish**. This is an R2 multipart part observation through the application's real inspection path, not a completed source object.
+- The Stop attempt lost its target because this small transfer had already finished. It did not prove an interrupted request.
+- The page was reloaded; **Check saved upload** restored 100% without a selected file. The original fixture was reselected, and **Continue upload** verified it and returned to ready-to-finish.
+- The available browser API has no documented offline/fault-injection control. Actual network disconnection, stopping an in-flight PUT, multiple-part recovery and byte-offset recovery were not established.
+- [Pre-reload accounting 38008213392](https://github.com/eltx1/ayin/actions/runs/38008213392) and [verified closure 38008331587](https://github.com/eltx1/ayin/actions/runs/38008331587) independently observed the same source session with the following counters.
+
+| Measurement | Before reload | After reload/reselect/resume |
+| --- | ---: | ---: |
+| V2/channel sessions | 1 / 1 | 1 / 1 |
+| CREATE operations | 1 | 1 |
+| AUTHORIZE operations / grant reservations | 1 / 1 | 1 / 1 |
+| RESUME operations | 0 | 1 |
+| COMPLETE operations | 0 | 0 |
+| UNKNOWN provider outcomes | 0 | 0 |
+| Source declared / quota-counted bytes | 478,196 | 478,196 |
+| Output envelope reservations | 1 | 1 |
+| Output envelope bytes | 33,554,432 | 33,554,432 |
+| Conservative source exposure bytes | 5,368,709,120 | 5,368,709,120 |
+| Processing / cleanup jobs for fixture | 0 / 0 | 0 / 0 |
+
+Session fingerprint (SHA256 of internal session ID):
+`d88f09decfb9c8be70902626236a92dec4578ee52d6b778f85b6ca2ab59868fc`.
+No raw provider upload ID, object key, grant or credential is published.
+
+The unchanged single grant and CREATE counters, same session fingerprint and observed complete part inventory support recovery without issuing a second upload authorization or creating another source. Browser network-level PUT counts were not independently recorded.
+
+The 5 GiB source exposure and 32 MiB output envelope are conservative accounting reservations, not physical storage measurements or billing. One 478,196-byte part was observed through the application's provider inspection. No completed source object or output has yet been verified. Channel quota remains 107,374,182,400 bytes, with 478,196 bytes counted once.
+
+## Final closed state and pending approval
+
+[Closure commit 45f79332b85827afc906fecc2a2311d2320f4c01](https://github.com/eltx1/ayin/commit/45f79332b85827afc906fecc2a2311d2320f4c01) restores workflow mode `disable`. The run verified new issuance false in both API and media worker with health passing and the application release unchanged. The exact tuple and positive bounds remain for safe draining. The session remains OPEN; its part and both conservative reservations remain. No cleanup was requested.
+
+The named fixture is `ayin-resume-test-20261010.mp4`, 478,196 bytes,
+SHA256 `184bb9e5d9ad3218af8c4f4552558c24c506d166c293dbbc83becd810e4db98c`.
+
+**Finish upload and Cancel upload have not been pressed.** Finishing permits required-integrity processing, whose successful lifecycle calls `registerProcessingSourceCleanup`. Obtain explicit confirmation to permanently clean this specific temporary source after successful processing, while retaining the resulting playable video and thumbnail. This is not permission to delete other media or to cancel an additional future fixture.
+
+Remaining: provider COMPLETE and completed-source identity, integrity/processing, normal channel appearance, output/accounting verification, cancellation and settled cleanup. Actual network-loss acceptance remains unproven. No application defect was established in the exercised stages.
+
+Operational tooling only was changed: guarded continuation and sanitized read-only accounting. Seven local tests passed, and the same seven passed in each new runtime workflow. Syntax and formatting/diff checks passed. No broad application unit-test rerun is claimed for this continuation. No provider acceptance fixture was rerun, no Cloudflare/permission/signing/video-protection change was made, and Horus was untouched.
+
+A browser screenshot of the restored 100% / 1-of-1 state is saved as `ayin-r2-recovery-proof-20261010.jpg` in the conversation deliverables.
+
+---
+
+# Earlier attempt: blocked before file selection
 
 Checkpoint: 2026-10-09 UTC (2026-10-10 in Cairo). This is not an end-to-end upload acceptance result.
 
