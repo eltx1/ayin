@@ -1,3 +1,23 @@
+# R2 application canary — deployed, published and original source settled
+
+Checkpoint: 2026-10-10 UTC. This section supersedes the historical checkpoints below.
+
+[PR 277](https://github.com/eltx1/ayin/pull/277) merged to `8badd33265e09662c6727f7c8d454cf50f99719c`. [Production deployment 38015250853](https://github.com/eltx1/ayin/actions/runs/38015250853) succeeded and live inspection verified that exact release in both API and media worker. The fixes add guarded Studio publication for ready recoverable uploads and accept omitted empty R2 first-page marker echoes without weakening continuation validation.
+
+Real authenticated browser actions: Finish upload, processed READY, Studio Publish with rights confirmation, Published/Public, one visible channel video, and successful playback to 6.016 seconds (ended=true, readyState=4, no media error). [Public video](https://ayin.stream/watch/ayin-resume-test-20261010-e6e209f7) and [Mr Lord channel](https://ayin.stream/c/mr-lord).
+
+[Post-fix verification 38015517224](https://github.com/eltx1/ayin/actions/runs/38015517224) confirmed all three original cleanup obligations DONE, zero retained/uncertain/unaccounted debt, source absent, PUBLISHED status, canonical readback integrity, and thumbnail present. Channel quota counts 521,854 bytes once. The same CREATE/AUTHORIZE/RESUME/COMPLETE counts remain one each. Four read-only provider requests; no provider writes/deletions or database writes in this verifier. [One-time retry 38015441556](https://github.com/eltx1/ayin/actions/runs/38015441556) advanced only the original ALLOCATION due time after the parser fix; ordinary worker cleanup supplied the settlement evidence.
+
+Validation completed: exact-dependency PR and main quality gates, security/source inventory, focused content-editor browser suite (7 passed, run 38014169092), and full V1 browser acceptance (run 38013142339). Local 77 R2 observation tests, 15 related web tests, typecheck/lint/build also passed; local cached Next differed from the pinned version, so CI is the authoritative pinned build.
+
+A separately journaled cancellation fixture used the same 478,196-byte synthetic bytes under `ayin-cancel-test-20261010.mp4`. Activation 38015758167 required the predecessor fully settled and respected the same source/envelope/debt limits. Browser Save draft and Continue upload reached 100%. [Closure 38015882823](https://github.com/eltx1/ayin/actions/runs/38015882823) verified issuance disabled again in API and worker, one active source, CREATE=1, AUTHORIZE=1, grant=1, COMPLETE=0, CANCEL=0, and zero UNKNOWN outcomes. Cancellation session fingerprint: `617d3eedbeaba057c4685e1c504871598c9e8899317585305c3d0927a108773b`. It is waiting for the unchanged grant expiry before the UI Cancel action so cleanup can run normally without rescheduling its obligations. Cancellation/settlement are not yet claimed complete.
+
+Original journals, cancellation journal and cleanup-retry journal remain immutable. No provider acceptance fixture commands, Cloudflare settings/permissions, signed-link/protection behavior or Horus changes occurred. No real offline outage, interrupted PUT, multiple-part or byte-offset resume has been proven; the demonstrated recovery is reload/reselect of one completed part.
+
+---
+
+## Historical checkpoint before deployment
+
 # R2 application canary — processing verified; two fixes in CI
 
 Current checkpoint: 2026-10-10 UTC. Following the user's explicit approval of source cleanup, Finish upload completed through the real UI and the worker produced a ready draft. New V2 issuance remains disabled. The original release is still `ab8355f3c45e5208ef9fe6477666b8f834c231b4`.

@@ -15,6 +15,7 @@ if (
     "observe",
     "retry_cleanup",
     "cancel_enable",
+    "cancel_verify",
   ].includes(mode)
 )
   throw new Error("Explicit canary mode required");
@@ -104,8 +105,9 @@ const safe = Object.entries(proof).every(
 );
 if (
   !safe ||
-  (["verify", "observe"].includes(mode)
-    ? proof.providerRequests < 0 || proof.providerRequests > (mode === "observe" ? 1 : 6)
+  (["verify", "observe", "cancel_verify"].includes(mode)
+    ? proof.providerRequests < 0 ||
+      proof.providerRequests > (mode === "observe" ? 1 : mode === "cancel_verify" ? 3 : 6)
     : proof.providerRequests !== 0) ||
   proof.deletions !== 0 ||
   (mode === "retry_cleanup" ? ![0, 1].includes(proof.databaseWrites) : proof.databaseWrites !== 0)

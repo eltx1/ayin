@@ -17,6 +17,7 @@ const BACKUP = "/home/ayin/env/r2-app-canary-20261010.env.backup";
 const RESUME_JOURNAL = "/home/ayin/env/r2-app-canary-20261010.resume-1.json";
 const CLEANUP_RETRY_JOURNAL = "/home/ayin/env/r2-app-canary-20261010.cleanup-retry-1.json";
 const CANCEL_JOURNAL = "/home/ayin/env/r2-app-canary-20261010.cancel-1.json";
+const CANCEL_FINGERPRINT = "617d3eedbeaba057c4685e1c504871598c9e8899317585305c3d0927a108773b";
 const prefix = "AYIN_UPLOAD_RECOVERY_";
 const bounds = {
   CANARY_SOURCE_MAX_BYTES: "1048576",
@@ -119,6 +120,53 @@ export function validateCancellationSlot(report, exists) {
       report.unacknowledgedWrites === 0,
     "CANCEL_PREDECESSOR_UNSETTLED",
   );
+}
+export function validateCancelledFixture(report) {
+  check(
+    !report.newIssuanceBefore &&
+      report.v2SessionCount === 2 &&
+      report.channelSessionCount === 2 &&
+      report.sessionFingerprint === CANCEL_FINGERPRINT &&
+      report.sessionState === "ABORTED" &&
+      report.sizeBytes === 478196 &&
+      report.grantReservationCount === 1 &&
+      report.grantWaitSeconds === 0 &&
+      report.createOperations === 1 &&
+      report.authorizeOperations === 1 &&
+      report.resumeOperations === 0 &&
+      report.completeOperations === 0 &&
+      report.cancelOperations === 1 &&
+      report.unknownOperations === 0,
+    "CANCEL_FIXTURE_CHANGED",
+  );
+  check(
+    report.fixtureProcessingJobs === 0 &&
+      report.activeProcessingJobs === 0 &&
+      report.outputReservationCount === 2 &&
+      report.fixtureOutputReservedBytes === 33554432 &&
+      report.cancelOutputDispatchedBytes === 0 &&
+      report.fixtureCleanupJobs === 3 &&
+      report.cleanupOutstandingCount === 0 &&
+      report.cancelCleanupEvidenceCount === 3 &&
+      report.cancelRecheckCount === 3 &&
+      report.cancelSourceRemoved &&
+      report.cleanupRequested &&
+      report.cancelGrantsRevoked &&
+      report.channelLiveSourceBytes === 521854,
+    "CANCEL_CLEANUP_UNSETTLED",
+  );
+  for (const key of [
+    "activeAccount",
+    "activeChannel",
+    "retainedDebtAccount",
+    "retainedDebtChannel",
+    "uncertainAccount",
+    "uncertainChannel",
+    "accountBytes",
+    "channelBytes",
+    "unaccounted",
+  ])
+    check(report[key] === 0, "CANCEL_DEBT_UNSETTLED");
 }
 function privateFile(file) {
   const st = fs.lstatSync(file);
@@ -242,6 +290,7 @@ async function execute(mode) {
         "observe",
         "retry_cleanup",
         "cancel_enable",
+        "cancel_verify",
       ].includes(mode),
       "MODE_INVALID",
     );
@@ -520,6 +569,51 @@ async function execute(mode) {
           ])
             report[key] = Number(verifiedFixture[key]);
         }
+        if (mode === "cancel_verify") {
+          check(report.sessionFingerprint === CANCEL_FINGERPRINT, "CANCEL_FIXTURE_CHANGED");
+          privateFile(CANCEL_JOURNAL);
+          const activation = JSON.parse(fs.readFileSync(CANCEL_JOURNAL, "utf8"));
+          check(
+            activation.releaseSha === SHA &&
+              activation.accountId === accountId &&
+              activation.channelId === channelId &&
+              activation.purpose === "prepare_one_cancellation_fixture" &&
+              activation.baseline.cleanupDone === 3,
+            "CANCEL_JOURNAL_CHANGED",
+          );
+          const detail = (
+            await client.query(
+              `SELECT s."objectKey", s."providerUploadId", s."createdAt",
+            s."grantsRevokedAt" IS NOT NULL AS "cancelGrantsRevoked",
+            a."removedAt" IS NOT NULL AS "cancelSourceRemoved", v.status AS "cancelVideoStatus",
+            (SELECT COALESCE(SUM(r."dispatchedBytes"),0)::text FROM "MediaProcessingOutputReservation" r
+              WHERE r."uploadSessionId"=s.id) AS "cancelOutputDispatchedBytes",
+            (SELECT COUNT(*)::int FROM "PrivacyMediaDeletionJob" d WHERE d."uploadSessionId"=s.id
+              AND d.status='DONE' AND d."cleanupContractVersion"=2 AND d."observedAbsentAt" IS NOT NULL
+              AND d."cleanupEvidence"->>'version'='AYIN_CLEANUP_V2'
+              AND d."cleanupEvidence"->>'conclusion'='FROZEN_ACKNOWLEDGED_AND_OBSERVED_ABSENT') AS "cancelCleanupEvidenceCount",
+            (SELECT COUNT(*)::int FROM "PrivacyMediaDeletionJob" d WHERE d."uploadSessionId"=s.id
+              AND d.status='DONE' AND d."recheckAt" IS NOT NULL AND d."retainUntil">NOW()) AS "cancelRecheckCount"
+            FROM "MediaUploadSession" s JOIN "MediaAsset" a ON a.id=s."sourceAssetId"
+            JOIN "Video" v ON v.id=s."videoId" WHERE s.id=$1::uuid`,
+              [row.id],
+            )
+          ).rows;
+          check(
+            detail.length === 1 && detail[0].createdAt >= new Date(activation.startedAt),
+            "CANCEL_SCOPE_CHANGED",
+          );
+          verifiedFixture = { ...detail[0], sessionId: row.id };
+          for (const key of [
+            "cancelOutputDispatchedBytes",
+            "cancelCleanupEvidenceCount",
+            "cancelRecheckCount",
+          ])
+            report[key] = Number(verifiedFixture[key]);
+          for (const key of ["cancelGrantsRevoked", "cancelSourceRemoved", "cancelVideoStatus"])
+            report[key] = verifiedFixture[key];
+          validateCancelledFixture(report);
+        }
       }
     }
     if (["enable", "resume", "cancel_enable"].includes(mode)) {
@@ -601,7 +695,7 @@ async function execute(mode) {
     await client.end();
     client = null;
     check(fs.realpathSync(CURRENT) === root, "RELEASE_CHANGED");
-    if (["inspect", "verify", "observe", "retry_cleanup"].includes(mode)) {
+    if (["inspect", "verify", "observe", "retry_cleanup", "cancel_verify"].includes(mode)) {
       report.newIssuanceAfter = report.newIssuanceBefore;
       for (const name of ["ayin-api", "ayin-media-worker"])
         live(name, { ...values, [prefix + "V2_ENABLED"]: env[prefix + "V2_ENABLED"] });
@@ -770,6 +864,60 @@ async function execute(mode) {
             report.thumbnailBytes = thumbnail.sizeBytes;
             report.thumbnailPresent = thumbnail.sizeBytes > 0;
           }
+        } finally {
+          globalThis.fetch = originalFetch;
+        }
+      }
+      if (mode === "cancel_verify") {
+        const { R2MediaStorageAdapter } = await moduleAt("media/r2-media-storage.adapter");
+        const { R2HttpError } = await moduleAt("media/r2-sigv4");
+        const { MediaStorageObservationError } = await moduleAt("media/media-storage.adapter");
+        const adapter = new R2MediaStorageAdapter(loadMediaStorageConfig(providerEnv));
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = async (url, init) => {
+          check(
+            ["GET", "HEAD"].includes(init?.method) && report.providerRequests < 3,
+            "READ_ONLY_PROVIDER_LIMIT",
+          );
+          report.providerRequests++;
+          return originalFetch(url, {
+            ...init,
+            signal: AbortSignal.any([
+              AbortSignal.timeout(15000),
+              ...(init.signal ? [init.signal] : []),
+            ]),
+          });
+        };
+        try {
+          try {
+            await adapter.headObject(verifiedFixture.objectKey);
+            throw new Error("CANCEL_SOURCE_PRESENT");
+          } catch (error) {
+            check(
+              error instanceof R2HttpError && error.status === 404,
+              "CANCEL_SOURCE_OBSERVATION_FAILED",
+            );
+            report.cancelSourceAbsent = true;
+          }
+          try {
+            await adapter.listParts({
+              key: verifiedFixture.objectKey,
+              uploadId: verifiedFixture.providerUploadId,
+            });
+            throw new Error("CANCEL_ALLOCATION_PRESENT");
+          } catch (error) {
+            check(
+              error instanceof MediaStorageObservationError &&
+                error.operation === "listParts" &&
+                error.code === "NO_SUCH_UPLOAD" &&
+                error.providerStatus === 404,
+              "CANCEL_PARTS_OBSERVATION_FAILED",
+            );
+            report.cancelAllocationAbsent = true;
+          }
+          const allocations = await adapter.listMultipartUploads(verifiedFixture.objectKey);
+          check(allocations.length === 0, "CANCEL_PREFIX_NOT_EMPTY");
+          report.cancelExactPrefixEmpty = true;
         } finally {
           globalThis.fetch = originalFetch;
         }

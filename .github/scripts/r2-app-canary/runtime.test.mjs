@@ -5,6 +5,7 @@ import {
   validateResume,
   validateCleanupRetry,
   validateCancellationSlot,
+  validateCancelledFixture,
 } from "./runtime.mjs";
 import { createHash } from "node:crypto";
 test("adds only the selected flags and preserves existing credentials and comments", () => {
@@ -170,4 +171,68 @@ test("cancellation activation requires a fully retired predecessor and refuses r
     { newIssuanceBefore: true },
   ])
     assert.throws(() => validateCancellationSlot({ ...ready, ...patch }, false));
+});
+
+test("cancellation verification requires the pinned terminal fixture, finite evidence and zero debt", () => {
+  const proof = {
+    newIssuanceBefore: false,
+    v2SessionCount: 2,
+    channelSessionCount: 2,
+    sessionFingerprint: "617d3eedbeaba057c4685e1c504871598c9e8899317585305c3d0927a108773b",
+    sessionState: "ABORTED",
+    sizeBytes: 478196,
+    grantReservationCount: 1,
+    grantWaitSeconds: 0,
+    createOperations: 1,
+    authorizeOperations: 1,
+    resumeOperations: 0,
+    completeOperations: 0,
+    cancelOperations: 1,
+    unknownOperations: 0,
+    fixtureProcessingJobs: 0,
+    activeProcessingJobs: 0,
+    outputReservationCount: 2,
+    fixtureOutputReservedBytes: 33554432,
+    cancelOutputDispatchedBytes: 0,
+    fixtureCleanupJobs: 3,
+    cleanupOutstandingCount: 0,
+    cancelCleanupEvidenceCount: 3,
+    cancelRecheckCount: 3,
+    cancelSourceRemoved: true,
+    cleanupRequested: true,
+    cancelGrantsRevoked: true,
+    channelLiveSourceBytes: 521854,
+    activeAccount: 0,
+    activeChannel: 0,
+    retainedDebtAccount: 0,
+    retainedDebtChannel: 0,
+    uncertainAccount: 0,
+    uncertainChannel: 0,
+    accountBytes: 0,
+    channelBytes: 0,
+    unaccounted: 0,
+  };
+  validateCancelledFixture(proof);
+  for (const patch of [
+    { newIssuanceBefore: true },
+    { sessionFingerprint: "other" },
+    { sessionState: "OPEN" },
+    { v2SessionCount: 3 },
+    { grantWaitSeconds: 1 },
+    { cancelOperations: 0 },
+    { completeOperations: 1 },
+    { unknownOperations: 1 },
+    { fixtureProcessingJobs: 1 },
+    { cancelOutputDispatchedBytes: 1 },
+    { cleanupOutstandingCount: 1 },
+    { cancelCleanupEvidenceCount: 2 },
+    { cancelRecheckCount: 2 },
+    { cancelSourceRemoved: false },
+    { cancelGrantsRevoked: false },
+    { channelLiveSourceBytes: 1000050 },
+    { activeAccount: 1 },
+    { accountBytes: 5368709120 },
+    { unaccounted: 1 },
+  ])
+    assert.throws(() => validateCancelledFixture({ ...proof, ...patch }));
 });
