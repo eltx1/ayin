@@ -1,0 +1,65 @@
+name: Studio upload canary focused acceptance
+on:
+  push:
+    branches: [ops/ayin-r2-mr-lord-canary-20261010]
+    paths: [.github/workflows/studio-upload-canary-regression-20261010.yml]
+permissions:
+  contents: read
+jobs:
+  editor:
+    if: github.repository == 'eltx1/ayin' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: ayin_e2e
+          POSTGRES_USER: ayin
+          POSTGRES_PASSWORD: ayin
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U ayin -d ayin_e2e"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_e2e?schema=public
+      TEST_DATABASE_URL: postgresql://ayin:ayin@127.0.0.1:5432/ayin_e2e?schema=public
+      AUTH_TOKEN_SECRET: task-29-e2e-auth-secret-with-more-than-32-characters
+      UPLOAD_SESSION_SECRET: task-29-e2e-upload-secret-with-more-than-32-characters
+      PAYOUT_DATA_ENCRYPTION_KEY: CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=
+      WEB_ORIGIN: http://127.0.0.1:3000
+      CORS_ORIGIN: http://127.0.0.1:3000
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:3001
+      NEXT_PUBLIC_MEDIA_BASE_URL: http://media.invalid
+      AYIN_E2E_STORAGE: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 295c9bb4fc92f1a5df7be7435d3fa4e306549129
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install pinned dependencies and Chromium
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+      - name: Prepare isolated database and build the exact corrective commit
+        run: |
+          pnpm db:generate
+          pnpm db:migrate:deploy
+          pnpm db:seed
+          pnpm build
+      - name: Test Studio content editor publication and existing recovery guards
+        run: pnpm test:e2e tests/e2e/content-editor.acceptance.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studio-upload-canary-editor-evidence
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
