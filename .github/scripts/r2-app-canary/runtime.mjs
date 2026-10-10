@@ -171,7 +171,10 @@ async function execute(mode) {
     client;
   const report = { mode, releaseSha: SHA, providerRequests: 0, deletions: 0, databaseWrites: 0 };
   try {
-    check(["enable", "resume", "disable", "inspect", "verify"].includes(mode), "MODE_INVALID");
+    check(
+      ["enable", "resume", "disable", "inspect", "verify", "observe"].includes(mode),
+      "MODE_INVALID",
+    );
     check(process.env.USER === "ayin" && process.env.HOME === "/home/ayin", "HOST_IDENTITY");
     const root = fs.realpathSync(CURRENT);
     check(root.startsWith("/home/ayin/htdocs/releases/"), "RELEASE_PATH");
@@ -389,7 +392,7 @@ async function execute(mode) {
             ? outstanding[0].lastError
             : "REDACTED";
         }
-        if (mode === "verify") {
+        if (mode === "verify" || mode === "observe") {
           check(
             report.sessionFingerprint ===
               "d88f09decfb9c8be70902626236a92dec4578ee52d6b778f85b6ca2ab59868fc",
@@ -510,11 +513,11 @@ async function execute(mode) {
     await client.end();
     client = null;
     check(fs.realpathSync(CURRENT) === root, "RELEASE_CHANGED");
-    if (mode === "inspect" || mode === "verify") {
+    if (["inspect", "verify", "observe"].includes(mode)) {
       report.newIssuanceAfter = report.newIssuanceBefore;
       for (const name of ["ayin-api", "ayin-media-worker"])
         live(name, { ...values, [prefix + "V2_ENABLED"]: env[prefix + "V2_ENABLED"] });
-      if (mode === "verify") {
+      if (mode === "verify" || mode === "observe") {
         check(
           verifiedFixture &&
             report.jobStatus === "READY" &&
@@ -530,49 +533,103 @@ async function execute(mode) {
           pathToFileURL(`${root}/packages/types/dist/upload-file-identity.js`).href
         );
         const adapter = new R2MediaStorageAdapter(loadMediaStorageConfig(providerEnv));
+        const { parseR2Xml, readR2XmlText, xmlField } = await moduleAt("media/r2-xml");
         const originalFetch = globalThis.fetch;
         globalThis.fetch = async (url, init) => {
           check(
-            ["GET", "HEAD"].includes(init?.method) && report.providerRequests < 6,
+            ["GET", "HEAD"].includes(init?.method) &&
+              report.providerRequests < (mode === "observe" ? 1 : 6),
             "READ_ONLY_PROVIDER_LIMIT",
           );
           report.providerRequests++;
-          return originalFetch(url, {
+          const response = await originalFetch(url, {
             ...init,
             signal: AbortSignal.any([
               AbortSignal.timeout(15000),
               ...(init.signal ? [init.signal] : []),
             ]),
           });
+          if (mode === "observe") {
+            report.responseStatus = response.status;
+            const xml = await readR2XmlText(response.clone(), 65536, AbortSignal.timeout(15000));
+            report.responseBytes = Buffer.byteLength(xml);
+            const root = parseR2Xml(xml);
+            report.expectedResponseRoot = root.name === "ListMultipartUploadsResult";
+            const fields = [
+              "Bucket",
+              "EncodingType",
+              "Prefix",
+              "KeyMarker",
+              "UploadIdMarker",
+              "NextKeyMarker",
+              "NextUploadIdMarker",
+              "MaxUploads",
+              "IsTruncated",
+              "Upload",
+              "Delimiter",
+              "CommonPrefixes",
+            ];
+            for (const field of fields)
+              report["field" + field] = root.children.filter(
+                (child) => child.name === field,
+              ).length;
+            report.unknownFieldCount = root.children.filter(
+              (child) => !fields.includes(child.name),
+            ).length;
+            report.responseBucketMatches =
+              xmlField(root, "Bucket", false) === loadMediaStorageConfig(providerEnv).bucket;
+            report.responseEncodingUrl = xmlField(root, "EncodingType", false) === "url";
+            report.responsePrefixMatches =
+              decodeURIComponent(xmlField(root, "Prefix", false) ?? "") ===
+              verifiedFixture.objectKey;
+            report.responseKeyMarkerEmpty = xmlField(root, "KeyMarker", false) === "";
+            report.responseUploadMarkerEmpty = xmlField(root, "UploadIdMarker", false) === "";
+            report.responseTruncatedFalse = xmlField(root, "IsTruncated", false) === "false";
+            report.responseMaxUploads = Number(xmlField(root, "MaxUploads", false));
+          }
+          return response;
         };
         try {
-          try {
-            await adapter.headObject(verifiedFixture.objectKey);
-            report.sourceAbsent = false;
-          } catch (error) {
-            check(
-              error instanceof R2HttpError && error.status === 404,
-              "SOURCE_OBSERVATION_FAILED",
+          if (mode === "observe") {
+            try {
+              const uploads = await adapter.listMultipartUploads(verifiedFixture.objectKey);
+              report.observationAccepted = true;
+              report.observedAllocationCount = uploads.length;
+            } catch (error) {
+              report.observationAccepted = false;
+              report.observationCode = /^[A-Z0-9_]{1,70}$/.test(error.code ?? "")
+                ? error.code
+                : "REDACTED";
+            }
+          } else {
+            try {
+              await adapter.headObject(verifiedFixture.objectKey);
+              report.sourceAbsent = false;
+            } catch (error) {
+              check(
+                error instanceof R2HttpError && error.status === 404,
+                "SOURCE_OBSERVATION_FAILED",
+              );
+              report.sourceAbsent = true;
+            }
+            const bytes = await adapter.readObject(verifiedFixture.outputR2ObjectKey, 33554432);
+            const identity = await hashUploadFileIdentity(
+              (async function* () {
+                yield bytes;
+              })(),
+              bytes.length,
             );
-            report.sourceAbsent = true;
+            check(
+              identity.rootSha256 === verifiedFixture.outputIntegrityDigest &&
+                bytes.length === report.outputBytes,
+              "OUTPUT_READBACK_MISMATCH",
+            );
+            report.outputReadbackMatches = true;
+            report.outputSha256 = digest(bytes);
+            const thumbnail = await adapter.headObject(verifiedFixture.thumbnailR2ObjectKey);
+            report.thumbnailBytes = thumbnail.sizeBytes;
+            report.thumbnailPresent = thumbnail.sizeBytes > 0;
           }
-          const bytes = await adapter.readObject(verifiedFixture.outputR2ObjectKey, 33554432);
-          const identity = await hashUploadFileIdentity(
-            (async function* () {
-              yield bytes;
-            })(),
-            bytes.length,
-          );
-          check(
-            identity.rootSha256 === verifiedFixture.outputIntegrityDigest &&
-              bytes.length === report.outputBytes,
-            "OUTPUT_READBACK_MISMATCH",
-          );
-          report.outputReadbackMatches = true;
-          report.outputSha256 = digest(bytes);
-          const thumbnail = await adapter.headObject(verifiedFixture.thumbnailR2ObjectKey);
-          report.thumbnailBytes = thumbnail.sizeBytes;
-          report.thumbnailPresent = thumbnail.sizeBytes > 0;
         } finally {
           globalThis.fetch = originalFetch;
         }

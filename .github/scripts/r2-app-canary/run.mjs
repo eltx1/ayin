@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 const mode = process.argv[2];
-if (!["enable", "resume", "disable", "inspect", "verify"].includes(mode))
+if (!["enable", "resume", "disable", "inspect", "verify", "observe"].includes(mode))
   throw new Error("Explicit canary mode required");
 const dir = dirname(fileURLToPath(import.meta.url));
 const key = join(homedir(), ".ssh/id_ed25519");
@@ -93,8 +93,8 @@ const safe = Object.entries(proof).every(
 );
 if (
   !safe ||
-  (mode === "verify"
-    ? proof.providerRequests < 0 || proof.providerRequests > 6
+  (["verify", "observe"].includes(mode)
+    ? proof.providerRequests < 0 || proof.providerRequests > (mode === "observe" ? 1 : 6)
     : proof.providerRequests !== 0) ||
   proof.deletions !== 0 ||
   proof.databaseWrites !== 0
