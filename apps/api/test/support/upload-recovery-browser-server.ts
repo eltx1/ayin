@@ -286,7 +286,9 @@ app
 if (directTransfer) {
   const server = app.getHttpAdapter().getInstance();
   server.addContentTypeParser(
-    ["video/webm", "video/mp4", "application/octet-stream"],
+    // Multipart V2 sends an untyped Blob and deliberately omits Content-Type.
+    // This parser exists only on the guarded synthetic test server.
+    "*",
     { parseAs: "buffer", bodyLimit: PART + 1024 },
     (_request, body, done) => done(null, body),
   );
