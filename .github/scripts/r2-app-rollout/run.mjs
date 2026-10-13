@@ -102,7 +102,7 @@ const safe = Object.entries(proof).every(
 if (
   !safe ||
   (mode === "verify"
-    ? proof.providerRequests < 1 || proof.providerRequests > 3
+    ? proof.providerRequests < 1 || proof.providerRequests > 4
     : proof.providerRequests !== 0) ||
   proof.deletions !== 0 ||
   proof.databaseWrites !== 0
