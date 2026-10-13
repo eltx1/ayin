@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-const SHA = "d29d539ae31b988714113b3a865ada9e996c5a8f";
+const SHA = "73f08d7e1d19e6ab8256718eb4d390c4fcbe653d";
+const ACTIVATION_SHA = "d29d539ae31b988714113b3a865ada9e996c5a8f";
 const CURRENT = "/home/ayin/htdocs/current";
 const ENV = "/home/ayin/env/api.env";
 const JOURNAL = "/home/ayin/env/r2-app-rollout-20261013.json";
@@ -299,7 +300,7 @@ async function execute(mode) {
     } else if (mode === "disable") {
       privateFile(JOURNAL);
       check(
-        JSON.parse(fs.readFileSync(JOURNAL, "utf8")).releaseSha === SHA,
+        JSON.parse(fs.readFileSync(JOURNAL, "utf8")).releaseSha === ACTIVATION_SHA,
         "ACTIVATION_JOURNAL_CHANGED",
       );
       const next = patchEnv(currentText, { [prefix + "V2_ENABLED"]: "0" });
@@ -353,6 +354,12 @@ async function execute(mode) {
           `SELECT
             COUNT(*)::int AS "cleanupTotal",
             COUNT(*) FILTER (WHERE status='DONE')::int AS "cleanupDone",
+            COUNT(*) FILTER (WHERE status='DONE'
+              AND "lastObservation"='FROZEN_ACKNOWLEDGED_OBSERVED_ABSENT'
+              AND "cleanupEvidence"->>'version'='AYIN_CLEANUP_V2'
+              AND "cleanupEvidence"->>'conclusion'='FROZEN_ACKNOWLEDGED_AND_OBSERVED_ABSENT'
+              AND "observedAbsentAt">=(SELECT "lastGrantExpiresAt" FROM "MediaUploadSession" WHERE id=$1)
+            )::int AS "cleanupEvidenceVerified",
             COUNT(*) FILTER (WHERE status='FAILED')::int AS "cleanupFailed",
             COUNT(*) FILTER (WHERE status <> 'DONE' AND "lastObservation"='GRANT_CUTOFF_PENDING')::int AS "cleanupWaitingForGrant",
             COALESCE(MAX(attempts),0)::int AS "cleanupMaxAttempts",
@@ -386,6 +393,13 @@ async function execute(mode) {
       ])
         report[key] = Number(f[key]);
       if (mode === "verify") {
+        check(
+          cleanup.cleanupTotal >= 3 &&
+            cleanup.cleanupDone === cleanup.cleanupTotal &&
+            cleanup.cleanupEvidenceVerified === cleanup.cleanupTotal &&
+            cleanup.cleanupDebt === 0,
+          "FIXTURE_CLEANUP_NOT_SETTLED",
+        );
         check(
           f.state === "COMPLETED" &&
             f.jobStatus === "READY" &&
