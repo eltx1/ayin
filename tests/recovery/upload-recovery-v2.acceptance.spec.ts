@@ -92,7 +92,9 @@ test("V2 resumes three exact parts after offline and reload without reallocating
     puts: 3,
     completes: 1,
     sessions: 1,
-    processingQueued: 1,
+    // Recovered sources must verify their full-file identity before processing.
+    queued: 1,
+    processingQueued: 0,
     published: 0,
   });
   expect(result.received.map((item: { bytes: number }) => item.bytes)).toEqual([
