@@ -14,7 +14,10 @@ export const FINITE_CLEANUP_RECHECK_MS = 24 * 60 * 60 * 1000;
 export const FINITE_CLEANUP_SLOW_RETRY_MS = 6 * 60 * 60 * 1000;
 
 export class FiniteCleanupUnresolved extends Error {
-  constructor(readonly code: string) {
+  constructor(
+    readonly code: string,
+    readonly retryAt?: Date,
+  ) {
     super(code);
   }
 }

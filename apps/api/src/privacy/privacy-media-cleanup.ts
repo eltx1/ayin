@@ -61,7 +61,19 @@ export async function claimMediaCleanupJob(db: PrismaClient, now: Date): Promise
     (("status" = 'PENDING' AND "availableAt" <= ${now}) OR
      ("status" = 'PROCESSING' AND COALESCE("leaseExpiresAt", "claimedAt" + interval '5 minutes') <= ${now}) OR
      ("cleanupContractVersion" = 2 AND "status" = 'DONE' AND "recheckAt" <= ${now}) OR
-     ("cleanupContractVersion" = 2 AND "status" = 'FAILED' AND "availableAt" <= ${now}))`;
+     ("cleanupContractVersion" = 2 AND "status" = 'FAILED' AND "availableAt" <= ${now}) OR
+     ("cleanupContractVersion" = 2 AND "status" = 'PENDING' AND
+      "lastObservation" = 'GRANT_CUTOFF_PENDING' AND EXISTS (
+        SELECT 1 FROM "MediaUploadSession" s
+        WHERE s.id = "PrivacyMediaDeletionJob"."uploadSessionId"
+          AND s."lastGrantExpiresAt" <= ${now}
+          AND "PrivacyMediaDeletionJob"."claimedAt" < s."lastGrantExpiresAt"
+          AND NOT EXISTS (SELECT 1 FROM "MediaUploadOperation" o
+            WHERE o."sessionId" = s.id AND o."grantExpiresAt" > ${now})
+      )))`;
+  // Recover old cutoff-only waits that exhausted the generic retry budget.
+  // claimedAt allows one catch-up attempt after the cutoff; the normal frozen
+  // journal/lease checks still decide whether any cleanup can be settled.
   // A small unlocked candidate window avoids head-of-line blocking while
   // preserving request-before-job locking. Each try owns a separate transaction
   // so no contender accumulates differently ordered request locks.
@@ -266,18 +278,26 @@ async function retryMediaCleanupJob(db: PrismaClient, claim: Claim, now: Date, e
   const failed = await withClaim(db, claim, async (tx) => {
     const current = await tx.privacyMediaDeletionJob.findUniqueOrThrow({ where: { id: claim.id } });
     const finite = claim.cleanupContractVersion === 2;
-    await tx.privacyMediaDeletionJob.update({
-      where: { id: claim.id },
-      data: {
-        status: !finite && claim.attempts >= MAX_MEDIA_CLEANUP_ATTEMPTS ? "FAILED" : "PENDING",
-        availableAt: new Date(
-          Math.max(Date.now(), now.getTime()) +
+    const retryFloor = Math.max(Date.now(), now.getTime());
+    const cutoff =
+      finite && code === "GRANT_CUTOFF_PENDING" && error instanceof FiniteCleanupUnresolved
+        ? error.retryAt?.getTime()
+        : undefined;
+    const availableAt = new Date(
+      cutoff !== undefined && Number.isFinite(cutoff)
+        ? Math.max(retryFloor + 1000, cutoff)
+        : retryFloor +
             (finite && code.startsWith("LATE_")
               ? 1000
               : finite && claim.attempts >= MAX_MEDIA_CLEANUP_ATTEMPTS
                 ? FINITE_CLEANUP_SLOW_RETRY_MS
                 : Math.min(60000, 2 ** Math.min(claim.attempts, 6) * 1000)),
-        ),
+    );
+    await tx.privacyMediaDeletionJob.update({
+      where: { id: claim.id },
+      data: {
+        status: !finite && claim.attempts >= MAX_MEDIA_CLEANUP_ATTEMPTS ? "FAILED" : "PENDING",
+        availableAt,
         ...(finite
           ? {
               completedAt: null,
@@ -839,7 +859,11 @@ async function processFiniteClaim(db: PrismaClient, storage: MediaStorageAdapter
   }
   // UNKNOWN never becomes ACKNOWLEDGED by deletion, absence or elapsed time.
   // Complete each bounded sweep before resetting its cursor for a slow retry.
-  if (snapshot.unresolved) throw new FiniteCleanupUnresolved(snapshot.unresolved);
+  if (snapshot.unresolved)
+    throw new FiniteCleanupUnresolved(
+      snapshot.unresolved,
+      snapshot.unresolved === "GRANT_CUTOFF_PENDING" ? snapshot.observationFloor : undefined,
+    );
   const observed = new Date();
   await finishFiniteMediaCleanupJob(
     db,
