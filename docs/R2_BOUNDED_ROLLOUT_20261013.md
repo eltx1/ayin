@@ -4,7 +4,8 @@
 
 - PR [278](https://github.com/eltx1/ayin/pull/278) adds explicit `canary` / `all` audience selection, a maximum declared source size, bounded global outstanding sources, and the effective file-size limit in the picker.
 - PR [279](https://github.com/eltx1/ayin/pull/279) gives concurrent test registrations distinct channel names. It changes a fixture only; simultaneous upload admission remains tested.
-- Final release: `d29d539ae31b988714113b3a865ada9e996c5a8f`.
+- Initial rollout release: `d29d539ae31b988714113b3a865ada9e996c5a8f`.
+- Current deployed release: `73f08d7e1d19e6ab8256718eb4d390c4fcbe653d`, including cleanup scheduling follow-up PR [280](https://github.com/eltx1/ayin/pull/280).
 - Current owner/session/channel checks, ordinary administrator quota, immutable source/output reservations, global UNKNOWN barriers, pending processing/output cleanup barriers and issuance-off drain are preserved.
 
 ## Validation evidence
@@ -47,4 +48,20 @@ The original 2026-10-10 fixture journals and evidence remain unchanged. Producti
 ## Rollback and remaining bounds
 
 Disable `AYIN_UPLOAD_RECOVERY_V2_ENABLED` while retaining configured budgets and existing reservations so accepted work can drain. Do not reset immutable counters or interpret UNKNOWN effects as free capacity. Browser reload/stop recovery on live R2 and synthetic browser offline recovery must be reported separately.
+
+## Cleanup scheduling follow-up
+
+Read-only production inspection [38425515119](https://github.com/eltx1/ayin/actions/runs/38425515119) found all three obligations still at `GRANT_CUTOFF_PENDING` after the grant horizon had elapsed. Each had reached five attempts, so the generic retry policy postponed the next check for six hours. Issuance remained enabled and the video remained READY.
+
+PR 280 schedules a known grant wait at the snapshot deadline instead of consuming the generic failure retry budget. Existing delayed cutoff-only obligations become eligible for one normal claim after the session and operation grant horizons have expired. `claimedAt` prevents repeatedly overriding a later provider retry. Frozen journals, uncertainty barriers, leases, ownership checks and final settlement checks are unchanged. Existing sessions recover through the ordinary worker; no direct production database repair is used.
+
+- Local validation: 15 finite-cleanup unit tests, API typecheck, targeted lint, formatting and diff checks passed.
+- PostgreSQL and V2 acceptance [38425066732](https://github.com/eltx1/ayin/actions/runs/38425066732): 49 integration tests passed, including both new deadline/catch-up cases, plus the browser offline/multipart test.
+- Full browser acceptance for the initial rollout application [38417323102](https://github.com/eltx1/ayin/actions/runs/38417323102): successful, 643 passed and 3 skipped across its suites.
+- Exact-main quality [38425819257](https://github.com/eltx1/ayin/actions/runs/38425819257): successful, including 2301 API integration tests across 226 files, unit/schema tests, typecheck, lint and production build.
+- Exact release deployment [38428643914](https://github.com/eltx1/ayin/actions/runs/38428643914): successful at 2026-10-13 16:14 UTC. Origin health and public edge verification [38428847825](https://github.com/eltx1/ayin/actions/runs/38428847825) passed.
+- Final post-deployment verification [38428923110](https://github.com/eltx1/ayin/actions/runs/38428923110): VERIFIED at 2026-10-13 16:15 UTC. The ordinary worker recovered all three existing cutoff-only obligations on their sixth attempt. All three are DONE with verified finite settlement evidence after the grant horizon; pending cleanup, cleanup debt, uncertain operations and unacknowledged writes are zero. The verifier performed no database writes or deletions.
+- Issuance remains enabled for all creators with the same 128 MiB source ceiling, eight global outstanding-source slots and configured accounting bounds. The original activation journal and backup are unchanged. The rollback reader pins that original activation separately from the currently deployed release.
+- Four bounded provider reads independently confirmed the original source absent, the canonical output unchanged at 543960 bytes with SHA-256 `6c885b5d4fe66d72aea396ebc1d55d7571fb9a527046b055430c1c449f0f6006`, and the 19292-byte thumbnail present. The same fixture remains COMPLETED / READY with one CREATE, one COMPLETE, five grants and one output reservation; no second upload was created.
+- `providerExposureBytes` is an immutable historical accounting field and still records 26843545600 bytes. Admission excludes this settled source because all its obligations are DONE and no CREATE/COMPLETE outcome is UNKNOWN; no counters were reset to manufacture capacity. Normal retained-evidence rechecks remain active.
 
