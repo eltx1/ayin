@@ -269,7 +269,7 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
       url: "/auth/register",
       remoteAddress: `198.19.${Math.floor(registration / 250)}.${(registration % 250) + 1}`,
       payload: {
-        name: "Finite cleanup creator",
+        name: `Finite cleanup creator ${registration}`,
         email: `${randomUUID()}@finite.invalid`,
         password: "strong-pass-123",
       },
