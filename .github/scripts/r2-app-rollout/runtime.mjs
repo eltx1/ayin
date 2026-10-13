@@ -391,7 +391,7 @@ async function execute(mode) {
         globalThis.fetch = async (url, init) => {
           check(
             ["GET", "HEAD"].includes(init?.method) &&
-              report.providerRequests < 3,
+              report.providerRequests < 4,
             "READ_ONLY_PROVIDER_LIMIT",
           );
           report.providerRequests++;
