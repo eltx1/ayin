@@ -354,6 +354,8 @@ async function execute(mode) {
             COUNT(*)::int AS "cleanupTotal",
             COUNT(*) FILTER (WHERE status='DONE')::int AS "cleanupDone",
             COUNT(*) FILTER (WHERE status='FAILED')::int AS "cleanupFailed",
+            COUNT(*) FILTER (WHERE status <> 'DONE' AND "lastObservation"='GRANT_CUTOFF_PENDING')::int AS "cleanupWaitingForGrant",
+            COALESCE(MAX(attempts),0)::int AS "cleanupMaxAttempts",
             COUNT(*) FILTER (WHERE "debtKind" IS NOT NULL AND status <> 'DONE')::int AS "cleanupDebt",
             COALESCE(CEIL(EXTRACT(EPOCH FROM (MIN("availableAt") FILTER (WHERE status <> 'DONE') - clock_timestamp()))),0)::int AS "nextCleanupSeconds"
           FROM "PrivacyMediaDeletionJob" WHERE "uploadSessionId"=$1`,
