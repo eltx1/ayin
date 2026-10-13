@@ -72,10 +72,17 @@ export async function lockUploadCanary(tx: Prisma.TransactionClient) {
 export async function assertUploadCanarySlot(
   tx: Prisma.TransactionClient,
   existingSessionId: string | null = null,
+  maximum = 1,
 ) {
+  if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 8)
+    throw new MediaUploadError(
+      "UPLOAD_RECOVERY_UNSUPPORTED",
+      "Upload capacity is not configured.",
+      503,
+    );
   const [result] = await tx.$queryRaw<Array<{ occupied: boolean }>>`
-    SELECT EXISTS (
-      SELECT 1 FROM "MediaUploadSession" s WHERE s."sourceProtocolVersion"=2
+    SELECT (
+      SELECT COUNT(*) FROM "MediaUploadSession" s WHERE s."sourceProtocolVersion"=2
         AND (${existingSessionId}::uuid IS NULL OR s.id <> ${existingSessionId}::uuid)
         AND (s."cleanupRequestedAt" IS NULL OR NOT EXISTS (
           SELECT 1 FROM "PrivacyMediaDeletionJob" c WHERE c."uploadSessionId"=s.id
@@ -84,7 +91,7 @@ export async function assertUploadCanarySlot(
         ) OR EXISTS (
           SELECT 1 FROM "MediaUploadOperation" o WHERE o."sessionId"=s.id AND o.kind IN ('CREATE','COMPLETE') AND o."providerOutcome"='UNKNOWN'
         ))
-    ) OR EXISTS (
+    ) >= ${maximum} OR EXISTS (
       SELECT 1 FROM "MediaProcessingOutputAttempt" a WHERE a."protocolVersion"=2 AND (
         EXISTS (SELECT 1 FROM "MediaProcessingOutputWrite" w WHERE w."outputAttemptId"=a.id AND w.status <> 'ACKNOWLEDGED') OR
         EXISTS (SELECT 1 FROM "PrivacyMediaDeletionJob" c WHERE c."outputAttemptId"=a.id AND c.status <> 'DONE')
@@ -99,7 +106,7 @@ export async function assertUploadCanarySlot(
   if (!result || result.occupied)
     throw new MediaUploadError(
       "UPLOAD_CANARY_BUSY",
-      "Finish the existing upload and cleanup before starting another canary upload.",
+      "Upload capacity is busy. Finish existing uploads and cleanup before starting another.",
       429,
     );
 }

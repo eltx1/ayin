@@ -336,6 +336,24 @@ describe("explicit recoverable upload controller", () => {
     await value.create();
     await value.inspect();
   }
+  it("rejects a file above the server's rollout limit before hashing or creating a draft", async () => {
+    const normal = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation((url, init) =>
+      String(url).includes("/capability")
+        ? Promise.resolve(
+            response({ protocolVersion: 1, supported: true, reason: null, maxSourceBytes: 2 }),
+          )
+        : normal(url, init),
+    );
+    const identify = vi.fn(async () => fileIdentity);
+    const value = client(identify);
+    await value.open();
+    await value.choose(file());
+    expect(view.maxSourceBytes).toBe(2);
+    expect(view.message).toBe("VIDEO_TOO_LARGE");
+    expect(identify).not.toHaveBeenCalled();
+    expect(writes()).toHaveLength(0);
+  });
   async function pendingCompletion(
     responseStatus: "SUCCEEDED" | "PENDING" | "UNKNOWN" = "SUCCEEDED",
   ) {

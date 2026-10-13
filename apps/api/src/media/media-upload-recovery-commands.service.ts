@@ -1,9 +1,9 @@
 import {
-  configuredUploadCanary,
-  requireUploadCanary,
-  lockUploadCanary,
-  assertUploadCanarySlot,
-} from "./media-upload-canary.js";
+  configuredUploadRecovery,
+  requireUploadRecoveryScope,
+  assertUploadRecoverySlot,
+} from "./media-upload-rollout.js";
+import { lockUploadCanary } from "./media-upload-canary.js";
 import { UploadRateLimiter } from "./upload-rate-limiter.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { MediaUploadOperation, MediaUploadSession, Prisma } from "@ayin/db";
@@ -165,7 +165,7 @@ export class MediaUploadRecoveryCommandsService {
     const limits = this.debtByteLimits();
     return (
       this.config.recoveryV2Enabled === true &&
-      configuredUploadCanary(this.config) !== null &&
+      configuredUploadRecovery(this.config) !== null &&
       Number.isSafeInteger(limits.account) &&
       limits.account > 0 &&
       Number.isSafeInteger(limits.channel) &&
@@ -186,7 +186,7 @@ export class MediaUploadRecoveryCommandsService {
     if (finite) {
       try {
         if (!channelId) throw new Error("A workspace is required.");
-        requireUploadCanary(this.config, actor.accountId, channelId);
+        requireUploadRecoveryScope(this.config, actor.accountId, channelId);
         await this.transaction(async (tx) => {
           await this.authority(tx, actor, channelId);
           await this.lockChannel(tx, channelId);
@@ -195,12 +195,23 @@ export class MediaUploadRecoveryCommandsService {
         return { protocolVersion: 1 as const, supported: false, reason: "UNSUPPORTED" as const };
       }
     }
-    return readDurableUploadCapability(
+    const capability = readDurableUploadCapability(
       this.settlement,
       this.storage,
       new Date(),
       this.v2AdmissionEnabled(),
     );
+    if (finite && capability.supported) {
+      const scope = configuredUploadRecovery(this.config)!;
+      return {
+        ...capability,
+        maxSourceBytes: Math.min(
+          scope.sourceMaxBytes,
+          Number(await this.settings.get("uploadMaxSizeBytes")),
+        ),
+      };
+    }
+    return capability;
   }
 
   async creationOutcome(
@@ -263,7 +274,7 @@ export class MediaUploadRecoveryCommandsService {
       error("INVALID_RECOVERABLE_DRAFT", "Check the recoverable upload request.", 400);
     const input = parsed.data;
     if (sourceProtocolVersion === 2)
-      requireUploadCanary(this.config, actor.accountId, input.channelId, input.sizeBytes);
+      requireUploadRecoveryScope(this.config, actor.accountId, input.channelId, input.sizeBytes);
     this.rateLimiter.consume(`recovery-create:${actor.accountId}`);
     const title = input.title.replace(/\s+/g, " ");
     const mimeType = normalizeVideoMimeType(input.mimeType);
@@ -309,8 +320,8 @@ export class MediaUploadRecoveryCommandsService {
         return { session: current, operation, replayed: true };
       }
       if (sourceProtocolVersion === 2) {
-        requireUploadCanary(this.config, actor.accountId, input.channelId, input.sizeBytes);
-        await assertUploadCanarySlot(tx);
+        requireUploadRecoveryScope(this.config, actor.accountId, input.channelId, input.sizeBytes);
+        await assertUploadRecoverySlot(tx, this.config);
       }
       if (input.sizeBytes > Number(maximum))
         error("VIDEO_TOO_LARGE", "This video exceeds the upload limit.", 413);
@@ -511,7 +522,12 @@ export class MediaUploadRecoveryCommandsService {
       if (hint?.sourceProtocolVersion === 2 && hint.initiatingAccountId === actor.accountId) {
         // Keep the authority -> admission -> generation/source/session lock order.
         await this.authority(tx, actor, hint.channelId);
-        requireUploadCanary(this.config, actor.accountId, hint.channelId, Number(hint.sizeBytes));
+        requireUploadRecoveryScope(
+          this.config,
+          actor.accountId,
+          hint.channelId,
+          Number(hint.sizeBytes),
+        );
         await lockUploadCanary(tx);
         await lockUploadAccountAdmission(tx, [actor.accountId]);
         await lockUploadAdmission(tx, hint.channelId);
@@ -522,13 +538,13 @@ export class MediaUploadRecoveryCommandsService {
       if (current.state !== "OPEN")
         error("UPLOAD_STATE_CHANGED", "This upload is not open for new grants.");
       if (current.sourceProtocolVersion === 2) {
-        requireUploadCanary(
+        requireUploadRecoveryScope(
           this.config,
           actor.accountId,
           current.channelId,
           Number(current.sizeBytes),
         );
-        await assertUploadCanarySlot(tx, current.id);
+        await assertUploadRecoverySlot(tx, this.config, current.id);
         const creation = await tx.mediaUploadOperation.findUnique({
           where: {
             sessionId_requestId: { sessionId: current.id, requestId: current.creationRequestId! },

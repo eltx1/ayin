@@ -70,7 +70,7 @@ export interface UploadRecoveryCommandResponse {
 
 /** Authenticated observation only; it never authorizes a subsequent write. */
 export type UploadRecoveryCapability =
-  | { protocolVersion: 1; supported: true; reason: null }
+  | { protocolVersion: 1; supported: true; reason: null; maxSourceBytes?: number }
   | { protocolVersion: 1; supported: false; reason: "UNSUPPORTED" };
 
 /** No signed grant is ever returned from a read-only outcome lookup. */

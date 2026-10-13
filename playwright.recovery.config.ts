@@ -8,7 +8,10 @@ if (
   throw Error("Recovery acceptance requires isolated local ayin_e2e.");
 export default defineConfig({
   testDir: "tests/recovery",
-  testMatch: "upload-recovery.acceptance.spec.ts",
+  testMatch:
+    process.env.AYIN_RECOVERY_TEST_V2 === "1"
+      ? "upload-recovery-v2.acceptance.spec.ts"
+      : "upload-recovery.acceptance.spec.ts",
   outputDir: "test-results-recovery",
   timeout: 90_000,
   expect: { timeout: 15000 },

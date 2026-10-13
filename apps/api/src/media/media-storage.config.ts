@@ -32,6 +32,14 @@ const environmentSchema = z.object({
     .max(512 * MIB)
     .default(0),
   AYIN_UPLOAD_RECOVERY_V2_ENABLED: z.enum(["0", "1"]).default("0"),
+  AYIN_UPLOAD_RECOVERY_AUDIENCE: z.enum(["canary", "all"]).default("canary"),
+  AYIN_UPLOAD_RECOVERY_SOURCE_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(128 * MIB)
+    .default(0),
+  AYIN_UPLOAD_RECOVERY_MAX_OUTSTANDING_SOURCES: z.coerce.number().int().min(1).max(8).default(1),
   AYIN_E2E_STORAGE: z.enum(["0", "1"]).default("0"),
   R2_ACCOUNT_ID: z.string().trim().min(1).optional(),
   R2_BUCKET: z.string().trim().min(1).optional(),
@@ -69,6 +77,9 @@ export interface MediaStorageConfig {
   uploadSessionSecret: string;
   /** Default-off deployment switch; does not attest provider/browser validation. */
   recoveryV2Enabled?: boolean;
+  recoveryAudience?: "canary" | "all";
+  recoverySourceMaxBytes?: number;
+  recoveryMaxOutstandingSources?: number;
   recoveryCanaryAccountId?: string;
   recoveryCanaryChannelId?: string;
   recoveryCanarySourceMaxBytes?: number;
@@ -123,6 +134,9 @@ export function loadMediaStorageConfig(
     recoveryDebtAccountBytes: parsed.AYIN_UPLOAD_RECOVERY_DEBT_ACCOUNT_BYTES,
     recoveryDebtChannelBytes: parsed.AYIN_UPLOAD_RECOVERY_DEBT_CHANNEL_BYTES,
     recoveryV2Enabled: parsed.AYIN_UPLOAD_RECOVERY_V2_ENABLED === "1",
+    recoveryAudience: parsed.AYIN_UPLOAD_RECOVERY_AUDIENCE,
+    recoverySourceMaxBytes: parsed.AYIN_UPLOAD_RECOVERY_SOURCE_MAX_BYTES,
+    recoveryMaxOutstandingSources: parsed.AYIN_UPLOAD_RECOVERY_MAX_OUTSTANDING_SOURCES,
     ...(parsed.AYIN_UPLOAD_RECOVERY_CANARY_ACCOUNT_ID
       ? { recoveryCanaryAccountId: parsed.AYIN_UPLOAD_RECOVERY_CANARY_ACCOUNT_ID.toLowerCase() }
       : {}),

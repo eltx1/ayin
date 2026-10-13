@@ -150,6 +150,9 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     vi.restoreAllMocks();
     grantSeconds = 900;
     Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+      recoveryAudience: "canary",
+      recoverySourceMaxBytes: 0,
+      recoveryMaxOutstandingSources: 1,
       recoveryV2Enabled: true,
       recoveryCanaryAccountId: undefined,
       recoveryCanaryChannelId: undefined,
@@ -2032,6 +2035,104 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     ).toBe(503);
     expect(storage.createMultipartUpload).not.toHaveBeenCalled();
     expect(await db.mediaUploadSession.count()).toBe(0);
+  });
+
+  function enableCreatorRollout(maximum = 2) {
+    Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+      recoveryAudience: "all",
+      recoverySourceMaxBytes: 16 * 1024 ** 2,
+      recoveryMaxOutstandingSources: maximum,
+    });
+  }
+  it("serializes rollout admission across different creators and permits existing sources to drain at capacity", async () => {
+    enableCreatorRollout();
+    const actors = await Promise.all([register(), register(), register()]);
+    const attempts = await Promise.all(actors.map((actor) => create(actor)));
+    expect(attempts.map((r) => r.statusCode).sort()).toEqual([201, 201, 429]);
+    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(2);
+    const index = attempts.findIndex((r) => r.statusCode === 201);
+    const session = success(attempts[index]!).session;
+    const grant = success(await command(actors[index]!, session, "authorize", { partNumber: 1 }));
+    expect(grant.grant).toBeDefined();
+    expect(await db.mediaUploadSession.count()).toBe(2);
+    expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
+  });
+  it("keeps current channel authority and visible source size limits under the all-creators audience", async () => {
+    enableCreatorRollout();
+    const actor = await register(),
+      other = await register();
+    const capability = await app.inject({
+      method: "GET",
+      url: `/media/uploads/sessions/capability?channelId=${actor.channelId}`,
+      headers: { cookie: actor.cookie },
+    });
+    expect(capability.json()).toMatchObject({ supported: true, maxSourceBytes: 16 * 1024 ** 2 });
+    const forbidden = await create(actor, { ...draft(actor), channelId: other.channelId });
+    expect([403, 404]).toContain(forbidden.statusCode);
+    const sizeBytes = 16 * 1024 ** 2 + 1;
+    expect(
+      (await create(actor, { ...draft(actor), sizeBytes, fileIdentity: identity(sizeBytes) }))
+        .statusCode,
+    ).toBe(413);
+    expect(storage.createMultipartUpload).not.toHaveBeenCalled();
+  });
+  it("reserves multipart exposure once across all part grants and completes accepted bytes after the kill switch", async () => {
+    enableCreatorRollout();
+    const actor = await register(),
+      sizeBytes = partSizeBytes * 2 + 17;
+    let session = success(
+      await create(actor, { ...draft(actor), sizeBytes, fileIdentity: identity(sizeBytes) }),
+    ).session;
+    for (const partNumber of [1, 2, 3]) {
+      session = success(await command(actor, session, "authorize", { partNumber })).session;
+    }
+    const saved = await source(session);
+    expect(saved.providerExposureBytes).toBe(15n * 1024n ** 3n);
+    expect(saved.grantReservationCount).toBe(3);
+    expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
+    allocations.get(saved.providerUploadId!)!.parts = [1, 2, 3].map((partNumber) => ({
+      partNumber,
+      sizeBytes: partNumber === 3 ? 17 : partSizeBytes,
+      etag: `"p${partNumber}"`,
+    }));
+    app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG).recoveryV2Enabled = false;
+    expect((await command(actor, session, "authorize", { partNumber: 3 })).statusCode).toBe(503);
+    session = success(await command(actor, session, "complete")).session;
+    expect(session.state).toBe("COMPLETED");
+    expect(storage.completeMultipartUpload).toHaveBeenCalledTimes(1);
+    expect(await db.mediaProcessingJob.count()).toBe(1);
+    expect(await db.mediaProcessingOutputReservation.count()).toBe(1);
+  });
+  it("preserves the global unknown-write barrier even when unused rollout slots remain", async () => {
+    enableCreatorRollout(8);
+    const first = await register(),
+      second = await register();
+    vi.mocked(storage.createMultipartUpload).mockRejectedValueOnce(Error("lost create receipt"));
+    await create(first);
+    expect((await create(second)).statusCode).toBe(429);
+    expect(storage.createMultipartUpload).toHaveBeenCalledTimes(1);
+  });
+  it("reserves derived output against the current owner in the public audience without a canary tuple", async () => {
+    enableCreatorRollout();
+    const f = await claimed();
+    await finalize(f.job);
+    Object.assign(app.get<MediaStorageConfig>(MEDIA_STORAGE_CONFIG), {
+      recoveryCanaryAccountId: undefined,
+      recoveryCanaryChannelId: undefined,
+    });
+    const derived = await db.$transaction((tx) =>
+      app.get(MediaProcessingLifecycleService).createReprocessJob(tx, f.job.videoId),
+    );
+    expect(derived).not.toBeNull();
+    expect(
+      await db.mediaProcessingOutputReservation.findUnique({
+        where: { processingJobId: derived!.id },
+      }),
+    ).toMatchObject({
+      accountId: f.actor.accountId,
+      channelId: f.actor.channelId,
+      uploadSessionId: null,
+    });
   });
 
   it("serializes concurrent measured writes so only one can spend the last reserved bytes", async () => {

@@ -93,6 +93,11 @@ jobs:
         run: pnpm exec playwright test --config playwright.pwa.config.ts
       - name: Run dormant upload recovery against synthetic provider and PostgreSQL
         run: pnpm test:e2e:recovery
+      - name: Verify V2 multipart recovery across browser offline and reload
+        env:
+          AYIN_RECOVERY_TEST_V2: "1"
+          AYIN_LAB_DIRECT_TRANSFER: "1"
+        run: pnpm test:e2e:recovery
       - name: Verify browser automatic length with independent local SigV4 verifier
         run: pnpm exec playwright test --config playwright.r2-length.config.ts
       - name: Preserve upload recovery evidence

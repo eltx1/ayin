@@ -1,7 +1,7 @@
 import type { Prisma } from "@ayin/db";
 import type { MediaStorageConfig } from "./media-storage.config.js";
 import { assertUploadDebtByteCapacity } from "./media-upload-admission.js";
-import { assertUploadCanarySlot, requireUploadCanary } from "./media-upload-canary.js";
+import { assertUploadRecoverySlot, requireUploadRecoveryScope } from "./media-upload-rollout.js";
 import { observeChannelMediaOwners } from "./media-privacy-account-fence.js";
 import { MediaUploadError } from "./media-upload-error.js";
 
@@ -23,8 +23,12 @@ export async function prepareDerivedOutputReservation(
       "Output admission is not configured.",
       503,
     );
-  const canary = requireUploadCanary(config, config.recoveryCanaryAccountId ?? "", channelId);
   const owners = await observeChannelMediaOwners(tx, channelId);
+  const accountId =
+    config.recoveryAudience === "all"
+      ? ([...owners].sort()[0] ?? "")
+      : (config.recoveryCanaryAccountId ?? "");
+  const canary = requireUploadRecoveryScope(config, accountId, channelId);
   if (!owners.includes(canary.accountId))
     throw new MediaUploadError(
       "UPLOAD_RECOVERY_UNSUPPORTED",
@@ -44,7 +48,7 @@ export async function prepareDerivedOutputReservation(
   if (!channel?.locked) busy();
   // The original source in this exact lineage may still await its normal
   // post-grant cleanup. No different unretired source or output work is allowed.
-  await assertUploadCanarySlot(tx, lineage.inputIntegritySessionId ?? null);
+  await assertUploadRecoverySlot(tx, config, lineage.inputIntegritySessionId ?? null);
   for (const owner of owners)
     await assertUploadDebtByteCapacity(tx, owner, channelId, BigInt(canary.outputEnvelopeBytes), {
       account: config.recoveryDebtAccountBytes!,
