@@ -30,6 +30,7 @@ export class RecoveryError extends Error {
 export interface RecoveryView {
   scope: RecoveryScope | null;
   supported: boolean;
+  maxSourceBytes?: number;
   saved: SavedRecovery | null;
   inspection: RecoveryInspection | null;
   fileName: string | null;
@@ -315,11 +316,21 @@ export class UploadRecoveryClient {
       capability.reason !== (capability.supported ? null : "UNSUPPORTED")
     )
       throw new UploadProtocolError();
+    if (
+      capability.maxSourceBytes !== undefined &&
+      (typeof capability.maxSourceBytes !== "number" ||
+        !Number.isSafeInteger(capability.maxSourceBytes) ||
+        capability.maxSourceBytes < 1)
+    )
+      throw new UploadProtocolError();
     const last = await this.scope(signal, scope);
     if (!sameScope(scope, last)) throw new RecoveryError("AUTHORITY_CHANGED", 403);
     signal.throwIfAborted();
     this.view.scope = scope;
     this.view.supported = capability.supported;
+    if (capability.supported && typeof capability.maxSourceBytes === "number")
+      this.view.maxSourceBytes = capability.maxSourceBytes;
+    else delete this.view.maxSourceBytes;
     this.view.saved = loadSavedRecovery(this.dependencies.storage, scope);
     if (previousSessionId !== this.view.saved?.session?.sessionId) {
       this.view.fileMatched = false;
@@ -353,6 +364,12 @@ export class UploadRecoveryClient {
       this.view.fileMatched = false;
       if (this.view.saved?.session && file.size !== this.view.saved.session.sizeBytes)
         throw new RecoveryError("UPLOAD_FILE_CHANGED");
+      if (
+        !this.view.saved &&
+        this.view.maxSourceBytes !== undefined &&
+        file.size > this.view.maxSourceBytes
+      )
+        throw new RecoveryError("VIDEO_TOO_LARGE");
       this.view.message = "HASHING";
       this.view.progress = 0;
       this.publish();

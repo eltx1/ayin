@@ -8,6 +8,7 @@ import { Test } from "@nestjs/testing";
 import { AppModule } from "../../src/app.module.js";
 import {
   DURABLE_UPLOAD_SETTLEMENT,
+  FiniteMultipartDurableUploadSettlement,
   type DurableUploadSettlementEvidence,
 } from "../../src/media/durable-upload-settlement.js";
 import { MediaProcessingStorageService } from "../../src/media/media-processing-storage.service.js";
@@ -36,6 +37,7 @@ const PART = 5 * 1024 * 1024;
 // Optional local transport measurement only. Reuses this exact synthetic store;
 // never imported by AppModule or enabled by production API bootstrap.
 const directTransfer = process.env.AYIN_LAB_DIRECT_TRANSFER === "1";
+const finiteV2 = process.env.AYIN_RECOVERY_TEST_V2 === "1";
 const directPrefix = "/_test/recovery-byte-store/";
 const received: Array<{
   bytes: number;
@@ -71,6 +73,7 @@ const grants = new Map<
     partNumber?: number;
     expiresAt: Date;
     used: boolean;
+    expectedSizeBytes?: number;
     uploadBinding?: UploadObjectBinding;
   }
 >();
@@ -99,6 +102,7 @@ function authorize(input: {
   uploadId?: string;
   partNumber?: number;
   expiresInSeconds: number;
+  expectedSizeBytes?: number;
   now?: Date;
 }) {
   counters.authorizations++;
@@ -120,6 +124,8 @@ function storeGrantedBytes(token: string, body: Buffer) {
   const grant = grants.get(token);
   if (!grant || grant.used || grant.expiresAt.getTime() <= Date.now())
     throw Error("Synthetic grant expired/reused");
+  if (grant.expectedSizeBytes !== undefined && grant.expectedSizeBytes !== body.length)
+    throw Error("Synthetic signed length mismatch");
   grant.used = true;
   counters.puts++;
   if (grant.uploadId) {
@@ -238,11 +244,24 @@ const module = await Test.createTestingModule({ imports: [AppModule] })
     ...loadMediaStorageConfig({ APP_ENV: "test" }),
     multipartThresholdBytes: PART,
     partSizeBytes: PART,
+    ...(finiteV2
+      ? {
+          recoveryV2Enabled: true,
+          recoveryAudience: "all",
+          recoverySourceMaxBytes: 16 * 1024 ** 2,
+          recoveryMaxOutstandingSources: 8,
+          recoveryOutputEnvelopeBytes: 32 * 1024 ** 2,
+          recoveryDebtAccountBytes: 21 * 1024 ** 3,
+          recoveryDebtChannelBytes: 21 * 1024 ** 3,
+        }
+      : {}),
   })
   .overrideProvider(MediaProcessingStorageService)
   .useValue({ headObject: storage.headObject })
   .overrideProvider(DURABLE_UPLOAD_SETTLEMENT)
-  .useValue({ admissionEvidence: evidence })
+  .useValue(
+    finiteV2 ? new FiniteMultipartDurableUploadSettlement() : { admissionEvidence: evidence },
+  )
   .compile();
 const app = module.createNestApplication<NestFastifyApplication>(
   new FastifyAdapter({ bodyLimit: 1024 * 1024 }),
@@ -267,7 +286,9 @@ app
 if (directTransfer) {
   const server = app.getHttpAdapter().getInstance();
   server.addContentTypeParser(
-    ["video/webm", "video/mp4", "application/octet-stream"],
+    // Multipart V2 sends an untyped Blob and deliberately omits Content-Type.
+    // This parser exists only on the guarded synthetic test server.
+    "*",
     { parseAs: "buffer", bodyLimit: PART + 1024 },
     (_request, body, done) => done(null, body),
   );

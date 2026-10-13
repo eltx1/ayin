@@ -279,8 +279,17 @@ export function UploadRecovery() {
             !["COMPLETED", "ABORTED", "REVOKED"].includes(session?.state ?? "") ? (
               <label className={`${styles.record} ${recoveryStyles.picker}`}>
                 <span>{copy("Choose original video", "اختيار الفيديو الأصلي")}</span>
+                {view.maxSourceBytes ? (
+                  <span>
+                    {copy("Maximum recoverable file size", "أقصى حجم للملف القابل للاستئناف")}:{" "}
+                    {view.maxSourceBytes >= 1024 ** 2
+                      ? `${view.maxSourceBytes / 1024 ** 2} MB`
+                      : `${view.maxSourceBytes} ${copy("bytes", "بايت")}`}
+                  </span>
+                ) : null}
                 <input
                   type="file"
+                  aria-label={copy("Choose original video", "اختيار الفيديو الأصلي")}
                   accept=".mp4,.mov,.mkv,.webm,.avi,.mpeg,.mpg,.mts,.m2ts,.ts,.3gp,.3g2,.m4v,.wmv,.flv,.ogv,.mxf"
                   disabled={view.busy}
                   onChange={(event) => {
