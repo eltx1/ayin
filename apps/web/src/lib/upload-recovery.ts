@@ -328,9 +328,9 @@ export class UploadRecoveryClient {
     signal.throwIfAborted();
     this.view.scope = scope;
     this.view.supported = capability.supported;
-    this.view.maxSourceBytes = capability.supported
-      ? (capability.maxSourceBytes as number | undefined)
-      : undefined;
+    if (capability.supported && typeof capability.maxSourceBytes === "number")
+      this.view.maxSourceBytes = capability.maxSourceBytes;
+    else delete this.view.maxSourceBytes;
     this.view.saved = loadSavedRecovery(this.dependencies.storage, scope);
     if (previousSessionId !== this.view.saved?.session?.sessionId) {
       this.view.fileMatched = false;
