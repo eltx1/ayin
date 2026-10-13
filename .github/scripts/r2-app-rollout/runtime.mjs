@@ -348,6 +348,28 @@ async function execute(mode) {
     report.fixtureCount = fixtures.length;
     if (fixtures.length === 1) {
       const f = fixtures[0];
+      const cleanup = (
+        await client.query(
+          `SELECT
+            COUNT(*)::int AS "cleanupTotal",
+            COUNT(*) FILTER (WHERE status='DONE')::int AS "cleanupDone",
+            COUNT(*) FILTER (WHERE status='FAILED')::int AS "cleanupFailed",
+            COUNT(*) FILTER (WHERE "debtKind" IS NOT NULL AND status <> 'DONE')::int AS "cleanupDebt",
+            COALESCE(CEIL(EXTRACT(EPOCH FROM (MIN("availableAt") FILTER (WHERE status <> 'DONE') - clock_timestamp()))),0)::int AS "nextCleanupSeconds"
+          FROM "PrivacyMediaDeletionJob" WHERE "uploadSessionId"=$1`,
+          [f.id],
+        )
+      ).rows[0];
+      Object.assign(report, cleanup);
+      const grant = (
+        await client.query(
+          `SELECT GREATEST(0, CEIL(EXTRACT(EPOCH FROM ("lastGrantExpiresAt" - clock_timestamp()))))::int AS "grantCutoffSeconds",
+            "contentIdentityDigest" IS NULL AS "sourceIdentityRetired"
+          FROM "MediaUploadSession" WHERE id=$1`,
+          [f.id],
+        )
+      ).rows[0];
+      Object.assign(report, grant);
       report.fixtureFingerprint = digest(f.id);
       report.fixtureState = f.state;
       report.fixtureJobStatus = f.jobStatus ?? "NONE";
