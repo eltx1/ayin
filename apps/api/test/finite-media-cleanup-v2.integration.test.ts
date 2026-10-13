@@ -49,6 +49,7 @@ import { registerUploadCleanupInTransaction } from "../src/media/media-upload-cl
 import { R2HttpError } from "../src/media/r2-sigv4.js";
 import { PrivacyLifecycleService } from "../src/privacy/privacy-lifecycle.service.js";
 import {
+  MAX_MEDIA_CLEANUP_ATTEMPTS,
   claimMediaCleanupJob,
   finishFiniteMediaCleanupJob,
   minimizeCompletedUploadCleanup,
@@ -715,6 +716,89 @@ databaseDescribe("Finite media cleanup V2 on PostgreSQL", () => {
     ).toBe(0);
     expect(storage.authorizeMultipartPart).not.toHaveBeenCalled();
     expect(storage.createMultipartUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules a known grant cutoff directly even after the retry budget and settles only after expiry", async () => {
+    grantSeconds = 3;
+    const f = await fixture();
+    success(await command(f.actor, f.session, "authorize", { partNumber: 1 }));
+    success(await command(f.actor, f.session, "cancel"));
+    const saved = await source(f.session);
+    const row = await db.privacyMediaDeletionJob.findFirstOrThrow({
+      where: { uploadSessionId: saved.id, kind: "OBJECT" },
+    });
+    await db.privacyMediaDeletionJob.updateMany({
+      where: { id: { not: row.id } },
+      data: { availableAt: new Date(Date.now() + day) },
+    });
+    await db.privacyMediaDeletionJob.update({
+      where: { id: row.id },
+      data: { attempts: MAX_MEDIA_CLEANUP_ATTEMPTS },
+    });
+    await cleanup(1);
+    expect(
+      await db.privacyMediaDeletionJob.findUniqueOrThrow({ where: { id: row.id } }),
+    ).toMatchObject({
+      status: "PENDING",
+      lastObservation: "GRANT_CUTOFF_PENDING",
+      availableAt: saved.lastGrantExpiresAt,
+      attempts: MAX_MEDIA_CLEANUP_ATTEMPTS + 1,
+      completedAt: null,
+    });
+    expect(await claimMediaCleanupJob(db, new Date())).toBeNull();
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, saved.lastGrantExpiresAt!.getTime() - Date.now()) + 30),
+    );
+    await cleanup(1);
+    expect(
+      await db.privacyMediaDeletionJob.findUniqueOrThrow({ where: { id: row.id } }),
+    ).toMatchObject({
+      status: "DONE",
+      debtKind: null,
+      completedAt: expect.any(Date),
+    });
+  });
+
+  it("recovers an existing slow cutoff wait once after expiry without bypassing later provider backoff", async () => {
+    grantSeconds = 3;
+    const f = await fixture();
+    success(await command(f.actor, f.session, "authorize", { partNumber: 1 }));
+    success(await command(f.actor, f.session, "cancel"));
+    const saved = await source(f.session);
+    const row = await db.privacyMediaDeletionJob.findFirstOrThrow({
+      where: { uploadSessionId: saved.id, kind: "OBJECT" },
+    });
+    await db.privacyMediaDeletionJob.updateMany({
+      data: { availableAt: new Date(Date.now() + day) },
+    });
+    await db.privacyMediaDeletionJob.update({
+      where: { id: row.id },
+      data: {
+        attempts: MAX_MEDIA_CLEANUP_ATTEMPTS,
+        claimedAt: new Date(),
+        lastObservation: "GRANT_CUTOFF_PENDING",
+      },
+    });
+    expect(await claimMediaCleanupJob(db, new Date())).toBeNull();
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.max(0, saved.lastGrantExpiresAt!.getTime() - Date.now()) + 30),
+    );
+    const claim = await claimMediaCleanupJob(db, new Date());
+    expect(claim?.id).toBe(row.id);
+    expect(claim?.attempts).toBe(MAX_MEDIA_CLEANUP_ATTEMPTS + 1);
+    await db.privacyMediaDeletionJob.update({
+      where: { id: row.id },
+      data: { status: "PENDING", leaseToken: null, leaseExpiresAt: null },
+    });
+    expect(await claimMediaCleanupJob(db, new Date())).toBeNull();
+    await db.privacyMediaDeletionJob.update({
+      where: { id: row.id },
+      data: {
+        claimedAt: new Date(saved.lastGrantExpiresAt!.getTime() - 1),
+        lastObservation: "SOURCE_WRITE_OUTCOME_UNKNOWN",
+      },
+    });
+    expect(await claimMediaCleanupJob(db, new Date())).toBeNull();
   });
 
   it("accepts more than fifty completed source/output/cleanup turnovers without active-slot lockout", async () => {
