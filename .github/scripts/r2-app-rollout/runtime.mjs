@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
-const SHA = "0ba3964df889ac791260bf00b301346099620303";
+const SHA = "d29d539ae31b988714113b3a865ada9e996c5a8f";
 const CURRENT = "/home/ayin/htdocs/current";
 const ENV = "/home/ayin/env/api.env";
 const JOURNAL = "/home/ayin/env/r2-app-rollout-20261013.json";

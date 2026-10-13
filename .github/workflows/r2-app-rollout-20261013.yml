@@ -1,0 +1,65 @@
+name: AYIN bounded creator upload rollout
+on:
+  push:
+    branches: [ops/ayin-upload-rollout-20261013]
+    paths:
+      - .github/workflows/r2-app-rollout-20261013.yml
+      - .github/scripts/r2-app-rollout/**
+permissions:
+  contents: read
+concurrency:
+  group: ayin-production-deploy
+  cancel-in-progress: false
+jobs:
+  bounded-rollout:
+    if: >-
+      github.repository == 'eltx1/ayin' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/ops/ayin-upload-rollout-20261013' &&
+      github.event.forced == false && github.event.deleted == false &&
+      github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    environment:
+      name: production
+      deployment: false
+    env:
+      ROLLOUT_MODE: inspect
+      DEPLOY_HOST: 13.52.116.200
+      SSH_PORT: "22"
+      PINNED_SSH_HOST_FINGERPRINT: SHA256:YoUNEx7Aizhzl99TReL4kGCyUY6KopzrPuPgRmhDC0Y
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Validate bounded configuration mutation
+        run: |
+          node --check .github/scripts/r2-app-rollout/runtime.mjs
+          node --check .github/scripts/r2-app-rollout/run.mjs
+          node --test .github/scripts/r2-app-rollout/runtime.test.mjs
+      - name: Use existing isolated AYIN deployment identity
+        shell: bash
+        env:
+          DEPLOY_KEY: ${{ secrets.AYIN_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          candidate="$HOME/.ssh/known_hosts.candidate"
+          bash deploy/acquire-ssh-host-key.sh "$candidate"
+          actual_fingerprint="$(ssh-keygen -lf "$candidate" -E sha256 | awk 'NR == 1 {print $2}')"
+          [[ "$actual_fingerprint" == "$PINNED_SSH_HOST_FINGERPRINT" ]]
+          mv "$candidate" "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+      - name: Apply and verify bounded creator rollout
+        run: node .github/scripts/r2-app-rollout/run.mjs "$ROLLOUT_MODE"
+      - name: Remove runner-only SSH material
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts" "$HOME/.ssh/known_hosts.candidate"
