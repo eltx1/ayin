@@ -77,9 +77,12 @@ jobs:
           curl --fail --silent --show-error --max-time 20 https://api.ayin.stream/health >/dev/null
           curl --fail --silent --show-error --max-time 20 https://api.ayin.stream/ready >/dev/null
 
-          media_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 https://media.ayin.stream/__ayin_edge_verification_missing_object__ || true)"
-          [[ "$media_status" =~ ^[1-5][0-9][0-9]$ ]]
+          # A missing object can legitimately return 403/404. A server error,
+          # redirect, or failed transfer must not become successful edge evidence.
+          media_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 https://media.ayin.stream/__ayin_edge_verification_missing_object__)"
+          [[ "$media_status" =~ ^(2[0-9][0-9]|403|404)$ ]]
           echo "AYIN public web, API, and media HTTPS endpoints are reachable."
+          echo "Media probe HTTP $media_status: endpoint reachability only; no stored-media or R2 upload acceptance."
 
       - name: Record public edge verification proof
         if: github.event_name != 'workflow_run' || steps.source.outputs.ready == 'true'
@@ -91,6 +94,7 @@ jobs:
           cat > "$proof_dir/public-edge-verification-proof.env" <<EOF
           schema_version=4
           verification_mode=read_only_public_endpoints
+          media_check=missing_object_endpoint_reachability_only
           zone=ayin.stream
           media_domain=media.ayin.stream
           r2_bucket=$AYIN_R2_BUCKET_NAME
