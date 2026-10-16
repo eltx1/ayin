@@ -68,6 +68,7 @@ jobs:
           bash -n deploy/release.sh
           bash -n deploy/preflight-production.sh
           bash -n deploy/cloudflare/sync-production-edge.sh
+          node --test deploy/cloudflare/sync-production-edge.test.mjs
           bash -n deploy/cloudflare/bootstrap-r2-production.sh
           bash -n deploy/postgres/bootstrap-local-production.sh
           bash -n deploy/env/bootstrap-production-env.sh
